@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Studio now defaults on for new installs and returning users without a saved preference. Saved on/off choices are preserved, resetting settings restores Studio on, and the refreshed 2.0 welcome-back introduction explains the default and offers the same switch. Record Video and its shortcut remain ordinary recordings.
+- macOS Screenshot and GIF settings now follow Video's quality and before/after grouping, with GIF recording effects under During Recording and screenshot-only options in collapsed Advanced settings. Existing options and capture behavior are unchanged.
 - Restored the original blue focus-bracket app icons on macOS and Windows, ending the paperclip mascot trial early.
 - Ordinary macOS and Windows CI cancel superseded pull-request runs per workflow; non-PR runs use unique concurrency groups so documentation-only pushes cannot cancel source validation. The Windows test job reuses an architecture-, SDK-, and dependency-scoped NuGet package cache; build-job caches were excluded because transfer overhead outweighed restore savings. Build and test coverage, release, Store publishing, and launch-smoke workflows are unchanged.
 - macOS video settings now group controls into Before Recording, During Recording, and After Recording, with audio offset tucked into collapsed Advanced settings.

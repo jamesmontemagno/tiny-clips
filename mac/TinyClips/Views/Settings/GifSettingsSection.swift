@@ -6,8 +6,7 @@ struct GifSettingsSection: View {
     let gifMouseClickToggleBinding: Binding<Bool>
 
     var body: some View {
-        Section("Capture Settings") {
-
+        Section("GIF Quality") {
             HStack {
                 Text("Frame rate:")
                 Slider(value: $settings.gifFrameRate, in: 5...30, step: 1)
@@ -31,6 +30,36 @@ struct GifSettingsSection: View {
                     .frame(width: 60, alignment: .trailing)
             }
             .help("Limit GIF output width to reduce file size.")
+        }
+
+        Section("Before Recording") {
+            Toggle("Show capture picker before recording", isOn: $settings.showGifCapturePicker)
+                .help("When disabled, GIF recording goes straight to region selection.")
+                .onChange(of: settings.showGifCapturePicker) { _, isEnabled in
+                    if !isEnabled {
+                        settings.showGifCapturePickerAfterCapture = false
+                    }
+                }
+
+            Toggle("Countdown before recording", isOn: $settings.gifCountdownEnabled)
+                .help("Wait before recording starts so you can prepare the screen.")
+            if settings.gifCountdownEnabled {
+                HStack {
+                    Text("Duration:")
+                    Slider(
+                        value: $settings.gifCountdownDuration.doubleValue,
+                        in: 1...10,
+                        step: 1
+                    )
+                    Text("\(settings.gifCountdownDuration)s")
+                        .monospacedDigit()
+                        .frame(width: 30, alignment: .trailing)
+                }
+                .help("Set the countdown duration in seconds.")
+            }
+        }
+
+        Section("During Recording") {
             Toggle("Show capture region during recording", isOn: $settings.showRegionIndicator)
                 .help("Show a visible border around the selected capture area while recording.")
             Toggle("Prevent display sleep while recording", isOn: $settings.preventDisplaySleepWhileRecording)
@@ -58,20 +87,11 @@ struct GifSettingsSection: View {
             .buttonStyle(.link)
         }
 
-        Section("Before Capture") {
-            Toggle("Show capture picker before recording", isOn: $settings.showGifCapturePicker)
-                .help("When disabled, GIF recording goes straight to region selection.")
-                .onChange(of: settings.showGifCapturePicker) { _, isEnabled in
-                    if !isEnabled {
-                        settings.showGifCapturePickerAfterCapture = false
-                    }
-                }
+        Section("After Recording") {
             Toggle("Show capture picker after recording", isOn: $settings.showGifCapturePickerAfterCapture)
                 .help("Reopen the capture picker after each recording so you can quickly start another.")
                 .disabled(!settings.showGifCapturePicker)
-        }
 
-        Section("After Capture") {
             Toggle("Open trimmer after recording", isOn: $settings.showGifTrimmer)
                 .help("Open the trimmer when recording ends so you can trim before saving.")
                 .onChange(of: settings.showGifTrimmer) { _, isEnabled in
@@ -85,25 +105,6 @@ struct GifSettingsSection: View {
                 .disabled(!settings.showGifTrimmer)
             Toggle("Copy to clipboard", isOn: $settings.copyGifToClipboard)
                 .help("Copy saved GIFs to the clipboard as a file URL.")
-        }
-
-        Section("Countdown") {
-            Toggle("Countdown before recording", isOn: $settings.gifCountdownEnabled)
-                .help("Wait before recording starts so you can prepare the screen.")
-            if settings.gifCountdownEnabled {
-                HStack {
-                    Text("Duration:")
-                    Slider(
-                        value: $settings.gifCountdownDuration.doubleValue,
-                        in: 1...10,
-                        step: 1
-                    )
-                    Text("\(settings.gifCountdownDuration)s")
-                        .monospacedDigit()
-                        .frame(width: 30, alignment: .trailing)
-                }
-                .help("Set the countdown duration in seconds.")
-            }
         }
     }
 }

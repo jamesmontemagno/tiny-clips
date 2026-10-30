@@ -4,8 +4,7 @@ struct ScreenshotSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
 
     var body: some View {
-        Section("Capture Settings") {
-
+        Section("Image & Quality") {
             Picker("Default format:", selection: $settings.screenshotFormat) {
                 ForEach(ImageFormat.allCases, id: \.rawValue) { format in
                     Text(format.label).tag(format.rawValue)
@@ -32,8 +31,8 @@ struct ScreenshotSettingsSection: View {
             }
             .help("Resize the saved screenshot relative to captured pixels.")
         }
-        
-        Section("Picker Settings") {
+
+        Section("Before Capture") {
             Toggle("Show capture picker before screenshot", isOn: $settings.showScreenshotCapturePicker)
                 .help("When disabled, screenshots go straight to region selection.")
                 .onChange(of: settings.showScreenshotCapturePicker) { _, isEnabled in
@@ -41,30 +40,7 @@ struct ScreenshotSettingsSection: View {
                         settings.showScreenshotCapturePickerAfterCapture = false
                     }
                 }
-            
-            Toggle("Show capture picker after screenshot", isOn: $settings.showScreenshotCapturePickerAfterCapture)
-                .help("Reopen the capture picker after each screenshot so you can quickly take another.")
-                .disabled(!settings.showScreenshotCapturePicker)
-        }
 
-        Section("After Capture") {
-            Toggle("Open editor after capture", isOn: $settings.showScreenshotEditor)
-                .help("Open the screenshot editor after capture so you can annotate or crop.")
-                .onChange(of: settings.showScreenshotEditor) { _, isEnabled in
-                    if !isEnabled {
-                        settings.saveImmediatelyScreenshot = true
-                    }
-                }
-
-            Toggle("Save immediately", isOn: $settings.saveImmediatelyScreenshot)
-                .help("Save immediately instead of waiting for actions in the editor.")
-                .disabled(!settings.showScreenshotEditor)
-
-            Toggle("Copy to clipboard", isOn: $settings.copyScreenshotToClipboard)
-                .help("Copy screenshots to the clipboard as an image, even before saving in the editor.")
-        }
-
-        Section("Countdown") {
             Toggle("Countdown before screenshot", isOn: $settings.screenshotCountdownEnabled)
                 .help("Wait before capturing so you can prepare the screen.")
             if settings.screenshotCountdownEnabled {
@@ -83,7 +59,28 @@ struct ScreenshotSettingsSection: View {
             }
         }
 
-        Section("Advanced") {
+        Section("After Capture") {
+            Toggle("Show capture picker after screenshot", isOn: $settings.showScreenshotCapturePickerAfterCapture)
+                .help("Reopen the capture picker after each screenshot so you can quickly take another.")
+                .disabled(!settings.showScreenshotCapturePicker)
+
+            Toggle("Open editor after capture", isOn: $settings.showScreenshotEditor)
+                .help("Open the screenshot editor after capture so you can annotate or crop.")
+                .onChange(of: settings.showScreenshotEditor) { _, isEnabled in
+                    if !isEnabled {
+                        settings.saveImmediatelyScreenshot = true
+                    }
+                }
+
+            Toggle("Save immediately", isOn: $settings.saveImmediatelyScreenshot)
+                .help("Save immediately instead of waiting for actions in the editor.")
+                .disabled(!settings.showScreenshotEditor)
+
+            Toggle("Copy to clipboard", isOn: $settings.copyScreenshotToClipboard)
+                .help("Copy screenshots to the clipboard as an image, even before saving in the editor.")
+        }
+
+        DisclosureGroup("Advanced") {
             Toggle("Exclude ClickLight overlays", isOn: $settings.excludeClickLightFromScreenshots)
                 .help("Exclude ClickLight from region, screen, and scrolling screenshots without adding a delay. Video and GIF recordings are unchanged.")
                 .accessibilityLabel("Exclude ClickLight overlays")

@@ -16,19 +16,20 @@
             Spacing="4">
             <TextBlock
                 Margin="4,8,0,4"
+                AutomationProperties.HeadingLevel="Level1"
                 Style="{StaticResource SubtitleTextBlockStyle}"
                 Text="Screenshot" />
 
             <TextBlock
                 Margin="4,4,0,0"
+                AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="Image &amp; quality" />
 
             <StackPanel Spacing="2">
-                <controls:SettingsExpander
+                <controls:SettingsCard
                     Header="Image format"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B9;}"
-                    IsExpanded="True">
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B9;}">
                     <ComboBox
                         AutomationProperties.AutomationId="ScreenshotFormatComboBox"
                         AutomationProperties.Name="Screenshot image format"
@@ -37,40 +38,39 @@
                         <ComboBoxItem Content="JPEG" />
                         <ComboBoxItem Content="WebP" />
                     </ComboBox>
-                    <controls:SettingsExpander.Items>
-                        <controls:SettingsCard
-                            Description="Used when the image format is JPEG or WebP."
-                            Header="JPEG / WebP quality">
-                            <Slider
-                                Width="220"
-                                AutomationProperties.AutomationId="JpegQualitySlider"
-                                AutomationProperties.Name="JPEG or WebP quality"
-                                Maximum="1.0"
-                                Minimum="0.1"
-                                StepFrequency="0.05"
-                                Value="{x:Bind ViewModel.JpegQuality, Mode=TwoWay}" />
-                        </controls:SettingsCard>
-                        <controls:SettingsCard
-                            Description="Resize saved screenshots as a percentage of full resolution."
-                            Header="Scale">
-                            <Slider
-                                Width="220"
-                                AutomationProperties.AutomationId="ScreenshotScaleSlider"
-                                AutomationProperties.Name="Screenshot scale percentage"
-                                Maximum="100"
-                                Minimum="25"
-                                StepFrequency="5"
-                                TickFrequency="25"
-                                Value="{x:Bind ViewModel.ScreenshotScale, Mode=TwoWay}" />
-                        </controls:SettingsCard>
-                    </controls:SettingsExpander.Items>
-                </controls:SettingsExpander>
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="Used when the image format is JPEG or WebP."
+                    Header="JPEG / WebP quality">
+                    <Slider
+                        Width="220"
+                        AutomationProperties.AutomationId="JpegQualitySlider"
+                        AutomationProperties.Name="JPEG or WebP quality"
+                        Maximum="1.0"
+                        Minimum="0.1"
+                        StepFrequency="0.05"
+                        Value="{x:Bind ViewModel.JpegQuality, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="Resize saved screenshots as a percentage of full resolution."
+                    Header="Scale">
+                    <Slider
+                        Width="220"
+                        AutomationProperties.AutomationId="ScreenshotScaleSlider"
+                        AutomationProperties.Name="Screenshot scale percentage"
+                        Maximum="100"
+                        Minimum="25"
+                        StepFrequency="5"
+                        TickFrequency="25"
+                        Value="{x:Bind ViewModel.ScreenshotScale, Mode=TwoWay}" />
+                </controls:SettingsCard>
             </StackPanel>
 
             <TextBlock
                 Margin="4,16,0,0"
+                AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
-                Text="Capture behavior" />
+                Text="Before capture" />
 
             <StackPanel Spacing="2">
                 <controls:SettingsCard
@@ -81,17 +81,6 @@
                         AutomationProperties.AutomationId="ShowScreenshotCapturePickerToggle"
                         AutomationProperties.Name="Show capture picker before screenshot"
                         IsOn="{x:Bind ViewModel.ShowScreenshotCapturePicker, Mode=TwoWay}" />
-                </controls:SettingsCard>
-
-                <controls:SettingsCard
-                    Description="Start another screenshot with the same picker after saving."
-                    Header="Show capture picker after screenshot"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="ShowScreenshotCapturePickerAfterCaptureToggle"
-                        AutomationProperties.Name="Show capture picker after screenshot"
-                        IsEnabled="{x:Bind ViewModel.ScreenshotCapturePickerAfterCaptureEnabled, Mode=OneWay}"
-                        IsOn="{x:Bind ViewModel.ShowScreenshotCapturePickerAfterCapture, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
@@ -114,6 +103,25 @@
                             AutomationProperties.Name="Enable screenshot countdown"
                             IsOn="{x:Bind ViewModel.ScreenshotCountdownEnabled, Mode=TwoWay}" />
                     </StackPanel>
+                </controls:SettingsCard>
+            </StackPanel>
+
+            <TextBlock
+                Margin="4,16,0,0"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="After capture" />
+
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Start another screenshot with the same picker after saving."
+                    Header="Show capture picker after screenshot"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowScreenshotCapturePickerAfterCaptureToggle"
+                        AutomationProperties.Name="Show capture picker after screenshot"
+                        IsEnabled="{x:Bind ViewModel.ScreenshotCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.ShowScreenshotCapturePickerAfterCapture, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
@@ -149,16 +157,6 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
-                    Description="Off (recommended): the frozen frame shown while you select is saved instantly. On: re-capture the live screen after selecting, which reflects changes made during selection but is slower."
-                    Header="Re-capture screen after region selection"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE72C;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="ScreenshotLiveCaptureToggle"
-                        AutomationProperties.Name="Re-capture screen after region selection"
-                        IsOn="{x:Bind ViewModel.ScreenshotUsesLiveCapture, Mode=TwoWay}" />
-                </controls:SettingsCard>
-
-                <controls:SettingsCard
                     Header="Copy screenshots to the clipboard"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
                     <ToggleSwitch
@@ -167,6 +165,27 @@
                         IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=TwoWay}" />
                 </controls:SettingsCard>
             </StackPanel>
+
+            <controls:SettingsExpander
+                Margin="0,12,0,0"
+                AutomationProperties.AutomationId="AdvancedScreenshotSettingsExpander"
+                AutomationProperties.HeadingLevel="Level2"
+                AutomationProperties.Name="Advanced screenshot settings"
+                Header="Advanced"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE713;}"
+                IsExpanded="False">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard
+                        Description="Off (recommended): the frozen frame shown while you select is saved instantly. On: re-capture the live screen after selecting, which reflects changes made during selection but is slower."
+                        Header="Re-capture screen after region selection"
+                        HeaderIcon="{ui:FontIcon Glyph=&#xE72C;}">
+                        <ToggleSwitch
+                            AutomationProperties.AutomationId="ScreenshotLiveCaptureToggle"
+                            AutomationProperties.Name="Re-capture screen after region selection"
+                            IsOn="{x:Bind ViewModel.ScreenshotUsesLiveCapture, Mode=TwoWay}" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
         </StackPanel>
     </Border>
 </UserControl>
