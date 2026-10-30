@@ -122,6 +122,9 @@ public sealed class SensitiveTextDetectorTests
     [Theory]
     [InlineData(90, 136, 24, 28, 72)]
     [InlineData(-90, 36, 204, 28, 72)]
+    [InlineData(180, 136, 204, 48, 42)]
+    [InlineData(270, 36, 204, 28, 72)]
+    [InlineData(360, 16, 54, 48, 42)]
     [InlineData(45, 67, 0, 52, 72)]
     public void RotatesDeskewedOcrBoundsAroundImageCenterBeforeScaling(
         double angle, double x, double y, double width, double height)

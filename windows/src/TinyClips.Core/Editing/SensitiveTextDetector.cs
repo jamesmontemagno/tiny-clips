@@ -116,8 +116,16 @@ public static class SensitiveTextDetector
             // Windows OCR boxes are deskewed. TextAngle rotates them clockwise about the OCR
             // image center (not the word center) to overlay the original image correctly.
             var radians = textAngleDegrees * Math.PI / 180;
-            var cosine = Math.Cos(radians);
-            var sine = Math.Sin(radians);
+            // Exact cardinal rotations must not gain a pixel from sin/cos residuals before
+            // outward rounding. Leave genuinely non-cardinal angles conservative and unchanged.
+            var (cosine, sine) = (textAngleDegrees % 360) switch
+            {
+                0 => (1d, 0d),
+                90 or -270 => (0d, 1d),
+                180 or -180 => (-1d, 0d),
+                270 or -90 => (0d, -1d),
+                _ => (Math.Cos(radians), Math.Sin(radians)),
+            };
             var centerX = ocrWidth / 2.0;
             var centerY = ocrHeight / 2.0;
             var corners = new[]
