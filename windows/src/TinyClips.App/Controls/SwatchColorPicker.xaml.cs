@@ -47,6 +47,8 @@ public sealed partial class SwatchColorPicker : UserControl
     public SwatchColorPicker()
     {
         InitializeComponent();
+        RegisterPropertyChangedCallback(AutomationProperties.NameProperty, OnAutomationNameChanged);
+        SyncAutomationName();
         BuildSwatches();
         SyncFromColor(Color);
     }
@@ -90,6 +92,15 @@ public sealed partial class SwatchColorPicker : UserControl
 
     /// <summary>Raised only when the user selects a preset swatch or changes the custom picker.</summary>
     public event EventHandler<Color>? ColorChanged;
+
+    private static void OnAutomationNameChanged(DependencyObject sender, DependencyProperty property) =>
+        ((SwatchColorPicker)sender).SyncAutomationName();
+
+    private void SyncAutomationName()
+    {
+        var name = AutomationProperties.GetName(this);
+        AutomationProperties.SetName(PART_DropButton, string.IsNullOrWhiteSpace(name) ? "Choose color" : name);
+    }
 
     private static void OnColorPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {

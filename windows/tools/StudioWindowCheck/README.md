@@ -24,7 +24,15 @@ Every result is read back by the tool itself, in one of these ways:
 - what an editor asks its preview to play at, and when, written down on its way to the preview
   engine: see "Speed changes".
 
-**Last run on 7 October 2026.** Everything below that says it was written on 5 or 6 October
+The shared `SwatchColorPicker` is compiled into the tool alongside the Studio controls.
+Accessibility checks verify the two background color buttons' contextual names and name updates,
+and include the gradient direction slider when a gradient is shown. Slider-end checks exercise
+its full 0-to-360-degree range. The glyph-width check shows the Zoom panel before measuring its
+row, rather than measuring the last layout of a hidden panel.
+It waits for the narrower button geometry and verifies that the captions fit the imposed width,
+not just that the glyph-visibility flags changed.
+
+**Historical runs on 7 October 2026.** Everything below that says it was written on 5 or 6 October
 "and not run" has run now, for the first time that day: see "The first runs, on 7 October
 2026" under "The inspector as a rail with one panel on show", and "Three checks on a smaller
 preview". Seven full runs were made that day. The first, of the checks as they had been
