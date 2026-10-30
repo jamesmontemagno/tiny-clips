@@ -16,46 +16,44 @@
             Spacing="4">
             <TextBlock
                 Margin="4,8,0,4"
+                AutomationProperties.HeadingLevel="Level1"
                 Style="{StaticResource SubtitleTextBlockStyle}"
                 Text="GIF" />
 
             <TextBlock
                 Margin="4,4,0,0"
+                AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="GIF quality" />
 
-            <controls:SettingsExpander
-                Header="GIF quality"
-                HeaderIcon="{ui:FontIcon Glyph=&#xE8B9;}"
-                IsExpanded="True">
-                <controls:SettingsExpander.Items>
-                    <controls:SettingsCard Header="Frame rate">
-                        <NumberBox
-                            Width="120"
-                            AutomationProperties.AutomationId="GifFrameRateNumberBox"
-                            AutomationProperties.Name="GIF frame rate"
-                            Maximum="50"
-                            Minimum="5"
-                            SpinButtonPlacementMode="Inline"
-                            Value="{x:Bind ViewModel.GifFrameRate, Mode=TwoWay}" />
-                    </controls:SettingsCard>
-                    <controls:SettingsCard Header="Maximum width in pixels">
-                        <NumberBox
-                            Width="120"
-                            AutomationProperties.AutomationId="GifMaxWidthNumberBox"
-                            AutomationProperties.Name="GIF maximum width"
-                            Maximum="1920"
-                            Minimum="240"
-                            SpinButtonPlacementMode="Inline"
-                            Value="{x:Bind ViewModel.GifMaxWidth, Mode=TwoWay}" />
-                    </controls:SettingsCard>
-                </controls:SettingsExpander.Items>
-            </controls:SettingsExpander>
+            <StackPanel Spacing="2">
+                <controls:SettingsCard Header="Frame rate">
+                    <NumberBox
+                        Width="120"
+                        AutomationProperties.AutomationId="GifFrameRateNumberBox"
+                        AutomationProperties.Name="GIF frame rate"
+                        Maximum="50"
+                        Minimum="5"
+                        SpinButtonPlacementMode="Inline"
+                        Value="{x:Bind ViewModel.GifFrameRate, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Maximum width in pixels">
+                    <NumberBox
+                        Width="120"
+                        AutomationProperties.AutomationId="GifMaxWidthNumberBox"
+                        AutomationProperties.Name="GIF maximum width"
+                        Maximum="1920"
+                        Minimum="240"
+                        SpinButtonPlacementMode="Inline"
+                        Value="{x:Bind ViewModel.GifMaxWidth, Mode=TwoWay}" />
+                </controls:SettingsCard>
+            </StackPanel>
 
             <TextBlock
                 Margin="4,16,0,0"
+                AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
-                Text="Recording &amp; output" />
+                Text="Before recording" />
 
             <StackPanel Spacing="2">
                 <controls:SettingsCard
@@ -66,18 +64,6 @@
                         AutomationProperties.AutomationId="ShowGifCapturePickerToggle"
                         AutomationProperties.Name="Show capture picker before GIF recording"
                         IsOn="{x:Bind ViewModel.ShowGifCapturePicker, Mode=TwoWay}" />
-                </controls:SettingsCard>
-
-
-                <controls:SettingsCard
-                    Description="Start another GIF recording with the same picker after saving."
-                    Header="Show capture picker after recording"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="ShowGifCapturePickerAfterCaptureToggle"
-                        AutomationProperties.Name="Show capture picker after GIF recording"
-                        IsEnabled="{x:Bind ViewModel.GifCapturePickerAfterCaptureEnabled, Mode=OneWay}"
-                        IsOn="{x:Bind ViewModel.ShowGifCapturePickerAfterCapture, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
@@ -101,6 +87,25 @@
                             IsOn="{x:Bind ViewModel.GifCountdownEnabled, Mode=TwoWay}" />
                     </StackPanel>
                 </controls:SettingsCard>
+            </StackPanel>
+
+            <TextBlock
+                Margin="4,16,0,0"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="After recording" />
+
+            <StackPanel Spacing="2">
+                <controls:SettingsCard
+                    Description="Start another GIF recording with the same picker after saving."
+                    Header="Show capture picker after recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="ShowGifCapturePickerAfterCaptureToggle"
+                        AutomationProperties.Name="Show capture picker after GIF recording"
+                        IsEnabled="{x:Bind ViewModel.GifCapturePickerAfterCaptureEnabled, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.ShowGifCapturePickerAfterCapture, Mode=TwoWay}" />
+                </controls:SettingsCard>
 
                 <controls:SettingsCard
                     Description="Drop frames from the start and end before saving."
@@ -121,7 +126,6 @@
                         AutomationProperties.Name="Copy GIF to the clipboard"
                         IsOn="{x:Bind ViewModel.CopyGifToClipboard, Mode=TwoWay}" />
                 </controls:SettingsCard>
-
             </StackPanel>
         </StackPanel>
     </Border>
