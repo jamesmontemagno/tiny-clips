@@ -65,7 +65,9 @@ internal sealed partial class WindowChecks
             "StudioSceneEntryMove", "StudioSceneMoveSlider", "StudioSceneMoveLimitedNote", "StudioSceneStartText", "StudioSceneStartEarlierButton",
             "StudioSceneStartLaterButton", "StudioSceneStartAtPlayheadButton", "StudioDeleteSceneButton");
         Add(StudioInspectorPanel.Background, CropGroup.None,
-            "StudioShowBackgroundCheckBox", "StudioSolidSwatches", "StudioGradientSwatches", "StudioPaddingSlider");
+            "StudioShowBackgroundCheckBox", "StudioSolidSwatches", "StudioGradientSwatches", "StudioPaddingSlider",
+            "StudioBackgroundStyleChoice", "StudioBackgroundPrimaryColorPicker", "StudioBackgroundSecondaryColorPicker",
+            "StudioGradientDirectionSlider");
         Add(StudioInspectorPanel.Screen, CropGroup.None,
             "StudioNoCameraNote", "StudioScreenCornerRadiusSlider", "StudioScreenShadowSlider", "StudioClickRingsCheckBox", "StudioScreenCropGroup",
             "StudioScreenCroppedText");

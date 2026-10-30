@@ -92,15 +92,18 @@ internal sealed partial class WindowChecks
         // The two buttons side by side in the Zoom panel, and one button of the Speed panel.
         string[] pairIds = ["StudioZoomSectionAddButton", "StudioSuggestZoomsButton"];
         const string Alone = "StudioSpeedSectionAddButton";
+        ShowPanel(editor, StudioInspectorPanel.Zoom);
         var pairWide = OnUi(() => ReadRow(RowOf(editor, pairIds[0]), pairIds, editor));
+        var pairLimit = pairWide.Needed - (pairWide.Glyphs.Sum() / 2);
         OnUi(() =>
         {
             if (RowOf(editor, pairIds[0]) is { } pair)
             {
-                pair.MaxWidth = pairWide.Needed - (pairWide.Glyphs.Sum() / 2);
+                pair.MaxWidth = pairLimit;
             }
         });
-        var pairNarrow = Until(() => OnUi(() => ReadRow(RowOf(editor, pairIds[0]), pairIds, editor)), row => row.NoneShown, 2);
+        var pairNarrow = Until(() => OnUi(() => ReadRow(RowOf(editor, pairIds[0]), pairIds, editor)),
+            row => row.NoneShown && row.Needed <= pairLimit && row.End <= pairLimit + 1, 2);
         var pairNames = pairIds.Select(id => Find(editor, id, 0.5)?.Name ?? string.Empty).ToArray();
         OnUi(() =>
         {
@@ -129,9 +132,12 @@ internal sealed partial class WindowChecks
 
         _report.Check(
             $"buttons of the inspector in the {name} theme without room for their glyphs: Add zoom and Suggest zooms, side by side, both give theirs up when the two do not fit and get them back; Add speed change, allowed less width than its glyph and its words need, gives its up, is as wide as its words need, and gets it back; each says the name it said",
-            pairWide.AllShown && pairNarrow.NoneShown && pairNarrow.Needed <= pairNarrow.Room && pairBack.AllShown && pairNames.SequenceEqual(new[] { "Add zoom", "Suggest zooms" })
+            pairWide.AllShown && pairNarrow.NoneShown && pairNarrow.Needed <= pairLimit && pairNarrow.End <= pairLimit + 1
+                && pairNarrow.Widths.Length == pairWide.Widths.Length
+                && pairNarrow.Widths.Select((width, index) => Close(width, pairWide.Widths[index] - pairWide.Glyphs[index])).All(same => same)
+                && pairBack.AllShown && pairNames.SequenceEqual(new[] { "Add zoom", "Suggest zooms" })
                 && aloneWide.Shown && !aloneNarrow.Shown && Close(aloneNarrow.Width, aloneWide.Width - aloneWide.Glyph) && aloneName == "Add speed change" && aloneBack.Shown && Close(aloneBack.Width, aloneWide.Width),
-            $"Add zoom and Suggest zooms: {Widths(pairWide.Widths)} wide in {F(pairWide.Room, "0.#")}, {pairWide.Shown.Count(shown => shown)} of 2 glyphs drawn; in {F(pairNarrow.Room, "0.#")}: {Widths(pairNarrow.Widths)}, {pairNarrow.Shown.Count(shown => shown)} of 2; with the room back: {Widths(pairBack.Widths)}, {pairBack.Shown.Count(shown => shown)} of 2; named {string.Join(", ", pairNames)}. "
+            $"Add zoom and Suggest zooms: {Widths(pairWide.Widths)} wide in {F(pairWide.Room, "0.#")}, needing {F(pairWide.Needed, "0.#")}, glyphs {F(pairWide.Glyphs.Sum(), "0.#")}, {pairWide.Shown.Count(shown => shown)} of 2 glyphs drawn; limited to {F(pairLimit, "0.#")}, in {F(pairNarrow.Room, "0.#")}: {Widths(pairNarrow.Widths)}, {pairNarrow.Shown.Count(shown => shown)} of 2; with the room back: {Widths(pairBack.Widths)}, {pairBack.Shown.Count(shown => shown)} of 2; named {string.Join(", ", pairNames)}. "
                 + $"Add speed change: {F(aloneWide.Width, "0.#")} wide with its glyph {(aloneWide.Shown ? "drawn" : "not drawn")}; allowed {F(aloneWide.Width - (aloneWide.Glyph / 2), "0.#")}: {F(aloneNarrow.Width, "0.#")} wide, its glyph {(aloneNarrow.Shown ? "drawn" : "not drawn")}, named \"{aloneName}\"; allowed any width again: {F(aloneBack.Width, "0.#")}, its glyph {(aloneBack.Shown ? "drawn" : "not drawn")}");
 
         static string Widths(double[] widths) => string.Join(" + ", widths.Select(width => F(width, "0.#")));

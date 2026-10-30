@@ -198,6 +198,9 @@ internal sealed partial class WindowChecks
         }
 
         Try(VolumeSliderId);
+        Find(editor, "StudioSwatch_ocean")?.Select();
+        Expect(editor, p => p with { Canvas = p.Canvas with { Background = new StudioBackground() } });
+        Try("StudioGradientDirectionSlider");
         Find(editor, "StudioLayoutSideBySide")?.Select();
         Try("StudioCameraShareSlider");
 
@@ -206,7 +209,7 @@ internal sealed partial class WindowChecks
         Try("StudioCameraCropLeftSlider", "StudioCameraCropTopSlider", "StudioCameraCropRightSlider", "StudioCameraCropBottomSlider");
         _report.Check(
             "every slider of the inspector can be set to its lowest and to its highest value through UI Automation",
-            refused.Count == 0 && sliders == 19,
+            refused.Count == 0 && sliders == 20,
             refused.Count == 0 ? $"{sliders} sliders" : string.Join("; ", refused));
 
         void Try(params string[] ids)

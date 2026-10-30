@@ -21,6 +21,7 @@ internal static class StudioGlyphRow
         void OnSizeChanged(object sender, SizeChangedEventArgs e) => Apply(row);
 
         row.SizeChanged += OnSizeChanged;
+        row.RegisterPropertyChangedCallback(FrameworkElement.MaxWidthProperty, static (sender, _) => Apply((Panel)sender));
         foreach (var item in row.Children.OfType<FrameworkElement>())
         {
             item.SizeChanged += OnSizeChanged;
@@ -67,7 +68,9 @@ internal static class StudioGlyphRow
             _ => 0,
         };
         var shown = labels[0].ShowsGlyph;
-        var show = StudioGlyphRowLayout.ShowsGlyphs(row.ActualWidth, itemsWidth + gaps, glyphsWidth, shown);
+        // A horizontal stack can report its children's desired width even when MaxWidth clips it.
+        var room = Math.Min(row.ActualWidth, row.MaxWidth);
+        var show = StudioGlyphRowLayout.ShowsGlyphs(room, itemsWidth + gaps, glyphsWidth, shown);
         if (show != shown)
         {
             foreach (var label in labels)

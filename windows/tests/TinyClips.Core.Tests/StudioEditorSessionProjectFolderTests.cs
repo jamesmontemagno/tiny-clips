@@ -286,12 +286,7 @@ public sealed class StudioEditorSessionProjectFolderTests : StudioEditorSessionT
     /// <summary>Runs what the session posts until the task has finished: the copy ends on another thread.</summary>
     private async Task<T> RunToEndAsync<T>(Task<T> task)
     {
-        Pump();
-        while (!task.IsCompleted)
-        {
-            await PumpWhenPostedAsync();
-        }
-
+        await PumpUntilCompletedAsync(task);
         return await task;
     }
 }

@@ -93,6 +93,11 @@ internal sealed partial class WindowChecks
     /// </summary>
     private void AuditState(Editor editor, string state, string fileName, int slidersWanted, Func<List<(int Depth, UiaElement Element)>, string?>? also = null, bool asItIs = false)
     {
+        if (!asItIs && slidersWanted > 0 && editor.Expected.Canvas.Background.Style == StudioBackgroundStyle.Gradient)
+        {
+            slidersWanted++;
+        }
+
         var (tree, problems, elements, sliders, panes, saved) = asItIs ? ReadAsItIs(editor, fileName) : ReadEveryPanel(editor, fileName);
         var extra = also?.Invoke(tree);
         if (extra is not null)
@@ -148,6 +153,7 @@ internal sealed partial class WindowChecks
         }
 
         var sight = LookFor(editor, s => s.Shown == Both(editor, FrameOf(CameraOffset)), 5);
+        ColorPickerNames(editor);
 
         // The editor with the bubble layout: padding, two sliders for the screen and four for its
         // crop, three for the camera's place, two for its style and four for its crop, and the
@@ -267,5 +273,36 @@ internal sealed partial class WindowChecks
         }
 
         CloseQuietly(missing);
+    }
+
+    private void ColorPickerNames(Editor editor)
+    {
+        ShowPanel(editor, TinyClips.Core.Studio.Editing.StudioInspectorPanel.Background);
+        string? ButtonName(string id) => Find(editor, id)?.Children()
+            .FirstOrDefault(child => child.ControlType == ControlTypeNames.Button)?.Name;
+        var primary = ButtonName("StudioBackgroundPrimaryColorPicker");
+        var secondary = ButtonName("StudioBackgroundSecondaryColorPicker");
+        _report.Check(
+            "the two background color dropdown buttons expose their contextual names in UI Automation",
+            primary == "Background color" && secondary == "Second gradient color",
+            $"primary \"{primary}\", secondary \"{secondary}\"");
+
+        var names = OnUi(() =>
+        {
+            var picker = new TinyClips.App.SwatchColorPicker();
+            var button = (Microsoft.UI.Xaml.Controls.Button)picker.FindName("PART_DropButton");
+            string Name() => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(button);
+            var fallback = Name();
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(picker, "Test background color");
+            var named = Name();
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(picker, "Updated background color");
+            var updated = Name();
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(picker, string.Empty);
+            return (fallback, named, updated, cleared: Name());
+        });
+        _report.Check(
+            "a color dropdown has a fallback name and follows subsequent changes to its host's accessible name",
+            names == ("Choose color", "Test background color", "Updated background color", "Choose color"),
+            $"initial \"{names.fallback}\", named \"{names.named}\", updated \"{names.updated}\", cleared \"{names.cleared}\"");
     }
 }

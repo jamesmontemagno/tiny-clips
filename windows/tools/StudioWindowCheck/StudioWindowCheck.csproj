@@ -80,6 +80,8 @@
     <Compile Include="$(AppSource)\Services\Studio\*.cs" Link="Services\Studio\%(Filename)%(Extension)" />
 
     <!-- What those need from the rest of the app. WindowIcon is replaced: see Host\StandIns.cs. -->
+    <Page Include="$(AppSource)\Controls\SwatchColorPicker.xaml" Link="Controls\SwatchColorPicker.xaml" />
+    <Compile Include="$(AppSource)\Controls\SwatchColorPicker.xaml.cs" Link="Controls\SwatchColorPicker.xaml.cs" />
     <Compile Include="$(AppSource)\Infrastructure\WindowChromeController.cs" Link="Infrastructure\WindowChromeController.cs" />
     <Compile Include="$(AppSource)\Infrastructure\AppWindowPlacement.cs" Link="Infrastructure\AppWindowPlacement.cs" />
     <!-- The question the other editors ask before Esc closes them. The Studio window asks it too. -->

@@ -157,16 +157,31 @@ public abstract class StudioEditorSessionTestBase : IDisposable
     /// </summary>
     protected async Task PumpWhenPostedAsync()
     {
-        Task posted;
+        await WhenPosted().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Pump();
+    }
+
+    private Task WhenPosted()
+    {
         lock (_postedGate)
         {
-            posted = _posted.Count > 0
+            return _posted.Count > 0
                 ? Task.CompletedTask
                 : (_somethingPosted ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
         }
+    }
 
-        await posted.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    /// <summary>Pumps until the operation completes, even if its final continuation posts nothing.</summary>
+    protected async Task PumpUntilCompletedAsync(Task task)
+    {
         Pump();
+        while (!task.IsCompleted)
+        {
+            await Task.WhenAny(task, WhenPosted()).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Pump();
+        }
+
+        await task;
     }
 
     private void Post(Action action)
