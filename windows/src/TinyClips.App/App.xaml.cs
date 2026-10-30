@@ -260,10 +260,14 @@ public partial class App : Application
         _trayRefreshTimer = _dispatcher!.CreateTimer();
         _trayRefreshTimer.Interval = TimeSpan.FromSeconds(30);
         _trayRefreshTimer.Tick += OnTrayRefreshTick;
-        _trayRefreshTimer.Start();
         _trayRecentRefresh.Request();
         ReloadStudioDrafts();
     }
+
+    // External changes are only polled for while the tray is in use, so an idle app never
+    // keeps waking capture/project drives. Internal changes are pushed by events regardless.
+    private static readonly TimeSpan TrayRefreshActiveWindow = TimeSpan.FromMinutes(5);
+    private long _trayLastShownTicks;
 
     private void OnTrayRefreshTick(DispatcherQueueTimer sender, object args)
     {
@@ -272,8 +276,41 @@ public partial class App : Application
             return;
         }
 
+        if (Environment.TickCount64 - _trayLastShownTicks > (long)TrayRefreshActiveWindow.TotalMilliseconds)
+        {
+            sender.Stop();
+            return;
+        }
+
+        ProbeTrayExternalChanges();
+    }
+
+    private void ProbeTrayExternalChanges()
+    {
         _trayRecentRefresh?.Request(invalidate: false);
         _ = _trayDrafts?.ReloadAsync(RecentCapturesDisplayCount, invalidate: false);
+    }
+
+    /// <summary>
+    /// Keeps the external-change poll alive while the tray is in use. Never reads storage on
+    /// the click: after an idle period the catch-up probe is queued behind the popup's show.
+    /// </summary>
+    private void ResumeTrayRefresh()
+    {
+        _trayLastShownTicks = Environment.TickCount64;
+        if (_isExiting || _trayRefreshTimer is not { IsRunning: false } timer)
+        {
+            return;
+        }
+
+        timer.Start();
+        _dispatcher?.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            if (!_isExiting)
+            {
+                ProbeTrayExternalChanges();
+            }
+        });
     }
 
     private void OnTrayDraftsChanged(object? sender, EventArgs args) => RefreshRecentCapturesButton();
@@ -749,6 +786,7 @@ public partial class App : Application
         // All content, state and dimensions are maintained ahead of time. In particular,
         // opening this window never touches storage, starts thumbnails or resolves services.
         _trayPopup.ShowNearCursor(_trayPopupWidth, TrayPopupHeight);
+        ResumeTrayRefresh();
     }
 
     private void RefreshTrayTiles()

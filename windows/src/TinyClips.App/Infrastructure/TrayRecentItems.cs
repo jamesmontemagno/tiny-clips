@@ -22,7 +22,14 @@ internal sealed class TrayRecentItems<TItem>
         public TItem Item { get; } = item;
         public bool IsImageStarted { get; set; }
         public bool HasImageFailed { get; set; }
+        public int ImageFailureCount { get; set; }
     }
+
+    /// <summary>
+    /// Failures retried on later refreshes for the same file version. A file that still cannot
+    /// be decoded is left without an image until its size, date or poster changes.
+    /// </summary>
+    public const int MaxImageAttempts = 3;
 
     private Dictionary<string, Slot> _byId = new(StringComparer.Ordinal);
     public IReadOnlyList<Slot> Items { get; private set; } = [];
@@ -50,9 +57,13 @@ internal sealed class TrayRecentItems<TItem>
                 slot.Key = key;
                 if (slot.HasImageFailed)
                 {
-                    // Retry a transient read/decode failure on a later refresh, not in a tight loop.
-                    slot.IsImageStarted = false;
+                    // Retry a transient read/decode failure on a later refresh, not in a tight
+                    // loop, and give up on a version that keeps failing.
                     slot.HasImageFailed = false;
+                    if (++slot.ImageFailureCount < MaxImageAttempts)
+                    {
+                        slot.IsImageStarted = false;
+                    }
                 }
             }
 

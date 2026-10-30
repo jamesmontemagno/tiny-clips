@@ -18,8 +18,15 @@ public sealed class TrayRefreshTests
         var end = source.IndexOf("private void RefreshTrayTiles()", start, StringComparison.Ordinal);
         var body = Regex.Replace(source[start..end], @"//[^\r\n]*", "");
         var calls = Regex.Matches(body, @"\b(\w+)\s*\(").Select(match => match.Groups[1].Value);
-        Assert.Equal(["ShowTrayPopup", "if", "ShowNearCursor"], calls);
+        Assert.Equal(["ShowTrayPopup", "if", "ShowNearCursor", "ResumeTrayRefresh"], calls);
         Assert.Contains("_trayPopup.ShowNearCursor(_trayPopupWidth, TrayPopupHeight)", body);
+
+        // Resuming the poll only touches the timer; its catch-up probe is queued, not run inline.
+        var resumeStart = source.IndexOf("private void ResumeTrayRefresh()", StringComparison.Ordinal);
+        var resume = source[resumeStart..source.IndexOf("private void OnTrayDraftsChanged", resumeStart, StringComparison.Ordinal)];
+        Assert.Contains("_dispatcher?.TryEnqueue(DispatcherQueuePriority.Low", resume);
+        Assert.DoesNotContain("_trayRefreshTimer.Start();", source[..resumeStart]);
+        Assert.Contains("sender.Stop();", source);
 
         // The popup has one construction site, not a second click/menu-opening path.
         Assert.Equal(2, Regex.Matches(source, @"\bBuildTrayPopupContent\(").Count);
@@ -233,6 +240,32 @@ public sealed class TrayRefreshTests
         Assert.Null(menu.StartNextImage());
         menu.Update([key], _ => throw new InvalidOperationException());
         Assert.Same(slot, menu.StartNextImage());
+    }
+
+    [Fact]
+    public void PersistentImageFailureStopsRetryingUntilTheFileChanges()
+    {
+        var menu = new TrayRecentItems<object>();
+        var key = Key("broken.mp4");
+        menu.Update([key], _ => new object());
+        var attempts = 0;
+        for (var refresh = 0; refresh < 20; refresh++)
+        {
+            if (menu.StartNextImage() is { } started)
+            {
+                attempts++;
+                started.HasImageFailed = true;
+            }
+
+            menu.Update([key], _ => throw new InvalidOperationException());
+        }
+
+        Assert.Equal(TrayRecentItems<object>.MaxImageAttempts, attempts);
+        Assert.Null(menu.StartNextImage());
+
+        // A new version of the file (size/date) gets a fresh slot and fresh attempts.
+        menu.Update([key with { Size = key.Size + 1 }], _ => new object());
+        Assert.NotNull(menu.StartNextImage());
     }
 
     [Fact]

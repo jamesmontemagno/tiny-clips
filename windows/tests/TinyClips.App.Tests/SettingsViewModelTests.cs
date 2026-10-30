@@ -72,7 +72,7 @@ public sealed class SettingsViewModelTests
     public async Task TemporaryFiles_UnavailableDirectoryShowsAnError(bool accessDenied)
     {
         var vm = new Fixture().CreateViewModel(getTemporaryFilesSummary: () =>
-            throw accessDenied ? new UnauthorizedAccessException() : new IOException());
+            throw (accessDenied ? (Exception)new UnauthorizedAccessException() : new IOException()));
 
         await vm.EnsureTemporaryFilesInitializedAsync();
 
