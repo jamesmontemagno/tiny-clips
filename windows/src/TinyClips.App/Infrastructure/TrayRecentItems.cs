@@ -2,90 +2,42 @@ using TinyClips.Core.Services;
 
 namespace TinyClips.App;
 
-internal sealed record TrayRecentItemKey(RecentMenuEntry Entry, long Size, DateTimeOffset Modified, string? Poster)
-{
-    public bool HasSameImage(TrayRecentItemKey other) =>
-        Entry.Capture?.Type == other.Entry.Capture?.Type
-        && Size == other.Size && Modified == other.Modified && Poster == other.Poster;
-}
-
 /// <summary>
 /// The bounded, retained Recent menu. Call Update only while the native flyout is closed.
-/// Identity includes metadata/poster revisions, not just paths, so replacing a file invalidates
-/// its image. Removed or superseded slots cannot accept a late image completion.
+/// Unchanged entries keep their item; a display-only change (date, title) updates its text in
+/// place; a change of capture type recreates it, since its icon differs.
 /// </summary>
 internal sealed class TrayRecentItems<TItem>
 {
-    internal sealed class Slot(TrayRecentItemKey key, TItem item)
-    {
-        public TrayRecentItemKey Key { get; set; } = key;
-        public TItem Item { get; } = item;
-        public bool IsImageStarted { get; set; }
-        public bool HasImageFailed { get; set; }
-        public int ImageFailureCount { get; set; }
-    }
-
-    /// <summary>
-    /// Failures retried on later refreshes for the same file version. A file that still cannot
-    /// be decoded is left without an image until its size, date or poster changes.
-    /// </summary>
-    public const int MaxImageAttempts = 3;
+    private sealed record Slot(RecentMenuEntry Entry, TItem Item);
 
     private Dictionary<string, Slot> _byId = new(StringComparer.Ordinal);
-    public IReadOnlyList<Slot> Items { get; private set; } = [];
+    public IReadOnlyList<TItem> Items { get; private set; } = [];
 
     public void Update(
-        IEnumerable<TrayRecentItemKey> keys,
+        IEnumerable<RecentMenuEntry> entries,
         Func<RecentMenuEntry, TItem> create,
         Action<TItem, RecentMenuEntry>? updateText = null)
     {
         var next = new Dictionary<string, Slot>(StringComparer.Ordinal);
-        var ordered = new List<Slot>();
-        foreach (var key in keys)
+        var ordered = new List<TItem>();
+        foreach (var entry in entries)
         {
-            if (!_byId.TryGetValue(key.Entry.Id, out var slot) || !slot.Key.HasSameImage(key))
+            if (!_byId.TryGetValue(entry.Id, out var slot) || slot.Entry.Capture?.Type != entry.Capture?.Type)
             {
-                slot = new Slot(key, create(key.Entry));
+                slot = new Slot(entry, create(entry));
             }
-            else
+            else if (slot.Entry != entry)
             {
-                if (slot.Key.Entry != key.Entry)
-                {
-                    updateText?.Invoke(slot.Item, key.Entry);
-                }
-
-                slot.Key = key;
-                if (slot.HasImageFailed)
-                {
-                    // Retry a transient read/decode failure on a later refresh, not in a tight
-                    // loop, and give up on a version that keeps failing.
-                    slot.HasImageFailed = false;
-                    if (++slot.ImageFailureCount < MaxImageAttempts)
-                    {
-                        slot.IsImageStarted = false;
-                    }
-                }
+                updateText?.Invoke(slot.Item, entry);
+                slot = slot with { Entry = entry };
             }
 
-            next.Add(key.Entry.Id, slot);
-            ordered.Add(slot);
+            next.Add(entry.Id, slot);
+            ordered.Add(slot.Item);
         }
 
         _byId = next;
         Items = ordered;
     }
-
-    public Slot? StartNextImage()
-    {
-        var slot = Items.FirstOrDefault(static item => !item.IsImageStarted);
-        if (slot is not null)
-        {
-            slot.IsImageStarted = true;
-        }
-
-        return slot;
-    }
-
-    public bool IsCurrent(Slot slot) =>
-        _byId.TryGetValue(slot.Key.Entry.Id, out var current) && ReferenceEquals(slot, current);
 }

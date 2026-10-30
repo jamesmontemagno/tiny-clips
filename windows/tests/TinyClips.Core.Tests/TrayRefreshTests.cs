@@ -46,10 +46,10 @@ public sealed class TrayRefreshTests
         Assert.Contains("|| flyout.IsOpen", source);
         Assert.Contains("_trayRefreshTimer.Interval = TimeSpan.FromSeconds(30)", source);
         Assert.Contains("_trayRecentService.Changed += OnRecentCapturesChanged", source);
-        // The cache API itself has a synchronous disk prefix, even though it returns a Task.
-        Assert.Contains(
-            "await Task.Run(() => Services.GetRequiredService<IThumbnailCache>().GetThumbnailPathAsync(entry))",
-            source);
+        // The Recent menu shows type icons only: the tray never reads or decodes thumbnails.
+        Assert.DoesNotContain("GetThumbnailPathAsync", source);
+        Assert.DoesNotContain("ImageIcon", source);
+        Assert.DoesNotContain("PosterOf", source);
     }
 
     [Fact]
@@ -183,19 +183,16 @@ public sealed class TrayRefreshTests
     }
 
     [Fact]
-    public void UnchangedAndReorderedEntriesRetainItemsAndDoNotRestartImages()
+    public void UnchangedAndReorderedEntriesRetainItems()
     {
         var menu = new TrayRecentItems<object>();
-        var a = Key("a.png");
-        var b = Key("b.png");
+        var a = Entry("a.png");
+        var b = Entry("b.png");
         var creates = 0;
         object Create(RecentMenuEntry _) { creates++; return new object(); }
         menu.Update([a, b], Create);
         var first = menu.Items[0];
         var second = menu.Items[1];
-        Assert.Same(first, menu.StartNextImage());
-        Assert.Same(second, menu.StartNextImage());
-        Assert.Null(menu.StartNextImage());
 
         for (var index = 0; index < 100; index++)
         {
@@ -205,113 +202,46 @@ public sealed class TrayRefreshTests
         Assert.Same(second, menu.Items[0]);
         Assert.Same(first, menu.Items[1]);
         Assert.Equal(2, creates);
-        Assert.Null(menu.StartNextImage());
-    }
-
-    [Fact]
-    public void SamePathMetadataAndPosterChangesInvalidateLateImagesAndRemovalDropsPendingWork()
-    {
-        var menu = new TrayRecentItems<object>();
-        var original = Key("a.png");
-        menu.Update([original, Key("removed.mp4")], _ => new object());
-        var old = menu.StartNextImage()!;
-        menu.Update([original with { Modified = original.Modified.AddSeconds(1) }], _ => new object());
-        Assert.False(menu.IsCurrent(old));
-        var changed = Assert.Single(menu.Items);
-        Assert.Same(changed, menu.StartNextImage());
-        Assert.Null(menu.StartNextImage()); // Removed entry never starts.
-
-        menu.Update([changed.Key with { Poster = "same-path|new-version" }], _ => new object());
-        Assert.False(menu.IsCurrent(changed));
-        Assert.NotSame(changed.Item, Assert.Single(menu.Items).Item);
         menu.Update([], _ => throw new InvalidOperationException());
         Assert.Empty(menu.Items);
-        Assert.Null(menu.StartNextImage());
     }
 
     [Fact]
-    public void TransientImageFailureRetriesOnlyOnLaterRefresh()
+    public void ChangedCaptureTypeRecreatesItsItemForTheNewIcon()
     {
         var menu = new TrayRecentItems<object>();
-        var key = Key("a.png");
-        menu.Update([key], _ => new object());
-        var slot = menu.StartNextImage()!;
-        slot.HasImageFailed = true;
-        Assert.Null(menu.StartNextImage());
-        menu.Update([key], _ => throw new InvalidOperationException());
-        Assert.Same(slot, menu.StartNextImage());
-    }
-
-    [Fact]
-    public void PersistentImageFailureStopsRetryingUntilTheFileChanges()
-    {
-        var menu = new TrayRecentItems<object>();
-        var key = Key("broken.mp4");
-        menu.Update([key], _ => new object());
-        var attempts = 0;
-        for (var refresh = 0; refresh < 20; refresh++)
-        {
-            if (menu.StartNextImage() is { } started)
-            {
-                attempts++;
-                started.HasImageFailed = true;
-            }
-
-            menu.Update([key], _ => throw new InvalidOperationException());
-        }
-
-        Assert.Equal(TrayRecentItems<object>.MaxImageAttempts, attempts);
-        Assert.Null(menu.StartNextImage());
-
-        // A new version of the file (size/date) gets a fresh slot and fresh attempts.
-        menu.Update([key with { Size = key.Size + 1 }], _ => new object());
-        Assert.NotNull(menu.StartNextImage());
-    }
-
-    [Fact]
-    public void SameIdWithChangedDisplayMetadataIsNotMistakenForAnUnchangedEntry()
-    {
-        var menu = new TrayRecentItems<object>();
-        var first = Key("capture.mp4");
+        var first = Entry("capture.mp4");
         menu.Update([first], _ => new object());
         var old = Assert.Single(menu.Items);
-        var capture = first.Entry.Capture!;
-        var second = first with
-        {
-            Entry = RecentMenuEntry.ForCapture(capture with { Type = CaptureType.Video, CapturedAt = capture.CapturedAt.AddHours(1) }),
-        };
+        var second = RecentMenuEntry.ForCapture(first.Capture! with { Type = CaptureType.Video });
         menu.Update([second], _ => new object());
-        Assert.Equal(first.Entry.Id, second.Entry.Id);
-        Assert.NotSame(old.Item, Assert.Single(menu.Items).Item);
-        Assert.False(menu.IsCurrent(old));
+        Assert.Equal(first.Id, second.Id);
+        Assert.NotSame(old, Assert.Single(menu.Items));
     }
 
     [Fact]
-    public void DisplayOnlyChangesUpdateTextButRetainItemAndInFlightOrCompletedImage()
+    public void DisplayOnlyChangesUpdateTextButRetainItem()
     {
         var menu = new TrayRecentItems<object>();
-        var key = Key("capture.png");
-        menu.Update([key], _ => new object());
-        var slot = menu.StartNextImage()!;
-        var next = key with
-        {
-            Entry = RecentMenuEntry.ForCapture(key.Entry.Capture! with { CapturedAt = DateTimeOffset.UnixEpoch.AddDays(1) }),
-        };
+        var entry = Entry("capture.png");
+        menu.Update([entry], _ => new object());
+        var item = Assert.Single(menu.Items);
+        var next = RecentMenuEntry.ForCapture(entry.Capture! with { CapturedAt = DateTimeOffset.UnixEpoch.AddDays(1) });
         RecentMenuEntry? displayed = null;
-        menu.Update([next], _ => throw new InvalidOperationException(), (item, entry) =>
+        menu.Update([next], _ => throw new InvalidOperationException(), (updated, shown) =>
         {
-            Assert.Same(slot.Item, item);
-            displayed = entry;
+            Assert.Same(item, updated);
+            displayed = shown;
         });
-        Assert.Equal(next.Entry, displayed);
-        Assert.Same(slot, Assert.Single(menu.Items));
-        Assert.True(menu.IsCurrent(slot));
-        Assert.Null(menu.StartNextImage());
+        Assert.Equal(next, displayed);
+        Assert.Same(item, Assert.Single(menu.Items));
+
+        // Unchanged afterwards: no further text update.
+        menu.Update([next], _ => throw new InvalidOperationException(), (_, _) => throw new InvalidOperationException());
     }
 
-    private static TrayRecentItemKey Key(string path) =>
-        new(RecentMenuEntry.ForCapture(new RecentCapture(path, CaptureType.Screenshot, DateTimeOffset.UnixEpoch)),
-            123, DateTimeOffset.UnixEpoch, null);
+    private static RecentMenuEntry Entry(string path) =>
+        RecentMenuEntry.ForCapture(new RecentCapture(path, CaptureType.Screenshot, DateTimeOffset.UnixEpoch));
 
     private sealed class OwnerContext : SynchronizationContext, IDisposable
     {

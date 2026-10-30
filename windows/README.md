@@ -305,7 +305,7 @@ With the switch on:
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
   choosing such a video in **Recent captures** opens its project instead of the trimmer. A
   recording kept as a draft is in **Recent captures** too, as "Name — Studio project" with its
-  date and poster, among the five lines the list has.
+    date and the Studio icon, among the five lines the list has.
   **Settings › Studio** says how a Studio recording is started, has **Open project…** for a
   project that was saved as a folder, and shows the space projects
   take, the cleanup rules, and the drafts: the recordings that only their project holds. Those

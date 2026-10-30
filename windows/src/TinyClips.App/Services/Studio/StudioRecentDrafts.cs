@@ -14,8 +14,6 @@ public sealed class StudioRecentDrafts
 {
     private readonly IStudioProjectStore _store;
     private readonly ICaptureSettings _settings;
-    private sealed record Poster(string Path, long ModifiedTicks, long Length);
-    private IReadOnlyDictionary<string, Poster> _posters = new Dictionary<string, Poster>(StringComparer.Ordinal);
     private Task? _reading;
     private bool _readAgain;
 
@@ -45,22 +43,13 @@ public sealed class StudioRecentDrafts
     public IReadOnlyList<RecentMenuEntry> EntriesFor(IEnumerable<RecentCapture> captures, int limit) =>
         RecentMenuEntry.ForMenu(captures, Projects, _settings.StudioPreviewEnabled, limit);
 
-    /// <summary>The poster image of a project that was listed at the last read, or null when it has none.</summary>
-    public string? PosterOf(string projectId) => _posters.GetValueOrDefault(projectId)?.Path;
-
-    /// <summary>Changes when an editor replaces a poster at the same path.</summary>
-    public string? PosterKeyOf(string projectId) => _posters.GetValueOrDefault(projectId) is { } poster
-        ? $"{poster.Path}|{poster.ModifiedTicks}|{poster.Length}"
-        : null;
-
     /// <summary>
     /// Reads the projects again, off the calling thread, and finishes when
     /// <see cref="Projects"/> is up to date. Asked for while a read is under way, it reads
     /// once more when that one is over, so that the last request is never lost. Never fails.
     /// </summary>
-    /// <param name="pictureLimit">How many of the newest drafts have their poster looked for.</param>
     /// <param name="invalidate">False for a periodic probe that can reuse an in-flight read.</param>
-    public Task ReloadAsync(int pictureLimit, bool invalidate = true)
+    public Task ReloadAsync(bool invalidate = true)
     {
         if (_reading is { IsCompleted: false } reading)
         {
@@ -68,21 +57,20 @@ public sealed class StudioRecentDrafts
             return reading;
         }
 
-        return _reading = ReadAsync(pictureLimit);
+        return _reading = ReadAsync();
     }
 
-    private async Task ReadAsync(int pictureLimit)
+    private async Task ReadAsync()
     {
         do
         {
             _readAgain = false;
             IReadOnlyList<StudioProjectSummary> projects = [];
-            IReadOnlyDictionary<string, Poster> posters = new Dictionary<string, Poster>(StringComparer.Ordinal);
             if (_settings.StudioPreviewEnabled)
             {
                 try
                 {
-                    (projects, posters) = await Task.Run(() => Read(pictureLimit));
+                    projects = await Task.Run(_store.ListSummaries);
                 }
                 catch (Exception ex)
                 {
@@ -92,7 +80,7 @@ public sealed class StudioRecentDrafts
             }
 
             // A switch or a newer editor notification arrived during the read. Do not publish
-            // its stale projects/posters, even briefly; the pending pass will read fresh state.
+            // its stale projects, even briefly; the pending pass will read fresh state.
             if (_readAgain)
             {
                 continue;
@@ -101,12 +89,10 @@ public sealed class StudioRecentDrafts
             if (!_settings.StudioPreviewEnabled)
             {
                 projects = [];
-                posters = new Dictionary<string, Poster>(StringComparer.Ordinal);
             }
 
-            var isChanged = !projects.SequenceEqual(Projects) || !Same(posters, _posters);
+            var isChanged = !projects.SequenceEqual(Projects);
             Projects = projects;
-            _posters = posters;
             if (isChanged)
             {
                 Changed?.Invoke(this, EventArgs.Empty);
@@ -114,32 +100,4 @@ public sealed class StudioRecentDrafts
         }
         while (_readAgain);
     }
-
-    private (IReadOnlyList<StudioProjectSummary> Projects, IReadOnlyDictionary<string, Poster> Posters) Read(int pictureLimit)
-    {
-        var projects = _store.ListSummaries();
-        var posters = new Dictionary<string, Poster>(StringComparer.Ordinal);
-        foreach (var draft in StudioProjectSummary.MenuDrafts(projects).OrderByDescending(static draft => draft.LastUsedAt).Take(Math.Max(0, pictureLimit)))
-        {
-            try
-            {
-                var poster = _store.GetPaths(draft.Id).PosterPath;
-                var file = new FileInfo(poster);
-                if (file.Exists)
-                {
-                    posters[draft.Id] = new Poster(poster, file.LastWriteTimeUtc.Ticks, file.Length);
-                }
-            }
-            catch (Exception ex)
-            {
-                // A project that went between the listing and this has no picture.
-                Debug.WriteLine($"No poster for the Studio project {draft.Id}: {ex.Message}");
-            }
-        }
-
-        return (projects, posters);
-    }
-
-    private static bool Same(IReadOnlyDictionary<string, Poster> first, IReadOnlyDictionary<string, Poster> second) =>
-        first.Count == second.Count && first.All(pair => second.TryGetValue(pair.Key, out var path) && path == pair.Value);
 }

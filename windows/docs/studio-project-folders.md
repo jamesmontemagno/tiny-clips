@@ -119,8 +119,8 @@ last five captures that were saved as files. A video exported from Studio is one
 opens its project. A recording kept as a draft has no file, so it was not there, and with no
 editor open the only way back to it was the list in Settings.
 
-Now a draft is listed there too, mixed in by date, as "Name — Studio project, date", with its
-poster as the picture. A draft here is what the Settings list calls one: nothing exported, or
+Now a draft is listed there too, mixed in by date, as "Name — Studio project, date", with the
+Studio icon (the tray reads no posters or thumbnails). A draft here is what the Settings list calls one: nothing exported, or
 what was exported is gone; not flat; and its recording still there to open. Its date is when it
 was last open, or failing that recorded. Still five lines in all. With Studio switched off none
 is listed. A folder a project was saved to is never listed: it is a copy.

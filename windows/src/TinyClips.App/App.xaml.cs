@@ -115,8 +115,8 @@ public partial class App : Application
     private CoalescedAction? _trayStudioInvalidation;
     private Windows.UI.ViewManagement.UISettings? _trayUiSettings;
     private DispatcherQueueTimer? _trayRefreshTimer;
-    private CoalescedRefresh<IReadOnlyList<TrayCapture>>? _trayRecentRefresh;
-    private IReadOnlyList<TrayCapture> _trayCaptures = [];
+    private CoalescedRefresh<IReadOnlyList<RecentCapture>>? _trayRecentRefresh;
+    private IReadOnlyList<RecentCapture> _trayCaptures = [];
     private IRecentCaptureService? _trayRecentService;
     private StudioRecentDrafts? _trayDrafts;
     private StudioProjectTracker? _trayProjectTracker;
@@ -227,8 +227,8 @@ public partial class App : Application
         _trayProjectTracker.Changed += OnTrayProjectTrackerChanged;
         _trayRecentService = Services.GetRequiredService<IRecentCaptureService>();
         _trayRecentService.Changed += OnRecentCapturesChanged;
-        _trayRecentRefresh = new CoalescedRefresh<IReadOnlyList<TrayCapture>>(
-            ReadTrayCaptures,
+        _trayRecentRefresh = new CoalescedRefresh<IReadOnlyList<RecentCapture>>(
+            () => _trayRecentService!.GetRecentCaptures(),
             captures =>
             {
                 _trayCaptures = captures;
@@ -288,7 +288,7 @@ public partial class App : Application
     private void ProbeTrayExternalChanges()
     {
         _trayRecentRefresh?.Request(invalidate: false);
-        _ = _trayDrafts?.ReloadAsync(RecentCapturesDisplayCount, invalidate: false);
+        _ = _trayDrafts?.ReloadAsync(invalidate: false);
     }
 
     /// <summary>
@@ -348,30 +348,11 @@ public partial class App : Application
         };
     }
 
-    private IReadOnlyList<TrayCapture> ReadTrayCaptures()
-    {
-        var files = Services.GetRequiredService<IFileSystem>();
-        var result = new List<TrayCapture>();
-        foreach (var capture in _trayRecentService!.GetRecentCaptures())
-        {
-            try
-            {
-                result.Add(new TrayCapture(capture, files.GetFileSizeBytes(capture.Path), files.GetFileLastWriteTime(capture.Path)));
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // A file can disappear between validation and metadata lookup.
-            }
-        }
-
-        return result;
-    }
-
     private void ReloadStudioDrafts()
     {
         if (!_isExiting)
         {
-            _ = Services.GetRequiredService<StudioRecentDrafts>().ReloadAsync(RecentCapturesDisplayCount);
+            _ = Services.GetRequiredService<StudioRecentDrafts>().ReloadAsync();
         }
     }
 
@@ -1064,14 +1045,9 @@ public partial class App : Application
     }
 
     private const int RecentCapturesDisplayCount = 5;
-    private const double RecentCaptureThumbnailWidth = 40;
-    private const double RecentCaptureThumbnailHeight = 22.5;
 
     private DropDownButton? _recentCapturesButton;
     private readonly TrayRecentItems<MenuFlyoutItem> _recentTrayItems = new();
-    private bool _isLoadingRecentImages;
-
-    private sealed record TrayCapture(RecentCapture Capture, long Size, DateTimeOffset Modified);
 
     private DropDownButton CreateRecentCapturesButton()
     {
@@ -1161,8 +1137,9 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Diff the cached entries, retaining the button, unchanged menu items and their images.
-    /// Called only by refresh/event completion, never by opening the popup or its flyout.
+    /// Diff the cached entries, retaining the button and unchanged menu items. Items show a
+        /// type icon only: no thumbnail is read or decoded for the tray.
+        /// Called only by refresh/event completion, never by opening the popup or its flyout.
     /// </summary>
     private void RefreshRecentCapturesButton()
     {
@@ -1173,18 +1150,9 @@ public partial class App : Application
             return;
         }
 
-        var drafts = Services.GetRequiredService<StudioRecentDrafts>();
-        var entries = drafts.EntriesFor(_trayCaptures.Select(static capture => capture.Capture), RecentCapturesDisplayCount);
-        var keys = new List<TrayRecentItemKey>();
-        foreach (var entry in entries)
-        {
-            var capture = _trayCaptures.FirstOrDefault(capture => capture.Capture == entry.Capture);
-            keys.Add(new TrayRecentItemKey(entry, capture?.Size ?? 0, capture?.Modified ?? default,
-                entry.StudioDraft is { } draft ? drafts.PosterKeyOf(draft.Id) : null));
-        }
-
-        _recentTrayItems.Update(keys, CreateRecentTrayItem, UpdateRecentTrayItemText);
-        var items = _recentTrayItems.Items.Select(static slot => slot.Item).ToArray();
+        var entries = Services.GetRequiredService<StudioRecentDrafts>().EntriesFor(_trayCaptures, RecentCapturesDisplayCount);
+        _recentTrayItems.Update(entries, CreateRecentTrayItem, UpdateRecentTrayItemText);
+        var items = _recentTrayItems.Items;
         if (!flyout.Items.SequenceEqual(items))
         {
             flyout.Items.Clear();
@@ -1193,107 +1161,13 @@ public partial class App : Application
                 flyout.Items.Add(item);
             }
 
-            button.Content = QuickAccessContent(GlyphHistory, items.Length == 0 ? "No captures" : $"Recent ({items.Length})");
-            if (items.Length == 0 && button.FocusState != FocusState.Unfocused)
+            button.Content = QuickAccessContent(GlyphHistory, items.Count == 0 ? "No captures" : $"Recent ({items.Count})");
+            if (items.Count == 0 && button.FocusState != FocusState.Unfocused)
             {
                 _screenshotTile?.Button.Focus(FocusState.Programmatic);
             }
 
-            button.IsEnabled = items.Length > 0;
-        }
-
-        if (!_isLoadingRecentImages)
-        {
-            _ = LoadRecentImagesAsync();
-        }
-    }
-
-    private bool IsCurrentRecentItem(TrayRecentItems<MenuFlyoutItem>.Slot slot) =>
-        !_isExiting && _recentTrayItems.IsCurrent(slot);
-
-    // At most one image read/decode in flight, with at most five current entries waiting.
-    // Superseded pending items simply disappear; late results cannot update their replacements.
-    private async Task LoadRecentImagesAsync()
-    {
-        _isLoadingRecentImages = true;
-        try
-        {
-            while (!_isExiting && _recentTrayItems.StartNextImage() is { } slot)
-            {
-                try
-                {
-                    if (slot.Key.Entry.StudioDraft is { } draft)
-                    {
-                        if (Services.GetRequiredService<StudioRecentDrafts>().PosterOf(draft.Id) is { } poster)
-                        {
-                            await LoadRecentImageAsync(slot, poster);
-                        }
-                    }
-                    else if (slot.Key.Entry.Capture is { } capture)
-                    {
-                        var entry = new ClipEntry(capture.Path, capture.Type, Path.GetFileName(capture.Path),
-                            slot.Key.Modified, slot.Key.Size);
-                        var path = await Task.Run(() => Services.GetRequiredService<IThumbnailCache>().GetThumbnailPathAsync(entry));
-                        if (path is not null && IsCurrentRecentItem(slot))
-                        {
-                            await LoadRecentImageAsync(slot, path);
-                        }
-                        else if (path is null)
-                        {
-                            slot.HasImageFailed = true;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    slot.HasImageFailed = true;
-                    Debug.WriteLine($"Tray recent image load failed: {ex.Message}");
-                }
-            }
-        }
-        finally
-        {
-            _isLoadingRecentImages = false;
-        }
-    }
-
-    /// <summary>
-    /// Shows a draft's poster as its picture. The file is read whole and let go of before the
-    /// picture is made of it, so that an editor that closes meanwhile can write its poster anew.
-    /// </summary>
-    private async Task LoadRecentImageAsync(TrayRecentItems<MenuFlyoutItem>.Slot slot, string posterPath)
-    {
-        try
-        {
-            var bytes = await Task.Run(() =>
-            {
-                using var file = new FileStream(posterPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                var buffer = new byte[file.Length];
-                file.ReadExactly(buffer);
-                return buffer;
-            });
-
-            using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
-            await stream.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(bytes));
-            stream.Seek(0);
-            var picture = new BitmapImage { DecodePixelWidth = ThumbnailCacheService.ThumbnailWidth };
-            await picture.SetSourceAsync(stream);
-            if (!IsCurrentRecentItem(slot))
-            {
-                return;
-            }
-
-            slot.Item.Icon = new ImageIcon
-            {
-                Source = picture,
-                Width = RecentCaptureThumbnailWidth,
-                Height = RecentCaptureThumbnailHeight,
-            };
-        }
-        catch (Exception ex)
-        {
-            slot.HasImageFailed = true;
-            Debug.WriteLine($"The poster of a Studio draft could not be shown ({posterPath}): {ex.Message}");
+            button.IsEnabled = items.Count > 0;
         }
     }
 
