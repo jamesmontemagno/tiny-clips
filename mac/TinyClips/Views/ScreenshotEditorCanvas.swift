@@ -194,7 +194,7 @@ struct ScreenshotEditorCanvasView: View {
 
                     // Image annotations layer
                     Canvas { context, _ in
-                        for annotation in viewModel.annotations {
+                        for annotation in viewModel.annotations where !annotation.isOpaqueRedaction {
                             let scaledRect = viewModel.scaledRect(annotation.rect, imageSize: imageSize, origin: .zero)
                             drawAnnotation(annotation, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage, zoomScale: zoomScale)
                         }
@@ -241,6 +241,36 @@ struct ScreenshotEditorCanvasView: View {
                             .rotationEffect(.radians(annotation.rotation))
                             .position(x: scaledRect.midX, y: scaledRect.midY)
                             .allowsHitTesting(false)
+                    }
+
+                    // Opaque redactions stay above text and all other annotations, just as in export.
+                    Canvas { context, _ in
+                        for annotation in viewModel.annotations where annotation.isOpaqueRedaction {
+                            let rect = viewModel.scaledRect(annotation.rect, imageSize: imageSize, origin: .zero)
+                            context.fill(Path(rect), with: .color(.black))
+                        }
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+
+                    ForEach(Array(viewModel.sensitiveTextSuggestions.enumerated()), id: \.element.id) { index, suggestion in
+                        let rect = viewModel.scaledRect(suggestion.rect, imageSize: imageSize, origin: .zero)
+                        Rectangle()
+                            .fill(suggestion.isApproved ? Color.green.opacity(0.18) : Color.orange.opacity(0.18))
+                            .overlay {
+                                Rectangle().strokeBorder(
+                                    viewModel.selectedSensitiveTextID == suggestion.id ? Color.accentColor : Color.orange,
+                                    style: StrokeStyle(lineWidth: 2, dash: suggestion.isApproved ? [] : [4, 3])
+                                )
+                            }
+                            .overlay(alignment: .topLeading) {
+                                Text("\(index + 1)").font(.caption2.bold())
+                                    .foregroundStyle(.black).background(.yellow)
+                            }
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
                     }
 
                 }
@@ -627,7 +657,11 @@ struct ScreenshotEditorCanvasView: View {
             }
 
         case .blur:
-            drawCheckerboardRedaction(in: context, rect: scaledRect, preset: annotation.redactionBlurPreset)
+            if annotation.isOpaqueRedaction {
+                context.fill(Path(scaledRect), with: .color(.black))
+            } else {
+                drawCheckerboardRedaction(in: context, rect: scaledRect, preset: annotation.redactionBlurPreset)
+            }
 
         case .number:
             // Draw filled circle

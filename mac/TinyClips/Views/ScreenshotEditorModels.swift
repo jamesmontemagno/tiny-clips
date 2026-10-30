@@ -230,6 +230,7 @@ struct ScreenshotAnnotation: Identifiable {
     var isUnderlined: Bool = false
     var textBoxStyle: TextBoxStyle = .plain
     var redactionBlurPreset: RedactionBlurPreset = .medium
+    var isOpaqueRedaction = false
     var arrowStyle: ArrowStyle = .straight
     /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
     var rotation: CGFloat = 0

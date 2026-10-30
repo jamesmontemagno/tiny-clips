@@ -52,6 +52,8 @@
 		B10000000000000000000039 /* IdleSleepAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* IdleSleepAssertion.swift */; };
 		B1000000000000000000003A /* SingleInstanceCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003A /* SingleInstanceCoordinator.swift */; };
 		B1000000000000000000003B /* TextRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003B /* TextRecognitionService.swift */; };
+		D51700000000000000000001 /* SensitiveTextDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51700000000000000000003 /* SensitiveTextDetection.swift */; };
+		D51700000000000000000002 /* SensitiveTextDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51700000000000000000003 /* SensitiveTextDetection.swift */; };
 		B1000000000000000000003E /* ScrollingPanoramaCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003E /* ScrollingPanoramaCapture.swift */; };
 		B1000000000000000000003F /* ScrollingCapturePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000003F /* ScrollingCapturePanel.swift */; };
 		B20000000000000000000001 /* TinyClipsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* TinyClipsApp.swift */; };
@@ -133,6 +135,7 @@
 		B4EB92CF2F3FCA0B002723CD /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = B4EB92CE2F3FCA0B002723CD /* libwebp */; };
 		B4EB92CF2F3FCA0B002723CE /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = B4EB92CE2F3FCA0B002723CD /* libwebp */; };
 		B30000000000000000000001 /* CaptureMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* CaptureMathTests.swift */; };
+		D51700000000000000000004 /* SensitiveTextDetectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51700000000000000000005 /* SensitiveTextDetectionTests.swift */; };
 		B30000000000000000000433 /* RecordingAudioMixdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000433 /* RecordingAudioMixdownTests.swift */; };
 		B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* HotKeyBindingTests.swift */; };
 		B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* CaptureSettingsTests.swift */; };
@@ -233,6 +236,7 @@
 		A1000000000000000000000F /* SparkleController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleController.swift; sourceTree = "<group>"; };
 		A1000000000000000000003A /* SingleInstanceCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingleInstanceCoordinator.swift; sourceTree = "<group>"; };
 		A1000000000000000000003B /* TextRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextRecognitionService.swift; sourceTree = "<group>"; };
+		D51700000000000000000003 /* SensitiveTextDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensitiveTextDetection.swift; sourceTree = "<group>"; };
 		A1000000000000000000003E /* ScrollingPanoramaCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollingPanoramaCapture.swift; sourceTree = "<group>"; };
 		A1000000000000000000003F /* ScrollingCapturePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollingCapturePanel.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* VideoTrimmerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTrimmerWindow.swift; sourceTree = "<group>"; };
@@ -293,6 +297,7 @@
 		A2000000000000000000000D /* TinyClipsMAS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TinyClipsMAS.entitlements; sourceTree = "<group>"; };
 		A2000000000000000000000E /* TinyClipsMAS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TinyClipsMAS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000001 /* CaptureMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureMathTests.swift; sourceTree = "<group>"; };
+		D51700000000000000000005 /* SensitiveTextDetectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensitiveTextDetectionTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000433 /* RecordingAudioMixdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioMixdownTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000002 /* HotKeyBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyBindingTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000003 /* CaptureSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSettingsTests.swift; sourceTree = "<group>"; };
@@ -475,6 +480,7 @@
 				A1000000000000000000000F /* SparkleController.swift */,
 				A1000000000000000000003A /* SingleInstanceCoordinator.swift */,
 				A1000000000000000000003B /* TextRecognitionService.swift */,
+				D51700000000000000000003 /* SensitiveTextDetection.swift */,
 				A10000000000000000000017 /* HotKeyManager.swift */,
 				A1000000000000000000001A /* StoreService.swift */,
 				A10000000000000000000020 /* LaunchAtLoginManager.swift */,
@@ -518,6 +524,7 @@
 			isa = PBXGroup;
 			children = (
 				A30000000000000000000001 /* CaptureMathTests.swift */,
+				D51700000000000000000005 /* SensitiveTextDetectionTests.swift */,
 				A30000000000000000000433 /* RecordingAudioMixdownTests.swift */,
 				A30000000000000000000002 /* HotKeyBindingTests.swift */,
 				A30000000000000000000003 /* CaptureSettingsTests.swift */,
@@ -713,6 +720,7 @@
 				B10000000000000000000039 /* IdleSleepAssertion.swift in Sources */,
 				B1000000000000000000003A /* SingleInstanceCoordinator.swift in Sources */,
 				B1000000000000000000003B /* TextRecognitionService.swift in Sources */,
+				D51700000000000000000001 /* SensitiveTextDetection.swift in Sources */,
 				B1000000000000000000000F /* GifTrimmerWindow.swift in Sources */,
 				B10000000000000000000010 /* StartRecordingPanel.swift in Sources */,
 				B10000000000000000000011 /* CountdownWindow.swift in Sources */,
@@ -808,6 +816,7 @@
 				B20000000000000000000039 /* IdleSleepAssertion.swift in Sources */,
 				B2000000000000000000003A /* SingleInstanceCoordinator.swift in Sources */,
 				B2000000000000000000003B /* TextRecognitionService.swift in Sources */,
+				D51700000000000000000002 /* SensitiveTextDetection.swift in Sources */,
 				B2000000000000000000000F /* GifTrimmerWindow.swift in Sources */,
 				B20000000000000000000010 /* StartRecordingPanel.swift in Sources */,
 				B20000000000000000000011 /* CountdownWindow.swift in Sources */,
@@ -883,6 +892,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B30000000000000000000001 /* CaptureMathTests.swift in Sources */,
+				D51700000000000000000004 /* SensitiveTextDetectionTests.swift in Sources */,
 				B30000000000000000000433 /* RecordingAudioMixdownTests.swift in Sources */,
 				B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */,
 				B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */,

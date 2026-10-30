@@ -776,6 +776,7 @@ struct ScreenshotEditorView: View {
                 deleteSelectedAnnotation: { viewModel.deleteSelectedAnnotation() },
                 clearAnnotations: { showClearAnnotationsConfirmation = true },
                 applyCrop: applyCrop,
+                findSensitiveText: viewModel.findSensitiveText,
                 zoomIn: zoomIn,
                 zoomOut: zoomOut,
                 fitZoom: fitZoom,
@@ -785,6 +786,7 @@ struct ScreenshotEditorView: View {
                 canDeleteSelectedAnnotation: viewModel.canDeleteSelectedAnnotation,
                 hasAnnotations: viewModel.hasAnnotations,
                 canApplyCrop: viewModel.canApplyCrop,
+                canFindSensitiveText: viewModel.canFindSensitiveText && !isSaving,
                 isEditingText: isTextInputActive,
                 canZoomIn: !isTextInputActive && zoomScale < ScreenshotEditorZoomMath.maximumScale,
                 canZoomOut: !isTextInputActive && zoomScale > ScreenshotEditorZoomMath.minimumScale
@@ -907,10 +909,12 @@ struct ScreenshotEditorView: View {
         .onChange(of: viewModel.canvasPadding) { _, _ in updateZoomForLayoutChange() }
         // Applying, undoing, or redoing a crop swaps the image, so the old zoom and pan no longer fit.
         .onChange(of: viewModel.originalImage) { _, _ in updateZoomAfterImageChange() }
+        .onChange(of: viewModel.selectedSensitiveTextID) { _, _ in revealSensitiveTextSuggestion() }
         .onChange(of: viewModel.exportFramePreset) { _, _ in updateZoomForLayoutChange() }
         .onChange(of: viewModel.horizontalExportAlignment) { _, _ in updateZoomForLayoutChange() }
         .onChange(of: viewModel.verticalExportAlignment) { _, _ in updateZoomForLayoutChange() }
         .disabled(isSaving)
+        .onDisappear { viewModel.invalidateSensitiveText() }
         .overlay {
             if isSaving {
                 ScreenshotEditorProgressOverlayView(title: "Saving…")
@@ -923,6 +927,11 @@ struct ScreenshotEditorView: View {
             Section("Tools") {
                 toolGrid
                     .listRowInsets(EdgeInsets(top: 2, leading: 2, bottom: 4, trailing: 2))
+            }
+
+            Section("Sensitive text") {
+                sensitiveTextControls
+                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
             }
 
             if viewModel.selectedTool == .crop {
@@ -950,6 +959,76 @@ struct ScreenshotEditorView: View {
             }
         }
         .listStyle(.sidebar)
+    }
+
+    private var sensitiveTextControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button("Find sensitive text", action: viewModel.findSensitiveText)
+                .disabled(!viewModel.canFindSensitiveText)
+                .accessibilityHint("Uses on-device OCR to suggest emails, phone numbers, and IP addresses. Does not change the image.")
+            Text("Processed on this device. Suggestions may miss sensitive text; review before sharing.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if viewModel.isFindingSensitiveText {
+                ProgressView().controlSize(.small)
+                Button("Cancel", action: viewModel.invalidateSensitiveText)
+            }
+            if let status = viewModel.sensitiveTextStatus {
+                Text(status)
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Sensitive text status: \(status)")
+            }
+            ForEach(Array(viewModel.sensitiveTextSuggestions.enumerated()), id: \.element.id) { index, suggestion in
+                VStack(alignment: .leading, spacing: 4) {
+                    Button {
+                        viewModel.selectedSensitiveTextID = suggestion.id
+                        revealSensitiveTextSuggestion()
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(index + 1). \(suggestion.kind.rawValue)")
+                            Text(suggestion.text)
+                                .font(.caption)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .accessibilityLabel("Review suggestion \(index + 1), \(suggestion.kind.rawValue): \(suggestion.text)")
+                    .accessibilityValue(suggestion.isApproved ? "Approved" : "Not approved")
+                    .accessibilityHint("Matches the numbered highlight on the image, \(Int(suggestion.rect.minX * 100)) percent from the left and \(Int(suggestion.rect.minY * 100)) percent from the top.")
+                    HStack {
+                        Button(suggestion.isApproved ? "Unapprove" : "Approve") {
+                            viewModel.approveSensitiveText(suggestion.id)
+                        }
+                        .accessibilityLabel("\(suggestion.isApproved ? "Unapprove" : "Approve") suggestion \(index + 1): \(suggestion.text)")
+                        Button("Dismiss") { viewModel.dismissSensitiveText(suggestion.id) }
+                            .accessibilityLabel("Dismiss suggestion \(index + 1): \(suggestion.text)")
+                    }
+                }
+                .padding(4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(viewModel.selectedSensitiveTextID == suggestion.id ? Color.accentColor.opacity(0.12) : .clear)
+            }
+            if !viewModel.sensitiveTextSuggestions.isEmpty {
+                Button("Apply approved redactions (\(viewModel.approvedSensitiveTextCount))", action: viewModel.applyApprovedSensitiveText)
+                    .disabled(viewModel.approvedSensitiveTextCount == 0 || !viewModel.canFindSensitiveText)
+                    .accessibilityValue("\(viewModel.approvedSensitiveTextCount) approved")
+                    .accessibilityHint("Adds opaque black redactions to approved regions. Can be undone. Unapproved suggestions are cleared.")
+            }
+        }
+    }
+
+    private func revealSensitiveTextSuggestion() {
+        guard let suggestion = viewModel.sensitiveTextSuggestions.first(where: { $0.id == viewModel.selectedSensitiveTextID }),
+              viewportSize.width > 0, viewportSize.height > 0 else { return }
+        let layout = viewModel.displayLayout(in: viewportSize, zoomScale: zoomScale, backingScale: backingScaleFactor)
+        panOffset = ScreenshotEditorZoomMath.clampedPan(
+            CGSize(width: layout.frameSize.width / 2 - layout.imageRect.minX - suggestion.rect.midX * layout.imageRect.width,
+                   height: layout.frameSize.height / 2 - layout.imageRect.minY - suggestion.rect.midY * layout.imageRect.height),
+            contentSize: layout.frameSize,
+            viewportSize: viewportSize
+        )
     }
 
     private var toolGrid: some View {

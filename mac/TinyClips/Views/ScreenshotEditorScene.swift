@@ -13,6 +13,7 @@ struct ScreenshotEditorCommandActions {
     let deleteSelectedAnnotation: () -> Void
     let clearAnnotations: () -> Void
     let applyCrop: () -> Void
+    let findSensitiveText: () -> Void
     let zoomIn: () -> Void
     let zoomOut: () -> Void
     let fitZoom: () -> Void
@@ -22,6 +23,7 @@ struct ScreenshotEditorCommandActions {
     let canDeleteSelectedAnnotation: Bool
     let hasAnnotations: Bool
     let canApplyCrop: Bool
+    let canFindSensitiveText: Bool
     let isEditingText: Bool
     let canZoomIn: Bool
     let canZoomOut: Bool
@@ -141,6 +143,10 @@ private struct ScreenshotEditorMenuCommands: Commands {
                 editor?.clearAnnotations()
             }
             .disabled(editor?.hasAnnotations != true)
+
+            Divider()
+            Button("Find sensitive text") { editor?.findSensitiveText() }
+                .disabled(editor?.canFindSensitiveText != true)
         }
 
         CommandGroup(after: .toolbar) {

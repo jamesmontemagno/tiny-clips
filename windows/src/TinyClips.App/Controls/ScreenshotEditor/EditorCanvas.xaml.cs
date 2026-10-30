@@ -574,6 +574,48 @@ public sealed partial class EditorCanvas : UserControl
             UpdateVisual(ann);
         }
         PositionMarquee(_controller.SelectedAnnotation);
+        PositionSensitiveTextHighlights();
+    }
+
+    private IReadOnlyList<Rect> _sensitiveTextBounds = Array.Empty<Rect>();
+    private Rect? _activeSensitiveTextBounds;
+
+    internal void SetSensitiveTextHighlights(IReadOnlyList<Rect> bounds, Rect? activeBounds = null)
+    {
+        _sensitiveTextBounds = bounds;
+        _activeSensitiveTextBounds = activeBounds;
+        PositionSensitiveTextHighlights();
+        if (activeBounds is not null && SensitiveTextLayer.Children.Count > 0)
+            ((FrameworkElement)SensitiveTextLayer.Children[^1]).StartBringIntoView();
+    }
+
+    private void PositionSensitiveTextHighlights()
+    {
+        SensitiveTextLayer.Children.Clear();
+        if (_controller.Bitmap is null) return;
+        var (scale, offX, offY) = HostLayout();
+        foreach (var bounds in _sensitiveTextBounds)
+            AddHighlight(bounds, false);
+        if (_activeSensitiveTextBounds is { } active) AddHighlight(active, true);
+
+        void AddHighlight(Rect bounds, bool isActive)
+        {
+            var rectangle = new Rectangle
+            {
+                Style = (Style)Resources["SensitiveTextHighlightStyle"],
+                Width = bounds.Width * scale,
+                Height = bounds.Height * scale,
+            };
+            if (isActive)
+            {
+                rectangle.Fill = null;
+                rectangle.Opacity = 1;
+                rectangle.StrokeThickness = 3;
+            }
+            Canvas.SetLeft(rectangle, offX + bounds.X * scale);
+            Canvas.SetTop(rectangle, offY + bounds.Y * scale);
+            SensitiveTextLayer.Children.Add(rectangle);
+        }
     }
 
     private void RemoveVisual(Annotation ann)
@@ -603,11 +645,12 @@ public sealed partial class EditorCanvas : UserControl
         if (ann.Tool == EditTool.Redact)
         {
             var isMoving = ReferenceEquals(ann, _movingAnnotation);
-            if (!isMoving)
+            if (!isMoving && ann.RedactStyle != RedactionStyle.Solid)
             {
                 _controller.EnsureRedactPreview(ann);
             }
-            var wantsImage = !isMoving && !ReferenceEquals(ann, _controller.ActiveAnnotation) && ann.RedactPreview is not null;
+            var wantsImage = ann.RedactStyle != RedactionStyle.Solid && !isMoving
+                && !ReferenceEquals(ann, _controller.ActiveAnnotation) && ann.RedactPreview is not null;
             var isImage = exists && visual!.Primary is Image;
             if (wantsImage != isImage)
             {
@@ -760,7 +803,8 @@ public sealed partial class EditorCanvas : UserControl
             case EditTool.Redact:
             {
                 var isMoving = ReferenceEquals(ann, _movingAnnotation);
-                var wantsImage = !isMoving && !ReferenceEquals(ann, _controller.ActiveAnnotation) && ann.RedactPreview is not null;
+                var wantsImage = ann.RedactStyle != RedactionStyle.Solid && !isMoving
+                    && !ReferenceEquals(ann, _controller.ActiveAnnotation) && ann.RedactPreview is not null;
                 if (wantsImage)
                 {
                     var img = new Image { Stretch = Stretch.Fill, Source = ann.RedactPreview };
@@ -1063,6 +1107,11 @@ public sealed partial class EditorCanvas : UserControl
         }
         else if (visual.Primary is Rectangle rect)
         {
+            // Solid redactions are opaque immediately, including while moving/drawing. Do not
+            // briefly expose pixels through the rounded translucent blur-preview placeholder.
+            var isSolid = ann.RedactStyle == RedactionStyle.Solid;
+            rect.Fill = new SolidColorBrush(isSolid ? Colors.Black : Color.FromArgb(200, 40, 40, 40));
+            rect.RadiusX = rect.RadiusY = isSolid ? 0 : 4;
             Canvas.SetLeft(rect, tl.X);
             Canvas.SetTop(rect, tl.Y);
             rect.Width = w;

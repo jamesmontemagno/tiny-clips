@@ -134,6 +134,57 @@
                     ToolTipService.ToolTip="Reset all edits" />
                 <AppBarSeparator />
                 <AppBarButton
+                    x:Name="FindSensitiveTextButton"
+                    AutomationProperties.AutomationId="EditorFindSensitiveTextButton"
+                    Icon="Find"
+                    Label="Find sensitive text"
+                    ToolTipService.ToolTip="Find likely email addresses, phone numbers and IP addresses locally">
+                    <AppBarButton.Flyout>
+                        <Flyout x:Name="SensitiveTextFlyout" Placement="Bottom"
+                                Opened="OnSensitiveTextReviewOpened" Closed="OnSensitiveTextReviewClosed">
+                            <ScrollViewer MaxHeight="520" VerticalScrollBarVisibility="Auto">
+                                <StackPanel Width="340" Spacing="12">
+                                    <TextBlock Text="Find sensitive text" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <TextBlock Text="Processed only on this device using Windows OCR. Suggestions may miss sensitive text. Review the entire image before sharing."
+                                               TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <ProgressBar x:Name="SensitiveTextProgress" IsIndeterminate="True" Visibility="Collapsed"
+                                                 AutomationProperties.Name="Finding sensitive text locally" />
+                                    <TextBlock x:Name="SensitiveTextStatus" TextWrapping="Wrap"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                    <StackPanel x:Name="SensitiveTextReviewPanel" Spacing="12" Visibility="Collapsed">
+                                        <TextBlock x:Name="SensitiveTextPosition" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock x:Name="SensitiveTextValue" TextWrapping="Wrap"
+                                                   AutomationProperties.AutomationId="EditorSensitiveTextValue" />
+                                        <TextBlock x:Name="SensitiveTextDecision" AutomationProperties.LiveSetting="Polite" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button x:Name="SensitiveTextPrevious" Content="Previous" Click="OnSensitiveTextPrevious"
+                                                    AutomationProperties.AutomationId="EditorSensitiveTextPrevious" />
+                                            <Button x:Name="SensitiveTextNext" Content="Next" Click="OnSensitiveTextNext"
+                                                    AutomationProperties.AutomationId="EditorSensitiveTextNext" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Approve" Click="OnSensitiveTextApprove"
+                                                    AutomationProperties.AutomationId="EditorSensitiveTextApprove"
+                                                    AutomationProperties.Name="Approve this suggestion for redaction" />
+                                            <Button Content="Dismiss" Click="OnSensitiveTextDismiss"
+                                                    AutomationProperties.AutomationId="EditorSensitiveTextDismiss"
+                                                    AutomationProperties.Name="Dismiss this suggestion" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <Button x:Name="SensitiveTextApply" Content="Apply approved redactions" IsEnabled="False"
+                                            Style="{ThemeResource AccentButtonStyle}" Click="OnSensitiveTextApply"
+                                            AutomationProperties.AutomationId="EditorSensitiveTextApply" />
+                                    <Button x:Name="SensitiveTextFindAgain" Content="Find again" Click="OnSensitiveTextFindAgain"
+                                            AutomationProperties.AutomationId="EditorSensitiveTextFindAgain" />
+                                    <TextBlock Text="Nothing changes until you apply. Each black redaction can be undone with Ctrl+Z."
+                                               TextWrapping="Wrap" Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Flyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
+                <AppBarButton
                     AutomationProperties.AutomationId="EditorCopyButton"
                     Click="OnCopy"
                     Icon="Copy"
