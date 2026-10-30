@@ -9,15 +9,28 @@ public sealed class CaptureSettingsStudioTests
     private const long BytesPerGigabyte = 1024L * 1024 * 1024;
 
     [Fact]
-    public void Defaults_KeepStudioOff()
+    public void Defaults_EnableStudioWithoutChangingOrdinaryVideoSettings()
     {
         var settings = Create(out _);
 
-        Assert.False(settings.StudioPreviewEnabled);
+        Assert.True(settings.StudioPreviewEnabled);
         Assert.True(settings.ShowTrimmer);
         Assert.Equal(30, settings.StudioSourceRetentionDays);
         Assert.Equal(10, settings.StudioStorageCapGigabytes);
         Assert.Null(settings.StudioDefaultLook);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LegacyStoredChoice_IsPreservedAcrossLaunches(bool enabled)
+    {
+        var service = new TestSettingsService();
+        service.Set("studioPreviewEnabled", enabled);
+        service.Set("hasCompletedOnboarding", true);
+
+        Assert.Equal(enabled, new CaptureSettings(service).StudioPreviewEnabled);
+        Assert.Equal(enabled, new CaptureSettings(service).StudioPreviewEnabled);
     }
 
     [Fact]
@@ -363,7 +376,7 @@ public sealed class CaptureSettingsStudioTests
     {
         var settings = Create(out var service);
         settings.ShowTrimmer = false;
-        settings.StudioPreviewEnabled = true;
+        settings.StudioPreviewEnabled = false;
         settings.StudioSourceRetentionDays = 90;
         settings.StudioStorageCapGigabytes = 250;
         settings.StudioDefaultLook = new StudioLook(new StudioCanvas { Padding = 0.2 }, new StudioScreenStyle(), new StudioCameraStyle());
@@ -373,11 +386,11 @@ public sealed class CaptureSettingsStudioTests
 
         Assert.Equal(string.Empty, settings.StudioProjectSaveFolder);
         Assert.True(settings.ShowTrimmer);
-        Assert.False(settings.StudioPreviewEnabled);
+        Assert.True(settings.StudioPreviewEnabled);
         Assert.Equal(30, settings.StudioSourceRetentionDays);
         Assert.Equal(10, settings.StudioStorageCapGigabytes);
         Assert.Null(settings.StudioDefaultLook);
-        Assert.False(service.Get("studioPreviewEnabled", true));
+        Assert.True(service.Get("studioPreviewEnabled", false));
         Assert.Equal(30, service.Get("studioSourceRetentionDays", -1));
         Assert.Equal(10, service.Get("studioStorageCapGigabytes", -1));
         Assert.Equal(string.Empty, service.Get("studioDefaultLook", "unset"));

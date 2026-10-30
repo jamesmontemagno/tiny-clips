@@ -26,6 +26,7 @@ own `CHANGELOG.md` at the repository root.
 - Windows CI no longer builds for README/changelog-only or unrelated configuration changes, and skips whole Windows jobs when no build inputs changed.
 
 ### Changed
+- Studio now defaults on for new installs and returning users without a saved preference. Saved on/off choices are preserved, resetting settings restores Studio on, and the refreshed 2.0 welcome-back introduction explains the default and offers the same switch. Record Video and its hotkey remain ordinary recordings.
 - Screenshot and GIF settings now follow Video's quality and before/after grouping, with flat quality cards, accessible section headings, and live screenshot re-capture in collapsed Advanced settings. Existing options and capture behavior are unchanged.
 - Restored the original blue focus-bracket app, tray, tile, Store, and splash icons, ending the paperclip mascot trial early. Regenerate Windows icons with `python windows/tools/generate-icons.py`.
 - Refreshed Analytics with full-width, resize-aware daily, weekday, and hourly charts. Select bars with the mouse, touch, or keyboard for persistent capture details; hover for tooltips. Sparse date/hour labels keep the 30-day and 24-hour views readable, with the existing range, type filters, totals, and local history preserved.
@@ -51,7 +52,7 @@ own `CHANGELOG.md` at the repository root.
 - Added **Include Tiny Clips in captures** in General settings for demos. Off by default, it controls app windows, capture controls and window selection starting with the next capture after any active recording ends. The teleprompter and live webcam preview remain excluded; the recorded camera is unchanged.
 - Added manual GitHub Copilot app run buttons for Windows x64 and ARM64, using `dotnet run` to build and launch with package identity.
 - **What's New introduces Studio.** A new illustrated screen-and-camera composition and editing highlights explain the early preview, with a switch to enable it right there. It appears once per content revision for existing users, not on every app update; new installs keep the onboarding tour. The switch is saved, and ordinary video recording stays unchanged.
-- **Tiny Clips Studio (early preview, off by default).** Studio records the screen and the camera
+- **Tiny Clips Studio (early preview, on by default unless a preference is saved).** Studio records the screen and the camera
   as separate layers and opens an editor when the recording ends. Pick a background and padding,
   round the screen card, choose a camera shape and one of four layouts (screen only, camera
   bubble, side by side, camera only), drag the bubble where you want it, trim the start and end,

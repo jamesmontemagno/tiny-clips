@@ -89,10 +89,10 @@ private struct WhatsNewView: View {
                             .font(.headline)
                             .accessibilityIdentifier("WhatsNewStudioToggle")
                             .accessibilityHint("Adds Studio Recording to the menu bar menu. Ordinary video recording is unchanged.")
-                        Text("Once enabled, choose Studio Recording in the menu bar menu. Record Video and its shortcut still make ordinary recordings.")
+                        Text("Choose Studio Recording in the menu bar menu when Studio is on. Record Video and its shortcut still make ordinary recordings.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
-                        Text("Studio is an early preview and is off by default. You can turn it off in Settings → Studio at any time; your projects are kept.")
+                        Text("Studio is an early preview, now on by default if you haven't saved a preference. Your previous choice is kept. You can turn it off here or in Settings → Studio at any time; your projects are kept.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
