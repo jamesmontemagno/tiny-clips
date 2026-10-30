@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Settings no longer scans or purges temporary files on the UI thread, avoiding freezes of Settings and the shared tray/capture controls on Windows x64 and ARM64.
 - Color-picker dropdown buttons now expose their contextual names to assistive technology in Studio and the screenshot editor.
 - Studio button rows now respect their maximum width when deciding whether to hide decorative glyphs.
 - StudioWindowCheck now includes the shared color picker, and project-folder tests no longer wait for a nonexistent UI post after an operation finishes.

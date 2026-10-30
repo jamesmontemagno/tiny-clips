@@ -44,6 +44,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly StudioProjectTracker? _studioTracker;
     private readonly DispatcherQueue? _dispatcherQueue;
     private readonly ITeleprompterTranscriptSaveScheduler? _teleprompterTranscriptSaveScheduler;
+    private readonly Func<TemporaryFilesSummary> _getTemporaryFilesSummary;
+    private readonly Func<TemporaryFilesPurgeResult> _purgeTemporaryFiles;
+    private Task? _temporaryFilesInitialization;
     private static readonly EditTool[] _screenshotEditorToolChoices =
     [
         EditTool.Select,
@@ -153,7 +156,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         ITeleprompterTranscriptSaveScheduler? transcriptSaveScheduler = null,
         IStudioProjectStore? studioProjects = null,
         StudioProjectCleanupService? studioCleanup = null,
-        StudioProjectTracker? studioTracker = null)
+        StudioProjectTracker? studioTracker = null,
+        Func<TemporaryFilesSummary>? getTemporaryFilesSummary = null,
+        Func<TemporaryFilesPurgeResult>? purgeTemporaryFiles = null)
     {
         _settings = settings;
         _hotKeys = hotKeys;
@@ -166,6 +171,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         _studioProjects = studioProjects;
         _studioCleanup = studioCleanup;
         _studioTracker = studioTracker;
+        _getTemporaryFilesSummary = getTemporaryFilesSummary ?? TinyClipsTemporaryFiles.GetSummary;
+        _purgeTemporaryFiles = purgeTemporaryFiles ??
+            (() => TinyClipsTemporaryFiles.Purge(WebcamDiagnostics.ActiveFilePaths));
         if (_studioTracker is not null)
         {
             _studioTracker.Changed += OnStudioOpenProjectsChanged;
@@ -339,7 +347,28 @@ public sealed partial class SettingsViewModel : ObservableObject
         ? Microsoft.UI.Xaml.Visibility.Collapsed
         : Microsoft.UI.Xaml.Visibility.Visible;
 
-    public string TempFolderSummary => FormatTemporaryFilesSummary(TinyClipsTemporaryFiles.GetSummary());
+    [ObservableProperty]
+    private string _tempFolderSummary = "Loading temporary files\u2026";
+
+    public Task EnsureTemporaryFilesInitializedAsync() => _closed
+        ? Task.CompletedTask
+        : _temporaryFilesInitialization ??= RefreshTemporaryFilesAsync();
+
+    private async Task RefreshTemporaryFilesAsync()
+    {
+        string summary;
+        try
+        {
+            var files = await Task.Run(_getTemporaryFilesSummary);
+            summary = FormatTemporaryFilesSummary(files);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            summary = "Couldn't read temporary files. Reopen Settings to try again.";
+        }
+
+        await RunOnOwnerThreadAsync(() => TempFolderSummary = summary);
+    }
 
     private string ResolveSaveLocation(CaptureType type)
     {
@@ -369,10 +398,19 @@ public sealed partial class SettingsViewModel : ObservableObject
         });
     }
 
-    public TemporaryFilesPurgeResult PurgeTempFiles()
+    public async Task<TemporaryFilesPurgeResult> PurgeTempFilesAsync()
     {
-        var result = TinyClipsTemporaryFiles.Purge(WebcamDiagnostics.ActiveFilePaths);
-        OnPropertyChanged(nameof(TempFolderSummary));
+        await EnsureTemporaryFilesInitializedAsync();
+        if (_closed)
+        {
+            return default;
+        }
+
+        var result = await Task.Run(_purgeTemporaryFiles);
+        if (!_closed)
+        {
+            await RefreshTemporaryFilesAsync();
+        }
         return result;
     }
 
