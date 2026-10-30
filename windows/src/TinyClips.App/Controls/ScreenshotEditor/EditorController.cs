@@ -115,7 +115,13 @@ internal sealed class EditorController : IDisposable
     /// </summary>
     public bool IsDirty => _revision.IsDirty;
 
-    private void MarkDirty() => _revision.MarkEdited();
+    public event EventHandler? DocumentChanged;
+
+    private void MarkDirty()
+    {
+        _revision.MarkEdited();
+        DocumentChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public bool CanExport => !_isDisposed && !_isReplacingImage && _bitmap is not null;
 
@@ -291,6 +297,7 @@ internal sealed class EditorController : IDisposable
         CancelDocumentWork();
         _revision.ReplaceDocument();
         _isReplacingImage = true;
+        DocumentChanged?.Invoke(this, EventArgs.Empty);
         return _revision.Current;
     }
 
@@ -1559,6 +1566,27 @@ internal sealed class EditorController : IDisposable
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
+    /// <summary>Each approved rectangle is a normal annotation and an ordinary Undo step.</summary>
+    public bool ApplySensitiveTextRedactions(DocumentRevision revision, IEnumerable<SensitiveTextSuggestion> approved)
+    {
+        VerifyAccess();
+        if (!CanExport || !IsCurrent(revision)) return false;
+        var annotations = approved.Select(suggestion =>
+        {
+            var annotation = new Annotation();
+            RestoreAnnotation(annotation, SensitiveTextDetector.CreateRedaction(suggestion).CaptureSnapshot());
+            return annotation;
+        }).ToArray();
+        if (annotations.Length == 0) return false;
+        CancelActiveAnnotation();
+        ClearTextStyleUndo();
+        _annotations.AddRange(annotations);
+        Select(null);
+        MarkDirty();
+        AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     public void Undo()
     {
         while (_textStyleUndo.Count > 0)
@@ -1921,6 +1949,12 @@ internal sealed class EditorController : IDisposable
     public void EnsureRedactPreview(Annotation ann)
     {
         VerifyAccess();
+        if (ann.RedactStyle == RedactionStyle.Solid)
+        {
+            CancelRedactPreview(ann);
+            ann.RedactPreview = null;
+            return; // Canvas draws solid black directly; no worker/readback needed.
+        }
         if (!CanExport || _imageOwner is null || !_annotations.Contains(ann)
             || ReferenceEquals(ann, ActiveAnnotation))
         {

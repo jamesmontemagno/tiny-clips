@@ -107,6 +107,7 @@ public sealed partial class ScreenshotEditorWindow : Window
             Canvas.Attach(_controller, settings);
 
             _controller.ImageChanged += OnControllerImageChanged;
+            _controller.DocumentChanged += OnSensitiveTextDocumentChanged;
             // Padding, corner radius, shadow and frame presets change the exported frame size without
             // touching the source bitmap, so the advertised output resolution has to follow them too.
             _controller.BackgroundChanged += OnControllerImageChanged;
@@ -197,6 +198,7 @@ public sealed partial class ScreenshotEditorWindow : Window
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _isClosed = true;
+        ClearSensitiveTextReview();
         _controller.Dispose();
         UpdateOutputResolutionText();
     }
@@ -428,6 +430,8 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // Native flyout owns Escape, Space/Enter and review keyboard navigation.
+        if (_isSensitiveTextReviewOpen) return;
         if (EditorEscapeConfirmation.IsUnmodifiedEscape(e))
         {
             OnEscapeKey(e);
@@ -525,6 +529,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private void OnRootKeyUp(object sender, KeyRoutedEventArgs e)
     {
+        if (_isSensitiveTextReviewOpen) return;
         if (e.Key == Windows.System.VirtualKey.Space)
         {
             Canvas.SetSpacePressed(false);

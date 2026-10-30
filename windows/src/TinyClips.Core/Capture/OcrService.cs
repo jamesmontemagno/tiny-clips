@@ -2,6 +2,7 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Storage.Streams;
+using TinyClips.Core.Editing;
 
 namespace TinyClips.Core.Capture;
 
@@ -38,6 +39,26 @@ public sealed class OcrService : IOcrService
 
         var result = await engine.RecognizeAsync(recognizable).AsTask(cancellationToken).ConfigureAwait(false);
         return string.Join(Environment.NewLine, result.Lines.Select(line => line.Text));
+    }
+
+    /// <summary>Recognize a native-size editor snapshot locally, retaining word geometry.</summary>
+    public static async Task<IReadOnlyList<SensitiveTextSuggestion>> FindSensitiveTextAsync(
+        SoftwareBitmap bitmap, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var engine = OcrEngine.TryCreateFromUserProfileLanguages()
+            ?? throw new InvalidOperationException("Install an OCR language in Windows Settings → Time & language → Language & region, then try again.");
+        // Drain native operations before disposing their pixels, even if the request was canceled.
+        using var recognizable = await FitToMaxDimensionAsync(bitmap, OcrEngine.MaxImageDimension, CancellationToken.None)
+            .ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = await engine.RecognizeAsync(recognizable).AsTask().ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return SensitiveTextDetector.Detect(
+            result.Lines.Select(line => (IReadOnlyList<SensitiveTextWord>)line.Words
+                .Select(word => new SensitiveTextWord(word.Text, word.BoundingRect)).ToArray()),
+            recognizable.PixelWidth, recognizable.PixelHeight, bitmap.PixelWidth, bitmap.PixelHeight,
+            cancellationToken, result.TextAngle ?? 0);
     }
 
     /// <summary>

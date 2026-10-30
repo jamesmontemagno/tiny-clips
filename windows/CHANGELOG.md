@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- Screenshot editor **Find sensitive text** uses on-device Windows OCR to suggest likely email addresses, phone numbers and IP addresses. Review image-aligned highlights in a keyboard-accessible flyout, approve or dismiss each suggestion, then apply approved opaque black redactions using the existing Undo, Copy and Save paths. Detection alone makes no edits, and may miss sensitive text; review the entire image before sharing.
+
 ### Fixed
 - Color-picker dropdown buttons now expose their contextual names to assistive technology in Studio and the screenshot editor.
 - Studio button rows now respect their maximum width when deciding whether to hide decorative glyphs.

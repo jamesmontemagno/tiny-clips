@@ -7,6 +7,15 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <Style x:Key="SensitiveTextHighlightStyle" TargetType="Rectangle">
+            <Setter Property="Stroke" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+            <Setter Property="Fill" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
+            <Setter Property="Opacity" Value="0.35" />
+        </Style>
+    </UserControl.Resources>
+
     <Grid
         x:Name="ViewportRoot"
         Background="{ThemeResource SubtleFillColorTertiaryBrush}"
@@ -103,6 +112,8 @@
                                   Foreground="{ThemeResource AccentFillColorDefaultBrush}" Glyph="&#xE72C;" />
                     </Grid>
                 </Canvas>
+                <!-- Shares the image's layout and ScrollView transform; never exported/hit-tested. -->
+                <Canvas x:Name="SensitiveTextLayer" IsHitTestVisible="False" />
             </Grid>
         </ScrollView>
 

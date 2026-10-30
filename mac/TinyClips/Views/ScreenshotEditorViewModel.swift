@@ -22,7 +22,9 @@ private enum AnnotationResizeHandle {
 @MainActor
 class ScreenshotEditorViewModel: ObservableObject {
     let sourceURL: URL
-    @Published var originalImage: NSImage?
+    @Published var originalImage: NSImage? {
+        didSet { invalidateSensitiveText() }
+    }
     @Published var selectedTool: EditTool = .move {
         didSet {
             // The crop selection belongs to the Crop tool; it never lingers hidden behind another tool.
@@ -34,8 +36,18 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var selectedColor: Color = .red
     @Published var selectedFillColor: Color = .clear
     @Published var lineWidth: CGFloat = 4
-    @Published var annotations: [ScreenshotAnnotation] = []
-    @Published var currentAnnotation: ScreenshotAnnotation?
+    @Published var annotations: [ScreenshotAnnotation] = [] {
+        didSet { invalidateSensitiveText() }
+    }
+    @Published var currentAnnotation: ScreenshotAnnotation? {
+        didSet { invalidateSensitiveText() }
+    }
+    @Published private(set) var sensitiveTextSuggestions: [SensitiveTextSuggestion] = []
+    @Published private(set) var isFindingSensitiveText = false
+    @Published private(set) var sensitiveTextStatus: String?
+    @Published var selectedSensitiveTextID: UUID?
+    private var sensitiveTextRequestID: UUID?
+    private var sensitiveTextTask: Task<Void, Never>?
     /// Pending crop selection (normalized). It only changes the image once `applyCrop()` runs.
     @Published private(set) var cropRect: CGRect?
     /// True while a crop drag is in flight, so Apply stays off until the selection settles.
@@ -146,6 +158,90 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     private static let recentEmojiDefaultsKey = "screenshotEditor.recentEmoji"
+
+    var canFindSensitiveText: Bool {
+        originalImage != nil && !isFindingSensitiveText && currentAnnotation == nil
+            && !isEditingText && !isAdjustingCropSelection && pendingDragHistoryState == nil
+    }
+
+    var approvedSensitiveTextCount: Int {
+        sensitiveTextSuggestions.filter(\.isApproved).count
+    }
+
+    func findSensitiveText() {
+        findSensitiveText(recognize: TextRecognitionService.findSensitiveText)
+    }
+
+    func findSensitiveText(recognize: @escaping (CGImage) async throws -> [SensitiveTextSuggestion]) {
+        guard canFindSensitiveText else { return }
+        invalidateSensitiveText()
+        guard let image = renderFinalImage(includesExportDecorations: false)?.cgImage else {
+            sensitiveTextStatus = "Could not read this image. Try again."
+            return
+        }
+        let requestID = UUID()
+        sensitiveTextRequestID = requestID
+        isFindingSensitiveText = true
+        sensitiveTextStatus = "Finding sensitive text on this Mac…"
+        sensitiveTextTask = Task { [weak self] in
+            do {
+                let suggestions = try await recognize(image)
+                guard !Task.isCancelled, let self, self.sensitiveTextRequestID == requestID else { return }
+                self.sensitiveTextSuggestions = suggestions
+                self.selectedSensitiveTextID = suggestions.first?.id
+                self.sensitiveTextStatus = suggestions.isEmpty
+                    ? "No likely sensitive text found. Review the image manually."
+                    : "\(suggestions.count) suggestions. Review each before applying."
+                self.isFindingSensitiveText = false
+                self.sensitiveTextTask = nil
+            } catch {
+                guard !Task.isCancelled, let self, self.sensitiveTextRequestID == requestID else { return }
+                self.sensitiveTextStatus = "Could not find sensitive text. Try again or redact manually."
+                self.isFindingSensitiveText = false
+                self.sensitiveTextTask = nil
+            }
+        }
+    }
+
+    func invalidateSensitiveText() {
+        guard sensitiveTextRequestID != nil || !sensitiveTextSuggestions.isEmpty || isFindingSensitiveText else {
+            if sensitiveTextStatus != nil { sensitiveTextStatus = nil }
+            return
+        }
+        sensitiveTextTask?.cancel()
+        sensitiveTextTask = nil
+        sensitiveTextRequestID = nil
+        if isFindingSensitiveText { isFindingSensitiveText = false }
+        sensitiveTextSuggestions = []
+        selectedSensitiveTextID = nil
+        sensitiveTextStatus = "Image changed or review cancelled. Find sensitive text again to review."
+    }
+
+    func approveSensitiveText(_ id: UUID) {
+        guard let index = sensitiveTextSuggestions.firstIndex(where: { $0.id == id }) else { return }
+        sensitiveTextSuggestions[index].isApproved.toggle()
+        selectedSensitiveTextID = id
+    }
+
+    func dismissSensitiveText(_ id: UUID) {
+        sensitiveTextSuggestions.removeAll { $0.id == id }
+        if selectedSensitiveTextID == id { selectedSensitiveTextID = sensitiveTextSuggestions.first?.id }
+        if sensitiveTextSuggestions.isEmpty { sensitiveTextStatus = "All suggestions dismissed. No redactions applied." }
+    }
+
+    func applyApprovedSensitiveText() {
+        let approved = sensitiveTextSuggestions.filter(\.isApproved)
+        guard !approved.isEmpty, currentAnnotation == nil, !isEditingText, pendingDragHistoryState == nil else { return }
+        recordHistory()
+        annotations.append(contentsOf: approved.map {
+            ScreenshotAnnotation(tool: .blur, rect: $0.rect, color: .black, lineWidth: 0,
+                                 text: "", points: [], isOpaqueRedaction: true)
+        })
+        selectedAnnotationIndex = nil
+        selectedTool = .move
+        markDirty()
+        sensitiveTextStatus = "Applied \(approved.count) opaque redactions. Undo is available. Review the image before sharing."
+    }
 
     // Convert point in overlay-local space to 0..1 normalized coordinate
     func normalizePoint(_ point: CGPoint, imageSize: CGSize) -> CGPoint {
@@ -279,8 +375,8 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     // Find which annotation is at a normalized point
     func annotationIndex(at point: CGPoint) -> Int? {
-        // Search in reverse so topmost (last drawn) is picked first
-        for i in annotations.indices.reversed() {
+        // Search in reverse draw order so the topmost visible annotation is picked first
+        for i in annotations.drawOrderIndices.reversed() {
             let ann = annotations[i]
             if ann.tool == .pencil {
                 if let bounds = pencilBounds(for: ann), bounds.insetBy(dx: -0.02, dy: -0.02).contains(point) {
@@ -363,7 +459,9 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     var showsRedactionPresetControl: Bool {
-        inspectorTool == .blur
+        if let index = selectedAnnotationIndex, annotations.indices.contains(index),
+           annotations[index].isOpaqueRedaction { return false }
+        return inspectorTool == .blur
     }
 
     var showsArrowStyleControl: Bool {
@@ -1799,7 +1897,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         return true
     }
 
-    private func renderFinalImage(
+    func renderFinalImage(
         croppingTo explicitCropPixelRect: CGRect? = nil,
         includesExportDecorations: Bool = true
     ) -> NSBitmapImageRep? {
@@ -1929,7 +2027,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         }
 
         // Draw annotations
-        for annotation in annotations {
+        for annotation in annotations.drawOrderIndices.map({ annotations[$0] }) {
             drawAnnotationCG(
                 annotation,
                 in: context,
@@ -2082,7 +2180,12 @@ class ScreenshotEditorViewModel: ObservableObject {
             }
 
         case .blur:
-            drawCheckerboardRedaction(in: ctx, rect: pixelRect, preset: annotation.redactionBlurPreset)
+            if annotation.isOpaqueRedaction {
+                ctx.setFillColor(NSColor.black.cgColor)
+                ctx.fill(pixelRect.integral)
+            } else {
+                drawCheckerboardRedaction(in: ctx, rect: pixelRect, preset: annotation.redactionBlurPreset)
+            }
 
         case .number:
             // Draw filled circle

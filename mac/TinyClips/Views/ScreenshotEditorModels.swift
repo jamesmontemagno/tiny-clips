@@ -230,6 +230,7 @@ struct ScreenshotAnnotation: Identifiable {
     var isUnderlined: Bool = false
     var textBoxStyle: TextBoxStyle = .plain
     var redactionBlurPreset: RedactionBlurPreset = .medium
+    var isOpaqueRedaction = false
     var arrowStyle: ArrowStyle = .straight
     /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
     var rotation: CGFloat = 0
@@ -237,6 +238,14 @@ struct ScreenshotAnnotation: Identifiable {
     /// Whether this annotation is drawn through a rotation transform.
     var isRotated: Bool {
         tool.storesRotation && abs(rotation) > 0.0001
+    }
+}
+
+extension Array where Element == ScreenshotAnnotation {
+    /// Indices in back-to-front drawing order: opaque redactions always render above every
+    /// other annotation. Drawing, export, and hit-testing (reversed) must all use this order.
+    var drawOrderIndices: [Int] {
+        indices.filter { !self[$0].isOpaqueRedaction } + indices.filter { self[$0].isOpaqueRedaction }
     }
 }
 
