@@ -337,7 +337,7 @@ extension NSColor {
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
     // Bump when release highlights change, independently of the app version.
-    static let whatsNewContentRevision = 1
+    static let whatsNewContentRevision = 2
     static let lastSeenWhatsNewRevisionKey = "lastSeenWhatsNewRevision"
 
     static func shouldShowWhatsNew(in defaults: UserDefaults = .standard) -> Bool {
@@ -424,7 +424,7 @@ class CaptureSettings: ObservableObject {
     /// Studio is shown. Switched on, the menu has Studio Recording beside Record Video, and
     /// that command is the one way to record for Studio: Record Video is always an ordinary
     /// recording.
-    @AppStorage("studioPreviewEnabled") var studioPreviewEnabled: Bool = false
+    @AppStorage("studioPreviewEnabled") var studioPreviewEnabled: Bool = true
     @AppStorage("studioDefaultLook") private var storedStudioDefaultLook: String = ""
     /// The look new Studio recordings start with, or nil for the built-in one.
     var studioDefaultLook: StudioLook? {
@@ -914,6 +914,11 @@ class CaptureSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
         self.defaults = defaults
+        _studioPreviewEnabled = AppStorage(
+            wrappedValue: true,
+            "studioPreviewEnabled",
+            store: defaults
+        )
         _excludeClickLightFromScreenshots = AppStorage(
             wrappedValue: false,
             "excludeClickLightFromScreenshots",

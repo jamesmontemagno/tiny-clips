@@ -101,12 +101,12 @@
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Once enabled, choose Studio in the tray menu to start a Studio recording. Record Video and its hotkey still make ordinary recordings."
+                            Text="Choose Studio in the tray menu when Studio is on to start a Studio recording. Record Video and its hotkey still make ordinary recordings."
                             TextWrapping="Wrap" />
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Studio is an early preview and is off by default. You can turn it off in Settings &gt; Studio at any time; your projects are kept."
+                            Text="Studio is an early preview, now on by default if you haven't saved a preference. Your previous choice is kept. You can turn it off here or in Settings &gt; Studio at any time; your projects are kept."
                             TextWrapping="Wrap" />
                         <HyperlinkButton
                             HorizontalAlignment="Left"

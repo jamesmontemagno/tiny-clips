@@ -32,7 +32,7 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture. `Esc`
   closes each of them, asking first unless **Confirm before closing editors with Esc** is turned
   off in General settings; in the editor it clears a crop selection first.
-- **Tiny Clips Studio (early preview, off by default)** — records the screen and the camera as
+- **Tiny Clips Studio (early preview, on by default unless a preference is saved)** — records the screen and the camera as
   separate layers and opens a compositing editor when the recording ends: background and padding,
   a rounded screen card, camera shape and four layouts, a draggable camera bubble, scenes that
   change the layout partway through, zooms (added by hand or suggested from your clicks), crops
@@ -220,10 +220,14 @@ Historical benchmark values are not verified encoder/output-frame measurements.
 
 ## Tiny Clips Studio (preview)
 
-Studio has a page of its own in Settings, **Studio**, after Video. Studio is off until you
-switch it on in **Settings › Studio › Tiny Clips Studio (Preview)** or in the illustrated
-**What's New** introduction. Existing users see that introduction once per content revision;
-new installs get the onboarding tour instead. To replace the highlights in a future release,
+Studio has a page of its own in Settings, **Studio**, after Video. For 2.0, Studio defaults on
+for fresh installs and returning users with no saved `studioPreviewEnabled` preference.
+Every saved on/off choice is preserved, including false from an older reset, which cannot be
+distinguished from an intentional opt-out. Resetting settings restores the new on default.
+You can switch it off or on in **Settings › Studio › Tiny Clips Studio (Preview)** or in the
+illustrated **What's New** introduction. Existing users see the refreshed 2.0 introduction
+once per content revision; opening or dismissing it never changes the preference.
+New installs get the onboarding tour instead. To replace the highlights in a future release,
 bump `WhatsNewViewModel.ContentRevision`, not the package version. With the switch off
 the page shows nothing else, nothing else of Studio is shown anywhere, and a recording is made
 as it always was.

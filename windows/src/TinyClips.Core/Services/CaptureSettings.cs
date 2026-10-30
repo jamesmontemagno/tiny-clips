@@ -294,7 +294,7 @@ public sealed class CaptureSettings : ICaptureSettings
 
     public bool StudioPreviewEnabled
     {
-        get => _settings.Get("studioPreviewEnabled", false);
+        get => _settings.Get("studioPreviewEnabled", true);
         set => _settings.Set("studioPreviewEnabled", value);
     }
 
@@ -901,7 +901,7 @@ public sealed class CaptureSettings : ICaptureSettings
         GifMouseClickOpacity = 0.85;
         GifMouseClickDuration = 0.45;
         ShowTrimmer = true;
-        StudioPreviewEnabled = false;
+        StudioPreviewEnabled = true;
         StudioSourceRetentionDays = DefaultStudioSourceRetentionDays;
         StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;
         StudioDefaultLook = null;

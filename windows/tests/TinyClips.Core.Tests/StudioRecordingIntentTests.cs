@@ -15,6 +15,21 @@ public sealed class StudioRecordingIntentTests
     private const string Version = "1.9.0";
 
     [Theory]
+    [InlineData(VideoRecordingCommand.StudioRecording, true)]
+    [InlineData(VideoRecordingCommand.RecordVideo, false)]
+    [InlineData(VideoRecordingCommand.RecordVideoHotKey, false)]
+    public void DefaultOnStudio_RoutesOnlyTheStudioCommandToAProject(VideoRecordingCommand command, bool forStudio)
+    {
+        var settings = new CaptureSettings(new TestSettingsService());
+        var intent = new StudioRecordingIntent(settings);
+
+        Assert.True(settings.StudioPreviewEnabled);
+        intent.Begin(command);
+
+        Assert.Equal(forStudio, intent.OptionsAtStart(intent.CreateOptions(Version)).RecordForStudio);
+    }
+
+    [Theory]
     [InlineData(VideoRecordingCommand.StudioRecording, CapturePickerIntent.Studio, "Studio", true)]
     [InlineData(VideoRecordingCommand.RecordVideo, CapturePickerIntent.Video, "Video", false)]
     [InlineData(VideoRecordingCommand.RecordVideoHotKey, CapturePickerIntent.Video, "Video", false)]

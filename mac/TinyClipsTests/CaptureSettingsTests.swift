@@ -60,24 +60,56 @@ final class CaptureSettingsTests: XCTestCase {
     }
 
     func testWhatsNewAppearsForExistingUsersUntilDismissed() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
         defaults.set(true, forKey: "hasCompletedOnboarding")
         XCTAssertTrue(CaptureSettings.shouldShowWhatsNew(in: defaults))
-        XCTAssertFalse(defaults.bool(forKey: "studioPreviewEnabled"))
+        XCTAssertTrue(settings.studioPreviewEnabled)
 
         CaptureSettings.markWhatsNewSeen(in: defaults)
 
         XCTAssertFalse(CaptureSettings.shouldShowWhatsNew(in: defaults))
         XCTAssertEqual(defaults.integer(forKey: CaptureSettings.lastSeenWhatsNewRevisionKey),
                        CaptureSettings.whatsNewContentRevision)
-        XCTAssertFalse(defaults.bool(forKey: "studioPreviewEnabled"))
+        XCTAssertTrue(settings.studioPreviewEnabled)
+        XCTAssertNil(defaults.object(forKey: "studioPreviewEnabled"))
     }
 
     func testNewInstallsSeeOnboardingInsteadOfWhatsNew() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        XCTAssertTrue(settings.studioPreviewEnabled)
         XCTAssertFalse(CaptureSettings.shouldShowWhatsNew(in: defaults))
         CaptureSettings.markWhatsNewSeen(in: defaults)
         defaults.set(true, forKey: "hasCompletedOnboarding")
 
         XCTAssertFalse(CaptureSettings.shouldShowWhatsNew(in: defaults))
+        XCTAssertTrue(settings.studioPreviewEnabled)
+    }
+
+    func testWelcomeBackPreservesSavedStudioChoicesAcrossLaunches() {
+        for enabled in [false, true] {
+            defaults.set(enabled, forKey: "studioPreviewEnabled")
+            defaults.set(true, forKey: "hasCompletedOnboarding")
+            defaults.set(CaptureSettings.whatsNewContentRevision - 1,
+                         forKey: CaptureSettings.lastSeenWhatsNewRevisionKey)
+
+            let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+            XCTAssertTrue(CaptureSettings.shouldShowWhatsNew(in: defaults))
+            XCTAssertEqual(settings.studioPreviewEnabled, enabled)
+            CaptureSettings.markWhatsNewSeen(in: defaults)
+            XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).studioPreviewEnabled, enabled)
+        }
+    }
+
+    func testStudioCanBeDisabledAndEnabledWithoutChangingOrdinaryVideoSettings() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        let showTrimmer = settings.showTrimmer
+        for enabled in [false, true] {
+            settings.studioPreviewEnabled = enabled
+            XCTAssertEqual(defaults.bool(forKey: "studioPreviewEnabled"), enabled)
+            XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).studioPreviewEnabled, enabled)
+            XCTAssertEqual(settings.showTrimmer, showTrimmer)
+            XCTAssertEqual(CapturePickerIntent(captureType: .video), .video)
+        }
     }
 
     func testWhatsNewRevisionCanBeBumpedIndependentlyOfVersion() {
@@ -91,15 +123,16 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertFalse(CaptureSettings.shouldShowWhatsNew(in: defaults))
     }
 
-    func testResettingSettingsDoesNotReplayWhatsNewOrEnableStudio() {
+    func testResettingSettingsDoesNotReplayWhatsNewAndRestoresStudioDefault() {
         CaptureSettings.markWhatsNewSeen(in: defaults)
-        defaults.set(true, forKey: "studioPreviewEnabled")
+        defaults.set(false, forKey: "studioPreviewEnabled")
 
         CaptureSettings.resetStoredDefaults(defaults)
 
         defaults.set(true, forKey: "hasCompletedOnboarding")
         XCTAssertFalse(CaptureSettings.shouldShowWhatsNew(in: defaults))
-        XCTAssertFalse(defaults.bool(forKey: "studioPreviewEnabled"))
+        XCTAssertNil(defaults.object(forKey: "studioPreviewEnabled"))
+        XCTAssertTrue(CaptureSettings(defaults: defaults, performMigrations: false).studioPreviewEnabled)
     }
 
     func testVideoCodecDefaultsAndFallsBackToH264() {

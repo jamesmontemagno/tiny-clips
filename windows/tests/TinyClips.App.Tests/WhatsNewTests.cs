@@ -9,9 +9,10 @@ public sealed class WhatsNewTests
     [InlineData("", true)]
     [InlineData("1.8.0", true)]
     [InlineData("rev1;1.8.0", true)]
-    [InlineData("rev2", false)]
-    [InlineData("rev2;1.8.0", false)]
+    [InlineData("rev2", true)]
+    [InlineData("rev2;1.8.0", true)]
     [InlineData("rev3;1.9.0", false)]
+    [InlineData("rev4;2.1.0", false)]
     [InlineData("revnot-a-number", true)]
     [InlineData("rev-1", true)]
     public void ContentRevision_NotPackageVersion_DecidesWhetherToShow(string seen, bool shouldShow)
@@ -22,7 +23,7 @@ public sealed class WhatsNewTests
     }
 
     [Fact]
-    public void DismissalOrFirstRunStamp_PreventsAnotherIntroductionWithoutEnablingStudio()
+    public void DismissalOrFirstRunStamp_PreventsAnotherIntroductionAndKeepsStudioDefaultOn()
     {
         var saved = new MemorySettings();
         var settings = new CaptureSettings(saved);
@@ -31,13 +32,36 @@ public sealed class WhatsNewTests
         var reloaded = new CaptureSettings(saved);
         Assert.Equal($"rev{WhatsNewViewModel.ContentRevision};1.9.0", reloaded.LastSeenWhatsNewVersion);
         Assert.False(WhatsNewViewModel.ShouldShow(reloaded));
-        Assert.False(reloaded.StudioPreviewEnabled);
+        Assert.True(reloaded.StudioPreviewEnabled);
+        Assert.Equal(0, saved.StudioWrites);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void OpeningIntroduction_PreservesTheSavedOptIn(bool enabled)
+    public void LaunchWithNoStudioPreference_EnablesStudioWithoutSavingAChoice(bool returningUser)
+    {
+        var saved = new MemorySettings();
+        var settings = new CaptureSettings(saved) { HasCompletedOnboarding = returningUser };
+        if (returningUser)
+        {
+            settings.LastSeenWhatsNewVersion = "rev2;1.9.0";
+            Assert.True(WhatsNewViewModel.ShouldShow(settings));
+        }
+        else
+        {
+            WhatsNewViewModel.MarkSeen(settings, "2.0.0");
+            Assert.False(WhatsNewViewModel.ShouldShow(settings));
+        }
+
+        Assert.True(new WhatsNewViewModel(settings).IsStudioEnabled);
+        Assert.Equal(0, saved.StudioWrites);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OpeningAndDismissingIntroduction_PreservesTheSavedChoice(bool enabled)
     {
         var saved = new MemorySettings();
         var settings = new CaptureSettings(saved) { StudioPreviewEnabled = enabled };
@@ -46,6 +70,8 @@ public sealed class WhatsNewTests
         var viewModel = new WhatsNewViewModel(settings);
 
         Assert.Equal(enabled, viewModel.IsStudioEnabled);
+        WhatsNewViewModel.MarkSeen(settings, "2.0.0");
+        Assert.Equal(enabled, new CaptureSettings(saved).StudioPreviewEnabled);
         Assert.Equal(writes, saved.StudioWrites);
     }
 
@@ -59,27 +85,28 @@ public sealed class WhatsNewTests
         var notifications = new List<string?>();
         viewModel.PropertyChanged += (_, args) => notifications.Add(args.PropertyName);
 
-        viewModel.IsStudioEnabled = true;
-        Assert.True(new CaptureSettings(saved).StudioPreviewEnabled);
-        Assert.True(new WhatsNewViewModel(new CaptureSettings(saved)).IsStudioEnabled);
-        viewModel.IsStudioEnabled = true;
-        Assert.Equal(1, saved.StudioWrites);
-
+        Assert.True(viewModel.IsStudioEnabled);
         viewModel.IsStudioEnabled = false;
         Assert.False(new CaptureSettings(saved).StudioPreviewEnabled);
+        Assert.False(new WhatsNewViewModel(new CaptureSettings(saved)).IsStudioEnabled);
+        viewModel.IsStudioEnabled = false;
+        Assert.Equal(1, saved.StudioWrites);
+
+        viewModel.IsStudioEnabled = true;
+        Assert.True(new CaptureSettings(saved).StudioPreviewEnabled);
         Assert.Equal(showTrimmer, settings.ShowTrimmer);
         Assert.Equal(2, saved.StudioWrites);
         Assert.Equal([nameof(WhatsNewViewModel.IsStudioEnabled), nameof(WhatsNewViewModel.IsStudioEnabled)], notifications);
     }
 
     [Fact]
-    public void FailedPersistence_DoesNotReportAnEnabledPreview()
+    public void FailedPersistence_DoesNotReportAnUnsavedChoice()
     {
         var saved = new MemorySettings { FailStudioWrites = true };
         var viewModel = new WhatsNewViewModel(new CaptureSettings(saved));
 
-        Assert.Throws<IOException>(() => viewModel.IsStudioEnabled = true);
-        Assert.False(viewModel.IsStudioEnabled);
+        Assert.Throws<IOException>(() => viewModel.IsStudioEnabled = false);
+        Assert.True(viewModel.IsStudioEnabled);
     }
 
     [Fact]

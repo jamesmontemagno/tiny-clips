@@ -63,14 +63,18 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     // ---- The switch
 
     [Fact]
-    public void TheSwitch_IsOffUntilItIsSwitchedOn_AndIsSavedFromTheStudioPage()
+    public void TheSwitch_IsOnByDefault_AndChoicesAreSavedFromTheStudioPage()
     {
         var vm = CreateViewModel();
         Show(vm, SettingsSectionKind.Studio);
 
-        Assert.False(vm.IsStudioPreviewEnabled);
-        Assert.Equal(Visibility.Collapsed, vm.StudioPreviewVisibility);
+        Assert.True(vm.IsStudioPreviewEnabled);
+        Assert.Equal(Visibility.Visible, vm.StudioPreviewVisibility);
         Assert.Equal(Visibility.Collapsed, vm.StudioDraftsVisibility);
+
+        vm.IsStudioPreviewEnabled = false;
+        Assert.False(_settings.StudioPreviewEnabled);
+        Assert.Equal(Visibility.Collapsed, vm.StudioPreviewVisibility);
 
         vm.IsStudioPreviewEnabled = true;
 
@@ -95,16 +99,16 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         var writes = _saved.Writes;
 
         var showing = vm.BeginSectionRealization(SettingsSectionKind.Studio);
-        vm.IsStudioPreviewEnabled = true;
+        vm.IsStudioPreviewEnabled = false;
         vm.StudioSourceRetentionDays = 0;
         vm.StudioStorageCapGigabytes = 0;
         vm.CompleteSectionRealization(showing);
 
         Assert.Equal(writes, _saved.Writes);
-        Assert.False(vm.IsStudioPreviewEnabled);
+        Assert.True(vm.IsStudioPreviewEnabled);
         Assert.Equal(14, vm.StudioSourceRetentionDays);
         Assert.Equal(CaptureSettings.DefaultStudioStorageCapGigabytes, vm.StudioStorageCapGigabytes);
-        Assert.False(_settings.StudioPreviewEnabled);
+        Assert.True(_settings.StudioPreviewEnabled);
         Assert.Equal(14, _settings.StudioSourceRetentionDays);
     }
 
@@ -296,6 +300,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     [Fact]
     public void TheStorageRules_AreSavedWhileStudioIsOn_AndAnEmptiedBoxGetsItsValueBack()
     {
+        _settings.StudioPreviewEnabled = false;
         var vm = CreateViewModel();
         Show(vm, SettingsSectionKind.Studio);
         Assert.Equal(CaptureSettings.DefaultStudioSourceRetentionDays, vm.StudioSourceRetentionDays);
@@ -370,6 +375,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     [Fact]
     public async Task WithStudioOff_TheLineUnderTheSwitchSaysWhatIsKept_AndGoesWhenItIsSwitchedOn()
     {
+        _settings.StudioPreviewEnabled = false;
         Record("First");
         var vm = CreateViewModel();
         Show(vm, SettingsSectionKind.Studio);
@@ -501,6 +507,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     [Fact]
     public async Task Delete_DoesNothingWhileStudioIsOff()
     {
+        _settings.StudioPreviewEnabled = false;
         var first = Record("First");
         var vm = CreateViewModel();
         Show(vm, SettingsSectionKind.Studio);
@@ -633,6 +640,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     [Fact]
     public async Task SaveRecording_DoesNothingWhileStudioIsOff()
     {
+        _settings.StudioPreviewEnabled = false;
         Record("First");
         var vm = CreateViewModel();
         Show(vm, SettingsSectionKind.Studio);
@@ -681,6 +689,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     [Fact]
     public async Task CleanUpNow_DoesNothingWhileStudioIsOff()
     {
+        _settings.StudioPreviewEnabled = false;
         var old = Record("Old");
         Export(old);
         _clock.Advance(TimeSpan.FromDays(40));
@@ -700,6 +709,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     [Fact]
     public async Task TheCleanupService_DoesNothingWhileStudioIsOff()
     {
+        _settings.StudioPreviewEnabled = false;
         var old = Record("Old");
         Export(old);
         _clock.Advance(TimeSpan.FromDays(40));
