@@ -155,6 +155,25 @@ final class SensitiveTextDetectionTests: XCTestCase {
     }
 
     @MainActor
+    func testHitTestingPicksOpaqueRedactionDrawnAboveNewerAnnotations() throws {
+        let editor = try makeEditor()
+        var redaction = ScreenshotAnnotation(tool: .blur, rect: CGRect(x: 0.2, y: 0.2, width: 0.4, height: 0.4),
+                                             color: .black, lineWidth: 0, text: "", points: [])
+        redaction.isOpaqueRedaction = true
+        let rectangle = ScreenshotAnnotation(tool: .rectangle, rect: CGRect(x: 0.1, y: 0.1, width: 0.6, height: 0.6),
+                                             color: .red, lineWidth: 4, text: "", points: [])
+        editor.annotations = [redaction, rectangle]
+        XCTAssertEqual(editor.annotations.drawOrderIndices, [1, 0])
+        XCTAssertEqual(editor.annotationIndex(at: CGPoint(x: 0.4, y: 0.4)), 0)
+        XCTAssertEqual(editor.annotationIndex(at: CGPoint(x: 0.12, y: 0.12)), 1)
+        editor.selectedTool = .move
+        editor.selectedAnnotationIndex = editor.annotationIndex(at: CGPoint(x: 0.4, y: 0.4))
+        XCTAssertTrue(editor.deleteSelectedAnnotation())
+        XCTAssertEqual(editor.annotations.count, 1)
+        XCTAssertFalse(editor.annotations[0].isOpaqueRedaction)
+    }
+
+    @MainActor
     func testEmptyAndFailedDetectionDoNotChangeTheImage() async throws {
         let editor = try makeEditor()
         for fails in [false, true] {

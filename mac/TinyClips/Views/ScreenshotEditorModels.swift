@@ -241,6 +241,14 @@ struct ScreenshotAnnotation: Identifiable {
     }
 }
 
+extension Array where Element == ScreenshotAnnotation {
+    /// Indices in back-to-front drawing order: opaque redactions always render above every
+    /// other annotation. Drawing, export, and hit-testing (reversed) must all use this order.
+    var drawOrderIndices: [Int] {
+        indices.filter { !self[$0].isOpaqueRedaction } + indices.filter { self[$0].isOpaqueRedaction }
+    }
+}
+
 typealias LinePoints = (start: CGPoint, end: CGPoint)
 
 // MARK: - Emoji annotations

@@ -110,6 +110,32 @@ public sealed class SensitiveTextDetectorTests
     }
 
     [Fact]
+    public void CoversTheEntireMappedIpv6DottedTailAcrossSplitOcrWords()
+    {
+        IReadOnlyList<SensitiveTextWord>[] lines =
+        [
+            [
+                new("::ffff:192", new Rect(10, 10, 50, 10)),
+                new(".", new Rect(60, 10, 3, 10)),
+                new("0", new Rect(63, 10, 7, 10)),
+                new(".", new Rect(70, 10, 3, 10)),
+                new("2", new Rect(73, 10, 7, 10)),
+                new(".", new Rect(80, 10, 3, 10)),
+                new("128", new Rect(83, 10, 20, 10)),
+            ],
+        ];
+        var result = Assert.Single(SensitiveTextDetector.Detect(lines, 200, 100, 200, 100,
+            TestContext.Current.CancellationToken));
+        Assert.Equal("::ffff:192.0.2.128", result.Text);
+        Assert.Equal(new Rect(8, 8, 97, 14), result.Bounds);
+    }
+
+    [Theory]
+    [InlineData("::ffff:192.0.2")]
+    [InlineData("::ffff:192.0.2.128.5")]
+    public void RejectsIpv6PrefixesOfLongerDottedTails(string text) => Assert.Empty(Detect(text));
+
+    [Fact]
     public void ClampsToImageEdgesAndNeverAppliesDisplayDpi()
     {
         var bounds = SensitiveTextDetector.MapBounds(new Rect(0, 0, 100, 50), 100, 50, 401, 199);

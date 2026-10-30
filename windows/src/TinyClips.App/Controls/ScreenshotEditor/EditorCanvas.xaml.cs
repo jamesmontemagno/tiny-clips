@@ -1110,7 +1110,7 @@ public sealed partial class EditorCanvas : UserControl
             // Solid redactions are opaque immediately, including while moving/drawing. Do not
             // briefly expose pixels through the rounded translucent blur-preview placeholder.
             var isSolid = ann.RedactStyle == RedactionStyle.Solid;
-            rect.Fill = new SolidColorBrush(isSolid ? Colors.Black : Color.FromArgb(200, 40, 40, 40));
+            rect.Fill = new SolidColorBrush(isSolid ? Microsoft.UI.Colors.Black : Color.FromArgb(200, 40, 40, 40));
             rect.RadiusX = rect.RadiusY = isSolid ? 0 : 4;
             Canvas.SetLeft(rect, tl.X);
             Canvas.SetTop(rect, tl.Y);

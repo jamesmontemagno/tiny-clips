@@ -17,7 +17,7 @@ public static class SensitiveTextDetector
         @"(?<![\w.+%-])[\w.!#$%&'*+/=?^`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,63}(?![\w-])",
         RegexOptions.CultureInvariant, Timeout);
     private static readonly Regex Ip = new(
-        @"(?<![\w.])[0-9]{1,3}(?:\.[0-9]{1,3}){3}(?!\w|\.[0-9])|(?<![\w.:])[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*:[0-9A-Fa-f:]*(?![\w:])",
+        @"(?<![\w.])[0-9]{1,3}(?:\.[0-9]{1,3}){3}(?!\w|\.[0-9])|(?<![\w.:])(?:[0-9A-Fa-f]{0,4}:){2,7}(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}|[0-9A-Fa-f]{1,4})?(?![\w:]|\.[0-9])",
         RegexOptions.CultureInvariant, Timeout);
     private static readonly Regex Phone = new(
         @"(?<![\w.+])\+?(?:\([0-9]{2,4}\)|[0-9]{1,4})(?:[ .-]?(?:\([0-9]{2,4}\)|[0-9]{1,4})){1,7}(?![\w.])",

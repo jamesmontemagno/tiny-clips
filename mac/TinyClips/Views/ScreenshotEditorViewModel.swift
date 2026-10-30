@@ -375,8 +375,8 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     // Find which annotation is at a normalized point
     func annotationIndex(at point: CGPoint) -> Int? {
-        // Search in reverse so topmost (last drawn) is picked first
-        for i in annotations.indices.reversed() {
+        // Search in reverse draw order so the topmost visible annotation is picked first
+        for i in annotations.drawOrderIndices.reversed() {
             let ann = annotations[i]
             if ann.tool == .pencil {
                 if let bounds = pencilBounds(for: ann), bounds.insetBy(dx: -0.02, dy: -0.02).contains(point) {
@@ -2027,7 +2027,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         }
 
         // Draw annotations
-        for annotation in annotations.filter({ !$0.isOpaqueRedaction }) + annotations.filter(\.isOpaqueRedaction) {
+        for annotation in annotations.drawOrderIndices.map({ annotations[$0] }) {
             drawAnnotationCG(
                 annotation,
                 in: context,
