@@ -252,6 +252,67 @@ public sealed class StudioRecentDraftsTests : IDisposable
     }
 
     [Fact]
+    public async Task SwitchOffDuringAReadDoesNotPublishItsLateProjectsOrPosters()
+    {
+        var project = Record("Pending draft");
+        File.WriteAllText(_projects.GetPaths(project).PosterPath, "poster");
+        var counting = (CountingStore)_store;
+        counting.HoldTheFirstListOfProjects();
+        var drafts = new StudioRecentDrafts(_store, _settings);
+        var publishedCounts = new List<int>();
+        drafts.Changed += (_, _) => publishedCounts.Add(drafts.Projects.Count);
+        var read = drafts.ReloadAsync(5);
+        Assert.True(counting.FirstListWasRead.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        _settings.StudioPreviewEnabled = false;
+        _ = drafts.ReloadAsync(5);
+        counting.HandOverTheFirstListOfProjects();
+        await read.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Empty(drafts.Projects);
+        Assert.Null(drafts.PosterOf(project));
+        Assert.DoesNotContain(publishedCounts, count => count > 0);
+    }
+
+    [Fact]
+    public async Task PeriodicProbeReusesInFlightDraftListing()
+    {
+        Record("Draft");
+        var counting = (CountingStore)_store;
+        counting.HoldTheFirstListOfProjects();
+        var drafts = new StudioRecentDrafts(_store, _settings);
+        var read = drafts.ReloadAsync(5);
+        Assert.True(counting.FirstListWasRead.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        for (var index = 0; index < 100; index++)
+        {
+            Assert.Same(read, drafts.ReloadAsync(5, invalidate: false));
+        }
+
+        counting.HandOverTheFirstListOfProjects();
+        await read.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal(1, Listings);
+        Assert.Single(drafts.Projects);
+    }
+
+    [Fact]
+    public async Task PosterReplacementAtTheSamePathInvalidatesItsCachedImage()
+    {
+        var project = Record("Draft");
+        var path = _projects.GetPaths(project).PosterPath;
+        File.WriteAllText(path, "old poster");
+        var drafts = new StudioRecentDrafts(_store, _settings);
+        await drafts.ReloadAsync(5);
+        var firstKey = drafts.PosterKeyOf(project);
+        var changes = 0;
+        drafts.Changed += (_, _) => changes++;
+        File.WriteAllText(path, "a different poster at the same path");
+        await drafts.ReloadAsync(5);
+        Assert.Equal(path, drafts.PosterOf(project));
+        Assert.NotEqual(firstKey, drafts.PosterKeyOf(project));
+        Assert.Equal(1, changes);
+        await drafts.ReloadAsync(5);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
     public void AnEditorThatHasReadItsProject_IsAReasonToReadTheListsAgain_WhileItsProjectIsOpen()
     {
         // The lists are read when a window opens, a moment before its editor writes down
