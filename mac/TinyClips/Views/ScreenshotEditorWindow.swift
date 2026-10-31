@@ -776,7 +776,11 @@ struct ScreenshotEditorView: View {
                 deleteSelectedAnnotation: { viewModel.deleteSelectedAnnotation() },
                 clearAnnotations: { showClearAnnotationsConfirmation = true },
                 applyCrop: applyCrop,
-                findSensitiveText: viewModel.findSensitiveText,
+                findSensitiveText: {
+                    // Review controls live in the Redact tool's sidebar section.
+                    viewModel.selectedTool = .blur
+                    viewModel.findSensitiveText()
+                },
                 zoomIn: zoomIn,
                 zoomOut: zoomOut,
                 fitZoom: fitZoom,
