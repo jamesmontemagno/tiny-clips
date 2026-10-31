@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- Window capture now uses a full-screen picker instead of a list. Screens dim and the window under the cursor is highlighted with its app, title and size. Click to capture it; Tab/Shift+Tab cycles windows, Enter selects, and Esc or right-click cancels. The picker hit-tests in true z-order, so a window behind another one or behind the taskbar is never picked. It works across every monitor and skips cloaked, minimized and invisible windows.
+
 ### Added
 - Screenshot editor **Find sensitive text** uses on-device Windows OCR to suggest likely email addresses, phone numbers and IP addresses. Review image-aligned highlights in a keyboard-accessible flyout, approve or dismiss each suggestion, then apply approved opaque black redactions using the existing Undo, Copy and Save paths. Detection alone makes no edits, and may miss sensitive text; review the entire image before sharing.
 

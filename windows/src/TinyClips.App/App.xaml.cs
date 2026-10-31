@@ -2140,7 +2140,12 @@ public partial class App : Application
 
             case CapturePickerMode.Window:
             {
-                var hwnd = await WindowPickerWindow.RunAsync();
+                // The window picker always spans every monitor so any window can be chosen.
+                var all = monitors.GetMonitors();
+                var backdrops = earlyBackdrop is { } early && early.IsFreshFor(all)
+                    ? early.Frames
+                    : null;
+                var hwnd = await WindowPickerController.RunAsync(all, backdrops, cancellationToken);
                 return hwnd is { } h
                     ? new TargetSelection(CaptureTarget.Window(h), null, null)
                     : null;

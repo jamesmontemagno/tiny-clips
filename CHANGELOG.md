@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- The macOS window picker no longer sometimes highlights or captures a window hidden behind the one under the cursor. Windows are now ranked by their real on-screen stacking order, and invisible helper windows are skipped.
 - Studio recording now labels its capture picker as Studio, including its accessible mode name and pickers reopened after recording, while ordinary video remains Video.
 - Studio safely displays imported out-of-range gradient directions and preserves single-color gradients when changing direction.
 - Settings paths in macOS help and update guidance now consistently use arrows.
@@ -24,6 +25,7 @@ All notable changes to this project will be documented in this file.
 - Team Load people now have a profile, opened from the arrow beside their name, showing their momentum over time alongside everything assigned to them.
 
 ### Changed
+- The macOS window picker now shows a clearer highlight with an accent outline, plus a label with the app icon, window title, app name and pixel size. A hint shows the controls: Tab/Shift+Tab cycles windows with VoiceOver announcements, Return captures, and Esc or right-click cancels. Clicking empty space no longer cancels the capture.
 - Studio now defaults on for new installs and returning users without a saved preference. Saved on/off choices are preserved, resetting settings restores Studio on, and the refreshed 2.0 welcome-back introduction explains the default and offers the same switch. Record Video and its shortcut remain ordinary recordings.
 - macOS Screenshot and GIF settings now follow Video's quality and before/after grouping, with GIF recording effects under During Recording and screenshot-only options in collapsed Advanced settings. Existing options and capture behavior are unchanged.
 - Restored the original blue focus-bracket app icons on macOS and Windows, ending the paperclip mascot trial early.
