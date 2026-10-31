@@ -1323,4 +1323,101 @@ final class CaptureMathTests: XCTestCase {
         }
         return bytes[(y * image.width + x) * 4]
     }
+
+    // MARK: - Window picker hit testing
+
+    func testWindowPickerParsesWindowServerListInFrontToBackOrder() {
+        let info: [[String: Any]] = [
+            [kCGWindowNumber as String: 30, kCGWindowLayer as String: 0, kCGWindowAlpha as String: 1.0],
+            [kCGWindowNumber as String: 10, kCGWindowLayer as String: 3, kCGWindowAlpha as String: 0.5],
+            [kCGWindowLayer as String: 0],
+            [kCGWindowNumber as String: 20],
+        ]
+
+        let entries = WindowPickerHitTesting.entries(fromWindowInfo: info)
+
+        XCTAssertEqual(entries, [
+            .init(windowID: 30, layer: 0, alpha: 1),
+            .init(windowID: 10, layer: 3, alpha: 0.5),
+            .init(windowID: 20, layer: 0, alpha: 1),
+        ])
+    }
+
+    func testWindowPickerZOrderSkipsInvisibleWindows() {
+        let entries: [WindowPickerHitTesting.WindowListEntry] = [
+            .init(windowID: 7, layer: 0, alpha: 0),
+            .init(windowID: 3, layer: 0, alpha: 1),
+            .init(windowID: 5, layer: 0, alpha: 0.9),
+        ]
+
+        let zOrder = WindowPickerHitTesting.zOrder(from: entries)
+
+        XCTAssertNil(zOrder[7])
+        XCTAssertEqual(zOrder[3], 1)
+        XCTAssertEqual(zOrder[5], 2)
+    }
+
+    func testWindowPickerSortsCandidatesFrontToBackAndDropsUnlistedWindows() {
+        // ScreenCaptureKit order (arbitrary) vs. Window Server order (front-to-back).
+        let candidates: [CGWindowID] = [11, 22, 33, 44]
+        let zOrder: [CGWindowID: Int] = [33: 0, 11: 4, 22: 2]
+
+        let sorted = WindowPickerHitTesting.frontToBack(candidates, windowID: { $0 }, zOrder: zOrder)
+
+        XCTAssertEqual(sorted, [33, 22, 11])
+    }
+
+    func testWindowPickerKeepsOriginalOrderWithoutWindowServerList() {
+        let candidates: [CGWindowID] = [11, 22, 33]
+
+        XCTAssertEqual(WindowPickerHitTesting.frontToBack(candidates, windowID: { $0 }, zOrder: [:]), candidates)
+    }
+
+    func testWindowPickerHitTestPicksTopmostOverlappingWindow() {
+        // A small front window sitting on top of a large back window.
+        let frontToBack = [
+            CGRect(x: 100, y: 100, width: 200, height: 200),
+            CGRect(x: 0, y: 0, width: 1000, height: 800),
+        ]
+
+        XCTAssertEqual(WindowPickerHitTesting.topmostIndex(in: frontToBack, containing: CGPoint(x: 150, y: 150)), 0)
+        XCTAssertEqual(WindowPickerHitTesting.topmostIndex(in: frontToBack, containing: CGPoint(x: 500, y: 500)), 1)
+        XCTAssertNil(WindowPickerHitTesting.topmostIndex(in: frontToBack, containing: CGPoint(x: 1500, y: 500)))
+    }
+
+    func testWindowPickerCyclesAndWraps() {
+        XCTAssertEqual(WindowPickerHitTesting.cycledIndex(current: nil, count: 3, forward: true), 0)
+        XCTAssertEqual(WindowPickerHitTesting.cycledIndex(current: nil, count: 3, forward: false), 2)
+        XCTAssertEqual(WindowPickerHitTesting.cycledIndex(current: 2, count: 3, forward: true), 0)
+        XCTAssertEqual(WindowPickerHitTesting.cycledIndex(current: 0, count: 3, forward: false), 2)
+        XCTAssertEqual(WindowPickerHitTesting.cycledIndex(current: 1, count: 3, forward: true), 2)
+        XCTAssertNil(WindowPickerHitTesting.cycledIndex(current: nil, count: 0, forward: true))
+    }
+
+    func testWindowPickerLabelScreenPrefersScreenContainingWindowCenter() {
+        let screens = [
+            CGRect(x: 0, y: 0, width: 1440, height: 900),
+            CGRect(x: 1440, y: 0, width: 1920, height: 1080),
+        ]
+
+        // Centre on the second screen, though it straddles both.
+        let straddling = CGRect(x: 1000, y: 100, width: 1200, height: 600)
+        XCTAssertEqual(WindowPickerHitTesting.labelScreenIndex(for: straddling, screenFrames: screens), 1)
+
+        // Centre falls in a gap below the first screen: use the largest overlap.
+        let belowFirst = CGRect(x: 100, y: 800, width: 400, height: 400)
+        XCTAssertEqual(WindowPickerHitTesting.labelScreenIndex(for: belowFirst, screenFrames: screens), 0)
+
+        XCTAssertNil(WindowPickerHitTesting.labelScreenIndex(
+            for: CGRect(x: 5000, y: 5000, width: 10, height: 10),
+            screenFrames: screens
+        ))
+    }
+
+    func testWindowPickerPixelSizeUsesBackingScale() {
+        let frame = CGRect(x: 0, y: 0, width: 800, height: 600)
+
+        XCTAssertEqual(WindowPickerHitTesting.pixelSizeText(for: frame, scale: 2), "1600 × 1200")
+        XCTAssertEqual(WindowPickerHitTesting.pixelSizeText(for: frame, scale: 1), "800 × 600")
+    }
 }
