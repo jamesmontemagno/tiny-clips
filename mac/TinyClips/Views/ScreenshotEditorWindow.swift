@@ -929,9 +929,11 @@ struct ScreenshotEditorView: View {
                     .listRowInsets(EdgeInsets(top: 2, leading: 2, bottom: 4, trailing: 2))
             }
 
-            Section("Sensitive text") {
-                sensitiveTextControls
-                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
+            if viewModel.selectedTool == .blur {
+                Section("Sensitive text") {
+                    sensitiveTextControls
+                        .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
+                }
             }
 
             if viewModel.selectedTool == .crop {

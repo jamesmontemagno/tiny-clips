@@ -36,6 +36,12 @@ public sealed partial class EditorInspector : UserControl
 
     internal event EventHandler? BackgroundImageRequested;
 
+    /// <summary>Raised with the button to anchor the sensitive-text review flyout to.</summary>
+    internal event EventHandler<FrameworkElement>? SensitiveTextRequested;
+
+    private void OnFindSensitiveTextClick(object sender, RoutedEventArgs e) =>
+        SensitiveTextRequested?.Invoke(this, FindSensitiveTextButton);
+
     internal void SetBackgroundSelectionBusy(bool busy)
     {
         _backgroundSelectionBusy = busy;
@@ -248,6 +254,7 @@ public sealed partial class EditorInspector : UserControl
         TextSection.Visibility = showsText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = showsNumber ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = showsRedact ? Visibility.Visible : Visibility.Collapsed;
+        SensitiveTextSection.Visibility = showsRedact ? Visibility.Visible : Visibility.Collapsed;
         EmojiSection.Visibility = showsEmoji ? Visibility.Visible : Visibility.Collapsed;
         RotationSection.Visibility = Visibility.Collapsed;
 
@@ -317,6 +324,7 @@ public sealed partial class EditorInspector : UserControl
         TextSection.Visibility = isText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = isCounter ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = isRedact ? Visibility.Visible : Visibility.Collapsed;
+        SensitiveTextSection.Visibility = Visibility.Collapsed;
         EmojiSection.Visibility = isEmoji ? Visibility.Visible : Visibility.Collapsed;
         var isRotatable = ann.Tool.StoresRotation();
         RotationSection.Visibility = isRotatable ? Visibility.Visible : Visibility.Collapsed;
