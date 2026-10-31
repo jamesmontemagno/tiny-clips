@@ -200,6 +200,7 @@ public sealed class StudioWindowService : IStudioProjectHost
 
         if (!_windows.TryGetValue(projectId, out var window))
         {
+            global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio window: creating");
             var viewModel = new StudioViewModel(
                 projectId,
                 _store,
@@ -213,12 +214,15 @@ public sealed class StudioWindowService : IStudioProjectHost
             viewModel.ScreenRecordingSaved += OnScreenRecordingSaved;
             viewModel.ErrorReported += OnErrorReported;
             viewModel.StateChanged += OnEditorStateChanged;
+            global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio window: view model created");
             window = new StudioWindow(viewModel, _previewViews, _settings, this, OnWindowClosed);
+            global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio window: window constructed");
             _windows[projectId] = window;
             _tracker.MarkOpened(projectId);
         }
 
         ActivateWindow(window);
+        global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio window: activated");
         return window;
     }
 

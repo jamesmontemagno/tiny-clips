@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- Capture flow tracing (`capture-flow-trace.log`) now times each step from stopping a recording to the Studio editor showing its first frame: screen file finalize, camera stop, project save, editor window creation and each preview open stage.
 - Screenshot editor **Find sensitive text** uses on-device Windows OCR to suggest likely email addresses, phone numbers and IP addresses. Review image-aligned highlights in a keyboard-accessible flyout, approve or dismiss each suggestion, then apply approved opaque black redactions using the existing Undo, Copy and Save paths. Detection alone makes no edits, and may miss sensitive text; review the entire image before sharing.
 
 ### Fixed

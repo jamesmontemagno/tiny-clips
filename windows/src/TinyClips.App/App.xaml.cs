@@ -2358,6 +2358,7 @@ public partial class App : Application
         // has already queued the recording UI cleanup ahead of this callback.
         _dispatcher?.TryEnqueue(() =>
         {
+            CaptureFlowTrace.Mark("studio: completed event on UI thread");
             var wasPickerInitiated = _completedRecordingWasPickerInitiated;
             _completedRecordingWasPickerInitiated = false;
             if (_isExiting)
@@ -2366,6 +2367,7 @@ public partial class App : Application
             }
 
             OpenStudioProject(projectId, wasPickerInitiated);
+            CaptureFlowTrace.Mark("studio: editor window opened");
         });
     }
 
@@ -2481,6 +2483,7 @@ public partial class App : Application
                 CaptureFlowTrace.Begin("stop-video");
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Video, _activeRecordingSelection);
+                CaptureFlowTrace.Mark("video: processing indicator shown");
                 await video.StopAsync();
                 CaptureFlowTrace.Mark("video: StopAsync returned");
             }
