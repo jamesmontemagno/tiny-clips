@@ -122,7 +122,7 @@ public sealed class StudioRecentDraftsTests : IDisposable
         // all the same: the store is read on another thread than the one that asked.
         var counting = (CountingStore)_store;
         counting.HoldTheFirstListOfProjects();
-        var read = drafts.ReloadAsync(5);
+        var read = drafts.ReloadAsync();
         Assert.False(read.IsCompleted);
         Assert.True(counting.FirstListWasRead.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
         Assert.Empty(drafts.Projects);
@@ -135,7 +135,7 @@ public sealed class StudioRecentDraftsTests : IDisposable
         Assert.Equal(1, changes);
 
         // Read again and found the same: nobody is told.
-        await drafts.ReloadAsync(5);
+        await drafts.ReloadAsync();
         Assert.Equal(2, Listings);
         Assert.Equal(1, changes);
     }
@@ -145,7 +145,7 @@ public sealed class StudioRecentDraftsTests : IDisposable
     {
         var draft = Record("A draft");
         var drafts = new StudioRecentDrafts(_store, _settings);
-        await drafts.ReloadAsync(5);
+        await drafts.ReloadAsync();
         Assert.Single(drafts.EntriesFor([], 5));
         var capture = new RecentCapture(@"D:\Videos\clip.mp4", CaptureType.Video, _time.GetUtcNow());
 
@@ -155,13 +155,12 @@ public sealed class StudioRecentDraftsTests : IDisposable
 
         // And the next read reads nothing and forgets what there was.
         var listings = Listings;
-        await drafts.ReloadAsync(5);
+        await drafts.ReloadAsync();
         Assert.Equal(listings, Listings);
         Assert.Empty(drafts.Projects);
-        Assert.Null(drafts.PosterOf(draft));
 
         _settings.StudioPreviewEnabled = true;
-        await drafts.ReloadAsync(5);
+        await drafts.ReloadAsync();
         Assert.Equal([draft], drafts.Projects.Select(project => project.Id));
     }
 
@@ -188,7 +187,7 @@ public sealed class StudioRecentDraftsTests : IDisposable
             new(@"D:\c-2.png", CaptureType.Screenshot, start.AddHours(-2)),
         ];
         var drafts = new StudioRecentDrafts(_store, _settings);
-        await drafts.ReloadAsync(5);
+        await drafts.ReloadAsync();
 
         var entries = drafts.EntriesFor(captures, 5);
 
@@ -202,34 +201,6 @@ public sealed class StudioRecentDraftsTests : IDisposable
     }
 
     [Fact]
-    public async Task ADraftsPictureIsItsPoster_WhenItHasOne_AndOnlyTheNewestAreLookedFor()
-    {
-        var first = Record("First");
-        _time.Advance(TimeSpan.FromHours(1));
-        var second = Record("Second");
-        _time.Advance(TimeSpan.FromHours(1));
-        var third = Record("Third, without a poster");
-        File.WriteAllText(_projects.GetPaths(first).PosterPath, "a poster");
-        File.WriteAllText(_projects.GetPaths(second).PosterPath, "a poster");
-        var drafts = new StudioRecentDrafts(_store, _settings);
-
-        await drafts.ReloadAsync(2);
-
-        // The two newest are the third and the second; the third has none.
-        Assert.Null(drafts.PosterOf(third));
-        Assert.Equal(_projects.GetPaths(second).PosterPath, drafts.PosterOf(second));
-        Assert.Null(drafts.PosterOf(first));
-
-        // A poster that is written later is found by the next read, which says that something changed.
-        var changes = 0;
-        drafts.Changed += (_, _) => changes++;
-        File.WriteAllText(_projects.GetPaths(third).PosterPath, "a poster");
-        await drafts.ReloadAsync(2);
-        Assert.Equal(_projects.GetPaths(third).PosterPath, drafts.PosterOf(third));
-        Assert.Equal(1, changes);
-    }
-
-    [Fact]
     public async Task AskedForWhileARead_IsUnderWay_ItReadsOnceMore_SoThatTheLastRequestIsNotLost()
     {
         Record("A draft");
@@ -237,18 +208,57 @@ public sealed class StudioRecentDraftsTests : IDisposable
         var drafts = new StudioRecentDrafts(_store, _settings);
         counting.HoldTheFirstListOfProjects();
 
-        var first = drafts.ReloadAsync(5);
+        var first = drafts.ReloadAsync();
         Assert.True(counting.FirstListWasRead.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
 
         // A draft is recorded while the first read has its list already, and the popup asks again.
         var later = Record("Recorded meanwhile");
-        var second = drafts.ReloadAsync(5);
+        var second = drafts.ReloadAsync();
         Assert.Same(first, second);
         counting.HandOverTheFirstListOfProjects();
         await first.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         Assert.Equal(2, Listings);
         Assert.Contains(later, drafts.Projects.Select(project => project.Id));
+    }
+
+    [Fact]
+    public async Task SwitchOffDuringAReadDoesNotPublishItsLateProjects()
+    {
+        var project = Record("Pending draft");
+        var counting = (CountingStore)_store;
+        counting.HoldTheFirstListOfProjects();
+        var drafts = new StudioRecentDrafts(_store, _settings);
+        var publishedCounts = new List<int>();
+        drafts.Changed += (_, _) => publishedCounts.Add(drafts.Projects.Count);
+        var read = drafts.ReloadAsync();
+        Assert.True(counting.FirstListWasRead.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        _settings.StudioPreviewEnabled = false;
+        _ = drafts.ReloadAsync();
+        counting.HandOverTheFirstListOfProjects();
+        await read.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Empty(drafts.Projects);
+        Assert.DoesNotContain(publishedCounts, count => count > 0);
+    }
+
+    [Fact]
+    public async Task PeriodicProbeReusesInFlightDraftListing()
+    {
+        Record("Draft");
+        var counting = (CountingStore)_store;
+        counting.HoldTheFirstListOfProjects();
+        var drafts = new StudioRecentDrafts(_store, _settings);
+        var read = drafts.ReloadAsync();
+        Assert.True(counting.FirstListWasRead.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        for (var index = 0; index < 100; index++)
+        {
+            Assert.Same(read, drafts.ReloadAsync(invalidate: false));
+        }
+
+        counting.HandOverTheFirstListOfProjects();
+        await read.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal(1, Listings);
+        Assert.Single(drafts.Projects);
     }
 
     [Fact]

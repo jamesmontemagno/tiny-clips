@@ -295,8 +295,18 @@ public sealed class CaptureSettings : ICaptureSettings
     public bool StudioPreviewEnabled
     {
         get => _settings.Get("studioPreviewEnabled", true);
-        set => _settings.Set("studioPreviewEnabled", value);
+        set
+        {
+            var changed = StudioPreviewEnabled != value;
+            _settings.Set("studioPreviewEnabled", value);
+            if (changed)
+            {
+                StudioPreviewEnabledChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
+
+    public event EventHandler? StudioPreviewEnabledChanged;
 
     public const int DefaultStudioSourceRetentionDays = 30;
     public const int MinStudioSourceRetentionDays = 0;

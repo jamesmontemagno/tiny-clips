@@ -10,6 +10,143 @@ namespace TinyClips.App.Tests;
 public sealed class SettingsViewModelTests
 {
     [Fact]
+    public async Task TemporaryFiles_SlowScanDoesNotBlockOrRepeatOnBindingReads()
+    {
+        var fixture = new Fixture();
+        using var release = new ManualResetEventSlim();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scans = 0;
+        var vm = fixture.CreateViewModel(getTemporaryFilesSummary: () =>
+        {
+            Interlocked.Increment(ref scans);
+            started.SetResult();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            return new TemporaryFilesSummary(1, 1024);
+        });
+
+        Assert.Contains("Loading", vm.TempFolderSummary);
+        Assert.Equal(0, scans);
+        var initialization = vm.EnsureTemporaryFilesInitializedAsync();
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.False(initialization.IsCompleted);
+            Assert.Same(initialization, vm.EnsureTemporaryFilesInitializedAsync());
+            Assert.Contains("Loading", vm.TempFolderSummary);
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        await initialization;
+        Assert.StartsWith("1 file,", vm.TempFolderSummary);
+        Assert.True(vm.IsTempFolderSummaryAvailable);
+        Assert.Same(initialization, vm.EnsureTemporaryFilesInitializedAsync());
+        Assert.Equal(1, scans);
+    }
+
+    [Fact]
+    public async Task TemporaryFiles_ClosingDuringScanDiscardsLateSummary()
+    {
+        using var release = new ManualResetEventSlim();
+        var vm = new Fixture().CreateViewModel(getTemporaryFilesSummary: () =>
+        {
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            return new TemporaryFilesSummary(7, 42);
+        });
+        var initialization = vm.EnsureTemporaryFilesInitializedAsync();
+        vm.NotifyClosed();
+        var notifications = 0;
+        vm.PropertyChanged += (_, _) => notifications++;
+        release.Set();
+        await initialization;
+
+        Assert.Equal(0, notifications);
+        Assert.Contains("Loading", vm.TempFolderSummary);
+        Assert.True(vm.EnsureTemporaryFilesInitializedAsync().IsCompletedSuccessfully);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TemporaryFiles_UnavailableDirectoryShowsAnError(bool accessDenied)
+    {
+        var vm = new Fixture().CreateViewModel(getTemporaryFilesSummary: () =>
+            throw (accessDenied ? (Exception)new UnauthorizedAccessException() : new IOException()));
+
+        await vm.EnsureTemporaryFilesInitializedAsync();
+
+        Assert.Contains("Couldn't read temporary files", vm.TempFolderSummary);
+        // The purge dialog must not quote the error text as if it were a size.
+        Assert.False(vm.IsTempFolderSummaryAvailable);
+    }
+
+    [Fact]
+    public async Task TemporaryFiles_PurgeRunsOffThreadAndRefreshesCachedSummary()
+    {
+        using var release = new ManualResetEventSlim();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scans = 0;
+        var vm = new Fixture().CreateViewModel(
+            getTemporaryFilesSummary: () => new TemporaryFilesSummary(
+                Interlocked.Increment(ref scans) == 1 ? 3 : 1, 42),
+            purgeTemporaryFiles: () =>
+            {
+                started.SetResult();
+                Assert.True(release.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+                return new TemporaryFilesPurgeResult(2, 1);
+            });
+        var purge = vm.PurgeTempFilesAsync();
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.False(purge.IsCompleted);
+            Assert.StartsWith("3 files,", vm.TempFolderSummary);
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        Assert.Equal(new TemporaryFilesPurgeResult(2, 1), await purge);
+        Assert.StartsWith("1 file,", vm.TempFolderSummary);
+        Assert.Equal(2, scans);
+    }
+
+    [Fact]
+    public async Task TemporaryFiles_ClosingDuringPurgeDoesNotRescanOrPublish()
+    {
+        using var release = new ManualResetEventSlim();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scans = 0;
+        var vm = new Fixture().CreateViewModel(
+            getTemporaryFilesSummary: () => new TemporaryFilesSummary(Interlocked.Increment(ref scans), 42),
+            purgeTemporaryFiles: () =>
+            {
+                started.SetResult();
+                Assert.True(release.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+                return new TemporaryFilesPurgeResult(1, 0);
+            });
+        var purge = vm.PurgeTempFilesAsync();
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            vm.NotifyClosed();
+        }
+        finally
+        {
+            release.Set();
+        }
+        var notifications = 0;
+        vm.PropertyChanged += (_, _) => notifications++;
+
+        Assert.Equal(new TemporaryFilesPurgeResult(1, 0), await purge);
+        Assert.Equal(0, notifications);
+        Assert.Equal(1, scans);
+    }
+
+    [Fact]
     public void IncludeTinyClips_LoadsWithGeneral_PersistsAndResetsWithoutRealizationWrites()
     {
         var fixture = new Fixture();
@@ -929,9 +1066,12 @@ public sealed class SettingsViewModelTests
 
         public SettingsViewModel CreateViewModel(
             ITeleprompterTranscriptSaveScheduler? scheduler = null,
-            IClipAnalyticsService? analytics = null) => new(
+            IClipAnalyticsService? analytics = null,
+            Func<TemporaryFilesSummary>? getTemporaryFilesSummary = null,
+            Func<TemporaryFilesPurgeResult>? purgeTemporaryFiles = null) => new(
             Settings, new FakeHotKeys(), LaunchAtLogin, Audio, Webcams, new FakeStorage(),
-            analytics ?? Analytics, Credentials, dispatcherQueue: null, transcriptSaveScheduler: scheduler);
+            analytics ?? Analytics, Credentials, dispatcherQueue: null, transcriptSaveScheduler: scheduler,
+            getTemporaryFilesSummary: getTemporaryFilesSummary, purgeTemporaryFiles: purgeTemporaryFiles);
     }
 
     private sealed class CountingSettingsStore : ISettingsService, ILargeTextSettingsService

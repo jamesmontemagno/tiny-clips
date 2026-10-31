@@ -101,9 +101,25 @@ public partial class App : Application
     // The fourth capture tile, between Video and GIF. Only there while Studio is switched on.
     private CaptureTile? _studioTile;
 
-    // The tiles of the popup as it was last built, in their order.
+    // The retained tiles currently visible in the popup, in their order.
     private IReadOnlyList<CaptureTile> _captureTiles = [];
     private TrayPopupWindow? _trayPopup;
+    private Grid? _trayLayout;
+    private Grid? _trayTiles;
+    private CaptureTile? _screenshotTile;
+    private Button? _trayTextButton;
+    private double _trayPopupWidth = TrayPopupLayout.Width;
+    private bool _isTrayTilesRefreshPending;
+    private bool _isTrayWidthRefreshPending;
+    private CoalescedAction? _trayWidthInvalidation;
+    private CoalescedAction? _trayStudioInvalidation;
+    private Windows.UI.ViewManagement.UISettings? _trayUiSettings;
+    private DispatcherQueueTimer? _trayRefreshTimer;
+    private CoalescedRefresh<IReadOnlyList<RecentCapture>>? _trayRecentRefresh;
+    private IReadOnlyList<RecentCapture> _trayCaptures = [];
+    private IRecentCaptureService? _trayRecentService;
+    private StudioRecentDrafts? _trayDrafts;
+    private StudioProjectTracker? _trayProjectTracker;
     private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
     private const double TrayPopupHeight = 242;
     private const double TrayPopupFooterHeight = 48;
@@ -200,23 +216,140 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Reads the Studio projects the tray's recent captures list, ahead of the first time the
-    /// popup shows, and again whenever an editor opens or closes. The popup asks once more as
-    /// it is about to show. With Studio switched off nothing is read and nothing is listed.
+    /// Refreshes the retained menu independently of opening it. Internal mutations notify us;
+    /// a single slow timer covers externally deleted/moved captures and edited Studio projects.
     /// </summary>
     private void WatchStudioDrafts()
     {
-        var drafts = Services.GetRequiredService<StudioRecentDrafts>();
-        drafts.Changed += (_, _) => RefreshRecentCapturesButton();
-        Services.GetRequiredService<StudioProjectTracker>().Changed += (_, _) => ReloadStudioDrafts();
+        _trayDrafts = Services.GetRequiredService<StudioRecentDrafts>();
+        _trayDrafts.Changed += OnTrayDraftsChanged;
+        _trayProjectTracker = Services.GetRequiredService<StudioProjectTracker>();
+        _trayProjectTracker.Changed += OnTrayProjectTrackerChanged;
+        _trayRecentService = Services.GetRequiredService<IRecentCaptureService>();
+        _trayRecentService.Changed += OnRecentCapturesChanged;
+        _trayRecentRefresh = new CoalescedRefresh<IReadOnlyList<RecentCapture>>(
+            () => _trayRecentService!.GetRecentCaptures(),
+            captures =>
+            {
+                _trayCaptures = captures;
+                RefreshRecentCapturesButton();
+            },
+            ex => Debug.WriteLine($"Tray recent capture refresh failed: {ex}"));
+        _trayStudioInvalidation = new CoalescedAction(
+            callback => _dispatcher!.TryEnqueue(() => callback()),
+            () =>
+            {
+                if (_isExiting)
+                {
+                    return;
+                }
+
+                RefreshTrayTiles();
+                RefreshRecentCapturesButton();
+                ReloadStudioDrafts();
+            });
+        Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabledChanged += OnTrayStudioPreviewChanged;
+
+        _trayUiSettings = new Windows.UI.ViewManagement.UISettings();
+        _trayUiSettings.TextScaleFactorChanged += OnTrayTextScaleChanged;
+        _trayUiSettings.ColorValuesChanged += OnTrayColorValuesChanged;
+        ApplyTrayTheme();
+        _trayRefreshTimer = _dispatcher!.CreateTimer();
+        _trayRefreshTimer.Interval = TimeSpan.FromSeconds(30);
+        _trayRefreshTimer.Tick += OnTrayRefreshTick;
+        _trayRecentRefresh.Request();
         ReloadStudioDrafts();
+    }
+
+    // External changes are only polled for while the tray is in use, so an idle app never
+    // keeps waking capture/project drives. Internal changes are pushed by events regardless.
+    private static readonly TimeSpan TrayRefreshActiveWindow = TimeSpan.FromMinutes(5);
+    private long _trayLastShownTicks;
+
+    private void OnTrayRefreshTick(DispatcherQueueTimer sender, object args)
+    {
+        if (_isExiting)
+        {
+            return;
+        }
+
+        if (Environment.TickCount64 - _trayLastShownTicks > (long)TrayRefreshActiveWindow.TotalMilliseconds)
+        {
+            sender.Stop();
+            return;
+        }
+
+        ProbeTrayExternalChanges();
+    }
+
+    private void ProbeTrayExternalChanges()
+    {
+        _trayRecentRefresh?.Request(invalidate: false);
+        _ = _trayDrafts?.ReloadAsync(invalidate: false);
+    }
+
+    /// <summary>
+    /// Keeps the external-change poll alive while the tray is in use. Never reads storage on
+    /// the click: after an idle period the catch-up probe is queued behind the popup's show.
+    /// </summary>
+    private void ResumeTrayRefresh()
+    {
+        _trayLastShownTicks = Environment.TickCount64;
+        if (_isExiting || _trayRefreshTimer is not { IsRunning: false } timer)
+        {
+            return;
+        }
+
+        timer.Start();
+        _dispatcher?.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            if (!_isExiting)
+            {
+                ProbeTrayExternalChanges();
+            }
+        });
+    }
+
+    private void OnTrayDraftsChanged(object? sender, EventArgs args) => RefreshRecentCapturesButton();
+
+    private void OnTrayProjectTrackerChanged(object? sender, EventArgs args) => ReloadStudioDrafts();
+
+    private void OnRecentCapturesChanged(object? sender, EventArgs args) =>
+        _dispatcher?.TryEnqueue(() => _trayRecentRefresh?.Request());
+
+    private void OnTrayStudioPreviewChanged(object? sender, EventArgs args) =>
+        _dispatcher?.TryEnqueue(() => _trayStudioInvalidation?.Request());
+
+    private void OnTrayTextScaleChanged(Windows.UI.ViewManagement.UISettings sender, object args) =>
+        _dispatcher?.TryEnqueue(() => _trayWidthInvalidation?.Request());
+
+    private void OnTrayColorValuesChanged(Windows.UI.ViewManagement.UISettings sender, object args) =>
+        _dispatcher?.TryEnqueue(ApplyTrayTheme);
+
+    private void ApplyTrayTheme()
+    {
+        if (_isExiting || _trayLayout is null || _trayUiSettings is null)
+        {
+            return;
+        }
+
+        var theme = Services.GetRequiredService<ICaptureSettings>().Theme;
+        // Application.RequestedTheme is fixed at startup. Resolve System independently so
+        // changing from an explicit theme to System follows Windows without a restart.
+        var background = _trayUiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
+        _trayLayout.RequestedTheme = theme switch
+        {
+            AppTheme.Light => ElementTheme.Light,
+            AppTheme.Dark => ElementTheme.Dark,
+            _ => background.R + background.G + background.B > 382 ? ElementTheme.Light : ElementTheme.Dark,
+        };
     }
 
     private void ReloadStudioDrafts()
     {
         if (!_isExiting)
         {
-            _ = Services.GetRequiredService<StudioRecentDrafts>().ReloadAsync(RecentCapturesDisplayCount);
+            _ = Services.GetRequiredService<StudioRecentDrafts>().ReloadAsync();
         }
     }
 
@@ -478,7 +611,14 @@ public partial class App : Application
 
         var hotKeys = Services.GetRequiredService<IHotKeyService>();
 
-        _trayPopup = new TrayPopupWindow(BuildTrayPopupContent(hotKeys));
+        // Font/scale invalidations can arrive in a burst. Measure once after WinUI has
+        // applied them, never while handling a tray click.
+        _trayWidthInvalidation = new CoalescedAction(
+            callback => _dispatcher!.TryEnqueue(DispatcherQueuePriority.Low, () => callback()),
+            UpdateTrayPopupWidth);
+        _trayLayout = BuildTrayPopupContent(hotKeys);
+        _trayPopup = new TrayPopupWindow(_trayLayout);
+        RefreshTrayTiles();
 
         _taskbarIcon = new TaskbarIcon
         {
@@ -621,22 +761,67 @@ public partial class App : Application
             return;
         }
 
-        // Built anew each time it is shown, so the Studio tile comes and goes with the Studio
-        // switch in Settings while the app runs.
-        var layout = BuildTrayPopupContent(Services.GetRequiredService<IHotKeyService>());
-        _trayPopup.Content = layout;
+        // All content, state and dimensions are maintained ahead of time. In particular,
+        // opening this window never touches storage, starts thumbnails or resolves services.
+        _trayPopup.ShowNearCursor(_trayPopupWidth, TrayPopupHeight);
+        ResumeTrayRefresh();
+    }
+
+    private void RefreshTrayTiles()
+    {
+        if (_isExiting || _trayTiles is null || _screenshotTile is null || _videoTile is null
+            || _studioTile is null || _gifTile is null)
+        {
+            return;
+        }
+
+        if (_recentCapturesButton?.Flyout is { IsOpen: true })
+        {
+            _isTrayTilesRefreshPending = true;
+            return;
+        }
+
+        _isTrayTilesRefreshPending = false;
+        var hasStudio = Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled;
+        var focusedStudio = _studioTile.Button.FocusState != FocusState.Unfocused;
+        _captureTiles = hasStudio
+            ? [_screenshotTile, _videoTile, _studioTile, _gifTile]
+            : [_screenshotTile, _videoTile, _gifTile];
+        _studioTile.Button.Visibility = hasStudio ? Visibility.Visible : Visibility.Collapsed;
+        _trayTiles.ColumnDefinitions.Clear();
+        for (var column = 0; column < _captureTiles.Count; column++)
+        {
+            _trayTiles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(_captureTiles[column].Button, column);
+        }
+
         UpdateRecordingState();
+        if (focusedStudio && !hasStudio && !_videoTile.Button.Focus(FocusState.Programmatic))
+        {
+            _screenshotTile.Button.Focus(FocusState.Programmatic);
+        }
 
-        // Three tiles have the width they always had, and nothing is measured for them. Four
-        // are given more when a label would wrap in it, as with a larger text size in Windows.
-        var widestLabel = _captureTiles.Count > 3 ? WidestCaptureTileLabel() : 0;
-        var width = TrayPopupLayout.WidthFor(_captureTiles.Count, widestLabel);
-        layout.Width = width;
-        _trayPopup.ShowNearCursor(width, TrayPopupHeight);
+        UpdateTrayPopupWidth();
+    }
 
-        // The popup shows what was read last. A draft made, opened or deleted since then is
-        // read now, and the Recent button is made again when that finds another list.
-        ReloadStudioDrafts();
+    private void UpdateTrayPopupWidth()
+    {
+        if (_isExiting || _trayLayout is null)
+        {
+            return;
+        }
+
+        if (_recentCapturesButton?.Flyout is { IsOpen: true })
+        {
+            _isTrayWidthRefreshPending = true;
+            return;
+        }
+
+        _isTrayWidthRefreshPending = false;
+        _trayPopupWidth = TrayPopupLayout.WidthFor(_captureTiles.Count,
+            _captureTiles.Count > 3 ? WidestCaptureTileLabel() : 0);
+        _trayLayout.Width = _trayPopupWidth;
+        _trayPopup?.Resize(_trayPopupWidth, TrayPopupHeight);
     }
 
     /// <summary>
@@ -650,6 +835,7 @@ public partial class App : Application
         {
             foreach (var tile in _captureTiles)
             {
+                tile.Label.InvalidateMeasure();
                 tile.Label.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
                 widest = Math.Max(widest, tile.Label.DesiredSize.Width);
             }
@@ -682,7 +868,7 @@ public partial class App : Application
             Style = ResourceStyle("BodyStrongTextBlockStyle"),
         });
 
-        var screenshot = CreateCaptureTile(
+        _screenshotTile = CreateCaptureTile(
             "Screenshot",
             GlyphScreenshot,
             hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString,
@@ -696,27 +882,22 @@ public partial class App : Application
             new AsyncRelayCommand(ToggleVideoAsync),
             Dismiss);
 
-        // Only while Studio is switched on. Video is always an ordinary recording; this tile
-        // is the one way to record for Studio. It has no hotkey, so its tooltip names none.
-        _studioTile = null;
-        if (Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
-        {
-            _studioTile = CreateCaptureTile(
-                "Studio",
-                GlyphStudio,
-                accelerator: null,
-                new AsyncRelayCommand(StartStudioRecordingAsync),
-                Dismiss);
+        // Retained even while switched off; RefreshTrayTiles controls visibility and columns.
+        // Video is always ordinary recording, and only this tile starts Studio recording.
+        _studioTile = CreateCaptureTile(
+            "Studio",
+            GlyphStudio,
+            accelerator: null,
+            new AsyncRelayCommand(StartStudioRecordingAsync),
+            Dismiss);
 
-            // "Studio" is enough beside its picture, and too little for a screen reader.
-            var studioButton = _studioTile.Button;
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(studioButton, "TrayStudioRecordingButton");
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(studioButton, "Studio recording");
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
-                studioButton,
-                "Starts a video recording that opens in Tiny Clips Studio, with the screen and camera kept as separate layers.");
-            ToolTipService.SetToolTip(studioButton, "Record a video that opens in Tiny Clips Studio");
-        }
+        var studioButton = _studioTile.Button;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(studioButton, "TrayStudioRecordingButton");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(studioButton, "Studio recording");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+            studioButton,
+            "Starts a video recording that opens in Tiny Clips Studio, with the screen and camera kept as separate layers.");
+        ToolTipService.SetToolTip(studioButton, "Record a video that opens in Tiny Clips Studio");
 
         _gifTile = CreateCaptureTile(
             "GIF",
@@ -727,10 +908,9 @@ public partial class App : Application
 
         // Screenshot, Video, Studio, GIF: three columns, or four with Studio, each as wide as
         // the others.
-        _captureTiles = _studioTile is null
-            ? [screenshot, _videoTile, _gifTile]
-            : [screenshot, _videoTile, _studioTile, _gifTile];
+        _captureTiles = [_screenshotTile, _videoTile, _studioTile, _gifTile];
         var tiles = new Grid { ColumnSpacing = TrayPopupLayout.TileSpacing };
+        _trayTiles = tiles;
         for (var column = 0; column < _captureTiles.Count; column++)
         {
             tiles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -748,20 +928,16 @@ public partial class App : Application
         Grid.SetColumn(folders, 0);
         quickAccess.Children.Add(folders);
 
-        var recent = CreateRecentCapturesButton(Dismiss);
+        var recent = CreateRecentCapturesButton();
         Grid.SetColumn(recent, 1);
         quickAccess.Children.Add(recent);
-        _recentCapturesHost = quickAccess;
         _recentCapturesButton = recent;
         content.Children.Add(quickAccess);
 
-        var contentArea = new Border
-        {
-            Child = content,
-            Background = ThemeBrush("LayerOnAcrylicFillColorDefaultBrush"),
-            BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
-            BorderThickness = new Thickness(0, 0, 0, 1),
-        };
+        // ThemeResource expressions continue following the theme without replacing the UI.
+        var contentArea = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            """<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1"/>""");
+        contentArea.Child = content;
 
         var footer = new Grid
         {
@@ -783,12 +959,13 @@ public partial class App : Application
             new RelayCommand(OpenClipsManagerWindow),
             Dismiss));
 
-        footerActions.Children.Add(CreateFooterButton(
+        _trayTextButton = CreateFooterButton(
             GlyphTextRecognition,
             $"Recognize Text ({hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString})",
             "TrayCaptureTextButton",
             new AsyncRelayCommand(RecognizeTextAsync),
-            Dismiss));
+            Dismiss);
+        footerActions.Children.Add(_trayTextButton);
 #if !TINYCLIPS_STORE_BUILD
         footerActions.Children.Add(CreateFooterButton(
             GlyphCheckForUpdates,
@@ -847,11 +1024,13 @@ public partial class App : Application
             HorizontalContentAlignment = HorizontalAlignment.Center,
             Padding = new Thickness(8, 6, 8, 6),
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, "TrayFoldersButton");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Open capture folders");
         foreach (var type in Enum.GetValues<CaptureType>())
         {
             var capturedType = type;
             var item = new MenuFlyoutItem { Text = $"Open {CaptureTypeLabel(type)} Folder" };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, $"TrayFolder{type}Item");
             item.Click += (_, _) =>
             {
                 dismiss();
@@ -863,193 +1042,129 @@ public partial class App : Application
     }
 
     private const int RecentCapturesDisplayCount = 5;
-    private const double RecentCaptureThumbnailWidth = 40;
-    private const double RecentCaptureThumbnailHeight = 22.5;
 
-    // The Recent button of the popup that was built last, the row it is in, and what it lists.
-    private Grid? _recentCapturesHost;
-    private ButtonBase? _recentCapturesButton;
-    private string[] _recentCaptureIds = [];
+    private DropDownButton? _recentCapturesButton;
+    private readonly TrayRecentItems<MenuFlyoutItem> _recentTrayItems = new();
 
-    /// <summary>
-    /// The lines of the popup's Recent button: the captures that were saved as files and,
-    /// while Studio is switched on, the projects that hold a recording no file has yet,
-    /// mixed by date, five in all.
-    /// </summary>
-    private static IReadOnlyList<RecentMenuEntry> RecentMenuEntries() =>
-        Services.GetRequiredService<StudioRecentDrafts>().EntriesFor(
-            Services.GetRequiredService<IRecentCaptureService>().GetRecentCaptures(),
-            RecentCapturesDisplayCount);
-
-    private ButtonBase CreateRecentCapturesButton(Action dismiss)
+    private DropDownButton CreateRecentCapturesButton()
     {
-        var drafts = Services.GetRequiredService<StudioRecentDrafts>();
-        var thumbnails = Services.GetRequiredService<IThumbnailCache>();
-        var fileSystem = Services.GetRequiredService<IFileSystem>();
-        var entries = RecentMenuEntries();
-        _recentCaptureIds = [.. entries.Select(static entry => entry.Id)];
         var flyout = new MenuFlyout();
         var button = new DropDownButton
         {
-            Content = QuickAccessContent(GlyphHistory, entries.Count == 0 ? "No captures" : $"Recent ({entries.Count})"),
+            Content = QuickAccessContent(GlyphHistory, "No captures"),
             Flyout = flyout,
-            IsEnabled = entries.Count > 0,
+            IsEnabled = false,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             Padding = new Thickness(8, 6, 8, 6),
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, "TrayRecentCapturesButton");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, "Recent captures");
-
-        foreach (var entry in entries)
-        {
-            if (entry.StudioDraft is { } draft)
-            {
-                // A recording that is still a Studio project and has no saved file yet.
-                var title = StudioProjectFolderText.GetTrayDraftTitle(draft);
-                var draftItem = new MenuFlyoutItem
-                {
-                    Text = title,
-                    Icon = new FontIcon { Glyph = GlyphStudio, FontFamily = FluentIconFont, FontSize = 14 },
-                };
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(draftItem, title);
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(draftItem, "Opens this project in Tiny Clips Studio.");
-                draftItem.Click += (_, _) =>
-                {
-                    dismiss();
-                    OpenStudioWindow(draft.Id);
-                };
-                flyout.Items.Add(draftItem);
-                if (drafts.PosterOf(draft.Id) is { } poster)
-                {
-                    _ = LoadStudioDraftPosterAsync(draftItem, poster);
-                }
-
-                continue;
-            }
-
-            var capturedItem = entry.Capture!;
-            var name = $"{Path.GetFileName(capturedItem.Path)} — {CaptureTypeLabel(capturedItem.Type)}, {capturedItem.CapturedAt:g}";
-            var item = new MenuFlyoutItem
-            {
-                Text = name,
-                Icon = new FontIcon { Glyph = CaptureTypeGlyph(capturedItem.Type), FontFamily = FluentIconFont, FontSize = 14 },
-            };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, name);
-            item.Click += (_, _) =>
-            {
-                dismiss();
-                OpenRecentCapture(capturedItem);
-            };
-            flyout.Items.Add(item);
-
-            _ = LoadRecentCaptureThumbnailAsync(item, capturedItem, thumbnails, fileSystem);
-        }
-
+        // Never mutate an open flyout underneath the pointer or keyboard focus. Apply the
+        // latest cached snapshot at Closed, even if the popup is now hidden.
+        flyout.Closed += OnTrayRecentClosed;
         return button;
     }
 
+    private void OnTrayRecentClosed(object? sender, object args)
+    {
+        // A native resize can dismiss a flyout too. Defer Studio/text-size layout changes,
+        // not just its item diff, until the pointer/keyboard user has dismissed Recent.
+        if (_isTrayTilesRefreshPending)
+        {
+            RefreshTrayTiles();
+        }
+        else if (_isTrayWidthRefreshPending)
+        {
+            UpdateTrayPopupWidth();
+        }
+
+        RefreshRecentCapturesButton();
+    }
+
+    private MenuFlyoutItem CreateRecentTrayItem(RecentMenuEntry entry)
+    {
+        void Dismiss() => _trayPopup?.Hide();
+
+        if (entry.StudioDraft is { } draft)
+        {
+            // A recording that is still a Studio project and has no saved file yet.
+            var title = StudioProjectFolderText.GetTrayDraftTitle(draft);
+            var draftItem = new MenuFlyoutItem
+            {
+                Text = title,
+                Icon = new FontIcon { Glyph = GlyphStudio, FontFamily = FluentIconFont, FontSize = 14 },
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(draftItem, $"TrayRecentStudio{draft.Id}");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(draftItem, title);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(draftItem, "Opens this project in Tiny Clips Studio.");
+            draftItem.Click += (_, _) =>
+            {
+                Dismiss();
+                OpenStudioWindow(draft.Id);
+            };
+            return draftItem;
+        }
+
+        var capturedItem = entry.Capture!;
+        var name = $"{Path.GetFileName(capturedItem.Path)} — {CaptureTypeLabel(capturedItem.Type)}, {capturedItem.CapturedAt:g}";
+        var item = new MenuFlyoutItem
+        {
+            Text = name,
+            Icon = new FontIcon { Glyph = CaptureTypeGlyph(capturedItem.Type), FontFamily = FluentIconFont, FontSize = 14 },
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, $"TrayRecentCapture{entry.Id}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, name);
+        item.Click += (_, _) =>
+        {
+            Dismiss();
+            OpenRecentCapture(capturedItem);
+        };
+        return item;
+    }
+
+    private static void UpdateRecentTrayItemText(MenuFlyoutItem item, RecentMenuEntry entry)
+    {
+        var capture = entry.Capture!;
+        var title = entry.StudioDraft is { } draft
+            ? StudioProjectFolderText.GetTrayDraftTitle(draft)
+            : $"{Path.GetFileName(capture.Path)} — {CaptureTypeLabel(capture.Type)}, {capture.CapturedAt:g}";
+        item.Text = title;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, title);
+    }
+
     /// <summary>
-    /// The projects were read again and are not the ones the open popup lists: its Recent
-    /// button is made again in its place. Left as it is while its menu is open, which would
-    /// close under the pointer; the next time the popup shows it is built anew in any case.
+    /// Diff the cached entries, retaining the button and unchanged menu items. Items show a
+        /// type icon only: no thumbnail is read or decoded for the tray.
+        /// Called only by refresh/event completion, never by opening the popup or its flyout.
     /// </summary>
     private void RefreshRecentCapturesButton()
     {
         if (_isExiting
-            || _trayPopup is not { IsOpen: true } popup
-            || _recentCapturesHost is not { } host
-            || _recentCapturesButton is not { } old
-            || (old as DropDownButton)?.Flyout is { IsOpen: true }
-            || RecentMenuEntries().Select(static entry => entry.Id).SequenceEqual(_recentCaptureIds))
+            || _recentCapturesButton is not { Flyout: MenuFlyout flyout } button
+            || flyout.IsOpen)
         {
             return;
         }
 
-        var hadFocus = old.FocusState != FocusState.Unfocused;
-        var button = CreateRecentCapturesButton(popup.Hide);
-        Grid.SetColumn(button, Grid.GetColumn(old));
-        host.Children.Remove(old);
-        host.Children.Add(button);
-        _recentCapturesButton = button;
-        if (hadFocus && button.IsEnabled)
+        var entries = Services.GetRequiredService<StudioRecentDrafts>().EntriesFor(_trayCaptures, RecentCapturesDisplayCount);
+        _recentTrayItems.Update(entries, CreateRecentTrayItem, UpdateRecentTrayItemText);
+        var items = _recentTrayItems.Items;
+        if (!flyout.Items.SequenceEqual(items))
         {
-            button.Focus(FocusState.Programmatic);
-        }
-    }
-
-    /// <summary>
-    /// Shows a draft's poster as its picture. The file is read whole and let go of before the
-    /// picture is made of it, so that an editor that closes meanwhile can write its poster anew.
-    /// </summary>
-    private static async Task LoadStudioDraftPosterAsync(MenuFlyoutItem item, string posterPath)
-    {
-        try
-        {
-            var bytes = await Task.Run(() =>
+            flyout.Items.Clear();
+            foreach (var item in items)
             {
-                using var file = new FileStream(posterPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                var buffer = new byte[file.Length];
-                file.ReadExactly(buffer);
-                return buffer;
-            });
-
-            using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
-            await stream.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(bytes));
-            stream.Seek(0);
-            var picture = new BitmapImage { DecodePixelWidth = ThumbnailCacheService.ThumbnailWidth };
-            await picture.SetSourceAsync(stream);
-            item.Icon = new ImageIcon
-            {
-                Source = picture,
-                Width = RecentCaptureThumbnailWidth,
-                Height = RecentCaptureThumbnailHeight,
-            };
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"The poster of a Studio draft could not be shown ({posterPath}): {ex.Message}");
-        }
-    }
-
-    private async Task LoadRecentCaptureThumbnailAsync(
-        MenuFlyoutItem item,
-        RecentCapture capture,
-        IThumbnailCache thumbnails,
-        IFileSystem fileSystem)
-    {
-        try
-        {
-            if (!fileSystem.FileExists(capture.Path))
-            {
-                return;
+                flyout.Items.Add(item);
             }
 
-            var entry = new ClipEntry(
-                capture.Path,
-                capture.Type,
-                Path.GetFileName(capture.Path),
-                capture.CapturedAt,
-                fileSystem.GetFileSizeBytes(capture.Path));
-
-            var thumbnailPath = await thumbnails.GetThumbnailPathAsync(entry).ConfigureAwait(false);
-            if (thumbnailPath is null)
+            button.Content = QuickAccessContent(GlyphHistory, items.Count == 0 ? "No captures" : $"Recent ({items.Count})");
+            if (items.Count == 0 && button.FocusState != FocusState.Unfocused)
             {
-                return;
+                _screenshotTile?.Button.Focus(FocusState.Programmatic);
             }
 
-            _dispatcher?.TryEnqueue(() =>
-            {
-                item.Icon = new ImageIcon
-                {
-                    Source = new BitmapImage(new Uri(thumbnailPath)) { DecodePixelWidth = ThumbnailCacheService.ThumbnailWidth },
-                    Width = RecentCaptureThumbnailWidth,
-                    Height = RecentCaptureThumbnailHeight,
-                };
-            });
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"CreateRecentCapturesButton: thumbnail load failed for '{capture.Path}': {ex.Message}");
+            button.IsEnabled = items.Count > 0;
         }
     }
 
@@ -1100,6 +1215,20 @@ public partial class App : Application
             TextWrapping = TextWrapping.Wrap,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
+        foreach (var property in new[]
+        {
+            TextBlock.FontFamilyProperty,
+            TextBlock.FontSizeProperty,
+            TextBlock.FontWeightProperty,
+            TextBlock.FontStyleProperty,
+            TextBlock.FontStretchProperty,
+            TextBlock.CharacterSpacingProperty,
+            TextBlock.IsTextScaleFactorEnabledProperty,
+        })
+        {
+            label.RegisterPropertyChangedCallback(property, (_, _) => _trayWidthInvalidation?.Request());
+        }
+
         var panel = new StackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
         panel.Children.Add(icon);
         panel.Children.Add(label);
@@ -1116,6 +1245,7 @@ public partial class App : Application
             CornerRadius = new CornerRadius(8),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, text);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(button, $"Tray{text}CaptureButton");
         ToolTipService.SetToolTip(button, string.IsNullOrEmpty(accelerator) ? text : $"{text} ({accelerator})");
         button.Click += (_, _) => dismiss();
         return new CaptureTile { Button = button, Icon = icon, Label = label };
@@ -1146,9 +1276,6 @@ public partial class App : Application
 
     private static Style? ResourceStyle(string key)
         => Application.Current.Resources.TryGetValue(key, out var value) ? value as Style : null;
-
-    private static Brush? ThemeBrush(string key)
-        => Application.Current.Resources.TryGetValue(key, out var value) ? value as Brush : null;
 
     private Task CaptureScreenshotAsync() => BeginCaptureAsync(CaptureType.Screenshot);
 
@@ -3142,6 +3269,12 @@ public partial class App : Application
         var gif = Services.GetRequiredService<IGifRecordingService>();
         var hotKeys = Services.GetRequiredService<IHotKeyService>();
 
+        if (_taskbarIcon is { } icon)
+        {
+            icon.ToolTipText = video.IsRecording ? "Tiny Clips — Recording video"
+                : gif.IsRecording ? "Tiny Clips — Recording GIF" : "Tiny Clips";
+        }
+
         if (_videoTile is not null)
         {
             var recording = video.IsRecording;
@@ -3149,6 +3282,7 @@ public partial class App : Application
             _videoTile.Icon.Glyph = recording ? GlyphStop : GlyphVideo;
             var accel = recording ? hotKeys.StopRecordingDisplayString : hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
             var label = recording ? "Stop recording" : "Record video";
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_videoTile.Button, label);
             ToolTipService.SetToolTip(_videoTile.Button, string.IsNullOrEmpty(accel) ? label : $"{label} ({accel})");
             _videoTile.Button.IsEnabled = !gif.IsRecording;
         }
@@ -3160,6 +3294,7 @@ public partial class App : Application
             _gifTile.Icon.Glyph = recording ? GlyphStop : GlyphGif;
             var accel = recording ? hotKeys.StopRecordingDisplayString : hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
             var label = recording ? "Stop recording" : "Record GIF";
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_gifTile.Button, label);
             ToolTipService.SetToolTip(_gifTile.Button, string.IsNullOrEmpty(accel) ? label : $"{label} ({accel})");
             _gifTile.Button.IsEnabled = !video.IsRecording;
         }
@@ -3687,7 +3822,23 @@ public partial class App : Application
                     "Hotkeys can only be updated from the TinyClips UI thread."));
         }
 
-        return RegisterGlobalHotKeys();
+        var result = RegisterGlobalHotKeys();
+        var hotKeys = Services.GetRequiredService<IHotKeyService>();
+        if (_screenshotTile is { } screenshot)
+        {
+            ToolTipService.SetToolTip(screenshot.Button,
+                $"Screenshot ({hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString})");
+        }
+
+        if (_trayTextButton is { } textButton)
+        {
+            var label = $"Recognize Text ({hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString})";
+            ToolTipService.SetToolTip(textButton, label);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(textButton, label);
+        }
+
+        UpdateRecordingState();
+        return result;
     }
 
     private static void RevealInExplorer(string path)
@@ -3785,7 +3936,16 @@ public partial class App : Application
             _settingsWindow = new SettingsWindow();
             _settingsWindow.ViewModel.TeleprompterDisplayChanged += () => _teleprompter?.ApplyDisplaySettings();
             _settingsWindow.ViewModel.ClipsLibrarySettingsChanged += () => _clipsManagerWindow?.ReloadSettings();
-            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.ViewModel.ThemeChanged += ApplyTrayTheme;
+            _settingsWindow.Closed += (sender, _) =>
+            {
+                if (sender is SettingsWindow closed)
+                {
+                    closed.ViewModel.ThemeChanged -= ApplyTrayTheme;
+                }
+
+                _settingsWindow = null;
+            };
         }
 
         if (section is { } kind)
@@ -3945,6 +4105,44 @@ public partial class App : Application
         }
 
         _isExiting = true;
+        if (_trayRefreshTimer is { } refreshTimer)
+        {
+            refreshTimer.Stop();
+            refreshTimer.Tick -= OnTrayRefreshTick;
+            _trayRefreshTimer = null;
+        }
+
+        _trayRecentRefresh?.Dispose();
+        _trayWidthInvalidation?.Dispose();
+        _trayStudioInvalidation?.Dispose();
+        if (_trayUiSettings is { } uiSettings)
+        {
+            uiSettings.TextScaleFactorChanged -= OnTrayTextScaleChanged;
+            uiSettings.ColorValuesChanged -= OnTrayColorValuesChanged;
+        }
+
+        if (_trayRecentService is { } recentService)
+        {
+            recentService.Changed -= OnRecentCapturesChanged;
+        }
+
+        if (_trayDrafts is { } drafts)
+        {
+            drafts.Changed -= OnTrayDraftsChanged;
+        }
+
+        if (_trayProjectTracker is { } tracker)
+        {
+            tracker.Changed -= OnTrayProjectTrackerChanged;
+        }
+
+        if (_settingsWindow is { } settingsWindow)
+        {
+            settingsWindow.ViewModel.ThemeChanged -= ApplyTrayTheme;
+        }
+
+        Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabledChanged -= OnTrayStudioPreviewChanged;
+
         CancelCaptureFlow();
         try
         {

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Windows.Storage;
 using TinyClips.Core.Models;
@@ -6,7 +7,7 @@ namespace TinyClips.Core.Services;
 
 public sealed class SettingsService : ISettingsService, ILargeTextSettingsService
 {
-    private readonly Dictionary<string, object> _fallbackValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, object> _fallbackValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly string? _largeTextDirectory;
 
     public SettingsService()
@@ -144,7 +145,7 @@ public sealed class SettingsService : ISettingsService, ILargeTextSettingsServic
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(temporaryPath, persistedValue);
             File.Move(temporaryPath, path, overwrite: true);
-            _fallbackValues.Remove(key);
+            _fallbackValues.TryRemove(key, out _);
         }
         catch (IOException ex)
         {

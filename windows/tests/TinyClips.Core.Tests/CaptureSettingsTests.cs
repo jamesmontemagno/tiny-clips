@@ -7,6 +7,19 @@ namespace TinyClips.Core.Tests;
 public sealed class CaptureSettingsTests
 {
     [Fact]
+    public void StudioSwitchNotifiesLiveTrayForActualChangesIncludingReset()
+    {
+        var settings = new CaptureSettings(new TestSettingsService());
+        var observed = new List<bool>();
+        settings.StudioPreviewEnabledChanged += (_, _) => observed.Add(settings.StudioPreviewEnabled);
+        settings.StudioPreviewEnabled = true; // Default, not a change.
+        settings.StudioPreviewEnabled = false;
+        settings.StudioPreviewEnabled = false;
+        settings.ResetToDefaults();
+        Assert.Equal([false, true], observed);
+    }
+
+    [Fact]
     public void IncludeTinyClips_DefaultsOff_PersistsAcrossInstances_AndResets()
     {
         var store = new TestSettingsService();
