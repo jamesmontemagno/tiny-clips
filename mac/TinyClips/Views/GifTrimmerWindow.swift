@@ -6,16 +6,34 @@ import ImageIO
 
 struct GifCaptureData {
     let frames: [CGImage]
-    let frameDelay: Double
+    let timing: GifTiming
     let maxWidth: CGFloat
 
-    init(frames: [CGImage], frameDelay: Double, maxWidth: CGFloat) {
+    init(frames: [CGImage], frameDelay: Double, maxWidth: CGFloat) throws {
+        try self.init(frames: frames, timing: GifTiming(frameCount: frames.count, frameDelay: frameDelay), maxWidth: maxWidth)
+    }
+
+    init(frames: [CGImage], frameDelays: [Double], maxWidth: CGFloat) throws {
+        try self.init(frames: frames, timing: GifTiming(frameDelays: frameDelays, frameCount: frames.count), maxWidth: maxWidth)
+    }
+
+    private init(frames: [CGImage], timing: GifTiming, maxWidth: CGFloat) {
         self.frames = frames
-        self.frameDelay = frameDelay
+        self.timing = timing
         self.maxWidth = maxWidth
     }
 
-    init(contentsOf url: URL) throws {
+    func replacingFrames(_ frames: [CGImage]) throws -> GifCaptureData {
+        guard frames.count == timing.frameDelays.count else { throw GifTimingError.misalignedFrames }
+        return GifCaptureData(frames: frames, timing: timing, maxWidth: maxWidth)
+    }
+
+    func selecting(_ range: ClosedRange<Int>, speed: Double) throws -> GifCaptureData {
+        let selectedTiming = try timing.selecting(range).scaled(by: speed)
+        return GifCaptureData(frames: Array(frames[range]), timing: selectedTiming, maxWidth: maxWidth)
+    }
+
+    init(contentsOf url: URL, defaultFrameDelay: Double = 0.1) throws {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             throw CocoaError(.fileReadCorruptFile)
         }
@@ -23,27 +41,28 @@ struct GifCaptureData {
         let frameCount = CGImageSourceGetCount(source)
         var decodedFrames: [CGImage] = []
         decodedFrames.reserveCapacity(frameCount)
-        var totalDelay = 0.0
+        var delays: [Double] = []
+        delays.reserveCapacity(frameCount)
 
         for index in 0..<frameCount {
-            guard let frame = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
+            guard let frame = CGImageSourceCreateImageAtIndex(source, index, nil) else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
             decodedFrames.append(frame)
 
             let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
             let gifProperties = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
-            let frameDelay = (gifProperties?[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
-                ?? (gifProperties?[kCGImagePropertyGIFDelayTime] as? Double)
-                ?? 0.1
-            totalDelay += max(0.01, frameDelay)
+            delays.append(GifTiming.decodedDelay(
+                unclamped: gifProperties?[kCGImagePropertyGIFUnclampedDelayTime] as? Double,
+                clamped: gifProperties?[kCGImagePropertyGIFDelayTime] as? Double,
+                fallback: defaultFrameDelay
+            ))
         }
 
-        frames = decodedFrames
-        guard !frames.isEmpty else {
+        guard let width = decodedFrames.map(\.width).max() else {
             throw CocoaError(.fileReadCorruptFile)
         }
-
-        frameDelay = totalDelay / Double(frames.count)
-        maxWidth = CGFloat(frames.map(\.width).max() ?? 1)
+        try self.init(frames: decodedFrames, frameDelays: delays, maxWidth: CGFloat(width))
     }
 }
 
@@ -388,9 +407,9 @@ private struct GifTrimmerView: View {
             Text("This permanently deletes the GIF and closes the trimmer without saving. This cannot be undone.")
         }
         .onAppear(perform: configureMenuActions)
-        .onDisappear(perform: menuActions.clear)
-        .onChange(of: viewModel.speed) { _, _ in
-            viewModel.restartPlaybackTimerIfNeeded()
+        .onDisappear {
+            viewModel.stopPlayback()
+            menuActions.clear()
         }
         .disabled(isSaving)
         .overlay {
@@ -451,11 +470,12 @@ private struct GifTrimmerView: View {
         let destinationURL = outputURL
 
         DispatchQueue.main.async {
-            if let url = viewModel.exportGif(to: destinationURL, trimmed: true) {
-                isSaving = false
+            defer { isSaving = false }
+            do {
+                let url = try viewModel.exportGif(to: destinationURL, trimmed: true)
                 onDone(url)
-            } else {
-                isSaving = false
+            } catch {
+                SaveService.shared.showError("Could not save the GIF: \(error.localizedDescription)")
             }
         }
     }
@@ -656,7 +676,8 @@ private struct GifTrimSlider: View {
 // MARK: - ViewModel
 
 @MainActor
-private class GifTrimmerViewModel: ObservableObject {
+final class GifTrimmerViewModel: ObservableObject {
+    typealias PlaybackScheduler = (TimeInterval, @escaping @MainActor () -> Void) -> () -> Void
     static let speedOptions: [Double] = [0.5, 0.75, 1.0, 1.1, 1.25, 1.5, 2.0]
 
     static func speedLabel(for value: Double) -> String {
@@ -672,13 +693,18 @@ private class GifTrimmerViewModel: ObservableObject {
     @Published var trimStartFrame: Int = 0
     @Published var trimEndFrame: Int = 0
     @Published var isPlaying = false
-    @Published var speed: Double = 1.0
+    @Published var speed: Double = 1.0 {
+        didSet {
+            playbackTiming = gifData.timing.scaled(by: speed)
+            restartPlaybackTimerIfNeeded()
+        }
+    }
+    private var playbackTiming: GifTiming
 
     var totalFrames: Int { gifData.frames.count }
     var trimmedFrameCount: Int { max(0, trimEndFrame - trimStartFrame + 1) }
-    var effectiveFrameDelay: Double { max(0.01, gifData.frameDelay / speed) }
-    var totalDurationSeconds: Double { Double(totalFrames) * effectiveFrameDelay }
-    var trimmedDurationSeconds: Double { Double(trimmedFrameCount) * effectiveFrameDelay }
+    var totalDurationSeconds: Double { playbackTiming.duration }
+    var trimmedDurationSeconds: Double { playbackTiming.duration(in: trimStartFrame...trimEndFrame) }
 
     /// Whether the frame range or speed differs from the GIF as it was opened.
     var hasUnsavedChanges: Bool {
@@ -696,15 +722,27 @@ private class GifTrimmerViewModel: ObservableObject {
         return gifData.frames[currentFrameIndex]
     }
 
-    private var playbackTimer: Timer?
+    private let schedulePlayback: PlaybackScheduler
+    private var cancelPlayback: (() -> Void)?
+    private var playbackGeneration = 0
 
-    init(gifData: GifCaptureData) {
+    init(gifData: GifCaptureData, schedulePlayback: PlaybackScheduler? = nil) {
         self.gifData = gifData
+        self.playbackTiming = gifData.timing
+        self.schedulePlayback = schedulePlayback ?? Self.scheduleTimer
         self.trimEndFrame = max(0, gifData.frames.count - 1)
+    }
+
+    private static func scheduleTimer(after delay: TimeInterval, action: @escaping @MainActor () -> Void) -> () -> Void {
+        let timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
+            DispatchQueue.main.async { action() }
+        }
+        return { timer.invalidate() }
     }
 
     func seekTo(frame: Int) {
         currentFrameIndex = max(0, min(frame, totalFrames - 1))
+        restartPlaybackTimerIfNeeded()
     }
 
     func stepFrame(by offset: Int) {
@@ -714,7 +752,7 @@ private class GifTrimmerViewModel: ObservableObject {
     }
 
     var currentDurationSeconds: Double {
-        Double(currentFrameIndex) * effectiveFrameDelay
+        playbackTiming.startTime(of: currentFrameIndex)
     }
 
     func togglePlayback() {
@@ -728,89 +766,33 @@ private class GifTrimmerViewModel: ObservableObject {
     private func startPlayback() {
         isPlaying = true
         currentFrameIndex = trimStartFrame
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: effectiveFrameDelay, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            DispatchQueue.main.async {
-                if self.currentFrameIndex >= self.trimEndFrame {
-                    self.currentFrameIndex = self.trimStartFrame
-                } else {
-                    self.currentFrameIndex += 1
-                }
-            }
-        }
+        restartPlaybackTimerIfNeeded()
     }
 
-    private func stopPlayback() {
+    func stopPlayback() {
         isPlaying = false
-        playbackTimer?.invalidate()
-        playbackTimer = nil
+        playbackGeneration += 1
+        cancelPlayback?()
+        cancelPlayback = nil
     }
 
     func restartPlaybackTimerIfNeeded() {
         guard isPlaying else { return }
-        playbackTimer?.invalidate()
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: effectiveFrameDelay, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            DispatchQueue.main.async {
-                if self.currentFrameIndex >= self.trimEndFrame {
-                    self.currentFrameIndex = self.trimStartFrame
-                } else {
-                    self.currentFrameIndex += 1
-                }
-            }
+        cancelPlayback?()
+        playbackGeneration += 1
+        let generation = playbackGeneration
+        cancelPlayback = schedulePlayback(playbackTiming.frameDelays[currentFrameIndex]) { [weak self] in
+            guard let self, self.isPlaying, self.playbackGeneration == generation else { return }
+            self.currentFrameIndex = self.currentFrameIndex >= self.trimEndFrame
+                ? self.trimStartFrame : self.currentFrameIndex + 1
+            self.restartPlaybackTimerIfNeeded()
         }
     }
 
-    func exportGif(to url: URL, trimmed: Bool) -> URL? {
+    func exportGif(to url: URL, trimmed: Bool) throws -> URL {
         stopPlayback()
-
-        let frames: [CGImage]
-        if trimmed {
-            let start = max(0, trimStartFrame)
-            let end = min(gifData.frames.count - 1, trimEndFrame)
-            frames = Array(gifData.frames[start...end])
-        } else {
-            frames = gifData.frames
-        }
-
-        guard !frames.isEmpty else { return nil }
-
-        // Downscale if needed
-        let processedFrames: [CGImage]
-        if CGFloat(frames[0].width) > gifData.maxWidth {
-            let scale = gifData.maxWidth / CGFloat(frames[0].width)
-            let newWidth = Int(gifData.maxWidth)
-            let newHeight = Int(CGFloat(frames[0].height) * scale)
-            let size = CGSize(width: newWidth, height: newHeight)
-            processedFrames = frames.compactMap { downscale($0, to: size) }
-        } else {
-            processedFrames = frames
-        }
-
-        guard let destination = CGImageDestinationCreateWithURL(
-            url as CFURL,
-            "com.compuserve.gif" as CFString,
-            processedFrames.count,
-            nil
-        ) else { return nil }
-
-        let gifProperties: [String: Any] = [
-            kCGImagePropertyGIFDictionary as String: [
-                kCGImagePropertyGIFLoopCount: 0,
-            ],
-        ]
-        CGImageDestinationSetProperties(destination, gifProperties as CFDictionary)
-
-        for frame in processedFrames {
-            let frameProperties: [String: Any] = [
-                kCGImagePropertyGIFDictionary as String: [
-                    kCGImagePropertyGIFDelayTime: effectiveFrameDelay,
-                ],
-            ]
-            CGImageDestinationAddImage(destination, frame, frameProperties as CFDictionary)
-        }
-
-        guard CGImageDestinationFinalize(destination) else { return nil }
+        let range = trimmed ? trimStartFrame...trimEndFrame : 0...(totalFrames - 1)
+        try GifWriter.writeGIF(gifData.selecting(range, speed: speed), to: url)
         return url
     }
 
@@ -829,20 +811,6 @@ private class GifTrimmerViewModel: ObservableObject {
         return directoryURL
     }
 
-    private func downscale(_ image: CGImage, to size: CGSize) -> CGImage? {
-        guard let context = CGContext(
-            data: nil,
-            width: Int(size.width),
-            height: Int(size.height),
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-        ) else { return nil }
-        context.interpolationQuality = .high
-        context.draw(image, in: CGRect(origin: .zero, size: size))
-        return context.makeImage()
-    }
 }
 
 // MARK: - Cursor modifier

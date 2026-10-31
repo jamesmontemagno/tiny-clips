@@ -58,7 +58,7 @@ class GifWriter: NSObject, @unchecked Sendable {
             throw CaptureError.noFrames
         }
 
-        try GifWriter.writeGIF(frames: capturedFrames, frameDelay: frameDelay, maxWidth: maxWidth, to: outputURL)
+        try GifWriter.writeGIF(GifCaptureData(frames: capturedFrames, frameDelay: frameDelay, maxWidth: maxWidth), to: outputURL)
     }
 
     func stopAndReturnData() async throws -> GifCaptureData {
@@ -72,7 +72,7 @@ class GifWriter: NSObject, @unchecked Sendable {
             throw CaptureError.noFrames
         }
 
-        return GifCaptureData(frames: capturedFrames, frameDelay: frameDelay, maxWidth: maxWidth)
+        return try GifCaptureData(frames: capturedFrames, frameDelay: frameDelay, maxWidth: maxWidth)
     }
 
     func finishAfterStreamFailure() throws -> GifCaptureData {
@@ -84,7 +84,7 @@ class GifWriter: NSObject, @unchecked Sendable {
             throw CaptureError.noFrames
         }
 
-        return GifCaptureData(frames: capturedFrames, frameDelay: frameDelay, maxWidth: maxWidth)
+        return try GifCaptureData(frames: capturedFrames, frameDelay: frameDelay, maxWidth: maxWidth)
     }
 
     func pause() {
@@ -109,22 +109,35 @@ class GifWriter: NSObject, @unchecked Sendable {
         }
     }
 
-    static func writeGIF(frames: [CGImage], frameDelay: Double, maxWidth: CGFloat, to url: URL) throws {
-        let processedFrames: [CGImage]
+    static func writeGIF(_ gifData: GifCaptureData, to url: URL) throws {
+        let frames = gifData.frames
+        let maxWidth = gifData.maxWidth
+        guard maxWidth.isFinite, maxWidth >= 1 else { throw CaptureError.saveFailed }
+        let outputSize: CGSize?
         if CGFloat(frames[0].width) > maxWidth {
             let scale = maxWidth / CGFloat(frames[0].width)
             let newWidth = Int(maxWidth)
-            let newHeight = Int(CGFloat(frames[0].height) * scale)
-            let size = CGSize(width: newWidth, height: newHeight)
-            processedFrames = frames.compactMap { GifWriter.downscale($0, to: size) }
+            let newHeight = max(1, Int(CGFloat(frames[0].height) * scale))
+            outputSize = CGSize(width: newWidth, height: newHeight)
         } else {
-            processedFrames = frames
+            outputSize = nil
         }
 
+        // Finalize beside the destination before replacing an existing capture.
+        let stagedURL = url.deletingLastPathComponent().appendingPathComponent(".\(UUID().uuidString).gif")
+        defer {
+            if FileManager.default.fileExists(atPath: stagedURL.path) {
+                do {
+                    try FileManager.default.removeItem(at: stagedURL)
+                } catch {
+                    NSLog("Could not remove temporary GIF: %@", error.localizedDescription)
+                }
+            }
+        }
         guard let destination = CGImageDestinationCreateWithURL(
-            url as CFURL,
+            stagedURL as CFURL,
             "com.compuserve.gif" as CFString,
-            processedFrames.count,
+            frames.count,
             nil
         ) else {
             throw CaptureError.saveFailed
@@ -137,17 +150,31 @@ class GifWriter: NSObject, @unchecked Sendable {
         ]
         CGImageDestinationSetProperties(destination, gifProperties as CFDictionary)
 
-        for frame in processedFrames {
+        for (index, frame) in frames.enumerated() {
+            let processedFrame: CGImage
+            if let outputSize {
+                guard let scaled = GifWriter.downscale(frame, to: outputSize) else {
+                    throw CaptureError.saveFailed
+                }
+                processedFrame = scaled
+            } else {
+                processedFrame = frame
+            }
             let frameProperties: [String: Any] = [
                 kCGImagePropertyGIFDictionary as String: [
-                    kCGImagePropertyGIFDelayTime: frameDelay,
+                    kCGImagePropertyGIFDelayTime: gifData.timing.frameDelays[index],
                 ],
             ]
-            CGImageDestinationAddImage(destination, frame, frameProperties as CFDictionary)
+            CGImageDestinationAddImage(destination, processedFrame, frameProperties as CFDictionary)
         }
 
         guard CGImageDestinationFinalize(destination) else {
             throw CaptureError.saveFailed
+        }
+        if FileManager.default.fileExists(atPath: url.path) {
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: stagedURL)
+        } else {
+            try FileManager.default.moveItem(at: stagedURL, to: url)
         }
     }
 

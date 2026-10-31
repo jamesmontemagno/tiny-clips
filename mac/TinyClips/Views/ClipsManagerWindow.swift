@@ -978,8 +978,11 @@ private class ClipsViewModel: ObservableObject {
     }
 
     private func presentGifTrimmer(_ item: ClipItem) {
-        guard let gifData = makeGifCaptureData(from: item.url) else {
-            SaveService.shared.showError("Could not load GIF frames for trimming.")
+        let gifData: GifCaptureData
+        do {
+            gifData = try GifCaptureData(contentsOf: item.url, defaultFrameDelay: 0.08)
+        } catch {
+            SaveService.shared.showError("Could not load GIF frames for trimming: \(error.localizedDescription)")
             return
         }
 
@@ -1010,35 +1013,6 @@ private class ClipsViewModel: ObservableObject {
 
     private func releaseEditorWindow(_ window: NSWindow) {
         editorWindows.removeAll { $0 === window }
-    }
-
-    private func makeGifCaptureData(from url: URL) -> GifCaptureData? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        let count = CGImageSourceGetCount(source)
-        guard count > 0 else { return nil }
-
-        var frames: [CGImage] = []
-        var frameDelay: Double = 0.08
-        var maxWidth: CGFloat = 0
-
-        for index in 0..<count {
-            guard let cgImage = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
-            frames.append(cgImage)
-            maxWidth = max(maxWidth, CGFloat(cgImage.width))
-
-            if index == 0,
-               let props = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
-               let gifDict = props[kCGImagePropertyGIFDictionary] as? [CFString: Any] {
-                if let unclamped = gifDict[kCGImagePropertyGIFUnclampedDelayTime] as? Double {
-                    frameDelay = unclamped
-                } else if let delayed = gifDict[kCGImagePropertyGIFDelayTime] as? Double {
-                    frameDelay = delayed
-                }
-            }
-        }
-
-        guard !frames.isEmpty else { return nil }
-        return GifCaptureData(frames: frames, frameDelay: frameDelay, maxWidth: maxWidth)
     }
 
     private func matchesSearch(item: ClipItem, query: String) -> Bool {

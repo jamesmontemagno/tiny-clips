@@ -1781,8 +1781,8 @@ class CaptureManager: ObservableObject {
                         let overlayStyle = settings.mouseClickOverlayStyle(for: .gif)
                         let region = capturedMouseClickData.region
                         let events = capturedMouseClickData.events
-                        gifData = await Self.runOffMain {
-                            MouseClickOverlayProcessor.overlayOnGif(
+                        gifData = try await Self.runOffMainThrowing {
+                            try MouseClickOverlayProcessor.overlayOnGif(
                                 gifData: inputGifData,
                                 region: region,
                                 events: events,
@@ -1793,8 +1793,8 @@ class CaptureManager: ObservableObject {
 
                     if settings.showBrandingOverlay {
                         let inputGifData = gifData
-                        gifData = await Self.runOffMain {
-                            BrandingOverlayProcessor.applyToGifData(inputGifData)
+                        gifData = try await Self.runOffMainThrowing {
+                            try BrandingOverlayProcessor.applyToGifData(inputGifData)
                         }
                     }
 
@@ -1803,12 +1803,7 @@ class CaptureManager: ObservableObject {
                     if shouldSaveImmediately {
                         let dataToWrite = gifData
                         try await Self.runOffMainThrowing {
-                            try GifWriter.writeGIF(
-                                frames: dataToWrite.frames,
-                                frameDelay: dataToWrite.frameDelay,
-                                maxWidth: dataToWrite.maxWidth,
-                                to: url
-                            )
+                            try GifWriter.writeGIF(dataToWrite, to: url)
                         }
                         SaveService.shared.handleSavedFile(url: url, type: .gif)
                     }
@@ -1827,12 +1822,7 @@ class CaptureManager: ObservableObject {
                     } else {
                         let gifData = try writer.finishAfterStreamFailure()
                         try await Self.runOffMainThrowing {
-                            try GifWriter.writeGIF(
-                                frames: gifData.frames,
-                                frameDelay: gifData.frameDelay,
-                                maxWidth: gifData.maxWidth,
-                                to: url
-                            )
+                            try GifWriter.writeGIF(gifData, to: url)
                         }
                     }
                     savedGifURL = url
@@ -1850,18 +1840,13 @@ class CaptureManager: ObservableObject {
 
                             try await Self.runOffMainThrowing {
                                 let gifData = try MouseClickOverlayProcessor.loadGifCaptureData(from: url)
-                                let processedGifData = MouseClickOverlayProcessor.overlayOnGif(
+                                let processedGifData = try MouseClickOverlayProcessor.overlayOnGif(
                                     gifData: gifData,
                                     region: region,
                                     events: events,
                                     style: overlayStyle
                                 )
-                                try GifWriter.writeGIF(
-                                    frames: processedGifData.frames,
-                                    frameDelay: processedGifData.frameDelay,
-                                    maxWidth: processedGifData.maxWidth,
-                                    to: tempURL
-                                )
+                                try GifWriter.writeGIF(processedGifData, to: tempURL)
                             }
 
                             if FileManager.default.fileExists(atPath: tempURL.path) {
@@ -1879,13 +1864,8 @@ class CaptureManager: ObservableObject {
 
                             try await Self.runOffMainThrowing {
                                 let gifData = try MouseClickOverlayProcessor.loadGifCaptureData(from: url)
-                                let processedGifData = BrandingOverlayProcessor.applyToGifData(gifData)
-                                try GifWriter.writeGIF(
-                                    frames: processedGifData.frames,
-                                    frameDelay: processedGifData.frameDelay,
-                                    maxWidth: processedGifData.maxWidth,
-                                    to: tempURL
-                                )
+                                let processedGifData = try BrandingOverlayProcessor.applyToGifData(gifData)
+                                try GifWriter.writeGIF(processedGifData, to: tempURL)
                             }
 
                             if FileManager.default.fileExists(atPath: tempURL.path) {
@@ -2069,11 +2049,12 @@ class CaptureManager: ObservableObject {
             }
             showTrimmer(for: item.url, saveImmediately: true)
         case .gif:
-            guard let gifData = try? GifCaptureData(contentsOf: item.url) else {
-                SaveService.shared.showError("GIF could not be opened.")
-                return
+            do {
+                let gifData = try GifCaptureData(contentsOf: item.url)
+                showGifTrimmer(gifData: gifData, outputURL: item.url)
+            } catch {
+                SaveService.shared.showError("GIF could not be opened: \(error.localizedDescription)")
             }
-            showGifTrimmer(gifData: gifData, outputURL: item.url)
         }
     }
 
