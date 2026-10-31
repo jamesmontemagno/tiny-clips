@@ -589,17 +589,16 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
         var all = _itemsByPath.Values.Select(item => item.Clip).ToList();
         var now = _time.GetUtcNow();
         var counts = ClipQueryEngine.CountSmartCollections(all, now);
+        var sidebar = ClipSidebarAggregate.Create(all);
         foreach (var entry in SmartCollections)
         {
             entry.Count = counts.TryGetValue(entry.SmartCollection!.Value, out var count) ? count : 0;
         }
 
-        SyncNavigationEntries(Collections, ClipQueryEngine.CollectCollections(all), NavigationEntryKind.Collection, "\uE8B7",
-            value => all.Count(clip => ClipQueryEngine.MatchesCollection(clip, value)));
-        SyncNavigationEntries(TagEntries, ClipQueryEngine.CollectTags(all), NavigationEntryKind.Tag, "\uE8EC",
-            value => all.Count(clip => ClipQueryEngine.MatchesTag(clip, value)));
+        SyncNavigationEntries(Collections, sidebar.Collections, NavigationEntryKind.Collection, "\uE8B7", sidebar.CollectionCount);
+        SyncNavigationEntries(TagEntries, sidebar.Tags, NavigationEntryKind.Tag, "\uE8EC", sidebar.TagCount);
 
-        var tags = ClipQueryEngine.CollectTags(all);
+        var tags = sidebar.Tags;
         if (!Tags.SequenceEqual(tags))
         {
             Tags.Clear();
@@ -616,7 +615,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
         }
 
         Detail.CollectionSuggestions.Clear();
-        foreach (var collection in ClipQueryEngine.CollectCollections(all))
+        foreach (var collection in sidebar.Collections)
         {
             Detail.CollectionSuggestions.Add(collection);
         }
