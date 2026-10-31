@@ -718,7 +718,7 @@ private class ClipsViewModel: ObservableObject {
 
     func uploadToUploadcare(_ item: ClipItem) {
         guard canUploadToUploadcare else {
-            SaveService.shared.showError("Configure Uploadcare in Clips Manager settings before uploading.")
+            SaveService.shared.showError("Configure Uploadcare in Clips Library settings before uploading.")
             return
         }
 
@@ -1077,7 +1077,7 @@ private class ClipsViewModel: ObservableObject {
     }
 }
 
-// MARK: - Clips Manager Content View
+// MARK: - Clips Library Content View
 
 private struct ClipsManagerContentView: View {
     @ObservedObject private var settings = CaptureSettings.shared
@@ -2914,9 +2914,9 @@ private struct ClipManagerUploadcareSettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Clips Manager Settings")
+                Text("Clips Library Settings")
                     .font(.title3.weight(.semibold))
-                Text("Configure uploads and Clips Manager behavior.")
+                Text("Configure uploads and Clips Library behavior.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

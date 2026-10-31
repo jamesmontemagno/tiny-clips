@@ -165,7 +165,7 @@ mac/TinyClips/
 │   └── ProManager.swift        # Pro feature gating (MAS only)
 └── Views/
     ├── SettingsView.swift       # Settings window
-    ├── ClipsManagerWindow.swift # Clips Manager window
+    ├── ClipsManagerWindow.swift # Clips Library window
     ├── VideoTrimmerWindow.swift # Post-recording trim editor
     ├── CapturePickerPanel.swift # Floating mode/countdown picker
     ├── ScreenPickerWindow.swift # Multi-display screen picker
@@ -186,7 +186,7 @@ Two build targets share one codebase. Use `#if APPSTORE` compilation conditions 
 ### Architecture overview
 
 - **Menu bar app** using SwiftUI `MenuBarExtra` with no Dock icon (`LSUIElement = true`).
-- **Mixed SwiftUI + AppKit**: SwiftUI for the menu, settings, and Clips Manager; AppKit `NSWindow`/`NSPanel` subclasses for capture-time overlays.
+- **Mixed SwiftUI + AppKit**: SwiftUI for the menu, settings, and Clips Library; AppKit `NSWindow`/`NSPanel` subclasses for capture-time overlays.
 - **`CaptureManager`** (in `TinyClipsApp.swift`) is the central coordinator that owns recorders and capture window lifecycles.
 - Singleton services: `CaptureSettings.shared`, `SaveService.shared`, `PermissionManager.shared`, `SparkleController.shared`.
 

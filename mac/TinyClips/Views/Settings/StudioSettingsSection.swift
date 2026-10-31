@@ -139,7 +139,7 @@ struct StudioSettingsSection: View {
                     StudioWindowRegistry.shared.chooseProjectFileToOpen()
                 }
                 .help("Open a project that was saved as a folder, from its .tinyclips file.")
-                Text("Opens a project saved with Save Project in the editor. Recordings you kept as drafts are listed below, and exported videos reopen their project from the Clips Manager.")
+                Text("Opens a project saved with Save Project in the editor. Recordings you kept as drafts are listed below, and exported videos reopen their project from the Clips Library.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

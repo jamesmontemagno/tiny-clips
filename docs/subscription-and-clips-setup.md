@@ -1,6 +1,6 @@
-# Subscription Tiers & Clips Manager Setup Guide
+# Subscription Tiers & Clips Library Setup Guide
 
-This document covers what you need to do before shipping the subscription system and Clips Manager updates.
+This document covers what you need to do before shipping the subscription system and Clips Library updates.
 
 ---
 
@@ -44,7 +44,7 @@ Before shipping, test all purchase flows:
 
 ## 3. Pro Gating Verification (App Store Build)
 
-The Clips Manager uses read-only mode for free users:
+The Clips Library uses read-only mode for free users:
 
 - [ ] Free users can browse and preview clips
 - [ ] Free users see upgrade banner/upsell prompts
@@ -66,14 +66,14 @@ The Clips Manager uses read-only mode for free users:
 
 ## 5. Uploadcare (Bring Your Own Account)
 
-TinyClips does not ship with Uploadcare credentials. Users configure their own Uploadcare account in Clips Manager Upload Settings.
+TinyClips does not ship with Uploadcare credentials. Users configure their own Uploadcare account in Clips Library Upload Settings.
 
 ### User setup
 
 1. Create an Uploadcare account: <https://uploadcare.com/>
 2. Open **Uploadcare Dashboard → Project → API Keys**
 3. Copy your project **Public API Key** and **Secret API Key**
-4. In TinyClips **Clips Manager → gear (Upload Settings)**:
+4. In TinyClips **Clips Library → gear (Upload Settings)**:
    - Enable **Uploadcare uploads**
    - Paste your **Uploadcare public API key**
    - Paste your **Uploadcare secret API key** (password field with Show/Hide)
@@ -81,7 +81,7 @@ TinyClips does not ship with Uploadcare credentials. Users configure their own U
 
 ### Behavior
 
-- Upload action appears in Clips Manager list/grid/context menu.
+- Upload action appears in Clips Library list/grid/context menu.
 - TinyClips uploads directly to Uploadcare Upload API (`/base/`) using signed upload fields (`signature` + `expire`).
 - TinyClips resolves the saved link from Uploadcare REST API `GET /files/{uuid}/` (`original_file_url` fallback `url`).
 - Returned Uploadcare URL is copied to clipboard after a successful upload.
@@ -103,6 +103,6 @@ TinyClips does not ship with Uploadcare credentials. Users configure their own U
 |---|---|
 | Product IDs | `mac/TinyClips/Services/StoreService.swift` (`ProPlan`) |
 | Paywall UI | `mac/TinyClips/Views/SubscriptionView.swift` |
-| Clips Manager | `mac/TinyClips/Views/ClipsManagerWindow.swift` |
+| Clips Library | `mac/TinyClips/Views/ClipsManagerWindow.swift` |
 | Settings Pro tab | `mac/TinyClips/Views/SettingsView.swift` (`ProSettingsSection`) |
 | Uploadcare client | `mac/TinyClips/Services/SaveService.swift` (`UploadcareService`) |
