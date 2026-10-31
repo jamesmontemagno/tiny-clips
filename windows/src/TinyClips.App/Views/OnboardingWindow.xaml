@@ -85,7 +85,7 @@
                 <TextBlock
                     HorizontalAlignment="Center"
                     Style="{StaticResource TitleTextBlockStyle}"
-                    Text="Three ways to capture" />
+                    Text="Capture and create" />
                 <local:GuideRow
                     Glyph="&#xE722;"
                     Subtitle="Snap a region, window, or full screen to a PNG or JPEG."
@@ -98,6 +98,10 @@
                     Glyph="&#xE786;"
                     Subtitle="Capture a short looping GIF, great for chats and issues."
                     Title="GIF" />
+                <local:GuideRow
+                    Glyph="&#xE8D4;"
+                    Subtitle="With Studio enabled in Settings, choose Studio from the tray to record your screen and optional camera separately, edit the project, and export an MP4."
+                    Title="Studio Mode" />
             </StackPanel>
 
             <!--  Step 2: All set  -->

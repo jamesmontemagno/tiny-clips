@@ -185,12 +185,39 @@ private struct OnboardingWizardView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Screen Recording is required to capture your screen.", systemImage: "display")
                 Label("Microphone and Notifications are optional.", systemImage: "slider.horizontal.3")
+                Label("With Studio enabled in Settings, choose Studio Recording... from the menu bar to record your screen and optional camera separately, edit the project, and export an MP4.", systemImage: "square.stack.3d.up")
                 Label("This setup only takes a moment.", systemImage: "sparkles")
             }
             .font(.callout)
             .padding(12)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Capture shortcuts")
+                    .font(.subheadline.weight(.semibold))
+
+                shortcutRow("Screenshot", action: .screenshot)
+                shortcutRow("Record Video", action: .recordVideo)
+                shortcutRow("Record GIF", action: .recordGif)
+
+                Text("Change these anytime in Settings → Shortcuts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
         }
+    }
+
+    private func shortcutRow(_ title: String, action: HotKeyAction) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(settings.hotKeyBinding(for: action).displayString)
+                .font(.system(.callout, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var screenPermissionContent: some View {
