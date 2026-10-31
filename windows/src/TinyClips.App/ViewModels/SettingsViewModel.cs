@@ -350,6 +350,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _tempFolderSummary = "Loading temporary files\u2026";
 
+    /// <summary>False until the temporary folder was read, and when it could not be.</summary>
+    public bool IsTempFolderSummaryAvailable { get; private set; }
+
     public Task EnsureTemporaryFilesInitializedAsync() => _closed
         ? Task.CompletedTask
         : _temporaryFilesInitialization ??= RefreshTemporaryFilesAsync();
@@ -357,17 +360,23 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task RefreshTemporaryFilesAsync()
     {
         string summary;
+        var isAvailable = false;
         try
         {
             var files = await Task.Run(_getTemporaryFilesSummary);
             summary = FormatTemporaryFilesSummary(files);
+            isAvailable = true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             summary = "Couldn't read temporary files. Reopen Settings to try again.";
         }
 
-        await RunOnOwnerThreadAsync(() => TempFolderSummary = summary);
+        await RunOnOwnerThreadAsync(() =>
+        {
+            IsTempFolderSummaryAvailable = isAvailable;
+            TempFolderSummary = summary;
+        });
     }
 
     private string ResolveSaveLocation(CaptureType type)

@@ -248,10 +248,7 @@ public partial class App : Application
                 RefreshRecentCapturesButton();
                 ReloadStudioDrafts();
             });
-        if (Services.GetRequiredService<ICaptureSettings>() is CaptureSettings settings)
-        {
-            settings.StudioPreviewEnabledChanged += OnTrayStudioPreviewChanged;
-        }
+        Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabledChanged += OnTrayStudioPreviewChanged;
 
         _trayUiSettings = new Windows.UI.ViewManagement.UISettings();
         _trayUiSettings.TextScaleFactorChanged += OnTrayTextScaleChanged;
@@ -4127,10 +4124,7 @@ public partial class App : Application
             settingsWindow.ViewModel.ThemeChanged -= ApplyTrayTheme;
         }
 
-        if (Services.GetRequiredService<ICaptureSettings>() is CaptureSettings settings)
-        {
-            settings.StudioPreviewEnabledChanged -= OnTrayStudioPreviewChanged;
-        }
+        Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabledChanged -= OnTrayStudioPreviewChanged;
 
         CancelCaptureFlow();
         try

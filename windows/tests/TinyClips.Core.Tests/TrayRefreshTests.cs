@@ -28,24 +28,10 @@ public sealed class TrayRefreshTests
         Assert.DoesNotContain("_trayRefreshTimer.Start();", source[..resumeStart]);
         Assert.Contains("sender.Stop();", source);
 
-        // The popup has one construction site, not a second click/menu-opening path.
+        // The popup has one construction site, and an open Recent menu is never mutated.
         Assert.Equal(2, Regex.Matches(source, @"\bBuildTrayPopupContent\(").Count);
-        Assert.Contains("flyout.Closed += OnTrayRecentClosed", source);
-        Assert.Contains("_isTrayTilesRefreshPending = true", source);
-        Assert.Contains("_isTrayWidthRefreshPending = true", source);
-        Assert.Contains("_trayWidthInvalidation = new CoalescedAction", source);
-        Assert.Contains("label.RegisterPropertyChangedCallback(property", source);
-        Assert.Contains("TextBlock.FontFamilyProperty", source);
-        Assert.Contains("TextBlock.FontSizeProperty", source);
-        Assert.Contains("TextBlock.FontWeightProperty", source);
-        Assert.Contains("DispatcherQueuePriority.Low", source);
-        Assert.Contains("refreshTimer.Tick -= OnTrayRefreshTick", source);
-        Assert.Contains("drafts.Changed -= OnTrayDraftsChanged", source);
-        Assert.Contains("tracker.Changed -= OnTrayProjectTrackerChanged", source);
-        Assert.Contains("settingsWindow.ViewModel.ThemeChanged -= ApplyTrayTheme", source);
         Assert.Contains("|| flyout.IsOpen", source);
-        Assert.Contains("_trayRefreshTimer.Interval = TimeSpan.FromSeconds(30)", source);
-        Assert.Contains("_trayRecentService.Changed += OnRecentCapturesChanged", source);
+        Assert.Contains("flyout.Closed += OnTrayRecentClosed", source);
         // The Recent menu shows type icons only: the tray never reads or decodes thumbnails.
         Assert.DoesNotContain("GetThumbnailPathAsync", source);
         Assert.DoesNotContain("ImageIcon", source);

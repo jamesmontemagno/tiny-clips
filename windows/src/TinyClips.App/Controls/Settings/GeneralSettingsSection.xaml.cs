@@ -36,7 +36,15 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
-        await ViewModel.EnsureTemporaryFilesInitializedAsync();
+        try
+        {
+            await ViewModel.EnsureTemporaryFilesInitializedAsync();
+        }
+        catch (InvalidOperationException)
+        {
+            // The UI thread stopped taking work (the window or app is closing) while the scan ran.
+            // An async void handler must not let that escape and crash the app.
+        }
     }
 
     public void NotifyWindowClosed()
@@ -104,7 +112,9 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
         var dialog = new ContentDialog
         {
             Title = "Purge temporary files?",
-            Content = $"This deletes inactive files from Tiny Clips' temporary folder ({ViewModel.TempFolderSummary}). Your saved captures will not be affected.",
+            Content = ViewModel.IsTempFolderSummaryAvailable
+                ? $"This deletes inactive files from Tiny Clips' temporary folder ({ViewModel.TempFolderSummary}). Your saved captures will not be affected."
+                : "This deletes inactive files from Tiny Clips' temporary folder. Your saved captures will not be affected.",
             PrimaryButtonText = "Purge",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,

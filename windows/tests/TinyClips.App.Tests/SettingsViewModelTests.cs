@@ -41,6 +41,7 @@ public sealed class SettingsViewModelTests
 
         await initialization;
         Assert.StartsWith("1 file,", vm.TempFolderSummary);
+        Assert.True(vm.IsTempFolderSummaryAvailable);
         Assert.Same(initialization, vm.EnsureTemporaryFilesInitializedAsync());
         Assert.Equal(1, scans);
     }
@@ -77,6 +78,8 @@ public sealed class SettingsViewModelTests
         await vm.EnsureTemporaryFilesInitializedAsync();
 
         Assert.Contains("Couldn't read temporary files", vm.TempFolderSummary);
+        // The purge dialog must not quote the error text as if it were a size.
+        Assert.False(vm.IsTempFolderSummaryAvailable);
     }
 
     [Fact]

@@ -70,6 +70,9 @@ public interface ICaptureSettings
     /// </summary>
     bool StudioPreviewEnabled { get; set; }
 
+    /// <summary>Raised when <see cref="StudioPreviewEnabled"/> changes value, on the thread that changed it.</summary>
+    event EventHandler? StudioPreviewEnabledChanged;
+
     /// <summary>
     /// Days after an exported Studio project was last opened before its sources are deleted.
     /// Default 30, clamped to 0 through 365. Zero keeps them until the project is deleted by hand.
