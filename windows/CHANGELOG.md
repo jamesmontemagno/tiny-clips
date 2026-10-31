@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- Capture flow tracing (`capture-flow-trace.log`) now times each step from stopping a recording to the Studio editor showing its first frame: screen file finalize, camera stop, project save, editor window creation and each preview open stage.
 - Screenshot editor **Find sensitive text** uses on-device Windows OCR to suggest likely email addresses, phone numbers and IP addresses. Review image-aligned highlights in a keyboard-accessible flyout, approve or dismiss each suggestion, then apply approved opaque black redactions using the existing Undo, Copy and Save paths. Detection alone makes no edits, and may miss sensitive text; review the entire image before sharing.
 
 ### Fixed
@@ -31,6 +32,8 @@ own `CHANGELOG.md` at the repository root.
 - Windows CI no longer builds for README/changelog-only or unrelated configuration changes, and skips whole Windows jobs when no build inputs changed.
 
 ### Changed
+- The Studio editor opens its project and preview while its window is being built, instead of after the window appears, so the editor is ready sooner after a recording stops.
+- The countdown before a video, Studio or GIF recording now appears right away; the recording pipeline is prepared in the background while it runs instead of first holding up the countdown.
 - Studio now defaults on for new installs and returning users without a saved preference. Saved on/off choices are preserved, resetting settings restores Studio on, and the refreshed 2.0 welcome-back introduction explains the default and offers the same switch. Record Video and its hotkey remain ordinary recordings.
 - Screenshot and GIF settings now follow Video's quality and before/after grouping, with flat quality cards, accessible section headings, and live screenshot re-capture in collapsed Advanced settings. Existing options and capture behavior are unchanged.
 - Restored the original blue focus-bracket app, tray, tile, Store, and splash icons, ending the paperclip mascot trial early. Regenerate Windows icons with `python windows/tools/generate-icons.py`.

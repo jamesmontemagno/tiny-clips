@@ -1318,6 +1318,7 @@ public partial class App : Application
         IReadOnlyList<Task<CapturedFrame?>>? earlyBackdrops = null;
         IReadOnlyList<MonitorInfo>? earlyBackdropMonitors = null;
         long earlyBackdropStarted = 0;
+        Task? recorderPrepare = null;
         try
         {
             CaptureFlowTrace.Begin(type.ToString().ToLowerInvariant() + (forcedMode is null ? string.Empty : $"/{forcedMode}"));
@@ -1377,7 +1378,6 @@ public partial class App : Application
             }
 
             RecordingSetupResult? recordingSetup = null;
-            Task? recorderPrepare = null;
             var videoOptions = VideoRecordingOptions.Default;
             if (type is CaptureType.Video or CaptureType.Gif)
             {
@@ -1522,7 +1522,7 @@ public partial class App : Application
                 Services.GetRequiredService<IScrollingCaptureService>().Cancel();
                 FinishScrollingCapture(null);
             }
-            _ = DiscardPreparedRecordersAsync();
+            _ = DiscardPreparedRecordersAsync(recorderPrepare);
             CloseRecordingRegionIndicator();
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
@@ -1543,7 +1543,7 @@ public partial class App : Application
                 Services.GetRequiredService<IScrollingCaptureService>().Cancel();
                 FinishScrollingCapture(null);
             }
-            _ = DiscardPreparedRecordersAsync();
+            _ = DiscardPreparedRecordersAsync(recorderPrepare);
             if (ex is CaptureVisibilityException)
             {
                 ShowMessageNotification($"{ex.Message} Capture was cancelled.");
@@ -1599,22 +1599,22 @@ public partial class App : Application
             && monitors.Zip(Monitors).All(pair => pair.First.HMonitor == pair.Second.HMonitor);
     }
 
-    private Task PrepareRecorderAsync(
+    /// <summary>
+    /// Pre-warms the recorder on a worker thread. The recorders' prepare paths rarely yield, so
+    /// called directly they would hold the UI thread for seconds (capture session, audio devices,
+    /// encoder activation) and the countdown would only appear once they were done.
+    /// </summary>
+    private static Task PrepareRecorderAsync(
         CaptureType type,
         TargetSelection selection,
         VideoRecordingOptions videoOptions,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            return type == CaptureType.Video
-                ? Services.GetRequiredService<IVideoRecordingService>().PrepareAsync(selection.Target, selection.Region, videoOptions, cancellationToken)
-                : Services.GetRequiredService<IGifRecordingService>().PrepareAsync(selection.Target, selection.Region, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            return Task.FromException(ex);
-        }
+        var target = selection.Target;
+        var region = selection.Region;
+        return type == CaptureType.Video
+            ? Task.Run(() => Services.GetRequiredService<IVideoRecordingService>().PrepareAsync(target, region, videoOptions, cancellationToken), CancellationToken.None)
+            : Task.Run(() => Services.GetRequiredService<IGifRecordingService>().PrepareAsync(target, region, cancellationToken), CancellationToken.None);
     }
 
     /// <summary>
@@ -1656,8 +1656,22 @@ public partial class App : Application
         }
     }
 
-    private static async Task DiscardPreparedRecordersAsync()
+    private static async Task DiscardPreparedRecordersAsync(Task? pendingPrepare = null)
     {
+        // A pre-warm still running on its worker would otherwise finish after the discard and
+        // leave the capture session, camera and audio devices running.
+        if (pendingPrepare is not null)
+        {
+            try
+            {
+                await pendingPrepare;
+            }
+            catch
+            {
+                // The prepare cleans up after its own failure.
+            }
+        }
+
         try
         {
             await Services.GetRequiredService<IVideoRecordingService>().DiscardPreparedAsync();
@@ -2485,6 +2499,7 @@ public partial class App : Application
         // has already queued the recording UI cleanup ahead of this callback.
         _dispatcher?.TryEnqueue(() =>
         {
+            CaptureFlowTrace.Mark("studio: completed event on UI thread");
             var wasPickerInitiated = _completedRecordingWasPickerInitiated;
             _completedRecordingWasPickerInitiated = false;
             if (_isExiting)
@@ -2493,6 +2508,7 @@ public partial class App : Application
             }
 
             OpenStudioProject(projectId, wasPickerInitiated);
+            CaptureFlowTrace.Mark("studio: editor window opened");
         });
     }
 
@@ -2608,6 +2624,7 @@ public partial class App : Application
                 CaptureFlowTrace.Begin("stop-video");
                 HideRecordingIndicator();
                 ShowProcessingIndicator(CaptureType.Video, _activeRecordingSelection);
+                CaptureFlowTrace.Mark("video: processing indicator shown");
                 await video.StopAsync();
                 CaptureFlowTrace.Mark("video: StopAsync returned");
             }

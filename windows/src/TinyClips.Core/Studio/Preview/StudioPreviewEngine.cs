@@ -340,6 +340,8 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             {
                 throw new InvalidDataException($"The camera recording could not be opened: {cameraPath}", ex);
             }
+
+            global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("preview open: camera file probed");
         }
 
         // The files' own frame times, where they are asked for and can be read. Read once: a
@@ -355,6 +357,8 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
             {
                 cameraTimes = ReadFrameTimes(cameraPath, "camera", options, out frameTimesNotes[1]);
             }
+
+            global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("preview open: frame times read from the files");
         }
 
         for (var attempt = 1; ; attempt++)
@@ -368,7 +372,9 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
                 try
                 {
                     graphics = CreateDevice(options.SoftwareDevice);
+                    global::TinyClips.Core.Capture.CaptureFlowTrace.Mark($"preview open: graphics device created (attempt {attempt})");
                     renderer = CreateRenderer(graphics, options.PersonFinderFactory);
+                    global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("preview open: renderer created");
                 }
                 catch (Exception ex)
                 {
@@ -376,7 +382,9 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
                 }
 
                 engine = new StudioPreviewEngine(project, events, paths.ProjectDirectory, screenPath, cameraPath, cameraFrameRate, screenTimes, cameraTimes, frameTimesNotes, options, graphics, renderer, attempt);
+                global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("preview open: engine and players created");
                 engine.Start(cancellationToken);
+                global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("preview open: first frame shown");
                 return engine;
             }
             catch (Exception ex)
@@ -408,6 +416,7 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
                 }
 
                 options.Trace?.Invoke($"          {why} while the preview opened (0x{(ex.InnerException ?? ex).HResult:X8}): opening once more in {options.SecondAttemptWait.TotalMilliseconds:0} ms");
+                global::TinyClips.Core.Capture.CaptureFlowTrace.Mark($"preview open: attempt {attempt} failed ({why}, 0x{(ex.InnerException ?? ex).HResult:X8}); opening once more in {options.SecondAttemptWait.TotalMilliseconds:0} ms");
                 if (options.SecondAttemptWait > TimeSpan.Zero)
                 {
                     // What made this attempt fail is given the time to pass. It has been seen to
@@ -748,12 +757,14 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         }
 
         ThrowIfOpenFailed();
+        global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("preview open: players opened their files");
 
         // With the clock at zero and no offsets yet, every player hands over the first frame of
         // its stream by itself. That is the proof that each clip can be decoded. Where the frames
         // are held until every player has one, the player to blame is one that never had a frame.
-        _firstFramesGate.Wait(FirstFrameTimeoutMilliseconds, cancellationToken);
+        var everyPlayerHadAFrame = _firstFramesGate.Wait(FirstFrameTimeoutMilliseconds, cancellationToken);
         ThrowIfOpenFailed();
+        global::TinyClips.Core.Capture.CaptureFlowTrace.Mark(everyPlayerHadAFrame ? "preview open: every player has a first frame" : "preview open: gave up waiting for first frames");
         foreach (var clip in _clips)
         {
             if (!clip.HasDeliveredFrame && !clip.HasAnnouncedFrame)
@@ -810,15 +821,18 @@ public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreview
         if (moved)
         {
             ProvePlayers(cancellationToken);
+            global::TinyClips.Core.Capture.CaptureFlowTrace.Mark($"preview open: players from another graphics adapter proven ({Volatile.Read(ref _proofRounds)} rounds, held {Volatile.Read(ref _proofHeld)})");
         }
 
         // The first frame is asked for the way a caller asks for any other. It is frame 0, which
         // is what is reported already, so nobody is told.
         GoTo(0, cancellationToken);
+        global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("preview open: landed on frame 0");
         if (moved)
         {
             // The pass that landed has to be over before anybody may be told anything.
             WaitForQuiet(0, cancellationToken);
+            global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("preview open: players quiet");
         }
 
         _opening = false;

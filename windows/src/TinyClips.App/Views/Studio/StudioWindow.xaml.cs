@@ -133,8 +133,16 @@ public sealed partial class StudioWindow : Window
         AppWindow.Closing += OnAppWindowClosing;
         Closed += OnClosed;
 
-        // Queued, so the window is on screen saying "Opening" before the project is read.
+        // Queued, so the window is on screen saying "Opening" before the project is read. When the
+        // Studio window service has started the load already, this returns the same task.
         DispatcherQueue.TryEnqueue(() => _ = ViewModel.LoadAsync());
+
+        // A load started before this window existed may already have said the project cannot be
+        // shown, before the window was listening.
+        if (ViewModel.IsReady || ViewModel.IsUnavailable)
+        {
+            OnStateChanged(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>Where the keyboard focus is waiting to be put.</summary>

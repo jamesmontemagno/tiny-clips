@@ -253,6 +253,7 @@ public sealed partial class StudioEditorSession
             return;
         }
 
+        global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: begin");
         StudioEditorModel model;
         StudioProjectPaths paths;
         try
@@ -271,6 +272,7 @@ public sealed partial class StudioEditorSession
 
         _paths = paths;
         Model = model;
+        global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: project file read");
 
         if (!File.Exists(paths.ScreenPath))
         {
@@ -279,14 +281,17 @@ public sealed partial class StudioEditorSession
         }
 
         _events = LoadEvents();
+        global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: events read");
 
         IStudioPreview preview;
         try
         {
             preview = await _previewFactory.OpenAsync(model.Project, _events, paths, _lifetime.Token).ConfigureAwait(false);
+            global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: preview opened");
         }
         catch (Exception ex)
         {
+            global::TinyClips.Core.Capture.CaptureFlowTrace.Mark($"studio load: preview failed to open ({ex.GetType().Name})");
             await PostAsync(() =>
             {
                 if (!_isClosed)
@@ -336,6 +341,7 @@ public sealed partial class StudioEditorSession
         State = StudioEditorLoadState.Ready;
         Seek(model.TrimStart);
         RaiseChanged(StudioEditorChanges.All);
+        global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: editor ready on UI thread");
     }
 
     private void SetUnavailable(string? message)

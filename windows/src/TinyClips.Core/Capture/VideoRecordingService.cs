@@ -2040,9 +2040,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
             // it does in an ordinary recording, would be missing from the last moments of every
             // Studio recording, for as long as the camera and its file took to stop.
             var studioCamera = _studioCameraRecorder;
+            CaptureFlowTrace.Mark($"video stop: begin ({(_activeOptions.RecordForStudio ? "studio" : "regular")}, {(_sinkWriter is not null ? "sink writer" : "transcoder")}, {(_gpuCapture is not null ? "gpu" : "cpu")} pipeline, camera {(studioCamera is not null ? "recorded" : _webcamCapture.IsRunning ? "overlay" : "off")})");
             if (studioCamera is null)
             {
                 await StopWebcamOverlayAsync().ConfigureAwait(false);
+                CaptureFlowTrace.Mark("video stop: webcam overlay stopped");
             }
 
             // Stop the audio devices first, then let the muxer drain the audio already captured
@@ -2056,6 +2058,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             _gpuCapture?.Stop();
             _gpuChannel?.Writer.TryComplete();
             _perf?.BeginFinalization();
+            CaptureFlowTrace.Mark("video stop: capture and audio stopped");
             var finalized = true;
 
             var cpuPipeline = _capture is not null;
@@ -2066,6 +2069,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
                     try
                     {
                         await _transcodeTask.ConfigureAwait(false);
+                        CaptureFlowTrace.Mark("video stop: transcoder finished");
                     }
                     catch (Exception ex)
                     {
@@ -2086,9 +2090,11 @@ public sealed class VideoRecordingService : IVideoRecordingService
                     // Capture pumps are stopped (no more video writes). Let the audio mux drain what
                     // was captured before Stop, then finalize the MP4 (blocking until the encoder flushes).
                     StopAudioMux();
+                    CaptureFlowTrace.Mark("video stop: audio mux drained");
                     try
                     {
                         await Task.Run(sink.Finish).ConfigureAwait(false);
+                        CaptureFlowTrace.Mark("video stop: screen file finalized (sink writer)");
                     }
                     catch
                     {
@@ -2101,7 +2107,12 @@ public sealed class VideoRecordingService : IVideoRecordingService
                     }
                 }
 
-                await StopStudioCameraAsync(studioCamera).ConfigureAwait(false);
+                if (studioCamera is not null)
+                {
+                    await StopStudioCameraAsync(studioCamera).ConfigureAwait(false);
+                    CaptureFlowTrace.Mark("video stop: studio camera stopped and finalized");
+                }
+
                 if (_perf is not null) { _perf.FinalizationSucceeded = finalized; }
                 LogSyncReport();
             }
@@ -2127,6 +2138,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             var studioTimeline = _recordingTimeline;
             var studioCameraCorners = BuildStudioCameraCorners();
             DisposeRecordingPipeline();
+            CaptureFlowTrace.Mark("video stop: recording pipeline disposed");
             var path = _outputPath;
             var shouldDiscard = ConsumeDiscardRequested(discard);
             var wasStudioRecording = _activeOptions.RecordForStudio;
@@ -2136,6 +2148,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 // A finished project replaces the output path. If the project cannot be saved, the
                 // path becomes the screen track kept as an ordinary recording, or null.
                 studioProjectId = FinishStudioRecording(path, shouldDiscard, studioTimeline, studioCameraCorners, out path);
+                CaptureFlowTrace.Mark(studioProjectId is null ? "video stop: studio project not made" : "video stop: studio project saved");
             }
 
             _activeOptions = VideoRecordingOptions.Default;
@@ -2310,7 +2323,12 @@ public sealed class VideoRecordingService : IVideoRecordingService
             // The project gets the frame rate the recording was made at. The file's own figure is
             // its frames divided by its length, which is lower whenever a frame was dropped.
             var screen = MediaFileProbe.Probe(paths.ScreenPath) with { FrameRate = _frameRate };
+            CaptureFlowTrace.Mark("studio save: screen file probed");
             var camera = BuildStudioCameraSource(paths);
+            if (camera is not null)
+            {
+                CaptureFlowTrace.Mark("studio save: camera file probed");
+            }
             var clickStyle = _settings.MouseClickOverlayStyleFor(CaptureType.Video);
             var request = StudioRecordingBuilder.BuildCreationRequest(
                 Path.GetFileNameWithoutExtension(_storage.GenerateFilePath(CaptureType.Video)),
@@ -2325,7 +2343,9 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 cameraCorners);
 
             _studioProjects.CompleteRecording(paths.ProjectId, request);
+            CaptureFlowTrace.Mark("studio save: project file written");
             SaveStudioEvents(paths.ProjectId, screen, timeline, cameraCorners);
+            CaptureFlowTrace.Mark("studio save: events written");
             CleanupStudioRecording(deleteProject: false);
             return paths.ProjectId;
         }
