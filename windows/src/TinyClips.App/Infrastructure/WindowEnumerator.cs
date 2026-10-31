@@ -19,14 +19,17 @@ public sealed record WindowPickerCandidate(nint Hwnd, string Title, string AppNa
 /// Enumerates visible, non-minimized top-level windows (with titles) via Win32 so the user can
 /// pick a specific window to capture. <c>EnumWindows</c> reports windows in z-order (topmost
 /// first), which the picker relies on to highlight the window that is actually on top. Cloaked
-/// (other virtual desktops, hidden UWP), tool, click-through and desktop windows are filtered
-/// out, mirroring what the macOS window picker shows.
+/// (other virtual desktops, hidden UWP), click-through, fully transparent and desktop windows are
+/// ignored; visible tool, tiny and untitled windows can't be picked but still block the windows
+/// behind them, mirroring what the macOS window picker shows.
 /// </summary>
 internal static class WindowEnumerator
 {
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080;
     private const long WsExTransparent = 0x00000020;
+    private const long WsExLayered = 0x00080000;
+    private const uint LwaAlpha = 0x00000002;
     private const int DwmwaExtendedFrameBounds = 9;
     private const int DwmwaCloaked = 14;
     private const uint ProcessQueryLimitedInformation = 0x1000;
@@ -63,29 +66,44 @@ internal static class WindowEnumerator
             }
 
             var exStyle = GetWindowLongPtr(hwnd, GwlExStyle).ToInt64();
-            if ((exStyle & WsExTransparent) != 0 || !TryGetVisibleBounds(hwnd, out var bounds))
+            var layered = GetLayeredVisibility(hwnd, exStyle);
+            if ((exStyle & WsExTransparent) != 0
+                || layered == LayeredVisibility.Invisible
+                || !TryGetVisibleBounds(hwnd, out var bounds))
             {
                 return true;
             }
 
             if (TaskbarClasses.Contains(className))
             {
-                windows.Add(new WindowPickerCandidate(hwnd, string.Empty, string.Empty, bounds, IsSelectable: false));
+                windows.Add(Occluder(hwnd, bounds));
                 return true;
             }
 
+            // Tiny Clips' own windows are hidden or excluded from capture, so they neither show
+            // in the backdrop nor block the windows behind them.
             GetWindowThreadProcessId(hwnd, out var processId);
-            if (!WindowCaptureVisibility.Policy.CanSelectWindow(processId == Environment.ProcessId, hwnd, pickerHwnd: 0)
-                || (exStyle & WsExToolWindow) != 0
-                || bounds.Width < MinimumSizePx
-                || bounds.Height < MinimumSizePx)
+            if (!WindowCaptureVisibility.Policy.CanSelectWindow(processId == Environment.ProcessId, hwnd, pickerHwnd: 0))
             {
                 return true;
             }
 
-            var title = GetWindowTitle(hwnd);
+            var title = (exStyle & WsExToolWindow) != 0
+                || bounds.Width < MinimumSizePx
+                || bounds.Height < MinimumSizePx
+                ? string.Empty
+                : GetWindowTitle(hwnd);
             if (string.IsNullOrWhiteSpace(title))
             {
+                // Visible palettes, popups and untitled windows still cover what is behind them,
+                // so they block the hit-test instead of letting the click fall through. Per-pixel
+                // layered windows are skipped because their visible shape is unknown and they are
+                // often full-screen, mostly transparent overlays.
+                if (layered == LayeredVisibility.Opaque)
+                {
+                    windows.Add(Occluder(hwnd, bounds));
+                }
+
                 return true;
             }
 
@@ -100,6 +118,36 @@ internal static class WindowEnumerator
         }, nint.Zero);
 
         return windows;
+    }
+
+    private static WindowPickerCandidate Occluder(nint hwnd, PixelRect bounds) =>
+        new(hwnd, string.Empty, string.Empty, bounds, IsSelectable: false);
+
+    /// <summary>
+    /// Classifies a window's layered transparency. Windows faded fully out with
+    /// <c>SetLayeredWindowAttributes</c> (alpha 0) are invisible; windows drawn with
+    /// <c>UpdateLayeredWindow</c> report no attributes and have an unknown per-pixel shape.
+    /// </summary>
+    private static LayeredVisibility GetLayeredVisibility(nint hwnd, long exStyle)
+    {
+        if ((exStyle & WsExLayered) == 0)
+        {
+            return LayeredVisibility.Opaque;
+        }
+
+        if (!GetLayeredWindowAttributes(hwnd, out _, out var alpha, out var flags))
+        {
+            return LayeredVisibility.PerPixel;
+        }
+
+        return (flags & LwaAlpha) != 0 && alpha == 0 ? LayeredVisibility.Invisible : LayeredVisibility.Opaque;
+    }
+
+    private enum LayeredVisibility
+    {
+        Opaque,
+        PerPixel,
+        Invisible,
     }
 
     private static bool IsCloaked(nint hwnd) =>
@@ -225,6 +273,10 @@ internal static class WindowEnumerator
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     private static extern nint GetWindowLongPtr(nint hwnd, int index);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetLayeredWindowAttributes(nint hwnd, out uint colorKey, out byte alpha, out uint flags);
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(nint hwnd, int attribute, out int value, int size);

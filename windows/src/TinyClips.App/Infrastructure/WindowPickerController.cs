@@ -136,10 +136,38 @@ internal sealed class WindowPickerController
 
     internal void OnWindowClosed() => Complete(null);
 
+    /// <summary>
+    /// A monitor's frozen snapshot could not be captured or painted. Revealing that overlay would
+    /// cover the monitor with an opaque, image-less dim, so the whole picker is cancelled instead.
+    /// </summary>
+    internal void OnBackdropFailed(string monitorName)
+    {
+        if (Volatile.Read(ref _completed) != 0)
+        {
+            return;
+        }
+
+        CaptureFlowTrace.Mark($"window: backdrop failed for {monitorName}");
+        Complete(null);
+        App.ShowMessageNotification("Tiny Clips couldn't capture the screen to show the window picker. Please try again.");
+    }
+
     private void SetHovered(int index, bool announce)
     {
-        if (index == _hovered || Volatile.Read(ref _completed) != 0)
+        if (Volatile.Read(ref _completed) != 0)
         {
+            return;
+        }
+
+        // With a single selectable window Tab lands on the same index again; still announce it
+        // so keyboard and screen-reader users know what Enter will capture.
+        if (index == _hovered)
+        {
+            if (announce && index >= 0)
+            {
+                AnnounceCandidate(_candidates[index]);
+            }
+
             return;
         }
 
@@ -155,9 +183,20 @@ internal sealed class WindowPickerController
 
         if (announce && candidate is not null)
         {
-            var target = labelMonitor >= 0 ? _windows[labelMonitor] : _windows[0];
-            target.Announce(Describe(candidate));
+            AnnounceCandidate(candidate);
         }
+    }
+
+    private void AnnounceCandidate(WindowPickerCandidate candidate)
+    {
+        if (_windows.Count == 0)
+        {
+            return;
+        }
+
+        var labelMonitor = WindowPickerGeometry.LabelMonitorIndex(candidate.Bounds, _monitorBounds);
+        var target = labelMonitor >= 0 ? _windows[labelMonitor] : _windows[0];
+        target.Announce(Describe(candidate));
     }
 
     private void Complete(nint? hwnd)

@@ -232,9 +232,7 @@ struct ScreenshotCapture {
     static func captureWindow(_ window: SCWindow, outputURL: URL) async throws -> URL {
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let config = SCStreamConfiguration()
-        let scaleFactor = filter.pointPixelScale > 0
-            ? CGFloat(filter.pointPixelScale)
-            : scaleFactorForWindow(window)
+        let scaleFactor = pixelScale(for: window, filter: filter)
         let sourceRect = CaptureCoordinateMath.pixelAlignedRect(
             CGRect(origin: .zero, size: window.frame.size),
             scaleFactor: scaleFactor
@@ -250,6 +248,15 @@ struct ScreenshotCapture {
     }
 
     // MARK: - Helpers
+
+    /// The points-to-pixels scale a window capture uses: ScreenCaptureKit's own scale for the
+    /// window, falling back to the display that overlaps the window most.
+    static func pixelScale(for window: SCWindow, filter: SCContentFilter? = nil) -> CGFloat {
+        let filter = filter ?? SCContentFilter(desktopIndependentWindow: window)
+        return filter.pointPixelScale > 0
+            ? CGFloat(filter.pointPixelScale)
+            : scaleFactorForWindow(window)
+    }
 
     static func saveImage(
         _ image: CGImage,
