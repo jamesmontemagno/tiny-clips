@@ -556,6 +556,24 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     /// <summary>Minimal-diff sync so the list keeps scroll position and selection where possible.</summary>
     private void SyncVisibleClips(IReadOnlyList<ClipItemViewModel> target)
     {
+        if (Clips.Count == target.Count)
+        {
+            var identical = true;
+            for (var i = 0; i < target.Count; i++)
+            {
+                if (!ReferenceEquals(Clips[i], target[i]))
+                {
+                    identical = false;
+                    break;
+                }
+            }
+
+            if (identical)
+            {
+                return;
+            }
+        }
+
         for (var i = Clips.Count - 1; i >= 0; i--)
         {
             if (!target.Contains(Clips[i]))
