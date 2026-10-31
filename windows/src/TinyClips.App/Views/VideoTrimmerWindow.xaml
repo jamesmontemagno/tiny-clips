@@ -95,6 +95,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <ToggleButton
                     x:Name="PlayToggle"
@@ -141,8 +142,27 @@
                         <TextBlock Text="Export frame" />
                     </StackPanel>
                 </Button>
+                <Button
+                    x:Name="CopyFrameButton"
+                    Grid.Column="5"
+                    AutomationProperties.AutomationId="VideoCopyFrameButton"
+                    AutomationProperties.Name="Copy current frame to clipboard"
+                    Click="OnCopyFrame"
+                    IsEnabled="False"
+                    ToolTipService.ToolTip="Copy the current frame to the clipboard without saving a file">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="14" Glyph="&#xE8C8;" />
+                        <TextBlock Text="Copy frame" />
+                    </StackPanel>
+                </Button>
             </Grid>
 
+            <TextBlock
+                x:Name="FrameCopyStatus"
+                AutomationProperties.AutomationId="VideoFrameCopyStatus"
+                AutomationProperties.LiveSetting="Polite"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap" />
             <ProgressBar
                 x:Name="BusyBar"
                 Margin="0,4,0,0"

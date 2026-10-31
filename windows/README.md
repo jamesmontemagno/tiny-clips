@@ -32,6 +32,8 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture. `Esc`
   closes each of them, asking first unless **Confirm before closing editors with Esc** is turned
   off in General settings; in the editor it clears a crop selection first.
+  The video trimmer's **Copy frame** copies the selected frame at source resolution without
+  saving a file; **Export frame** still saves a PNG.
 - **Tiny Clips Studio (early preview, on by default unless a preference is saved)** — records the screen and the camera as
   separate layers and opens a compositing editor when the recording ends: background and padding,
   a rounded screen card, camera shape and four layouts, a draggable camera bubble, scenes that
