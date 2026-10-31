@@ -173,7 +173,7 @@ struct MenuBarContentView: View {
             openWindow(id: "clips-manager")
             bringClipsManagerWindowToFront()
         } label: {
-            Label("Clips Manager…", systemImage: "film.stack")
+            Label("Clips Library…", systemImage: "film.stack")
         }
 
 #if APPSTORE
@@ -324,7 +324,7 @@ struct MenuBarContentView: View {
     private func bringClipsManagerWindowToFront() {
         DispatchQueue.main.async {
             NSRunningApplication.current.activate(options: [.activateAllWindows])
-            if let clipsWindow = NSApp.windows.first(where: { $0.identifier?.rawValue == "clips-manager" || $0.title == "Clips Manager" }) {
+            if let clipsWindow = NSApp.windows.first(where: { $0.identifier?.rawValue == "clips-manager" || $0.title == "Clips Library" }) {
                 clipsWindow.makeKeyAndOrderFront(nil)
                 clipsWindow.orderFrontRegardless()
             }
@@ -332,7 +332,7 @@ struct MenuBarContentView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             NSRunningApplication.current.activate(options: [.activateAllWindows])
-            if let clipsWindow = NSApp.windows.first(where: { $0.identifier?.rawValue == "clips-manager" || $0.title == "Clips Manager" }) {
+            if let clipsWindow = NSApp.windows.first(where: { $0.identifier?.rawValue == "clips-manager" || $0.title == "Clips Library" }) {
                 clipsWindow.makeKeyAndOrderFront(nil)
                 clipsWindow.orderFrontRegardless()
             }
