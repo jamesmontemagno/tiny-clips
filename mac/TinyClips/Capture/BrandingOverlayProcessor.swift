@@ -112,6 +112,10 @@ enum BrandingOverlayProcessor {
 
     /// Composites the branding overlay onto a CGImage and returns the result.
     static func applyToImage(_ image: CGImage) -> CGImage {
+        renderImage(image) ?? image
+    }
+
+    private static func renderImage(_ image: CGImage) -> CGImage? {
         let width = image.width
         let height = image.height
 
@@ -123,20 +127,22 @@ enum BrandingOverlayProcessor {
             bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-        ) else { return image }
+        ) else { return nil }
 
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         drawTextOverlay(in: context, width: width, height: height)
-        return context.makeImage() ?? image
+        return context.makeImage()
     }
 
     // MARK: - GIF
 
     /// Composites the branding overlay onto every frame of a GIF.
-    static func applyToGifData(_ gifData: GifCaptureData) -> GifCaptureData {
-        guard !gifData.frames.isEmpty else { return gifData }
-        let processedFrames = gifData.frames.map { applyToImage($0) }
-        return GifCaptureData(frames: processedFrames, frameDelay: gifData.frameDelay, maxWidth: gifData.maxWidth)
+    static func applyToGifData(_ gifData: GifCaptureData) throws -> GifCaptureData {
+        let processedFrames = try gifData.frames.map { frame in
+            guard let image = renderImage(frame) else { throw CaptureError.saveFailed }
+            return image
+        }
+        return try gifData.replacingFrames(processedFrames)
     }
 
     // MARK: - Video

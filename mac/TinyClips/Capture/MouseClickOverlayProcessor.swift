@@ -223,37 +223,7 @@ enum MouseClickOverlayProcessor {
     }
 
     static func loadGifCaptureData(from url: URL) throws -> GifCaptureData {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
-            throw CaptureError.saveFailed
-        }
-
-        let frameCount = CGImageSourceGetCount(source)
-        guard frameCount > 0 else {
-            throw CaptureError.noFrames
-        }
-
-        var frames: [CGImage] = []
-        frames.reserveCapacity(frameCount)
-
-        var totalDelay = 0.0
-        for index in 0..<frameCount {
-            guard let image = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
-            frames.append(image)
-
-            let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
-            let gifProperties = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
-            let delay = (gifProperties?[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
-                ?? (gifProperties?[kCGImagePropertyGIFDelayTime] as? Double)
-                ?? 0.1
-            totalDelay += max(0.01, delay)
-        }
-
-        guard !frames.isEmpty else {
-            throw CaptureError.noFrames
-        }
-
-        let averageDelay = totalDelay / Double(frames.count)
-        return GifCaptureData(frames: frames, frameDelay: averageDelay, maxWidth: CGFloat(frames[0].width))
+        try GifCaptureData(contentsOf: url)
     }
 
     static func overlayOnGif(
@@ -261,7 +231,7 @@ enum MouseClickOverlayProcessor {
         region: CaptureRegion,
         events: [MouseClickEvent],
         style: MouseClickOverlayStyle
-    ) -> GifCaptureData {
+    ) throws -> GifCaptureData {
         let mappedEvents = mapMouseClickEvents(events, for: region)
         guard !mappedEvents.isEmpty else {
             return gifData
@@ -271,11 +241,11 @@ enum MouseClickOverlayProcessor {
         processedFrames.reserveCapacity(gifData.frames.count)
 
         for (index, frame) in gifData.frames.enumerated() {
-            let frameTime = Double(index) * gifData.frameDelay
-            processedFrames.append(drawMouseClickPulseOverlay(on: frame, at: frameTime, events: mappedEvents, style: style))
+            let frameTime = gifData.timing.startTime(of: index)
+            processedFrames.append(try drawMouseClickPulseOverlay(on: frame, at: frameTime, events: mappedEvents, style: style))
         }
 
-        return GifCaptureData(frames: processedFrames, frameDelay: gifData.frameDelay, maxWidth: gifData.maxWidth)
+        return try gifData.replacingFrames(processedFrames)
     }
 
     private static func drawMouseClickPulseOverlay(
@@ -283,7 +253,7 @@ enum MouseClickOverlayProcessor {
         at frameTime: TimeInterval,
         events: [MappedMouseClickEvent],
         style: MouseClickOverlayStyle
-    ) -> CGImage {
+    ) throws -> CGImage {
         guard let context = CGContext(
             data: nil,
             width: image.width,
@@ -293,7 +263,7 @@ enum MouseClickOverlayProcessor {
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else {
-            return image
+            throw CaptureError.saveFailed
         }
 
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
@@ -320,7 +290,8 @@ enum MouseClickOverlayProcessor {
             context.strokeEllipse(in: circleRect)
         }
 
-        return context.makeImage() ?? image
+        guard let result = context.makeImage() else { throw CaptureError.saveFailed }
+        return result
     }
 
     private static func mapMouseClickEvents(_ events: [MouseClickEvent], for region: CaptureRegion) -> [MappedMouseClickEvent] {
