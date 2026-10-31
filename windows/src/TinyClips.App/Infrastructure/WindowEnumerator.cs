@@ -29,6 +29,7 @@ internal static class WindowEnumerator
     private const long WsExToolWindow = 0x00000080;
     private const long WsExTransparent = 0x00000020;
     private const long WsExLayered = 0x00080000;
+    private const uint LwaColorKey = 0x00000001;
     private const uint LwaAlpha = 0x00000002;
     private const int DwmwaExtendedFrameBounds = 9;
     private const int DwmwaCloaked = 14;
@@ -126,7 +127,8 @@ internal static class WindowEnumerator
     /// <summary>
     /// Classifies a window's layered transparency. Windows faded fully out with
     /// <c>SetLayeredWindowAttributes</c> (alpha 0) are invisible; windows drawn with
-    /// <c>UpdateLayeredWindow</c> report no attributes and have an unknown per-pixel shape.
+    /// <c>UpdateLayeredWindow</c> report no attributes, and color-keyed windows have transparent
+    /// pixels, so both have an unknown per-pixel shape.
     /// </summary>
     private static LayeredVisibility GetLayeredVisibility(nint hwnd, long exStyle)
     {
@@ -140,7 +142,13 @@ internal static class WindowEnumerator
             return LayeredVisibility.PerPixel;
         }
 
-        return (flags & LwaAlpha) != 0 && alpha == 0 ? LayeredVisibility.Invisible : LayeredVisibility.Opaque;
+        if ((flags & LwaAlpha) != 0 && alpha == 0)
+        {
+            return LayeredVisibility.Invisible;
+        }
+
+        // Color-keyed windows have transparent pixels even at full alpha, so their shape is unknown.
+        return (flags & LwaColorKey) != 0 ? LayeredVisibility.PerPixel : LayeredVisibility.Opaque;
     }
 
     private enum LayeredVisibility
