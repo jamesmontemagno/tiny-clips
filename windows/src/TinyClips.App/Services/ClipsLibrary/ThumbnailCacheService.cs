@@ -68,7 +68,9 @@ public sealed class ThumbnailCacheService : IThumbnailCache
                 return pending;
             }
 
-            var task = GenerateAsync(entry, target, cancellationToken);
+            // GenerateAsync can do disk IO before its first incomplete await. Do not hold
+            // the shared cache lock through that prefix (the tray and library share it).
+            var task = Task.Run(() => GenerateAsync(entry, target, cancellationToken));
             _inFlight[target] = task;
             _ = task.ContinueWith(_ =>
             {

@@ -9,6 +9,8 @@ own `CHANGELOG.md` at the repository root.
 - Screenshot editor **Find sensitive text** uses on-device Windows OCR to suggest likely email addresses, phone numbers and IP addresses. Review image-aligned highlights in a keyboard-accessible flyout, approve or dismiss each suggestion, then apply approved opaque black redactions using the existing Undo, Copy and Save paths. Detection alone makes no edits, and may miss sensitive text; review the entire image before sharing.
 
 ### Fixed
+- The Windows tray popup now retains its controls and menu items: clicking only positions and opens it. Recent captures and Studio drafts refresh in the background, with external file changes checked every 30 seconds for five minutes after the popup was last opened (idle apps no longer poll); open Recent menus stay put until dismissed. Studio, recording status, hotkey help, text sizing, and themes update without rebuilding the popup. The Recent menu now shows a type icon per item instead of tiny thumbnails, so the tray no longer generates or decodes thumbnails or reads Studio posters.
+- Settings no longer scans or purges temporary files on the UI thread, avoiding freezes of Settings and the shared tray/capture controls on Windows x64 and ARM64.
 - Color-picker dropdown buttons now expose their contextual names to assistive technology in Studio and the screenshot editor.
 - Studio button rows now respect their maximum width when deciding whether to hide decorative glyphs.
 - StudioWindowCheck now includes the shared color picker, and project-folder tests no longer wait for a nonexistent UI post after an operation finishes.

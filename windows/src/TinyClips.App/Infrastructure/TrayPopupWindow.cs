@@ -56,6 +56,17 @@ internal sealed class TrayPopupWindow : Window
 
     public void Hide() => _appWindow.Hide();
 
+    public void Resize(double logicalWidth, double logicalHeight)
+    {
+        var scale = Content.XamlRoot?.RasterizationScale ?? 1;
+        var area = DisplayArea.GetFromWindowId(_appWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        var position = _appWindow.Position;
+        _appWindow.MoveAndResize(AppWindowPlacement.ClampToWorkArea(
+            area, position.X, position.Y,
+            AppWindowPlacement.DipToPixels(logicalWidth, scale),
+            AppWindowPlacement.DipToPixels(logicalHeight, scale)));
+    }
+
     // Shows the popup anchored just above-left of the cursor (the tray sits at the
     // bottom-right of the screen), clamped to the work area of the active monitor.
     public void ShowNearCursor(double logicalWidth, double logicalHeight)

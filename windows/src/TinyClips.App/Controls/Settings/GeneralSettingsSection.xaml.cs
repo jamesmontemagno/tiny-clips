@@ -30,9 +30,28 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
         _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.General);
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
+        Loaded += OnLoaded;
     }
 
-    public void NotifyWindowClosed() => _closed = true;
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= OnLoaded;
+        try
+        {
+            await ViewModel.EnsureTemporaryFilesInitializedAsync();
+        }
+        catch (InvalidOperationException)
+        {
+            // The UI thread stopped taking work (the window or app is closing) while the scan ran.
+            // An async void handler must not let that escape and crash the app.
+        }
+    }
+
+    public void NotifyWindowClosed()
+    {
+        _closed = true;
+        Loaded -= OnLoaded;
+    }
 
     private void OnBrowseScreenshotSaveDirectory(object sender, RoutedEventArgs e) =>
         BrowseSaveDirectoryRequested?.Invoke(CaptureType.Screenshot);
@@ -55,10 +74,47 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
 
     private async void OnPurgeTempFiles(object sender, RoutedEventArgs e)
     {
+        var button = (Button)sender;
+        button.IsEnabled = false;
+        try
+        {
+            await PurgeTempFilesAsync();
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            if (await TryShowAsync(new ContentDialog
+                {
+                    Title = "Unable to purge temporary files",
+                    Content = "Some temporary files couldn't be accessed. Try again later.",
+                    CloseButtonText = "OK",
+                }) is null && !_closed)
+            {
+                App.ShowMessageNotification("Unable to purge temporary files. Try again later.");
+            }
+        }
+        finally
+        {
+            if (!_closed)
+            {
+                button.IsEnabled = true;
+            }
+        }
+    }
+
+    private async Task PurgeTempFilesAsync()
+    {
+        await ViewModel.EnsureTemporaryFilesInitializedAsync();
+        if (_closed)
+        {
+            return;
+        }
+
         var dialog = new ContentDialog
         {
             Title = "Purge temporary files?",
-            Content = $"This deletes {ViewModel.TempFolderSummary} from Tiny Clips' temporary folder. Your saved captures will not be affected.",
+            Content = ViewModel.IsTempFolderSummaryAvailable
+                ? $"This deletes inactive files from Tiny Clips' temporary folder ({ViewModel.TempFolderSummary}). Your saved captures will not be affected."
+                : "This deletes inactive files from Tiny Clips' temporary folder. Your saved captures will not be affected.",
             PrimaryButtonText = "Purge",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
@@ -70,7 +126,7 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
             return;
         }
 
-        var result = ViewModel.PurgeTempFiles();
+        var result = await ViewModel.PurgeTempFilesAsync();
         if (result.SkippedFileCount > 0)
         {
             var kept = $"{result.RemovedFileCount} temporary file(s) were removed. {result.SkippedFileCount} active or unavailable file(s) were kept.";

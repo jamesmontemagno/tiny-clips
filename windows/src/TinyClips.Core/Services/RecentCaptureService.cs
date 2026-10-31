@@ -8,6 +8,7 @@ public sealed record RecentCapture(string Path, CaptureType Type, DateTimeOffset
 
 public interface IRecentCaptureService
 {
+    event EventHandler? Changed;
     IReadOnlyList<RecentCapture> GetRecentCaptures();
     void Record(string path, CaptureType type);
     void Remove(string path);
@@ -23,6 +24,10 @@ public sealed partial class RecentCaptureService : IRecentCaptureService
     private readonly TimeProvider _timeProvider;
     private readonly object _gate = new();
     private List<RecentCapture> _captures;
+    private long _revision;
+    private bool _isPersisting;
+
+    public event EventHandler? Changed;
 
     public RecentCaptureService(ISettingsService settings, IFileSystem fileSystem, TimeProvider timeProvider)
     {
@@ -34,17 +39,36 @@ public sealed partial class RecentCaptureService : IRecentCaptureService
 
     public IReadOnlyList<RecentCapture> GetRecentCaptures()
     {
+        RecentCapture[] snapshot;
+        long revision;
         lock (_gate)
         {
-            var existing = _captures.Where(capture => _fileSystem.FileExists(capture.Path)).Take(MaximumCount).ToList();
-            if (existing.Count != _captures.Count)
+            snapshot = _captures.ToArray();
+            revision = _revision;
+        }
+
+        // A disconnected/moved capture folder must never block Record/Remove behind a disk
+        // probe. A concurrent mutation wins over this older validation.
+        var existing = snapshot.Where(capture => _fileSystem.FileExists(capture.Path)).Take(MaximumCount).ToList();
+        lock (_gate)
+        {
+            if (revision != _revision)
             {
-                _captures = existing;
-                Persist();
+                return _captures.ToArray();
             }
 
-            return _captures.ToArray();
+            if (existing.Count == snapshot.Length)
+            {
+                return snapshot;
+            }
+
+            _captures = existing;
+            _revision++;
         }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        Persist();
+        return existing.ToArray();
     }
 
     public void Record(string path, CaptureType type)
@@ -59,8 +83,11 @@ public sealed partial class RecentCaptureService : IRecentCaptureService
             _captures.RemoveAll(capture => string.Equals(capture.Path, path, StringComparison.OrdinalIgnoreCase));
             _captures.Insert(0, new RecentCapture(path, type, _timeProvider.GetLocalNow()));
             _captures = _captures.Take(MaximumCount).ToList();
-            Persist();
+            _revision++;
         }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        Persist();
     }
 
     public void Remove(string path)
@@ -69,9 +96,16 @@ public sealed partial class RecentCaptureService : IRecentCaptureService
         {
             if (_captures.RemoveAll(capture => string.Equals(capture.Path, path, StringComparison.OrdinalIgnoreCase)) > 0)
             {
-                Persist();
+                _revision++;
+            }
+            else
+            {
+                return;
             }
         }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        Persist();
     }
 
     private List<RecentCapture> Load()
@@ -92,8 +126,53 @@ public sealed partial class RecentCaptureService : IRecentCaptureService
         }
     }
 
-    private void Persist() =>
-        _settings.Set(SettingsKey, JsonSerializer.Serialize(_captures, RecentCaptureJsonContext.Default.ListRecentCapture));
+    private void Persist()
+    {
+        lock (_gate)
+        {
+            if (_isPersisting)
+            {
+                return;
+            }
+
+            _isPersisting = true;
+        }
+
+        // One caller writes, without holding the state lock during serialization/settings IO.
+        // Mutations during that write are coalesced and flushed by the same caller in order.
+        try
+        {
+            while (true)
+            {
+                List<RecentCapture> snapshot;
+                long revision;
+                lock (_gate)
+                {
+                    snapshot = [.. _captures];
+                    revision = _revision;
+                }
+
+                _settings.Set(SettingsKey, JsonSerializer.Serialize(snapshot, RecentCaptureJsonContext.Default.ListRecentCapture));
+                lock (_gate)
+                {
+                    if (revision == _revision)
+                    {
+                        _isPersisting = false;
+                        return;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            lock (_gate)
+            {
+                _isPersisting = false;
+            }
+
+            throw;
+        }
+    }
 
     [JsonSerializable(typeof(List<RecentCapture>))]
     private sealed partial class RecentCaptureJsonContext : JsonSerializerContext;
