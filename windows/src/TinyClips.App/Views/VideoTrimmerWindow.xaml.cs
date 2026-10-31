@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using TinyClips.Core.Editing;
@@ -42,6 +43,8 @@ public sealed partial class VideoTrimmerWindow : Window
     private bool _isEscapePromptOpen;
     private bool _isClosed;
     private int _exportsInFlight;
+    private bool _isDeletePromptOpen;
+    private readonly VideoFrameCopyOperation _frameCopy = new();
 
     // Handles snap back to the exact ends, so anything beyond rounding noise is a real trim.
     private const double TrimToleranceSeconds = 0.001;
@@ -168,6 +171,7 @@ public sealed partial class VideoTrimmerWindow : Window
             Player.SetMediaPlayer(player);
 
             _ready = true;
+            CopyFrameButton.IsEnabled = true;
             TrimBar.StartFraction = 0;
             TrimBar.EndFraction = 1;
             TrimBar.PlayheadFraction = 0;
@@ -400,9 +404,89 @@ public sealed partial class VideoTrimmerWindow : Window
 
     // -- Output ---------------------------------------------------------------
 
+    private async void OnCopyFrame(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || _isClosed || _isDeletingSource || _isDeletePromptOpen ||
+            _isEscapePromptOpen || _exportsInFlight != 0 || _frameCopy.IsBusy)
+        {
+            return;
+        }
+
+        var player = Player.MediaPlayer;
+        if (player?.PlaybackSession is not { } session)
+        {
+            return;
+        }
+
+        player.Pause();
+        var position = session.Position;
+        _exportsInFlight++;
+        BusyBar.Visibility = Visibility.Visible;
+        ExportFrameButton.IsEnabled = false;
+        SaveOriginalButton.IsEnabled = false;
+        SaveTrimmedButton.IsEnabled = false;
+        // Keep the focused Copy button enabled; the operation gate rejects repeated presses.
+        AutomationProperties.SetHelpText(CopyFrameButton, "Copying the current frame. Please wait.");
+        SetFrameCopyStatus("Copying frame\u2026");
+        try
+        {
+            var copied = await _frameCopy.CopyAsync(
+                position,
+                CaptureFrameAsync,
+                (bitmap, token) => ClipboardService.EncodeBitmapAsync(bitmap, token),
+                stream => ClipboardService.SetBitmapContent(stream));
+            if (!_isClosed)
+            {
+                SetFrameCopyStatus(copied ? "Frame copied to clipboard." : "Frame copy canceled.");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Video frame copy failed: {ex}");
+            if (!_isClosed)
+            {
+                SetFrameCopyStatus("Could not copy the frame to the clipboard.");
+                App.ShowClipboardFailureNotification(System.IO.Path.GetFileName(_filePath));
+            }
+        }
+        finally
+        {
+            _exportsInFlight--;
+            if (!_isClosed)
+            {
+                BusyBar.Visibility = Visibility.Collapsed;
+                AutomationProperties.SetHelpText(CopyFrameButton, string.Empty);
+                ExportFrameButton.IsEnabled = !_isDeletingSource;
+                SaveOriginalButton.IsEnabled = !_isDeletingSource;
+                SaveTrimmedButton.IsEnabled = !_isDeletingSource;
+            }
+        }
+    }
+
+    private void SetFrameCopyStatus(string message)
+    {
+        FrameCopyStatus.Text = message;
+        var peer = FrameworkElementAutomationPeer.FromElement(FrameCopyStatus)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(FrameCopyStatus);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
+
+    private async Task<SoftwareBitmap> CaptureFrameAsync(TimeSpan position)
+    {
+        var file = await StorageFile.GetFileFromPathAsync(_filePath);
+        var clip = await MediaClip.CreateFromFileAsync(file);
+        var composition = new MediaComposition();
+        composition.Clips.Add(clip);
+
+        // 0,0 preserves source resolution; both Copy and Export select the same source frame.
+        using var thumb = await composition.GetThumbnailAsync(position, 0, 0, VideoFramePrecision.NearestFrame);
+        var decoder = await BitmapDecoder.CreateAsync(thumb);
+        return await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+    }
+
     private async void OnExportFrame(object sender, RoutedEventArgs e)
     {
-        if (!_ready)
+        if (!_ready || _isClosed || _isDeletingSource || _isDeletePromptOpen || _exportsInFlight != 0)
         {
             return;
         }
@@ -418,21 +502,13 @@ public sealed partial class VideoTrimmerWindow : Window
 
         BusyBar.Visibility = Visibility.Visible;
         ExportFrameButton.IsEnabled = false;
+        CopyFrameButton.IsEnabled = false;
         _exportsInFlight++;
         string? outputPath = null;
 
         try
         {
-            var file = await StorageFile.GetFileFromPathAsync(_filePath);
-            var clip = await MediaClip.CreateFromFileAsync(file);
-            var composition = new MediaComposition();
-            composition.Clips.Add(clip);
-
-            // 0,0 => original frame resolution. NearestFrame keeps the still aligned to the
-            // frame the user is paused on.
-            var thumb = await composition.GetThumbnailAsync(position, 0, 0, VideoFramePrecision.NearestFrame);
-            var decoder = await BitmapDecoder.CreateAsync(thumb);
-            var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+            using var bitmap = await CaptureFrameAsync(position);
 
             var storage = App.Services.GetRequiredService<IClipStorageService>();
             outputPath = storage.GenerateFilePath(CaptureType.Screenshot, ".png", "(frame)");
@@ -459,12 +535,13 @@ public sealed partial class VideoTrimmerWindow : Window
             _exportsInFlight--;
             BusyBar.Visibility = Visibility.Collapsed;
             ExportFrameButton.IsEnabled = true;
+            CopyFrameButton.IsEnabled = !_isClosed && !_isDeletingSource;
         }
     }
 
     private async void OnSaveTrimmed(object sender, RoutedEventArgs e)
     {
-        if (!_ready || _isDeletingSource)
+        if (!_ready || _isDeletingSource || _frameCopy.IsBusy)
         {
             return;
         }
@@ -477,7 +554,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveOriginal(object sender, RoutedEventArgs e)
     {
-        if (_isDeletingSource)
+        if (_isDeletingSource || _frameCopy.IsBusy)
         {
             return;
         }
@@ -503,6 +580,7 @@ public sealed partial class VideoTrimmerWindow : Window
         SaveTrimmedButton.IsEnabled = false;
         RemoveAudioCheck.IsEnabled = false;
         PlayToggle.IsEnabled = false;
+        CopyFrameButton.IsEnabled = false;
         _exportsInFlight++;
         string? outputPath = null;
 
@@ -563,6 +641,7 @@ public sealed partial class VideoTrimmerWindow : Window
             SaveTrimmedButton.IsEnabled = true;
             RemoveAudioCheck.IsEnabled = true;
             PlayToggle.IsEnabled = true;
+            CopyFrameButton.IsEnabled = !_isClosed && !_isDeletingSource;
         }
 
         return outputPath;
@@ -585,13 +664,24 @@ public sealed partial class VideoTrimmerWindow : Window
     /// </summary>
     private async void OnDeleteVideo(object sender, RoutedEventArgs e)
     {
-        if (_isDeletingSource)
+        if (_isDeletingSource || _isDeletePromptOpen || _isClosed)
         {
             return;
         }
 
         StopPlayback();
-        if (!await EditorSourceDeletion.ConfirmAsync(RootGrid, _filePath, CaptureType.Video))
+        _isDeletePromptOpen = true;
+        _frameCopy.Cancel();
+        bool confirmed;
+        try
+        {
+            confirmed = await EditorSourceDeletion.ConfirmAsync(RootGrid, _filePath, CaptureType.Video);
+        }
+        finally
+        {
+            _isDeletePromptOpen = false;
+        }
+        if (!confirmed || _isClosed)
         {
             return;
         }
@@ -599,7 +689,13 @@ public sealed partial class VideoTrimmerWindow : Window
         // Every path that raises Completed stays disabled until the delete resolves, so a save can
         // never race the deletion.
         _isDeletingSource = true;
+        CopyFrameButton.IsEnabled = false;
         SetCompletionActionsEnabled(false);
+        await _frameCopy.WhenIdle;
+        if (_isClosed)
+        {
+            return;
+        }
 
         // The media player keeps a handle on the MP4; release it before deleting the file.
         ReleasePlayer();
@@ -611,6 +707,7 @@ public sealed partial class VideoTrimmerWindow : Window
             await RestorePlayerAsync();
             await EditorSourceDeletion.ShowFailureAsync(RootGrid, _filePath, error);
             _isDeletingSource = false;
+            CopyFrameButton.IsEnabled = _ready;
             SetCompletionActionsEnabled(true);
             return;
         }
@@ -630,6 +727,7 @@ public sealed partial class VideoTrimmerWindow : Window
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
         _isClosed = true;
+        _frameCopy.Close();
         ReleasePlayer();
     }
 
