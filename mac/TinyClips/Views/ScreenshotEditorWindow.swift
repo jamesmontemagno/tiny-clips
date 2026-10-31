@@ -776,7 +776,11 @@ struct ScreenshotEditorView: View {
                 deleteSelectedAnnotation: { viewModel.deleteSelectedAnnotation() },
                 clearAnnotations: { showClearAnnotationsConfirmation = true },
                 applyCrop: applyCrop,
-                findSensitiveText: viewModel.findSensitiveText,
+                findSensitiveText: {
+                    // Review controls live in the Redact tool's sidebar section.
+                    viewModel.selectedTool = .blur
+                    viewModel.findSensitiveText()
+                },
                 zoomIn: zoomIn,
                 zoomOut: zoomOut,
                 fitZoom: fitZoom,
@@ -929,9 +933,11 @@ struct ScreenshotEditorView: View {
                     .listRowInsets(EdgeInsets(top: 2, leading: 2, bottom: 4, trailing: 2))
             }
 
-            Section("Sensitive text") {
-                sensitiveTextControls
-                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
+            if viewModel.selectedTool == .blur {
+                Section("Sensitive text") {
+                    sensitiveTextControls
+                        .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
+                }
             }
 
             if viewModel.selectedTool == .crop {

@@ -104,6 +104,7 @@ public sealed partial class ScreenshotEditorWindow : Window
             Toolbar.Attach(_controller);
             Inspector.Attach(_controller);
             Inspector.BackgroundImageRequested += OnChooseBackgroundImage;
+            Inspector.SensitiveTextRequested += (_, anchor) => SensitiveTextFlyout.ShowAt(anchor);
             Canvas.Attach(_controller, settings);
 
             _controller.ImageChanged += OnControllerImageChanged;

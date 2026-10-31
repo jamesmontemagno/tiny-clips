@@ -339,6 +339,27 @@
                     </ComboBox>
                 </StackPanel>
 
+                <!--  On-device OCR suggestions; shown only while the Redact tool is active.  -->
+                <StackPanel x:Name="SensitiveTextSection" Spacing="6" Visibility="Collapsed">
+                    <Button
+                        x:Name="FindSensitiveTextButton"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorFindSensitiveTextButton"
+                        AutomationProperties.HelpText="Find likely email addresses, phone numbers and IP addresses locally. Does not change the image until you apply."
+                        Click="OnFindSensitiveTextClick"
+                        ToolTipService.ToolTip="Find likely email addresses, phone numbers and IP addresses locally">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon FontSize="14" Glyph="&#xE721;" />
+                            <TextBlock Text="Find sensitive text" />
+                        </StackPanel>
+                    </Button>
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Processed on this device. Suggestions may miss sensitive text; review before sharing."
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
                 <!--  Background &amp; padding  -->
                 <Expander
                     x:Name="BackgroundExpander"

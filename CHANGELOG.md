@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.
 - Team Load Momentum now invalidates in-flight history when tracking changes and clears previous totals when switching selections. Failed loads only fall back to earlier data for the same selection.
 
 ### Added
-- macOS screenshot editor adds opt-in **Find sensitive text**, using local OCR to suggest emails, phone numbers, and IP addresses. Review and approve or dismiss each highlight, then apply undoable opaque black redactions included in copied and exported images. Suggestions are not exhaustive; always review before sharing.
+- macOS screenshot editor adds opt-in **Find sensitive text** in the Redact tool's sidebar, using local OCR to suggest emails, phone numbers, and IP addresses. Review and approve or dismiss each highlight, then apply undoable opaque black redactions included in copied and exported images. Suggestions are not exhaustive; always review before sharing.
 - Studio backgrounds now support custom solid and gradient colors, plus adjustable gradient direction on macOS and Windows. The preview and exported video use the same direction.
 - Added GitHub Copilot app run buttons for the macOS app and Windows x64/ARM64 apps, building and launching the current session's checkout on its matching host.
 - Team Load now lets you drag assigned issues between teammates on the home screen, including Copilot, with highlighted drop targets, keyboard movement, and Undo. Moves preserve other assignees and verify the new owner before removing the old one.
