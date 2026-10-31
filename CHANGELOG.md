@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - The macOS window picker no longer sometimes highlights or captures a window hidden behind the one under the cursor. Windows are now ranked by their real on-screen stacking order, and invisible helper windows are skipped.
+- The macOS window picker's pixel size now matches the captured image when a window spans displays with different scales.
 - Studio recording now labels its capture picker as Studio, including its accessible mode name and pickers reopened after recording, while ordinary video remains Video.
 - Studio safely displays imported out-of-range gradient directions and preserves single-color gradients when changing direction.
 - Settings paths in macOS help and update guidance now consistently use arrows.

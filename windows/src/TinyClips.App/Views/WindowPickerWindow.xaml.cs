@@ -63,7 +63,10 @@ public sealed partial class WindowPickerWindow : Window
         RootGrid.Loaded += OnRootGridLoaded;
         Activated += OnActivated;
         Closed += OnClosed;
-        _ = ShowBackdropWhenReadyAsync();
+
+        // Deferred so an already-failed backdrop can't cancel the picker while the controller is
+        // still creating and activating the other monitors' overlays.
+        DispatcherQueue.TryEnqueue(() => _ = ShowBackdropWhenReadyAsync());
     }
 
     /// <summary>
@@ -104,7 +107,7 @@ public sealed partial class WindowPickerWindow : Window
     {
         if (args.WindowActivationState != WindowActivationState.Deactivated)
         {
-            RootGrid.Focus(FocusState.Programmatic);
+            FocusSurface.Focus(FocusState.Programmatic);
         }
     }
 
@@ -112,6 +115,7 @@ public sealed partial class WindowPickerWindow : Window
     {
         RootGrid.Loaded -= OnRootGridLoaded;
         _rootLoaded = true;
+        FocusSurface.Focus(FocusState.Programmatic);
         Render();
         TryReveal();
     }
@@ -254,6 +258,7 @@ public sealed partial class WindowPickerWindow : Window
     /// </summary>
     private async Task ShowBackdropWhenReadyAsync()
     {
+        var painted = false;
         try
         {
             var frame = await _backdropTask;
@@ -280,11 +285,24 @@ public sealed partial class WindowPickerWindow : Window
                 await source.SetBitmapAsync(softwareBitmap);
                 softwareBitmap.Dispose();
                 Backdrop.Source = source;
+                painted = true;
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Window picker backdrop paint failed: {ex}");
+        }
+
+        if (_closedByController)
+        {
+            return;
+        }
+
+        if (!painted)
+        {
+            // Stay invisible: an overlay without its snapshot would hide the monitor's windows.
+            _controller.OnBackdropFailed(_monitor.DeviceName);
+            return;
         }
 
         _backdropReady = true;

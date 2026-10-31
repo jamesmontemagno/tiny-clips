@@ -174,6 +174,7 @@ private class WindowSelectorController {
     private var localMonitor: Any?
     private var globalMonitor: Any?
     private var iconCache: [pid_t: NSImage] = [:]
+    private var scaleCache: [CGWindowID: CGFloat] = [:]
     private var isFinished = false
 
     init(windows: [SCWindow], completion: @escaping (SCWindow?) -> Void) {
@@ -336,18 +337,29 @@ private class WindowSelectorController {
                     height: intersection.height
                 )
                 view.label = offset == labelScreen
-                    ? label(for: hovered, scale: overlay.screen.backingScaleFactor)
+                    ? label(for: hovered)
                     : nil
             }
         }
     }
 
-    private func label(for window: SCWindow, scale: CGFloat) -> WindowPickerLabel {
+    private func label(for window: SCWindow) -> WindowPickerLabel {
         let appName = window.owningApplication?.applicationName ?? ""
         let title = window.title.flatMap { $0.isEmpty ? nil : $0 } ?? appName
-        let size = WindowPickerHitTesting.pixelSizeText(for: window.frame, scale: scale)
+        let size = WindowPickerHitTesting.pixelSizeText(for: window.frame, scale: pixelScale(for: window))
         let detail = appName.isEmpty || appName == title ? size : "\(appName) · \(size)"
         return WindowPickerLabel(icon: icon(for: window), title: title, detail: detail)
+    }
+
+    /// The scale the window will actually be captured at, so the label matches the saved image
+    /// even when the label sits on a different display than most of the window.
+    private func pixelScale(for window: SCWindow) -> CGFloat {
+        if let cached = scaleCache[window.windowID] {
+            return cached
+        }
+        let scale = ScreenshotCapture.pixelScale(for: window)
+        scaleCache[window.windowID] = scale
+        return scale
     }
 
     private func description(for window: SCWindow) -> String {
