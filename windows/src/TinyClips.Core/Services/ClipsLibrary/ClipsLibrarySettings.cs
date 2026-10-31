@@ -3,7 +3,7 @@ using TinyClips.Core.Models.ClipsLibrary;
 namespace TinyClips.Core.Services.ClipsLibrary;
 
 /// <summary>
-/// Typed accessors for every Clips Library preference. Mirrors the macOS Clips Manager settings
+/// Typed accessors for every Clips Library preference. Mirrors the macOS Clips Library settings
 /// sheet so behaviour stays in parity.
 /// </summary>
 public interface IClipsLibrarySettings

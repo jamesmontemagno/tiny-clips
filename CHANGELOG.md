@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - The macOS first-run welcome wizard now introduces Studio Mode, explains how to start a separate-layer recording and export an editable project, and shows the current capture shortcuts.
+- Renamed the macOS **Clips Manager** window and menu item to **Clips Library**, matching Windows; the existing window routing remains unchanged.
 - The macOS window picker now shows a clearer highlight with an accent outline, plus a label with the app icon, window title, app name and pixel size. A hint shows the controls: Tab/Shift+Tab cycles windows with VoiceOver announcements, Return captures, and Esc or right-click cancels. Clicking empty space no longer cancels the capture.
 - Studio now defaults on for new installs and returning users without a saved preference. Saved on/off choices are preserved, resetting settings restores Studio on, and the refreshed 2.0 welcome-back introduction explains the default and offers the same switch. Record Video and its shortcut remain ordinary recordings.
 - macOS Screenshot and GIF settings now follow Video's quality and before/after grouping, with GIF recording effects under During Recording and screenshot-only options in collapsed Advanced settings. Existing options and capture behavior are unchanged.

@@ -1453,7 +1453,7 @@ final class StudioViewModel: ObservableObject {
 
         let alert = NSAlert()
         alert.messageText = "Close Studio?"
-        alert.informativeText = "Your edits are saved with the project, and you can reopen it from the Clips Manager. You can turn off this confirmation in General settings."
+        alert.informativeText = "Your edits are saved with the project, and you can reopen it from the Clips Library. You can turn off this confirmation in General settings."
         alert.addButton(withTitle: "Close Studio")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn

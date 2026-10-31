@@ -1348,7 +1348,7 @@ final class StudioProjectTests: XCTestCase {
         let before = Date()
         let saved = try StudioScreenRecording.save(store: store, id: paths.id) { outputURL }
 
-        // The Clips Manager goes by the day a file was made, to sort and to archive.
+        // The Clips Library goes by the day a file was made, to sort and to archive.
         let values = try saved.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
         let created = try XCTUnwrap(values.creationDate)
         let modified = try XCTUnwrap(values.contentModificationDate)

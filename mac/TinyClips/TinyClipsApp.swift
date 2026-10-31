@@ -123,7 +123,7 @@ struct TinyClipsApp: App {
                 )
         }
 
-        Window("Clips Manager", id: "clips-manager") {
+        Window("Clips Library", id: "clips-manager") {
             clipsManagerRootView()
         }
         // Sidebar (~210) + two 220 pt grid columns + inspector (~320) fit comfortably at this size.
@@ -278,7 +278,7 @@ private final class ExternalImageOpenCoordinator {
         Date() <= suppressClipsManagerUntil
     }
 
-    /// Closes the Clips Manager that the system opens for a file handed to the app, now and for
+    /// Closes the Clips Library that the system opens for a file handed to the app, now and for
     /// the next moments. The file opens in an editor of its own.
     func beginClipsManagerSuppressionWindow() {
         suppressClipsManagerUntil = Date().addingTimeInterval(3)
@@ -286,7 +286,7 @@ private final class ExternalImageOpenCoordinator {
     }
 
     private func isClipsManagerWindow(_ window: NSWindow) -> Bool {
-        window.identifier?.rawValue == "clips-manager" || window.title == "Clips Manager"
+        window.identifier?.rawValue == "clips-manager" || window.title == "Clips Library"
     }
 
     private func closeClipsManagerWindowsIfNeeded() {
