@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Changed
+- The Windows welcome tour now introduces Studio Mode and explains how to start a separate-layer recording and export an editable project.
 - Window capture now uses a full-screen picker instead of a list. Screens dim and the window under the cursor is highlighted with its app, title and size. Click to capture it; Tab/Shift+Tab cycles windows, Enter selects, and Esc or right-click cancels. The picker hit-tests in true z-order, so a window behind another one or behind the taskbar is never picked. It works across every monitor and skips cloaked, minimized and invisible windows.
 
 ### Added
