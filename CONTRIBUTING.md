@@ -99,6 +99,11 @@ Copilot app configuration, extensions, and standalone tooling outside those inpu
 also skip platform builds. Manually dispatching **Windows Build** still forces its
 builds and tests. Release/tag and other manually triggered workflows are unchanged.
 
+The Windows direct-build matrix always expands to report both required architecture
+checks. With no Windows changes, its entries run only a build-decision check on
+Ubuntu; checkout, .NET setup, restore, and packaging are skipped. Failed or invalid
+change detection fails those checks instead of reporting a successful skip.
+
 Ordinary **Build** and **Windows Build** runs cancel superseded runs for the same
 pull request, independently per workflow. Non-pull-request runs use unique
 concurrency groups, so a later documentation-only push cannot cancel an earlier
@@ -113,6 +118,27 @@ sets, and both test-project restores still run on hits. Direct x64/ARM64 and Sto
 builds use normal NuGet restore without caching: measured cache transfer overhead
 outweighed their restore savings. These changes target turnaround time and runner
 capacity, not dollar savings on standard hosted runners in this public repo.
+
+### Agentic workflow maintenance
+
+The source for the weekly feature-parity workflow is
+`.github/workflows/weekly-feature-parity.md`; its `.lock.yml` is generated. Use
+the gh-aw version pinned in `.github/workflows/copilot-setup-steps.yml` and
+commit the regenerated lock file after changing the source. Check the installed
+version with `gh aw version`.
+
+The checked-in `.github/aw/actions-lock.json` pins the setup action even when
+SSO blocks tag resolution. Use the canonical repository schedule seed when
+compiling so the generated schedule is the same in forks:
+
+```bash
+gh aw compile weekly-feature-parity --strict --validate \
+  --schedule-seed jamesmontemagno/tiny-clips
+```
+
+When upgrading gh-aw, verify the new `github/gh-aw-actions` release commit and
+update the action cache and setup action pin together. Do not manually dispatch
+the parity workflow as a smoke test: it can create real issues.
 
 ### Building without code signing (CI / headless)
 
