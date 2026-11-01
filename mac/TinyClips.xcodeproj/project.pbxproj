@@ -34,6 +34,7 @@
 		AB700000000000000000000A /* AutomationAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000000A /* AutomationAnnotations.swift */; };
 		AC700000000000000000000A /* AutomationAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000000A /* AutomationAnnotations.swift */; };
 		AD700000000000000000002A /* AutomationCaptureTargetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000002A /* AutomationCaptureTargetsTests.swift */; };
+		AD700000000000000000002B /* AutomationServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000002B /* AutomationServerTests.swift */; };
 		B10000000000000000000001 /* TinyClipsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* TinyClipsApp.swift */; };
 		B10000000000000000000002 /* CaptureSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* CaptureSettings.swift */; };
 		B10000000000000000000003 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* SettingsView.swift */; };
@@ -265,6 +266,7 @@
 		AA7000000000000000000009 /* AutomationCaptureTargets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationCaptureTargets.swift; sourceTree = "<group>"; };
 		AA700000000000000000000A /* AutomationAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationAnnotations.swift; sourceTree = "<group>"; };
 		AA700000000000000000002A /* AutomationCaptureTargetsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationCaptureTargetsTests.swift; sourceTree = "<group>"; };
+		AA700000000000000000002B /* AutomationServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationServerTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000001 /* TinyClipsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyClipsApp.swift; sourceTree = "<group>"; };
 		A10000000000000000000002 /* CaptureSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSettings.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -596,6 +598,7 @@
 				AA7000000000000000000028 /* AutomationPolicyTests.swift */,
 				AA7000000000000000000029 /* AutomationClientStoreTests.swift */,
 				AA700000000000000000002A /* AutomationCaptureTargetsTests.swift */,
+				AA700000000000000000002B /* AutomationServerTests.swift */,
 				A30000000000000000000001 /* CaptureMathTests.swift */,
 				D61700000000000000000005 /* GifTimingTests.swift */,
 				D61700000000000000000007 /* GifTrimmerTimingTests.swift */,
@@ -995,6 +998,7 @@
 				AD7000000000000000000028 /* AutomationPolicyTests.swift in Sources */,
 				AD7000000000000000000029 /* AutomationClientStoreTests.swift in Sources */,
 				AD700000000000000000002A /* AutomationCaptureTargetsTests.swift in Sources */,
+				AD700000000000000000002B /* AutomationServerTests.swift in Sources */,
 				B30000000000000000000001 /* CaptureMathTests.swift in Sources */,
 				D61700000000000000000004 /* GifTimingTests.swift in Sources */,
 				D61700000000000000000006 /* GifTrimmerTimingTests.swift in Sources */,

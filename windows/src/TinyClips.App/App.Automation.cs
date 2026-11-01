@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Controls;
 using TinyClips.App.Settings;
 using TinyClips.Core.Automation;
 using TinyClips.Core.Capture;
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
@@ -228,9 +229,12 @@ public partial class App : IAutomationAppActions
             new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
         }
 
-        var path = await SaveScreenshotFrameAsync(Services.GetRequiredService<IScreenshotService>(), frame, alreadyBranded: true);
+        var path = await SaveScreenshotFrameAsync(
+            Services.GetRequiredService<IScreenshotService>(), frame, alreadyBranded: true, cancellationToken);
+        var (width, height) = await Task.Run(
+            () => ScreenshotBackgroundDecoder.ReadDimensions(path, cancellationToken), cancellationToken);
         ShowSaveToast(path);
-        return (path, frame.Width, frame.Height);
+        return (path, width, height);
     }
 
     Task<string> IAutomationAppActions.RecognizeTextForAutomationAsync(

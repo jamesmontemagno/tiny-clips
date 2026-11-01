@@ -151,7 +151,7 @@ final class StudioViewModel: ObservableObject {
 
     @discardableResult
     func applyAutomationProject(_ updated: StudioProject, expectedModifiedAt: Date) -> Bool {
-        guard isEditable, project?.modifiedAt == expectedModifiedAt, saveNow() else { return false }
+        guard isEditable, !isInGesture, project?.modifiedAt == expectedModifiedAt, saveNow() else { return false }
         edit { $0.applyAutomationProject(updated) }
         guard saveNow() else {
             undo()

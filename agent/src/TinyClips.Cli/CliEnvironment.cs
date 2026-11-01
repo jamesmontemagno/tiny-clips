@@ -25,13 +25,6 @@ internal sealed class CliEnvironment
         ];
     }
 
-    public string ResolveEndpoint()
-    {
-        var candidates = EndpointCandidates();
-        if (candidates.Count == 1) return candidates[0];
-        return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
-    }
-
     public string ConfigPath()
     {
         if (GetVariable("TINYCLIPS_AGENT_CONFIG") is { Length: > 0 } custom) return custom;

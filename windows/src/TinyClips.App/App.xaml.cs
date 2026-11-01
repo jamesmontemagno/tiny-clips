@@ -1798,9 +1798,10 @@ public partial class App : Application
         ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
     }
 
-    private async Task<string> SaveScreenshotFrameAsync(IScreenshotService screenshots, CapturedFrame frame, bool alreadyBranded)
+    private async Task<string> SaveScreenshotFrameAsync(
+        IScreenshotService screenshots, CapturedFrame frame, bool alreadyBranded, CancellationToken cancellationToken = default)
     {
-        var path = await screenshots.SaveFrameAsync(frame, applyBranding: !alreadyBranded);
+        var path = await screenshots.SaveFrameAsync(frame, applyBranding: !alreadyBranded, cancellationToken);
         Services.GetRequiredService<IRecentCaptureService>().Record(path, CaptureType.Screenshot);
         await CopyToClipboardAsync(path, CaptureType.Screenshot);
         CaptureFlowTrace.Mark("screenshot: saved + clipboard");

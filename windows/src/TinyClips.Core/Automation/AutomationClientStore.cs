@@ -43,6 +43,7 @@ public sealed class AutomationClientStore
     private readonly object _gate = new();
     private readonly string _filePath;
     private readonly TimeProvider _time;
+    private readonly Dictionary<string, DateTimeOffset?> _persistedLastUsed = new(StringComparer.Ordinal);
     private List<AutomationClient> _clients;
 
     public AutomationClientStore(string filePath, TimeProvider? timeProvider = null)
@@ -51,6 +52,10 @@ public sealed class AutomationClientStore
         _filePath = filePath;
         _time = timeProvider ?? TimeProvider.System;
         _clients = ReadFile(filePath);
+        foreach (var client in _clients)
+        {
+            _persistedLastUsed[client.Id] = client.LastUsedAt;
+        }
     }
 
     /// <summary>The default location next to the app's other local data.</summary>
@@ -166,7 +171,7 @@ public sealed class AutomationClientStore
                 return;
             }
 
-            var previous = _clients[index].LastUsedAt;
+            var previous = _persistedLastUsed.GetValueOrDefault(clientId);
             _clients[index] = _clients[index] with { LastUsedAt = now };
             if (previous is null || now - previous.Value >= LastUsedPersistInterval)
             {
@@ -224,6 +229,11 @@ public sealed class AutomationClientStore
         var temporary = _filePath + ".tmp";
         File.WriteAllText(temporary, json);
         File.Move(temporary, _filePath, overwrite: true);
+        _persistedLastUsed.Clear();
+        foreach (var client in _clients)
+        {
+            _persistedLastUsed[client.Id] = client.LastUsedAt;
+        }
     }
 
     private sealed class ClientsFile

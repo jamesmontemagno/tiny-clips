@@ -22,7 +22,7 @@ internal static class AgentConfig
 
     public static void Write(CliEnvironment env, JsonObject config)
     {
-        var path = env.ConfigPath();
+        var path = Path.GetFullPath(env.ConfigPath());
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var json = config.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
         if (OperatingSystem.IsWindows())

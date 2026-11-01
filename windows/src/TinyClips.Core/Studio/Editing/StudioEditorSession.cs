@@ -1215,6 +1215,7 @@ public sealed partial class StudioEditorSession
     {
         ArgumentNullException.ThrowIfNull(updated);
         if (!IsEditable
+            || IsInGesture
             || Model is not { } model
             || model.Project.ModifiedAt != expectedModifiedAt
             || !string.Equals(updated.Id, ProjectId, StringComparison.Ordinal))

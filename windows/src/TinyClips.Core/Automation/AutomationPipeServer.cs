@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
+using System.Threading.Channels;
 
 namespace TinyClips.Core.Automation;
 
@@ -18,6 +19,7 @@ public sealed class AutomationPipeServer : IAsyncDisposable
     public const int MaxLineBytes = 1024 * 1024;
 
     private const int MaxConnections = 16;
+    private const int MaxPendingRequests = 16;
 
     private readonly Func<string, CancellationToken, Task<string>> _handleLine;
     private readonly object _gate = new();
@@ -192,7 +194,7 @@ public sealed class AutomationPipeServer : IAsyncDisposable
         }
     }
 
-    private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken cancellationToken)
+    internal async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken cancellationToken)
     {
         await Task.Yield();
         var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
@@ -200,34 +202,74 @@ public sealed class AutomationPipeServer : IAsyncDisposable
         {
             await using (pipe.ConfigureAwait(false))
             {
+                using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 var reader = new LineReader(pipe, MaxLineBytes);
-                while (!cancellationToken.IsCancellationRequested)
+                var requests = Channel.CreateBounded<string>(new BoundedChannelOptions(MaxPendingRequests)
                 {
-                    var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                    if (line is null)
+                    SingleReader = true,
+                    SingleWriter = true,
+                });
+                var reading = ReadRequestsAsync(reader, requests.Writer, lifetime);
+                try
+                {
+                    await foreach (var line in requests.Reader.ReadAllAsync(lifetime.Token).ConfigureAwait(false))
                     {
-                        break;
+                        var response = await _handleLine(line, lifetime.Token).ConfigureAwait(false);
+                        var bytes = encoding.GetBytes(response + "\n");
+                        await pipe.WriteAsync(bytes, lifetime.Token).ConfigureAwait(false);
+                        await pipe.FlushAsync(lifetime.Token).ConfigureAwait(false);
                     }
-
-                    if (string.IsNullOrWhiteSpace(line))
+                }
+                finally
+                {
+                    await lifetime.CancelAsync().ConfigureAwait(false);
+                    try
                     {
-                        continue;
+                        await reading.ConfigureAwait(false);
                     }
-
-                    var response = await _handleLine(line, cancellationToken).ConfigureAwait(false);
-                    var bytes = encoding.GetBytes(response + "\n");
-                    await pipe.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
-                    await pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+                    {
+                    }
                 }
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or ObjectDisposedException or InvalidDataException)
+        catch (InvalidDataException ex)
         {
-            // The client went away, the server is stopping, or the client sent an oversized line.
+            System.Diagnostics.Debug.WriteLine($"AutomationPipeServer: invalid request: {ex.Message}");
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or ObjectDisposedException)
+        {
+            // The client went away or the server is stopping.
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"AutomationPipeServer: connection failed: {ex}");
+        }
+    }
+
+    private static async Task ReadRequestsAsync(
+        LineReader reader, ChannelWriter<string> requests, CancellationTokenSource lifetime)
+    {
+        try
+        {
+            while (!lifetime.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync(lifetime.Token).ConfigureAwait(false);
+                if (line is null)
+                {
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(line) && !requests.TryWrite(line))
+                {
+                    throw new InvalidDataException("Too many requests are waiting on this connection.");
+                }
+            }
+        }
+        finally
+        {
+            requests.TryComplete();
+            await lifetime.CancelAsync().ConfigureAwait(false);
         }
     }
 

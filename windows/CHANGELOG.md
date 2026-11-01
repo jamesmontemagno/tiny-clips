@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- Agent Control now preserves Studio gestures and existing annotated captures, reports saved screenshot dimensions accurately, persists agent activity, and cancels pending approvals when an agent disconnects.
+
 ### Added
 - The shared MCP server uses the official C# SDK, with SDK-client interoperability smoke checks and unchanged app-enforced pairing and scopes.
 - Added shared CLI package/MCP smoke CI and separate NuGet publishing; Windows app CI now includes shared automation and root .NET configuration changes.

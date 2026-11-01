@@ -4,7 +4,7 @@
 
 See [docs/agent-integration.md](../../docs/agent-integration.md) for the protocol, security model, and setup.
 
-When adding a command: add it to `commands.json`, implement it in both apps (or return `not_supported`), and add a policy case if it introduces a new scope.
+When adding or changing an app capability, expose its meaningful actions and state to agents in the same change. Add or update commands in `commands.json`, implement and advertise them on each platform where the feature exists (otherwise return `not_supported`), and add a policy case if it introduces a new scope. Preserve pairing, scopes, sensitive-action approvals, and platform permissions; update CLI/MCP coverage, relevant Skills, and the integration guide as needed. If safe agent access is not feasible, get user direction instead of silently omitting it.
 
 Autonomous capture commands use ephemeral target IDs from `capture.targets`; refresh them after app restarts. Region rectangles are display-local physical pixels with a top-left origin. Annotation bounds and point lists are source-image pixels from the top left. `editor.annotate` always saves a new library item and must not overwrite its source.
 

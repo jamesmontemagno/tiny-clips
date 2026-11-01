@@ -89,11 +89,11 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             "capture.scrolling.start" => await OnUiAsync(async () => { await StartScrollingCaptureAsync(context, cancellationToken); return true; }),
             "capture.scrolling.stop" => await OnUiAsync(StopScrollingCaptureAsync),
             "capture.scrolling.status" => await OnUiAsync(ScrollingStatus),
-            "capture.scrolling.cancel" => await OnUiAsync(CancelScrollingCapture),
+            "capture.scrolling.cancel" => await OnUiAsync(CancelScrollingCapture, cancellationToken),
             "recording.stop" => await OnUiAsync(StopRecordingAsync),
             "recording.togglePause" => await OnUiAsync(TogglePauseAsync),
-            "recording.restart" => await OnUiAsync(RestartRecordingAsync),
-            "recording.discard" => await OnUiAsync(DiscardRecordingAsync),
+            "recording.restart" => await OnUiAsync(RestartRecordingAsync, cancellationToken),
+            "recording.discard" => await OnUiAsync(DiscardRecordingAsync, cancellationToken),
             "editor.open" => await OpenEditorAsync(context),
             "studio.projects.list" or "studio.project.get" or "studio.project.edit"
                 or "studio.zoom.suggest" or "studio.export"
@@ -101,7 +101,7 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             "editor.annotate" => await AnnotateAsync(context, cancellationToken),
             "library.reveal" => await OnUiAsync(() => Reveal(context)),
             "library.copy" => await CopyAsync(context),
-            "library.delete" => await DeleteAsync(context),
+            "library.delete" => await DeleteAsync(context, cancellationToken),
             "library.upload" => await UploadAsync(context, cancellationToken),
             _ => throw new AutomationException(AutomationErrorCodes.NotSupported, $"{context.Command.Name} is not supported on Windows."),
         };
@@ -374,9 +374,10 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         return new JsonObject { ["copied"] = true };
     }
 
-    private async Task<JsonNode> DeleteAsync(AutomationCommandContext context)
+    private async Task<JsonNode> DeleteAsync(AutomationCommandContext context, CancellationToken cancellationToken)
     {
         var (path, _) = ResolveLibraryFile(context.GetString("path"));
+        cancellationToken.ThrowIfCancellationRequested();
         if (!MoveToRecycleBin(path))
         {
             throw new AutomationException(AutomationErrorCodes.Internal, "The capture could not be moved to the Recycle Bin. It may be open in another app.");
@@ -502,10 +503,12 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
 
     // -- Threading ---------------------------------------------------------------------------
 
-    private Task<T> OnUiAsync<T>(Func<T> action) => OnUiAsync(() => Task.FromResult(action()));
+    private Task<T> OnUiAsync<T>(Func<T> action, CancellationToken cancellationToken = default) =>
+        OnUiAsync(() => Task.FromResult(action()), cancellationToken);
 
-    private Task<T> OnUiAsync<T>(Func<Task<T>> action)
+    private Task<T> OnUiAsync<T>(Func<Task<T>> action, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (_dispatcher() is not { } dispatcher)
         {
             throw new AutomationException(AutomationErrorCodes.Internal, "Tiny Clips is still starting.");
@@ -521,6 +524,7 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 completion.TrySetResult(await action());
             }
             catch (Exception ex)

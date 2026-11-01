@@ -144,6 +144,33 @@ public sealed class AutomationProtocolTests : IDisposable
     }
 
     [Fact]
+    public async Task Host_DoesNotExecuteIfCancellationRacesWithApproval()
+    {
+        var clients = new AutomationClientStore(Path.Combine(_directory, "clients.json"));
+        var (_, token) = clients.Add("Agent", ["delete"]);
+        var handler = new FakeHandler();
+        var approvals = new DelayedApproval();
+        var host = new AutomationHost(
+            AutomationContract.Default,
+            clients,
+            new AutomationAuditLog(Path.Combine(_directory, AutomationAuditLog.FileName)),
+            handler,
+            approvals,
+            () => true);
+        using var cancellation = new CancellationTokenSource();
+        var pending = host.HandleLineAsync(
+            $$$"""{"id":"1","token":"{{{token}}}","command":"library.delete","params":{"path":"a.png"}}""",
+            cancellation.Token);
+        await approvals.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        cancellation.Cancel();
+        approvals.Result.TrySetResult(true);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        Assert.Equal(0, handler.Deletes);
+    }
+
+    [Fact]
     public async Task Host_UnknownCommandAndBadJson()
     {
         var host = CreateHost(new FakeHandler(), new FakeApprovals(true), () => true);
@@ -248,6 +275,21 @@ public sealed class AutomationProtocolTests : IDisposable
         {
             CommandPrompts++;
             return Task.FromResult(Answer);
+        }
+    }
+
+    private sealed class DelayedApproval : IAutomationApprovalPrompt
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<bool> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        public Task<bool> RequestCommandApprovalAsync(AutomationCommandContext context, CancellationToken cancellationToken)
+        {
+            Started.TrySetResult();
+            return Result.Task;
         }
     }
 }

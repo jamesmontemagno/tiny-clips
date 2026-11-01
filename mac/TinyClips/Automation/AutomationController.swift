@@ -185,12 +185,14 @@ final class AutomationController: ObservableObject {
             throw AutomationError(code)
         case .approve:
             let approved = await approvals.request(approvalRequest(command: command, params: params, client: client, contract: contract))
+            try Task.checkCancellation()
             guard approved else { throw AutomationError(.approvalDenied) }
             guard isEnabled else { throw AutomationError(.automationDisabled) }
         case .allow:
             break
         }
 
+        try Task.checkCancellation()
         switch command {
         case "session.hello": return hello(contract: contract)
         case "session.pair": return try pair(params: params, contract: contract)

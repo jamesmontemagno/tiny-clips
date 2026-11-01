@@ -31,7 +31,7 @@ internal static class AutomationClient
         string? line;
         try
         {
-            await using var stream = await ConnectAsync(env.ResolveEndpoint(), timeout.Token);
+            await using var stream = await ConnectAsync(env, timeout.Token);
             var bytes = Encoding.UTF8.GetBytes(request.ToJsonString() + "\n");
             await stream.WriteAsync(bytes, timeout.Token);
             await stream.FlushAsync(timeout.Token);
@@ -66,7 +66,25 @@ internal static class AutomationClient
             error?["message"]?.GetValue<string>() ?? "Command failed.");
     }
 
-    private static async Task<Stream> ConnectAsync(string endpoint, CancellationToken cancellationToken)
+    private static async Task<Stream> ConnectAsync(CliEnvironment env, CancellationToken cancellationToken)
+    {
+        Exception? lastFailure = null;
+        foreach (var endpoint in env.EndpointCandidates())
+        {
+            try
+            {
+                return await ConnectEndpointAsync(endpoint, cancellationToken);
+            }
+            catch (Exception ex) when (ex is SocketException or IOException or TimeoutException or UnauthorizedAccessException)
+            {
+                lastFailure = ex;
+            }
+        }
+
+        throw lastFailure ?? new IOException("No Tiny Clips automation endpoint was configured.");
+    }
+
+    private static async Task<Stream> ConnectEndpointAsync(string endpoint, CancellationToken cancellationToken)
     {
         const string pipePrefix = @"\\.\pipe\";
         if (endpoint.StartsWith(pipePrefix, StringComparison.OrdinalIgnoreCase))

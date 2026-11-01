@@ -162,6 +162,7 @@ public sealed class AutomationHost
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var result = await _handler.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
             Audit(command, "ok", client, null, approved);
             return AutomationResponse.Success(id, result);

@@ -18,9 +18,10 @@ internal sealed class FakeApp : IAsyncDisposable
     public List<JsonObject> Received { get; } = [];
     public bool Enabled { get; init; } = true;
     public bool Approve { get; init; } = true;
+    public bool CloseBeforeReply { get; init; }
     public string Endpoint { get; }
 
-    public FakeApp()
+    public FakeApp(string? unixEndpoint = null)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -29,7 +30,8 @@ internal sealed class FakeApp : IAsyncDisposable
         }
         else
         {
-            Endpoint = Path.Combine(_directory, "a.sock");
+            Endpoint = unixEndpoint ?? Path.Combine(_directory, "a.sock");
+            Directory.CreateDirectory(Path.GetDirectoryName(Endpoint)!);
             _socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             _socket.Bind(new UnixDomainSocketEndPoint(Endpoint));
             _socket.Listen();
@@ -147,6 +149,7 @@ internal sealed class FakeApp : IAsyncDisposable
                 while (await reader.ReadLineAsync(_stop.Token) is { } line)
                 {
                     var response = Handle(JsonNode.Parse(line)!.AsObject());
+                    if (CloseBeforeReply) return;
                     await stream.WriteAsync(Encoding.UTF8.GetBytes(response.ToJsonString() + "\n"), _stop.Token);
                     await stream.FlushAsync(_stop.Token);
                 }

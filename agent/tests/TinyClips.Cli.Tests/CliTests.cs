@@ -38,6 +38,117 @@ public class CliTests
     }
 
     [Fact]
+    public async Task PairAndUnpairSupportAConfigFileInTheCurrentDirectory()
+    {
+        await using var app = new FakeApp();
+        var configPath = $"tinyclips-agent-test-{Guid.NewGuid():N}.json";
+        var env = new CliEnvironment
+        {
+            GetVariable = name => name switch
+            {
+                "TINYCLIPS_AUTOMATION_ENDPOINT" => app.Endpoint,
+                "TINYCLIPS_AGENT_CONFIG" => configPath,
+                _ => null,
+            },
+            Out = new StringWriter(),
+            Error = new StringWriter(),
+            PollInterval = TimeSpan.FromMilliseconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(10),
+        };
+        try
+        {
+            Assert.Equal(0, await Cli.RunAsync(["pair"], env, TestContext.Current.CancellationToken));
+            Assert.Equal("tok-p1", JsonNode.Parse(File.ReadAllText(configPath))!["token"]!.GetValue<string>());
+            Assert.Equal(0, await Cli.RunAsync(["unpair"], env, TestContext.Current.CancellationToken));
+            Assert.Null(JsonNode.Parse(File.ReadAllText(configPath))!["token"]);
+        }
+        finally
+        {
+            File.Delete(configPath);
+        }
+    }
+
+    [Fact]
+    public async Task StaleDirectSocketFallsBackToStoreSocketButExplicitOverrideDoesNot()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "macOS socket discovery uses Unix domain sockets.");
+        var home = Path.Combine("/tmp", $"tc-{Guid.NewGuid():N}"[..11]);
+        var direct = Path.Combine(home, "Library", "Application Support", "TinyClips", "automation.sock");
+        var store = Path.Combine(home, "Library", "Containers", "com.refractored.tinyclips", "Data", "tinyclips-automation.sock");
+        Directory.CreateDirectory(Path.GetDirectoryName(direct)!);
+        File.WriteAllText(direct, "stale socket");
+        try
+        {
+            await using var app = new FakeApp(store);
+            var output = new StringWriter();
+            var env = new CliEnvironment
+            {
+                GetVariable = name => name == "HOME" ? home : null,
+                Out = output,
+                Error = new StringWriter(),
+                IsWindows = false,
+                RequestTimeout = TimeSpan.FromSeconds(10),
+            };
+            Assert.Equal(0, await Cli.RunAsync(["status"], env, TestContext.Current.CancellationToken));
+            Assert.True(Json(output)["automationEnabled"]!.GetValue<bool>());
+
+            var error = new StringWriter();
+            var overridden = new CliEnvironment
+            {
+                GetVariable = name => name switch
+                {
+                    "HOME" => home,
+                    "TINYCLIPS_AUTOMATION_ENDPOINT" => direct,
+                    _ => null,
+                },
+                Out = new StringWriter(),
+                Error = error,
+                IsWindows = false,
+                RequestTimeout = TimeSpan.FromSeconds(10),
+            };
+            Assert.Equal(2, await Cli.RunAsync(["status"], overridden, TestContext.Current.CancellationToken));
+            Assert.Equal("not_running", Json(error)["error"]!["code"]!.GetValue<string>());
+            Assert.Single(app.Received);
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ConnectedEndpointClosingAfterRequestDoesNotRetryOnAnotherEndpoint()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "macOS socket discovery uses Unix domain sockets.");
+        var home = Path.Combine("/tmp", $"tc-{Guid.NewGuid():N}"[..11]);
+        var direct = Path.Combine(home, "Library", "Application Support", "TinyClips", "automation.sock");
+        var store = Path.Combine(home, "Library", "Containers", "com.refractored.tinyclips", "Data", "tinyclips-automation.sock");
+        try
+        {
+            await using var first = new FakeApp(direct) { CloseBeforeReply = true };
+            await using var second = new FakeApp(store);
+            var error = new StringWriter();
+            var env = new CliEnvironment
+            {
+                GetVariable = name => name == "HOME" ? home : null,
+                Out = new StringWriter(),
+                Error = error,
+                IsWindows = false,
+                RequestTimeout = TimeSpan.FromSeconds(10),
+            };
+
+            Assert.Equal(2, await Cli.RunAsync(["status"], env, TestContext.Current.CancellationToken));
+            Assert.Equal("connection", Json(error)["error"]!["code"]!.GetValue<string>());
+            Assert.Single(first.Received);
+            Assert.Empty(second.Received);
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task DeclinedPairingIsAnError()
     {
         await using var app = new FakeApp { Approve = false };

@@ -26,15 +26,23 @@ final class AutomationApprovalCenter {
     private var panel: AutomationApprovalPanel?
 
     func request(_ request: Request) async -> Bool {
-        guard queue.count < Self.maximumQueued else { return false }
+        guard !Task.isCancelled, queue.count < Self.maximumQueued else { return false }
         let id = UUID()
-        return await withCheckedContinuation { continuation in
-            queue.append(Entry(id: id, request: request, continuation: continuation))
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(Self.timeout * 1_000_000_000))
-                self?.finish(id: id, approved: false)
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                queue.append(Entry(id: id, request: request, continuation: continuation))
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(Self.timeout * 1_000_000_000))
+                    self?.finish(id: id, approved: false)
+                }
+                showNextIfNeeded()
             }
-            showNextIfNeeded()
+        } onCancel: { [weak self] in
+            Task { @MainActor in self?.finish(id: id, approved: false) }
         }
     }
 

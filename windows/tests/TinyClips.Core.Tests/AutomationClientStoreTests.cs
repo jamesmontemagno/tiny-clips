@@ -81,6 +81,43 @@ public sealed class AutomationClientStoreTests : IDisposable
     }
 
     [Fact]
+    public void TouchLastUsed_PersistsRegularActivityFromTheLastWrite()
+    {
+        var time = new ManualTimeProvider(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));
+        var store = new AutomationClientStore(FilePath, time);
+        var (client, _) = store.Add("Agent", ["read"]);
+        var changes = 0;
+        store.Changed += (_, _) => changes++;
+
+        store.TouchLastUsed(client.Id);
+        var firstWrite = time.Now;
+        time.Now = time.Now.AddSeconds(30);
+        store.TouchLastUsed(client.Id);
+        Assert.Equal(time.Now, store.List().Single().LastUsedAt);
+        Assert.Equal(firstWrite, new AutomationClientStore(FilePath).List().Single().LastUsedAt);
+        Assert.Equal(1, changes);
+
+        time.Now = time.Now.AddSeconds(30);
+        store.TouchLastUsed(client.Id);
+        Assert.Equal(time.Now, new AutomationClientStore(FilePath).List().Single().LastUsedAt);
+        Assert.Equal(2, changes);
+
+        time.Now = time.Now.AddSeconds(30);
+        store.TouchLastUsed(client.Id);
+        store.Add("Another agent", ["read"]);
+        var writeFromAdd = time.Now;
+        time.Now = time.Now.AddSeconds(30);
+        store.TouchLastUsed(client.Id);
+        Assert.Equal(writeFromAdd, new AutomationClientStore(FilePath).List().Single(c => c.Id == client.Id).LastUsedAt);
+        Assert.Equal(3, changes);
+
+        time.Now = time.Now.AddSeconds(30);
+        store.TouchLastUsed(client.Id);
+        Assert.Equal(time.Now, new AutomationClientStore(FilePath).List().Single(c => c.Id == client.Id).LastUsedAt);
+        Assert.Equal(4, changes);
+    }
+
+    [Fact]
     public void CorruptFile_LoadsEmpty()
     {
         Directory.CreateDirectory(_directory);

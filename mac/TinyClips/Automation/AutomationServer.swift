@@ -180,7 +180,7 @@ final class AutomationServer {
                 let line = buffer[buffer.startIndex..<newline]
                 buffer.removeSubrange(buffer.startIndex...newline)
                 guard line.contains(where: { !($0 == 0x20 || $0 == 0x09 || $0 == 0x0D) }) else { continue }
-                var response = run(Data(line))
+                guard var response = run(Data(line), connection: fd) else { return }
                 response.append(0x0A)
                 guard writeAll(response, to: fd) else { return }
             }
@@ -198,17 +198,34 @@ final class AutomationServer {
     }
 
     /// Runs the async handler and waits for it on this connection's thread.
-    private func run(_ line: Data) -> Data {
+    private func run(_ line: Data, connection fd: Int32) -> Data? {
         final class Box: @unchecked Sendable { var value = Data() }
         let box = Box()
         let semaphore = DispatchSemaphore(value: 0)
         let handler = self.handler
-        Task.detached {
+        let task = Task.detached {
             box.value = await handler(line)
             semaphore.signal()
         }
-        semaphore.wait()
+        while semaphore.wait(timeout: .now() + .milliseconds(50)) == .timedOut {
+            if Self.isDisconnected(fd) {
+                task.cancel()
+                return nil
+            }
+        }
         return box.value
+    }
+
+    private static func isDisconnected(_ fd: Int32) -> Bool {
+        var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        let result = poll(&descriptor, 1, 0)
+        if result < 0 { return errno != EINTR }
+        if descriptor.revents & Int16(POLLERR | POLLNVAL) != 0 { return true }
+        guard descriptor.revents & Int16(POLLHUP) != 0 else { return false }
+
+        // A write-half-closed client can still receive a reply; this probe sends no data.
+        if send(fd, nil, 0, MSG_DONTWAIT) >= 0 { return false }
+        return errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK
     }
 
     private func writeAll(_ data: Data, to fd: Int32) -> Bool {

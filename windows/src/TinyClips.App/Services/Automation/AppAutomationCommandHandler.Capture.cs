@@ -204,7 +204,7 @@ internal sealed partial class AppAutomationCommandHandler
         using (var rendered = await EditorController.RenderAnnotationsAsync(
             pixels.BgraPixels, pixels.Width, pixels.Height, snapshots, cancellationToken))
         {
-            await Task.Run(() => ScreenshotExportFile.WriteAsync(output,
+            output = await Task.Run(() => ScreenshotExportFile.WriteNewAsync(output,
                 (temporaryPath, token) => ScreenshotEditorWindow.EncodeBitmapToFileAsync(output, temporaryPath, rendered, quality, token),
                 cancellationToken), cancellationToken);
         }

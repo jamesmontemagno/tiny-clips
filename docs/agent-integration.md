@@ -115,7 +115,7 @@ Revoke an individual agent in **Settings → Agent Control → Paired Agents**, 
 1. **Off by default.** Turn on **Settings → Agent control → Allow agents to control Tiny Clips**. The local listener exists only while enabled; when off, clients cannot connect.
 2. **Pairing.** A client calls `session.pair` with a name and the scopes it wants. The app shows an approval prompt. If you approve, the client receives a token once (`session.pairStatus`). The app stores only a SHA-256 hash of the token. Revoke clients any time in Settings.
 3. **Scopes.** `read`, `capture`, `record`, `edit`, `export`, `settings` run unattended once granted. Capture targets, regions, OCR, annotations, video/GIF recording, and scrolling captures use structured commands; they do not depend on a human-operated picker or simulated mouse input.
-4. **Sensitive scopes.** `delete`, `upload`, and `discard` (discarding or restarting a recording, discarding unsaved work) always show an in-app approval prompt, even when granted. No answer within 120 seconds returns `approval_denied`.
+4. **Sensitive scopes.** `delete`, `upload`, and `discard` (discarding or restarting a recording, discarding unsaved work) always show an in-app approval prompt, even when granted. No answer within 120 seconds returns `approval_denied`. A pending sensitive-action approval is dismissed when its client disconnects.
 5. **No bypasses.** OS permissions (Screen Recording, Microphone, Camera) and Pro/Store gating still apply. Commands return `permission_required` or `pro_required` instead of prompting around them.
 6. **Visibility.** The menu bar / tray menu shows when agent control is on, and **Turn off agent control** stops it immediately. Every command is written to an audit log (`automation-audit.jsonl` next to the app's settings).
 
@@ -127,9 +127,9 @@ Revoke an individual agent in **Settings → Agent Control → Paired Agents**, 
 | macOS (App Store) | Unix socket `~/Library/Containers/com.refractored.tinyclips/Data/tinyclips-automation.sock` |
 | Windows | Named pipe `\\.\pipe\TinyClips.Automation.<UserName>` (current-user ACL) |
 
-`TINYCLIPS_AUTOMATION_ENDPOINT` overrides the endpoint for the CLI.
+`TINYCLIPS_AUTOMATION_ENDPOINT` selects a single endpoint for the CLI. Without an override, the CLI tries the standard endpoints before sending a request. `TINYCLIPS_AGENT_CONFIG` overrides the pairing configuration file; relative paths are resolved from the CLI's working directory.
 
-Framing is one UTF-8 JSON object per line (`\n`). A connection may send several requests; responses come back in order.
+Framing is one UTF-8 JSON object per line (`\n`). A connection may send several requests; responses come back in order. On Windows, at most 16 requests may be queued per connection; exceeding that limit closes the connection.
 
 ```json
 {"id":"1","token":"<token>","command":"capture.screenshot","params":{"mode":"screen"}}
