@@ -251,6 +251,12 @@ public partial class App : IAutomationAppActions
         ShowSaveToast(path);
     }
 
+    void IAutomationAppActions.RecordAutomationCapture(string path, CaptureType type)
+    {
+        Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
+        ShowSaveToast(path);
+    }
+
     async Task IAutomationAppActions.BeginTargetedAutomationRecordingAsync(
         CaptureType type,
         bool studio,
@@ -486,7 +492,7 @@ public partial class App : IAutomationAppActions
                 if (!string.Equals(currentNode["modifiedAt"]?.GetValue<string>(), expectedModifiedAt, StringComparison.Ordinal)
                     || !string.Equals(ProjectRevision(current), expectedRevision, StringComparison.Ordinal))
                 {
-                    throw new AutomationException(AutomationErrorCodes.Busy,
+                    throw new AutomationException(AutomationErrorCodes.Conflict,
                         "The Studio project changed since it was read. Get it again before editing.");
                 }
 
@@ -507,7 +513,7 @@ public partial class App : IAutomationAppActions
                 {
                     if (!openEditor.ApplyAutomationProject(updated, current.ModifiedAt))
                     {
-                        throw new AutomationException(AutomationErrorCodes.Busy,
+                        throw new AutomationException(AutomationErrorCodes.Conflict,
                             "The Studio project changed or became unavailable while applying the edit.");
                     }
 

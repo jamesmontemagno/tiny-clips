@@ -54,6 +54,23 @@ public class ContractTests
     }
 
     [Fact]
+    public void MediaEditCommandsRequirePathAndRange()
+    {
+        var contract = Contract.Current;
+        Assert.Equal("edit", contract.Find("editor.trim")!.Scope);
+        Assert.Equal("edit", contract.Find("editor.saveFrame")!.Scope);
+
+        var trim = Contract.InputSchema(contract.Find("editor.trim")!);
+        var required = trim["required"]!.AsArray().Select(parameter => parameter!.GetValue<string>()).ToArray();
+        Assert.Equal(["end", "path", "start"], required.Order());
+        Assert.Equal("boolean", trim["properties"]!["removeAudio"]!["type"]!.GetValue<string>());
+
+        var frame = Contract.InputSchema(contract.Find("editor.saveFrame")!);
+        Assert.Equal("integer", frame["properties"]!["frame"]!["type"]!.GetValue<string>());
+        Assert.Equal("number", frame["properties"]!["time"]!["type"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void StudioCommandsExposeReadEditSuggestAndExportOperations()
     {
         var contract = Contract.Current;

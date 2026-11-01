@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - The agent CLI accepts relative pairing configuration paths and falls back between macOS app endpoints. Studio automation no longer interrupts an active edit, and pending sensitive-action approvals close when an agent disconnects.
 
 ### Added
+- Agents can trim videos and GIFs (`editor.trim`, with optional audio removal) and save single frames (`editor.saveFrame`) without opening a trimmer; results are new library items and the source is unchanged. Stale Studio edits now return a distinct `conflict` error instead of `busy`.
 - The MCP server now uses the official C# SDK for stdio transport, lifecycle, protocol negotiation, and cancellation while preserving contract-driven tools and app permissions.
 - Added cross-platform agent CLI CI, isolated NuGet/dnx MCP smoke tests, and a dedicated `agent-v*` NuGet Trusted Publishing release workflow; shared automation changes now trigger both app builds.
 - Added the `tinyclips` [Agent Plugin](https://agent-plugins.org/) in `plugins/tinyclips`, bundling the MCP server and agent Skills in one installable package.

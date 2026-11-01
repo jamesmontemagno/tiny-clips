@@ -11,6 +11,7 @@ public static class AutomationErrorCodes
     public const string NotSupported = "not_supported";
     public const string InvalidParams = "invalid_params";
     public const string Busy = "busy";
+    public const string Conflict = "conflict";
     public const string PermissionRequired = "permission_required";
     public const string ProRequired = "pro_required";
     public const string NotFound = "not_found";

@@ -32,8 +32,11 @@
 		AB7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000009 /* AutomationCaptureTargets.swift */; };
 		AC7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000009 /* AutomationCaptureTargets.swift */; };
 		AB700000000000000000000A /* AutomationAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000000A /* AutomationAnnotations.swift */; };
+		AB7000000000000000000030 /* AutomationMediaEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000030 /* AutomationMediaEditing.swift */; };
 		AC700000000000000000000A /* AutomationAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000000A /* AutomationAnnotations.swift */; };
+		AC7000000000000000000030 /* AutomationMediaEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000030 /* AutomationMediaEditing.swift */; };
 		AD700000000000000000002A /* AutomationCaptureTargetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000002A /* AutomationCaptureTargetsTests.swift */; };
+		AD7000000000000000000031 /* AutomationMediaEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000031 /* AutomationMediaEditingTests.swift */; };
 		AD700000000000000000002B /* AutomationServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000002B /* AutomationServerTests.swift */; };
 		B10000000000000000000001 /* TinyClipsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* TinyClipsApp.swift */; };
 		B10000000000000000000002 /* CaptureSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* CaptureSettings.swift */; };
@@ -265,7 +268,9 @@
 		AA7000000000000000000029 /* AutomationClientStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationClientStoreTests.swift; sourceTree = "<group>"; };
 		AA7000000000000000000009 /* AutomationCaptureTargets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationCaptureTargets.swift; sourceTree = "<group>"; };
 		AA700000000000000000000A /* AutomationAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationAnnotations.swift; sourceTree = "<group>"; };
+		AA7000000000000000000030 /* AutomationMediaEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationMediaEditing.swift; sourceTree = "<group>"; };
 		AA700000000000000000002A /* AutomationCaptureTargetsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationCaptureTargetsTests.swift; sourceTree = "<group>"; };
+		AA7000000000000000000031 /* AutomationMediaEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationMediaEditingTests.swift; sourceTree = "<group>"; };
 		AA700000000000000000002B /* AutomationServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationServerTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000001 /* TinyClipsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyClipsApp.swift; sourceTree = "<group>"; };
 		A10000000000000000000002 /* CaptureSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSettings.swift; sourceTree = "<group>"; };
@@ -426,6 +431,7 @@
 				AA7000000000000000000008 /* AutomationSettings.swift */,
 				AA7000000000000000000009 /* AutomationCaptureTargets.swift */,
 				AA700000000000000000000A /* AutomationAnnotations.swift */,
+				AA7000000000000000000030 /* AutomationMediaEditing.swift */,
 				AA700000000000000000001E /* commands.json */,
 			);
 			path = Automation;
@@ -598,6 +604,7 @@
 				AA7000000000000000000028 /* AutomationPolicyTests.swift */,
 				AA7000000000000000000029 /* AutomationClientStoreTests.swift */,
 				AA700000000000000000002A /* AutomationCaptureTargetsTests.swift */,
+				AA7000000000000000000031 /* AutomationMediaEditingTests.swift */,
 				AA700000000000000000002B /* AutomationServerTests.swift */,
 				A30000000000000000000001 /* CaptureMathTests.swift */,
 				D61700000000000000000005 /* GifTimingTests.swift */,
@@ -789,6 +796,7 @@
 				AB7000000000000000000008 /* AutomationSettings.swift in Sources */,
 				AB7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */,
 				AB700000000000000000000A /* AutomationAnnotations.swift in Sources */,
+				AB7000000000000000000030 /* AutomationMediaEditing.swift in Sources */,
 				AB7000000000000000000014 /* AgentControlSettingsSection.swift in Sources */,
 				B10000000000000000000001 /* TinyClipsApp.swift in Sources */,
 				B10000000000000000000002 /* CaptureSettings.swift in Sources */,
@@ -897,6 +905,7 @@
 				AC7000000000000000000008 /* AutomationSettings.swift in Sources */,
 				AC7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */,
 				AC700000000000000000000A /* AutomationAnnotations.swift in Sources */,
+				AC7000000000000000000030 /* AutomationMediaEditing.swift in Sources */,
 				AC7000000000000000000014 /* AgentControlSettingsSection.swift in Sources */,
 				B20000000000000000000001 /* TinyClipsApp.swift in Sources */,
 				B20000000000000000000002 /* CaptureSettings.swift in Sources */,
@@ -998,6 +1007,7 @@
 				AD7000000000000000000028 /* AutomationPolicyTests.swift in Sources */,
 				AD7000000000000000000029 /* AutomationClientStoreTests.swift in Sources */,
 				AD700000000000000000002A /* AutomationCaptureTargetsTests.swift in Sources */,
+				AD7000000000000000000031 /* AutomationMediaEditingTests.swift in Sources */,
 				AD700000000000000000002B /* AutomationServerTests.swift in Sources */,
 				B30000000000000000000001 /* CaptureMathTests.swift in Sources */,
 				D61700000000000000000004 /* GifTimingTests.swift in Sources */,

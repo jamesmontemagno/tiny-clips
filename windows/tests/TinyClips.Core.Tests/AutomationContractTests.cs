@@ -87,6 +87,24 @@ public sealed class AutomationContractTests
     }
 
     [Fact]
+    public void MediaEditCommands_UseEditScopeAndRequiredRange()
+    {
+        var contract = AutomationContract.Default;
+        Assert.True(contract.TryGetCommand("editor.trim", out var trim));
+        Assert.Equal("edit", trim.Scope);
+        Assert.True(trim.Parameters["path"].Required);
+        Assert.True(trim.Parameters["start"].Required);
+        Assert.True(trim.Parameters["end"].Required);
+        Assert.False(trim.Parameters["removeAudio"].Required);
+        Assert.True(contract.TryGetCommand("editor.saveFrame", out var saveFrame));
+        Assert.Equal("edit", saveFrame.Scope);
+        Assert.True(saveFrame.Parameters["path"].Required);
+        Assert.False(saveFrame.Parameters["time"].Required);
+        Assert.False(saveFrame.Parameters["frame"].Required);
+        Assert.True(contract.Errors.ContainsKey(AutomationErrorCodes.Conflict));
+    }
+
+    [Fact]
     public void ErrorCodes_ContainEveryConstant()
     {
         var contract = AutomationContract.Default;

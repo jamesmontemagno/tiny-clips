@@ -72,6 +72,8 @@ final class AutomationPolicyTests: XCTestCase {
             "studio.project.get": "read",
             "studio.project.edit": "edit",
             "studio.zoom.suggest": "read",
+            "editor.trim": "edit",
+            "editor.saveFrame": "edit",
             "studio.export": "export"
         ]
         for (name, scope) in expected {

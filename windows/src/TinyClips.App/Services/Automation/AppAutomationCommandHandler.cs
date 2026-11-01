@@ -46,6 +46,8 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         "studio.zoom.suggest",
         "studio.export",
         "editor.annotate",
+        "editor.trim",
+        "editor.saveFrame",
         "library.reveal",
         "library.copy",
         "settings.set",
@@ -99,6 +101,8 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
                 or "studio.zoom.suggest" or "studio.export"
                 => await OnUiAsync(() => _app.ExecuteStudioAutomationCommandAsync(context.Command.Name, context.Params, cancellationToken)),
             "editor.annotate" => await AnnotateAsync(context, cancellationToken),
+            "editor.trim" => await TrimAsync(context, cancellationToken),
+            "editor.saveFrame" => await SaveFrameAsync(context, cancellationToken),
             "library.reveal" => await OnUiAsync(() => Reveal(context)),
             "library.copy" => await CopyAsync(context),
             "library.delete" => await DeleteAsync(context, cancellationToken),

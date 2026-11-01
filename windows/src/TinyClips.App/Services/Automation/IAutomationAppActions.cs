@@ -34,6 +34,9 @@ internal interface IAutomationAppActions
     /// <summary>Adds a file the agent created to recent captures and shows the saved toast.</summary>
     void RecordAutomationScreenshot(string path);
 
+    /// <summary>Adds a video, GIF, or screenshot the agent created to recent captures and shows the saved toast.</summary>
+    void RecordAutomationCapture(string path, CaptureType type);
+
     /// <summary>Starts a targeted recording without showing the picker or recording setup.</summary>
     Task BeginTargetedAutomationRecordingAsync(CaptureType type, bool studio, CaptureTarget target, PixelRect? region);
 

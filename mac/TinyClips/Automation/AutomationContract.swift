@@ -72,6 +72,7 @@ enum AutomationErrorCode: String, Error, CaseIterable {
     case notSupported = "not_supported"
     case invalidParams = "invalid_params"
     case busy
+    case conflict
     case permissionRequired = "permission_required"
     case proRequired = "pro_required"
     case notFound = "not_found"

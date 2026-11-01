@@ -15,7 +15,7 @@ Needs `read` to inspect, `edit` to change a project, and `export` to render a vi
    tinyclips call studio.project.edit --params '{"projectId":"<id>","expectedModifiedAt":"<modifiedAt>","expectedRevision":"<revision>","patch":{"canvas":{"aspect":"landscape16x9","padding":0.08},"audio":{"volume":0.8}}}'
    ```
 
-   Object fields merge recursively; arrays such as `scenes`, `zooms`, and `edits.cuts` replace that whole array. Identity, project name, source recordings, cleanup pinning, and export bookkeeping are protected. A changed project returns `busy`; read it again and reconcile before retrying. Edits to an open Studio window are undoable.
+   Object fields merge recursively; arrays such as `scenes`, `zooms`, and `edits.cuts` replace that whole array. Identity, project name, source recordings, cleanup pinning, and export bookkeeping are protected. A changed project returns `conflict`; read it again and reconcile before retrying. Edits to an open Studio window are undoable.
 4. For automatic zoom ideas, call `studio.zoom.suggest`. This is read-only. To apply the suggestions, retain existing manual zooms, replace the existing automatic zooms with the returned suggestions, and submit the combined list as `patch.zooms`.
 5. Read `settings.get key=videoFolder` to find the configured destination, then export with `studio.export` to an unused `.mp4` path directly inside it. Tiny Clips rejects existing files and destinations inside project/source folders; choose a different name rather than overwriting.
 

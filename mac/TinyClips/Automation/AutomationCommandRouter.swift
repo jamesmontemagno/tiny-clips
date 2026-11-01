@@ -13,7 +13,7 @@ final class AutomationCommandRouter {
         "capture.scrolling.start", "capture.scrolling.stop", "capture.scrolling.status", "capture.scrolling.cancel",
         "recording.startVideo", "recording.startGif", "recording.stop", "recording.togglePause",
         "recording.restart", "recording.discard",
-        "editor.open", "editor.annotate", "library.reveal", "library.copy", "settings.set",
+        "editor.open", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
         "library.delete", "library.upload", "studio.projects.list", "studio.project.get",
         "studio.project.edit", "studio.zoom.suggest", "studio.export",
     ]
@@ -59,6 +59,8 @@ final class AutomationCommandRouter {
         case "studio.zoom.suggest": return try suggestStudioZooms(params)
         case "studio.export": return try await exportStudioProject(params)
         case "editor.annotate": return try annotate(params)
+        case "editor.trim": return try await trim(params)
+        case "editor.saveFrame": return try await saveFrame(params)
         case "library.reveal": return try reveal(params)
         case "library.copy": return try copy(params)
         case "library.delete": return try await delete(params)
@@ -319,6 +321,96 @@ final class AutomationCommandRouter {
         ]
     }
 
+    private func trim(_ params: [String: Any]) async throws -> [String: Any] {
+        if let unknown = params.keys.first(where: { !["path", "start", "end", "removeAudio"].contains($0) }) {
+            throw AutomationError(.invalidParams, "Unknown parameter \(unknown).")
+        }
+        let source = try existingFile(params)
+        guard let start = AutomationValue.double(params["start"]),
+              let end = AutomationValue.double(params["end"]) else {
+            throw AutomationError(.invalidParams, "start and end are required numbers of seconds.")
+        }
+        var removeAudio = false
+        if let value = params["removeAudio"] {
+            guard let bool = AutomationValue.bool(value) else {
+                throw AutomationError(.invalidParams, "removeAudio must be true or false.")
+            }
+            removeAudio = bool
+        }
+
+        let result: AutomationMediaEditing.TrimResult
+        let type: CaptureType
+        switch AutomationLibrary.kind(forPath: source.path) {
+        case "video":
+            result = try await AutomationMediaEditing.trimVideo(source: source, start: start, end: end, removeAudio: removeAudio)
+            type = .video
+        case "gif":
+            guard !removeAudio else {
+                throw AutomationError(.invalidParams, "removeAudio applies to videos only.")
+            }
+            result = try AutomationMediaEditing.trimGif(source: source, start: start, end: end)
+            type = .gif
+        default:
+            throw AutomationError(.invalidParams, "editor.trim works on videos and GIFs only.")
+        }
+        SaveService.shared.handleSavedFile(url: result.url, type: type)
+        var response: [String: Any] = [
+            "path": result.url.path,
+            "sourcePath": source.path,
+            "start": result.range.start,
+            "end": result.range.end,
+        ]
+        if let frameCount = result.frameCount {
+            response["frameCount"] = frameCount
+        }
+        return response
+    }
+
+    private func saveFrame(_ params: [String: Any]) async throws -> [String: Any] {
+        if let unknown = params.keys.first(where: { !["path", "time", "frame"].contains($0) }) {
+            throw AutomationError(.invalidParams, "Unknown parameter \(unknown).")
+        }
+        let source = try existingFile(params)
+        let time = try params["time"].map { value -> Double in
+            guard let number = AutomationValue.double(value) else {
+                throw AutomationError(.invalidParams, "time must be a number of seconds.")
+            }
+            return number
+        }
+        let frame = try params["frame"].map { value -> Int in
+            guard let number = AutomationValue.int(value) else {
+                throw AutomationError(.invalidParams, "frame must be an integer.")
+            }
+            return number
+        }
+        guard (time == nil) != (frame == nil) else {
+            throw AutomationError(.invalidParams, "Pass exactly one of time or frame.")
+        }
+
+        let result: AutomationMediaEditing.FrameResult
+        switch AutomationLibrary.kind(forPath: source.path) {
+        case "video":
+            guard let time else {
+                throw AutomationError(.invalidParams, "Videos take time in seconds; frame applies to GIFs only.")
+            }
+            result = try await AutomationMediaEditing.saveVideoFrame(source: source, time: time)
+        case "gif":
+            result = try AutomationMediaEditing.saveGifFrame(source: source, time: time, frame: frame)
+        default:
+            throw AutomationError(.invalidParams, "editor.saveFrame works on videos and GIFs only.")
+        }
+        SaveService.shared.handleSavedFile(url: result.url, type: .screenshot)
+        var response: [String: Any] = [
+            "path": result.url.path,
+            "sourcePath": source.path,
+            "time": result.time,
+        ]
+        if let index = result.frame {
+            response["frame"] = index
+        }
+        return response
+    }
+
     private func startVideo(_ params: [String: Any]) async throws -> [String: Any] {
         var studio = false
         if let value = params["studio"] {
@@ -541,7 +633,7 @@ final class AutomationCommandRouter {
         guard StudioJSON.timestampString(from: current.modifiedAt) == expectedModifiedAt,
               try studioProjectRevision(current) == expectedRevision
         else {
-            throw AutomationError(.busy, "The Studio project changed since it was read. Get it again before editing.")
+            throw AutomationError(.conflict, "The Studio project changed since it was read. Get it again before editing.")
         }
 
         let updated: StudioProject
@@ -555,7 +647,7 @@ final class AutomationCommandRouter {
             guard viewModel.applyAutomationProject(updated, expectedModifiedAt: current.modifiedAt),
                   let latest = viewModel.automationProjectSnapshot()
             else {
-                throw AutomationError(.busy, "The Studio project changed or became unavailable while applying the edit.")
+                throw AutomationError(.conflict, "The Studio project changed or became unavailable while applying the edit.")
             }
             saved = latest
         } else {

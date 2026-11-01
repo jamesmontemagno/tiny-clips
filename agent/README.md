@@ -21,7 +21,7 @@ For unattended targeting, refresh `capture.targets` and pass a returned `windowI
 tinyclips call capture.screenshot --params '{"mode":"region","displayId":"...","region":{"x":0,"y":0,"width":640,"height":480}}'
 ```
 
-Region coordinates are display-local physical pixels from the top left. `capture.ocr` accepts the same target parameters and returns text without opening a picker or changing the clipboard. `editor.annotate` accepts typed annotations in source-image pixel coordinates and saves a new capture without opening the editor or overwriting its input.
+Region coordinates are display-local physical pixels from the top left. `capture.ocr` accepts the same target parameters and returns text without opening a picker or changing the clipboard. `editor.annotate` accepts typed annotations in source-image pixel coordinates and saves a new capture without opening the editor or overwriting its input. `editor.trim` (video or GIF, `start`/`end` seconds, optional `removeAudio`) and `editor.saveFrame` (video `time`, or GIF `time`/`frame`) also save new library items and leave the source untouched.
 
 Studio workflows can list/read projects, atomically patch editable settings and timeline data with the observed `modifiedAt` and opaque revision token, request non-mutating zoom suggestions, and export a new MP4 into the configured video folder. See the [Studio skill](../plugins/tinyclips/skills/tinyclips-studio/SKILL.md) and [integration guide](../docs/agent-integration.md#studio-projects) for safe patch and export usage.
 
