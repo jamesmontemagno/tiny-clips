@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- The MCP server now uses the official C# SDK for stdio transport, lifecycle, protocol negotiation, and cancellation while preserving contract-driven tools and app permissions.
+- Added cross-platform agent CLI CI, isolated NuGet/dnx MCP smoke tests, and a dedicated `agent-v*` NuGet Trusted Publishing release workflow; shared automation changes now trigger both app builds.
+- Added the `tinyclips` [Agent Plugin](https://agent-plugins.org/) in `plugins/tinyclips`, bundling the MCP server and agent Skills in one installable package.
+- MCP setup uses a portable `dotnet dnx` launch with quiet restore to keep first-run NuGet messages off the protocol stream.
+- Agent Control settings and the in-app Guide now include installation, pairing, connection checks, MCP configuration, and example prompts.
+- Added a shared .NET 10 agent CLI and stdio MCP server, packaged as the `TinyClips` NuGet tool for `dnx`, plus Skills for pairing, capture, recording demos, and library workflows on macOS and Windows.
+- Agents can discover displays and windows, capture explicit screen regions or windows, run OCR without a picker, and annotate screenshots through structured commands without opening the editor. Annotated output is saved as a new capture; the source remains unchanged.
+- Agents can start targeted video/GIF recordings and scrolling screenshots without pickers; recordings save without opening a trimmer, and scrolling is controlled by the agent's own UI tools.
+- Agents can list and inspect Studio projects, apply revision-checked edits to the look and timeline (undoable in an open editor), request zoom suggestions, and export a new MP4 into the configured video folder without overwriting existing files.
+- macOS adds opt-in **Agent Control** (Settings → Agent Control, off by default) so AI agents and scripts on your Mac can drive TinyClips over a private local socket: screenshots, OCR, video and GIF recording, editors, the clips library, and selected settings. Each agent pairs once with your approval and only gets the permissions you grant. Deleting, uploading, and discarding always ask first, every request is written to a local audit log, and you can revoke agents or turn it off from Settings or the menu bar.
+
 ## v2.0.0-mac - 2026-10-31
 
 ### Fixed

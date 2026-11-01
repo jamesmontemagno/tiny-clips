@@ -144,6 +144,27 @@ final class StudioViewModel: ObservableObject {
     // MARK: - Derived State
 
     var project: StudioProject? { editor?.project }
+    func automationProjectSnapshot() -> StudioProject? {
+        guard isEditable else { return nil }
+        return project
+    }
+
+    @discardableResult
+    func applyAutomationProject(_ updated: StudioProject, expectedModifiedAt: Date) -> Bool {
+        guard isEditable, project?.modifiedAt == expectedModifiedAt, saveNow() else { return false }
+        edit { $0.applyAutomationProject(updated) }
+        guard saveNow() else {
+            undo()
+            return false
+        }
+        return true
+    }
+
+    func prepareAutomationExport() -> (StudioProject, StudioEvents)? {
+        guard isEditable, saveNow(), let project else { return nil }
+        return (project, events)
+    }
+
     var isReady: Bool { state == .ready }
     var isEditable: Bool { state == .ready && !isExporting && busyMessage == nil }
     var isBusy: Bool { busyMessage != nil }

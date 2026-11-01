@@ -159,6 +159,33 @@ class CaptureManager: ObservableObject {
             || scrollingCapturePanel != nil
     }
 
+    // MARK: - Automation state
+
+    var isCountdownActive: Bool { countdownWindow != nil }
+
+    /// True while a stopped recording is still being finalized and saved.
+    var isFinalizingRecording: Bool { isStoppingRecording }
+
+    var automationScrollingCaptureStatus: (active: Bool, stopping: Bool, frameCount: Int) {
+        (scrollingCaptureSession != nil, isStoppingScrollingCapture, scrollingCaptureFrameCount)
+    }
+
+    var activeRecordingType: CaptureType? {
+        switch activeRecordingRequest {
+        case .video: return .video
+        case .gif: return .gif
+        case nil: return nil
+        }
+    }
+
+    /// Runs an unattended agent capture while marking a screenshot as in progress, so other
+    /// captures and agent commands see the app as busy.
+    func performAutomationCapture<T>(_ work: () async throws -> T) async throws -> T {
+        isScreenshotCaptureInProgress = true
+        defer { isScreenshotCaptureInProgress = false }
+        return try await work()
+    }
+
     private func showVideoCodecFallbackNoticeOnce(_ message: String) {
         guard !didShowVideoCodecFallbackNotice else { return }
         didShowVideoCodecFallbackNotice = true
@@ -200,6 +227,8 @@ class CaptureManager: ObservableObject {
     private var scrollingCaptureSession: ScrollingPanoramaCapture?
     private var scrollingCapturePanelPosition: NSPoint?
     private var scrollingCaptureScaleFactor: CGFloat = 1
+    private var scrollingCaptureFrameCount = 0
+    private var scrollingCaptureIsAutomation = false
     private var isStoppingScrollingCapture = false
     private var processingIndicatorShownAt: Date?
     private var isStoppingRecording = false
@@ -209,6 +238,7 @@ class CaptureManager: ObservableObject {
     private var activeRecordingSessionID: UInt64?
     private var finalizingSessionID: UInt64?
     private var activeRecordingRequest: ActiveRecordingRequest?
+    private var activeRecordingWasStartedByAutomation = false
     private var onboardingWindow: OnboardingWizardWindow?
     private var whatsNewWindow: WhatsNewWindow?
     private var guideWindow: GuideWindow?
@@ -572,13 +602,25 @@ class CaptureManager: ObservableObject {
                 }
                 return
             }
-            startScrollingCapture(region: region, shouldReturnToPickerAfterCapture: shouldReturnToPicker)
+            do {
+                try await startScrollingCapture(region: region, shouldReturnToPickerAfterCapture: shouldReturnToPicker)
+            } catch {
+                debugPrint("Scrolling capture could not start: \(error)")
+            }
         }
     }
 
-    private func startScrollingCapture(region: CaptureRegion, shouldReturnToPickerAfterCapture: Bool) {
-        guard scrollingCaptureSession == nil else { return }
+    private func startScrollingCapture(
+        region: CaptureRegion,
+        shouldReturnToPickerAfterCapture: Bool,
+        isAutomation: Bool = false
+    ) async throws {
+        guard scrollingCaptureSession == nil else {
+            throw AutomationError(.busy, "A scrolling capture is already active.")
+        }
         scrollingCaptureScaleFactor = region.scaleFactor
+        scrollingCaptureFrameCount = 0
+        scrollingCaptureIsAutomation = isAutomation
         isScreenshotCaptureInProgress = true
         isStoppingScrollingCapture = false
         AccessibilityAnnouncementService.shared.announce(
@@ -603,6 +645,7 @@ class CaptureManager: ObservableObject {
         session.onProgress = { [weak self, weak session] count in
             Task { @MainActor [weak self, weak session] in
                 guard let self, let session, self.scrollingCaptureSession === session else { return }
+                self.scrollingCaptureFrameCount = count
                 self.scrollingCapturePanel?.updateFrameCount(count)
             }
         }
@@ -611,6 +654,14 @@ class CaptureManager: ObservableObject {
                 guard let self, let session, self.scrollingCaptureSession === session else { return }
                 self.scrollingCapturePanel?.showStatus(reason.message)
                 AccessibilityAnnouncementService.shared.announce(reason.message, priority: .high)
+                if self.scrollingCaptureIsAutomation {
+                    do {
+                        _ = try await self.stopAutomationScrollingCapture()
+                    } catch {
+                        SaveService.shared.showError("Scrolling capture failed: \(error.localizedDescription)")
+                    }
+                    return
+                }
                 self.stopScrollingCapture(
                     session: session,
                     shouldReturnToPicker: shouldReturnToPickerAfterCapture
@@ -620,6 +671,16 @@ class CaptureManager: ObservableObject {
         let panel = ScrollingCapturePanel(
             onStop: { [weak self, weak session] in
                 guard let self, let session else { return }
+                if self.scrollingCaptureIsAutomation {
+                    Task {
+                        do {
+                            _ = try await self.stopAutomationScrollingCapture()
+                        } catch {
+                            SaveService.shared.showError("Scrolling capture failed: \(error.localizedDescription)")
+                        }
+                    }
+                    return
+                }
                 self.stopScrollingCapture(
                     session: session,
                     shouldReturnToPicker: shouldReturnToPickerAfterCapture
@@ -645,17 +706,67 @@ class CaptureManager: ObservableObject {
             regionIndicatorPanel = indicator
         }
 
-        Task {
-            do {
-                try await session.start(region: region)
-            } catch {
-                self.finishScrollingCapture(
-                    session: session,
-                    with: error,
-                    shouldReturnToPicker: shouldReturnToPickerAfterCapture
-                )
-            }
+        do {
+            try await session.start(region: region)
+        } catch {
+            finishScrollingCapture(
+                session: session,
+                with: error,
+                shouldReturnToPicker: shouldReturnToPickerAfterCapture
+            )
+            throw AutomationError(.internal, "Scrolling capture failed to start: \(error.localizedDescription)")
         }
+    }
+
+    func startAutomationScrollingCapture(region: CaptureRegion) async throws {
+        guard !isCaptureActionInProgress else {
+            throw AutomationError(.busy, "Tiny Clips is already capturing or recording.")
+        }
+        isCapturePreparationInProgress = true
+        defer { isCapturePreparationInProgress = false }
+        guard await prepareForNewCaptureRequest() else {
+            throw AutomationError(.busy, "Tiny Clips is already capturing or recording.")
+        }
+        try await startScrollingCapture(
+            region: region,
+            shouldReturnToPickerAfterCapture: false,
+            isAutomation: true
+        )
+    }
+
+    func stopAutomationScrollingCapture() async throws -> URL {
+        guard scrollingCaptureIsAutomation,
+              let session = scrollingCaptureSession,
+              !isStoppingScrollingCapture else {
+            throw AutomationError(.busy, "No automated scrolling capture is active.")
+        }
+        isStoppingScrollingCapture = true
+        scrollingCapturePanel?.markCompleted()
+        let scaleFactor = scrollingCaptureScaleFactor
+        do {
+            let image = try await session.stop()
+            finishScrollingCapture(session: session, shouldReturnToPicker: false)
+            let outputURL = SaveService.shared.generateURL(for: .screenshot)
+            let url = try ScreenshotCapture.saveImage(image, to: outputURL, scaleFactor: scaleFactor)
+            CaptureAnalyticsStore.shared.recordCapture(.screenshot)
+            SaveService.shared.handleSavedFile(url: url, type: .screenshot)
+            return url
+        } catch {
+            finishScrollingCapture(session: session, with: error, shouldReturnToPicker: false)
+            throw AutomationError(.internal, "Scrolling capture failed: \(error.localizedDescription)")
+        }
+    }
+
+    func cancelAutomationScrollingCapture() throws {
+        guard scrollingCaptureIsAutomation, let session = scrollingCaptureSession else {
+            throw AutomationError(.busy, "No automated scrolling capture is active.")
+        }
+        session.cancel()
+        finishScrollingCapture(
+            session: session,
+            with: PanoramaCaptureError.cancelled,
+            shouldReturnToPicker: false
+        )
     }
 
     @MainActor
@@ -701,6 +812,8 @@ class CaptureManager: ObservableObject {
         dismissRegionIndicator()
         scrollingCaptureSession = nil
         scrollingCaptureScaleFactor = 1
+        scrollingCaptureFrameCount = 0
+        scrollingCaptureIsAutomation = false
         isStoppingScrollingCapture = false
         isScreenshotCaptureInProgress = false
 
@@ -862,6 +975,7 @@ class CaptureManager: ObservableObject {
     /// counts only while Studio is switched on.
     func startVideoRecording(forStudio: Bool = false) {
         guard !isCaptureActionInProgress else { return }
+        activeRecordingWasStartedByAutomation = false
         pendingVideoIsForStudio = forStudio && CaptureSettings.shared.studioPreviewEnabled
 
         isCapturePreparationInProgress = true
@@ -885,6 +999,127 @@ class CaptureManager: ObservableObject {
                     cursorScreen: cursorScreen
                 )
             }
+        }
+    }
+
+    func startAutomationVideoRecording(forStudio: Bool, target: CaptureTarget) async throws {
+        guard !isCaptureActionInProgress else {
+            throw AutomationError(.busy, "Tiny Clips is already capturing or recording.")
+        }
+        isCapturePreparationInProgress = true
+        defer { isCapturePreparationInProgress = false }
+        guard await prepareForNewCaptureRequest() else {
+            throw AutomationError(.busy, "Tiny Clips is already capturing or recording.")
+        }
+        guard PermissionManager.shared.hasScreenRecordingPermission() else {
+            throw AutomationError(.permissionRequired, "Screen Recording permission is not granted.")
+        }
+
+        let settings = CaptureSettings.shared
+        pendingVideoIsForStudio = forStudio && settings.studioPreviewEnabled
+        shouldReturnToPickerAfterRecording = false
+        if target.studioCaptureKind != .display && settings.showRegionIndicator {
+            let panel = RegionIndicatorPanel(region: target.region)
+            panel.show()
+            regionIndicatorPanel = panel
+        }
+
+        let microphones = MicrophoneDeviceCatalog.availableOptions()
+        let microphoneID = settings.selectedMicrophoneID.isEmpty
+            || microphones.contains(where: { $0.id == settings.selectedMicrophoneID })
+            ? settings.selectedMicrophoneID
+            : ""
+        if !settings.selectedMicrophoneID.isEmpty && microphoneID.isEmpty {
+            settings.selectedMicrophoneID = ""
+        }
+        let webcams = WebcamDeviceCatalog.availableOptions()
+        let webcamID = settings.selectedWebcamID.isEmpty
+            || webcams.contains(where: { $0.id == settings.selectedWebcamID })
+            ? settings.selectedWebcamID
+            : ""
+        if !settings.selectedWebcamID.isEmpty && webcamID.isEmpty {
+            settings.selectedWebcamID = ""
+        }
+
+        activeRecordingWasStartedByAutomation = true
+        beginVideoRecording(
+            target: target,
+            systemAudio: settings.recordAudio,
+            microphone: settings.recordMicrophone,
+            selectedMicrophoneID: microphoneID,
+            webcamSelection: StartRecordingPanel.WebcamSelection(
+                enabled: settings.webcamEnabled,
+                deviceID: webcamID,
+                shape: settings.webcamShape,
+                corner: settings.webcamCorner,
+                size: settings.webcamSize
+            ),
+            mouseClicksEnabled: settings.shouldShowMouseClickVisuals(for: .video),
+            timeLimitMinutes: settings.videoRecordingTimeLimitMinutes,
+            countdownEnabled: settings.videoCountdownEnabled,
+            countdownDuration: settings.videoCountdownDuration,
+            studioModeEnabled: pendingVideoIsForStudio
+        )
+    }
+
+    func startAutomationGifRecording(target: CaptureTarget) async throws {
+        guard !isCaptureActionInProgress else {
+            throw AutomationError(.busy, "Tiny Clips is already capturing or recording.")
+        }
+        isCapturePreparationInProgress = true
+        defer { isCapturePreparationInProgress = false }
+        guard await prepareForNewCaptureRequest() else {
+            throw AutomationError(.busy, "Tiny Clips is already capturing or recording.")
+        }
+        guard PermissionManager.shared.hasScreenRecordingPermission() else {
+            throw AutomationError(.permissionRequired, "Screen Recording permission is not granted.")
+        }
+
+        let settings = CaptureSettings.shared
+        shouldReturnToPickerAfterRecording = false
+        if target.studioCaptureKind != .display && settings.showRegionIndicator {
+            let panel = RegionIndicatorPanel(region: target.region)
+            panel.show()
+            regionIndicatorPanel = panel
+        }
+        activeRecordingWasStartedByAutomation = true
+        beginGifRecording(
+            target: target,
+            mouseClicksEnabled: settings.shouldShowMouseClickVisuals(for: .gif),
+            countdownEnabled: settings.gifCountdownEnabled,
+            countdownDuration: settings.gifCountdownDuration
+        )
+    }
+
+    func resolveAutomationCaptureTarget(_ target: AutomationCaptureTarget) async throws -> CaptureTarget {
+        switch target {
+        case .screen(let displayID):
+            let display = try AutomationCaptureEnvironment.display(displayID)
+            return CaptureTarget(
+                region: CaptureRegion(
+                    sourceRect: CGRect(origin: .zero, size: display.pointSize),
+                    displayID: display.displayID,
+                    scaleFactor: display.scaleFactor
+                ),
+                studioCaptureKind: .display
+            )
+        case .region(let displayID, let pixelRect):
+            let display = try AutomationCaptureEnvironment.display(displayID)
+            let sourceRect = try AutomationCaptureTargets.sourceRect(forPixelRect: pixelRect, on: display)
+            return CaptureTarget(
+                region: CaptureRegion(
+                    sourceRect: sourceRect,
+                    displayID: display.displayID,
+                    scaleFactor: display.scaleFactor
+                ).pixelAligned(),
+                studioCaptureKind: .region
+            )
+        case .window(let windowID):
+            let window = try await AutomationCaptureEnvironment.window(windowID)
+            guard let region = captureRegion(for: window) else {
+                throw AutomationError(.notFound, "That window is not on a capturable display.")
+            }
+            return CaptureTarget(region: region, studioCaptureKind: .window)
         }
     }
 
@@ -1136,6 +1371,7 @@ class CaptureManager: ObservableObject {
                     self.isRecordingPaused = false
                     self.activeRecordingRequest = nil
                     self.activeRecordingRegion = nil
+                    self.activeRecordingWasStartedByAutomation = false
                     self.dismissRegionIndicator()
                     self.dismissTeleprompter()
                     self.activeRecordingSessionID = nil
@@ -1160,6 +1396,7 @@ class CaptureManager: ObservableObject {
 
     func startGifRecording() {
         guard !isCaptureActionInProgress else { return }
+        activeRecordingWasStartedByAutomation = false
 
         isCapturePreparationInProgress = true
         let cursorScreen = screenUnderMouseCursor()
@@ -1246,6 +1483,7 @@ class CaptureManager: ObservableObject {
                     self.isRecordingPaused = false
                     self.activeRecordingRequest = nil
                     self.activeRecordingRegion = nil
+                    self.activeRecordingWasStartedByAutomation = false
                     self.dismissRegionIndicator()
                     self.activeRecordingSessionID = nil
                     self.gifWriter = nil
@@ -1424,6 +1662,7 @@ class CaptureManager: ObservableObject {
     private func stopRecordingFlow(stoppingSessionID: UInt64?, streamFailureMessage: String? = nil) async {
         defer {
             isStoppingRecording = false
+            activeRecordingWasStartedByAutomation = false
             if finalizingSessionID == stoppingSessionID {
                 finalizingSessionID = nil
             }
@@ -1474,7 +1713,9 @@ class CaptureManager: ObservableObject {
         // Snapshot video settings before any suspension so that overlay output URL
         // selection and downstream trimmer/save decisions stay consistent even if
         // the user changes preferences while export is in progress.
-        let videoShowTrimmer = streamFailureMessage == nil && CaptureSettings.shared.showTrimmer
+        let videoShowTrimmer = streamFailureMessage == nil
+            && !activeRecordingWasStartedByAutomation
+            && CaptureSettings.shared.showTrimmer
         let videoShouldSaveImmediately = streamFailureMessage != nil || !videoShowTrimmer || CaptureSettings.shared.saveImmediatelyVideo
         let shouldReturnToPickerAfterRecording = streamFailureMessage == nil && self.shouldReturnToPickerAfterRecording
         let videoOverlayStyle = CaptureSettings.shared.mouseClickOverlayStyle(for: .video)
@@ -1765,7 +2006,9 @@ class CaptureManager: ObservableObject {
             let url = SaveService.shared.generateURL(for: .gif)
             do {
                 let settings = CaptureSettings.shared
-                let gifShowTrimmer = streamFailureMessage == nil && settings.showGifTrimmer
+                let gifShowTrimmer = streamFailureMessage == nil
+                    && !activeRecordingWasStartedByAutomation
+                    && settings.showGifTrimmer
                 let shouldSaveImmediately = streamFailureMessage != nil || !gifShowTrimmer || settings.saveImmediatelyGif
 
                 updateProcessingProgress(0.1, status: "Exporting GIF…")
@@ -1974,6 +2217,7 @@ class CaptureManager: ObservableObject {
         webcamPositionEvents = []
         activeRecordingRequest = nil
         isRecordingPaused = false
+        activeRecordingWasStartedByAutomation = false
 
         _ = stopMouseClickMonitoring()
 

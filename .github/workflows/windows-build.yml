@@ -41,6 +41,12 @@ jobs:
               - 'windows/*.slnx'
               - 'windows/packaging/Assert-DirectPackage.ps1'
               - 'shared/studio/fixtures/**'
+              - 'shared/automation/**'
+              - 'global.json'
+              - '[Nn]u[Gg]et.[Cc]onfig'
+              - 'Directory.Build.props'
+              - 'Directory.Build.targets'
+              - 'Directory.Packages.props'
               - '.github/workflows/windows-build.yml'
               - '!**/*.md'
           base: ${{ github.ref }}

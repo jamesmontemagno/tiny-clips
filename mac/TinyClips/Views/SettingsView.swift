@@ -14,6 +14,7 @@ enum SettingsTab: String, CaseIterable {
     case mouseClicks = "Mouse Clicks"
     case branding = "Branding"
     case shortcuts = "Shortcuts"
+    case agentControl = "Agent Control"
     case pro = "Support"
     case about = "About"
 
@@ -29,6 +30,7 @@ enum SettingsTab: String, CaseIterable {
         case .mouseClicks: return "cursorarrow.rays"
         case .branding: return "flag"
         case .shortcuts: return "command"
+        case .agentControl: return "terminal"
         case .pro: return "star"
         case .about: return "info.circle"
         }
@@ -110,6 +112,8 @@ struct SettingsView: View {
                     BrandingSettingsSection(settings: settings)
                 case .shortcuts:
                     ShortcutsSettingsSection(settings: settings, captureManager: captureManager)
+                case .agentControl:
+                    AgentControlSettingsSection()
                 case .pro:
 #if APPSTORE
                     ProSettingsSection()

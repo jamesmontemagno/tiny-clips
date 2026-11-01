@@ -1,0 +1,151 @@
+{
+  "description": "Expected AutomationPolicy decisions. decision is allow, approve (allowed after in-app approval), or an error code.",
+  "cases": [
+    {
+      "name": "disabled blocks everything",
+      "enabled": false,
+      "scopes": [
+        "read"
+      ],
+      "command": "app.status",
+      "decision": "automation_disabled"
+    },
+    {
+      "name": "hello works while disabled",
+      "enabled": false,
+      "scopes": null,
+      "command": "session.hello",
+      "decision": "allow"
+    },
+    {
+      "name": "disabled blocks sessions too",
+      "enabled": false,
+      "scopes": [],
+      "command": "session.pair",
+      "decision": "automation_disabled"
+    },
+    {
+      "name": "hello needs no token",
+      "enabled": true,
+      "scopes": null,
+      "command": "session.hello",
+      "decision": "allow"
+    },
+    {
+      "name": "pair needs no token",
+      "enabled": true,
+      "scopes": null,
+      "command": "session.pair",
+      "decision": "allow"
+    },
+    {
+      "name": "unknown client",
+      "enabled": true,
+      "scopes": null,
+      "command": "app.status",
+      "decision": "unauthorized"
+    },
+    {
+      "name": "granted read",
+      "enabled": true,
+      "scopes": [
+        "read"
+      ],
+      "command": "library.list",
+      "decision": "allow"
+    },
+    {
+      "name": "capture targets require capture scope",
+      "enabled": true,
+      "scopes": [
+        "capture"
+      ],
+      "command": "capture.targets",
+      "decision": "allow"
+    },
+    {
+      "name": "structured annotations require edit scope",
+      "enabled": true,
+      "scopes": [
+        "edit"
+      ],
+      "command": "editor.annotate",
+      "decision": "allow"
+    },
+    {
+      "name": "missing record",
+      "enabled": true,
+      "scopes": [
+        "read",
+        "capture"
+      ],
+      "command": "recording.startVideo",
+      "decision": "missing_scope"
+    },
+    {
+      "name": "granted record",
+      "enabled": true,
+      "scopes": [
+        "record"
+      ],
+      "command": "recording.stop",
+      "decision": "allow"
+    },
+    {
+      "name": "delete needs approval",
+      "enabled": true,
+      "scopes": [
+        "delete"
+      ],
+      "command": "library.delete",
+      "decision": "approve"
+    },
+    {
+      "name": "delete scope missing",
+      "enabled": true,
+      "scopes": [
+        "read",
+        "edit"
+      ],
+      "command": "library.delete",
+      "decision": "missing_scope"
+    },
+    {
+      "name": "upload needs approval",
+      "enabled": true,
+      "scopes": [
+        "upload"
+      ],
+      "command": "library.upload",
+      "decision": "approve"
+    },
+    {
+      "name": "discard needs approval",
+      "enabled": true,
+      "scopes": [
+        "record",
+        "discard"
+      ],
+      "command": "recording.discard",
+      "decision": "approve"
+    },
+    {
+      "name": "restart is discard",
+      "enabled": true,
+      "scopes": [
+        "record"
+      ],
+      "command": "recording.restart",
+      "decision": "missing_scope"
+    },
+    {
+      "name": "unknown command",
+      "enabled": true,
+      "scopes": [
+        "read"
+      ],
+      "command": "app.selfDestruct",
+      "decision": "unknown_command"
+    }
+  ]
+}

@@ -1913,6 +1913,39 @@ internal sealed class EditorController : IDisposable
         return ReadTarget(target, size.Width, size.Height, cancellationToken);
     }
 
+    /// <summary>
+    /// Flattens annotations onto premultiplied BGRA pixels without a live editor, using the same
+    /// drawing code as editor export. Used by agent automation (<c>editor.annotate</c>).
+    /// </summary>
+    internal static Task<SoftwareBitmap> RenderAnnotationsAsync(
+        byte[] premultipliedBgra,
+        int width,
+        int height,
+        ImmutableArray<AnnotationSnapshot> annotations,
+        CancellationToken cancellationToken) =>
+        Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var bitmap = SoftwareBitmap.CreateCopyFromBuffer(premultipliedBgra.AsBuffer(),
+                BitmapPixelFormat.Bgra8, width, height, BitmapAlphaMode.Premultiplied);
+            var frame = ExportFrameLayout.Create(width, height, 0,
+                ExportFramePreset.Original, ExportHorizontalAlignment.Center, ExportVerticalAlignment.Center);
+            var state = new ScreenshotRenderState(
+                annotations,
+                frame,
+                ExportBackgroundStyle.Transparent,
+                Colors.Transparent,
+                Colors.Transparent,
+                0,
+                0,
+                0,
+                false,
+                ScreenshotExportSize.Create(frame.FrameSize, 100));
+            using var owner = new SharedResource<EditorImage>(new EditorImage(bitmap));
+            using var snapshot = new EditorRenderSnapshot(owner.Acquire(), state, default, cancellationToken);
+            return RenderSnapshot(snapshot, cancellationToken);
+        }, cancellationToken);
+
     private static SoftwareBitmap ReadTarget(CanvasRenderTarget target, int width, int height, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

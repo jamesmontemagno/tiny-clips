@@ -1210,6 +1210,33 @@ public sealed partial class StudioEditorSession
         }
     }
 
+    /// <summary>Applies an agent update to the live undo history when its observed revision is current.</summary>
+    public bool ApplyAutomationProject(StudioProject updated, DateTimeOffset expectedModifiedAt)
+    {
+        ArgumentNullException.ThrowIfNull(updated);
+        if (!IsEditable
+            || Model is not { } model
+            || model.Project.ModifiedAt != expectedModifiedAt
+            || !string.Equals(updated.Id, ProjectId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!SaveNow())
+        {
+            return false;
+        }
+
+        Edit(model => model.ApplyAutomationProject(updated));
+        if (SaveNow())
+        {
+            return true;
+        }
+
+        Undo();
+        return false;
+    }
+
     private void ScheduleSave()
     {
         CancelScheduledSave();

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>TinyClips.Cli</RootNamespace>
+    <AssemblyName>tinyclips</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>tinyclips</ToolCommandName>
+    <PackageId>TinyClips</PackageId>
+    <Title>Tiny Clips CLI and MCP server</Title>
+    <PackageVersion>0.1.0</PackageVersion>
+    <Version>$(PackageVersion)</Version>
+    <Authors>James Montemagno</Authors>
+    <Description>Lets scripts and AI agents control the Tiny Clips screen capture app on macOS and Windows. Run "dnx TinyClips" or install with "dotnet tool install -g TinyClips"; "tinyclips mcp" starts an MCP server.</Description>
+    <PackageTags>tinyclips;screenshot;screen-recording;gif;mcp;ai;agents;cli</PackageTags>
+    <PackageType>DotnetTool;McpServer</PackageType>
+    <RepositoryUrl>https://github.com/jamesmontemagno/tiny-clips</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
+    <EmbeddedResource Include="..\..\..\shared\automation\commands.json" LogicalName="TinyClips.Cli.commands.json" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include=".mcp\server.json" Pack="true" PackagePath=".mcp" />
+    <InternalsVisibleTo Include="TinyClips.Cli.Tests" />
+    <InternalsVisibleTo Include="TinyClips.Package.Tests" />
+  </ItemGroup>
+
+</Project>

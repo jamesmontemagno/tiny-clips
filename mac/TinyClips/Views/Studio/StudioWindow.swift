@@ -25,6 +25,10 @@ final class StudioWindowRegistry {
         Set(windows.keys)
     }
 
+    func automationViewModel(forProjectID id: String) -> StudioViewModel? {
+        windows[id]?.automationViewModel
+    }
+
     var hasOpenWindows: Bool {
         !windows.isEmpty
     }
@@ -331,6 +335,7 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     private let projectID: String
     private let viewModel: StudioViewModel
     private var onClose: ((String) -> Void)?
+    var automationViewModel: StudioViewModel { viewModel }
 
     init(projectID: String, onClose: @escaping (String) -> Void) {
         self.projectID = projectID

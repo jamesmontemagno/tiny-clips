@@ -7,6 +7,27 @@ namespace TinyClips.Core.Tests;
 public sealed class StudioEditorSessionEditTests : StudioEditorSessionTestBase
 {
     [Fact]
+    public async Task AutomationEdit_IsSavedAsOneUndoableEdit()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        var current = Assert.IsType<StudioProject>(session.Project);
+        var updated = current with { Audio = current.Audio with { Volume = 0.4 } };
+
+        Assert.False(session.ApplyAutomationProject(updated, DateTimeOffset.UnixEpoch));
+        Assert.True(session.ApplyAutomationProject(updated, current.ModifiedAt));
+
+        Assert.Equal(0.4, session.Project!.Audio.Volume, Precision);
+        Assert.Equal(0.4, Projects.Load(id).Audio.Volume, Precision);
+        Assert.True(session.CanUndo);
+
+        session.Undo();
+
+        Assert.Equal(1, session.Project!.Audio.Volume, Precision);
+        Assert.True(session.HasUnsavedEdits);
+    }
+
+    [Fact]
     public async Task Edit_MarksUnsaved_UpdatesThePreview_AndIsSavedAfterTheDelay()
     {
         var id = CreateProject();

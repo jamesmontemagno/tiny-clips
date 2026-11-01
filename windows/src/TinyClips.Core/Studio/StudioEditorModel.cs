@@ -1199,6 +1199,28 @@ public sealed partial class StudioEditorModel
         _exportedState = exported;
     }
 
+    /// <summary>Replaces editable project fields from a validated agent update as one undo step.</summary>
+    public void ApplyAutomationProject(StudioProject updated)
+    {
+        ArgumentNullException.ThrowIfNull(updated);
+        if (!string.Equals(updated.Id, Project.Id, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The update belongs to another Studio project.", nameof(updated));
+        }
+
+        Mutate(project => project with
+        {
+            Canvas = updated.Canvas,
+            Screen = updated.Screen,
+            Camera = updated.Camera,
+            Scenes = updated.Scenes,
+            Zooms = updated.Zooms,
+            Edits = updated.Edits,
+            Audio = updated.Audio,
+            Overlays = updated.Overlays,
+        });
+    }
+
     /// <summary>Takes the fields the store or other windows own from the saved project, leaving edits alone.</summary>
     public void RefreshBookkeeping(StudioProject saved)
     {

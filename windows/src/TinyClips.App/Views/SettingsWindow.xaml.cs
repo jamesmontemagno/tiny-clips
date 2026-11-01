@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.Settings.Sections;
+using TinyClips.App.ViewModels;
 using TinyClips.App.ViewModels.ClipsLibrary;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
@@ -213,6 +214,8 @@ public sealed partial class SettingsWindow : Window
         {
             SettingsSectionKind.General => CreateGeneralSection(),
             SettingsSectionKind.Uploadcare => new UploadcareSettingsSection(ViewModel),
+            SettingsSectionKind.AgentControl => new AgentControlSettingsSection(
+                new AgentControlSettingsViewModel(((App)Application.Current).AgentControl)),
             SettingsSectionKind.Analytics => new AnalyticsSettingsSection(
                 ViewModel,
                 WinRT.Interop.WindowNative.GetWindowHandle(this)),

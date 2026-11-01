@@ -105,6 +105,14 @@
                         <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE898;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem
+                    AutomationProperties.AutomationId="AgentControlNavigationItem"
+                    Content="Agent control"
+                    Tag="AgentControl">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE99A;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
                 <NavigationViewItem

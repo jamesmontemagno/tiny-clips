@@ -1,0 +1,95 @@
+name: Agent CLI Release
+
+on:
+  push:
+    tags: ['agent-v*']
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: agent-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Verify agent release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check tag and committed package versions
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+          import xml.etree.ElementTree as ET
+          tag = os.environ["RELEASE_TAG"]
+          if not re.fullmatch(r"agent-v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?", tag):
+              raise SystemExit(f"Invalid agent release tag: {tag}")
+          version = tag.removeprefix("agent-v")
+          project = ET.parse("agent/src/TinyClips.Cli/TinyClips.Cli.csproj")
+          plugin = json.loads(pathlib.Path("plugins/tinyclips/plugin.json").read_text())
+          registry = json.loads(pathlib.Path("agent/src/TinyClips.Cli/.mcp/server.json").read_text())
+          versions = [project.findtext(".//PackageVersion"), plugin["version"], registry["version"],
+                      registry["packages"][0]["version"]]
+          if any(value != version for value in versions):
+              raise SystemExit(f"Tag version {version} must match committed CLI, plugin, and MCP metadata: {versions}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\n")
+          PY
+
+  validate:
+    needs: version
+    uses: ./.github/workflows/agent-build.yml
+    with:
+      force: true
+
+  publish:
+    name: Publish tested NuGet tool
+    needs: [version, validate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Download tested Linux package and plugin
+        uses: actions/download-artifact@v8
+        with:
+          name: tinyclips-agent-package
+          path: artifacts
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Get temporary NuGet API key
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: jamesmontemagno
+      - name: Publish NuGet package
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+          PACKAGE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          dotnet nuget push "artifacts/TinyClips.$PACKAGE_VERSION.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+      - name: Create agent release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: Tiny Clips Agent ${{ needs.version.outputs.version }}
+          files: |
+            artifacts/*.nupkg
+            artifacts/*.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          prerelease: ${{ contains(needs.version.outputs.version, '-') }}

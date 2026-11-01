@@ -5,6 +5,15 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- The shared MCP server uses the official C# SDK, with SDK-client interoperability smoke checks and unchanged app-enforced pairing and scopes.
+- Added shared CLI package/MCP smoke CI and separate NuGet publishing; Windows app CI now includes shared automation and root .NET configuration changes.
+- MCP setup uses `dotnet dnx` with quiet restore to avoid Windows script-launch and first-run stdout issues.
+- Added the shared `tinyclips` [Agent Plugin](https://agent-plugins.org/) (`plugins/tinyclips`) that bundles the MCP server and Skills.
+- Agent Control settings and the Guide now explain installation, pairing, connection checks, MCP setup, and first-capture prompts, with copyable setup commands in Settings.
+- **Agent control** (off by default): AI agents can drive Tiny Clips through the `tinyclips` CLI and MCP server over a per-user named pipe (`\\.\pipe\TinyClips.Automation.<user>`). Agents pair with an in-app approval and get scoped permissions (read, capture, record, edit, export, settings, delete, upload, discard). Deleting, uploading, discarding, and restarting a recording always ask again; unanswered prompts are denied after 2 minutes. Supports screenshots, OCR, explicit region/window targeting, structured screenshot annotations, targeted video/GIF/Studio recording, and scrolling screenshots with start/status/stop/cancel commands; Library list/reveal/copy/delete/upload, opening the editor and app windows, and an allowlist of settings. Targeted captures and recordings do not require interactive pickers, recordings save without opening a trimmer, and annotated output never overwrites its source. Scrolling input remains with the agent's own UI tools. Settings → Agent control shows the endpoint, paired agents (with Revoke), and the audit log; the tray shows when agent control is on and can turn it off.
+- Agents can list/read Studio projects, make revision-checked undoable edits to an open Studio session or saved project, request click-based zoom suggestions, and export a new MP4 directly into the configured video folder without replacing an existing file.
+
 ## [v2.0.0-windows] - 2026-10-31
 
 ### Changed

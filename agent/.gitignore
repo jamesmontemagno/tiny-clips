@@ -1,0 +1,26 @@
+# .NET build and pack output
+[Bb]in/
+[Oo]bj/
+out/
+*.nupkg
+*.snupkg
+*.binlog
+
+# Test and coverage output
+[Tt]est[Rr]esults/
+[Cc]overage*/
+*.trx
+*.coverage
+*.coveragexml
+
+# Local IDE state
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Optional local pairing configuration and environment
+/agent.json
+.env
+.env.*
+!.env.example
