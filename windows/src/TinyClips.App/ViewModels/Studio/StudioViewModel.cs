@@ -377,8 +377,6 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public string PlayheadText => _session.Model?.GetPlayheadText(Playhead) ?? string.Empty;
 
-    private StudioProject? Project => _session.Project;
-
     private StudioScene Scene => _session.Model?.CurrentScene ?? new StudioScene();
 
     // Loading

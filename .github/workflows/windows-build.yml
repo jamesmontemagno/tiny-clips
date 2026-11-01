@@ -54,8 +54,8 @@ jobs:
   build:
     name: Build (Windows, ${{ matrix.platform }})
     needs: changes
-    if: ${{ needs.changes.outputs.windows == 'true' }}
-    runs-on: windows-latest
+    if: ${{ !cancelled() }}
+    runs-on: ${{ needs.changes.result == 'success' && needs.changes.outputs.windows == 'true' && 'windows-latest' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -68,11 +68,28 @@ jobs:
             architecture: arm64
 
     steps:
+      - name: Validate build decision
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          WINDOWS_CHANGED: ${{ needs.changes.outputs.windows }}
+        run: |
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::Windows change detection did not succeed ($CHANGES_RESULT)."
+            exit 1
+          fi
+          case "$WINDOWS_CHANGED" in
+            true) echo "Windows changes detected; building the direct package." ;;
+            false) echo "No Windows files changed; skipping the direct package build." ;;
+            *) echo "::error::Invalid Windows change detection output: $WINDOWS_CHANGED"; exit 1 ;;
+          esac
+
       - name: Checkout code
+        if: ${{ needs.changes.outputs.windows == 'true' }}
         uses: actions/checkout@v6
 
       - name: Place NuGet caches in runner temp
-        if: runner.os == 'Windows' && runner.environment == 'github-hosted'
+        if: needs.changes.outputs.windows == 'true' && runner.os == 'Windows' && runner.environment == 'github-hosted'
         shell: pwsh
         run: |
           $packages = Join-Path $env:RUNNER_TEMP 'nuget\packages'
@@ -82,11 +99,13 @@ jobs:
           "NUGET_HTTP_CACHE_PATH=$httpCache" >> $env:GITHUB_ENV
 
       - name: Setup .NET SDK
+        if: ${{ needs.changes.outputs.windows == 'true' }}
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
       - name: Restore direct app for ${{ matrix.platform }}
+        if: ${{ needs.changes.outputs.windows == 'true' }}
         run: >-
           dotnet restore windows/src/TinyClips.App/TinyClips.App.csproj
           -p:Configuration=Release
@@ -95,6 +114,7 @@ jobs:
           -p:TinyClipsDirectReleaseBuild=true
 
       - name: Build and inspect direct package for ${{ matrix.platform }}
+        if: ${{ needs.changes.outputs.windows == 'true' }}
         shell: pwsh
         run: |
           $packageDirectory = Join-Path (Resolve-Path ".") "artifacts/direct-${{ matrix.architecture }}/"
