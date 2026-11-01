@@ -114,6 +114,27 @@ builds use normal NuGet restore without caching: measured cache transfer overhea
 outweighed their restore savings. These changes target turnaround time and runner
 capacity, not dollar savings on standard hosted runners in this public repo.
 
+### Agentic workflow maintenance
+
+The source for the weekly feature-parity workflow is
+`.github/workflows/weekly-feature-parity.md`; its `.lock.yml` is generated. Use
+the gh-aw version pinned in `.github/workflows/copilot-setup-steps.yml` and
+commit the regenerated lock file after changing the source. Check the installed
+version with `gh aw version`.
+
+The checked-in `.github/aw/actions-lock.json` pins the setup action even when
+SSO blocks tag resolution. Use the canonical repository schedule seed when
+compiling so the generated schedule is the same in forks:
+
+```bash
+gh aw compile weekly-feature-parity --strict --validate \
+  --schedule-seed jamesmontemagno/tiny-clips
+```
+
+When upgrading gh-aw, verify the new `github/gh-aw-actions` release commit and
+update the action cache and setup action pin together. Do not manually dispatch
+the parity workflow as a smoke test: it can create real issues.
+
 ### Building without code signing (CI / headless)
 
 ```bash
