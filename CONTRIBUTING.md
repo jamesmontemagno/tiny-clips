@@ -99,6 +99,11 @@ Copilot app configuration, extensions, and standalone tooling outside those inpu
 also skip platform builds. Manually dispatching **Windows Build** still forces its
 builds and tests. Release/tag and other manually triggered workflows are unchanged.
 
+The Windows direct-build matrix always expands to report both required architecture
+checks. With no Windows changes, its entries run only a build-decision check on
+Ubuntu; checkout, .NET setup, restore, and packaging are skipped. Failed or invalid
+change detection fails those checks instead of reporting a successful skip.
+
 Ordinary **Build** and **Windows Build** runs cancel superseded runs for the same
 pull request, independently per workflow. Non-pull-request runs use unique
 concurrency groups, so a later documentation-only push cannot cancel an earlier
