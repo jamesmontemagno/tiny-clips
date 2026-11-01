@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- Upgraded GitHub Agentic Workflows to v1.0.1. The Copilot setup steps now install v1.0.1, the weekly feature-parity workflow is recompiled with the v1.0.1 compiler, and the agentic-workflows agent and skill now use the v1.0.1 templates. The parity schedule (Sunday around 09:00), Copilot auto model, and five-issue limit are unchanged.
+
 ## v2.0.0-mac - 2026-10-31
 
 ### Fixed

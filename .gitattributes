@@ -1,4 +1,4 @@
-.github/workflows/*.lock.yml linguist-generated=true merge=ours
+.github/workflows/*.lock.yml linguist-generated=true
 shared/studio/** text eol=lf
 scripts/run-macos.sh text eol=lf
 *.onnx binary
