@@ -626,7 +626,7 @@ A group that follows another within `join` starts exactly where that one ends, s
 
 **Applying suggestions** replaces the project's `auto` zooms with the new list and leaves every other zoom as it is stored. A zoom stops being `auto` the first time the user changes it.
 
-A window recording carries no clicks today, so it gets no suggestions.
+A recording without clicks gets no suggestions.
 
 ## 9. Defaults for a new project
 

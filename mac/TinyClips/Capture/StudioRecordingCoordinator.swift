@@ -18,7 +18,7 @@ final class StudioRecordingCoordinator {
     private let initialCameraCorner: StudioAnchor
     private let clickVisualsEnabled: Bool
     private let configuredFrameRate: Double
-    private var cursorTimer: Timer?
+    private(set) var cursorTimer: Timer?
     private var cursorSamples: [StudioCaptureCursorSampleInput] = []
     private var completedProjectID: String?
     private var keepsUnfinishedFolder = false
@@ -50,11 +50,6 @@ final class StudioRecordingCoordinator {
         paths.cameraURL
     }
 
-    /// Window captures move, so pointer positions cannot be mapped onto them.
-    var recordsPointerEvents: Bool {
-        captureKind != .window
-    }
-
     /// Replaces the provisional region with the geometry the stream was actually configured from.
     func updateCaptureRegion(_ region: CaptureRegion) {
         captureRegion = region
@@ -67,7 +62,6 @@ final class StudioRecordingCoordinator {
         timeProvider: @escaping () -> CMTime?,
         isPaused: @escaping () -> Bool
     ) {
-        guard recordsPointerEvents else { return }
         stopCursorSampling()
         cursorSamples = []
 
@@ -123,7 +117,7 @@ final class StudioRecordingCoordinator {
             screenFirstSampleTime: screenFirstSampleTime,
             cameraFirstSampleTime: cameraFirstSampleTime
         )
-        let clickSamples = recordsPointerEvents ? studioClickSamples(from: mouseClicks) : []
+        let clickSamples = studioClickSamples(from: mouseClicks)
         let captureRect = CGRect(origin: .zero, size: captureRegion.sourceRect.size)
         let clicks = StudioCaptureEvents.normalizedClicks(clickSamples, captureRect: captureRect)
         let cursor = StudioCaptureEvents.normalizedCursorSamples(cursorSamples, captureRect: captureRect)
@@ -250,13 +244,11 @@ final class StudioRecordingCoordinator {
             return nil
         }
 
-        let localPoint = CGPoint(
-            x: globalPoint.x - screen.frame.minX,
-            y: screen.frame.maxY - globalPoint.y
-        )
-        return CGPoint(
-            x: localPoint.x - captureRegion.sourceRect.minX,
-            y: localPoint.y - captureRegion.sourceRect.minY
+        // All recording targets, including windows, capture a fixed crop of a display.
+        return StudioCaptureEvents.sourcePoint(
+            forGlobalPoint: globalPoint,
+            screenFrame: screen.frame,
+            captureRect: captureRegion.sourceRect
         )
     }
 

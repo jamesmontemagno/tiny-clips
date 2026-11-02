@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- macOS Studio window recordings now save cursor and click events for click-driven zoom suggestions, whether started normally or through Agent Control.
 - Windows CI now reports both required architecture checks for changes that do not need Windows builds, avoiding permanently pending checks without allocating Windows runners.
 
 ### Changed

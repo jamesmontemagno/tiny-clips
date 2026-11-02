@@ -2,6 +2,49 @@ import XCTest
 @testable import TinyClips
 
 final class StudioCaptureEventsTests: XCTestCase {
+    @MainActor
+    func testEveryCaptureKindStartsCursorSamplingWithClickVisualsDisabled() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = StudioProjectStore(rootURL: directory)
+
+        for kind: StudioCaptureKind in [.window, .display, .region] {
+            let coordinator = try StudioRecordingCoordinator(
+                store: store,
+                captureRegion: CaptureRegion(
+                    sourceRect: CGRect(x: 0, y: 15, width: 1440, height: 870),
+                    displayID: 1,
+                    scaleFactor: 2
+                ),
+                captureKind: kind,
+                initialCameraCorner: .bottomRight,
+                clickVisualsEnabled: false,
+                frameRate: 30
+            )
+            defer { coordinator.deleteUnfinishedProject() }
+            var requestsForTime = 0
+            var paused = false
+            coordinator.startCursorSampling(
+                timeProvider: {
+                    requestsForTime += 1
+                    // No first frame yet: do not query the live pointer or display.
+                    return nil
+                },
+                isPaused: { paused }
+            )
+
+            let timer = try XCTUnwrap(coordinator.cursorTimer, "\(kind) must collect cursor events")
+            timer.fire()
+            XCTAssertEqual(requestsForTime, 1)
+            paused = true
+            timer.fire()
+            XCTAssertEqual(requestsForTime, 1)
+            coordinator.stopCursorSampling()
+            XCTAssertFalse(timer.isValid)
+            XCTAssertNil(coordinator.cursorTimer)
+        }
+    }
+
     func testProjectFrameRateIsTheConfiguredRateNotTheFilesAverage() {
         // Little moved on screen, so the file averages 7 frames a second. It was recorded at 60.
         XCTAssertEqual(StudioCaptureEvents.projectFrameRate(configured: 60, measured: 7.2), 60)
@@ -24,6 +67,68 @@ final class StudioCaptureEventsTests: XCTestCase {
             CGPoint(x: 0.5, y: 0.5)
         )
         XCTAssertNil(StudioCaptureEvents.normalizedPoint(CGPoint(x: 9.9, y: 70), in: rect, dropsOutside: true))
+    }
+
+    func testWindowPointerEventsUseCaptureLocalPointsNotRetinaPixels() {
+        let windowRect = CGRect(x: 0, y: 15, width: 1440, height: 870)
+        let point = StudioCaptureEvents.sourcePoint(
+            forGlobalPoint: CGPoint(x: 720, y: 450),
+            screenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+            captureRect: windowRect
+        )
+        XCTAssertEqual(point, CGPoint(x: 720, y: 435))
+
+        let captureRect = CGRect(origin: .zero, size: windowRect.size)
+        let events = StudioCaptureEvents.makeEvents(
+            captureWidth: 2880,
+            captureHeight: 1740,
+            captureScale: 2,
+            captureKind: .window,
+            clicks: StudioCaptureEvents.normalizedClicks(
+                [StudioCaptureClickSample(t: 1, point: point, button: .right)],
+                captureRect: captureRect
+            ),
+            cursor: StudioCaptureEvents.normalizedCursorSamples(
+                [StudioCaptureCursorSampleInput(t: 1, point: point)],
+                captureRect: captureRect
+            ),
+            cameraCorners: []
+        )
+
+        XCTAssertEqual(events.capture, StudioCaptureInfo(width: 2880, height: 1740, scale: 2, kind: .window))
+        XCTAssertEqual(events.clicks, [StudioClickEvent(t: 1, x: 0.5, y: 0.5, button: .right)])
+        XCTAssertEqual(events.cursor, [StudioCursorSample(t: 1, x: 0.5, y: 0.5)])
+    }
+
+    func testWindowPointerMappingOnSecondaryDisplaysKeepsOutsideCursorButDropsOutsideClicks() {
+        for screenFrame in [
+            CGRect(x: -1920, y: -200, width: 1920, height: 1080),
+            CGRect(x: 300, y: 900, width: 1920, height: 1080)
+        ] {
+            let windowRect = CGRect(x: 100, y: 50, width: 800, height: 600)
+            let point = StudioCaptureEvents.sourcePoint(
+                forGlobalPoint: CGPoint(x: screenFrame.minX + 500, y: screenFrame.maxY - 350),
+                screenFrame: screenFrame,
+                captureRect: windowRect
+            )
+            XCTAssertEqual(point, CGPoint(x: 400, y: 300))
+
+            let outside = StudioCaptureEvents.sourcePoint(
+                forGlobalPoint: CGPoint(x: screenFrame.minX + 20, y: screenFrame.maxY - 350),
+                screenFrame: screenFrame,
+                captureRect: windowRect
+            )
+            let captureRect = CGRect(origin: .zero, size: windowRect.size)
+            XCTAssertTrue(StudioCaptureEvents.normalizedClicks(
+                [StudioCaptureClickSample(t: 1, point: outside)], captureRect: captureRect
+            ).isEmpty)
+            XCTAssertEqual(
+                StudioCaptureEvents.normalizedCursorSamples(
+                    [StudioCaptureCursorSampleInput(t: 1, point: outside)], captureRect: captureRect
+                ),
+                [StudioCursorSample(t: 1, x: -0.1, y: 0.5)]
+            )
+        }
     }
 
     func testNormalizedClicksSortAndKeepButtons() {
