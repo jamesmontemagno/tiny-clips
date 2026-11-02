@@ -605,12 +605,14 @@ private struct VideoTrimmerView: View {
         menuActions.clear()
         let url = videoURL
         Task { @MainActor in
+            var opened = false
             defer {
                 isOpeningStudio = false
                 (trimmerWindow as? VideoTrimmerWindow)?.isOpeningStudio = false
-                configureMenuActions()
+                if !opened { configureMenuActions() }
             }
-            if await StudioWindowRegistry.shared.openVideo(at: url) {
+            opened = await StudioWindowRegistry.shared.openVideo(at: url)
+            if opened {
                 closeWithoutSaving()
             }
         }

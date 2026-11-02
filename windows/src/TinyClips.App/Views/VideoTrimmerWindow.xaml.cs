@@ -26,11 +26,9 @@ namespace TinyClips.App;
 public sealed partial class VideoTrimmerWindow : Window
 {
     // Minimum dimensions chosen to keep the trim bar, playback controls, and footer legible.
-    // Width 720 DIP: trim bar needs at least ~400px; footer has SpeedCombo (96) + RemoveAudio
-    //   checkbox + four buttons (~390px) + spacing/padding, totalling ~620 + 100 margins.
-    // Height 520 DIP: TitleBar (~48) + preview floor (~200) + trim section (~180) + footer (~92).
+    // The footer uses separate rows for settings and actions to fit at 720 DIP.
     private const int MinimumWidthDip  = 720;
-    private const int MinimumHeightDip = 520;
+    private const int MinimumHeightDip = 560;
 
     private readonly string _filePath;
     private TimeSpan _duration = TimeSpan.Zero;
@@ -178,7 +176,7 @@ public sealed partial class VideoTrimmerWindow : Window
                     return;
                 }
             }
-            RootGrid.IsEnabled = false;
+            SetStudioHandoffControlsEnabled(false);
             if (await app.OpenVideoInStudioAsync(_filePath) && !_isClosed && _exportsInFlight == 0 && !_isDeletingSource)
             {
                 _isOpeningStudio = false;
@@ -188,7 +186,7 @@ public sealed partial class VideoTrimmerWindow : Window
         finally
         {
             _isOpeningStudio = false;
-            RootGrid.IsEnabled = true;
+            SetStudioHandoffControlsEnabled(true);
         }
     }
 
@@ -768,6 +766,19 @@ public sealed partial class VideoTrimmerWindow : Window
         CancelButton.IsEnabled = enabled;
         SaveOriginalButton.IsEnabled = enabled;
         SaveTrimmedButton.IsEnabled = enabled;
+    }
+
+    private void SetStudioHandoffControlsEnabled(bool enabled)
+    {
+        SetCompletionActionsEnabled(enabled);
+        OpenInStudioButton.IsEnabled = enabled;
+        CopyFrameButton.IsEnabled = enabled;
+        ExportFrameButton.IsEnabled = enabled;
+        PlayToggle.IsEnabled = enabled;
+        SpeedCombo.IsEnabled = enabled;
+        RemoveAudioCheck.IsEnabled = enabled;
+        RootGrid.IsHitTestVisible = enabled;
+        BusyBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs e)
