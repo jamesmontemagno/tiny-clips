@@ -70,6 +70,18 @@ enum StudioCaptureEvents {
         return recorded.map(\.rawValue)
     }
 
+    /// Converts bottom-left AppKit coordinates to top-left capture-local points, not pixels.
+    static func sourcePoint(
+        forGlobalPoint point: CGPoint,
+        screenFrame: CGRect,
+        captureRect: CGRect
+    ) -> CGPoint {
+        CGPoint(
+            x: point.x - screenFrame.minX - captureRect.minX,
+            y: screenFrame.maxY - point.y - captureRect.minY
+        )
+    }
+
     static func normalizedPoint(
         _ point: CGPoint,
         in rect: CGRect,

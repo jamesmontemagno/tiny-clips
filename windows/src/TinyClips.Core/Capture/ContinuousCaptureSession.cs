@@ -50,6 +50,8 @@ internal sealed class ContinuousCaptureSession : IDisposable
     private volatile bool _emittingPaused;
     private PixelRect _cropBounds;
     private CaptureOutputGeometry? _geometry;
+    private WindowCaptureFrame? _windowFrame;
+    internal WindowCaptureFrame? WindowFrame => Volatile.Read(ref _windowFrame);
     private long _sourceVersion;
     private int _readbackFailuresLogged;
     private int _processingFailuresLogged;
@@ -412,6 +414,13 @@ internal sealed class ContinuousCaptureSession : IDisposable
                     srcPitch, frameWidth, frameHeight, contentWidth, contentHeight, captured,
                     !_target.IsWindow && _region is not null ? _cropBounds : null,
                     letterbox: _target.IsWindow);
+                if (_target.IsWindow)
+                {
+                    Volatile.Write(ref _windowFrame, WindowCaptureFrame.Create(
+                        contentWidth, contentHeight, frameWidth, frameHeight, width, height,
+                        letterbox: true, roundToPixels: true));
+                }
+
                 return captured;
             }
 

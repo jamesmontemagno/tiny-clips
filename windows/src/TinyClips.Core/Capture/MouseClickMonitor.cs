@@ -28,6 +28,8 @@ public sealed class MouseClickMonitor : IDisposable
     private uint _threadId;
     private bool _disposed;
 
+    internal Func<MouseClickSample, MouseClickSample?>? TransformSample { get; init; }
+
     /// <summary>Begins listening for mouse clicks. Idempotent while running.</summary>
     public void Start()
     {
@@ -83,9 +85,20 @@ public sealed class MouseClickMonitor : IDisposable
                     WM_MBUTTONDOWN => MouseClickButton.Middle,
                     _ => MouseClickButton.Left,
                 };
+                var sample = new MouseClickSample(t, data.pt.x, data.pt.y, button, RecordingTimeline.SystemRelativeNow());
+                if (TransformSample is { } transform)
+                {
+                    if (transform(sample) is not { } mapped)
+                    {
+                        return CallNextHookEx(0, nCode, wParam, lParam);
+                    }
+
+                    sample = mapped;
+                }
+
                 lock (_gate)
                 {
-                    _clicks.Add(new MouseClickSample(t, data.pt.x, data.pt.y, button, RecordingTimeline.SystemRelativeNow()));
+                    _clicks.Add(sample);
                 }
             }
         }

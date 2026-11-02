@@ -258,7 +258,7 @@ struct StudioEditorModel: Equatable, Sendable {
     /// Said when zooms were asked for and the clicks give none.
     static let noZoomSuggestionsMessage = "No zooms to suggest for this recording."
 
-    /// Why zooms cannot be suggested for a recording without clicks, such as one of a window.
+    /// Why zooms cannot be suggested for a recording without clicks.
     static let noClicksExplanation = "This recording has no clicks to suggest zooms from."
 
     /// Why a zoom cannot follow the pointer in a recording without pointer positions.

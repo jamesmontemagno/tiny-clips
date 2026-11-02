@@ -9,6 +9,7 @@ own `CHANGELOG.md` at the repository root.
 - Any video can now be opened in Studio from the video trimmer or the Clips Library (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
 
 ### Fixed
+- Studio window recordings now collect cursor positions and clicks for zoom suggestions and editable click visuals, even when click visuals are initially off. Positions follow the captured window as it moves or resizes, including mixed-DPI/negative-coordinate desktops, encoder cropping and resize letterboxing. Unavailable windows and uncaptured pixels are excluded instead of using a stale window origin.
 - Imported Studio videos respect rotation metadata and mix all source audio tracks during export. Renaming, archiving, or temporarily disconnecting the source no longer loses saved edits.
 - Studio handoff protects pending trimmer edits and prevents competing actions; the footer fits the minimum window width. Existing project links are checked before importing, and portable project saving explains why external videos cannot be saved as a folder.
 
