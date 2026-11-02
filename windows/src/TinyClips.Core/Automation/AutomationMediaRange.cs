@@ -26,18 +26,18 @@ public static class AutomationMediaRange
     }
 
     /// <summary>Total length of a GIF whose frame delays are in seconds.</summary>
-    public static double Duration(IReadOnlyList<double> delays) => delays.Sum();
+    public static double Duration(IReadOnlyList<double> delays) => StartTime(delays.Count, delays);
 
     /// <summary>The first and last frames shown between <paramref name="start"/> and <paramref name="end"/>.</summary>
     public static (int First, int Last) GifFrames(double start, double end, IReadOnlyList<double> delays)
     {
         var first = FrameIndex(start, delays);
         var last = first;
-        var nextStart = StartTime(first + 1, delays);
-        while (last + 1 < delays.Count && nextStart < end)
+        var nextStartTicks = StartTicks(first + 1, delays);
+        while (last + 1 < delays.Count && nextStartTicks / 100.0 < end)
         {
             last++;
-            nextStart += delays[last];
+            nextStartTicks += DelayTicks(delays[last]);
         }
 
         return (first, last);
@@ -57,24 +57,31 @@ public static class AutomationMediaRange
     }
 
     public static double StartTime(int frame, IReadOnlyList<double> delays)
+        => StartTicks(frame, delays) / 100.0;
+
+    // GIF frame delays are stored in centiseconds. Accumulating seconds as doubles
+    // can put an exact requested boundary on the wrong side of a frame.
+    private static double StartTicks(int frame, IReadOnlyList<double> delays)
     {
         var start = 0.0;
         for (var i = 0; i < frame && i < delays.Count; i++)
         {
-            start += delays[i];
+            start += DelayTicks(delays[i]);
         }
 
         return start;
     }
 
+    private static double DelayTicks(double delay) => Math.Round(delay * 100.0);
+
     private static int FrameIndex(double time, IReadOnlyList<double> delays)
     {
         var index = 0;
-        var nextStart = delays.Count > 0 ? delays[0] : 0;
-        while (index + 1 < delays.Count && nextStart <= time)
+        var nextStartTicks = delays.Count > 0 ? DelayTicks(delays[0]) : 0;
+        while (index + 1 < delays.Count && nextStartTicks / 100.0 <= time)
         {
             index++;
-            nextStart += delays[index];
+            nextStartTicks += DelayTicks(delays[index]);
         }
 
         return index;

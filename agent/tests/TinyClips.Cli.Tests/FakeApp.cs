@@ -1,5 +1,8 @@
 using System.IO.Pipes;
 using System.Net.Sockets;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json.Nodes;
 
@@ -19,11 +22,12 @@ internal sealed class FakeApp : IAsyncDisposable
     public bool Enabled { get; init; } = true;
     public bool Approve { get; init; } = true;
     public bool CloseBeforeReply { get; init; }
+    public Func<CancellationToken, Task>? BeforeReply { get; init; }
     public string Endpoint { get; }
 
-    public FakeApp(string? unixEndpoint = null)
+    public FakeApp(string? unixEndpoint = null, bool useNamedPipe = false)
     {
-        if (OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows() || useNamedPipe)
         {
             Endpoint = $@"\\.\pipe\tc-test-{Guid.NewGuid():N}";
             _loop = Task.Run(ServePipesAsync);
@@ -132,11 +136,28 @@ internal sealed class FakeApp : IAsyncDisposable
     {
         while (!_stop.IsCancellationRequested)
         {
-            var pipe = new NamedPipeServerStream(Endpoint[@"\\.\pipe\".Length..], PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            var name = Endpoint[@"\\.\pipe\".Length..];
+            var pipe = OperatingSystem.IsWindows()
+                ? CreateWindowsPipe(name)
+                : new NamedPipeServerStream(name, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
+                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             try { await pipe.WaitForConnectionAsync(_stop.Token); }
             catch (Exception) { await pipe.DisposeAsync(); return; }
             _ = ServeStreamAsync(pipe);
         }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static NamedPipeServerStream CreateWindowsPipe(string name)
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var user = identity.User ?? throw new InvalidOperationException("The current user has no SID.");
+        var security = new PipeSecurity();
+        security.SetOwner(user);
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.AddAccessRule(new PipeAccessRule(user, PipeAccessRights.FullControl, AccessControlType.Allow));
+        return NamedPipeServerStreamAcl.Create(name, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, security);
     }
 
     private async Task ServeStreamAsync(Stream stream)
@@ -150,6 +171,7 @@ internal sealed class FakeApp : IAsyncDisposable
                 {
                     var response = Handle(JsonNode.Parse(line)!.AsObject());
                     if (CloseBeforeReply) return;
+                    if (BeforeReply is not null) await BeforeReply(_stop.Token);
                     await stream.WriteAsync(Encoding.UTF8.GetBytes(response.ToJsonString() + "\n"), _stop.Token);
                     await stream.FlushAsync(_stop.Token);
                 }

@@ -66,6 +66,10 @@ final class AutomationClientStore {
         return clients.first { Self.constantTimeEquals($0.tokenHash, hash) }
     }
 
+    func isCurrent(_ client: AutomationClient) -> Bool {
+        clients.contains { $0.id == client.id && Self.constantTimeEquals($0.tokenHash, client.tokenHash) }
+    }
+
     func markUsed(id: String, at date: Date = Date()) {
         guard let index = clients.firstIndex(where: { $0.id == id }) else { return }
         clients[index].lastUsedAt = date

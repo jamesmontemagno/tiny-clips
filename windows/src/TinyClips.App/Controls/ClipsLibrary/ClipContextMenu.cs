@@ -18,7 +18,7 @@ internal static class ClipContextMenu
 
         menu.Items.Add(Item("Open", "\uE8A7", owner.OpenCommand, item, Id(item, surface, "Open"), "Enter"));
         menu.Items.Add(Item($"{item.EditVerb}…", item.EditGlyph, owner.OpenCommand, item, Id(item, surface, "Edit")));
-        if (item.HasStudioProject)
+        if (item.IsVideo && owner.IsStudioEnabled)
         {
             menu.Items.Add(Item("Open in Studio…", "\uE81E", owner.OpenInStudioCommand, item, Id(item, surface, "Studio")));
         }

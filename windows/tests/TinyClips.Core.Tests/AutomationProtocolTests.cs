@@ -170,6 +170,59 @@ public sealed class AutomationProtocolTests : IDisposable
         Assert.Equal(0, handler.Deletes);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Host_RevocationCancelsPendingApproval(bool revokeAll)
+    {
+        var clients = new AutomationClientStore(Path.Combine(_directory, "clients.json"));
+        var (client, token) = clients.Add("Agent", ["delete"]);
+        var handler = new FakeHandler();
+        var approvals = new CancellationAwareApproval();
+        var host = new AutomationHost(AutomationContract.Default, clients, null, handler, approvals, () => true);
+        var pending = host.HandleLineAsync(
+            $$$"""{"id":"1","token":"{{{token}}}","command":"library.delete","params":{"path":"a.png"}}""",
+            TestContext.Current.CancellationToken);
+        await approvals.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        if (revokeAll)
+        {
+            clients.RevokeAll();
+        }
+        else
+        {
+            clients.Revoke(client.Id);
+        }
+
+        var response = AutomationProtocol.ParseResponse(
+            await pending.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.True(approvals.Cancelled);
+        Assert.Equal(AutomationErrorCodes.Unauthorized, response.Error!.Code);
+        Assert.Equal(0, handler.Deletes);
+    }
+
+    [Fact]
+    public async Task Host_RechecksRevocationWhenApprovalReturnsTrueAfterCancellation()
+    {
+        var clients = new AutomationClientStore(Path.Combine(_directory, "clients.json"));
+        var (client, token) = clients.Add("Agent", ["delete"]);
+        var handler = new FakeHandler();
+        var approvals = new DelayedApproval();
+        var host = new AutomationHost(AutomationContract.Default, clients, null, handler, approvals, () => true);
+        var pending = host.HandleLineAsync(
+            $$$"""{"id":"1","token":"{{{token}}}","command":"library.delete","params":{"path":"a.png"}}""",
+            TestContext.Current.CancellationToken);
+        await approvals.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        clients.Revoke(client.Id);
+        approvals.Result.TrySetResult(true);
+
+        var response = AutomationProtocol.ParseResponse(
+            await pending.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(AutomationErrorCodes.Unauthorized, response.Error!.Code);
+        Assert.Equal(0, handler.Deletes);
+    }
+
     [Fact]
     public async Task Host_UnknownCommandAndBadJson()
     {
@@ -290,6 +343,30 @@ public sealed class AutomationProtocolTests : IDisposable
         {
             Started.TrySetResult();
             return Result.Task;
+        }
+    }
+
+    private sealed class CancellationAwareApproval : IAutomationApprovalPrompt
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Cancelled { get; private set; }
+
+        public Task<bool> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
+        public async Task<bool> RequestCommandApprovalAsync(AutomationCommandContext context, CancellationToken cancellationToken)
+        {
+            Started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                return true;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                Cancelled = true;
+                throw;
+            }
         }
     }
 }

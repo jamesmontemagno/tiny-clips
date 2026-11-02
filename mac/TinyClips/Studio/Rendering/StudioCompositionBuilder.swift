@@ -330,7 +330,8 @@ enum StudioCompositionBuilder {
                 cameraTrackID: cameraTrackID,
                 renderSize: renderSize,
                 renderState: state,
-                projectDirectory: paths.projectDirectory
+                projectDirectory: paths.projectDirectory,
+                screenTransform: compositionScreenTrack.preferredTransform
             )
         ]
 

@@ -67,6 +67,27 @@ public sealed class AutomationClientStoreTests : IDisposable
     }
 
     [Fact]
+    public void RevocationTokens_CancelOnlyRemovedClientsIncludingRevokeAll()
+    {
+        var store = new AutomationClientStore(FilePath);
+        var (first, _) = store.Add("First", ["delete"]);
+        var (second, _) = store.Add("Second", ["delete"]);
+        var firstToken = store.RevocationToken(first.Id);
+        var secondToken = store.RevocationToken(second.Id);
+
+        Assert.True(store.Revoke(first.Id));
+        Assert.True(firstToken.IsCancellationRequested);
+        Assert.True(store.RevocationToken(first.Id).IsCancellationRequested);
+        Assert.False(secondToken.IsCancellationRequested);
+        using var linkedAfterRevocation = CancellationTokenSource.CreateLinkedTokenSource(firstToken);
+        Assert.True(linkedAfterRevocation.IsCancellationRequested);
+
+        store.RevokeAll();
+        Assert.True(secondToken.IsCancellationRequested);
+        Assert.True(store.RevocationToken(second.Id).IsCancellationRequested);
+    }
+
+    [Fact]
     public void TouchLastUsed_RecordsTime()
     {
         var time = new ManualTimeProvider(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero));

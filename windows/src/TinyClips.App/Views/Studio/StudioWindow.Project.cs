@@ -29,6 +29,10 @@ public sealed partial class StudioWindow
     {
         SaveProjectItem.IsEnabled = ViewModel.CanSaveProject;
         SaveProjectAsItem.IsEnabled = ViewModel.CanSaveProject;
+        ToolTipService.SetToolTip(SaveProjectItem, ViewModel.ProjectFolderHelp);
+        ToolTipService.SetToolTip(SaveProjectAsItem, ViewModel.ProjectFolderHelp);
+        AutomationProperties.SetHelpText(SaveProjectItem, ViewModel.ProjectFolderHelp);
+        AutomationProperties.SetHelpText(SaveProjectAsItem, ViewModel.ProjectFolderHelp);
         DeleteProjectItem.IsEnabled = ViewModel.CanDeleteProject;
         FillOpenRecent();
         _ = ViewModel.RefreshRecentProjectsAsync();

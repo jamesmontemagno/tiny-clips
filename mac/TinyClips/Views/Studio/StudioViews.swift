@@ -195,10 +195,12 @@ private struct StudioHeaderView: View {
                 Label("Save Project", systemImage: "square.and.arrow.down")
             }
             .disabled(!viewModel.canSaveProjectFolder)
+            .help(viewModel.projectFolderHelp)
             Button("Save Project As…") {
                 viewModel.saveProjectFolder(saveAs: true)
             }
             .disabled(!viewModel.canSaveProjectFolder)
+            .help(viewModel.projectFolderHelp)
             Divider()
             Button(role: .destructive) {
                 viewModel.deleteProject()
@@ -766,7 +768,7 @@ private struct StudioInspectorView: View {
             }
             .disabled(!viewModel.canSaveProjectFolder)
             .help("Choose a new project name and folder (Shift-Command-S)")
-            noteText("Save updates the current project folder. Save As chooses a new name and location, including the recordings and a .tinyclips file.")
+            noteText(viewModel.projectFolderHelp)
         }
         StudioInspectorSection(title: "New Recordings") {
             Button("Save as Default Look", systemImage: StudioSymbol.saveDefaultLook) {

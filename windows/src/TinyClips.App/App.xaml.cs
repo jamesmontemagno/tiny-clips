@@ -2608,6 +2608,22 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Opens an existing video in Studio as a flat project, and says why when it cannot. Must be
+    /// called on the UI thread.
+    /// </summary>
+    /// <returns>True when an editor window is open for the video.</returns>
+    internal async Task<bool> OpenVideoInStudioAsync(string videoPath)
+    {
+        var result = await StudioWindows().OpenVideoAsync(videoPath);
+        if (result.Failure is { } failure)
+        {
+            ShowMessageNotification(failure);
+        }
+
+        return result.Window is not null;
+    }
+
+    /// <summary>
     /// Opens a project in the Studio editor, or brings the window that already has it open to the
     /// front. Called for a finished Studio recording, by Settings for a draft, and by the Clips
     /// Library and the recent captures for a video that was exported from a project. Must be

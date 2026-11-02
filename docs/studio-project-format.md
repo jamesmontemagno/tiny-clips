@@ -659,6 +659,8 @@ Starting with the one scene at 0, each change is made to a copy of the last scen
 
 Opening an existing video that has no project creates a flat project: `sources.screen.external` is true, `screen.file` is the absolute path, and `camera` and `events` are null. The caller reads the video's width, height, duration, and frame rate and passes them in; the store does not open media files. There is at most one flat project per video path. Camera layouts are unavailable, so every scene resolves as `screen`.
 
+Open in Studio checks the export link before creating a flat project, even if the library's cached link has not loaded. Dimensions describe the upright picture; preview and export apply the source's rotation metadata before layout and cropping. Imported edits autosave internally, but Save Project/Save As (portable folders) are disabled with an explanation. Keep the original video. The trimmer asks before discarding its pending edits and prevents competing operations while opening Studio.
+
 ## 11. Export links
 
 Each export adds `{ path, exportedAt, bytes }` to `exports`, where `bytes` is the size of the video file at that moment and is left out when it cannot be read. The project store indexes the paths, compared case-insensitively, so the Clips Library can find the project for a video. That link goes by the path alone.
@@ -666,6 +668,7 @@ Each export adds `{ path, exportedAt, bytes }` to `exports`, where `bytes` is th
 - Exporting to a path the project already lists replaces that entry instead of adding a second one.
 - A path belongs to one project. Recording an export removes the same path from every other project, because the file there has been overwritten.
 - Renaming or moving an exported video in Tiny Clips updates the `path` of its entry and leaves the rest of it. Tiny Clips does that whether Studio is switched on or off. Deleting the video leaves the entry where it is, whether it was deleted in Tiny Clips or outside it: a video that comes back, from the Recycle Bin or with the drive it is on, is linked again. What a missing video means for its project is in section 12.
+- The same move operation updates matching flat projects' external source paths, including videos with no export link, preserving the project's identity and edits.
 
 ## 12. Cleanup
 
@@ -675,7 +678,7 @@ Each export adds `{ path, exportedAt, bytes }` to `exports`, where `bytes` is th
 - **Age rule**: an eligible project is deleted when `lastOpenedAt` is more than 30 days old. The number of days is a setting; 0 disables the rule.
 - **Size rule**: applied after the age rule. When the eligible projects that remain total more than 10 GB (10 × 1024³ bytes), they are deleted in ascending `lastOpenedAt` order, ties broken by id, until their total is at or under the cap or only the last in that order is left. That one, the project opened most recently, is never deleted by this rule: it is what was just worked on, and where it is over the cap by itself the rule would otherwise delete it the moment its editor closed. Only eligible projects are counted. A draft, a pinned project and a flat project are never removed, so counting them would only use the room up: with more drafts than the cap allows, every exported project would lose its sources the moment it was exported. An eligible project that is open counts and is not the one that goes. The cap is a setting; 0 disables the rule.
 - A draft (no exports) is never deleted automatically. Neither is a project whose exported videos are all gone: it holds the only copy of the recording, as a draft does, and is listed with the drafts. A video on a drive that is not connected, or in a folder the app may not read, counts as gone for as long as that lasts.
-- A flat project is deleted when its external video no longer exists.
+- A flat project is never automatically deleted, including when its external video is unavailable. A disconnected drive or temporary access failure must not delete saved edits. Restore the video at its saved path to reopen it; projects can be deleted explicitly.
 - A folder with no `project.json` is a recording that never finished. It is deleted once it is more than 24 hours old.
 - A folder whose `project.json` cannot be read (for example, it was written by a newer version) is left alone. It is listed with the drafts, where its screen recording can be saved as an ordinary video and the folder deleted.
 - Cleanup deletes the whole project folder. The exported video is untouched, and opening it in Studio later creates a flat project.

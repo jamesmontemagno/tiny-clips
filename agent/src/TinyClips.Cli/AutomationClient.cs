@@ -1,5 +1,7 @@
 using System.IO.Pipes;
 using System.Net.Sockets;
+using System.Runtime.Versioning;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json.Nodes;
 
@@ -26,7 +28,7 @@ internal static class AutomationClient
         if (useToken && AgentConfig.Token(env) is { } token) request["token"] = token;
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(env.RequestTimeout);
+        timeout.CancelAfter(env.RequestTimeoutFor(command));
 
         string? line;
         try
@@ -89,10 +91,16 @@ internal static class AutomationClient
         const string pipePrefix = @"\\.\pipe\";
         if (endpoint.StartsWith(pipePrefix, StringComparison.OrdinalIgnoreCase))
         {
-            var pipe = new NamedPipeClientStream(".", endpoint[pipePrefix.Length..], PipeDirection.InOut, PipeOptions.Asynchronous);
+            // WindowsIdentity.Owner can be a group SID; the app explicitly assigns the pipe
+            // to WindowsIdentity.User, so verify that same account before writing a token.
+            var options = PipeOptions.Asynchronous;
+            if (!OperatingSystem.IsWindows()) options |= PipeOptions.CurrentUserOnly;
+            var pipe = new NamedPipeClientStream(".", endpoint[pipePrefix.Length..], PipeDirection.InOut,
+                options);
             try
             {
                 await pipe.ConnectAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                if (OperatingSystem.IsWindows()) ValidatePipeOwner(pipe);
                 return pipe;
             }
             catch
@@ -113,6 +121,23 @@ internal static class AutomationClient
         {
             socket.Dispose();
             throw;
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void ValidatePipeOwner(NamedPipeClientStream pipe)
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var owner = pipe.GetAccessControl().GetOwner(typeof(SecurityIdentifier));
+        EnsurePipeOwner(owner, identity.User);
+    }
+
+    [SupportedOSPlatform("windows")]
+    internal static void EnsurePipeOwner(IdentityReference? owner, SecurityIdentifier? user)
+    {
+        if (user is null || !user.Equals(owner))
+        {
+            throw new UnauthorizedAccessException("The Tiny Clips pipe is not owned by the current user.");
         }
     }
 }

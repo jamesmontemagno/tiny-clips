@@ -32,7 +32,8 @@ internal static class Cli
         Sensitive scopes (delete, upload, discard) always ask for approval in the app.
         Results print as JSON. Exit codes: 0 success, 1 usage error, 2 command error.
 
-        Environment: TINYCLIPS_TOKEN, TINYCLIPS_AUTOMATION_ENDPOINT, TINYCLIPS_AGENT_CONFIG.
+        Environment: TINYCLIPS_TOKEN, TINYCLIPS_AUTOMATION_ENDPOINT, TINYCLIPS_AGENT_CONFIG,
+                     TINYCLIPS_REQUEST_TIMEOUT_SECONDS (0 disables the request deadline).
         """;
 
     public static async Task<int> RunAsync(string[] args, CliEnvironment env, CancellationToken cancellationToken = default)

@@ -658,6 +658,25 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertNil(first.sources.events)
     }
 
+    func testMovingImportedVideoRetainsItsProjectAndEdits() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let original = directoryURL.appendingPathComponent("original.mp4")
+        let renamed = directoryURL.appendingPathComponent("renamed.mp4")
+        let archived = directoryURL.appendingPathComponent("archive.mp4")
+        var project = try store.getOrCreateFlatProject(request: flatRequest(videoURL: original))
+        project.edits.trimStart = 1
+        _ = try store.save(project)
+
+        XCTAssertTrue(try store.updateExportPath(from: original.path, to: renamed.path))
+        XCTAssertTrue(try store.updateExportPath(from: renamed.path, to: archived.path))
+        let reopened = try store.getOrCreateFlatProject(request: flatRequest(videoURL: archived))
+        XCTAssertEqual(reopened.id, project.id)
+        XCTAssertEqual(reopened.sources.screen.file, archived.path)
+        XCTAssertEqual(reopened.edits.trimStart, 1)
+        XCTAssertTrue(try store.cleanup().isEmpty)
+        XCTAssertEqual(try store.load(id: project.id).edits.trimStart, 1)
+    }
+
     func testEventsDefaultsMissingFileSaveAndUnsupportedVersion() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         let project = try store.completeRecording(id: validID, request: creationRequest(camera: nil))
@@ -802,7 +821,7 @@ final class StudioProjectTests: XCTestCase {
         )
     }
 
-    func testCleanupDeletesMissingFlatAndUnfinishedRecordingsOnlyWhenOldAndNotInUse() throws {
+    func testCleanupKeepsOfflineFlatProjectsAndDeletesOnlyOldUnusedUnfinishedRecordings() throws {
         let oldID = validID
         let youngID = otherID
         let inUseID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -825,7 +844,8 @@ final class StudioProjectTests: XCTestCase {
         try writeProject(flatProject, folderID: flatProject.id)
 
         let deleted = try store.cleanup(inUseProjectIDs: [inUseID])
-        XCTAssertEqual(Set(deleted), [oldID, flatProject.id])
+        XCTAssertEqual(Set(deleted), [oldID])
+        XCTAssertEqual(try store.load(id: flatProject.id).sources.screen.file, flatProject.sources.screen.file)
         XCTAssertFalse(FileManager.default.fileExists(atPath: directoryURL.appendingPathComponent(oldID).path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: directoryURL.appendingPathComponent(youngID).path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: directoryURL.appendingPathComponent(inUseID).path))

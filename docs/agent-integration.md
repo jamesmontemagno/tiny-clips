@@ -129,6 +129,8 @@ Revoke an individual agent in **Settings → Agent Control → Paired Agents**, 
 
 `TINYCLIPS_AUTOMATION_ENDPOINT` selects a single endpoint for the CLI. Without an override, the CLI tries the standard endpoints before sending a request. `TINYCLIPS_AGENT_CONFIG` overrides the pairing configuration file; relative paths are resolved from the CLI's working directory.
 
+The CLI and MCP server wait up to 150 seconds for ordinary requests and two hours for `studio.export` or `editor.trim`. Set `TINYCLIPS_REQUEST_TIMEOUT_SECONDS` in the CLI or MCP server's environment to override the deadline, or set it to `0` for no deadline. Explicit caller cancellation still applies.
+
 Framing is one UTF-8 JSON object per line (`\n`). A connection may send several requests; responses come back in order. On Windows, at most 16 requests may be queued per connection; exceeding that limit closes the connection.
 
 ```json

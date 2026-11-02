@@ -40,6 +40,25 @@ final class AutomationMediaEditingTests: XCTestCase {
         assertInvalid { _ = try AutomationMediaRange.gifFrame(at: -0.1, timing: timing) }
     }
 
+    func testFractionalGifBoundariesSelectExactlyOverlappingFrames() throws {
+        let timing = try GifTiming(frameCount: 10, frameDelay: 0.1)
+        XCTAssertEqual(AutomationMediaRange.gifStartTime(of: 10, timing: timing), 1.0)
+        XCTAssertEqual(try AutomationMediaRange.gifFrame(at: 0.3, timing: timing), 3)
+        XCTAssertEqual(try AutomationMediaRange.gifFrame(at: 0.3 - 0.000001, timing: timing), 2)
+        XCTAssertEqual(try AutomationMediaRange.gifFrame(at: 0.3 + 0.000001, timing: timing), 3)
+        XCTAssertEqual(AutomationMediaRange.gifFrames(for: .init(start: 0, end: 0.8), timing: timing), 0...7)
+        XCTAssertEqual(AutomationMediaRange.gifFrames(for: .init(start: 0.3, end: 0.8), timing: timing), 3...7)
+        XCTAssertEqual(AutomationMediaRange.gifFrames(for: .init(start: 0, end: 0.8 + 0.000001), timing: timing), 0...8)
+        assertInvalid { _ = try AutomationMediaRange.gifFrame(at: 1.0, timing: timing) }
+    }
+
+    func testCentisecondBoundaryDoesNotDriftAcrossManyFrames() throws {
+        let timing = try GifTiming(frameCount: 1000, frameDelay: 0.01)
+        XCTAssertEqual(AutomationMediaRange.gifStartTime(of: 1000, timing: timing), 10.0)
+        XCTAssertEqual(try AutomationMediaRange.gifFrame(at: 0.29, timing: timing), 29)
+        XCTAssertEqual(AutomationMediaRange.gifFrames(for: .init(start: 0, end: 0.29), timing: timing), 0...28)
+    }
+
     @MainActor
     func testRouterSupportsMediaEditingCommands() {
         XCTAssertTrue(AutomationCommandRouter.supportedCommands.contains("editor.trim"))

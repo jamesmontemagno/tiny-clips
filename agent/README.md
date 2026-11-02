@@ -25,6 +25,8 @@ Region coordinates are display-local physical pixels from the top left. `capture
 
 Studio workflows can list/read projects, atomically patch editable settings and timeline data with the observed `modifiedAt` and opaque revision token, request non-mutating zoom suggestions, and export a new MP4 into the configured video folder. See the [Studio skill](../plugins/tinyclips/skills/tinyclips-studio/SKILL.md) and [integration guide](../docs/agent-integration.md#studio-projects) for safe patch and export usage.
 
+CLI and MCP requests normally time out after 150 seconds; `studio.export` and `editor.trim` default to two hours. Set `TINYCLIPS_REQUEST_TIMEOUT_SECONDS` for a different deadline, or `0` for no request deadline. Caller cancellation still stops the request.
+
 ## MCP
 
 The package is also an MCP server (`tinyclips mcp`, stdio):

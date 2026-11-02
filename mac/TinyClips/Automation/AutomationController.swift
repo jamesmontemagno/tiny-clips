@@ -43,7 +43,7 @@ final class AutomationController: ObservableObject {
     let contract: AutomationContract?
     let clientStore: AutomationClientStore
     let auditLog: AutomationAuditLog
-    let approvals = AutomationApprovalCenter()
+    let approvals: AutomationApprovalCenter
     private var pairings = AutomationPairings()
     private var server: AutomationServer?
     private var defaultsObserver: NSKeyValueObservation?
@@ -55,11 +55,13 @@ final class AutomationController: ObservableObject {
     init(
         contract: AutomationContract? = .bundled,
         clientStore: AutomationClientStore = AutomationClientStore(),
-        auditLog: AutomationAuditLog = AutomationAuditLog()
+        auditLog: AutomationAuditLog = AutomationAuditLog(),
+        approvals: AutomationApprovalCenter? = nil
     ) {
         self.contract = contract
         self.clientStore = clientStore
         self.auditLog = auditLog
+        self.approvals = approvals ?? AutomationApprovalCenter()
         clients = clientStore.clients
     }
 
@@ -90,6 +92,7 @@ final class AutomationController: ObservableObject {
 
     func revoke(_ client: AutomationClient) {
         clientStore.revoke(id: client.id)
+        approvals.deny(clientID: client.id)
         clients = clientStore.clients
         auditLog.record(client: client.name, command: "settings.revokeClient", outcome: "ok")
     }
@@ -184,20 +187,32 @@ final class AutomationController: ObservableObject {
         case .deny(let code):
             throw AutomationError(code)
         case .approve:
-            let approved = await approvals.request(approvalRequest(command: command, params: params, client: client, contract: contract))
+            let approved = await approvals.request(
+                approvalRequest(command: command, params: params, client: client, contract: contract),
+                clientID: client?.id
+            )
             try Task.checkCancellation()
-            guard approved else { throw AutomationError(.approvalDenied) }
             guard isEnabled else { throw AutomationError(.automationDisabled) }
+            try requireCurrentClient(client)
+            guard approved else { throw AutomationError(.approvalDenied) }
         case .allow:
             break
         }
 
         try Task.checkCancellation()
+        try requireCurrentClient(client)
         switch command {
         case "session.hello": return hello(contract: contract)
         case "session.pair": return try pair(params: params, contract: contract)
         case "session.pairStatus": return try pairStatus(params: params)
         default: return try await router.execute(command: command, params: params)
+        }
+    }
+
+    private func requireCurrentClient(_ client: AutomationClient?) throws {
+        guard let client else { return }
+        guard clientStore.isCurrent(client) else {
+            throw AutomationError(.unauthorized)
         }
     }
 

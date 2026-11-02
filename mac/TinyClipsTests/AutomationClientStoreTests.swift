@@ -34,6 +34,7 @@ final class AutomationClientStoreTests: XCTestCase {
         let (client, token) = try store.addClient(name: "Agent", scopes: ["read", "capture"])
         XCTAssertEqual(client.tokenHash, AutomationClientStore.hash(token: token))
         XCTAssertEqual(store.client(forToken: token)?.id, client.id)
+        XCTAssertTrue(store.isCurrent(client))
         XCTAssertNil(store.client(forToken: "wrong"))
         XCTAssertNil(store.client(forToken: nil))
 
@@ -49,7 +50,64 @@ final class AutomationClientStoreTests: XCTestCase {
 
         reloaded.revoke(id: client.id)
         XCTAssertNil(reloaded.client(forToken: token))
+        XCTAssertFalse(reloaded.isCurrent(client))
         XCTAssertTrue(AutomationClientStore(directory: directory).clients.isEmpty)
+    }
+
+    @MainActor
+    func testRevocationDeniesOnlyThatClientsCurrentAndQueuedApprovals() async throws {
+        let store = AutomationClientStore(directory: directory)
+        let (revoked, _) = try store.addClient(name: "Revoked", scopes: ["delete"])
+        let (other, _) = try store.addClient(name: "Other", scopes: ["delete"])
+        let firstPresented = expectation(description: "first approval presented")
+        let otherPresented = expectation(description: "other approval presented")
+        var panels: [TestApprovalPanel] = []
+        let approvals = AutomationApprovalCenter { request, completion in
+            let panel = TestApprovalPanel(onComplete: completion) {
+                (request.title == "first" ? firstPresented : otherPresented).fulfill()
+            }
+            panels.append(panel)
+            return panel
+        }
+        let controller = AutomationController(
+            clientStore: store,
+            auditLog: AutomationAuditLog(directory: directory),
+            approvals: approvals
+        )
+        func request(_ title: String) -> AutomationApprovalCenter.Request {
+            .init(title: title, message: "", details: [], allowTitle: "Allow")
+        }
+
+        let first = Task { @MainActor in
+            await approvals.request(request("first"), clientID: revoked.id)
+        }
+        await fulfillment(of: [firstPresented], timeout: 2)
+
+        let revokedQueued = expectation(description: "revoked request queued")
+        let queued = Task { @MainActor in
+            revokedQueued.fulfill()
+            return await approvals.request(request("queued"), clientID: revoked.id)
+        }
+        await fulfillment(of: [revokedQueued], timeout: 2)
+
+        let otherQueued = expectation(description: "other request queued")
+        let unaffected = Task { @MainActor in
+            otherQueued.fulfill()
+            return await approvals.request(request("other"), clientID: other.id)
+        }
+        await fulfillment(of: [otherQueued], timeout: 2)
+
+        controller.revoke(revoked)
+        let firstResult = await first.value
+        let queuedResult = await queued.value
+        XCTAssertFalse(firstResult)
+        XCTAssertFalse(queuedResult)
+        XCTAssertTrue(panels[0].dismissed)
+        XCTAssertNil(store.clients.first { $0.id == revoked.id })
+        await fulfillment(of: [otherPresented], timeout: 2)
+        panels[1].complete(true)
+        let otherResult = await unaffected.value
+        XCTAssertTrue(otherResult)
     }
 
     func testPairingHandsOutTokenOnce() throws {
@@ -134,4 +192,20 @@ final class AutomationClientStoreTests: XCTestCase {
     func testSocketPathFitsSunPath() {
         XCTAssertLessThanOrEqual(AutomationEndpoint.socketPath.utf8.count, AutomationEndpoint.maximumPathLength)
     }
+}
+
+@MainActor
+private final class TestApprovalPanel: AutomationApprovalPresenting {
+    private let onComplete: (Bool) -> Void
+    private let onPresent: () -> Void
+    private(set) var dismissed = false
+
+    init(onComplete: @escaping (Bool) -> Void, onPresent: @escaping () -> Void) {
+        self.onComplete = onComplete
+        self.onPresent = onPresent
+    }
+
+    func present() { onPresent() }
+    func dismiss() { dismissed = true }
+    func complete(_ approved: Bool) { onComplete(approved) }
 }

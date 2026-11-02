@@ -26,11 +26,9 @@ namespace TinyClips.App;
 public sealed partial class VideoTrimmerWindow : Window
 {
     // Minimum dimensions chosen to keep the trim bar, playback controls, and footer legible.
-    // Width 720 DIP: trim bar needs at least ~400px; footer has SpeedCombo (96) + RemoveAudio
-    //   checkbox + four buttons (~390px) + spacing/padding, totalling ~620 + 100 margins.
-    // Height 520 DIP: TitleBar (~48) + preview floor (~200) + trim section (~180) + footer (~92).
+    // The footer uses separate rows for settings and actions to fit at 720 DIP.
     private const int MinimumWidthDip  = 720;
-    private const int MinimumHeightDip = 520;
+    private const int MinimumHeightDip = 560;
 
     private readonly string _filePath;
     private TimeSpan _duration = TimeSpan.Zero;
@@ -44,6 +42,7 @@ public sealed partial class VideoTrimmerWindow : Window
     private bool _isClosed;
     private int _exportsInFlight;
     private bool _isDeletePromptOpen;
+    private bool _isOpeningStudio;
     private readonly VideoFrameCopyOperation _frameCopy = new();
 
     // Handles snap back to the exact ends, so anything beyond rounding noise is a real trim.
@@ -81,8 +80,11 @@ public sealed partial class VideoTrimmerWindow : Window
             _ => ElementTheme.Default,
         };
 
+        OpenInStudioButton.Visibility = settings.StudioPreviewEnabled ? Visibility.Visible : Visibility.Collapsed;
+
         RootGrid.KeyDown += OnRootKeyDown;
         Closed += OnWindowClosed;
+        AppWindow.Closing += (_, args) => args.Cancel = _isOpeningStudio;
         _ = LoadAsync();
     }
 
@@ -113,7 +115,7 @@ public sealed partial class VideoTrimmerWindow : Window
     }
 
     private bool CanCloseFromEscape =>
-        !_isClosed && !_isDeletingSource && !_isEscapePromptOpen && _exportsInFlight == 0;
+        !_isClosed && !_isDeletingSource && !_isEscapePromptOpen && !_isOpeningStudio && _exportsInFlight == 0;
 
     private async Task CloseFromEscapeAsync()
     {
@@ -144,6 +146,48 @@ public sealed partial class VideoTrimmerWindow : Window
         }
 
         CloseKeepingOriginal();
+    }
+
+    private async void OnOpenInStudio(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || !CanCloseFromEscape || _isDeletePromptOpen || _frameCopy.IsBusy || Application.Current is not App app)
+        {
+            return;
+        }
+
+        StopPlayback();
+        _isOpeningStudio = true;
+        try
+        {
+            if (HasUnexportedChanges || _speed != 1)
+            {
+                var confirmation = new ContentDialog
+                {
+                    XamlRoot = RootGrid.XamlRoot,
+                    RequestedTheme = RootGrid.ActualTheme,
+                    Title = "Open original video in Studio?",
+                    Content = "Trim, speed, and audio changes made here will not carry over. You can make these edits in Studio.",
+                    PrimaryButtonText = "Open original",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Close,
+                };
+                if (await confirmation.ShowAsync() != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+            }
+            SetStudioHandoffControlsEnabled(false);
+            if (await app.OpenVideoInStudioAsync(_filePath) && !_isClosed && _exportsInFlight == 0 && !_isDeletingSource)
+            {
+                _isOpeningStudio = false;
+                CloseKeepingOriginal();
+            }
+        }
+        finally
+        {
+            _isOpeningStudio = false;
+            SetStudioHandoffControlsEnabled(true);
+        }
     }
 
     /// <summary>Closes the trimmer the way Cancel does: nothing is exported and the original is kept.</summary>
@@ -407,7 +451,7 @@ public sealed partial class VideoTrimmerWindow : Window
     private async void OnCopyFrame(object sender, RoutedEventArgs e)
     {
         if (!_ready || _isClosed || _isDeletingSource || _isDeletePromptOpen ||
-            _isEscapePromptOpen || _exportsInFlight != 0 || _frameCopy.IsBusy)
+            _isEscapePromptOpen || _isOpeningStudio || _exportsInFlight != 0 || _frameCopy.IsBusy)
         {
             return;
         }
@@ -486,7 +530,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnExportFrame(object sender, RoutedEventArgs e)
     {
-        if (!_ready || _isClosed || _isDeletingSource || _isDeletePromptOpen || _exportsInFlight != 0)
+        if (!_ready || _isClosed || _isDeletingSource || _isDeletePromptOpen || _isOpeningStudio || _exportsInFlight != 0)
         {
             return;
         }
@@ -541,7 +585,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveTrimmed(object sender, RoutedEventArgs e)
     {
-        if (!_ready || _isDeletingSource || _frameCopy.IsBusy)
+        if (!_ready || _isDeletingSource || _isOpeningStudio || _frameCopy.IsBusy)
         {
             return;
         }
@@ -554,7 +598,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveOriginal(object sender, RoutedEventArgs e)
     {
-        if (_isDeletingSource || _frameCopy.IsBusy)
+        if (_isDeletingSource || _isOpeningStudio || _frameCopy.IsBusy)
         {
             return;
         }
@@ -649,7 +693,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private void OnDone(object sender, RoutedEventArgs e)
     {
-        if (_isDeletingSource)
+        if (_isDeletingSource || _isOpeningStudio)
         {
             return;
         }
@@ -664,7 +708,7 @@ public sealed partial class VideoTrimmerWindow : Window
     /// </summary>
     private async void OnDeleteVideo(object sender, RoutedEventArgs e)
     {
-        if (_isDeletingSource || _isDeletePromptOpen || _isClosed)
+        if (_isDeletingSource || _isDeletePromptOpen || _isOpeningStudio || _isClosed)
         {
             return;
         }
@@ -722,6 +766,19 @@ public sealed partial class VideoTrimmerWindow : Window
         CancelButton.IsEnabled = enabled;
         SaveOriginalButton.IsEnabled = enabled;
         SaveTrimmedButton.IsEnabled = enabled;
+    }
+
+    private void SetStudioHandoffControlsEnabled(bool enabled)
+    {
+        SetCompletionActionsEnabled(enabled);
+        OpenInStudioButton.IsEnabled = enabled;
+        CopyFrameButton.IsEnabled = enabled;
+        ExportFrameButton.IsEnabled = enabled;
+        PlayToggle.IsEnabled = enabled;
+        SpeedCombo.IsEnabled = enabled;
+        RemoveAudioCheck.IsEnabled = enabled;
+        RootGrid.IsHitTestVisible = enabled;
+        BusyBar.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs e)

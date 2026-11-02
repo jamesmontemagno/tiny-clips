@@ -5,10 +5,14 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- Imported Studio videos respect rotation metadata, retain edits when their source is archived or temporarily offline, and reopen linked projects rather than creating flattened duplicates. The trimmer protects pending edits during handoff; portable project saving is explicitly unavailable for external videos.
 - Windows CI now reports both required architecture checks for changes that do not need Windows builds, avoiding permanently pending checks without allocating Windows runners.
 - The agent CLI accepts relative pairing configuration paths and falls back between macOS app endpoints. Studio automation no longer interrupts an active edit, and pending sensitive-action approvals close when an agent disconnects.
+- Revoking an agent cancels its pending approvals; macOS no longer approves requests with an accidental Return, and the CLI verifies Windows pipe ownership before sending a token.
+- GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
 
 ### Added
+- Any video can now be opened in Studio from the video trimmer or the Clips Manager (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
 - Agents can trim videos and GIFs (`editor.trim`, with optional audio removal) and save single frames (`editor.saveFrame`) without opening a trimmer; results are new library items and the source is unchanged. Stale Studio edits now return a distinct `conflict` error instead of `busy`.
 - The MCP server now uses the official C# SDK for stdio transport, lifecycle, protocol negotiation, and cancellation while preserving contract-driven tools and app permissions.
 - Added cross-platform agent CLI CI, isolated NuGet/dnx MCP smoke tests, and a dedicated `agent-v*` NuGet Trusted Publishing release workflow; shared automation changes now trigger both app builds.

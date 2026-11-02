@@ -1,6 +1,12 @@
 import AppKit
 import SwiftUI
 
+@MainActor
+protocol AutomationApprovalPresenting: AnyObject {
+    func present()
+    func dismiss()
+}
+
 /// Asks the user, inside the app, to allow an automation request. One prompt shows at a time;
 /// a request without an answer within `timeout` counts as denied.
 @MainActor
@@ -15,17 +21,25 @@ final class AutomationApprovalCenter {
     static let timeout: TimeInterval = 120
     static let maximumQueued = 10
 
+    typealias PanelFactory = @MainActor (Request, @escaping (Bool) -> Void) -> any AutomationApprovalPresenting
+
     private struct Entry {
         var id: UUID
+        var clientID: String?
         var request: Request
         var continuation: CheckedContinuation<Bool, Never>
     }
 
     private var queue: [Entry] = []
     private var current: Entry?
-    private var panel: AutomationApprovalPanel?
+    private var panel: (any AutomationApprovalPresenting)?
+    private let makePanel: PanelFactory
 
-    func request(_ request: Request) async -> Bool {
+    init(makePanel: PanelFactory? = nil) {
+        self.makePanel = makePanel ?? { AutomationApprovalPanel(request: $0, onComplete: $1) }
+    }
+
+    func request(_ request: Request, clientID: String? = nil) async -> Bool {
         guard !Task.isCancelled, queue.count < Self.maximumQueued else { return false }
         let id = UUID()
         return await withTaskCancellationHandler {
@@ -34,7 +48,7 @@ final class AutomationApprovalCenter {
                     continuation.resume(returning: false)
                     return
                 }
-                queue.append(Entry(id: id, request: request, continuation: continuation))
+                queue.append(Entry(id: id, clientID: clientID, request: request, continuation: continuation))
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: UInt64(Self.timeout * 1_000_000_000))
                     self?.finish(id: id, approved: false)
@@ -43,6 +57,15 @@ final class AutomationApprovalCenter {
             }
         } onCancel: { [weak self] in
             Task { @MainActor in self?.finish(id: id, approved: false) }
+        }
+    }
+
+    /// Denies the current and queued requests belonging to a revoked client.
+    func deny(clientID: String) {
+        let pending = queue.filter { $0.clientID == clientID }.map(\.id)
+            + (current.flatMap { $0.clientID == clientID ? [$0.id] : nil } ?? [])
+        for id in pending {
+            finish(id: id, approved: false)
         }
     }
 
@@ -59,7 +82,7 @@ final class AutomationApprovalCenter {
         let entry = queue.removeFirst()
         current = entry
         let id = entry.id
-        let panel = AutomationApprovalPanel(request: entry.request) { [weak self] approved in
+        let panel = makePanel(entry.request) { [weak self] approved in
             self?.finish(id: id, approved: approved)
         }
         self.panel = panel
@@ -82,7 +105,7 @@ final class AutomationApprovalCenter {
 }
 
 /// A small floating window with the request and Allow / Deny buttons.
-final class AutomationApprovalPanel: NSPanel, NSWindowDelegate {
+final class AutomationApprovalPanel: NSPanel, NSWindowDelegate, AutomationApprovalPresenting {
     private var onComplete: ((Bool) -> Void)?
     private var didComplete = false
     private let request: AutomationApprovalCenter.Request
@@ -192,7 +215,6 @@ private struct AutomationApprovalView: View {
                     .keyboardShortcut(.cancelAction)
                     .accessibilityHint("Refuses this agent request.")
                 Button(request.allowTitle, action: onAllow)
-                    .keyboardShortcut(.defaultAction)
                     .accessibilityHint("Lets the agent continue.")
             }
         }

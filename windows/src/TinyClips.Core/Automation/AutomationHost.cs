@@ -150,20 +150,43 @@ public sealed class AutomationHost
         }
 
         var context = new AutomationCommandContext(definition, parameters, client);
+        var revoked = _clients.RevocationToken(client.Id);
+        using var requestLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, revoked);
         bool? approved = null;
-        if (decision.Kind == AutomationDecisionKind.Approve)
-        {
-            approved = await AskAsync(ct => _approvals.RequestCommandApprovalAsync(context, ct), cancellationToken).ConfigureAwait(false);
-            if (approved != true)
-            {
-                return Fail(id, command, client, AutomationErrorCodes.ApprovalDenied, "The request was declined or not answered in Tiny Clips.", approved);
-            }
-        }
-
         try
         {
+            if (!ClientIsAuthorized(client, request.Token))
+            {
+                return Fail(id, command, client, AutomationErrorCodes.Unauthorized, MessageFor(AutomationErrorCodes.Unauthorized, command, client));
+            }
+
+            if (decision.Kind == AutomationDecisionKind.Approve)
+            {
+                approved = await AskAsync(ct => _approvals.RequestCommandApprovalAsync(context, ct), requestLifetime.Token).ConfigureAwait(false);
+                if (!ClientIsAuthorized(client, request.Token))
+                {
+                    return Fail(id, command, client, AutomationErrorCodes.Unauthorized, MessageFor(AutomationErrorCodes.Unauthorized, command, client), approved);
+                }
+
+                if (approved != true)
+                {
+                    return Fail(id, command, client, AutomationErrorCodes.ApprovalDenied, "The request was declined or not answered in Tiny Clips.", approved);
+                }
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
-            var result = await _handler.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
+            if (!_isEnabled())
+            {
+                return Fail(id, command, client, AutomationErrorCodes.AutomationDisabled, MessageFor(AutomationErrorCodes.AutomationDisabled, command, client), approved);
+            }
+
+            if (!ClientIsAuthorized(client, request.Token))
+            {
+                return Fail(id, command, client, AutomationErrorCodes.Unauthorized, MessageFor(AutomationErrorCodes.Unauthorized, command, client), approved);
+            }
+
+            requestLifetime.Token.ThrowIfCancellationRequested();
+            var result = await _handler.ExecuteAsync(context, requestLifetime.Token).ConfigureAwait(false);
             Audit(command, "ok", client, null, approved);
             return AutomationResponse.Success(id, result);
         }
@@ -175,12 +198,19 @@ public sealed class AutomationHost
         {
             throw;
         }
+        catch (OperationCanceledException) when (revoked.IsCancellationRequested || !ClientIsAuthorized(client, request.Token))
+        {
+            return Fail(id, command, client, AutomationErrorCodes.Unauthorized, MessageFor(AutomationErrorCodes.Unauthorized, command, client), approved);
+        }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"AutomationHost: {command} failed: {ex}");
             return Fail(id, command, client, AutomationErrorCodes.Internal, "The command failed unexpectedly.", approved);
         }
     }
+
+    private bool ClientIsAuthorized(AutomationClient client, string? token) =>
+        _clients.FindByToken(token)?.Id == client.Id;
 
     private JsonObject Hello(bool enabled)
     {

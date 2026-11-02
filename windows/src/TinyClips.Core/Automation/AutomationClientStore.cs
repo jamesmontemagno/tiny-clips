@@ -44,6 +44,7 @@ public sealed class AutomationClientStore
     private readonly string _filePath;
     private readonly TimeProvider _time;
     private readonly Dictionary<string, DateTimeOffset?> _persistedLastUsed = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CancellationTokenSource> _clientLifetimes = new(StringComparer.Ordinal);
     private List<AutomationClient> _clients;
 
     public AutomationClientStore(string filePath, TimeProvider? timeProvider = null)
@@ -55,6 +56,7 @@ public sealed class AutomationClientStore
         foreach (var client in _clients)
         {
             _persistedLastUsed[client.Id] = client.LastUsedAt;
+            _clientLifetimes[client.Id] = new CancellationTokenSource();
         }
     }
 
@@ -93,6 +95,7 @@ public sealed class AutomationClientStore
         lock (_gate)
         {
             _clients.Add(client);
+            _clientLifetimes[client.Id] = new CancellationTokenSource();
             WriteFile();
         }
 
@@ -123,16 +126,35 @@ public sealed class AutomationClientStore
         return null;
     }
 
+    internal CancellationToken RevocationToken(string clientId)
+    {
+        lock (_gate)
+        {
+            return _clientLifetimes.TryGetValue(clientId, out var lifetime)
+                ? lifetime.Token
+                : new CancellationToken(canceled: true);
+        }
+    }
+
     public bool Revoke(string clientId)
     {
         bool removed;
-        lock (_gate)
+        CancellationTokenSource? revoked = null;
+        try
         {
-            removed = _clients.RemoveAll(c => c.Id == clientId) > 0;
-            if (removed)
+            lock (_gate)
             {
-                WriteFile();
+                removed = _clients.RemoveAll(c => c.Id == clientId) > 0;
+                if (removed)
+                {
+                    _clientLifetimes.Remove(clientId, out revoked);
+                    WriteFile();
+                }
             }
+        }
+        finally
+        {
+            CancelAndDispose(revoked);
         }
 
         if (removed)
@@ -145,18 +167,48 @@ public sealed class AutomationClientStore
 
     public void RevokeAll()
     {
-        lock (_gate)
+        CancellationTokenSource[] revoked = [];
+        try
         {
-            if (_clients.Count == 0)
+            lock (_gate)
             {
-                return;
-            }
+                if (_clients.Count == 0)
+                {
+                    return;
+                }
 
-            _clients.Clear();
-            WriteFile();
+                _clients.Clear();
+                revoked = _clientLifetimes.Values.ToArray();
+                _clientLifetimes.Clear();
+                WriteFile();
+            }
+        }
+        finally
+        {
+            foreach (var lifetime in revoked)
+            {
+                CancelAndDispose(lifetime);
+            }
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static void CancelAndDispose(CancellationTokenSource? lifetime)
+    {
+        if (lifetime is null)
+        {
+            return;
+        }
+
+        try
+        {
+            lifetime.Cancel();
+        }
+        finally
+        {
+            lifetime.Dispose();
+        }
     }
 
     public void TouchLastUsed(string clientId)

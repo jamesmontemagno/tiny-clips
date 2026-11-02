@@ -28,25 +28,43 @@ enum AutomationMediaRange {
         let first = frameIndex(at: range.start, timing: timing)
         var last = first
         let count = timing.frameDelays.count
-        while last + 1 < count, timing.startTime(of: last + 1) < range.end {
+        var nextStartTicks = gifStartTicks(of: first + 1, timing: timing)
+        while last + 1 < count, nextStartTicks / 100 < range.end {
             last += 1
+            nextStartTicks += gifDelayTicks(timing.frameDelays[last])
         }
         return first...last
     }
 
     /// The frame on screen at `time` seconds.
     static func gifFrame(at time: Double, timing: GifTiming) throws -> Int {
-        guard time.isFinite, time >= 0, time < timing.duration else {
-            throw AutomationError(.invalidParams, "time must be within the GIF (0–\(formatted(timing.duration)) s).")
+        let duration = gifStartTime(of: timing.frameDelays.count, timing: timing)
+        guard time.isFinite, time >= 0, time < duration else {
+            throw AutomationError(.invalidParams, "time must be within the GIF (0–\(formatted(duration)) s).")
         }
         return frameIndex(at: time, timing: timing)
+    }
+
+    static func gifStartTime(of frame: Int, timing: GifTiming) -> Double {
+        gifStartTicks(of: frame, timing: timing) / 100
+    }
+
+    // GIF delays are stored in centiseconds; summing seconds drifts across frame boundaries.
+    private static func gifStartTicks(of frame: Int, timing: GifTiming) -> Double {
+        timing.frameDelays.prefix(frame).reduce(0) { $0 + gifDelayTicks($1) }
+    }
+
+    private static func gifDelayTicks(_ delay: Double) -> Double {
+        (delay * 100).rounded()
     }
 
     private static func frameIndex(at time: Double, timing: GifTiming) -> Int {
         var index = 0
         let count = timing.frameDelays.count
-        while index + 1 < count, timing.startTime(of: index + 1) <= time {
+        var nextStartTicks = count > 0 ? gifDelayTicks(timing.frameDelays[0]) : 0
+        while index + 1 < count, nextStartTicks / 100 <= time {
             index += 1
+            nextStartTicks += gifDelayTicks(timing.frameDelays[index])
         }
         return index
     }
@@ -128,7 +146,8 @@ enum AutomationMediaEditing {
 
     static func trimGif(source: URL, start: Double, end: Double) throws -> TrimResult {
         let gif = try loadGif(source)
-        let range = try AutomationMediaRange.clamp(start: start, end: end, duration: gif.timing.duration)
+        let duration = AutomationMediaRange.gifStartTime(of: gif.frames.count, timing: gif.timing)
+        let range = try AutomationMediaRange.clamp(start: start, end: end, duration: duration)
         let frames = AutomationMediaRange.gifFrames(for: range, timing: gif.timing)
         let trimmed = try gif.selecting(frames, speed: 1)
 
@@ -141,8 +160,8 @@ enum AutomationMediaEditing {
             throw AutomationError(.internal, "Could not write the trimmed GIF: \(error.localizedDescription)")
         }
         let actual = AutomationMediaRange.Seconds(
-            start: gif.timing.startTime(of: frames.lowerBound),
-            end: gif.timing.startTime(of: frames.upperBound) + gif.timing.frameDelays[frames.upperBound]
+            start: AutomationMediaRange.gifStartTime(of: frames.lowerBound, timing: gif.timing),
+            end: AutomationMediaRange.gifStartTime(of: frames.upperBound + 1, timing: gif.timing)
         )
         return TrimResult(url: outputURL, range: actual, frameCount: frames.count)
     }
@@ -184,7 +203,7 @@ enum AutomationMediaEditing {
             index = try AutomationMediaRange.gifFrame(at: time ?? 0, timing: gif.timing)
         }
         let url = try saveFrameImage(gif.frames[index], source: source)
-        return FrameResult(url: url, time: gif.timing.startTime(of: index), frame: index)
+        return FrameResult(url: url, time: AutomationMediaRange.gifStartTime(of: index, timing: gif.timing), frame: index)
     }
 
     private static func loadGif(_ source: URL) throws -> GifCaptureData {

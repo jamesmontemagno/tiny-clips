@@ -102,6 +102,30 @@ public class McpServerTests
         });
     }
 
+    [Fact]
+    public async Task RequestDeadlineOverrideAppliesToMcpCalls()
+    {
+        await using var app = new FakeApp
+        {
+            BeforeReply = token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+        };
+        var env = new CliEnvironment
+        {
+            GetVariable = name => name switch
+            {
+                "TINYCLIPS_AUTOMATION_ENDPOINT" => app.Endpoint,
+                "TINYCLIPS_REQUEST_TIMEOUT_SECONDS" => "0.05",
+                _ => null,
+            },
+        };
+        await WithClientAsync(env, null, async (client, token) =>
+        {
+            var result = await client.CallToolAsync("tinyclips_status", cancellationToken: token);
+            Assert.True(result.IsError);
+            Assert.Equal("timeout", (string?)Body(result)["error"]!["code"]);
+        });
+    }
+
     private static async Task WithClientAsync(
         CliEnvironment environment, string? protocolVersion, Func<McpClient, CancellationToken, Task> action)
     {

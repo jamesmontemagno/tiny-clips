@@ -56,6 +56,7 @@ internal sealed class StudioVideoSource : IDisposable
     public int Width { get; private set; }
 
     public int Height { get; private set; }
+    public int RotationDegrees { get; private init; }
 
     /// <summary>The length of the file in 100 ns units, or 0 when it does not say.</summary>
     public long DurationTicks { get; private set; }
@@ -183,6 +184,11 @@ internal sealed class StudioVideoSource : IDisposable
             using var type = MediaFactory.MFCreateMediaType();
             type.Set(MediaTypeAttributeKeys.MajorType, MediaTypeGuids.Video);
             type.Set(MediaTypeAttributeKeys.Subtype, VideoFormatGuids.Rgb32);
+            using var nativeType = reader.GetNativeMediaType(SourceReaderIndex.FirstVideoStream, 0);
+            var rotation = StudioMediaFoundation.TryGetUInt32(nativeType, MediaTypeAttributeKeys.VideoRotation) ?? 0;
+            _ = StudioVideoOrientation.Transform(1, 1, (int)rotation);
+            // Keep stored pixel orientation through the video processor; the renderer applies it.
+            type.Set(MediaTypeAttributeKeys.VideoRotation, rotation);
 
             // A decoder that pads its frames (HEVC decodes 1080 lines into 1088) says where the
             // picture is with an aperture. Left to choose, the reader converts into a frame of
@@ -196,7 +202,11 @@ internal sealed class StudioVideoSource : IDisposable
             reader.SetCurrentMediaType(SourceReaderIndex.FirstVideoStream, type);
             var keepsFrameTimes = KeepFrameTimes(reader);
 
-            var source = new StudioVideoSource(reader, graphics, description, deviceManager is not null) { KeepsFrameTimes = keepsFrameTimes };
+            var source = new StudioVideoSource(reader, graphics, description, deviceManager is not null)
+            {
+                KeepsFrameTimes = keepsFrameTimes,
+                RotationDegrees = (int)rotation,
+            };
             source.ReadCurrentType();
             source.DurationTicks = ReadDuration(reader);
             return source;
@@ -408,7 +418,7 @@ internal sealed class StudioVideoSource : IDisposable
 
             if (description.Width == Width && description.Height == Height && _offsetX == 0 && _offsetY == 0)
             {
-                return new StudioGpuVideoFrame(texture, held.Subresource, Width, Height) { Stamp = StampOf(held) };
+                return new StudioGpuVideoFrame(texture, held.Subresource, Width, Height) { Stamp = StampOf(held), RotationDegrees = RotationDegrees };
             }
 
             // Padded: copy the picture out, so that sampling at its edge never reaches the padding.
@@ -424,7 +434,7 @@ internal sealed class StudioVideoSource : IDisposable
                 _ownTextureHolds = held;
             }
 
-            return new StudioGpuVideoFrame(own, 0, Width, Height) { Stamp = StampOf(held) };
+            return new StudioGpuVideoFrame(own, 0, Width, Height) { Stamp = StampOf(held), RotationDegrees = RotationDegrees };
         }
 
         FrameStorage = "system memory";
@@ -435,7 +445,7 @@ internal sealed class StudioVideoSource : IDisposable
             _ownTextureHolds = held;
         }
 
-        return new StudioGpuVideoFrame(uploaded, 0, Width, Height) { Stamp = StampOf(held) };
+        return new StudioGpuVideoFrame(uploaded, 0, Width, Height) { Stamp = StampOf(held), RotationDegrees = RotationDegrees };
     }
 
     /// <summary>A frame's name for the renderer: its time in the file, moved off 0, which would say nothing.</summary>
@@ -608,7 +618,7 @@ internal interface IStudioPcmSource
     bool TryRead(out long startSample, out ReadOnlySpan<byte> pcm);
 }
 
-/// <summary>The first audio track of a file, decoded to 16-bit PCM by a source reader.</summary>
+/// <summary>One audio track of a file, decoded to 16-bit PCM by a source reader.</summary>
 internal sealed class StudioAudioSource : IStudioPcmSource, IDisposable
 {
     /// <summary>
@@ -621,15 +631,17 @@ internal sealed class StudioAudioSource : IStudioPcmSource, IDisposable
 
     private readonly IMFSourceReader _reader;
     private readonly string _description;
+    private readonly SourceReaderIndex _stream;
     private readonly long _durationTicks;
     private byte[] _block = new byte[16 * 1024];
     private long _expectedStart = -1;
     private bool _ended;
 
-    private StudioAudioSource(IMFSourceReader reader, StudioAudioFormat format, string description)
+    private StudioAudioSource(IMFSourceReader reader, StudioAudioFormat format, string description, SourceReaderIndex stream)
     {
         _reader = reader;
         _description = description;
+        _stream = stream;
         _durationTicks = StudioVideoSource.ReadDuration(reader);
         Format = format;
     }
@@ -637,7 +649,7 @@ internal sealed class StudioAudioSource : IStudioPcmSource, IDisposable
     public StudioAudioFormat Format { get; }
 
     /// <summary>Opens the file's first audio track, or returns null when it has none.</summary>
-    public static StudioAudioSource? TryOpen(string path, string description)
+    public static StudioAudioSource? TryOpen(string path, string description, SourceReaderIndex stream = SourceReaderIndex.FirstAudioStream, StudioAudioFormat? outputFormat = null)
     {
         IMFSourceReader? reader = null;
         try
@@ -649,7 +661,7 @@ internal sealed class StudioAudioSource : IStudioPcmSource, IDisposable
             uint nativeChannels;
             try
             {
-                using var native = reader.GetNativeMediaType(SourceReaderIndex.FirstAudioStream, 0);
+                using var native = reader.GetNativeMediaType(stream, 0);
                 nativeRate = StudioMediaFoundation.TryGetUInt32(native, MediaTypeAttributeKeys.AudioSamplesPerSecond) ?? 48000;
                 nativeChannels = StudioMediaFoundation.TryGetUInt32(native, MediaTypeAttributeKeys.AudioNumChannels) ?? 2;
             }
@@ -658,12 +670,12 @@ internal sealed class StudioAudioSource : IStudioPcmSource, IDisposable
                 return null;
             }
 
-            reader.SetStreamSelection(SourceReaderIndex.FirstAudioStream, true);
+            reader.SetStreamSelection(stream, true);
 
             // The AAC encoder takes 44.1 or 48 kHz, one or two channels. A track that is already
             // one of those passes through untouched; anything else is converted by the reader.
-            var rate = nativeRate is 44100 or 48000 ? nativeRate : 48000;
-            var channels = nativeChannels is 1 or 2 ? nativeChannels : 2;
+            var rate = outputFormat is not null ? (uint)outputFormat.SampleRate : nativeRate is 44100 or 48000 ? nativeRate : 48000;
+            var channels = outputFormat is not null ? (uint)outputFormat.Channels : nativeChannels is 1 or 2 ? nativeChannels : 2;
             using (var type = MediaFactory.MFCreateMediaType())
             {
                 type.Set(MediaTypeAttributeKeys.MajorType, MediaTypeGuids.Audio);
@@ -673,10 +685,10 @@ internal sealed class StudioAudioSource : IStudioPcmSource, IDisposable
                 type.Set(MediaTypeAttributeKeys.AudioNumChannels, channels);
                 type.Set(MediaTypeAttributeKeys.AudioBlockAlignment, channels * 2);
                 type.Set(MediaTypeAttributeKeys.AudioAvgBytesPerSecond, channels * 2 * rate);
-                reader.SetCurrentMediaType(SourceReaderIndex.FirstAudioStream, type);
+                reader.SetCurrentMediaType(stream, type);
             }
 
-            using var current = reader.GetCurrentMediaType(SourceReaderIndex.FirstAudioStream);
+            using var current = reader.GetCurrentMediaType(stream);
             var format = new StudioAudioFormat(
                 (int)(StudioMediaFoundation.TryGetUInt32(current, MediaTypeAttributeKeys.AudioSamplesPerSecond) ?? rate),
                 (int)(StudioMediaFoundation.TryGetUInt32(current, MediaTypeAttributeKeys.AudioNumChannels) ?? channels),
@@ -686,7 +698,11 @@ internal sealed class StudioAudioSource : IStudioPcmSource, IDisposable
                 throw new StudioExportException($"The sound in the {description} is in a format that cannot be exported ({format.SampleRate} Hz, {format.Channels} channels).");
             }
 
-            var source = new StudioAudioSource(reader, format, description);
+            if (outputFormat is not null && format != outputFormat)
+            {
+                throw new StudioExportException($"The sound in the {description} could not be converted for mixing.");
+            }
+            var source = new StudioAudioSource(reader, format, description, stream);
             reader = null;
             return source;
         }
@@ -733,7 +749,7 @@ internal sealed class StudioAudioSource : IStudioPcmSource, IDisposable
         {
             while (!_ended)
             {
-                var sample = _reader.ReadSample(SourceReaderIndex.FirstAudioStream, SourceReaderControlFlag.None, out _, out var flags, out var time);
+                var sample = _reader.ReadSample(_stream, SourceReaderControlFlag.None, out _, out var flags, out var time);
                 if ((flags & SourceReaderFlag.Error) != 0)
                 {
                     sample?.Dispose();

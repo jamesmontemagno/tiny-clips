@@ -44,4 +44,27 @@ public class AutomationMediaRangeTests
         var ex = Assert.Throws<AutomationException>(() => AutomationMediaRange.GifFrameAt(0.5, Delays));
         Assert.Equal(AutomationErrorCodes.InvalidParams, ex.Code);
     }
+
+    [Fact]
+    public void FractionalGifBoundariesSelectExactlyOverlappingFrames()
+    {
+        var delays = Enumerable.Repeat(0.1, 10).ToArray();
+        Assert.Equal(1.0, AutomationMediaRange.Duration(delays));
+        Assert.Equal(3, AutomationMediaRange.GifFrameAt(0.3, delays));
+        Assert.Equal(2, AutomationMediaRange.GifFrameAt(0.3 - 0.000001, delays));
+        Assert.Equal(3, AutomationMediaRange.GifFrameAt(0.3 + 0.000001, delays));
+        Assert.Equal((0, 7), AutomationMediaRange.GifFrames(0, 0.8, delays));
+        Assert.Equal((3, 7), AutomationMediaRange.GifFrames(0.3, 0.8, delays));
+        Assert.Equal((0, 8), AutomationMediaRange.GifFrames(0, 0.8 + 0.000001, delays));
+        Assert.Throws<AutomationException>(() => AutomationMediaRange.GifFrameAt(1.0, delays));
+    }
+
+    [Fact]
+    public void CentisecondBoundaryDoesNotDriftAcrossManyFrames()
+    {
+        var delays = Enumerable.Repeat(0.01, 1000).ToArray();
+        Assert.Equal(10.0, AutomationMediaRange.Duration(delays));
+        Assert.Equal(29, AutomationMediaRange.GifFrameAt(0.29, delays));
+        Assert.Equal((0, 28), AutomationMediaRange.GifFrames(0, 0.29, delays));
+    }
 }
