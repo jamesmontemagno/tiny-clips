@@ -56,9 +56,26 @@ its requested dimensions are pixels, never scaled a second time.
 
 ## Window capture
 
-`CreateForWindow` captures a window's client area at physical resolution. We do **not** apply a
-region crop to window targets — the window item is already scoped to the content. The window's
-own DPI may differ from the monitor it's on; the captured frame reflects the window's pixels.
+`CreateForWindow` captures the window's visible frame (including its title bar), not just its
+client area or `GetWindowRect`'s invisible resize borders. We do **not** apply a region crop to
+window targets — the window item is already scoped to the content. The window's own DPI may
+differ from the monitor it's on; the captured frame reflects the window's pixels.
+
+Studio samples `DWMWA_EXTENDED_FRAME_BOUNDS` at each cursor observation and mouse-down, in
+physical desktop pixels, matching `GetCursorPos` and the low-level mouse hook under Per-Monitor-V2
+awareness. It maps through the latest WGC content/surface dimensions and the actual encoder
+destination: even-dimension trailing-pixel crops, CPU integer letterboxing, GPU fractional
+letterboxing, or the GPU's crop fallback if its scaling blit failed. Saved samples already contain
+normalized encoded-frame coordinates; later window moves never change earlier events. DPI is
+not multiplied into these coordinates; the initial window DPI is saved only as capture metadata.
+
+Until the first frame, while bounds disagree with WGC during resize, or when the HWND is hidden,
+minimized, cloaked or gone, Studio omits clicks and cursor samples (zoom focus retains the last
+valid cursor position rather than inventing a position for unavailable content).
+Surface-clipped pixels during frame-pool growth and pixels outside the visible frame are likewise
+not targets. Click timestamps still use the shared recording clock, excluding preparation and
+pauses. Studio collects data independently of its initial click-visual preference. Ordinary
+video/GIF window click overlays remain unchanged.
 
 ## Practical checklist
 
@@ -132,5 +149,5 @@ do not infer responsiveness or a speedup from the reduced explicit operation cou
 
 - Capturing a region that **spans two monitors with different scale factors** is not supported;
   the region is constrained to the monitor under the start of the drag (matching the macOS app).
-- DPI changes *during* an active recording are not re-negotiated; the session keeps the
-  resolution it started with.
+- Encoder dimensions stay fixed during an active recording; resized window content (including
+  physical size changes on a DPI transition) is fitted into that frame.

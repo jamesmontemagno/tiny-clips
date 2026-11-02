@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- Studio window recordings now collect cursor positions and clicks for zoom suggestions and editable click visuals, even when click visuals are initially off. Positions follow the captured window as it moves or resizes, including mixed-DPI/negative-coordinate desktops, encoder cropping and resize letterboxing. Unavailable windows and uncaptured pixels are excluded instead of using a stale window origin.
+
 ## [v2.0.0-windows] - 2026-10-31
 
 ### Changed

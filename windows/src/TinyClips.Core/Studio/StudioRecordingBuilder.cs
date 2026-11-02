@@ -4,10 +4,16 @@ using TinyClips.Core.Models;
 namespace TinyClips.Core.Studio;
 
 /// <summary>A pointer position in virtual-desktop pixels at a recording timeline time.</summary>
-internal readonly record struct StudioPointSample(TimeSpan Time, int X, int Y);
+internal readonly record struct StudioPointSample(TimeSpan Time, int X, int Y)
+{
+    internal (double X, double Y)? CapturePoint { get; init; }
+}
 
 internal static class StudioRecordingBuilder
 {
+    internal static bool ShouldMonitorClicks(CaptureTarget target, bool isStudio, bool showVisuals) =>
+        isStudio || (!target.IsWindow && showVisuals);
+
     public static bool TryNormalizePoint(int x, int y, int originX, int originY, int width, int height, out (double X, double Y) normalized)
     {
         normalized = default;
@@ -58,7 +64,9 @@ internal static class StudioRecordingBuilder
                 continue;
             }
 
-            if (!TryNormalizePoint(sample.X, sample.Y, originX, originY, width, height, out var point))
+            var point = sample.CapturePoint ?? default;
+            if (sample.CapturePoint is null &&
+                !TryNormalizePoint(sample.X, sample.Y, originX, originY, width, height, out point))
             {
                 point = ((sample.X - originX) / (double)width, (sample.Y - originY) / (double)height);
             }
@@ -281,8 +289,10 @@ internal static class StudioRecordingBuilder
         out StudioClickEvent? studioClick)
     {
         studioClick = null;
+        var point = click.CapturePoint ?? default;
         if (!timeline.TryNormalizeActive(click.SourceTimestamp, out var t) ||
-            !TryNormalizePoint(click.ScreenX, click.ScreenY, originX, originY, width, height, out var point))
+            (click.CapturePoint is null &&
+             !TryNormalizePoint(click.ScreenX, click.ScreenY, originX, originY, width, height, out point)))
         {
             return false;
         }
