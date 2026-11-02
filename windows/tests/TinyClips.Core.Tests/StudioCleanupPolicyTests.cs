@@ -82,14 +82,14 @@ public sealed class StudioCleanupPolicyTests
     }
 
     [Fact]
-    public void Plan_FlatProjectWithMissingFileIsDeleted()
+    public void Plan_FlatProjectWithOfflineSourceKeepsEdits()
     {
         var plan = StudioCleanupPolicy.Plan(
             [Eligible("flat", Now, isFlat: true, externalVideoExists: false)],
             Now,
-            new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 0));
+            new StudioCleanupOptions(RetentionDays: 1, SizeCapBytes: 1));
 
-        Assert.Equal(["flat"], plan.ProjectIdsToDelete);
+        Assert.Empty(plan.ProjectIdsToDelete);
     }
 
     [Theory]

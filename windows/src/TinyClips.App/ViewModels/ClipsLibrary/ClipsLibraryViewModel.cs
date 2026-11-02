@@ -999,14 +999,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        if (target.StudioProjectId is { } projectId)
-        {
-            _interaction?.OpenInStudio(projectId);
-        }
-        else
-        {
-            _interaction?.OpenVideoInStudio(target.Path);
-        }
+        _interaction?.OpenVideoInStudio(target.Path);
     }
 
     [RelayCommand]

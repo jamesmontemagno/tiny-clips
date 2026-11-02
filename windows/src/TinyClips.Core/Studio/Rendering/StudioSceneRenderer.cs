@@ -32,6 +32,8 @@ public readonly record struct StudioGpuVideoFrame(ID3D11Texture2D Texture, uint 
     /// such a frame is looked at afresh every time it is drawn.
     /// </summary>
     public long Stamp { get; init; }
+
+    public int RotationDegrees { get; init; }
 }
 
 /// <summary>What to draw for one Studio frame, and where.</summary>
@@ -271,7 +273,7 @@ public sealed partial class StudioSceneRenderer : IDisposable
                             DrawShadow(screenShadow, screenRect);
                         }
 
-                        DrawLayer(screenBrush, picture.Width, picture.Height, screenRect, screen.Source, screen.CornerRadius, screenShape, mirror: false, request.Quality);
+                        DrawLayer(screenBrush, picture.Width, picture.Height, screenRect, screen.Source, screen.CornerRadius, screenShape, mirror: false, request.Quality, picture.RotationDegrees);
                         DrawClickRings(project, request.Events, request.SourceTimeSeconds, screen, screenRect);
                     }
                     finally
@@ -809,8 +811,13 @@ public sealed partial class StudioSceneRenderer : IDisposable
     /// shape is drawn at the origin and moved into place by the world transform, which the
     /// brush follows.
     /// </summary>
-    private void DrawLayer(ID2D1BitmapBrush1 brush, int pictureWidth, int pictureHeight, StudioFrameRect destination, StudioFrameRect crop, double radius, StudioCameraShape shape, bool mirror, StudioRenderQuality quality)
+    private void DrawLayer(ID2D1BitmapBrush1 brush, int pictureWidth, int pictureHeight, StudioFrameRect destination, StudioFrameRect crop, double radius, StudioCameraShape shape, bool mirror, StudioRenderQuality quality, int rotationDegrees = 0)
     {
+        var orientation = StudioVideoOrientation.Transform(pictureWidth, pictureHeight, rotationDegrees);
+        if (rotationDegrees is 90 or 270)
+        {
+            (pictureWidth, pictureHeight) = (pictureHeight, pictureWidth);
+        }
         var cropX = (float)(crop.X * pictureWidth);
         var cropY = (float)(crop.Y * pictureHeight);
         var cropWidth = crop.Width * pictureWidth;
@@ -819,9 +826,9 @@ public sealed partial class StudioSceneRenderer : IDisposable
         var scaleY = (float)(destination.Height / cropHeight);
 
         brush.InterpolationMode1 = quality == StudioRenderQuality.Export ? D2DInterpolationMode.HighQualityCubic : D2DInterpolationMode.Linear;
-        brush.Transform = mirror
+        brush.Transform = orientation * (mirror
             ? Matrix3x2.CreateTranslation(-cropX - (float)cropWidth, -cropY) * Matrix3x2.CreateScale(-scaleX, scaleY)
-            : Matrix3x2.CreateTranslation(-cropX, -cropY) * Matrix3x2.CreateScale(scaleX, scaleY);
+            : Matrix3x2.CreateTranslation(-cropX, -cropY) * Matrix3x2.CreateScale(scaleX, scaleY));
 
         _context.Transform = Matrix3x2.CreateTranslation((float)destination.X, (float)destination.Y);
         FillShape(destination.Width, destination.Height, radius, shape, brush);

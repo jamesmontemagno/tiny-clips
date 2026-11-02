@@ -199,6 +199,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     private var onComplete: ((URL?) -> Void)?
     private var didComplete = false
     private let menuActions = TrimmerMenuActions()
+    fileprivate var isOpeningStudio = false
 
     /// - Parameter discardsCaptureOnCancel: The recording is still a temporary file that is thrown
     ///   away when the trimmer closes without saving.
@@ -242,6 +243,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard !isOpeningStudio else { return false }
         completeWith(nil)
         return true
     }
@@ -288,6 +290,8 @@ private struct VideoTrimmerView: View {
     @State private var trimmerWindow: NSWindow?
     @State private var showDeleteConfirmation = false
     @State private var showEscapeConfirmation = false
+    @State private var showStudioConfirmation = false
+    @State private var isOpeningStudio = false
     @State private var escapePrompt: TrimmerEscapePrompt = .closeTrimmer
 
     init(
@@ -456,7 +460,14 @@ private struct VideoTrimmerView: View {
                 .help(viewModel.isPlaying ? "Pause the trimmed preview." : "Play the trimmed preview.")
 
                 if CaptureSettings.shared.studioPreviewEnabled && !discardsCaptureOnCancel {
-                    Button(action: openInStudio) {
+                    Button {
+                        viewModel.stopPlayback()
+                        if viewModel.hasUnsavedChanges {
+                            showStudioConfirmation = true
+                        } else {
+                            openInStudio()
+                        }
+                    } label: {
                         Label("Open in Studio", systemImage: "wand.and.stars")
                     }
                     .help("Edit this video in Studio with zooms, backgrounds, cuts, and speed. Trim changes made here are not carried over.")
@@ -526,6 +537,12 @@ private struct VideoTrimmerView: View {
             .padding()
         }
         .frame(minWidth: 660, minHeight: 540)
+        .confirmationDialog("Open original video in Studio?", isPresented: $showStudioConfirmation, titleVisibility: .visible) {
+            Button("Open Original") { openInStudio() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Trim, speed, and audio changes made here will not carry over. You can make these edits in Studio.")
+        }
         .trimmerEscapeConfirmation(
             escapePrompt,
             media: .video,
@@ -555,7 +572,7 @@ private struct VideoTrimmerView: View {
         .onChange(of: viewModel.speed) { _, _ in
             viewModel.applySpeedChange()
         }
-        .disabled(viewModel.isExporting)
+        .disabled(viewModel.isExporting || isOpeningStudio)
         .overlay {
             if viewModel.isExporting {
                 ProgressOverlayView(title: "Saving…")
@@ -581,9 +598,18 @@ private struct VideoTrimmerView: View {
     }
 
     private func openInStudio() {
+        guard !isOpeningStudio, !viewModel.isExporting else { return }
         viewModel.stopPlayback()
+        isOpeningStudio = true
+        (trimmerWindow as? VideoTrimmerWindow)?.isOpeningStudio = true
+        menuActions.clear()
         let url = videoURL
         Task { @MainActor in
+            defer {
+                isOpeningStudio = false
+                (trimmerWindow as? VideoTrimmerWindow)?.isOpeningStudio = false
+                configureMenuActions()
+            }
             if await StudioWindowRegistry.shared.openVideo(at: url) {
                 closeWithoutSaving()
             }

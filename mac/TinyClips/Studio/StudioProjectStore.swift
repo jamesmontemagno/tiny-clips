@@ -523,6 +523,11 @@ final class StudioProjectStore {
             var changed = false
             for summary in try listSummariesUnlocked() {
                 var project = try loadUnlocked(id: summary.id)
+                let movedSource = project.sources.screen.external
+                    && normalizedPath(project.sources.screen.file) == oldNeedle
+                if movedSource {
+                    project.sources.screen.file = newPath
+                }
                 var matchedExport: StudioExport?
                 var exports: [StudioExport] = []
                 for export in project.exports {
@@ -543,7 +548,7 @@ final class StudioProjectStore {
                     project.exports = exports
                     _ = try saveUnlocked(project, updatingModifiedAt: true)
                     changed = true
-                } else if exports.count != project.exports.count {
+                } else if movedSource || exports.count != project.exports.count {
                     project.exports = exports
                     _ = try saveUnlocked(project, updatingModifiedAt: true)
                     changed = true

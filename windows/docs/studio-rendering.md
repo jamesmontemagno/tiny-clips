@@ -18,7 +18,7 @@ to 6.9 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineS
   has it made again for every frame, and one that fades has its shadow drawn with it.
 - `StudioExporter`: `ExportAsync` writes an MP4 (H.264 or HEVC), `WritePosterAsync` a JPEG.
   `StudioExportService` adapts it to `IStudioExportService`.
-- Internal: `StudioVideoSource`, `StudioAudioSource`, `StudioSinkWriterEncoder`, `StudioAudioPump`,
+- Internal: `StudioVideoSource`, `StudioAudioSource`, `StudioAudioMixSource`, `StudioSinkWriterEncoder`, `StudioAudioPump`,
   `StudioPcmGain`, `StudioBackgroundImage`. `StudioRenderingMath` holds the unit-tested rules, and
   `DeleteStaleTemporaryFiles(folder, age)` for what an export that was killed leaves behind.
 
@@ -29,14 +29,18 @@ to 6.9 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineS
 2. The source readers get the device manager and deliver RGB32 textures, which the renderer wraps
    without a copy (on WARP they decode to memory and frames are uploaded). Their frame rate
    conversion is off (`MF_XVP_DISABLE_FRC`): it moves a recording's frames onto an even grid.
+   Source frames retain their stored orientation. Rotation metadata travels with each frame;
+   the renderer rotates the screen brush before cropping and scaling, for both preview and export.
 3. Output frame `i` shows the source at the middle of its duration, `(i + 0.5) / fps` through the
    `StudioTimeMap`, and the camera at that time minus `startOffset`. A source frame shows from the
    instant it starts until the next starts. A reader seeks only backwards or over a second ahead.
 4. Each frame is drawn straight into a texture from the sink writer's allocator. The hardware
    encoder is tried first, then the software one, then frames through system memory; a failure
    within the first two seconds of video starts the export again with the next.
-5. Sound is the screen file's first track decoded to PCM, cut by sample count, encoded as AAC.
-   44.1 and 48 kHz in mono or stereo keep their shape; other rates become 48 kHz, more channels stereo.
+5. All audio tracks in the screen file are decoded to PCM, aligned by source timestamps and mixed,
+   then cut by sample count and encoded as one AAC track. A single 44.1 or 48 kHz mono/stereo track
+   keeps its format; multiple tracks use 48 kHz stereo. Missing portions are silence and summed
+   samples are clamped to the 16-bit range.
    Each 16-bit sample is multiplied by the project's volume (`audio.volume`, 0 to 1) on its way
    to the encoder and rounded to the nearest step; at 1 the samples are handed on as they are.
    At 0 the video keeps a sound track, of silence; a muted project has none.

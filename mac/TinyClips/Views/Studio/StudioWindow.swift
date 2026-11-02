@@ -65,10 +65,18 @@ final class StudioWindowRegistry {
             return false
         }
         do {
+            if let projectID = try StudioProjectStore.shared.findProjectID(exportedPath: url.path) {
+                open(projectID: projectID)
+                return windows[projectID] != nil
+            }
             let request = try await Self.flatProjectRequest(for: url)
+            guard CaptureSettings.shared.studioPreviewEnabled else {
+                SaveService.shared.showNotice("Tiny Clips Studio was turned off. The video remains in the trimmer.")
+                return false
+            }
             let project = try StudioProjectStore.shared.getOrCreateFlatProject(request: request)
             open(projectID: project.id)
-            return true
+            return windows[project.id] != nil
         } catch {
             SaveService.shared.showError("This video could not be opened in Studio: \(error.localizedDescription)")
             return false
@@ -83,12 +91,15 @@ final class StudioWindowRegistry {
         let (naturalSize, transform, nominalFrameRate) = try await track.load(.naturalSize, .preferredTransform, .nominalFrameRate)
         let duration = try await asset.load(.duration).seconds
         // A rotated video is shown, and so measured, after its transform.
-        let size = naturalSize.applying(transform)
-        let width = Int(abs(size.width).rounded())
-        let height = Int(abs(size.height).rounded())
-        guard width > 0, height > 0, duration.isFinite, duration > 0 else {
+        let size = CGRect(origin: .zero, size: naturalSize).applying(transform).size
+        guard size.width.isFinite, size.height.isFinite,
+              size.width >= 1, size.height >= 1,
+              size.width < Double(Int.max), size.height < Double(Int.max),
+              duration.isFinite, duration > 0 else {
             throw StudioVideoOpenError.noVideoTrack
         }
+        let width = Int(size.width.rounded())
+        let height = Int(size.height.rounded())
         return StudioFlatProjectRequest(
             videoURL: url,
             width: width,

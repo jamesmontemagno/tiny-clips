@@ -48,6 +48,23 @@ struct StudioRenderAffineTransform: Equatable, Sendable {
 }
 
 enum StudioRenderGeometry {
+    /// AVFoundation's display transform uses a top-left origin; Core Image uses bottom-left.
+    static func sourceOrientationTransform(
+        preferred: StudioRenderAffineTransform,
+        sourceSize: CGSize
+    ) -> StudioRenderAffineTransform {
+        let corners = [
+            CGPoint.zero, CGPoint(x: sourceSize.width, y: 0),
+            CGPoint(x: 0, y: sourceSize.height),
+            CGPoint(x: sourceSize.width, y: sourceSize.height),
+        ].map { preferred.applying(to: $0) }
+        let minX = corners.map(\.x).min() ?? 0
+        let maxY = corners.map(\.y).max() ?? 0
+        return StudioRenderAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: sourceSize.height)
+            .concatenating(preferred)
+            .concatenating(StudioRenderAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: -minX, ty: maxY))
+    }
+
     static func ciRect(forTopLeftRect rect: StudioRect, renderSize: CGSize) -> CGRect {
         CGRect(
             x: rect.x,

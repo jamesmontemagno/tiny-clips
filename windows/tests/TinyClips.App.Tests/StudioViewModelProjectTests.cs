@@ -19,6 +19,23 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
     }
 
     [Fact]
+    public async Task ImportedVideoKeepsEditingButDisablesPortableFolderCommandsWithExplanation()
+    {
+        var path = Path.Combine(_outside, "external.mp4");
+        File.WriteAllBytes(path, [1]);
+        var project = Projects.GetOrCreateFlatProject(path, new StudioRecordingSourceInfo(1920, 1080, 10), "1.0");
+        var viewModel = await OpenAsync(project.Id);
+        var asked = Listen(viewModel);
+
+        Assert.True(viewModel.IsEditable);
+        Assert.False(viewModel.CanSaveProject);
+        Assert.Contains("stored externally", viewModel.ProjectFolderHelp, StringComparison.Ordinal);
+        viewModel.RequestSaveProject();
+        viewModel.RequestSaveProjectAs();
+        Assert.Empty(asked);
+    }
+
+    [Fact]
     public async Task OpenRecent_ListsTheOtherProjects_TheOneOpenedLastFirst_EachWithWhenItWasRecorded()
     {
         var first = CreateProject();

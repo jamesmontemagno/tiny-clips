@@ -312,14 +312,27 @@ public sealed class StudioWindowService : IStudioProjectHost
 
         try
         {
+            var projectId = await Task.Run(() => _store.FindProjectIdByExportPath(videoPath));
+            if (_isExiting || !_settings.StudioPreviewEnabled)
+            {
+                return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
+            }
+            if (projectId is not null)
+            {
+                return new StudioProjectOpenResult(Open(projectId), null);
+            }
             var info = await StudioVideoProbe.ReadAsync(videoPath);
-            var project = await Task.Run(() => _store.GetOrCreateFlatProject(videoPath, info, AppVersionInfo.GetCurrentVersionText()));
+            if (_isExiting || !_settings.StudioPreviewEnabled)
+            {
+                return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
+            }
+            var project = _store.GetOrCreateFlatProject(videoPath, info, AppVersionInfo.GetCurrentVersionText());
             return new StudioProjectOpenResult(Open(project.Id), null);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"StudioWindowService: opening a video failed: {ex}");
-            return new StudioProjectOpenResult(null, "This video could not be opened in Studio.");
+            return new StudioProjectOpenResult(null, $"This video could not be opened in Studio: {ex.Message}");
         }
     }
 

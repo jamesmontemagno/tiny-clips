@@ -149,7 +149,12 @@ final class StudioViewModel: ObservableObject {
     var isBusy: Bool { busyMessage != nil }
 
     /// Whether the project can be saved as a folder now.
-    var canSaveProjectFolder: Bool { isEditable }
+    var canSaveProjectFolder: Bool { isEditable && editor?.project.sources.screen.external == false }
+    var projectFolderHelp: String {
+        editor?.project.sources.screen.external == true
+            ? "Imported video edits are saved automatically in Studio. Saving a portable project folder is unavailable because the source video is stored externally. Keep the original video."
+            : "Save includes the recordings and a .tinyclips file in a project folder."
+    }
 
     /// Whether the project can be deleted now. One that cannot be shown can be: that is the
     /// project there is least reason to keep.

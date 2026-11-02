@@ -454,9 +454,7 @@ private class ClipsViewModel: ObservableObject {
     }
 
     func openInStudio(_ item: ClipItem) {
-        if let projectID = studioProjectID(for: item) {
-            StudioWindowRegistry.shared.open(projectID: projectID)
-        } else if item.type == .video {
+        if item.type == .video {
             let url = item.url
             Task { await StudioWindowRegistry.shared.openVideo(at: url) }
         }

@@ -178,12 +178,12 @@
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
-            ColumnSpacing="16"
+            RowSpacing="12"
             CornerRadius="{ThemeResource OverlayCornerRadius}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
             <StackPanel
                 Grid.Column="0"
@@ -225,7 +225,7 @@
             </StackPanel>
 
             <StackPanel
-                Grid.Column="1"
+                Grid.Row="1"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"

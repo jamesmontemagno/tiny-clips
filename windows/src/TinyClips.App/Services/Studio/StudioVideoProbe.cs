@@ -1,5 +1,5 @@
 using TinyClips.Core.Studio;
-using Windows.Media.MediaProperties;
+using Windows.Storage.FileProperties;
 using Windows.Storage;
 
 namespace TinyClips.App.Services.Studio;
@@ -40,7 +40,7 @@ internal static class StudioVideoProbe
         }
         catch (Exception ex) when (ex is InvalidCastException or System.Runtime.InteropServices.COMException)
         {
-            // The default stands when the rate is not stored.
+            System.Diagnostics.Debug.WriteLine($"Studio video frame rate unavailable; using 30 fps: {ex}");
         }
 
         return new StudioRecordingSourceInfo(width, height, seconds, frameRate);

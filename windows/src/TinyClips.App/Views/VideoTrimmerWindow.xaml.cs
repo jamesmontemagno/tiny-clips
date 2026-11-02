@@ -44,6 +44,7 @@ public sealed partial class VideoTrimmerWindow : Window
     private bool _isClosed;
     private int _exportsInFlight;
     private bool _isDeletePromptOpen;
+    private bool _isOpeningStudio;
     private readonly VideoFrameCopyOperation _frameCopy = new();
 
     // Handles snap back to the exact ends, so anything beyond rounding noise is a real trim.
@@ -85,6 +86,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
         RootGrid.KeyDown += OnRootKeyDown;
         Closed += OnWindowClosed;
+        AppWindow.Closing += (_, args) => args.Cancel = _isOpeningStudio;
         _ = LoadAsync();
     }
 
@@ -115,7 +117,7 @@ public sealed partial class VideoTrimmerWindow : Window
     }
 
     private bool CanCloseFromEscape =>
-        !_isClosed && !_isDeletingSource && !_isEscapePromptOpen && _exportsInFlight == 0;
+        !_isClosed && !_isDeletingSource && !_isEscapePromptOpen && !_isOpeningStudio && _exportsInFlight == 0;
 
     private async Task CloseFromEscapeAsync()
     {
@@ -150,23 +152,43 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnOpenInStudio(object sender, RoutedEventArgs e)
     {
-        if (!_ready || _isClosed || _isDeletingSource || _exportsInFlight > 0 || Application.Current is not App app)
+        if (!_ready || !CanCloseFromEscape || _isDeletePromptOpen || _frameCopy.IsBusy || Application.Current is not App app)
         {
             return;
         }
 
         StopPlayback();
-        OpenInStudioButton.IsEnabled = false;
+        _isOpeningStudio = true;
         try
         {
-            if (await app.OpenVideoInStudioAsync(_filePath) && !_isClosed)
+            if (HasUnexportedChanges || _speed != 1)
             {
+                var confirmation = new ContentDialog
+                {
+                    XamlRoot = RootGrid.XamlRoot,
+                    RequestedTheme = RootGrid.ActualTheme,
+                    Title = "Open original video in Studio?",
+                    Content = "Trim, speed, and audio changes made here will not carry over. You can make these edits in Studio.",
+                    PrimaryButtonText = "Open original",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Close,
+                };
+                if (await confirmation.ShowAsync() != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+            }
+            RootGrid.IsEnabled = false;
+            if (await app.OpenVideoInStudioAsync(_filePath) && !_isClosed && _exportsInFlight == 0 && !_isDeletingSource)
+            {
+                _isOpeningStudio = false;
                 CloseKeepingOriginal();
             }
         }
         finally
         {
-            OpenInStudioButton.IsEnabled = true;
+            _isOpeningStudio = false;
+            RootGrid.IsEnabled = true;
         }
     }
 
@@ -431,7 +453,7 @@ public sealed partial class VideoTrimmerWindow : Window
     private async void OnCopyFrame(object sender, RoutedEventArgs e)
     {
         if (!_ready || _isClosed || _isDeletingSource || _isDeletePromptOpen ||
-            _isEscapePromptOpen || _exportsInFlight != 0 || _frameCopy.IsBusy)
+            _isEscapePromptOpen || _isOpeningStudio || _exportsInFlight != 0 || _frameCopy.IsBusy)
         {
             return;
         }
@@ -510,7 +532,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnExportFrame(object sender, RoutedEventArgs e)
     {
-        if (!_ready || _isClosed || _isDeletingSource || _isDeletePromptOpen || _exportsInFlight != 0)
+        if (!_ready || _isClosed || _isDeletingSource || _isDeletePromptOpen || _isOpeningStudio || _exportsInFlight != 0)
         {
             return;
         }
@@ -565,7 +587,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveTrimmed(object sender, RoutedEventArgs e)
     {
-        if (!_ready || _isDeletingSource || _frameCopy.IsBusy)
+        if (!_ready || _isDeletingSource || _isOpeningStudio || _frameCopy.IsBusy)
         {
             return;
         }
@@ -578,7 +600,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private async void OnSaveOriginal(object sender, RoutedEventArgs e)
     {
-        if (_isDeletingSource || _frameCopy.IsBusy)
+        if (_isDeletingSource || _isOpeningStudio || _frameCopy.IsBusy)
         {
             return;
         }
@@ -673,7 +695,7 @@ public sealed partial class VideoTrimmerWindow : Window
 
     private void OnDone(object sender, RoutedEventArgs e)
     {
-        if (_isDeletingSource)
+        if (_isDeletingSource || _isOpeningStudio)
         {
             return;
         }
@@ -688,7 +710,7 @@ public sealed partial class VideoTrimmerWindow : Window
     /// </summary>
     private async void OnDeleteVideo(object sender, RoutedEventArgs e)
     {
-        if (_isDeletingSource || _isDeletePromptOpen || _isClosed)
+        if (_isDeletingSource || _isDeletePromptOpen || _isOpeningStudio || _isClosed)
         {
             return;
         }
