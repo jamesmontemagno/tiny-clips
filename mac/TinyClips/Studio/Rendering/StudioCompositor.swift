@@ -24,6 +24,7 @@ final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstr
     let renderSize: CGSize
     let renderState: StudioRenderState
     let projectDirectory: URL
+    let screenTransform: CGAffineTransform
 
     init(
         timeRange: CMTimeRange,
@@ -31,7 +32,8 @@ final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstr
         cameraTrackID: CMPersistentTrackID?,
         renderSize: CGSize,
         renderState: StudioRenderState,
-        projectDirectory: URL
+        projectDirectory: URL,
+        screenTransform: CGAffineTransform = .identity
     ) {
         self.timeRange = timeRange
         self.screenTrackID = screenTrackID
@@ -39,6 +41,7 @@ final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstr
         self.renderSize = renderSize
         self.renderState = renderState
         self.projectDirectory = projectDirectory
+        self.screenTransform = screenTransform
         var trackIDs: [NSValue] = [NSNumber(value: screenTrackID)]
         if let cameraTrackID {
             trackIDs.append(NSNumber(value: cameraTrackID))
@@ -238,8 +241,17 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 renderSize: renderSize,
                 shape: screenShape
             )
+            let rawScreen = CIImage(cvPixelBuffer: screenBuffer)
+            let preferred = instruction.screenTransform
+            let orientation = StudioRenderGeometry.sourceOrientationTransform(
+                preferred: StudioRenderAffineTransform(
+                    a: preferred.a, b: preferred.b, c: preferred.c,
+                    d: preferred.d, tx: preferred.tx, ty: preferred.ty
+                ),
+                sourceSize: rawScreen.extent.size
+            )
             let screenImage = layerImage(
-                sourceImage: CIImage(cvPixelBuffer: screenBuffer),
+                sourceImage: rawScreen.transformed(by: orientation.cgAffineTransform),
                 source: screen.source,
                 destination: alignedScreen.rect,
                 renderSize: renderSize,

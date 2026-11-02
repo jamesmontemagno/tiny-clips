@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- Any video can now be opened in Studio from the video trimmer or the Clips Manager (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
+
 ### Fixed
+- Imported Studio videos respect rotation metadata, retain edits when their source is archived or temporarily offline, and reopen linked projects rather than creating flattened duplicates. The trimmer protects pending edits during handoff; portable project saving is explicitly unavailable for external videos.
 - Windows CI now reports both required architecture checks for changes that do not need Windows builds, avoiding permanently pending checks without allocating Windows runners.
 
 ### Changed

@@ -30,11 +30,6 @@ enum StudioCleanupPolicy {
         var ids: [String] = []
         var deleted = Set<String>()
 
-        for summary in summaries where !inUseProjectIDs.contains(summary.id) && summary.isFlat && !summary.sourceExists {
-            ids.append(summary.id)
-            deleted.insert(summary.id)
-        }
-
         if options.retentionDays > 0 {
             let cutoff = currentDate.addingTimeInterval(-Double(options.retentionDays) * 24 * 60 * 60)
             for summary in summaries where !deleted.contains(summary.id) && !inUseProjectIDs.contains(summary.id) {

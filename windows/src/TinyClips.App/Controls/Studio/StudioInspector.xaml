@@ -1526,6 +1526,7 @@
                                 AutomationProperties.AutomationId="StudioSaveProjectButton"
                                 AutomationProperties.Name="Save project"
                                 Click="{x:Bind ViewModel.RequestSaveProject}"
+                                IsEnabled="{x:Bind ViewModel.CanSaveProject, Mode=OneWay}"
                                 ToolTipService.ToolTip="Save the project to its current folder (Ctrl+S)">
                                 <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SaveProject}" Text="Save project" />
                             </Button>
@@ -1534,11 +1535,12 @@
                                 AutomationProperties.AutomationId="StudioSaveProjectAsButton"
                                 Content="Save project as&#x2026;"
                                 Click="{x:Bind ViewModel.RequestSaveProjectAs}"
+                                IsEnabled="{x:Bind ViewModel.CanSaveProject, Mode=OneWay}"
                                 ToolTipService.ToolTip="Choose a new project name and folder (Ctrl+Shift+S)" />
                             <TextBlock
                                 AutomationProperties.AutomationId="StudioSaveProjectNote"
                                 Style="{StaticResource StudioNoteStyle}"
-                                Text="Save updates the current project folder. Save as chooses a new name and location, including the recordings and a .tinyclips file." />
+                                Text="{x:Bind ViewModel.ProjectFolderHelp, Mode=OneWay}" />
                         </StackPanel>
                         <StackPanel
                             Padding="0,16,0,0"
