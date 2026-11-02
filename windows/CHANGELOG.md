@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- Screenshot editor arrow styles are now named **Curved Left** and **Curved Right**, matching macOS. **Curved Left** bows to the left of the arrow's direction, so it now curves the other way from the old **Curved** option. Arrowheads in the live preview now match the saved image at every zoom level.
+
 ### Added
 - Any video can now be opened in Studio from the video trimmer or the Clips Library (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
 

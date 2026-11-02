@@ -547,13 +547,44 @@ struct ScreenshotEditorView: View {
     private var primaryColorBinding: Binding<Color> {
         Binding(
             get: {
-                viewModel.selectedTextColor() ?? viewModel.selectedNumberBadgeColor() ?? viewModel.selectedColor
+                viewModel.selectedTextColor()
+                    ?? viewModel.selectedNumberBadgeColor()
+                    ?? viewModel.selectedStrokeColor()
+                    ?? viewModel.selectedColor
             },
             set: { newValue in
                 if viewModel.inspectorTool == .text {
                     _ = viewModel.updateTextColor(newValue)
-                } else if !viewModel.updateSelectedNumberBadgeColor(newValue) {
+                } else if !viewModel.updateSelectedNumberBadgeColor(newValue),
+                          !viewModel.updateSelectedStrokeColor(newValue) {
                     viewModel.selectedColor = newValue
+                }
+            }
+        )
+    }
+
+    private var fillColorBinding: Binding<Color> {
+        Binding(
+            get: {
+                viewModel.selectedShapeFillColor() ?? viewModel.selectedFillColor
+            },
+            set: { newValue in
+                if !viewModel.updateSelectedShapeFillColor(newValue) {
+                    viewModel.selectedFillColor = newValue
+                }
+            }
+        )
+    }
+
+    private var lineWidthBinding: Binding<CGFloat> {
+        Binding(
+            get: {
+                viewModel.selectedLineWidth() ?? viewModel.lineWidth
+            },
+            set: { newValue in
+                let width = newValue.rounded()
+                if !viewModel.updateSelectedLineWidth(width) {
+                    viewModel.lineWidth = width
                 }
             }
         )
@@ -1117,7 +1148,7 @@ struct ScreenshotEditorView: View {
             }
 
             if showsFillColorPicker {
-                SwatchColorPicker(label: "Fill", color: $viewModel.selectedFillColor, supportsOpacity: true, allowsTransparent: true)
+                SwatchColorPicker(label: "Fill", color: fillColorBinding, supportsOpacity: true, allowsTransparent: true)
             }
 
             if showsNumberTextColorPicker {
@@ -1251,14 +1282,21 @@ struct ScreenshotEditorView: View {
             }
 
             if viewModel.showsLineWidthControl {
-                Picker("Stroke", selection: $viewModel.lineWidth) {
-                    Text("1 px").tag(CGFloat(1))
-                    Text("2 px").tag(CGFloat(2))
-                    Text("4 px").tag(CGFloat(4))
-                    Text("6 px").tag(CGFloat(6))
-                    Text("8 px").tag(CGFloat(8))
-                    Text("10 px").tag(CGFloat(10))
+                LabeledContent("Stroke") {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: lineWidthBinding,
+                            in: AnnotationStrokeMath.widthRange,
+                            step: 1,
+                            onEditingChanged: { viewModel.setAdjustingSelectedLineWidth($0) }
+                        )
+                        Text("\(Int(lineWidthBinding.wrappedValue)) px")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 38, alignment: .trailing)
+                    }
                 }
+                .accessibilityElement(children: .combine)
             }
 
             if viewModel.showsArrowStyleControl {

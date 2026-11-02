@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 - Windows CI now reports both required architecture checks for changes that do not need Windows builds, avoiding permanently pending checks without allocating Windows runners.
 
 ### Changed
+- The macOS screenshot editor can now change the color, fill, and stroke width of a selected rectangle, circle, arrow, line, or pencil stroke, with undo. Stroke width is a 1–40 px slider measured in image pixels, like Windows; the starting width scales with the capture so large screenshots keep their previous look.
+- macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrowhead. Curved arrows bow slightly less than before.
 - Upgraded GitHub Agentic Workflows to v1.0.1 and refreshed the agent and routing skill. The weekly parity workflow still runs on Sundays around 09:00 with the Copilot auto model and a five-issue limit.
 
 ## v2.0.0-mac - 2026-10-31

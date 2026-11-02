@@ -37,7 +37,11 @@ public enum RedactionStyle
 public enum ArrowStyle
 {
     Straight,
+
+    /// <summary>Bows to the left of the direction of travel (the macOS "Curved Left").</summary>
     Curved1,
+
+    /// <summary>Bows to the right of the direction of travel (the macOS "Curved Right").</summary>
     Curved2,
 }
 

@@ -469,6 +469,7 @@ enum ArrowStyle: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Which way a curved arrow bows: left (-1) or right (+1) of the direction of travel.
     var curvatureSign: CGFloat {
         switch self {
         case .straight: return 0
@@ -1157,13 +1158,92 @@ func drawCheckerboardRedaction(in context: CGContext, rect: CGRect, preset: Reda
     }
 }
 
-func arrowControlPoint(start: CGPoint, end: CGPoint, style: ArrowStyle) -> CGPoint {
-    let mid = CGPoint(x: (start.x + end.x) * 0.5, y: (start.y + end.y) * 0.5)
-    guard style != .straight else { return mid }
-    let dx = end.x - start.x
-    let dy = end.y - start.y
-    let length = max(1, hypot(dx, dy))
-    let normal = CGPoint(x: -dy / length, y: dx / length)
-    let magnitude = max(20, length * 0.25) * style.curvatureSign
-    return CGPoint(x: mid.x + normal.x * magnitude, y: mid.y + normal.y * magnitude)
+/// A straight or curved arrow. The shaft is a quadratic Bézier from `shaftStart` through
+/// `shaftControl` to `shaftEnd` (a straight shaft repeats its end as the control), and the head is
+/// the triangle `tip`, `head1`, `head2`.
+struct ArrowShape: Equatable {
+    var curved: Bool
+    var shaftStart: CGPoint
+    var shaftControl: CGPoint
+    var shaftEnd: CGPoint
+    var tip: CGPoint
+    var head1: CGPoint
+    var head2: CGPoint
+}
+
+/// Arrow geometry shared by the preview, the export, and the Windows app through
+/// `shared/screenshot/fixtures/arrow`. Points are y-down. Widths are in source-image pixels;
+/// `scale` is the caller's units per image pixel, so the preview and the export draw the same
+/// proportions.
+enum ArrowGeometry {
+    /// Shortest head, in image pixels, so thin arrows still read as arrows.
+    static let minimumHeadLength: CGFloat = 12
+    /// Head length as a multiple of the stroke width.
+    static let headLengthPerWidth: CGFloat = 3.5
+    /// Half the angle between the head's two wings.
+    static let headSpread: CGFloat = .pi / 7
+    /// How far a curved arrow bows from its chord, as a fraction of the chord length.
+    static let curveBow: CGFloat = 0.22
+
+    static func headLength(width: CGFloat) -> CGFloat {
+        max(minimumHeadLength, width * headLengthPerWidth)
+    }
+
+    static func build(start: CGPoint, end: CGPoint, width: CGFloat, style: ArrowStyle, scale: CGFloat = 1) -> ArrowShape {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let length = (dx * dx + dy * dy).squareRoot()
+        let head = headLength(width: width) * scale
+
+        guard length >= 0.001 else {
+            return ArrowShape(curved: false, shaftStart: start, shaftControl: start, shaftEnd: start, tip: end, head1: end, head2: end)
+        }
+
+        guard style != .straight else {
+            let trim = min(head * 0.9, length * 0.98)
+            let shaftEnd = CGPoint(x: end.x - dx / length * trim, y: end.y - dy / length * trim)
+            let (head1, head2) = wings(tip: end, angle: atan2(dy, dx), headLength: head)
+            return ArrowShape(curved: false, shaftStart: start, shaftControl: shaftEnd, shaftEnd: shaftEnd, tip: end, head1: head1, head2: head2)
+        }
+
+        // (-dy, dx) points to the right of travel in a y-down space, so a left curve bows against it.
+        let bow = length * curveBow * style.curvatureSign
+        let control = CGPoint(
+            x: (start.x + end.x) / 2 - dy / length * bow,
+            y: (start.y + end.y) / 2 + dx / length * bow
+        )
+        // The tangent at the tip of a quadratic Bézier is proportional to (end - control).
+        let (head1, head2) = wings(tip: end, angle: atan2(end.y - control.y, end.x - control.x), headLength: head)
+
+        // Split with de Casteljau so the shaft stops short of the tip and its cap never pokes through.
+        let trim = min(head * 0.9, length * 0.6)
+        let t = min(max(1 - trim / length, 0.02), 0.98)
+        let a = lerp(start, control, t)
+        let b = lerp(control, end, t)
+        return ArrowShape(curved: true, shaftStart: start, shaftControl: a, shaftEnd: lerp(a, b, t), tip: end, head1: head1, head2: head2)
+    }
+
+    private static func wings(tip: CGPoint, angle: CGFloat, headLength: CGFloat) -> (CGPoint, CGPoint) {
+        (
+            CGPoint(x: tip.x - headLength * cos(angle - headSpread), y: tip.y - headLength * sin(angle - headSpread)),
+            CGPoint(x: tip.x - headLength * cos(angle + headSpread), y: tip.y - headLength * sin(angle + headSpread))
+        )
+    }
+
+    private static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
+        CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+    }
+}
+
+/// Stroke widths are stored in source-image pixels, the unit the Windows editor and the shared
+/// fixtures use.
+enum AnnotationStrokeMath {
+    static let widthRange: ClosedRange<CGFloat> = 1...40
+
+    /// The starting width for an image. Before widths were stored in image pixels the default was
+    /// 4 at a 900-pixel-wide reference, so this keeps that look on large captures.
+    static func defaultWidth(forImagePixelWidth width: CGFloat) -> CGFloat {
+        let scaled = (4 * max(1, width / 900)).rounded()
+        return min(max(scaled, widthRange.lowerBound), widthRange.upperBound)
+    }
 }

@@ -998,16 +998,18 @@ public sealed partial class EditorCanvas : UserControl
         var (s, en) = EditorController.Segment(ann);
         var start = ToCanvas(new Point(s.X, s.Y), scale, offX, offY);
         var end = ToCanvas(new Point(en.X, en.Y), scale, offX, offY);
-        var shape = EditorController.BuildArrow(
-            new Vector2((float)start.X, (float)start.Y),
-            new Vector2((float)end.X, (float)end.Y),
-            thickness,
-            ann.ArrowStyle);
+        // Head size comes from the image-pixel width and scales with the view, matching the export.
+        var shape = ArrowGeometry.Build(
+            new PointD(start.X, start.Y),
+            new PointD(end.X, end.Y),
+            ann.Thickness,
+            ann.ArrowStyle,
+            scale);
 
         visual.StrokeBrush!.Color = ann.Color;
         visual.FillBrush!.Color = ann.Color;
 
-        // The retained element reflects the requested style. BuildArrow deliberately reports a
+        // The retained element reflects the requested style. ArrowGeometry.Build deliberately reports a
         // zero-length curved arrow as non-curved because there is no meaningful tangent yet, so
         // branching on shape.Curved here would incorrectly cast its retained Path to Line during
         // the first/tiniest pointer moves.

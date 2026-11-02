@@ -37,6 +37,7 @@ jobs:
             mac:
               - 'mac/**'
               - 'shared/studio/fixtures/**'
+              - 'shared/screenshot/fixtures/**'
               - '.github/workflows/build.yml'
               - '!**/*.md'
           base: ${{ github.ref }}

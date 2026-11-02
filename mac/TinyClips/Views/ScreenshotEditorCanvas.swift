@@ -196,13 +196,13 @@ struct ScreenshotEditorCanvasView: View {
                     Canvas { context, _ in
                         for annotation in viewModel.annotations where !annotation.isOpaqueRedaction {
                             let scaledRect = viewModel.scaledRect(annotation.rect, imageSize: imageSize, origin: .zero)
-                            drawAnnotation(annotation, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage, zoomScale: zoomScale)
+                            drawAnnotation(annotation, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage)
                         }
 
                         // Draw in-progress annotation
                         if let current = viewModel.currentAnnotation {
                             let scaledRect = viewModel.scaledRect(current.rect, imageSize: imageSize, origin: .zero)
-                            drawAnnotation(current, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage, zoomScale: zoomScale)
+                            drawAnnotation(current, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage)
                         }
                     }
 
@@ -564,13 +564,12 @@ struct ScreenshotEditorCanvasView: View {
         return (rotated, CGRect(x: -scaledRect.width / 2, y: -scaledRect.height / 2, width: scaledRect.width, height: scaledRect.height))
     }
 
-    private func drawAnnotation(_ annotation: ScreenshotAnnotation, in context: GraphicsContext, scaledRect: CGRect, imageSize: CGSize, origin: CGPoint, sourceImage: NSImage? = nil, zoomScale: CGFloat = 1) {
+    private func drawAnnotation(_ annotation: ScreenshotAnnotation, in context: GraphicsContext, scaledRect: CGRect, imageSize: CGSize, origin: CGPoint, sourceImage: NSImage? = nil) {
         let color = annotation.color
-        // `imageSize` already grows with zoomScale, but stroke widths, arrowheads, and
-        // number-badge fonts are stored in fixed screen-space units. Scale them by
-        // zoomScale so the preview matches the exported annotation proportions at
-        // any zoom level instead of appearing thinner as the canvas is enlarged.
-        let lineWidth = annotation.lineWidth * zoomScale
+        // Stroke widths are in source-image pixels; `imageSize` is the displayed image, so this
+        // maps them onto the canvas at any zoom level, the same proportions the export draws.
+        let pixelScale = viewModel.displayScale(forImageSize: imageSize)
+        let lineWidth = annotation.lineWidth * pixelScale
 
         switch annotation.tool {
         case .rectangle:
@@ -589,47 +588,26 @@ struct ScreenshotEditorCanvasView: View {
 
         case .arrow:
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
-            let start = linePoints.start
-            let end = linePoints.end
-            let headLength = max(18 * zoomScale, lineWidth * 4.0)
-            let headAngle: CGFloat = .pi / 6
-            let control = arrowControlPoint(start: start, end: end, style: annotation.arrowStyle)
-            let tipAngle: CGFloat
-            switch annotation.arrowStyle {
-            case .straight:
-                tipAngle = atan2(end.y - start.y, end.x - start.x)
-            case .curvedLeft, .curvedRight:
-                tipAngle = atan2(end.y - control.y, end.x - control.x)
-            }
-
-            let wing1 = CGPoint(
-                x: end.x - headLength * cos(tipAngle - headAngle),
-                y: end.y - headLength * sin(tipAngle - headAngle)
-            )
-            let wing2 = CGPoint(
-                x: end.x - headLength * cos(tipAngle + headAngle),
-                y: end.y - headLength * sin(tipAngle + headAngle)
-            )
-            // Shaft ends at the base of the filled arrowhead
-            let shaftEnd = CGPoint(
-                x: end.x - headLength * cos(headAngle) * cos(tipAngle),
-                y: end.y - headLength * cos(headAngle) * sin(tipAngle)
+            let shape = ArrowGeometry.build(
+                start: linePoints.start,
+                end: linePoints.end,
+                width: annotation.lineWidth,
+                style: annotation.arrowStyle,
+                scale: pixelScale
             )
             var linePath = Path()
-            linePath.move(to: start)
-            switch annotation.arrowStyle {
-            case .straight:
-                linePath.addLine(to: shaftEnd)
-            case .curvedLeft, .curvedRight:
-                linePath.addQuadCurve(to: shaftEnd, control: control)
+            linePath.move(to: shape.shaftStart)
+            if shape.curved {
+                linePath.addQuadCurve(to: shape.shaftEnd, control: shape.shaftControl)
+            } else {
+                linePath.addLine(to: shape.shaftEnd)
             }
             context.stroke(linePath, with: .color(color), lineWidth: lineWidth)
 
-            // Filled triangular arrowhead
             var arrowHead = Path()
-            arrowHead.move(to: end)
-            arrowHead.addLine(to: wing1)
-            arrowHead.addLine(to: wing2)
+            arrowHead.move(to: shape.tip)
+            arrowHead.addLine(to: shape.head1)
+            arrowHead.addLine(to: shape.head2)
             arrowHead.closeSubpath()
             context.fill(arrowHead, with: .color(color))
 

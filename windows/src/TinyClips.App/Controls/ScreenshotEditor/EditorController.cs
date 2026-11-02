@@ -2387,28 +2387,32 @@ internal sealed class EditorController : IDisposable
     private static void DrawArrowToSession(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)
     {
         var (start, end) = Segment(ann);
-        var shape = BuildArrow(start, end, thickness, ann.ArrowStyle);
+        var shape = ArrowGeometry.Build(ToPoint(start), ToPoint(end), thickness, ann.ArrowStyle);
         var strokeStyle = new CanvasStrokeStyle { StartCap = CanvasCapStyle.Round, EndCap = CanvasCapStyle.Round };
 
         if (shape.Curved)
         {
             using var pb = new CanvasPathBuilder(ds.Device);
-            pb.BeginFigure(shape.ShaftStart);
-            pb.AddQuadraticBezier(shape.ShaftControl, shape.ShaftEnd);
+            pb.BeginFigure(ToVector2(shape.ShaftStart));
+            pb.AddQuadraticBezier(ToVector2(shape.ShaftControl), ToVector2(shape.ShaftEnd));
             pb.EndFigure(CanvasFigureLoop.Open);
             using var geo = CanvasGeometry.CreatePath(pb);
             ds.DrawGeometry(geo, color, thickness, strokeStyle);
         }
         else
         {
-            ds.DrawLine(shape.ShaftStart, shape.ShaftEnd, color, thickness, strokeStyle);
+            ds.DrawLine(ToVector2(shape.ShaftStart), ToVector2(shape.ShaftEnd), color, thickness, strokeStyle);
         }
 
-        using var head = CanvasGeometry.CreatePolygon(ds.Device, new[] { shape.Tip, shape.Head1, shape.Head2 });
+        using var head = CanvasGeometry.CreatePolygon(ds.Device, new[] { ToVector2(shape.Tip), ToVector2(shape.Head1), ToVector2(shape.Head2) });
         ds.FillGeometry(head, color);
     }
 
     // -- Geometry helpers (also used by EditorCanvas for the live XAML preview) ----------------
+
+    private static PointD ToPoint(Vector2 v) => new(v.X, v.Y);
+
+    private static Vector2 ToVector2(PointD p) => new((float)p.X, (float)p.Y);
 
     public static Rect NormalizedBounds(Annotation ann) => NormalizeBounds(ann.Bounds);
 
@@ -2535,64 +2539,6 @@ internal sealed class EditorController : IDisposable
         }
         var len = Math.Max(adx, ady);
         return new Point(start.X + Math.Sign(dx) * len, start.Y + Math.Sign(dy) * len);
-    }
-
-    public static ArrowShape BuildArrow(Vector2 start, Vector2 end, double thickness, ArrowStyle style)
-    {
-        var dir = end - start;
-        var len = dir.Length();
-        var headLen = (float)Math.Max(12, thickness * 3.5);
-        const double spread = Math.PI / 7;
-
-        if (len < 0.001f)
-        {
-            return new ArrowShape(false, start, start, start, end, end, end);
-        }
-
-        if (style == ArrowStyle.Straight)
-        {
-            var u = dir / len;
-            var trim = Math.Min(headLen * 0.9f, len * 0.98f);
-            var shaftEnd = end - u * trim;
-            var angle = Math.Atan2(dir.Y, dir.X);
-            var h1 = new Vector2(
-                (float)(end.X - headLen * Math.Cos(angle - spread)),
-                (float)(end.Y - headLen * Math.Sin(angle - spread)));
-            var h2 = new Vector2(
-                (float)(end.X - headLen * Math.Cos(angle + spread)),
-                (float)(end.Y - headLen * Math.Sin(angle + spread)));
-            return new ArrowShape(false, start, shaftEnd, shaftEnd, end, h1, h2);
-        }
-
-        // Curved: quadratic bezier bowed perpendicular to the start→end line.
-        var mid = (start + end) * 0.5f;
-        var perp = new Vector2(-dir.Y, dir.X) / len;
-        var bow = (float)(len * 0.22);
-        if (style == ArrowStyle.Curved2)
-        {
-            bow = -bow;
-        }
-        var control = mid + perp * bow;
-
-        // Tangent at the tip of a quadratic bezier is proportional to (end - control).
-        var tipTangent = end - control;
-        var tlen = tipTangent.Length();
-        tipTangent = tlen < 0.001f ? dir / len : tipTangent / tlen;
-        var tipAngle = Math.Atan2(tipTangent.Y, tipTangent.X);
-        var ch1 = new Vector2(
-            (float)(end.X - headLen * Math.Cos(tipAngle - spread)),
-            (float)(end.Y - headLen * Math.Sin(tipAngle - spread)));
-        var ch2 = new Vector2(
-            (float)(end.X - headLen * Math.Cos(tipAngle + spread)),
-            (float)(end.Y - headLen * Math.Sin(tipAngle + spread)));
-
-        // de Casteljau split so the shaft stops short of the tip and the cap never pokes through.
-        var trimC = Math.Min(headLen * 0.9f, len * 0.6f);
-        var t = (float)Math.Clamp(1.0 - trimC / len, 0.02, 0.98);
-        var a = Vector2.Lerp(start, control, t);
-        var b = Vector2.Lerp(control, end, t);
-        var bt = Vector2.Lerp(a, b, t);
-        return new ArrowShape(true, start, a, bt, end, ch1, ch2);
     }
 
     public void Dispose()
