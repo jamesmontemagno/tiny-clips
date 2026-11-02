@@ -3,6 +3,21 @@ import XCTest
 @testable import TinyClips
 
 final class StudioRenderGeometryTests: XCTestCase {
+    func testDisplayRotationIsConvertedToCoreImageBeforeCropping() {
+        let size = CGSize(width: 200, height: 100)
+        let rotations: [(StudioRenderAffineTransform, CGPoint, CGPoint)] = [
+            (.identity, CGPoint(x: 0, y: 100), CGPoint(x: 200, y: 0)),
+            (.init(a: 0, b: 1, c: -1, d: 0, tx: 100, ty: 0), CGPoint(x: 100, y: 200), .zero),
+            (.init(a: -1, b: 0, c: 0, d: -1, tx: 200, ty: 100), CGPoint(x: 200, y: 0), CGPoint(x: 0, y: 100)),
+            (.init(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 200), .zero, CGPoint(x: 100, y: 200)),
+        ]
+        for (preferred, topLeft, bottomRight) in rotations {
+            let transform = StudioRenderGeometry.sourceOrientationTransform(preferred: preferred, sourceSize: size)
+            XCTAssertEqual(transform.applying(to: CGPoint(x: 0, y: 100)), topLeft)
+            XCTAssertEqual(transform.applying(to: CGPoint(x: 200, y: 0)), bottomRight)
+        }
+    }
+
     func testConvertsTopLeftRectToCoreImageRect() {
         let rect = StudioRect(x: 10, y: 20, width: 300, height: 120)
         let converted = StudioRenderGeometry.ciRect(forTopLeftRect: rect, renderSize: CGSize(width: 800, height: 600))

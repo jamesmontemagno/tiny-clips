@@ -456,47 +456,41 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
 
         lock (_sync)
         {
-            EnsureExportIndex();
-            if (!_exportIndex.TryGetValue(NormalizePath(oldPath), out var projectId))
-            {
-                return false;
-            }
-
             var normalizedNewPath = NormalizePath(newPath);
             var now = _timeProvider.GetUtcNow().ToUniversalTime();
-            var directory = ProjectDirectory(projectId);
-            var project = LoadProjectFile(directory, projectId);
-            var moved = project.Exports.LastOrDefault(export => PathEquals(export.Path, oldPath));
-            if (moved is null)
+            var changed = false;
+            foreach (var folder in EnumerateProjectFolders())
             {
-                return false;
-            }
-
-            // The file at the new path is now this export, so no other entry may keep pointing at it.
-            var exports = project.Exports
-                .Where(export => !PathEquals(export.Path, oldPath) && !PathEquals(export.Path, normalizedNewPath))
-                .Append(moved with { Path = normalizedNewPath })
-                .ToArray();
-            SaveProjectFile(directory, project with { ModifiedAt = now, Exports = exports });
-
-            foreach (var folder in EnumerateProjectFolders().Where(folder => folder.Id != projectId))
-            {
+                StudioProject project;
                 try
                 {
-                    var other = LoadProjectFile(folder.Directory, folder.Id);
-                    var remaining = other.Exports.Where(export => !PathEquals(export.Path, normalizedNewPath)).ToArray();
-                    if (remaining.Length != other.Exports.Length)
-                    {
-                        SaveProjectFile(folder.Directory, other with { ModifiedAt = now, Exports = remaining });
-                    }
+                    project = LoadProjectFile(folder.Directory, folder.Id);
                 }
                 catch (Exception ex) when (CanSkipProjectRead(ex))
                 {
+                    continue;
+                }
+                var movedSource = project.Sources.Screen.External && PathEquals(project.Sources.Screen.File, oldPath);
+                var moved = project.Exports.LastOrDefault(export => PathEquals(export.Path, oldPath));
+                var exports = project.Exports
+                    .Where(export => !PathEquals(export.Path, oldPath) && !PathEquals(export.Path, normalizedNewPath))
+                    .ToArray();
+                if (moved is not null)
+                {
+                    exports = [.. exports, moved with { Path = normalizedNewPath }];
+                }
+                if (movedSource || moved is not null || exports.Length != project.Exports.Length)
+                {
+                    var sources = movedSource
+                        ? project.Sources with { Screen = project.Sources.Screen with { File = normalizedNewPath } }
+                        : project.Sources;
+                    SaveProjectFile(folder.Directory, project with { ModifiedAt = now, Sources = sources, Exports = exports });
+                    changed = true;
                 }
             }
 
             EnsureExportIndex(force: true);
-            return true;
+            return changed;
         }
     }
 
@@ -1094,14 +1088,6 @@ public static class StudioCleanupPolicy
         var snapshot = summaries.ToArray();
         var remaining = snapshot.ToDictionary(summary => summary.Id, StringComparer.Ordinal);
         var selected = new List<string>();
-
-        foreach (var flat in snapshot.Where(summary => !inUse.Contains(summary.Id) && summary.IsFlat && !summary.ExternalVideoExists))
-        {
-            if (remaining.Remove(flat.Id))
-            {
-                selected.Add(flat.Id);
-            }
-        }
 
         if (options.RetentionDays > 0)
         {

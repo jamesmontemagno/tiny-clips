@@ -178,12 +178,12 @@
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
-            ColumnSpacing="16"
+            RowSpacing="12"
             CornerRadius="{ThemeResource OverlayCornerRadius}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
             <StackPanel
                 Grid.Column="0"
@@ -225,7 +225,7 @@
             </StackPanel>
 
             <StackPanel
-                Grid.Column="1"
+                Grid.Row="1"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Center"
                 Orientation="Horizontal"
@@ -239,6 +239,18 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon FontSize="14" Glyph="&#xE74D;" />
                         <TextBlock Text="Delete" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    x:Name="OpenInStudioButton"
+                    AutomationProperties.AutomationId="VideoOpenInStudioButton"
+                    AutomationProperties.Name="Open in Studio"
+                    Click="OnOpenInStudio"
+                    ToolTipService.ToolTip="Edit this video in Studio with zooms, backgrounds, cuts, and speed. Trim changes made here are not carried over."
+                    Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="14" Glyph="&#xE81E;" />
+                        <TextBlock Text="Open in Studio" />
                     </StackPanel>
                 </Button>
                 <Button

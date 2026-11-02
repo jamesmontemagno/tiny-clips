@@ -390,7 +390,7 @@ internal sealed class StudioExportJob
         StudioSceneRenderer? renderer = null;
         StudioVideoSource? screen = null;
         StudioVideoSource? camera = null;
-        StudioAudioSource? audio = null;
+        StudioAudioMixSource? audio = null;
         StudioSinkWriterEncoder? encoder = null;
         ID3D11Texture2D? memoryTarget = null;
         try
@@ -404,7 +404,7 @@ internal sealed class StudioExportJob
             renderer = new StudioSceneRenderer(graphics.Device, PersonFinderFactory);
             screen = StudioVideoSource.Open(screenPath, "screen recording", graphics, readerManager);
             camera = cameraPath is null ? null : StudioVideoSource.Open(cameraPath, "camera recording", graphics, readerManager);
-            audio = _project.Audio.Muted ? null : StudioAudioSource.TryOpen(screenPath, "screen recording");
+            audio = _project.Audio.Muted ? null : StudioAudioMixSource.TryOpen(screenPath, "screen recording", _project.Sources.Screen.Duration);
 
             var settings = new StudioVideoEncoderSettings(
                 width,

@@ -7,6 +7,27 @@ public sealed class StudioProjectStoreTests : IDisposable
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "TinyClipsTests", Guid.NewGuid().ToString("N"));
     private readonly ManualTimeProvider _time = new(new DateTimeOffset(2026, 10, 2, 22, 41, 0, TimeSpan.Zero));
 
+    [Fact]
+    public void MovingImportedVideoRetainsProjectAndEditsEvenWhileSourceIsOffline()
+    {
+        var store = CreateStore();
+        var original = Path.Combine(_directory, "original.mp4");
+        var renamed = Path.Combine(_directory, "renamed.mp4");
+        var archived = Path.Combine(_directory, "archive", "renamed.mp4");
+        var info = new StudioRecordingSourceInfo(1920, 1080, 10);
+        var project = store.GetOrCreateFlatProject(original, info, "1.0");
+        store.Save(project with { Edits = new StudioEdits { TrimStart = 1 } });
+
+        Assert.True(store.UpdateExportPath(original, renamed));
+        Assert.True(store.UpdateExportPath(renamed, archived));
+        var reopened = store.GetOrCreateFlatProject(archived, info, "1.0");
+        Assert.Equal(project.Id, reopened.Id);
+        Assert.Equal(archived, reopened.Sources.Screen.File);
+        Assert.Equal(1, reopened.Edits.TrimStart);
+        Assert.Empty(store.Cleanup().ProjectIdsDeleted);
+        Assert.Equal(1, store.Load(project.Id).Edits.TrimStart);
+    }
+
     public static TheoryData<string, Action<StudioProjectStore, string>> IdValidatingMethods => new()
     {
         { "CompleteRecording", (store, id) => store.CompleteRecording(id, CreateRequest()) },

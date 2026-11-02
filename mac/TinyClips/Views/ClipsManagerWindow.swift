@@ -454,8 +454,10 @@ private class ClipsViewModel: ObservableObject {
     }
 
     func openInStudio(_ item: ClipItem) {
-        guard let projectID = studioProjectID(for: item) else { return }
-        StudioWindowRegistry.shared.open(projectID: projectID)
+        if item.type == .video {
+            let url = item.url
+            Task { await StudioWindowRegistry.shared.openVideo(at: url) }
+        }
     }
 
     private func scanForClips() async -> [URL] {
@@ -575,13 +577,6 @@ private class ClipsViewModel: ObservableObject {
         guard settings.clipsManagerArchiveAfterDays > 0 else { return }
 
         let cutoff = Calendar.current.date(byAdding: .day, value: -settings.clipsManagerArchiveAfterDays, to: Date()) ?? .distantPast
-        // Videos exported from Studio keep their project link when they are moved to the archive.
-        // Also while Studio is switched off: the project is still on disk, and one that has lost
-        // track of its video counts as holding the only copy from then on.
-        // The links are read from every project file, so only once a clip is in fact moved.
-        // Where Studio was never used there is no project to read.
-        var studioLinks: [String: String]?
-
         for directory in directories {
             let archiveDirectory = directory.appendingPathComponent("Archive", isDirectory: true)
             try? FileManager.default.createDirectory(at: archiveDirectory, withIntermediateDirectories: true)
@@ -595,10 +590,9 @@ private class ClipsViewModel: ObservableObject {
                 let targetURL = uniqueArchivedURL(in: archiveDirectory, originalName: url.lastPathComponent)
                 do {
                     try FileManager.default.moveItem(at: url, to: targetURL)
-                    let links = studioLinks ?? ((try? StudioProjectStore.shared.exportedPathIndex()) ?? [:])
-                    studioLinks = links
-                    if links[StudioProjectStore.exportKey(forPath: url.path)] != nil {
-                        _ = try? StudioProjectStore.shared.updateExportPath(from: url.path, to: targetURL.path)
+                    // Imported sources have no export link, but must follow the move too.
+                    if ClipItem(url: targetURL)?.type == .video {
+                        _ = try StudioProjectStore.shared.updateExportPath(from: url.path, to: targetURL.path)
                     }
                 } catch {
                     SaveService.shared.showError("Could not archive \(url.lastPathComponent): \(error.localizedDescription)")
@@ -1524,9 +1518,9 @@ private struct ClipsManagerContentView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The action for a video that came from a Studio project, or nil when it did not.
+    /// The action for a video when Studio is on: its project, or a new one made from the video.
     private func openInStudioAction(for item: ClipItem) -> (() -> Void)? {
-        guard viewModel.studioProjectID(for: item) != nil else { return nil }
+        guard item.type == .video, CaptureSettings.shared.studioPreviewEnabled else { return nil }
         return { viewModel.openInStudio(item) }
     }
 
