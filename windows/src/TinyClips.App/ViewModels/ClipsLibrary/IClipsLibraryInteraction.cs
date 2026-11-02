@@ -21,6 +21,9 @@ public interface IClipsLibraryInteraction
     /// <summary>Opens the Studio project with this id in the Studio editor.</summary>
     void OpenInStudio(string projectId);
 
+    /// <summary>Opens an existing video in Studio as a flat project, and says why when it cannot.</summary>
+    void OpenVideoInStudio(string videoPath);
+
     void OpenSettings();
 
     /// <summary>Asks the view to select every visible item (selection lives in the list controls).</summary>

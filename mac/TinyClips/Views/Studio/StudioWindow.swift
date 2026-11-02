@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Carbon.HIToolbox
 import SwiftUI
 import UniformTypeIdentifiers
@@ -9,6 +10,12 @@ extension Notification.Name {
     /// Posted on the main thread when a Studio editor has opened, and again when it has closed.
     /// Between the two it may have exported its project, or deleted it.
     static let studioProjectsDidChange = Notification.Name("TinyClipsStudioProjectsDidChange")
+}
+
+enum StudioVideoOpenError: LocalizedError {
+    case noVideoTrack
+
+    var errorDescription: String? { "The file has no readable video." }
 }
 
 /// Opens Studio editor windows, one per project, and knows which projects are open.
@@ -47,6 +54,49 @@ final class StudioWindowRegistry {
         }
         open(projectID: projectID)
         return true
+    }
+
+    /// Opens an existing video in Studio as a flat project (one per video). Returns false when
+    /// Studio is off or the video cannot be read.
+    @discardableResult
+    func openVideo(at url: URL) async -> Bool {
+        guard CaptureSettings.shared.studioPreviewEnabled else {
+            SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Studio settings to open this video.")
+            return false
+        }
+        do {
+            let request = try await Self.flatProjectRequest(for: url)
+            let project = try StudioProjectStore.shared.getOrCreateFlatProject(request: request)
+            open(projectID: project.id)
+            return true
+        } catch {
+            SaveService.shared.showError("This video could not be opened in Studio: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private static func flatProjectRequest(for url: URL) async throws -> StudioFlatProjectRequest {
+        let asset = AVURLAsset(url: url)
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+            throw StudioVideoOpenError.noVideoTrack
+        }
+        let (naturalSize, transform, nominalFrameRate) = try await track.load(.naturalSize, .preferredTransform, .nominalFrameRate)
+        let duration = try await asset.load(.duration).seconds
+        // A rotated video is shown, and so measured, after its transform.
+        let size = naturalSize.applying(transform)
+        let width = Int(abs(size.width).rounded())
+        let height = Int(abs(size.height).rounded())
+        guard width > 0, height > 0, duration.isFinite, duration > 0 else {
+            throw StudioVideoOpenError.noVideoTrack
+        }
+        return StudioFlatProjectRequest(
+            videoURL: url,
+            width: width,
+            height: height,
+            duration: duration,
+            frameRate: nominalFrameRate > 0 ? Double(nominalFrameRate) : 30,
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        )
     }
 
     /// Opens the editor for a project, or brings its window forward when it is already open.

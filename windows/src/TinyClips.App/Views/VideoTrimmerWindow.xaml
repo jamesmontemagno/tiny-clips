@@ -242,6 +242,18 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="OpenInStudioButton"
+                    AutomationProperties.AutomationId="VideoOpenInStudioButton"
+                    AutomationProperties.Name="Open in Studio"
+                    Click="OnOpenInStudio"
+                    ToolTipService.ToolTip="Edit this video in Studio with zooms, backgrounds, cuts, and speed. Trim changes made here are not carried over."
+                    Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="14" Glyph="&#xE81E;" />
+                        <TextBlock Text="Open in Studio" />
+                    </StackPanel>
+                </Button>
+                <Button
                     x:Name="CancelButton"
                     AutomationProperties.AutomationId="VideoTrimmerCloseButton"
                     Click="OnDone"

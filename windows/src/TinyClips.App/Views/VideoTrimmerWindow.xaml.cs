@@ -81,6 +81,8 @@ public sealed partial class VideoTrimmerWindow : Window
             _ => ElementTheme.Default,
         };
 
+        OpenInStudioButton.Visibility = settings.StudioPreviewEnabled ? Visibility.Visible : Visibility.Collapsed;
+
         RootGrid.KeyDown += OnRootKeyDown;
         Closed += OnWindowClosed;
         _ = LoadAsync();
@@ -144,6 +146,28 @@ public sealed partial class VideoTrimmerWindow : Window
         }
 
         CloseKeepingOriginal();
+    }
+
+    private async void OnOpenInStudio(object sender, RoutedEventArgs e)
+    {
+        if (!_ready || _isClosed || _isDeletingSource || _exportsInFlight > 0 || Application.Current is not App app)
+        {
+            return;
+        }
+
+        StopPlayback();
+        OpenInStudioButton.IsEnabled = false;
+        try
+        {
+            if (await app.OpenVideoInStudioAsync(_filePath) && !_isClosed)
+            {
+                CloseKeepingOriginal();
+            }
+        }
+        finally
+        {
+            OpenInStudioButton.IsEnabled = true;
+        }
     }
 
     /// <summary>Closes the trimmer the way Cancel does: nothing is exported and the original is kept.</summary>

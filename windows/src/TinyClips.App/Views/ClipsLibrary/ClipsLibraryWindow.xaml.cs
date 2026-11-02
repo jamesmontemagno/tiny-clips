@@ -666,6 +666,14 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
 
     public void OpenInStudio(string projectId) => (Application.Current as App)?.OpenStudioWindow(projectId);
 
+    public void OpenVideoInStudio(string videoPath)
+    {
+        if (Application.Current is App app)
+        {
+            _ = app.OpenVideoInStudioAsync(videoPath);
+        }
+    }
+
     public void OpenSettings() => (Application.Current as App)?.OpenSettingsWindow(Settings.SettingsSectionKind.ClipsLibrary);
 
     // ------------------------------------------------------------------ x:Bind helpers

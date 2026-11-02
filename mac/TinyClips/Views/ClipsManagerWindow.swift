@@ -454,8 +454,12 @@ private class ClipsViewModel: ObservableObject {
     }
 
     func openInStudio(_ item: ClipItem) {
-        guard let projectID = studioProjectID(for: item) else { return }
-        StudioWindowRegistry.shared.open(projectID: projectID)
+        if let projectID = studioProjectID(for: item) {
+            StudioWindowRegistry.shared.open(projectID: projectID)
+        } else if item.type == .video {
+            let url = item.url
+            Task { await StudioWindowRegistry.shared.openVideo(at: url) }
+        }
     }
 
     private func scanForClips() async -> [URL] {
@@ -1524,9 +1528,9 @@ private struct ClipsManagerContentView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The action for a video that came from a Studio project, or nil when it did not.
+    /// The action for a video when Studio is on: its project, or a new one made from the video.
     private func openInStudioAction(for item: ClipItem) -> (() -> Void)? {
-        guard viewModel.studioProjectID(for: item) != nil else { return nil }
+        guard item.type == .video, CaptureSettings.shared.studioPreviewEnabled else { return nil }
         return { viewModel.openInStudio(item) }
     }
 

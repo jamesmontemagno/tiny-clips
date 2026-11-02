@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- Any video can now be opened in Studio from the video trimmer or the Clips Library (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
+
 ## [v2.0.0-windows] - 2026-10-31
 
 ### Changed

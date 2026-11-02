@@ -293,6 +293,36 @@ public sealed class StudioWindowService : IStudioProjectHost
         }
     }
 
+    /// <summary>
+    /// Opens an existing video in the editor as a flat project (one per video). Never throws:
+    /// the result carries a failure message when nothing opened. With Studio switched off the
+    /// result says so.
+    /// </summary>
+    public async Task<StudioProjectOpenResult> OpenVideoAsync(string videoPath)
+    {
+        if (_isExiting)
+        {
+            return new StudioProjectOpenResult(null, null);
+        }
+
+        if (!_settings.StudioPreviewEnabled)
+        {
+            return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
+        }
+
+        try
+        {
+            var info = await StudioVideoProbe.ReadAsync(videoPath);
+            var project = await Task.Run(() => _store.GetOrCreateFlatProject(videoPath, info, AppVersionInfo.GetCurrentVersionText()));
+            return new StudioProjectOpenResult(Open(project.Id), null);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"StudioWindowService: opening a video failed: {ex}");
+            return new StudioProjectOpenResult(null, "This video could not be opened in Studio.");
+        }
+    }
+
     Task<string?> IStudioProjectHost.ChooseProjectFileAsync(Window owner) => ChooseProjectFile(owner);
 
     Task<string?> IStudioProjectHost.ChooseSaveFolderAsync(Window owner) => ChooseSaveFolder(owner);

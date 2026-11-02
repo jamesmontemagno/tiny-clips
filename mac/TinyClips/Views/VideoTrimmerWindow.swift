@@ -455,6 +455,15 @@ private struct VideoTrimmerView: View {
                 }
                 .help(viewModel.isPlaying ? "Pause the trimmed preview." : "Play the trimmed preview.")
 
+                if CaptureSettings.shared.studioPreviewEnabled && !discardsCaptureOnCancel {
+                    Button(action: openInStudio) {
+                        Label("Open in Studio", systemImage: "wand.and.stars")
+                    }
+                    .help("Edit this video in Studio with zooms, backgrounds, cuts, and speed. Trim changes made here are not carried over.")
+                    .accessibilityHint("Closes the trimmer and opens the video in Studio.")
+                    .disabled(viewModel.duration <= 0 || viewModel.isExporting)
+                }
+
                 Spacer()
 
                 Menu {
@@ -569,6 +578,16 @@ private struct VideoTrimmerView: View {
         viewModel.cleanup()
         RecentCaptureStore.shared.remove(url: videoURL)
         onDone(nil)
+    }
+
+    private func openInStudio() {
+        viewModel.stopPlayback()
+        let url = videoURL
+        Task { @MainActor in
+            if await StudioWindowRegistry.shared.openVideo(at: url) {
+                closeWithoutSaving()
+            }
+        }
     }
 
     private func closeWithoutSaving() {

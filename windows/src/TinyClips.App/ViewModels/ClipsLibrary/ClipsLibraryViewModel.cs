@@ -124,6 +124,9 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
 
     public IClipsLibrarySettings Settings => _settings;
 
+    /// <summary>Whether videos offer Open in Studio: any video can be opened, not only exported ones.</summary>
+    public bool IsStudioEnabled => _captureSettings.StudioPreviewEnabled;
+
     public bool IsUploadcareEnabled => _captureSettings.UploadcareEnabled;
 
     public bool ShowUploadActions => IsUploadcareEnabled;
@@ -981,7 +984,8 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     [RelayCommand]
     private void OpenInStudio(ClipItemViewModel? item)
     {
-        if ((item ?? SelectedClip)?.StudioProjectId is not { } projectId)
+        var target = item ?? SelectedClip;
+        if (target is null || !target.IsVideo)
         {
             return;
         }
@@ -995,7 +999,14 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        _interaction?.OpenInStudio(projectId);
+        if (target.StudioProjectId is { } projectId)
+        {
+            _interaction?.OpenInStudio(projectId);
+        }
+        else
+        {
+            _interaction?.OpenVideoInStudio(target.Path);
+        }
     }
 
     [RelayCommand]
