@@ -80,8 +80,8 @@
                         Header="Arrow"
                         SelectionChanged="OnArrowStyleChanged">
                         <ComboBoxItem Content="Straight" />
-                        <ComboBoxItem Content="Curved" />
-                        <ComboBoxItem Content="Curved (alt)" />
+                        <ComboBoxItem Content="Curved Left" />
+                        <ComboBoxItem Content="Curved Right" />
                     </ComboBox>
                 </StackPanel>
 

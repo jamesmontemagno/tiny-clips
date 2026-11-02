@@ -41,6 +41,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
     @Published var selectedColor: Color = .red
     @Published var selectedFillColor: Color = .clear
+    /// New-annotation stroke width, in source-image pixels.
     @Published var lineWidth: CGFloat = 4
     @Published var annotations: [ScreenshotAnnotation] = [] {
         didSet { invalidateSensitiveText() }
@@ -95,6 +96,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var verticalExportAlignment: ExportVerticalAlignment = .center
 
     private var pencilPoints: [CGPoint] = []
+    private var isAdjustingSelectedLineWidth = false
+    private var didRecordLineWidthAdjustment = false
     private var imagePixelSize: CGSize = .zero
     private var sourcePixelScale: CGFloat = 1
     private var redactionSourceImage: CGImage?
@@ -145,6 +148,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             self.sourcePixelScale = ImagePixelDensity.scaleFactor(for: image)
             if let rep = image.representations.first {
                 self.imagePixelSize = CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+                self.lineWidth = AnnotationStrokeMath.defaultWidth(forImagePixelWidth: CGFloat(rep.pixelsWide))
             }
         }
 
@@ -805,7 +809,10 @@ class ScreenshotEditorViewModel: ObservableObject {
     func updateSelectedShapeLineWidth(_ lineWidth: CGFloat) -> Bool {
         guard let index = selectedShapeIndex else { return false }
         guard annotations[index].lineWidth != lineWidth else { return true }
-        recordHistory()
+        if !isAdjustingSelectedLineWidth || !didRecordLineWidthAdjustment {
+            recordHistory()
+            didRecordLineWidthAdjustment = isAdjustingSelectedLineWidth
+        }
         annotations[index].lineWidth = lineWidth
         markDirty()
         return true
@@ -978,6 +985,16 @@ class ScreenshotEditorViewModel: ObservableObject {
         annotations[index].isUnderlined = isUnderlined
         markDirty()
         return true
+    }
+
+    /// Canvas units per source-image pixel for an image drawn at `imageSize`.
+    func displayScale(forImageSize imageSize: CGSize) -> CGFloat {
+        imagePixelSize.width > 0 ? imageSize.width / imagePixelSize.width : 1
+    }
+
+    func setAdjustingSelectedShapeLineWidth(_ isAdjusting: Bool) {
+        isAdjustingSelectedLineWidth = isAdjusting
+        didRecordLineWidthAdjustment = false
     }
 
     func selectedArrowStyle() -> ArrowStyle? {
@@ -2239,7 +2256,8 @@ class ScreenshotEditorViewModel: ObservableObject {
         let nsColor = NSColor(annotation.color)
         let cgColor = nsColor.cgColor
         ctx.setStrokeColor(cgColor)
-        let strokeWidth = exportStrokeWidth(baseWidth: annotation.lineWidth, outputWidth: outputSize.width)
+        // The export draws at source-image pixel scale, the unit stroke widths are stored in.
+        let strokeWidth = annotation.lineWidth
         ctx.setLineWidth(strokeWidth)
 
         switch annotation.tool {
@@ -2274,56 +2292,21 @@ class ScreenshotEditorViewModel: ObservableObject {
                 x: (line.end.x * fullSize.width) - cropOrigin.x + contentOffset.x,
                 y: (line.end.y * fullSize.height) - cropOrigin.y + contentOffset.y
             )
-            let controlTopLeft = arrowControlPoint(start: startTopLeft, end: endTopLeft, style: annotation.arrowStyle)
-            let start = CGPoint(
-                x: startTopLeft.x,
-                y: outputSize.height - startTopLeft.y
-            )
-            let end = CGPoint(
-                x: endTopLeft.x,
-                y: outputSize.height - endTopLeft.y
-            )
-            let control = CGPoint(
-                x: controlTopLeft.x,
-                y: outputSize.height - controlTopLeft.y
-            )
-            let headLength = max(26, strokeWidth * 5.0)
-            let headAngle: CGFloat = .pi / 6
-            let tipAngle: CGFloat
-            switch annotation.arrowStyle {
-            case .straight:
-                tipAngle = atan2(end.y - start.y, end.x - start.x)
-            case .curvedLeft, .curvedRight:
-                tipAngle = atan2(end.y - control.y, end.x - control.x)
-            }
-
-            let wing1 = CGPoint(
-                x: end.x - headLength * cos(tipAngle - headAngle),
-                y: end.y - headLength * sin(tipAngle - headAngle)
-            )
-            let wing2 = CGPoint(
-                x: end.x - headLength * cos(tipAngle + headAngle),
-                y: end.y - headLength * sin(tipAngle + headAngle)
-            )
-            // Shaft ends at the base of the filled arrowhead
-            let shaftEnd = CGPoint(
-                x: end.x - headLength * cos(headAngle) * cos(tipAngle),
-                y: end.y - headLength * cos(headAngle) * sin(tipAngle)
-            )
-            ctx.move(to: start)
-            switch annotation.arrowStyle {
-            case .straight:
-                ctx.addLine(to: shaftEnd)
-            case .curvedLeft, .curvedRight:
-                ctx.addQuadCurve(to: shaftEnd, control: control)
+            // Build in the y-down space the geometry is defined in, then flip into the context.
+            let shape = ArrowGeometry.build(start: startTopLeft, end: endTopLeft, width: strokeWidth, style: annotation.arrowStyle)
+            let flip = { (point: CGPoint) in CGPoint(x: point.x, y: outputSize.height - point.y) }
+            ctx.move(to: flip(shape.shaftStart))
+            if shape.curved {
+                ctx.addQuadCurve(to: flip(shape.shaftEnd), control: flip(shape.shaftControl))
+            } else {
+                ctx.addLine(to: flip(shape.shaftEnd))
             }
             ctx.strokePath()
 
-            // Filled triangular arrowhead
             ctx.setFillColor(cgColor)
-            ctx.move(to: end)
-            ctx.addLine(to: wing1)
-            ctx.addLine(to: wing2)
+            ctx.move(to: flip(shape.tip))
+            ctx.addLine(to: flip(shape.head1))
+            ctx.addLine(to: flip(shape.head2))
             ctx.closePath()
             ctx.fillPath()
 
@@ -2500,11 +2483,6 @@ class ScreenshotEditorViewModel: ObservableObject {
             verticalAlignment: verticalExportAlignment,
             snapsToPixels: true
         )
-    }
-
-    private func exportStrokeWidth(baseWidth: CGFloat, outputWidth: CGFloat) -> CGFloat {
-        let widthScale = max(1.0, outputWidth / 900.0)
-        return baseWidth * widthScale
     }
 
     /// Runs `draw` with the context rotated about `rect`'s center when the annotation is rotated.

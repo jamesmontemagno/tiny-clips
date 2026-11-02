@@ -589,8 +589,9 @@ struct ScreenshotEditorView: View {
                 viewModel.selectedShapeLineWidth() ?? viewModel.lineWidth
             },
             set: { newValue in
-                if !viewModel.updateSelectedShapeLineWidth(newValue) {
-                    viewModel.lineWidth = newValue
+                let width = newValue.rounded()
+                if !viewModel.updateSelectedShapeLineWidth(width) {
+                    viewModel.lineWidth = width
                 }
             }
         )
@@ -1347,14 +1348,21 @@ struct ScreenshotEditorView: View {
             }
 
             if viewModel.showsLineWidthControl {
-                Picker("Stroke", selection: shapeLineWidthBinding) {
-                    Text("1 px").tag(CGFloat(1))
-                    Text("2 px").tag(CGFloat(2))
-                    Text("4 px").tag(CGFloat(4))
-                    Text("6 px").tag(CGFloat(6))
-                    Text("8 px").tag(CGFloat(8))
-                    Text("10 px").tag(CGFloat(10))
+                LabeledContent("Stroke") {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: shapeLineWidthBinding,
+                            in: AnnotationStrokeMath.widthRange,
+                            step: 1,
+                            onEditingChanged: { viewModel.setAdjustingSelectedShapeLineWidth($0) }
+                        )
+                        Text("\(Int(shapeLineWidthBinding.wrappedValue)) px")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 38, alignment: .trailing)
+                    }
                 }
+                .accessibilityElement(children: .combine)
             }
 
             if viewModel.showsArrowStyleControl {

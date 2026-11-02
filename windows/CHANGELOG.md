@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- Screenshot editor arrow styles are now named **Curved Left** and **Curved Right**, matching macOS. **Curved Left** bows to the left of the arrow's direction, so it now curves the other way from the old **Curved** option. Arrowheads in the live preview now match the saved image at every zoom level.
+
 ## [v2.3.1-windows] - 2026-11-24
 
 ### Added

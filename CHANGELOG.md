@@ -7,6 +7,10 @@ All notable changes to this project will be documented in this file.
 ### Added
 - After 30 combined captures, the Mac App Store build asks once, after a safe editor close, whether to leave a review, send feedback, or dismiss. Apple controls whether its review request appears; feedback opens a prefilled GitHub issue for the user to submit. These choices remain UI-only. Eligibility is not evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
 
+### Changed
+- The macOS screenshot editor can now change the color, fill, and stroke width of a selected rectangle, circle, arrow, line, or pencil stroke, with undo. Stroke width is a 1–40 px slider measured in image pixels, like Windows; the starting width scales with the capture so large screenshots keep their previous look.
+- macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrowhead. Curved arrows bow slightly less than before.
+
 ## v2.3.0.3-mac - 2026-11-23
 
 ### Fixed
