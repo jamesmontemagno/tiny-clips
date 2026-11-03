@@ -21,7 +21,8 @@ FIXTURES = ROOT / "shared" / "screenshot" / "fixtures"
 ARROW_DIR = FIXTURES / "arrow"
 ALIGNMENT_DIR = FIXTURES / "alignment"
 LINE_DIR = FIXTURES / "line"
-FIXTURE_DIRS = [ARROW_DIR, ALIGNMENT_DIR, LINE_DIR]
+PEN_DIR = FIXTURES / "pen"
+FIXTURE_DIRS = [ARROW_DIR, ALIGNMENT_DIR, LINE_DIR, PEN_DIR]
 
 # Arrow geometry. Points are y-down; widths are in source-image pixels and `scale` is the
 # caller's units per image pixel. An arrow is one filled outline: a tapered shaft along a
@@ -307,6 +308,227 @@ def cap_points(center, outward, normal, half, cap):
     return []
 
 
+# Freehand pen: a port of perfect-freehand's getStroke (MIT, (c) 2021 Stephen Ruiz Ltd,
+# github.com/steveruizok/perfect-freehand at 176e00f) with fixed options: size = the stroke width,
+# thinning 0.3 (so a stroke reads close to its width), smoothing 0.5, streamline 0.5, simulated pressure, linear easing, both ends
+# tapered over PEN_TAPER_PER_WIDTH widths, and the stroke treated as complete. Lengths use
+# sqrt rather than hypot so every platform rounds the same way; the cap loops keep the
+# source's accumulating steps for the same reason.
+PEN_THINNING = 0.3
+PEN_SMOOTHING = 0.5
+PEN_STREAMLINE = 0.5
+PEN_TAPER_PER_WIDTH = 3
+RATE_OF_PRESSURE_CHANGE = 0.275
+FIXED_PI = math.pi + 0.0001
+START_CAP_SEGMENTS = 13
+END_CAP_SEGMENTS = 29
+CORNER_CAP_SEGMENTS = 13
+END_NOISE_THRESHOLD = 3
+MIN_STREAMLINE_T = 0.15
+STREAMLINE_T_RANGE = 0.85
+MIN_RADIUS = 0.01
+DEFAULT_FIRST_PRESSURE = 0.25
+DEFAULT_PRESSURE = 0.5
+
+
+def v_len(a):
+    return math.sqrt(a["x"] * a["x"] + a["y"] * a["y"])
+
+
+def v_uni(a):
+    n = v_len(a)
+    return point(a["x"] / n, a["y"] / n)
+
+
+def v_per(a):
+    return point(a["y"], -a["x"])
+
+
+def v_dpr(a, b):
+    return a["x"] * b["x"] + a["y"] * b["y"]
+
+
+def v_dist2(a, b):
+    dx = a["x"] - b["x"]
+    dy = a["y"] - b["y"]
+    return dx * dx + dy * dy
+
+
+def v_lrp(a, b, t):
+    return point(a["x"] + (b["x"] - a["x"]) * t, a["y"] + (b["y"] - a["y"]) * t)
+
+
+def v_rot_around(a, c, r):
+    s_, c_ = math.sin(r), math.cos(r)
+    px = a["x"] - c["x"]
+    py = a["y"] - c["y"]
+    return point(px * c_ - py * s_ + c["x"], px * s_ + py * c_ + c["y"])
+
+
+def simulate_pressure(prev, distance, size):
+    sp = min(1, distance / size)
+    rp = min(1, 1 - sp)
+    return min(1, prev + (rp - prev) * (sp * RATE_OF_PRESSURE_CHANGE))
+
+
+def stroke_radius(size, pressure):
+    return size * (0.5 - PEN_THINNING * (0.5 - pressure))
+
+
+def pen_stroke_points(pts, size):
+    """getStrokePoints with last = true. `pts` are input points without pressure."""
+    if not pts:
+        return []
+    t = MIN_STREAMLINE_T + (1 - PEN_STREAMLINE) * STREAMLINE_T_RANGE
+    if len(pts) == 2:
+        last = pts[1]
+        pts = [pts[0]] + [v_lrp(pts[0], last, i / 4) for i in range(1, 5)]
+    if len(pts) == 1:
+        pts = [pts[0], add(pts[0], point(1, 1))]
+    stroke = [{"point": pts[0], "pressure": DEFAULT_FIRST_PRESSURE, "vector": point(1, 1), "distance": 0, "runningLength": 0}]
+    reached_minimum = False
+    running = 0
+    prev = stroke[0]
+    last_index = len(pts) - 1
+    for i in range(1, len(pts)):
+        p = pts[i] if i == last_index else v_lrp(prev["point"], pts[i], t)
+        if p["x"] == prev["point"]["x"] and p["y"] == prev["point"]["y"]:
+            continue
+        distance = v_len(sub(p, prev["point"]))
+        running += distance
+        if i < last_index and not reached_minimum:
+            if running < size:
+                continue
+            reached_minimum = True
+        prev = {
+            "point": p,
+            "pressure": DEFAULT_PRESSURE,
+            "vector": v_uni(sub(prev["point"], p)),
+            "distance": distance,
+            "runningLength": running,
+        }
+        stroke.append(prev)
+    stroke[0]["vector"] = stroke[1]["vector"] if len(stroke) > 1 else point(0, 0)
+    return stroke
+
+
+def pen_outline(input_points, width):
+    """getStrokeOutlinePoints for the fixed options above."""
+    size = width
+    points = pen_stroke_points(input_points, size)
+    if not points or size <= 0:
+        return []
+    total = points[-1]["runningLength"]
+    taper_start = size * PEN_TAPER_PER_WIDTH
+    taper_end = size * PEN_TAPER_PER_WIDTH
+    min_distance = (size * PEN_SMOOTHING) ** 2
+    left, right = [], []
+
+    prev_pressure = points[0]["pressure"]
+    for curr in points[:10]:
+        prev_pressure = (prev_pressure + simulate_pressure(prev_pressure, curr["distance"], size)) / 2
+
+    radius = stroke_radius(size, points[-1]["pressure"])
+    first_radius = None
+    prev_vector = points[0]["vector"]
+    prev_left = points[0]["point"]
+    prev_right = prev_left
+    temp_left = prev_left
+    temp_right = prev_right
+    prev_sharp = False
+
+    for i, sp in enumerate(points):
+        p, vector, distance, running = sp["point"], sp["vector"], sp["distance"], sp["runningLength"]
+        is_last = i == len(points) - 1
+        if not is_last and total - running < END_NOISE_THRESHOLD:
+            continue
+        pressure = simulate_pressure(prev_pressure, distance, size)
+        radius = stroke_radius(size, pressure)
+        if first_radius is None:
+            first_radius = radius
+        start_strength = (lambda x: x * (2 - x))(running / taper_start) if running < taper_start else 1
+        end_strength = (lambda x: (x - 1) * (x - 1) * (x - 1) + 1)((total - running) / taper_end) if total - running < taper_end else 1
+        radius = max(MIN_RADIUS, radius * min(start_strength, end_strength))
+
+        next_vector = (points[i + 1] if not is_last else sp)["vector"]
+        next_dpr = v_dpr(vector, next_vector) if not is_last else 1.0
+        prev_dpr = v_dpr(vector, prev_vector)
+        is_sharp = prev_dpr < 0 and not prev_sharp
+        is_next_sharp = next_dpr < 0
+        if is_sharp or is_next_sharp:
+            offset = mul(v_per(prev_vector), radius)
+            step = 1 / CORNER_CAP_SEGMENTS
+            t = 0
+            while t <= 1:
+                temp_left = v_rot_around(sub(p, offset), p, FIXED_PI * t)
+                left.append(temp_left)
+                temp_right = v_rot_around(add(p, offset), p, FIXED_PI * -t)
+                right.append(temp_right)
+                t += step
+            prev_left = temp_left
+            prev_right = temp_right
+            if is_next_sharp:
+                prev_sharp = True
+            continue
+        prev_sharp = False
+        if is_last:
+            offset = mul(v_per(vector), radius)
+            left.append(sub(p, offset))
+            right.append(add(p, offset))
+            continue
+        offset = mul(v_per(v_lrp(next_vector, vector, next_dpr)), radius)
+        temp_left = sub(p, offset)
+        if i <= 1 or v_dist2(prev_left, temp_left) > min_distance:
+            left.append(temp_left)
+            prev_left = temp_left
+        temp_right = add(p, offset)
+        if i <= 1 or v_dist2(prev_right, temp_right) > min_distance:
+            right.append(temp_right)
+            prev_right = temp_right
+        prev_pressure = pressure
+        prev_vector = vector
+
+    first = points[0]["point"]
+    last = points[-1]["point"] if len(points) > 1 else add(points[0]["point"], point(1, 1))
+    if len(points) == 1:
+        # A dot: the stroke is complete, so even a tapered one draws a circle.
+        center = first
+        start = add(center, mul(v_uni(v_per(sub(center, add(center, point(1, 1))))), -(first_radius or radius)))
+        dot = []
+        step = 1 / START_CAP_SEGMENTS
+        t = step
+        while t <= 1:
+            dot.append(v_rot_around(start, center, FIXED_PI * 2 * t))
+            t += step
+        return dot
+    # Both ends taper, so there is no start cap and the end is the last point.
+    return left + [last] + list(reversed(right))
+
+
+def pen_case(description, points, width):
+    pts = [point(x, y) for x, y in points]
+    return {"description": description, "points": pts, "width": width, "expected": pen_outline(pts, width)}
+
+
+def generate_pens():
+    wave = [(20 + i * 6, 100 + 30 * math.sin(i / 5)) for i in range(60)]
+    zigzag = [(20 + i * 4, 60) for i in range(30)] + [(136 - i * 4, 60 + i * 3) for i in range(1, 30)]
+    slow = [(50 + i * 0.5, 50 + i * 0.25) for i in range(80)]
+    return {
+        "pen.json": {
+            "description": "Freehand outlines: a smooth wave, a sharp reversal, slow dense input, a two-point dash, a single dot, and a thick stroke.",
+            "cases": [
+                pen_case("wave", wave, 6),
+                pen_case("sharp reversal", zigzag, 8),
+                pen_case("slow dense input", slow, 4),
+                pen_case("two points", [(10, 10), (90, 40)], 6),
+                pen_case("single point", [(40, 40)], 10),
+                pen_case("thick wave", wave, 24),
+            ],
+        },
+    }
+
+
 def line_case(start, end, width, start_cap, end_cap, scale=1):
     start = point(*start)
     end = point(*end)
@@ -407,6 +629,8 @@ def generated_files():
     files = {}
     for filename, fixture in generate_arrows().items():
         files[Path("arrow") / filename] = fixture
+    for filename, fixture in generate_pens().items():
+        files[Path("pen") / filename] = fixture
     for filename, fixture in generate_lines().items():
         files[Path("line") / filename] = fixture
     for filename, fixture in generate_alignments().items():

@@ -1617,6 +1617,255 @@ enum LineGeometry {
     }
 }
 
+/// Freehand pen strokes as one filled outline, shared with Windows through
+/// `shared/screenshot/fixtures/pen`. A port of perfect-freehand's `getStroke` (MIT, © 2021 Stephen
+/// Ruiz Ltd, github.com/steveruizok/perfect-freehand at 176e00f) with fixed options: size = the
+/// stroke width, thinning 0.3, smoothing 0.5, streamline 0.5, simulated pressure, linear easing,
+/// both ends tapered, and the stroke treated as complete. Lengths use `squareRoot()` rather than
+/// `hypot`, and the cap loops keep the source's accumulating steps, so every platform produces the
+/// same points. Work in image pixels: the thresholds are in the stroke's own units.
+enum PenGeometry {
+    private static let thinning: CGFloat = 0.3
+    private static let smoothing: CGFloat = 0.5
+    private static let streamline: CGFloat = 0.5
+    private static let taperPerWidth: CGFloat = 3
+    private static let rateOfPressureChange: CGFloat = 0.275
+    private static let fixedPi: CGFloat = .pi + 0.0001
+    private static let startCapSegments: CGFloat = 13
+    private static let cornerCapSegments: CGFloat = 13
+    private static let endNoiseThreshold: CGFloat = 3
+    private static let minStreamlineT: CGFloat = 0.15
+    private static let streamlineTRange: CGFloat = 0.85
+    private static let minRadius: CGFloat = 0.01
+    private static let defaultFirstPressure: CGFloat = 0.25
+    private static let defaultPressure: CGFloat = 0.5
+
+    private struct StrokePoint {
+        var point: CGPoint
+        var pressure: CGFloat
+        var vector: CGPoint
+        var distance: CGFloat
+        var runningLength: CGFloat
+    }
+
+    static func outline(_ input: [CGPoint], width: CGFloat) -> [CGPoint] {
+        let size = width
+        let points = strokePoints(input, size: size)
+        guard !points.isEmpty, size > 0 else { return [] }
+
+        let total = points[points.count - 1].runningLength
+        let taperStart = size * taperPerWidth
+        let taperEnd = size * taperPerWidth
+        let minDistance = pow(size * smoothing, 2)
+        var left: [CGPoint] = []
+        var right: [CGPoint] = []
+
+        var prevPressure = points[0].pressure
+        for curr in points.prefix(10) {
+            prevPressure = (prevPressure + simulatePressure(prevPressure, distance: curr.distance, size: size)) / 2
+        }
+
+        var radius = strokeRadius(size, pressure: points[points.count - 1].pressure)
+        var firstRadius: CGFloat?
+        var prevVector = points[0].vector
+        var prevLeft = points[0].point
+        var prevRight = prevLeft
+        var tempLeft = prevLeft
+        var tempRight = prevRight
+        var prevSharp = false
+
+        for i in points.indices {
+            let sp = points[i]
+            let p = sp.point
+            let vector = sp.vector
+            let running = sp.runningLength
+            let isLast = i == points.count - 1
+            if !isLast && total - running < endNoiseThreshold {
+                continue
+            }
+
+            let pressure = simulatePressure(prevPressure, distance: sp.distance, size: size)
+            radius = strokeRadius(size, pressure: pressure)
+            if firstRadius == nil {
+                firstRadius = radius
+            }
+
+            var startStrength: CGFloat = 1
+            if running < taperStart {
+                let x = running / taperStart
+                startStrength = x * (2 - x)
+            }
+            var endStrength: CGFloat = 1
+            if total - running < taperEnd {
+                let x = (total - running) / taperEnd
+                endStrength = (x - 1) * (x - 1) * (x - 1) + 1
+            }
+            radius = max(minRadius, radius * min(startStrength, endStrength))
+
+            let nextVector = (!isLast ? points[i + 1] : sp).vector
+            let nextDpr = !isLast ? dpr(vector, nextVector) : 1.0
+            let prevDpr = dpr(vector, prevVector)
+            let isSharp = prevDpr < 0 && !prevSharp
+            let isNextSharp = nextDpr < 0
+
+            if isSharp || isNextSharp {
+                let offset = mul(per(prevVector), radius)
+                let step = 1 / cornerCapSegments
+                var t: CGFloat = 0
+                while t <= 1 {
+                    tempLeft = rotate(sub(p, offset), around: p, by: fixedPi * t)
+                    left.append(tempLeft)
+                    tempRight = rotate(add(p, offset), around: p, by: fixedPi * -t)
+                    right.append(tempRight)
+                    t += step
+                }
+                prevLeft = tempLeft
+                prevRight = tempRight
+                if isNextSharp {
+                    prevSharp = true
+                }
+                continue
+            }
+
+            prevSharp = false
+            if isLast {
+                let offset = mul(per(vector), radius)
+                left.append(sub(p, offset))
+                right.append(add(p, offset))
+                continue
+            }
+
+            let offset = mul(per(lerp(nextVector, vector, nextDpr)), radius)
+            tempLeft = sub(p, offset)
+            if i <= 1 || dist2(prevLeft, tempLeft) > minDistance {
+                left.append(tempLeft)
+                prevLeft = tempLeft
+            }
+            tempRight = add(p, offset)
+            if i <= 1 || dist2(prevRight, tempRight) > minDistance {
+                right.append(tempRight)
+                prevRight = tempRight
+            }
+            prevPressure = pressure
+            prevVector = vector
+        }
+
+        let first = points[0].point
+        if points.count == 1 {
+            // A dot: the stroke is complete, so even a tapered one draws a circle.
+            let start = add(first, mul(unit(per(sub(first, add(first, CGPoint(x: 1, y: 1))))), -(firstRadius ?? radius)))
+            var dot: [CGPoint] = []
+            let step = 1 / startCapSegments
+            var t = step
+            while t <= 1 {
+                dot.append(rotate(start, around: first, by: fixedPi * 2 * t))
+                t += step
+            }
+            return dot
+        }
+
+        // Both ends taper, so there is no start cap and the end is the last point.
+        return left + [points[points.count - 1].point] + right.reversed()
+    }
+
+    /// A smooth closed path through the outline: quadratic curves through each pair of points'
+    /// midpoints, as perfect-freehand recommends, so the edge does not look faceted.
+    static func smoothPath(_ outline: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        guard outline.count >= 3 else { return path }
+        path.move(to: outline[0])
+        for i in outline.indices {
+            let point = outline[i]
+            let next = outline[(i + 1) % outline.count]
+            path.addQuadCurve(to: lerp(point, next, 0.5), control: point)
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    private static func strokePoints(_ input: [CGPoint], size: CGFloat) -> [StrokePoint] {
+        guard !input.isEmpty else { return [] }
+        let t = minStreamlineT + (1 - streamline) * streamlineTRange
+        var pts = input
+        if pts.count == 2 {
+            let last = pts[1]
+            pts = [pts[0]] + (1..<5).map { lerp(pts[0], last, CGFloat($0) / 4) }
+        }
+        if pts.count == 1 {
+            pts.append(add(pts[0], CGPoint(x: 1, y: 1)))
+        }
+
+        var result = [StrokePoint(point: pts[0], pressure: defaultFirstPressure, vector: CGPoint(x: 1, y: 1), distance: 0, runningLength: 0)]
+        var prev = result[0]
+        var reachedMinimum = false
+        var running: CGFloat = 0
+        let lastIndex = pts.count - 1
+        for i in 1..<pts.count {
+            let p = i == lastIndex ? pts[i] : lerp(prev.point, pts[i], t)
+            if p.x == prev.point.x && p.y == prev.point.y {
+                continue
+            }
+            let distance = length(sub(p, prev.point))
+            running += distance
+            if i < lastIndex && !reachedMinimum {
+                if running < size {
+                    continue
+                }
+                reachedMinimum = true
+            }
+            prev = StrokePoint(point: p, pressure: defaultPressure, vector: unit(sub(prev.point, p)), distance: distance, runningLength: running)
+            result.append(prev)
+        }
+        result[0].vector = result.count > 1 ? result[1].vector : .zero
+        return result
+    }
+
+    private static func simulatePressure(_ prev: CGFloat, distance: CGFloat, size: CGFloat) -> CGFloat {
+        let sp = min(1, distance / size)
+        let rp = min(1, 1 - sp)
+        return min(1, prev + (rp - prev) * (sp * rateOfPressureChange))
+    }
+
+    private static func strokeRadius(_ size: CGFloat, pressure: CGFloat) -> CGFloat {
+        size * (0.5 - thinning * (0.5 - pressure))
+    }
+
+    private static func rotate(_ a: CGPoint, around c: CGPoint, by r: CGFloat) -> CGPoint {
+        let s = sin(r)
+        let co = cos(r)
+        let px = a.x - c.x
+        let py = a.y - c.y
+        return CGPoint(x: px * co - py * s + c.x, y: px * s + py * co + c.y)
+    }
+
+    private static func length(_ a: CGPoint) -> CGFloat { (a.x * a.x + a.y * a.y).squareRoot() }
+
+    private static func unit(_ a: CGPoint) -> CGPoint {
+        let n = length(a)
+        return CGPoint(x: a.x / n, y: a.y / n)
+    }
+
+    private static func per(_ a: CGPoint) -> CGPoint { CGPoint(x: a.y, y: -a.x) }
+
+    private static func dpr(_ a: CGPoint, _ b: CGPoint) -> CGFloat { a.x * b.x + a.y * b.y }
+
+    private static func dist2(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let dx = a.x - b.x
+        let dy = a.y - b.y
+        return dx * dx + dy * dy
+    }
+
+    private static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
+        CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+    }
+
+    private static func add(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: a.x + b.x, y: a.y + b.y) }
+
+    private static func sub(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: a.x - b.x, y: a.y - b.y) }
+
+    private static func mul(_ a: CGPoint, _ k: CGFloat) -> CGPoint { CGPoint(x: a.x * k, y: a.y * k) }
+}
+
 /// Stroke widths are stored in source-image pixels, the unit the Windows editor and the shared
 /// fixtures use.
 enum AnnotationStrokeMath {

@@ -2374,18 +2374,7 @@ internal sealed class EditorController : IDisposable
 
         try
         {
-            if (ann.Tool.NeedsOpacityLayer() && color.A < 255)
-            {
-                // Draw opaque, then fade the whole annotation once so overlaps don't darken.
-                using (ds.CreateLayer(color.A / 255f))
-                {
-                    DrawAnnotationCore(ds, ann, Color.FromArgb(255, color.R, color.G, color.B), thickness);
-                }
-            }
-            else
-            {
-                DrawAnnotationCore(ds, ann, color, thickness);
-            }
+            DrawAnnotationCore(ds, ann, color, thickness);
         }
         finally
         {
@@ -2441,19 +2430,24 @@ internal sealed class EditorController : IDisposable
             }
             case EditTool.Pen:
             {
-                if (ann.Points.Length > 1)
+                var outline = PenGeometry.Outline(ann.Points.Select(p => new PointD(p.X, p.Y)).ToArray(), ann.Thickness);
+                if (outline.Count < 3)
                 {
-                    var style = new CanvasStrokeStyle
-                    {
-                        StartCap = CanvasCapStyle.Round,
-                        EndCap = CanvasCapStyle.Round,
-                        LineJoin = CanvasLineJoin.Round,
-                    };
-                    for (var i = 1; i < ann.Points.Length; i++)
-                    {
-                        ds.DrawLine(ann.Points[i - 1], ann.Points[i], color, thickness, style);
-                    }
+                    break;
                 }
+                // Quadratic curves through each pair of points' midpoints keep the edge from looking faceted.
+                using var pb = new CanvasPathBuilder(ds.Device);
+                pb.SetFilledRegionDetermination(CanvasFilledRegionDetermination.Winding);
+                pb.BeginFigure(ToVector2(outline[0]));
+                for (var i = 0; i < outline.Count; i++)
+                {
+                    var point = outline[i];
+                    var next = outline[(i + 1) % outline.Count];
+                    pb.AddQuadraticBezier(ToVector2(point), ToVector2(new PointD((point.X + next.X) / 2, (point.Y + next.Y) / 2)));
+                }
+                pb.EndFigure(CanvasFigureLoop.Closed);
+                using var geometry = CanvasGeometry.CreatePath(pb);
+                ds.FillGeometry(geometry, color);
                 break;
             }
             case EditTool.Text:

@@ -21,15 +21,6 @@ public sealed class AnnotationStrokeTests
     }
 
     [Fact]
-    public void PenStrokesFadeAsOneLayer()
-    {
-        Assert.False(EditTool.Arrow.NeedsOpacityLayer());
-        Assert.True(EditTool.Pen.NeedsOpacityLayer());
-        Assert.False(EditTool.Line.NeedsOpacityLayer());
-        Assert.False(EditTool.Rectangle.NeedsOpacityLayer());
-    }
-
-    [Fact]
     public void NewAnnotationsDefaultToRoundEndsAndCorners()
     {
         var snapshot = new ScreenshotAnnotation { Tool = EditTool.Line }.CaptureSnapshot();

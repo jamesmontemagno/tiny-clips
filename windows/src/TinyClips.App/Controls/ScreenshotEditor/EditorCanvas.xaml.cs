@@ -50,18 +50,6 @@ public sealed partial class EditorCanvas : UserControl
         // Arrows and lines hold their body and outline in one container, so the outline can
         // move behind the body for an outside stroke.
         public Canvas? Group;
-
-        // Pen-stroke incremental sync bookkeeping: lets a growing stroke append only the new
-        // points instead of rebuilding the whole polyline every pointer move.
-        public int SyncedPointCount;
-        public double SyncedScale = double.NaN;
-        public double SyncedOffsetX = double.NaN;
-        public double SyncedOffsetY = double.NaN;
-        // The first point's pixel-space value at the last sync — lets a whole-stroke translation
-        // (moving a completed Pen annotation with the Select tool, which keeps the point count
-        // but shifts every point by dx/dy) be detected cheaply and trigger a full point resync,
-        // since the append-only fast path above would otherwise miss it (count doesn't change).
-        public Vector2? SyncedFirstPoint;
     }
 
     private EditorController _controller = null!;
@@ -762,16 +750,11 @@ public sealed partial class EditorCanvas : UserControl
             }
             case EditTool.Pen:
             {
-                var stroke = new SolidColorBrush();
-                var poly = new Polyline
-                {
-                    Stroke = stroke,
-                    StrokeLineJoin = PenLineJoin.Round,
-                    StrokeStartLineCap = PenLineCap.Round,
-                    StrokeEndLineCap = PenLineCap.Round,
-                };
-                OverlayCanvas.Children.Add(poly);
-                return new AnnotationVisual { Primary = poly, StrokeBrush = stroke };
+                // One filled, tapered outline, so a translucent color stays even.
+                var fill = new SolidColorBrush();
+                var stroke = new ShapesPath { Fill = fill };
+                OverlayCanvas.Children.Add(stroke);
+                return new AnnotationVisual { Primary = stroke, FillBrush = fill };
             }
             case EditTool.Redact:
             {
@@ -997,7 +980,7 @@ public sealed partial class EditorCanvas : UserControl
                 PositionArrow(ann, visual, scale, offX, offY);
                 break;
             case EditTool.Pen:
-                PositionPen(ann, visual, scale, offX, offY, thickness);
+                PositionPen(ann, visual, scale, offX, offY);
                 break;
             case EditTool.Redact:
                 PositionRedact(ann, visual, scale, offX, offY);
@@ -1091,47 +1074,30 @@ public sealed partial class EditorCanvas : UserControl
         }
     }
 
-    private static void PositionPen(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY, double thickness)
+    private static void PositionPen(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)
     {
-        var poly = (Polyline)visual.Primary;
-        poly.StrokeThickness = thickness;
-        visual.StrokeBrush!.Color = ann.Color;
-
-        var layoutChanged = visual.SyncedScale != scale || visual.SyncedOffsetX != offX || visual.SyncedOffsetY != offY;
-        // Detects a whole-stroke translation (moving an already-drawn Pen annotation with the
-        // Select tool): the point count stays the same but every point shifts by the same dx/dy,
-        // so the append-only fast path below would otherwise never notice and the polyline would
-        // stay frozen at its pre-move position.
-        var translated = !layoutChanged
-            && ann.Points.Count == visual.SyncedPointCount
-            && ann.Points.Count > 0
-            && visual.SyncedFirstPoint is { } first
-            && first != ann.Points[0];
-        if (layoutChanged || translated || ann.Points.Count < visual.SyncedPointCount)
+        visual.FillBrush!.Color = ann.Color;
+        // The outline is built in image pixels, where its thresholds are defined, then placed.
+        var outline = PenGeometry.Outline(ann.Points.Select(p => new PointD(p.X, p.Y)).ToArray(), ann.Thickness);
+        var geometry = new PathGeometry();
+        if (outline.Count >= 3)
         {
-            poly.Points.Clear();
-            foreach (var pt in ann.Points)
+            Point Place(PointD p) => ToCanvas(new Point(p.X, p.Y), scale, offX, offY);
+            var figure = new PathFigure { StartPoint = Place(outline[0]), IsClosed = true, IsFilled = true };
+            // Quadratic curves through each pair of points' midpoints keep the edge from looking faceted.
+            for (var i = 0; i < outline.Count; i++)
             {
-                poly.Points.Add(ToCanvas(new Point(pt.X, pt.Y), scale, offX, offY));
+                var point = outline[i];
+                var next = outline[(i + 1) % outline.Count];
+                figure.Segments.Add(new QuadraticBezierSegment
+                {
+                    Point1 = Place(point),
+                    Point2 = Place(new PointD((point.X + next.X) / 2, (point.Y + next.Y) / 2)),
+                });
             }
-            visual.SyncedPointCount = ann.Points.Count;
+            geometry.Figures.Add(figure);
         }
-        else if (ann.Points.Count > visual.SyncedPointCount)
-        {
-            // The common case during an active pen stroke: append just the new point(s) instead
-            // of rebuilding the whole polyline — O(1) amortized per pointer move instead of O(n).
-            for (var i = visual.SyncedPointCount; i < ann.Points.Count; i++)
-            {
-                var pt = ann.Points[i];
-                poly.Points.Add(ToCanvas(new Point(pt.X, pt.Y), scale, offX, offY));
-            }
-            visual.SyncedPointCount = ann.Points.Count;
-        }
-
-        visual.SyncedScale = scale;
-        visual.SyncedOffsetX = offX;
-        visual.SyncedOffsetY = offY;
-        visual.SyncedFirstPoint = ann.Points.Count > 0 ? ann.Points[0] : null;
+        ((ShapesPath)visual.Primary).Data = geometry;
     }
 
     private static void PositionRedact(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)

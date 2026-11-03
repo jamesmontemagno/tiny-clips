@@ -654,18 +654,14 @@ struct ScreenshotEditorCanvasView: View {
 
         case .pencil:
             if annotation.points.count > 1 {
-                var path = Path()
-                let scaledPoints = annotation.points.map { pt in
-                    CGPoint(
-                        x: origin.x + pt.x * imageSize.width,
-                        y: origin.y + pt.y * imageSize.height
-                    )
+                // The outline is built in image pixels, where its thresholds are defined, then placed.
+                let pixelSize = CGSize(width: imageSize.width / pixelScale, height: imageSize.height / pixelScale)
+                let pixelPoints = annotation.points.map { CGPoint(x: $0.x * pixelSize.width, y: $0.y * pixelSize.height) }
+                let outline = PenGeometry.outline(pixelPoints, width: annotation.lineWidth)
+                var place = CGAffineTransform(translationX: origin.x, y: origin.y).scaledBy(x: pixelScale, y: pixelScale)
+                if let placed = PenGeometry.smoothPath(outline).copy(using: &place) {
+                    context.fill(Path(placed), with: .color(color))
                 }
-                path.move(to: scaledPoints[0])
-                for pt in scaledPoints.dropFirst() {
-                    path.addLine(to: pt)
-                }
-                context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
             }
 
         case .blur:

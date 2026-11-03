@@ -2389,21 +2389,20 @@ class ScreenshotEditorViewModel: ObservableObject {
 
         case .pencil:
             if annotation.points.count > 1 {
-                let scaledPoints = annotation.points.map { pt in
-                    CGPoint(
-                        x: (pt.x * fullSize.width) - cropOrigin.x + contentOffset.x,
-                        y: imageOutputHeight - ((pt.y * fullSize.height) - cropOrigin.y) + contentOffset.y
-                    )
+                // Built in image pixels (y-down, where the geometry is defined), then flipped and
+                // moved into the context.
+                let pixelPoints = annotation.points.map { CGPoint(x: $0.x * fullSize.width, y: $0.y * fullSize.height) }
+                let outline = PenGeometry.outline(pixelPoints, width: strokeWidth)
+                var place = CGAffineTransform(
+                    a: 1, b: 0, c: 0, d: -1,
+                    tx: contentOffset.x - cropOrigin.x,
+                    ty: imageOutputHeight + cropOrigin.y + contentOffset.y
+                )
+                if let placed = PenGeometry.smoothPath(outline).copy(using: &place) {
+                    ctx.setFillColor(cgColor)
+                    ctx.addPath(placed)
+                    ctx.fillPath()
                 }
-                ctx.move(to: scaledPoints[0])
-                for pt in scaledPoints.dropFirst() {
-                    ctx.addLine(to: pt)
-                }
-                ctx.saveGState()
-                ctx.setLineCap(.round)
-                ctx.setLineJoin(.round)
-                ctx.strokePath()
-                ctx.restoreGState()
             }
 
         case .blur:
