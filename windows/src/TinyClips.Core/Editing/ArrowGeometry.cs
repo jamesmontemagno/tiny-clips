@@ -127,6 +127,8 @@ public static class ArrowGeometry
             u * u * start.Y + 2 * u * t * control.Y + t * t * end.Y);
     }
 
+    /// <param name="roughness">Above 0, the shaft follows a hand-drawn wobble seeded by
+    /// <paramref name="seed"/> (see <see cref="SketchGeometry"/>); the taper follows it.</param>
     public static ArrowOutline Build(
         PointD start,
         PointD end,
@@ -134,7 +136,9 @@ public static class ArrowGeometry
         ArrowShapeOptions options,
         StrokeCap startCap,
         StrokeJoin join,
-        double scale = 1)
+        double scale = 1,
+        double roughness = 0,
+        int seed = 0)
     {
         var chord = Sub(end, start);
         var length = Length(chord);
@@ -145,12 +149,13 @@ public static class ArrowGeometry
             return new ArrowOutline(control, handle, Array.Empty<PointD>());
         }
         var u = Mul(chord, 1 / length);
+        var (p0, c1, c2, p3) = Centerline(start, end, control, width * scale, roughness, seed);
 
         var head = Math.Min(options.HeadScale * HeadLength(width) * scale, MaximumHeadFraction * length);
-        var tipDirection = Normalize(Sub(end, control), u);
+        var tipDirection = Normalize(Sub(p3, c2), u);
         var angle = Math.Atan2(tipDirection.Y, tipDirection.X);
-        var wingRight = new PointD(end.X - head * Math.Cos(angle - HeadSpread), end.Y - head * Math.Sin(angle - HeadSpread));
-        var wingLeft = new PointD(end.X - head * Math.Cos(angle + HeadSpread), end.Y - head * Math.Sin(angle + HeadSpread));
+        var wingRight = new PointD(p3.X - head * Math.Cos(angle - HeadSpread), p3.Y - head * Math.Sin(angle - HeadSpread));
+        var wingLeft = new PointD(p3.X - head * Math.Cos(angle + HeadSpread), p3.Y - head * Math.Sin(angle + HeadSpread));
 
         // The shaft stops where the curve is as far from the tip as the head's base.
         var baseDistance = head * Math.Cos(HeadSpread);
@@ -158,7 +163,7 @@ public static class ArrowGeometry
         for (var i = 0; i < TrimIterations; i++)
         {
             var m = (lo + hi) / 2;
-            if (Length(Sub(PointOnCurve(start, control, end, m), end)) > baseDistance)
+            if (Length(Sub(Cubic(p0, c1, c2, p3, m), p3)) > baseDistance)
             {
                 lo = m;
             }
@@ -171,50 +176,82 @@ public static class ArrowGeometry
 
         var startHalf = width * options.StartWidthScale / 2 * scale;
         var endHalf = Math.Min(width * options.EndWidthScale / 2 * scale, ShaftEndFraction * head * Math.Sin(HeadSpread));
-        var left = new PointD[ShaftSamples + 1];
-        var right = new PointD[ShaftSamples + 1];
-        for (var i = 0; i <= ShaftSamples; i++)
-        {
-            var f = (double)i / ShaftSamples;
-            var t = trim * f;
-            var p = PointOnCurve(start, control, end, t);
-            var n = RightNormal(Normalize(Tangent(start, control, end, t), u));
-            var half = startHalf + (endHalf - startHalf) * f;
-            left[i] = Sub(p, Mul(n, half));
-            right[i] = Add(p, Mul(n, half));
-        }
+        var (left, right) = ShaftEdges(p0, c1, c2, p3, trim, startHalf, endHalf, u);
 
         var size = Math.Min(width / 2 * scale, 0.2 * head);
         var points = new List<PointD>(left.Length * 2 + 3 * (CornerSegments + 1) + CapSegments);
         points.AddRange(left);
-        AddCorner(points, left[^1], wingLeft, end, size, join);
-        AddCorner(points, wingLeft, end, wingRight, size, join);
-        AddCorner(points, end, wingRight, right[^1], size, join);
+        AddCorner(points, left[^1], wingLeft, p3, size, join);
+        AddCorner(points, wingLeft, p3, wingRight, size, join);
+        AddCorner(points, p3, wingRight, right[^1], size, join);
         for (var i = right.Length - 1; i >= 0; i--)
         {
             points.Add(right[i]);
         }
 
-        var tailTangent = Normalize(Tangent(start, control, end, 0), u);
-        var tailNormal = RightNormal(tailTangent);
-        if (startCap == StrokeCap.Round)
-        {
-            for (var j = 1; j < CapSegments; j++)
-            {
-                var theta = Math.PI * j / CapSegments;
-                points.Add(Add(start, Add(
-                    Mul(tailNormal, startHalf * Math.Cos(theta)),
-                    Mul(tailTangent, -startHalf * Math.Sin(theta)))));
-            }
-        }
-        else if (startCap == StrokeCap.Square)
-        {
-            var back = Mul(tailTangent, -startHalf);
-            points.Add(Add(right[0], back));
-            points.Add(Add(left[0], back));
-        }
-
+        var tailTangent = Normalize(CubicTangent(p0, c1, c2, p3, 0), u);
+        LineGeometry.AddCap(points, p0, Mul(tailTangent, -1), Mul(RightNormal(tailTangent), -1), startHalf, startCap);
         return new ArrowOutline(control, handle, points);
+    }
+
+    /// <summary>
+    /// The arrow's centerline as a cubic: its bend's quadratic raised to a cubic, plus the
+    /// hand-drawn wobble when sketched.
+    /// </summary>
+    private static (PointD, PointD, PointD, PointD) Centerline(PointD start, PointD end, PointD control, double width, double roughness, int seed)
+    {
+        if (roughness > 0)
+        {
+            var (s0, c1, c2, e) = SketchGeometry.Centerline(start, end, width, roughness, seed);
+            var d = Mul(Sub(control, Lerp(start, end, 0.5)), 2.0 / 3);
+            return (s0, Add(c1, d), Add(c2, d), e);
+        }
+        return (start, Add(start, Mul(Sub(control, start), 2.0 / 3)), Add(end, Mul(Sub(control, end), 2.0 / 3)), end);
+    }
+
+    /// <summary>
+    /// The left and right edges of a stroke along a cubic, from t = 0 to <paramref name="tEnd"/>,
+    /// whose half width runs from <paramref name="startHalf"/> to <paramref name="endHalf"/>.
+    /// </summary>
+    internal static (PointD[] Left, PointD[] Right) ShaftEdges(
+        PointD p0, PointD c1, PointD c2, PointD p3, double tEnd, double startHalf, double endHalf, PointD fallback)
+    {
+        var left = new PointD[ShaftSamples + 1];
+        var right = new PointD[ShaftSamples + 1];
+        for (var i = 0; i <= ShaftSamples; i++)
+        {
+            var f = (double)i / ShaftSamples;
+            var t = tEnd * f;
+            var p = Cubic(p0, c1, c2, p3, t);
+            var n = RightNormal(Normalize(CubicTangent(p0, c1, c2, p3, t), fallback));
+            var half = startHalf + (endHalf - startHalf) * f;
+            left[i] = Sub(p, Mul(n, half));
+            right[i] = Add(p, Mul(n, half));
+        }
+        return (left, right);
+    }
+
+    internal static PointD Cubic(PointD p0, PointD c1, PointD c2, PointD p3, double t)
+    {
+        var u = 1 - t;
+        var a = u * u * u;
+        var b = 3 * u * u * t;
+        var c = 3 * u * t * t;
+        var d = t * t * t;
+        return new PointD(
+            a * p0.X + b * c1.X + c * c2.X + d * p3.X,
+            a * p0.Y + b * c1.Y + c * c2.Y + d * p3.Y);
+    }
+
+    internal static PointD CubicTangent(PointD p0, PointD c1, PointD c2, PointD p3, double t)
+    {
+        var u = 1 - t;
+        var a = 3 * u * u;
+        var b = 6 * u * t;
+        var c = 3 * t * t;
+        return new PointD(
+            a * (c1.X - p0.X) + b * (c2.X - c1.X) + c * (p3.X - c2.X),
+            a * (c1.Y - p0.Y) + b * (c2.Y - c1.Y) + c * (p3.Y - c2.Y));
     }
 
     private static void AddCorner(List<PointD> points, PointD previous, PointD vertex, PointD next, double size, StrokeJoin join)
@@ -253,14 +290,10 @@ public static class ArrowGeometry
         return Length(Sub(p, Add(a, Mul(ab, t))));
     }
 
-    private static PointD Tangent(PointD start, PointD control, PointD end, double t) => new(
-        2 * (1 - t) * (control.X - start.X) + 2 * t * (end.X - control.X),
-        2 * (1 - t) * (control.Y - start.Y) + 2 * t * (end.Y - control.Y));
-
     /// <summary>The unit normal to the right of travel in a y-down space.</summary>
-    private static PointD RightNormal(PointD direction) => new(-direction.Y, direction.X);
+    internal static PointD RightNormal(PointD direction) => new(-direction.Y, direction.X);
 
-    private static PointD Normalize(PointD v, PointD fallback)
+    internal static PointD Normalize(PointD v, PointD fallback)
     {
         var length = Length(v);
         return length > 1e-9 ? Mul(v, 1 / length) : fallback;

@@ -642,6 +642,29 @@ struct ScreenshotEditorView: View {
         )
     }
 
+    private var sketchBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.selectedIsSketch() ?? viewModel.isSketch },
+            set: { newValue in
+                if !viewModel.updateSelectedIsSketch(newValue) {
+                    viewModel.isSketch = newValue
+                }
+            }
+        )
+    }
+
+    private var roughnessBinding: Binding<CGFloat> {
+        Binding(
+            get: { viewModel.selectedRoughness() ?? viewModel.roughness },
+            set: { newValue in
+                let roughness = (newValue * 4).rounded() / 4
+                if !viewModel.updateSelectedRoughness(roughness) {
+                    viewModel.roughness = roughness
+                }
+            }
+        )
+    }
+
     private var outlineColorBinding: Binding<Color> {
         Binding(
             get: { viewModel.selectedOutlineColor() ?? viewModel.outlineColor },
@@ -1545,6 +1568,28 @@ struct ScreenshotEditorView: View {
                     }
                 }
                 .accessibilityLabel("Line end")
+            }
+
+            if viewModel.showsSketchControls {
+                Toggle("Hand-drawn", isOn: sketchBinding)
+
+                if sketchBinding.wrappedValue {
+                    LabeledContent("Roughness") {
+                        HStack(spacing: 8) {
+                            Slider(
+                                value: roughnessBinding,
+                                in: SketchGeometry.roughnessRange,
+                                step: 0.25,
+                                onEditingChanged: { viewModel.setAdjustingSelectedLineWidth($0) }
+                            )
+                            Text(String(format: "%.2g", Double(roughnessBinding.wrappedValue)))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .frame(width: 38, alignment: .trailing)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
             }
 
             if viewModel.showsLineJoinControl {

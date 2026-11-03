@@ -312,6 +312,7 @@ Pen                               pen only
 5. **Freehand pen** using the perfect-freehand port.
    - Done. Fixed options: thinning 0.3 (0.5 drew a 6 px pen about 3 px wide), smoothing and streamline 0.5, simulated pressure, both ends tapered over 3 widths, `last = true`. Lengths use sqrt instead of hypot and cap loops keep the source's accumulating steps so all three implementations match bit for bit. Rendered through midpoint quadratic curves. Real pen pressure is not used yet (still an open question).
 6. **Sketch style** using the rough.js port, with the seed. Fixtures must lock the random-number sequence.
+   - Done. Rectangles and ellipses stroke rough.js's double-stroke ops (alignment does not apply to them). Lines and arrows bend their centerline along rough.js's single-stroke line (arrows add their bend on top) and build their filled body along it, so taper, fill, and outline still work. Arrows now always use a cubic centerline (the bend's quadratic raised to a cubic). Coordinates are divided by half the stroke width before rough.js runs. Fills stay solid (the hachure question is still open). Every annotation gets a random non-zero seed at creation.
 7. Accessibility pass (VoiceOver and UI Automation for the new controls and the bend handle), then changelogs.
 
 ### 3.4 Risks
