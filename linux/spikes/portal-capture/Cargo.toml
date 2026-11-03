@@ -1,0 +1,13 @@
+[package]
+name = "tinyclips-portal-probe"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+description = "Developer-only GTK screenshot portal probe for GNOME 48 on Wayland"
+
+[dependencies]
+# Native library floors: GTK 4.8 (including its Wayland backend), libadwaita 1.0.
+gtk = { package = "gtk4", version = "=0.10.2", features = ["v4_8"] }
+adw = { package = "libadwaita", version = "=0.8.1" }
+ashpd = { version = "=0.12.3", default-features = false, features = ["async-std", "gtk4_wayland"] }

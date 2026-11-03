@@ -1,6 +1,6 @@
 # Tiny Clips for Linux — native GNOME port plan
 
-**Status: planned, not shipped.** Build a Rust application for GNOME on Wayland and distribute it as a Flatpak. The first question to answer is whether someone on a clean desktop can capture, annotate, and copy a region, then record, stop, and play back an MP4 with sound. Neither workflow should require a shell extension, a global shortcut, or terminal access. Occasional **10–30 minute video recordings** must work; 30 minutes is a test case, not a cutoff.
+**Status: Phase 0 in progress, not shipped.** The [developer Flatpak probe](../linux/README.md) exercises the interactive Screenshot portal. The product goal is a Rust application for GNOME on Wayland, distributed as a Flatpak. The first question to answer is whether someone on a clean desktop can capture, annotate, and copy a region, then record, stop, and play back an MP4 with sound. Neither workflow should require a shell extension, a global shortcut, or terminal access. Occasional **10–30 minute video recordings** must work; 30 minutes is a test case, not a cutoff.
 
 ## 1. Platform and framework decision
 

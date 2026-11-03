@@ -138,7 +138,7 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 
 ## Linux (planned)
 
-A native GNOME port is planned but not yet available. The [Linux port plan](plans/linux-gtk-port-plan.md) covers supported workflows, Wayland limitations, and how the Flatpak will be tested.
+A native GNOME port is in development; there is no Linux release yet. See the [Linux port plan](plans/linux-gtk-port-plan.md) for scope and recording requirements, or the [developer Flatpak probe](linux/README.md) to test screenshot permission on GNOME Wayland.
 
 ## Usage
 

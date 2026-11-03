@@ -1,0 +1,68 @@
+name: Linux portal probe
+
+on:
+  pull_request:
+    paths:
+      - 'linux/**'
+      - '.github/workflows/linux-portal-probe.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'linux/**'
+      - '.github/workflows/linux-portal-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flatpak:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      # flatpak-builder uses nested Bubblewrap sandboxes on the disposable runner.
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build, test and upload the development Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: linux/com.refractored.tinyclips.Devel.json
+          bundle: TinyClips-Portal-Probe.flatpak
+          artifact-name: TinyClips-Portal-Probe-x86_64
+          run-tests: true
+          cache: false
+
+  installed-bundle-smoke:
+    if: github.event_name == 'workflow_dispatch'
+    needs: flatpak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: TinyClips-Portal-Probe-x86_64
+      - name: Install the test bundle in a clean user installation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y flatpak weston dbus-daemon
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive ./TinyClips-Portal-Probe.flatpak
+      - name: Map the installed GTK window on headless Wayland (no capture)
+        shell: 'dbus-run-session -- bash -e {0}'
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          export WAYLAND_DISPLAY=wayland-0
+          weston --backend=headless-backend.so --socket="$WAYLAND_DISPLAY" --idle-time=0 &
+          compositor=$!
+          trap 'kill "$compositor" 2>/dev/null || true' EXIT
+          for _ in {1..50}; do
+            test ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" || break
+            kill -0 "$compositor"
+            sleep .1
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          flatpak run --env=GSK_RENDERER=cairo com.refractored.tinyclips.Devel --self-test
