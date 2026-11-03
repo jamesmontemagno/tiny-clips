@@ -98,10 +98,4 @@ public static class AnnotationStroke
     /// <summary>Arrows and lines are filled bodies (in the annotation's color, at its thickness)
     /// that can carry a separate outline.</summary>
     public static bool UsesOutline(this EditTool tool) => tool is EditTool.Arrow or EditTool.Line;
-
-    /// <summary>
-    /// Pen strokes are drawn as overlapping segments, so a translucent color has to be applied to
-    /// them as one layer or the overlaps draw darker. Arrows are a single outline and need none.
-    /// </summary>
-    public static bool NeedsOpacityLayer(this EditTool tool) => tool is EditTool.Pen;
 }

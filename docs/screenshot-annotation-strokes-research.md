@@ -310,6 +310,7 @@ Pen                               pen only
    - Migrate `ArrowStyle`.
    - Follow-up: arrows and lines are now a filled body (Fill = the annotation's color, Size = its width) with an optional outline (Stroke color, Stroke width, Stroke position defaulting to Outside), drawn by clipping a doubled stroke to the body. Lines became filled outlines (`shared/screenshot/fixtures/line`), which also replaced the macOS mixed-cap workaround and its fade layer.
 5. **Freehand pen** using the perfect-freehand port.
+   - Done. Fixed options: thinning 0.3 (0.5 drew a 6 px pen about 3 px wide), smoothing and streamline 0.5, simulated pressure, both ends tapered over 3 widths, `last = true`. Lengths use sqrt instead of hypot and cap loops keep the source's accumulating steps so all three implementations match bit for bit. Rendered through midpoint quadratic curves. Real pen pressure is not used yet (still an open question).
 6. **Sketch style** using the rough.js port, with the seed. Fixtures must lock the random-number sequence.
 7. Accessibility pass (VoiceOver and UI Automation for the new controls and the bend handle), then changelogs.
 

@@ -92,6 +92,23 @@ public sealed class ScreenshotFixtureTests
         }
     }
 
+    [Fact]
+    public void SharedPenFixturesMatchWindowsImplementation()
+    {
+        foreach (var (label, testCase) in Cases("pen", "pen.json"))
+        {
+            var actual = PenGeometry.Outline(
+                testCase.GetProperty("points").EnumerateArray().Select(ReadPoint).ToArray(),
+                testCase.GetProperty("width").GetDouble());
+            var points = testCase.GetProperty("expected").EnumerateArray().ToArray();
+            Assert.True(points.Length == actual.Count, $"{label}: expected {points.Length} points but was {actual.Count}.");
+            for (var i = 0; i < points.Length; i++)
+            {
+                AssertPoint(points[i], actual[i], $"{label} point {i}");
+            }
+        }
+    }
+
     private static StrokeCap ParseCap(string? value) => value switch
     {
         "butt" => StrokeCap.Butt,

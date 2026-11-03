@@ -113,6 +113,20 @@ final class ScreenshotFixtureTests: XCTestCase {
         }
     }
 
+    func testSharedPenFixtures() throws {
+        let file = fixtureURL("pen", "pen.json")
+        let fixture = try JSONDecoder().decode(PenFixture.self, from: Data(contentsOf: file))
+        XCTAssertFalse(fixture.cases.isEmpty)
+        for testCase in fixture.cases {
+            let label = "pen.json \(testCase.description)"
+            let actual = PenGeometry.outline(testCase.points.map(\.point), width: testCase.width)
+            XCTAssertEqual(actual.count, testCase.expected.count, "\(label) point count")
+            for (pointIndex, pair) in zip(actual, testCase.expected).enumerated() {
+                assertPoint(pair.0, pair.1, "\(label) point \(pointIndex)")
+            }
+        }
+    }
+
     func testOnlyArrowsAndLinesTakeAnOutline() {
         XCTAssertTrue(EditTool.arrow.usesOutline)
         XCTAssertTrue(EditTool.line.usesOutline)
@@ -217,6 +231,17 @@ final class ScreenshotFixtureTests: XCTestCase {
         var endCap: String
         var scale: CGFloat
         var expected: [FixturePoint]
+    }
+
+    private struct PenCase: Decodable {
+        var description: String
+        var points: [FixturePoint]
+        var width: CGFloat
+        var expected: [FixturePoint]
+    }
+
+    private struct PenFixture: Decodable {
+        var cases: [PenCase]
     }
 
     private struct LineFixture: Decodable {
