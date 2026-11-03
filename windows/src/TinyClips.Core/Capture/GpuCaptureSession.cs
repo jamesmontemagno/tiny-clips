@@ -55,6 +55,10 @@ internal sealed class GpuCaptureSession : IDisposable
     private long _emittedFrameCount;
     private long _poolExhaustedDrops;
     private long _contentResizes;
+    private int _windowContentWidth;
+    private int _windowContentHeight;
+    private WindowCaptureFrame? _windowFrame;
+    internal WindowCaptureFrame? WindowFrame => Volatile.Read(ref _windowFrame);
     private long _pumpOverrunsAtStop;
     private volatile bool _running;
     private volatile bool _emittingPaused;
@@ -283,6 +287,8 @@ internal sealed class GpuCaptureSession : IDisposable
                 // resized window first shows up as a ContentSize change on an old-size surface.
                 _contentWidth = Math.Clamp(contentSize.Width, 1, (int)desc.Width);
                 _contentHeight = Math.Clamp(contentSize.Height, 1, (int)desc.Height);
+                _windowContentWidth = contentSize.Width;
+                _windowContentHeight = contentSize.Height;
 
                 if (contentSize.Width != _poolSize.Width || contentSize.Height != _poolSize.Height)
                 {
@@ -403,6 +409,13 @@ internal sealed class GpuCaptureSession : IDisposable
                     _latest,
                     0,
                     new Box(x, y, 0, x + copyW, y + copyH, 1));
+            }
+
+            if (_target.IsWindow)
+            {
+                Volatile.Write(ref _windowFrame, WindowCaptureFrame.Create(
+                    _windowContentWidth, _windowContentHeight, _contentWidth, _contentHeight,
+                    frame.Width, frame.Height, letterbox: scaled, roundToPixels: false));
             }
 
             _perf?.Record(RecordingStage.FrameProduce, Stopwatch.GetTimestamp() - produceTimestamp);

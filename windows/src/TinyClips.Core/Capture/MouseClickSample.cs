@@ -10,7 +10,11 @@ public readonly record struct MouseClickSample(
     int ScreenX,
     int ScreenY,
     MouseClickButton Button = MouseClickButton.Left,
-    TimeSpan SourceTimestamp = default);
+    TimeSpan SourceTimestamp = default)
+{
+    // Studio window samples are mapped while the HWND is still at its event-time position.
+    internal (double X, double Y)? CapturePoint { get; init; }
+}
 
 public enum MouseClickButton
 {

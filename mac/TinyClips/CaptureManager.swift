@@ -1267,8 +1267,7 @@ class CaptureManager: ObservableObject {
                         timeLimitMinutes: timeLimitMinutes,
                         studioModeEnabled: isStudioRecording
                     )
-                    let shouldCollectStudioPointerEvents = isStudioRecording && target.studioCaptureKind != .window
-                    self.activeMouseClickCaptureEnabledOverride = isStudioRecording ? shouldCollectStudioPointerEvents : mouseClicksEnabled
+                    self.activeMouseClickCaptureEnabledOverride = isStudioRecording || mouseClicksEnabled
                     self.startMouseClickMonitoringIfNeeded(for: .video, region: target.region)
                     studioCoordinator?.startCursorSampling(
                         timeProvider: { recorder.currentTimelineTimeIfStarted() },

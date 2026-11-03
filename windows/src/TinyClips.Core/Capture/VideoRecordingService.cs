@@ -63,7 +63,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private int _studioCaptureOriginY;
     private double _studioCaptureScale = 1;
     private WebcamCornerPosition _studioInitialCorner;
-    private bool _studioRecordPointerEvents;
+    private StudioWindowPointer? _studioWindowPointer;
     private CaptureTarget? _activeTarget;
     private PixelRect? _activeRegion;
 
@@ -968,10 +968,18 @@ public sealed class VideoRecordingService : IVideoRecordingService
         _studioCaptureOriginX = 0;
         _studioCaptureOriginY = 0;
         _studioCaptureScale = 1;
-        _studioRecordPointerEvents = !target.IsWindow;
+        _studioWindowPointer = null;
 
         if (target.IsWindow)
         {
+            if (_activeOptions.RecordForStudio)
+            {
+                _studioWindowPointer = StudioWindowPointer.ForWindow(target.Hwnd,
+                    () => _gpuCapture?.WindowFrame ?? _capture?.WindowFrame);
+                var dpi = GetDpiForWindow(target.Hwnd);
+                _studioCaptureScale = dpi > 0 ? dpi / 96.0 : 1;
+            }
+
             return;
         }
 
@@ -1000,10 +1008,18 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     private void StartMouseClickOverlay(CaptureTarget target)
     {
-        // Mouse-click visuals only map reliably onto a (possibly cropped) monitor;
-        // window targets move/resize, so skip them — matching the mac restriction.
-        if (target.IsWindow || (!_activeOptions.RecordForStudio && !_settings.ShouldShowMouseClickVisuals(CaptureType.Video)))
+        if (!StudioRecordingBuilder.ShouldMonitorClicks(target, _activeOptions.RecordForStudio,
+            _settings.ShouldShowMouseClickVisuals(CaptureType.Video)))
         {
+            return;
+        }
+
+        if (target.IsWindow)
+        {
+            // Studio data collection is independent of whether the editor initially shows rings.
+            var pointer = _studioWindowPointer ?? throw new InvalidOperationException("Window pointer geometry has not been initialized.");
+            _clickMonitor = new MouseClickMonitor { TransformSample = pointer.CaptureClick };
+            _clickMonitor.Start();
             return;
         }
 
@@ -2455,7 +2471,6 @@ public sealed class VideoRecordingService : IVideoRecordingService
         RecordingTimeline timeline,
         StudioCameraCornerEvent[] cameraCorners)
     {
-        var pointerEventsEnabled = _studioRecordPointerEvents;
         StudioPointSample[] cursorSamples;
         lock (_studioCursorGate)
         {
@@ -2471,12 +2486,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 Scale = _studioCaptureScale,
                 Kind = _activeTarget is null ? StudioCaptureKind.Display : StudioRecordingBuilder.ToCaptureKind(_activeTarget, _activeRegion),
             },
-            Clicks = pointerEventsEnabled
-                ? StudioRecordingBuilder.BuildClickEvents(_studioClickSamples, timeline, _studioCaptureOriginX, _studioCaptureOriginY, screen.Width, screen.Height)
-                : [],
-            Cursor = pointerEventsEnabled
-                ? StudioRecordingBuilder.BuildCursorSamples(cursorSamples, _studioCaptureOriginX, _studioCaptureOriginY, screen.Width, screen.Height)
-                : [],
+            Clicks = StudioRecordingBuilder.BuildClickEvents(_studioClickSamples, timeline, _studioCaptureOriginX, _studioCaptureOriginY, screen.Width, screen.Height),
+            Cursor = StudioRecordingBuilder.BuildCursorSamples(cursorSamples, _studioCaptureOriginX, _studioCaptureOriginY, screen.Width, screen.Height),
             CameraCorners = cameraCorners,
         };
     }
@@ -2516,6 +2527,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         }
 
         _studioClickSamples = [];
+        _studioWindowPointer = null;
     }
 
     private static void DeleteOutputFileIfPresent(string? path)
@@ -2555,7 +2567,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     private void CollectStudioCursorSample(TimeSpan pts)
     {
-        if (!_activeOptions.RecordForStudio || !_studioRecordPointerEvents || pts < TimeSpan.Zero)
+        if (!_activeOptions.RecordForStudio || IsPaused || pts < TimeSpan.Zero)
         {
             return;
         }
@@ -2565,18 +2577,34 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
+        StudioPointSample sample;
+        if (_studioWindowPointer is { } windowPointer)
+        {
+            if (windowPointer.CaptureCursor(pts, point.X, point.Y) is not { } windowSample)
+            {
+                return;
+            }
+
+            sample = windowSample;
+        }
+        else
+        {
+            sample = new StudioPointSample(pts, point.X, point.Y);
+        }
+
         lock (_studioCursorGate)
         {
             // A resting pointer adds nothing: samples are steps, so the last one still applies.
             if (_studioCursorSamples.Count > 0 &&
                 _studioCursorSamples[^1] is var last &&
-                last.X == point.X &&
-                last.Y == point.Y)
+                last.X == sample.X &&
+                last.Y == sample.Y &&
+                last.CapturePoint == sample.CapturePoint)
             {
                 return;
             }
 
-            _studioCursorSamples.Add(new StudioPointSample(pts, point.X, point.Y));
+            _studioCursorSamples.Add(sample);
         }
     }
 
@@ -2586,6 +2614,9 @@ public sealed class VideoRecordingService : IVideoRecordingService
         public int X;
         public int Y;
     }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(nint hwnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

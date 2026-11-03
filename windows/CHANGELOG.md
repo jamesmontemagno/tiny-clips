@@ -9,6 +9,7 @@ own `CHANGELOG.md` at the repository root.
 - Agent Control now preserves Studio gestures and existing annotated captures, reports saved screenshot dimensions accurately, persists agent activity, and cancels pending approvals when an agent disconnects.
 - Revoking an agent cancels its pending approvals, and the CLI verifies the named-pipe owner before sending its token.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
+- Studio window recordings now collect cursor positions and clicks for zoom suggestions and editable click visuals, even when click visuals are initially off. Positions follow the captured window as it moves or resizes, including mixed-DPI/negative-coordinate desktops, encoder cropping and resize letterboxing. Unavailable windows and uncaptured pixels are excluded instead of using a stale window origin.
 - Imported Studio videos respect rotation metadata and mix all source audio tracks during export. Renaming, archiving, or temporarily disconnecting the source no longer loses saved edits.
 - Studio handoff protects pending trimmer edits and prevents competing actions; the footer fits the minimum window width. Existing project links are checked before importing, and portable project saving explains why external videos cannot be saved as a folder.
 
