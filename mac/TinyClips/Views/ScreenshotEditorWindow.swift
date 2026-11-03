@@ -605,6 +605,17 @@ struct ScreenshotEditorView: View {
         )
     }
 
+    private var strokeAlignmentBinding: Binding<StrokeAlignment> {
+        Binding(
+            get: { viewModel.selectedStrokeAlignment() ?? viewModel.strokeAlignment },
+            set: { newValue in
+                if !viewModel.updateSelectedStrokeAlignment(newValue) {
+                    viewModel.strokeAlignment = newValue
+                }
+            }
+        )
+    }
+
     private var lineJoinBinding: Binding<StrokeJoin> {
         Binding(
             get: { viewModel.selectedLineJoin() ?? viewModel.lineJoin },
@@ -1396,6 +1407,14 @@ struct ScreenshotEditorView: View {
                     }
                 }
                 .accessibilityElement(children: .combine)
+            }
+
+            if viewModel.showsStrokeAlignmentControl {
+                Picker("Stroke position", selection: strokeAlignmentBinding) {
+                    ForEach(StrokeAlignment.allCases) { alignment in
+                        Text(alignment.label).tag(alignment)
+                    }
+                }
             }
 
             if viewModel.showsStartCapControl {

@@ -19,7 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "shared" / "screenshot" / "fixtures"
 ARROW_DIR = FIXTURES / "arrow"
-FIXTURE_DIRS = [ARROW_DIR]
+ALIGNMENT_DIR = FIXTURES / "alignment"
+FIXTURE_DIRS = [ARROW_DIR, ALIGNMENT_DIR]
 
 # Arrow geometry. Points are y-down; widths are in source-image pixels.
 MINIMUM_HEAD_LENGTH = 12
@@ -95,6 +96,80 @@ def build_arrow(start, end, width, style, scale):
     return shape(True, start, a, lerp(a, b, t), end, head1, head2)
 
 
+# Stroke alignment for closed shapes. A rectangle's stroke is drawn as a filled ring: the outer
+# outline (corners shaped by the join) minus the inner rectangle (always sharp). An ellipse's
+# outer edge is not an ellipse, so renderers that can clip use a doubled stroke clipped to the
+# shape; `centerline` is the ellipse to stroke where they cannot (an approximation).
+VALID_ALIGNMENTS = {"center", "inside", "outside"}
+VALID_JOINS = {"miter", "round", "bevel"}
+
+
+def rect(x, y, width, height):
+    return {"x": x, "y": y, "width": width, "height": height}
+
+
+def inset(r, d):
+    """Insets by d (outsets when negative), never below an empty rectangle at the center."""
+    dx = min(d, r["width"] / 2)
+    dy = min(d, r["height"] / 2)
+    return rect(r["x"] + dx, r["y"] + dy, r["width"] - 2 * dx, r["height"] - 2 * dy)
+
+
+def rect_stroke_ring(bounds, width, alignment, join):
+    if alignment not in VALID_ALIGNMENTS:
+        raise ValueError(f"unknown alignment {alignment!r}")
+    if join not in VALID_JOINS:
+        raise ValueError(f"unknown join {join!r}")
+    outer_offset = {"center": width / 2, "inside": 0, "outside": width}[alignment]
+    inner_inset = {"center": width / 2, "inside": width, "outside": 0}[alignment]
+    return {
+        "outer": inset(bounds, -outer_offset),
+        "outerJoin": join if outer_offset > 0 else "miter",
+        "cornerSize": outer_offset if outer_offset > 0 and join != "miter" else 0,
+        "inner": inset(bounds, inner_inset),
+    }
+
+
+def ellipse_centerline(bounds, width, alignment):
+    if alignment not in VALID_ALIGNMENTS:
+        raise ValueError(f"unknown alignment {alignment!r}")
+    return inset(bounds, {"center": 0, "inside": width / 2, "outside": -width / 2}[alignment])
+
+
+def generate_alignments():
+    bounds_cases = [rect(40, 30, 200, 120), rect(10, 10, 6, 40)]
+    rect_cases = []
+    for bounds in bounds_cases:
+        for alignment in sorted(VALID_ALIGNMENTS):
+            for join in sorted(VALID_JOINS):
+                rect_cases.append({
+                    "bounds": bounds,
+                    "width": 8,
+                    "alignment": alignment,
+                    "join": join,
+                    "expected": rect_stroke_ring(bounds, 8, alignment, join),
+                })
+    ellipse_cases = []
+    for bounds in bounds_cases:
+        for alignment in sorted(VALID_ALIGNMENTS):
+            ellipse_cases.append({
+                "bounds": bounds,
+                "width": 8,
+                "alignment": alignment,
+                "expected": ellipse_centerline(bounds, 8, alignment),
+            })
+    return {
+        "rectangle.json": {
+            "description": "Rectangle stroke rings for each alignment and join, including a rectangle narrower than an inside stroke.",
+            "cases": rect_cases,
+        },
+        "ellipse.json": {
+            "description": "The ellipse to stroke for each alignment where a renderer cannot clip; inside never shrinks below empty.",
+            "cases": ellipse_cases,
+        },
+    }
+
+
 def arrow_case(start, end, width, style, scale=1):
     start = point(*start)
     end = point(*end)
@@ -133,6 +208,8 @@ def generated_files():
     files = {}
     for filename, fixture in generate_arrows().items():
         files[Path("arrow") / filename] = fixture
+    for filename, fixture in generate_alignments().items():
+        files[Path("alignment") / filename] = fixture
     return files
 
 

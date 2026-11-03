@@ -302,6 +302,7 @@ Pen                               pen only
 2. **Caps, joins, and alpha layers** for existing tools. This is low-risk and immediately visible: rounded ends and no darker overlaps.
    - Done for lines, arrow tails, rectangles, and the pencil. Arrowhead corners wait for step 4, when the head becomes part of the arrow's outline.
 3. **Stroke alignment** for rectangle and ellipse.
+   - Done. Rectangles fill a ring (outer outline shaped by the join, minus a sharp inner rectangle) on every renderer, so all four match exactly. Ellipses clip a doubled stroke everywhere except the Windows XAML preview, which strokes an inset or outset ellipse.
 4. **Arrow geometry.**
    - The outline polygon, bend, and on-canvas handle.
    - Presets plus the Advanced section (start width, end width, head size, arc).

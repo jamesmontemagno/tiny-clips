@@ -70,6 +70,21 @@
                         ValueChanged="OnStrokeChanged" />
                 </StackPanel>
 
+                <!--  Stroke position for closed shapes (index order matches StrokeAlignment)  -->
+                <StackPanel x:Name="StrokeAlignmentSection" Spacing="2">
+                    <ComboBox
+                        x:Name="StrokeAlignmentCombo"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorStrokeAlignmentCombo"
+                        AutomationProperties.Name="Stroke position"
+                        Header="Stroke position"
+                        SelectionChanged="OnStrokeAlignmentChanged">
+                        <ComboBoxItem Content="Center" />
+                        <ComboBoxItem Content="Inside" />
+                        <ComboBoxItem Content="Outside" />
+                    </ComboBox>
+                </StackPanel>
+
                 <!--  Line ends (index order matches StrokeCap)  -->
                 <StackPanel x:Name="StartCapSection" Spacing="2">
                     <ComboBox

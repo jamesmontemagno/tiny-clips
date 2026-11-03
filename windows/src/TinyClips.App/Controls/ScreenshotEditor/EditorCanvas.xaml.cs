@@ -768,12 +768,16 @@ public sealed partial class EditorCanvas : UserControl
         {
             case EditTool.Rectangle:
             {
+                // The fill and the stroke ring are separate so the ring can sit inside, centered on,
+                // or outside the edge with the same corners the export draws.
                 var stroke = new SolidColorBrush();
                 var fill = new SolidColorBrush();
-                var rect = new Rectangle { Stroke = stroke, Fill = fill };
+                var rect = new Rectangle { Fill = fill };
                 MakeRotatable(rect);
+                var ring = new ShapesPath { Fill = stroke, RenderTransform = new RotateTransform() };
                 OverlayCanvas.Children.Add(rect);
-                return new AnnotationVisual { Primary = rect, StrokeBrush = stroke, FillBrush = fill };
+                OverlayCanvas.Children.Add(ring);
+                return new AnnotationVisual { Primary = rect, Secondary = ring, StrokeBrush = stroke, FillBrush = fill };
             }
             case EditTool.Ellipse:
             {
@@ -899,18 +903,72 @@ public sealed partial class EditorCanvas : UserControl
         }
     }
 
+    /// <summary>The XAML twin of the export's ring geometry: the outer outline minus the inner rectangle.</summary>
+    private static PathGeometry CreateRingGeometry(RectStrokeRing ring)
+    {
+        var geometry = new PathGeometry { FillRule = FillRule.EvenOdd };
+        geometry.Figures.Add(OuterRingFigure(ring.Outer, ring.OuterJoin, ring.CornerSize));
+        var i = ring.Inner;
+        geometry.Figures.Add(PolygonFigure(
+            new Point(i.Left, i.Top),
+            new Point(i.Right, i.Top),
+            new Point(i.Right, i.Bottom),
+            new Point(i.Left, i.Bottom)));
+        return geometry;
+    }
+
+    private static PathFigure OuterRingFigure(RectD o, StrokeJoin join, double c)
+    {
+        if (c <= 0 || join == StrokeJoin.Miter)
+        {
+            return PolygonFigure(
+                new Point(o.Left, o.Top),
+                new Point(o.Right, o.Top),
+                new Point(o.Right, o.Bottom),
+                new Point(o.Left, o.Bottom));
+        }
+
+        if (join == StrokeJoin.Bevel)
+        {
+            return PolygonFigure(
+                new Point(o.Left + c, o.Top),
+                new Point(o.Right - c, o.Top),
+                new Point(o.Right, o.Top + c),
+                new Point(o.Right, o.Bottom - c),
+                new Point(o.Right - c, o.Bottom),
+                new Point(o.Left + c, o.Bottom),
+                new Point(o.Left, o.Bottom - c),
+                new Point(o.Left, o.Top + c));
+        }
+
+        var figure = new PathFigure { StartPoint = new Point(o.Left + c, o.Top), IsClosed = true, IsFilled = true };
+        void Corner(Point lineTo, Point arcTo)
+        {
+            figure.Segments.Add(new LineSegment { Point = lineTo });
+            figure.Segments.Add(new ArcSegment { Point = arcTo, Size = new Size(c, c), SweepDirection = SweepDirection.Clockwise });
+        }
+        Corner(new Point(o.Right - c, o.Top), new Point(o.Right, o.Top + c));
+        Corner(new Point(o.Right, o.Bottom - c), new Point(o.Right - c, o.Bottom));
+        Corner(new Point(o.Left + c, o.Bottom), new Point(o.Left, o.Bottom - c));
+        Corner(new Point(o.Left, o.Top + c), new Point(o.Left + c, o.Top));
+        return figure;
+    }
+
+    private static PathFigure PolygonFigure(params Point[] points)
+    {
+        var figure = new PathFigure { StartPoint = points[0], IsClosed = true, IsFilled = true };
+        foreach (var point in points.Skip(1))
+        {
+            figure.Segments.Add(new LineSegment { Point = point });
+        }
+        return figure;
+    }
+
     private static PenLineCap ToPenLineCap(StrokeCap cap) => cap switch
     {
         StrokeCap.Butt => PenLineCap.Flat,
         StrokeCap.Square => PenLineCap.Square,
         _ => PenLineCap.Round,
-    };
-
-    private static PenLineJoin ToPenLineJoin(StrokeJoin join) => join switch
-    {
-        StrokeJoin.Miter => PenLineJoin.Miter,
-        StrokeJoin.Bevel => PenLineJoin.Bevel,
-        _ => PenLineJoin.Round,
     };
 
     private static UIElement CreateArrowShaft(bool curved, SolidColorBrush stroke) =>
@@ -949,11 +1007,20 @@ public sealed partial class EditorCanvas : UserControl
                 Canvas.SetTop(rect, tl.Y);
                 rect.Width = b.Width * scale;
                 rect.Height = b.Height * scale;
-                rect.StrokeThickness = thickness;
-                rect.StrokeLineJoin = ToPenLineJoin(ann.LineJoin);
                 visual.StrokeBrush!.Color = ann.Color;
                 visual.FillBrush!.Color = ann.FillColor;
                 ApplyRotation(rect, ann.Rotation);
+
+                var bounds = new RectD(tl.X, tl.Y, b.Width * scale, b.Height * scale);
+                var ring = (ShapesPath)visual.Secondary!;
+                ring.Data = CreateRingGeometry(
+                    StrokeAlignmentGeometry.RectangleRing(bounds, thickness, ann.StrokeAlignment, ann.LineJoin));
+                if (ring.RenderTransform is RotateTransform ringRotation)
+                {
+                    ringRotation.CenterX = bounds.Center.X;
+                    ringRotation.CenterY = bounds.Center.Y;
+                    ringRotation.Angle = ann.Rotation;
+                }
                 break;
             }
             case EditTool.Ellipse:
@@ -961,10 +1028,14 @@ public sealed partial class EditorCanvas : UserControl
                 var b = EditorController.NormalizedBounds(ann);
                 var tl = ToCanvas(new Point(b.X, b.Y), scale, offX, offY);
                 var ellipse = (Ellipse)visual.Primary;
-                Canvas.SetLeft(ellipse, tl.X);
-                Canvas.SetTop(ellipse, tl.Y);
-                ellipse.Width = b.Width * scale;
-                ellipse.Height = b.Height * scale;
+                // XAML cannot clip to an ellipse, so inside and outside strokes are approximated
+                // by stroking a smaller or larger ellipse; the export is exact.
+                var centerline = StrokeAlignmentGeometry.EllipseCenterline(
+                    new RectD(tl.X, tl.Y, b.Width * scale, b.Height * scale), thickness, ann.StrokeAlignment);
+                Canvas.SetLeft(ellipse, centerline.X);
+                Canvas.SetTop(ellipse, centerline.Y);
+                ellipse.Width = centerline.Width;
+                ellipse.Height = centerline.Height;
                 ellipse.StrokeThickness = thickness;
                 visual.StrokeBrush!.Color = ann.Color;
                 visual.FillBrush!.Color = ann.FillColor;
