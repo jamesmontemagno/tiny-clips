@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -37,6 +38,7 @@ jobs:
             mac:
               - 'mac/**'
               - 'shared/studio/fixtures/**'
+              - 'shared/automation/**'
               - '.github/workflows/build.yml'
               - '!**/*.md'
           base: ${{ github.ref }}

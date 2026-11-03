@@ -1080,6 +1080,21 @@ struct StudioEditorModel: Equatable, Sendable {
         return project.zooms != before
     }
 
+    /// Applies the editable fields from a validated automation project as one undoable edit.
+    mutating func applyAutomationProject(_ updated: StudioProject) {
+        guard updated.id == project.id else { return }
+        mutate {
+            $0.canvas = updated.canvas
+            $0.screen = updated.screen
+            $0.camera = updated.camera
+            $0.scenes = updated.scenes
+            $0.zooms = updated.zooms
+            $0.edits = updated.edits
+            $0.audio = updated.audio
+            $0.overlays = updated.overlays
+        }
+    }
+
     // MARK: - Cuts
     //
     // Stretches of the recording the video leaves out. They are stored in source time, so a cut

@@ -1,0 +1,168 @@
+name: Agent CLI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      force:
+        description: Validate even when change detection would skip.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-agent-ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect agent changes
+    runs-on: ubuntu-latest
+    outputs:
+      agent: ${{ inputs.force || github.event_name == 'workflow_dispatch' || steps.filter.outputs.agent }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - name: Filter changed files
+        id: filter
+        if: ${{ !inputs.force && github.event_name != 'workflow_dispatch' }}
+        uses: dorny/paths-filter@v4
+        with:
+          base: ${{ github.ref }}
+          filters: |
+            agent:
+              - 'agent/**'
+              - 'plugins/tinyclips/**'
+              - 'shared/automation/**'
+              - 'global.json'
+              - '[Nn]u[Gg]et.[Cc]onfig'
+              - 'Directory.Build.props'
+              - 'Directory.Build.targets'
+              - 'Directory.Packages.props'
+              - '.github/workflows/agent-build.yml'
+              - '.github/workflows/agent-release.yml'
+
+  package:
+    name: Build candidate NuGet package
+    needs: changes
+    if: needs.changes.outputs.agent == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Pack tool
+        run: dotnet pack agent/src/TinyClips.Cli/TinyClips.Cli.csproj -c Release -o agent/out
+      - name: Package portable plugin
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import zipfile
+          plugin = pathlib.Path("plugins/tinyclips")
+          root = plugin.resolve()
+          version = json.loads((plugin / "plugin.json").read_text())["version"]
+          with zipfile.ZipFile(f"agent/out/tinyclips-plugin-{version}.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+              for path in sorted(plugin.rglob("*")):
+                  try:
+                      path.resolve().relative_to(root)
+                  except ValueError:
+                      raise SystemExit(f"Plugin path escapes its root: {path}")
+                  if path.is_file():
+                      archive.write(path, path.relative_to(plugin.parent))
+          PY
+      - name: Upload candidate package and plugin
+        uses: actions/upload-artifact@v7
+        with:
+          name: tinyclips-agent-package
+          path: |
+            agent/out/*.nupkg
+            agent/out/*.zip
+          if-no-files-found: error
+
+  validate:
+    name: Agent (${{ matrix.name }})
+    needs: [changes, package]
+    if: needs.changes.outputs.agent == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+          - name: Windows
+            os: windows-latest
+          - name: macOS Apple silicon
+            os: macos-26
+          - name: macOS Intel
+            os: macos-15-intel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Place Windows NuGet caches in runner temp
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $packages = Join-Path $env:RUNNER_TEMP 'nuget\packages'
+          $httpCache = Join-Path $env:RUNNER_TEMP 'nuget\http-cache'
+          New-Item -ItemType Directory -Force -Path $packages, $httpCache | Out-Null
+          "NUGET_PACKAGES=$packages" >> $env:GITHUB_ENV
+          "NUGET_HTTP_CACHE_PATH=$httpCache" >> $env:GITHUB_ENV
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore agent/TinyClips.Agent.slnx
+      - name: Build
+        run: dotnet build agent/TinyClips.Agent.slnx -c Release --no-restore
+      - name: Test CLI, contract, and plugin
+        run: dotnet test agent/TinyClips.Agent.slnx -c Release --no-build
+      - name: Download the candidate package
+        uses: actions/download-artifact@v8
+        with:
+          name: tinyclips-agent-package
+          path: agent/out
+      - name: Smoke test installed tool and dnx MCP
+        env:
+          TINYCLIPS_PACKAGE_DIRECTORY: ${{ github.workspace }}/agent/out
+        run: dotnet test agent/tests/TinyClips.Package.Tests/TinyClips.Package.Tests.csproj -c Release
+
+  result:
+    name: Agent CLI result
+    runs-on: ubuntu-latest
+    needs: [changes, validate]
+    if: always()
+    steps:
+      - name: Check validation result
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          AGENT_CHANGED: ${{ needs.changes.outputs.agent }}
+          VALIDATION_RESULT: ${{ needs.validate.result }}
+        run: |
+          if [ "$CHANGES_RESULT" != success ]; then
+            echo "::error::Agent change detection failed."
+            exit 1
+          fi
+          if [ "$AGENT_CHANGED" != true ] && [ "$AGENT_CHANGED" != false ]; then
+            echo "::error::Agent change detection returned no valid decision."
+            exit 1
+          fi
+          if [ "$AGENT_CHANGED" = true ] && [ "$VALIDATION_RESULT" != success ]; then
+            echo "::error::Agent validation did not succeed ($VALIDATION_RESULT)."
+            exit 1
+          fi
+          echo "Agent checks passed, or no agent inputs changed."

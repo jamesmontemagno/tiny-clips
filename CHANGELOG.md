@@ -4,15 +4,31 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-### Added
-- Any video can now be opened in Studio from the video trimmer or the Clips Manager (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
-
 ### Fixed
 - macOS Studio window recordings now save cursor and click events for click-driven zoom suggestions, whether started normally or through Agent Control.
 - Imported Studio videos respect rotation metadata, retain edits when their source is archived or temporarily offline, and reopen linked projects rather than creating flattened duplicates. The trimmer protects pending edits during handoff; portable project saving is explicitly unavailable for external videos.
 - Windows CI now reports both required architecture checks for changes that do not need Windows builds, avoiding permanently pending checks without allocating Windows runners.
+- The agent CLI accepts relative pairing configuration paths and falls back between macOS app endpoints. Studio automation no longer interrupts an active edit, and pending sensitive-action approvals close when an agent disconnects.
+- Revoking an agent cancels its pending approvals; macOS no longer approves requests with an accidental Return, and the CLI verifies Windows pipe ownership before sending a token.
+- GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
+
+### Added
+- Any video can now be opened in Studio from the video trimmer or the Clips Manager (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
+- Agents can trim videos and GIFs (`editor.trim`, with optional audio removal) and save single frames (`editor.saveFrame`) without opening a trimmer; results are new library items and the source is unchanged. Stale Studio edits now return a distinct `conflict` error instead of `busy`.
+- The MCP server now uses the official C# SDK for stdio transport, lifecycle, protocol negotiation, and cancellation while preserving contract-driven tools and app permissions.
+- Added cross-platform agent CLI CI, isolated NuGet/dnx MCP smoke tests, and a dedicated `agent-v*` NuGet Trusted Publishing release workflow; shared automation changes now trigger both app builds.
+- The Release Hub now tracks Agent package versions, tags, releases, and workflows, and can publish a confirmed version-matched `agent-v*` tag to trigger NuGet Trusted Publishing.
+- Added the `tinyclips` [Agent Plugin](https://agent-plugins.org/) in `plugins/tinyclips`, bundling the MCP server and agent Skills in one installable package.
+- MCP setup uses a portable `dotnet dnx` launch with quiet restore to keep first-run NuGet messages off the protocol stream.
+- Agent Control settings and the in-app Guide now include installation, pairing, connection checks, MCP configuration, and example prompts.
+- Added a shared .NET 10 agent CLI and stdio MCP server, packaged as the `TinyClips` NuGet tool for `dnx`, plus Skills for pairing, capture, recording demos, and library workflows on macOS and Windows.
+- Agents can discover displays and windows, capture explicit screen regions or windows, run OCR without a picker, and annotate screenshots through structured commands without opening the editor. Annotated output is saved as a new capture; the source remains unchanged.
+- Agents can start targeted video/GIF recordings and scrolling screenshots without pickers; recordings save without opening a trimmer, and scrolling is controlled by the agent's own UI tools.
+- Agents can list and inspect Studio projects, apply revision-checked edits to the look and timeline (undoable in an open editor), request zoom suggestions, and export a new MP4 into the configured video folder without overwriting existing files.
+- macOS adds opt-in **Agent Control** (Settings → Agent Control, off by default) so AI agents and scripts on your Mac can drive TinyClips over a private local socket: screenshots, OCR, video and GIF recording, editors, the clips library, and selected settings. Each agent pairs once with your approval and only gets the permissions you grant. Deleting, uploading, and discarding always ask first, every request is written to a local audit log, and you can revoke agents or turn it off from Settings or the menu bar.
 
 ### Changed
+- Contributor instructions now require new and changed app capabilities to include agent API coverage on supported platforms.
 - Upgraded GitHub Agentic Workflows to v1.0.1 and refreshed the agent and routing skill. The weekly parity workflow still runs on Sundays around 09:00 with the Copilot auto model and a five-issue limit.
 
 ## v2.0.0-mac - 2026-10-31

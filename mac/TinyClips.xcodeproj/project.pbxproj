@@ -7,6 +7,37 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AB7000000000000000000001 /* AutomationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000001 /* AutomationContract.swift */; };
+		AC7000000000000000000001 /* AutomationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000001 /* AutomationContract.swift */; };
+		AB7000000000000000000002 /* AutomationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000002 /* AutomationPolicy.swift */; };
+		AC7000000000000000000002 /* AutomationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000002 /* AutomationPolicy.swift */; };
+		AB7000000000000000000003 /* AutomationClientStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000003 /* AutomationClientStore.swift */; };
+		AC7000000000000000000003 /* AutomationClientStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000003 /* AutomationClientStore.swift */; };
+		AB7000000000000000000004 /* AutomationServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000004 /* AutomationServer.swift */; };
+		AC7000000000000000000004 /* AutomationServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000004 /* AutomationServer.swift */; };
+		AB7000000000000000000005 /* AutomationApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000005 /* AutomationApproval.swift */; };
+		AC7000000000000000000005 /* AutomationApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000005 /* AutomationApproval.swift */; };
+		AB7000000000000000000006 /* AutomationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000006 /* AutomationController.swift */; };
+		AC7000000000000000000006 /* AutomationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000006 /* AutomationController.swift */; };
+		AB7000000000000000000007 /* AutomationCommandRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000007 /* AutomationCommandRouter.swift */; };
+		AC7000000000000000000007 /* AutomationCommandRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000007 /* AutomationCommandRouter.swift */; };
+		AB7000000000000000000008 /* AutomationSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000008 /* AutomationSettings.swift */; };
+		AC7000000000000000000008 /* AutomationSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000008 /* AutomationSettings.swift */; };
+		AB7000000000000000000014 /* AgentControlSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000014 /* AgentControlSettingsSection.swift */; };
+		AC7000000000000000000014 /* AgentControlSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000014 /* AgentControlSettingsSection.swift */; };
+		AB700000000000000000001E /* commands.json in Resources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000001E /* commands.json */; };
+		AC700000000000000000001E /* commands.json in Resources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000001E /* commands.json */; };
+		AD7000000000000000000028 /* AutomationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000028 /* AutomationPolicyTests.swift */; };
+		AD7000000000000000000029 /* AutomationClientStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000029 /* AutomationClientStoreTests.swift */; };
+		AB7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000009 /* AutomationCaptureTargets.swift */; };
+		AC7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000009 /* AutomationCaptureTargets.swift */; };
+		AB700000000000000000000A /* AutomationAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000000A /* AutomationAnnotations.swift */; };
+		AB7000000000000000000030 /* AutomationMediaEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000030 /* AutomationMediaEditing.swift */; };
+		AC700000000000000000000A /* AutomationAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000000A /* AutomationAnnotations.swift */; };
+		AC7000000000000000000030 /* AutomationMediaEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000030 /* AutomationMediaEditing.swift */; };
+		AD700000000000000000002A /* AutomationCaptureTargetsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000002A /* AutomationCaptureTargetsTests.swift */; };
+		AD7000000000000000000031 /* AutomationMediaEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000031 /* AutomationMediaEditingTests.swift */; };
+		AD700000000000000000002B /* AutomationServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA700000000000000000002B /* AutomationServerTests.swift */; };
 		B10000000000000000000001 /* TinyClipsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* TinyClipsApp.swift */; };
 		B10000000000000000000002 /* CaptureSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* CaptureSettings.swift */; };
 		B10000000000000000000003 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* SettingsView.swift */; };
@@ -223,6 +254,24 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		AA7000000000000000000001 /* AutomationContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationContract.swift; sourceTree = "<group>"; };
+		AA7000000000000000000002 /* AutomationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationPolicy.swift; sourceTree = "<group>"; };
+		AA7000000000000000000003 /* AutomationClientStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationClientStore.swift; sourceTree = "<group>"; };
+		AA7000000000000000000004 /* AutomationServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationServer.swift; sourceTree = "<group>"; };
+		AA7000000000000000000005 /* AutomationApproval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationApproval.swift; sourceTree = "<group>"; };
+		AA7000000000000000000006 /* AutomationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationController.swift; sourceTree = "<group>"; };
+		AA7000000000000000000007 /* AutomationCommandRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationCommandRouter.swift; sourceTree = "<group>"; };
+		AA7000000000000000000008 /* AutomationSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationSettings.swift; sourceTree = "<group>"; };
+		AA7000000000000000000014 /* AgentControlSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentControlSettingsSection.swift; sourceTree = "<group>"; };
+		AA700000000000000000001E /* commands.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = commands.json; path = ../shared/automation/commands.json; sourceTree = SOURCE_ROOT; };
+		AA7000000000000000000028 /* AutomationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationPolicyTests.swift; sourceTree = "<group>"; };
+		AA7000000000000000000029 /* AutomationClientStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationClientStoreTests.swift; sourceTree = "<group>"; };
+		AA7000000000000000000009 /* AutomationCaptureTargets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationCaptureTargets.swift; sourceTree = "<group>"; };
+		AA700000000000000000000A /* AutomationAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationAnnotations.swift; sourceTree = "<group>"; };
+		AA7000000000000000000030 /* AutomationMediaEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationMediaEditing.swift; sourceTree = "<group>"; };
+		AA700000000000000000002A /* AutomationCaptureTargetsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationCaptureTargetsTests.swift; sourceTree = "<group>"; };
+		AA7000000000000000000031 /* AutomationMediaEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationMediaEditingTests.swift; sourceTree = "<group>"; };
+		AA700000000000000000002B /* AutomationServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationServerTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000001 /* TinyClipsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyClipsApp.swift; sourceTree = "<group>"; };
 		A10000000000000000000002 /* CaptureSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSettings.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -369,6 +418,25 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		AE7000000000000000000001 /* Automation */ = {
+			isa = PBXGroup;
+			children = (
+				AA7000000000000000000001 /* AutomationContract.swift */,
+				AA7000000000000000000002 /* AutomationPolicy.swift */,
+				AA7000000000000000000003 /* AutomationClientStore.swift */,
+				AA7000000000000000000004 /* AutomationServer.swift */,
+				AA7000000000000000000005 /* AutomationApproval.swift */,
+				AA7000000000000000000006 /* AutomationController.swift */,
+				AA7000000000000000000007 /* AutomationCommandRouter.swift */,
+				AA7000000000000000000008 /* AutomationSettings.swift */,
+				AA7000000000000000000009 /* AutomationCaptureTargets.swift */,
+				AA700000000000000000000A /* AutomationAnnotations.swift */,
+				AA7000000000000000000030 /* AutomationMediaEditing.swift */,
+				AA700000000000000000001E /* commands.json */,
+			);
+			path = Automation;
+			sourceTree = "<group>";
+		};
 		C10000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
@@ -388,6 +456,7 @@
 				C10000000000000000000005 /* Capture */,
 				C10000000000000000000006 /* Services */,
 				C40000000000000000000001 /* Studio */,
+				AE7000000000000000000001 /* Automation */,
 				A1000000000000000000000B /* Assets.xcassets */,
 				A1000000000000000000000C /* Info.plist */,
 				A2000000000000000000000C /* Info-MAS.plist */,
@@ -443,6 +512,7 @@
 		C10000000000000000000008 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				AA7000000000000000000014 /* AgentControlSettingsSection.swift */,
 				A1000000000000000000002C /* AboutSettingsSection.swift */,
 				A10000000000000000000027 /* GeneralSettingsSection.swift */,
 				A1000000000000000000002A /* GifSettingsSection.swift */,
@@ -531,6 +601,11 @@
 		C30000000000000000000001 /* TinyClipsTests */ = {
 			isa = PBXGroup;
 			children = (
+				AA7000000000000000000028 /* AutomationPolicyTests.swift */,
+				AA7000000000000000000029 /* AutomationClientStoreTests.swift */,
+				AA700000000000000000002A /* AutomationCaptureTargetsTests.swift */,
+				AA7000000000000000000031 /* AutomationMediaEditingTests.swift */,
+				AA700000000000000000002B /* AutomationServerTests.swift */,
 				A30000000000000000000001 /* CaptureMathTests.swift */,
 				D61700000000000000000005 /* GifTimingTests.swift */,
 				D61700000000000000000007 /* GifTrimmerTimingTests.swift */,
@@ -690,6 +765,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AB700000000000000000001E /* commands.json in Resources */,
 				B1000000000000000000000B /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -698,6 +774,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AC700000000000000000001E /* commands.json in Resources */,
 				B2000000000000000000000B /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -709,6 +786,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AB7000000000000000000001 /* AutomationContract.swift in Sources */,
+				AB7000000000000000000002 /* AutomationPolicy.swift in Sources */,
+				AB7000000000000000000003 /* AutomationClientStore.swift in Sources */,
+				AB7000000000000000000004 /* AutomationServer.swift in Sources */,
+				AB7000000000000000000005 /* AutomationApproval.swift in Sources */,
+				AB7000000000000000000006 /* AutomationController.swift in Sources */,
+				AB7000000000000000000007 /* AutomationCommandRouter.swift in Sources */,
+				AB7000000000000000000008 /* AutomationSettings.swift in Sources */,
+				AB7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */,
+				AB700000000000000000000A /* AutomationAnnotations.swift in Sources */,
+				AB7000000000000000000030 /* AutomationMediaEditing.swift in Sources */,
+				AB7000000000000000000014 /* AgentControlSettingsSection.swift in Sources */,
 				B10000000000000000000001 /* TinyClipsApp.swift in Sources */,
 				B10000000000000000000002 /* CaptureSettings.swift in Sources */,
 				B10000000000000000000003 /* SettingsView.swift in Sources */,
@@ -806,6 +895,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AC7000000000000000000001 /* AutomationContract.swift in Sources */,
+				AC7000000000000000000002 /* AutomationPolicy.swift in Sources */,
+				AC7000000000000000000003 /* AutomationClientStore.swift in Sources */,
+				AC7000000000000000000004 /* AutomationServer.swift in Sources */,
+				AC7000000000000000000005 /* AutomationApproval.swift in Sources */,
+				AC7000000000000000000006 /* AutomationController.swift in Sources */,
+				AC7000000000000000000007 /* AutomationCommandRouter.swift in Sources */,
+				AC7000000000000000000008 /* AutomationSettings.swift in Sources */,
+				AC7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */,
+				AC700000000000000000000A /* AutomationAnnotations.swift in Sources */,
+				AC7000000000000000000030 /* AutomationMediaEditing.swift in Sources */,
+				AC7000000000000000000014 /* AgentControlSettingsSection.swift in Sources */,
 				B20000000000000000000001 /* TinyClipsApp.swift in Sources */,
 				B20000000000000000000002 /* CaptureSettings.swift in Sources */,
 				B20000000000000000000003 /* SettingsView.swift in Sources */,
@@ -903,6 +1004,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AD7000000000000000000028 /* AutomationPolicyTests.swift in Sources */,
+				AD7000000000000000000029 /* AutomationClientStoreTests.swift in Sources */,
+				AD700000000000000000002A /* AutomationCaptureTargetsTests.swift in Sources */,
+				AD7000000000000000000031 /* AutomationMediaEditingTests.swift in Sources */,
+				AD700000000000000000002B /* AutomationServerTests.swift in Sources */,
 				B30000000000000000000001 /* CaptureMathTests.swift in Sources */,
 				D61700000000000000000004 /* GifTimingTests.swift in Sources */,
 				D61700000000000000000006 /* GifTrimmerTimingTests.swift in Sources */,

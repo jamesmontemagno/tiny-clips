@@ -10,6 +10,19 @@ public static class ScreenshotBackgroundDecoder
 {
     public const long MaximumPixels = 32_000_000;
 
+    public static (int Width, int Height) ReadDimensions(string path, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var codec = SKCodec.Create(path)
+            ?? throw new InvalidDataException("The saved screenshot could not be read.");
+        if (codec.Info.Width <= 0 || codec.Info.Height <= 0)
+            throw new InvalidDataException("The saved screenshot has invalid dimensions.");
+        cancellationToken.ThrowIfCancellationRequested();
+        return (int)codec.EncodedOrigin >= 5
+            ? (codec.Info.Height, codec.Info.Width)
+            : (codec.Info.Width, codec.Info.Height);
+    }
+
     public static void ValidateDimensions(int width, int height, int maximumDimension = int.MaxValue)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumDimension);

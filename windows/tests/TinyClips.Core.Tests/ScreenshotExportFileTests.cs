@@ -7,6 +7,44 @@ public sealed class ScreenshotExportFileTests : IDisposable
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "TinyClipsTests", Guid.NewGuid().ToString("N"));
 
     [Fact]
+    public async Task ConcurrentNewExports_NeverReplaceEachOtherOrAnExistingFile()
+    {
+        var path = CreateDestination();
+        var bothEncoded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var encoded = 0;
+        async Task<string> ExportAsync(string contents) =>
+            await ScreenshotExportFile.WriteNewAsync(path, async (temporary, token) =>
+            {
+                await File.WriteAllTextAsync(temporary, contents, token);
+                if (Interlocked.Increment(ref encoded) == 2) bothEncoded.TrySetResult();
+                await bothEncoded.Task.WaitAsync(token);
+            }, TestContext.Current.CancellationToken);
+
+        var outputs = await Task.WhenAll(ExportAsync("first"), ExportAsync("second"));
+
+        Assert.NotEqual(outputs[0], outputs[1]);
+        Assert.Equal("original synthetic export", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+        Assert.Equal("first", await File.ReadAllTextAsync(outputs[0], TestContext.Current.CancellationToken));
+        Assert.Equal("second", await File.ReadAllTextAsync(outputs[1], TestContext.Current.CancellationToken));
+        Assert.Equal(3, Directory.GetFiles(_directory).Length);
+    }
+
+    [Fact]
+    public async Task CanceledNewExport_PreservesExistingFileAndRemovesStagingFile()
+    {
+        var path = CreateDestination();
+        using var cancellation = new CancellationTokenSource();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ScreenshotExportFile.WriteNewAsync(path, async (temporary, token) =>
+        {
+            await File.WriteAllTextAsync(temporary, "partial synthetic export", token);
+            cancellation.Cancel();
+        }, cancellation.Token));
+
+        Assert.Equal("original synthetic export", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+        Assert.Single(Directory.GetFiles(_directory));
+    }
+
+    [Fact]
     public async Task SuccessfulEncode_ReplacesCompleteFileAndRemovesStagingFile()
     {
         var path = CreateDestination();

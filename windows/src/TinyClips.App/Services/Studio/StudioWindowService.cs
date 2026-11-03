@@ -231,6 +231,10 @@ public sealed class StudioWindowService : IStudioProjectHost
         return window;
     }
 
+    /// <summary>Returns the live editor for agent reads and undoable edits, if one is open.</summary>
+    internal StudioViewModel? FindOpenViewModel(string projectId) =>
+        _windows.TryGetValue(projectId, out var window) ? window.ViewModel : null;
+
     /// <summary>
     /// Opens a project that was saved as a folder, from its <c>.tinyclips</c> file or from the
     /// folder that holds one: the project is copied into the store as a new draft, and the

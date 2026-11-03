@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "tinyclips",
+  "version": "0.1.0",
+  "description": "Let AI agents capture screenshots, record demos, annotate, edit Studio projects, and manage clips in the Tiny Clips app on macOS and Windows.",
+  "author": {
+    "name": "James Montemagno",
+    "url": "https://github.com/jamesmontemagno"
+  },
+  "homepage": "https://github.com/jamesmontemagno/tiny-clips/blob/main/docs/agent-integration.md",
+  "repository": "https://github.com/jamesmontemagno/tiny-clips",
+  "license": "MIT",
+  "keywords": ["screenshots", "screen-recording", "gif", "annotation", "ocr", "video", "macos", "windows", "mcp"]
+}

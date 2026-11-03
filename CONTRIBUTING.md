@@ -89,15 +89,27 @@ detection so checks can report a successful skip without leaving required checks
 pending. Platform build/test jobs only allocate macOS or Windows runners when their
 inputs change:
 
-- macOS: files under `mac/`, shared Studio fixtures, or `.github/workflows/build.yml`.
+- macOS: files under `mac/`, shared Studio fixtures, shared automation contracts/fixtures,
+  or `.github/workflows/build.yml`.
 - Windows: files under `windows/src/` or `windows/tests/`, top-level Windows MSBuild
   properties/targets and solutions, the direct-package validation script, shared
-  Studio fixtures, or `.github/workflows/windows-build.yml`.
+  Studio fixtures, shared automation contracts/fixtures, root .NET/NuGet/MSBuild
+  configuration, or `.github/workflows/windows-build.yml`.
 
 Markdown-only changes do not trigger either platform's builds. Documentation,
 Copilot app configuration, extensions, and standalone tooling outside those inputs
-also skip platform builds. Manually dispatching **Windows Build** still forces its
-builds and tests. Release/tag and other manually triggered workflows are unchanged.
+also skip platform builds. Manually dispatching **Build** or **Windows Build** forces
+its platform's builds and tests. Existing app release/tag workflows are unchanged.
+
+The separate **Agent CLI** workflow validates `agent/`, `plugins/tinyclips/`, shared
+automation inputs, root .NET/NuGet/MSBuild configuration, and its build/release
+workflows on Linux, Windows, Apple silicon macOS, and Intel macOS. It includes
+Markdown under agent/plugin paths because the NuGet README and Skills ship to users.
+Unrelated docs still skip these jobs. Its **Agent CLI result** check reports a
+successful skip only after successful change detection. It tests the actual
+NuGet-installed tool and the plugin's MCP launch command, without driving a real
+app or requiring capture permissions. See [agent development and releases](agent/README.md#ci-and-nuget-releases)
+for local smoke commands and the `agent-release.yml` NuGet Trusted Publishing setup.
 
 The Windows direct-build matrix always expands to report both required architecture
 checks. With no Windows changes, its entries run only a build-decision check on

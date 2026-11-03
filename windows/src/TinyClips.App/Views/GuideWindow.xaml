@@ -42,6 +42,38 @@
                     Style="{StaticResource BodyTextBlockStyle}"
                     Text="Tiny Clips lives in your system tray. Click the tray icon any time to capture a screenshot, video, GIF, or text from your screen." />
 
+                <!--  Agent control  -->
+                <TextBlock
+                    Margin="4,16,0,4"
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Agent control" />
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <StackPanel Spacing="12">
+                        <local:GuideRow
+                            Glyph="&#xE99A;"
+                            Title="Connect your AI agent"
+                            Subtitle="In Settings → Agent control, enable access. Install the .NET 10 SDK, then run the commands below in a terminal. Keep Tiny Clips running and approve the pairing request." />
+                        <TextBlock
+                            FontFamily="Consolas"
+                            IsTextSelectionEnabled="True"
+                            Text="dotnet tool install -g TinyClips&#x0a;tinyclips pair --name &quot;My agent&quot;&#x0a;tinyclips status"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Text="Try asking: Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy."
+                            IsTextSelectionEnabled="True"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Agents can capture, annotate, record, and edit/export Studio projects through the CLI or MCP server. Deleting, uploading, and discarding always need approval. Revoke agents or turn off access in Settings; the audit log records requests. Agents need their own tools to scroll or interact with other apps."
+                            TextWrapping="Wrap" />
+                        <HyperlinkButton
+                            HorizontalAlignment="Left"
+                            Content="Setup, MCP configuration, Skills, and prompts"
+                            NavigateUri="https://github.com/jamesmontemagno/tiny-clips/blob/main/docs/agent-integration.md" />
+                    </StackPanel>
+                </Border>
+
                 <!--  Capture modes  -->
                 <TextBlock
                     Margin="4,16,0,4"

@@ -7,6 +7,53 @@ namespace TinyClips.Core.Tests;
 public sealed class StudioEditorSessionEditTests : StudioEditorSessionTestBase
 {
     [Fact]
+    public async Task AutomationEdit_IsSavedAsOneUndoableEdit()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        var current = Assert.IsType<StudioProject>(session.Project);
+        var updated = current with { Audio = current.Audio with { Volume = 0.4 } };
+
+        Assert.False(session.ApplyAutomationProject(updated, DateTimeOffset.UnixEpoch));
+        Assert.True(session.ApplyAutomationProject(updated, current.ModifiedAt));
+
+        Assert.Equal(0.4, session.Project!.Audio.Volume, Precision);
+        Assert.Equal(0.4, Projects.Load(id).Audio.Volume, Precision);
+        Assert.True(session.CanUndo);
+
+        session.Undo();
+
+        Assert.Equal(1, session.Project!.Audio.Volume, Precision);
+        Assert.True(session.HasUnsavedEdits);
+    }
+
+    [Fact]
+    public async Task AutomationEdit_WaitsForAnActiveGestureAndKeepsSeparateUndoSteps()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        session.BeginGesture();
+        session.SetCanvasPadding(0.2);
+        var duringGesture = Assert.IsType<StudioProject>(session.Project);
+        var updated = duringGesture with { Audio = duringGesture.Audio with { Volume = 0.4 } };
+
+        Assert.False(session.ApplyAutomationProject(updated, duringGesture.ModifiedAt));
+        Assert.Equal(1, session.Project!.Audio.Volume, Precision);
+        Assert.Equal(0.06, Projects.Load(id).Canvas.Padding, Precision);
+        Assert.True(session.HasUnsavedEdits);
+
+        session.EndGesture();
+        Assert.True(session.ApplyAutomationProject(updated, session.Project!.ModifiedAt));
+
+        session.Undo();
+        Assert.Equal(1, session.Project!.Audio.Volume, Precision);
+        Assert.Equal(0.2, session.Project.Canvas.Padding, Precision);
+
+        session.Undo();
+        Assert.Equal(0.06, session.Project.Canvas.Padding, Precision);
+    }
+
+    [Fact]
     public async Task Edit_MarksUnsaved_UpdatesThePreview_AndIsSavedAfterTheDelay()
     {
         var id = CreateProject();

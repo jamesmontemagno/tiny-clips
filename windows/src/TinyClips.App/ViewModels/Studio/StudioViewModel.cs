@@ -161,6 +161,13 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public string ProjectId => _session.ProjectId;
 
+    public StudioProject? Project => _session.Project;
+
+    internal bool ApplyAutomationProject(StudioProject updated, DateTimeOffset expectedModifiedAt) =>
+        _session.ApplyAutomationProject(updated, expectedModifiedAt);
+
+    internal bool SaveForAutomationExport() => _session.SaveNow();
+
     // State
 
     public bool IsLoading => _session.State == StudioEditorLoadState.Loading;
@@ -369,8 +376,6 @@ public sealed partial class StudioViewModel : ObservableObject
     public string TrimEndText => StudioEditorModel.GetSecondsText(TrimEnd);
 
     public string PlayheadText => _session.Model?.GetPlayheadText(Playhead) ?? string.Empty;
-
-    private StudioProject? Project => _session.Project;
 
     private StudioScene Scene => _session.Model?.CurrentScene ?? new StudioScene();
 

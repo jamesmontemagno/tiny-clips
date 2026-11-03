@@ -36,6 +36,7 @@ struct MenuBarContentView: View {
     @ObservedObject private var settings = CaptureSettings.shared
     @ObservedObject private var recentCaptures = RecentCaptureStore.shared
     @ObservedObject private var studioDrafts = StudioRecentDrafts.shared
+    @ObservedObject private var automation = AutomationController.shared
     @Environment(\.openWindow) private var openWindow
 #if APPSTORE
     @Environment(\.requestReview) private var requestReview
@@ -223,6 +224,21 @@ struct MenuBarContentView: View {
         .keyboardShortcut(",", modifiers: .command)
         .accessibilityHint("Opens TinyClips settings.")
 
+        if automation.isEnabled {
+            Divider()
+
+            Label("Agent Control On", systemImage: "terminal")
+                .disabled(true)
+                .accessibilityLabel("Agent control is on")
+
+            Button {
+                automation.setEnabled(false)
+            } label: {
+                Label("Turn Off Agent Control", systemImage: "xmark.circle")
+            }
+            .accessibilityHint("Stops AI agents from controlling TinyClips.")
+        }
+
         Divider()
 
         Button {
@@ -378,6 +394,9 @@ struct MenuBarLabelView: View {
             .onAppear {
                 ScreenshotEditorRegistry.shared.installOpener { sessionID in
                     openWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
+                }
+                AutomationWindowOpener.shared.install { windowID in
+                    openWindow(id: windowID)
                 }
             }
     }

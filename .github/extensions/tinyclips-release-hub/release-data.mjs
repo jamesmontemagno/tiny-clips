@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 const TAG_PATTERNS = {
     mac: /^v\d+\.\d+\.\d+(?:\.\d+)?-mac$/,
     windows: /^v\d+\.\d+\.\d+(?:\.\d+)?-windows$/,
+    agent: /^agent-v\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/,
 };
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -53,6 +54,13 @@ function platformConfig(platform) {
             workflowInput: "tag",
         };
     }
+    if (platform === "agent") {
+        return {
+            changelog: "CHANGELOG.md",
+            unreleasedHeading: "## Unreleased",
+            workflow: "agent-release.yml",
+        };
+    }
     throw new Error(`Unsupported platform: ${platform}`);
 }
 
@@ -64,14 +72,19 @@ function releaseMetadataBranch(tag) {
     return `release-metadata/${tag}`;
 }
 
-function parseVersion(tag) {
-    const match = tag.match(/^v(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?-(?:mac|windows)$/);
-    return match ? match.slice(1).map((value) => Number(value ?? 0)) : [0, 0, 0, 0];
+export function parseReleaseTagVersion(tag) {
+    const match = tag.match(/^v(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?-(?:mac|windows)$/)
+        ?? tag.match(/^agent-v(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/);
+    const version = match ? match.slice(1).map((value) => Number(value ?? 0)) : [0, 0, 0, 0];
+    while (version.length < 4) {
+        version.push(0);
+    }
+    return version;
 }
 
 function compareTags(left, right) {
-    const a = parseVersion(left);
-    const b = parseVersion(right);
+    const a = parseReleaseTagVersion(left);
+    const b = parseReleaseTagVersion(right);
     for (let index = 0; index < a.length; index += 1) {
         if (a[index] !== b[index]) {
             return b[index] - a[index];
@@ -81,12 +94,15 @@ function compareTags(left, right) {
 }
 
 function nextPatchTag(platform, latestTag, appVersion) {
+    if (platform === "agent") {
+        return appVersion ? `agent-v${appVersion}` : "agent-v0.1.0";
+    }
     if (platform === "mac" && appVersion) {
         const prefix = `v${appVersion}.`;
-        const matchingPatch = latestTag?.startsWith(prefix) ? parseVersion(latestTag)[2] : -1;
+        const matchingPatch = latestTag?.startsWith(prefix) ? parseReleaseTagVersion(latestTag)[2] : -1;
         return `${prefix}${matchingPatch + 1}-mac`;
     }
-    const [major, minor, patch] = parseVersion(latestTag ?? "");
+    const [major, minor, patch] = parseReleaseTagVersion(latestTag ?? "");
     return `v${major}.${minor}.${patch + 1}-windows`;
 }
 
@@ -144,14 +160,37 @@ async function readMacVersion(root) {
     return match?.[1] ?? "unknown";
 }
 
+async function readAgentVersions(root) {
+    const [project, pluginText, registryText] = await Promise.all([
+        readFile(`${root}/agent/src/TinyClips.Cli/TinyClips.Cli.csproj`, "utf8"),
+        readFile(`${root}/plugins/tinyclips/plugin.json`, "utf8"),
+        readFile(`${root}/agent/src/TinyClips.Cli/.mcp/server.json`, "utf8"),
+    ]);
+    const registry = JSON.parse(registryText);
+    const versions = {
+        cli: project.match(/<PackageVersion>([^<]+)<\/PackageVersion>/)?.[1] ?? null,
+        plugin: JSON.parse(pluginText).version ?? null,
+        registry: registry.version ?? null,
+        package: registry.packages?.[0]?.version ?? null,
+    };
+    const values = Object.values(versions);
+    return {
+        version: values[0] ?? null,
+        versions,
+        consistent: Boolean(values[0]) && values.every((value) => value === values[0]),
+    };
+}
+
 async function getTags(platform) {
-    const output = await run("git", ["tag", "--list", `v*-${platform}`]);
+    const pattern = platform === "agent" ? "agent-v*" : `v*-${platform}`;
+    const output = await run("git", ["tag", "--list", pattern]);
     return output.split(/\r?\n/).filter((tag) => TAG_PATTERNS[platform].test(tag)).sort(compareTags);
 }
 
 async function getRemoteTags(platform) {
+    const pattern = platform === "agent" ? "refs/tags/agent-v*" : `refs/tags/v*-${platform}`;
     const result = await tryRun("git", [
-        "ls-remote", "--tags", "origin", `refs/tags/v*-${platform}`,
+        "ls-remote", "--tags", "origin", pattern,
     ]);
     if (!result.ok) {
         return { available: false, tags: [], error: result.error };
@@ -468,6 +507,11 @@ function simulateReleaseAction(action, input) {
         assertConfirmation(input.confirmation, `SUBMIT ${input.tag}`);
         return { action, tag: input.tag, demo: true, output: `Simulated winget submission for ${input.tag}.` };
     }
+    if (action === "publish_agent_release") {
+        assertTag("agent", input.tag);
+        assertConfirmation(input.confirmation, `PUBLISH ${input.tag}`);
+        return { action, tag: input.tag, demo: true, output: `Simulated NuGet release for ${input.tag}.` };
+    }
     throw new Error(`Unknown release action: ${action}`);
 }
 
@@ -605,7 +649,8 @@ export async function generateReleaseNotes(platform, version) {
             "- Signature verification passed (`spctl` and `codesign`).",
             "- Sparkle appcast and Homebrew cask metadata will be updated.",
         ]
-        : [
+        : platform === "windows"
+            ? [
             "## Install",
             "Install Tiny Clips for Windows from any Windows 11 terminal:",
             "",
@@ -618,14 +663,33 @@ export async function generateReleaseNotes(platform, version) {
             "## Release validation",
             "- Azure Artifact Signing, SignTool verification, and WACK run in the release workflow.",
             "- x64 and ARM64 MSIX packages are published before the separate winget submission.",
-        ];
+            ]
+            : [
+                "## Install",
+                "Run without installing globally:",
+                "",
+                "```text",
+                "dnx TinyClips status",
+                "```",
+                "",
+                "Or install the .NET tool:",
+                "",
+                "```text",
+                "dotnet tool install -g TinyClips",
+                "```",
+                "",
+                "## Release validation",
+                "- The agent CLI, plugin, and MCP metadata versions match the release tag.",
+                "- The candidate package is tested on Linux, Windows, macOS Apple silicon, and macOS Intel.",
+                "- NuGet Trusted Publishing exchanges the GitHub OIDC token for a short-lived API key.",
+            ];
     const notes = [body || "- Maintenance release.", "", ...install].join("\n").trim();
     return { platform, version: tag, source: config.changelog, notes, itemCount: countNotes(body) };
 }
 
 export async function getReleaseSnapshot() {
     const root = await getRepoRoot();
-    const [branch, status, head, originMain, originUrl, aheadOfMain, behindMain, macTags, windowsTags, remoteMacTags, remoteWindowsTags, macVersion, releases, macWorkflow, windowsWorkflow, wingetWorkflow, wingetPublished, actions, settings] =
+    const [branch, status, head, originMain, originUrl, aheadOfMain, behindMain, macTags, windowsTags, agentTags, remoteMacTags, remoteWindowsTags, remoteAgentTags, macVersion, agentVersions, releases, macWorkflow, windowsWorkflow, agentWorkflow, wingetWorkflow, wingetPublished, actions, settings] =
         await Promise.all([
             run("git", ["branch", "--show-current"]),
             run("git", ["status", "--porcelain"]),
@@ -636,12 +700,16 @@ export async function getReleaseSnapshot() {
             run("git", ["rev-list", "--count", "HEAD..origin/main"]),
             getTags("mac"),
             getTags("windows"),
+            getTags("agent"),
             getRemoteTags("mac"),
             getRemoteTags("windows"),
+            getRemoteTags("agent"),
             readMacVersion(root),
+            readAgentVersions(root),
             getReleases(),
             getWorkflow("release.yml"),
             getWorkflow("windows-release.yml"),
+            getWorkflow("agent-release.yml"),
             getWorkflow("winget-submit.yml"),
             getWingetPublishedVersion(),
             getActionsSnapshot(),
@@ -681,13 +749,15 @@ export async function getReleaseSnapshot() {
             (wingetStatus === "missing" || wingetStatus === "behind")
             ? latestRelease?.tagName ?? null
             : null;
-        const releasePullRequest = pendingTag ? await getReleasePullRequest(pendingTag) : null;
+        const releasePullRequest = platform === "agent" || !pendingTag
+            ? null
+            : await getReleasePullRequest(pendingTag);
         const releaseMetadataPullRequest = platform === "mac" && latestRemoteTag
             ? await getReleaseMetadataPullRequest(latestRemoteTag)
             : null;
         return {
             id: platform,
-            label: platform === "mac" ? "macOS" : "Windows",
+            label: platform === "mac" ? "macOS" : (platform === "windows" ? "Windows" : "Agent"),
             latestTag,
             latestRemoteTag,
             remoteTags: remoteTagResult.tags.slice(0, 20),
@@ -695,8 +765,13 @@ export async function getReleaseSnapshot() {
             releasePullRequest,
             releaseMetadataPullRequest,
             latestRelease,
-            suggestedTag,
+            suggestedTag: platform === "agent"
+                ? `agent-v${agentVersions.version ?? "0.1.0"}`
+                : suggestedTag,
             appVersion: platform === "mac" ? macVersion : null,
+            packageVersion: platform === "agent" ? agentVersions.version : null,
+            packageVersions: platform === "agent" ? agentVersions.versions : null,
+            packageVersionsConsistent: platform === "agent" ? agentVersions.consistent : null,
             changelog: config.changelog,
             unreleasedNotes: extractSection(markdown, config.unreleasedHeading),
             unreleasedCount: countNotes(extractSection(markdown, config.unreleasedHeading)),
@@ -730,6 +805,7 @@ export async function getReleaseSnapshot() {
         platforms: {
             mac: await buildPlatform("mac", macTags, remoteMacTags, macWorkflow),
             windows: await buildPlatform("windows", windowsTags, remoteWindowsTags, windowsWorkflow),
+            agent: await buildPlatform("agent", agentTags, remoteAgentTags, agentWorkflow),
         },
     };
 }
@@ -747,6 +823,50 @@ function assertConfirmation(actual, expected) {
 }
 
 export async function performReleaseAction(action, input) {
+    if (action === "publish_agent_release") {
+        assertTag("agent", input.tag);
+        assertConfirmation(input.confirmation, `PUBLISH ${input.tag}`);
+        await run("git", ["fetch", "--quiet", "origin", "main", "--tags"]);
+        const root = await getRepoRoot();
+        const [head, originMain, status, branch, localTag, remoteTag, versions] = await Promise.all([
+            run("git", ["rev-parse", "HEAD"]),
+            run("git", ["rev-parse", "origin/main"]),
+            run("git", ["status", "--porcelain"]),
+            run("git", ["branch", "--show-current"]),
+            tryRun("git", ["rev-parse", "--verify", `refs/tags/${input.tag}`]),
+            run("git", ["ls-remote", "--tags", "origin", `refs/tags/${input.tag}`]),
+            readAgentVersions(root),
+        ]);
+        if (branch !== "main") {
+            throw new Error(`Agent releases must be published from main; current branch is ${branch || "detached"}.`);
+        }
+        if (status) {
+            throw new Error("Agent release requires a clean working tree.");
+        }
+        if (head !== originMain) {
+            throw new Error("Agent release requires the latest origin/main.");
+        }
+        const expectedVersion = input.tag.slice("agent-v".length);
+        if (!versions.consistent || versions.version !== expectedVersion) {
+            throw new Error(`Agent tag ${input.tag} does not match the committed CLI, plugin, and MCP versions.`);
+        }
+        if (localTag.ok) {
+            throw new Error(`Local tag ${input.tag} already exists. Publish or remove it explicitly before retrying.`);
+        }
+        if (remoteTag) {
+            throw new Error(`Tag ${input.tag} already exists on origin.`);
+        }
+        const notes = (await generateReleaseNotes("agent", expectedVersion)).notes;
+        await run("git", ["tag", "-a", input.tag, head, "-m", `Tiny Clips Agent ${expectedVersion}`, "-m", notes]);
+        const output = await run("git", ["push", "origin", input.tag]);
+        return {
+            action,
+            tag: input.tag,
+            output: output || `Published ${input.tag}.`,
+            tracking: { platform: "agent", kind: "release" },
+        };
+    }
+
     if (action === "prepare_release") {
         assertTag(input.platform, input.version);
         assertConfirmation(input.confirmation, `PREPARE ${input.version}`);
@@ -961,6 +1081,9 @@ export async function performReleaseAction(action, input) {
         assertTag(input.platform, input.tag);
         assertConfirmation(input.confirmation, `RUN ${input.tag}`);
         const config = platformConfig(input.platform);
+        if (!config.workflowInput) {
+            throw new Error(`${config.workflow} is tag-triggered and cannot be manually dispatched.`);
+        }
         const output = await run("gh", [
             "workflow", "run", config.workflow, "-f", `${config.workflowInput}=${input.tag}`,
         ]);

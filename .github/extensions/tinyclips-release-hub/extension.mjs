@@ -117,14 +117,14 @@ async function startServer(instanceId) {
     return { server, url: `http://127.0.0.1:${port}/` };
 }
 
-const platformSchema = { type: "string", enum: ["mac", "windows"] };
+const platformSchema = { type: "string", enum: ["mac", "windows", "agent"] };
 
 await joinSession({
     canvases: [
         createCanvas({
             id: "tinyclips-release-hub",
             displayName: "TinyClips Release Hub",
-            description: "Manage macOS and Windows release readiness, notes, tags, workflows, and winget submission.",
+            description: "Manage macOS, Windows, and Agent release readiness, notes, tags, workflows, and distribution.",
             inputSchema: {
                 type: "object",
                 properties: {
@@ -238,7 +238,7 @@ await joinSession({
                         required: ["platform", "version", "confirmation"],
                         additionalProperties: false,
                     },
-                    handler: async (ctx) => performReleaseAction("prepare_release", ctx.input),
+                    handler: async (ctx) => executeReleaseAction("prepare_release", ctx.input),
                 },
                 {
                     name: "undo_prepare",
@@ -253,7 +253,7 @@ await joinSession({
                         required: ["platform", "tag", "confirmation"],
                         additionalProperties: false,
                     },
-                    handler: async (ctx) => performReleaseAction("undo_prepare", ctx.input),
+                    handler: async (ctx) => executeReleaseAction("undo_prepare", ctx.input),
                 },
                 {
                     name: "create_release_pr",
@@ -267,7 +267,7 @@ await joinSession({
                         required: ["tag", "confirmation"],
                         additionalProperties: false,
                     },
-                    handler: async (ctx) => performReleaseAction("create_release_pr", ctx.input),
+                    handler: async (ctx) => executeReleaseAction("create_release_pr", ctx.input),
                 },
                 {
                     name: "merge_release_pr",
@@ -281,7 +281,7 @@ await joinSession({
                         required: ["tag", "confirmation"],
                         additionalProperties: false,
                     },
-                    handler: async (ctx) => performReleaseAction("merge_release_pr", ctx.input),
+                    handler: async (ctx) => executeReleaseAction("merge_release_pr", ctx.input),
                 },
                 {
                     name: "run_release_workflow",
@@ -296,7 +296,21 @@ await joinSession({
                         required: ["platform", "tag", "confirmation"],
                         additionalProperties: false,
                     },
-                    handler: async (ctx) => performReleaseAction("run_release_workflow", ctx.input),
+                    handler: async (ctx) => executeReleaseAction("run_release_workflow", ctx.input),
+                },
+                {
+                    name: "publish_agent_release",
+                    description: "Create and publish the version-matched agent release tag after exact typed confirmation.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            tag: { type: "string", minLength: 1 },
+                            confirmation: { type: "string", minLength: 1 },
+                        },
+                        required: ["tag", "confirmation"],
+                        additionalProperties: false,
+                    },
+                    handler: async (ctx) => executeReleaseAction("publish_agent_release", ctx.input),
                 },
                 {
                     name: "merge_release_metadata_pr",
@@ -310,7 +324,7 @@ await joinSession({
                         required: ["tag", "confirmation"],
                         additionalProperties: false,
                     },
-                    handler: async (ctx) => performReleaseAction("merge_release_metadata_pr", ctx.input),
+                    handler: async (ctx) => executeReleaseAction("merge_release_metadata_pr", ctx.input),
                 },
                 {
                     name: "submit_winget",
@@ -324,7 +338,7 @@ await joinSession({
                         required: ["tag", "confirmation"],
                         additionalProperties: false,
                     },
-                    handler: async (ctx) => performReleaseAction("submit_winget", ctx.input),
+                    handler: async (ctx) => executeReleaseAction("submit_winget", ctx.input),
                 },
             ],
             open: async (ctx) => {
@@ -333,10 +347,13 @@ await joinSession({
                     entry = await startServer(ctx.instanceId);
                     servers.set(ctx.instanceId, entry);
                 }
+                const platform = ctx.input?.platform === "agent" || ctx.input?.platform === "windows"
+                    ? ctx.input.platform
+                    : "mac";
                 return {
                     title: "TinyClips Release Hub",
                     status: "Release status and operations",
-                    url: entry.url,
+                    url: `${entry.url}?platform=${encodeURIComponent(platform)}`,
                 };
             },
             onClose: async (ctx) => {

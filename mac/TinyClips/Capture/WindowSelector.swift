@@ -6,7 +6,7 @@ import ScreenCaptureKit
 @MainActor
 class WindowSelector {
     private static var activeSelector: WindowSelectorController?
-    private static let systemChromeBundleIdentifiers: Set<String> = [
+    static let systemChromeBundleIdentifiers: Set<String> = [
         "com.apple.WindowManager",
         "com.apple.controlcenter",
         "com.apple.dock",
