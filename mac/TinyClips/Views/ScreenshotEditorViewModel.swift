@@ -80,6 +80,9 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var numberTextColor: Color = .white
     @Published var redactionStrength: RedactionStrength = .medium
     @Published var selectedArrowStylePreset: ArrowStyle = .straight
+    @Published var startCap: StrokeCap = .round
+    @Published var endCap: StrokeCap = .round
+    @Published var lineJoin: StrokeJoin = .round
     @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
     @Published var recentEmoji: [String] = []
     @Published var backgroundStyle: ExportBackgroundStyle = .transparent
@@ -478,6 +481,12 @@ class ScreenshotEditorViewModel: ObservableObject {
     var showsArrowStyleControl: Bool {
         inspectorTool == .arrow
     }
+
+    var showsStartCapControl: Bool { inspectorTool.usesStartCap }
+
+    var showsEndCapControl: Bool { inspectorTool.usesEndCap }
+
+    var showsLineJoinControl: Bool { inspectorTool.usesJoin }
 
     var showsEmojiPicker: Bool {
         inspectorTool == .emoji
@@ -997,6 +1006,58 @@ class ScreenshotEditorViewModel: ObservableObject {
         didRecordLineWidthAdjustment = false
     }
 
+    private func selectedIndex(using uses: (EditTool) -> Bool) -> Int? {
+        guard selectedTool == .move,
+              let index = selectedAnnotationIndex,
+              annotations.indices.contains(index),
+              uses(annotations[index].tool) else {
+            return nil
+        }
+        return index
+    }
+
+    func selectedStartCap() -> StrokeCap? {
+        selectedIndex(using: \.usesStartCap).map { annotations[$0].startCap }
+    }
+
+    @discardableResult
+    func updateSelectedStartCap(_ cap: StrokeCap) -> Bool {
+        guard let index = selectedIndex(using: \.usesStartCap) else { return false }
+        guard annotations[index].startCap != cap else { return true }
+        recordHistory()
+        annotations[index].startCap = cap
+        markDirty()
+        return true
+    }
+
+    func selectedEndCap() -> StrokeCap? {
+        selectedIndex(using: \.usesEndCap).map { annotations[$0].endCap }
+    }
+
+    @discardableResult
+    func updateSelectedEndCap(_ cap: StrokeCap) -> Bool {
+        guard let index = selectedIndex(using: \.usesEndCap) else { return false }
+        guard annotations[index].endCap != cap else { return true }
+        recordHistory()
+        annotations[index].endCap = cap
+        markDirty()
+        return true
+    }
+
+    func selectedLineJoin() -> StrokeJoin? {
+        selectedIndex(using: \.usesJoin).map { annotations[$0].lineJoin }
+    }
+
+    @discardableResult
+    func updateSelectedLineJoin(_ join: StrokeJoin) -> Bool {
+        guard let index = selectedIndex(using: \.usesJoin) else { return false }
+        guard annotations[index].lineJoin != join else { return true }
+        recordHistory()
+        annotations[index].lineJoin = join
+        markDirty()
+        return true
+    }
+
     func selectedArrowStyle() -> ArrowStyle? {
         guard selectedTool == .move,
               let index = selectedAnnotationIndex,
@@ -1151,7 +1212,10 @@ class ScreenshotEditorViewModel: ObservableObject {
                 points: (selectedTool == .arrow || selectedTool == .line) ? [start, current] : [],
                 redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
                 isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
-                arrowStyle: selectedArrowStylePreset
+                arrowStyle: selectedArrowStylePreset,
+                startCap: startCap,
+                endCap: endCap,
+                lineJoin: lineJoin
             )
         }
     }
@@ -1205,7 +1269,10 @@ class ScreenshotEditorViewModel: ObservableObject {
                     points: (selectedTool == .arrow || selectedTool == .line) ? [start, end] : [],
                     redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
                     isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
-                    arrowStyle: selectedArrowStylePreset
+                    arrowStyle: selectedArrowStylePreset,
+                    startCap: startCap,
+                    endCap: endCap,
+                    lineJoin: lineJoin
                 ))
                 markDirty()
             }
@@ -2269,6 +2336,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ctx.fill(rect)
                 }
 
+                ctx.setLineJoin(annotation.lineJoin.cgLineJoin)
                 ctx.stroke(rect)
             }
 
@@ -2295,20 +2363,32 @@ class ScreenshotEditorViewModel: ObservableObject {
             // Build in the y-down space the geometry is defined in, then flip into the context.
             let shape = ArrowGeometry.build(start: startTopLeft, end: endTopLeft, width: strokeWidth, style: annotation.arrowStyle)
             let flip = { (point: CGPoint) in CGPoint(x: point.x, y: outputSize.height - point.y) }
-            ctx.move(to: flip(shape.shaftStart))
-            if shape.curved {
-                ctx.addQuadCurve(to: flip(shape.shaftEnd), control: flip(shape.shaftControl))
+            let flipped = ArrowShape(
+                curved: shape.curved,
+                shaftStart: flip(shape.shaftStart),
+                shaftControl: flip(shape.shaftControl),
+                shaftEnd: flip(shape.shaftEnd),
+                tip: flip(shape.tip),
+                head1: flip(shape.head1),
+                head2: flip(shape.head2)
+            )
+            let shaft = CGMutablePath()
+            shaft.move(to: flipped.shaftStart)
+            if flipped.curved {
+                shaft.addQuadCurve(to: flipped.shaftEnd, control: flipped.shaftControl)
             } else {
-                ctx.addLine(to: flip(shape.shaftEnd))
+                shaft.addLine(to: flipped.shaftEnd)
             }
-            ctx.strokePath()
-
-            ctx.setFillColor(cgColor)
-            ctx.move(to: flip(shape.tip))
-            ctx.addLine(to: flip(shape.head1))
-            ctx.addLine(to: flip(shape.head2))
-            ctx.closePath()
-            ctx.fillPath()
+            let stroke = flipped.shaftStroke(startCap: annotation.startCap, width: strokeWidth)
+            drawFadedCG(annotation.color, in: ctx) { opaque in
+                strokeOpenPathCG(shaft, stroke, color: opaque, in: ctx)
+                ctx.setFillColor(opaque)
+                ctx.move(to: flipped.tip)
+                ctx.addLine(to: flipped.head1)
+                ctx.addLine(to: flipped.head2)
+                ctx.closePath()
+                ctx.fillPath()
+            }
 
         case .line:
             let line = linePoints(for: annotation)
@@ -2320,9 +2400,17 @@ class ScreenshotEditorViewModel: ObservableObject {
                 x: (line.end.x * fullSize.width) - cropOrigin.x + contentOffset.x,
                 y: imageOutputHeight - ((line.end.y * fullSize.height) - cropOrigin.y) + contentOffset.y
             )
-            ctx.move(to: start)
-            ctx.addLine(to: end)
-            ctx.strokePath()
+            let path = CGMutablePath()
+            path.move(to: start)
+            path.addLine(to: end)
+            let stroke = OpenStrokeShape(
+                start: start, startDirection: end, startCap: annotation.startCap,
+                end: end, endDirection: start, endCap: annotation.endCap,
+                width: strokeWidth
+            )
+            drawFadedCG(annotation.color, in: ctx) { opaque in
+                strokeOpenPathCG(path, stroke, color: opaque, in: ctx)
+            }
 
         case .pencil:
             if annotation.points.count > 1 {
@@ -2336,7 +2424,11 @@ class ScreenshotEditorViewModel: ObservableObject {
                 for pt in scaledPoints.dropFirst() {
                     ctx.addLine(to: pt)
                 }
+                ctx.saveGState()
+                ctx.setLineCap(.round)
+                ctx.setLineJoin(.round)
                 ctx.strokePath()
+                ctx.restoreGState()
             }
 
         case .blur:
@@ -2483,6 +2575,36 @@ class ScreenshotEditorViewModel: ObservableObject {
             verticalAlignment: verticalExportAlignment,
             snapsToPixels: true
         )
+    }
+
+    /// Draws opaque pieces into a transparency layer faded once by the color's alpha, so the
+    /// overlaps between a stroke and its caps or head don't darken.
+    private func drawFadedCG(_ color: Color, in ctx: CGContext, _ draw: (CGColor) -> Void) {
+        let (opaque, alpha) = color.opaqueComponents
+        guard alpha < 1 else {
+            draw(NSColor(color).cgColor)
+            return
+        }
+        ctx.saveGState()
+        ctx.setAlpha(alpha)
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+        draw(NSColor(opaque).cgColor)
+        ctx.endTransparencyLayer()
+        ctx.restoreGState()
+    }
+
+    private func strokeOpenPathCG(_ path: CGPath, _ stroke: OpenStrokeShape, color: CGColor, in ctx: CGContext) {
+        ctx.saveGState()
+        ctx.setStrokeColor(color)
+        ctx.setFillColor(color)
+        ctx.setLineCap(stroke.lineCap)
+        ctx.addPath(path)
+        ctx.strokePath()
+        for cap in stroke.capPaths {
+            ctx.addPath(cap)
+            ctx.fillPath()
+        }
+        ctx.restoreGState()
     }
 
     /// Runs `draw` with the context rotated about `rect`'s center when the annotation is rotated.

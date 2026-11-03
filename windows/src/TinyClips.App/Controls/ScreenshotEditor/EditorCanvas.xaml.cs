@@ -45,6 +45,9 @@ public sealed partial class EditorCanvas : UserControl
     {
         public UIElement Primary = null!;
         public UIElement? Secondary;
+        // Arrows hold their shaft and head in one container so a translucent color fades them
+        // together instead of darkening where they overlap.
+        public Canvas? Group;
         public SolidColorBrush? StrokeBrush;
         public SolidColorBrush? FillBrush;
         public SolidColorBrush? TextBrush;
@@ -622,6 +625,11 @@ public sealed partial class EditorCanvas : UserControl
     {
         if (_visuals.Remove(ann, out var visual))
         {
+            if (visual.Group is not null)
+            {
+                OverlayCanvas.Children.Remove(visual.Group);
+                return;
+            }
             OverlayCanvas.Children.Remove(visual.Primary);
             if (visual.Secondary is not null)
             {
@@ -678,25 +686,26 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
+        var children = (visual.Group ?? OverlayCanvas).Children;
         var oldShaft = visual.Primary;
-        var childIndex = OverlayCanvas.Children.IndexOf(oldShaft);
+        var childIndex = children.IndexOf(oldShaft);
         if (childIndex >= 0)
         {
-            OverlayCanvas.Children.RemoveAt(childIndex);
+            children.RemoveAt(childIndex);
         }
         else if (visual.Secondary is { } head)
         {
-            childIndex = OverlayCanvas.Children.IndexOf(head);
+            childIndex = children.IndexOf(head);
         }
 
         var newShaft = CreateArrowShaft(wantsCurved, visual.StrokeBrush!);
         if (childIndex >= 0)
         {
-            OverlayCanvas.Children.Insert(childIndex, newShaft);
+            children.Insert(childIndex, newShaft);
         }
         else
         {
-            OverlayCanvas.Children.Add(newShaft);
+            children.Add(newShaft);
         }
         visual.Primary = newShaft;
     }
@@ -715,6 +724,11 @@ public sealed partial class EditorCanvas : UserControl
     private void ApplyZOrder(Annotation ann, AnnotationVisual visual)
     {
         var z = AnnotationZIndex(ann);
+        if (visual.Group is not null)
+        {
+            Canvas.SetZIndex(visual.Group, z);
+            return;
+        }
         Canvas.SetZIndex(visual.Primary, z);
         if (visual.Secondary is not null)
         {
@@ -773,7 +787,7 @@ public sealed partial class EditorCanvas : UserControl
             case EditTool.Line:
             {
                 var stroke = new SolidColorBrush();
-                var line = new Line { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
+                var line = new Line { Stroke = stroke };
                 OverlayCanvas.Children.Add(line);
                 return new AnnotationVisual { Primary = line, StrokeBrush = stroke };
             }
@@ -783,9 +797,11 @@ public sealed partial class EditorCanvas : UserControl
                 var fill = new SolidColorBrush();
                 var shaft = CreateArrowShaft(ann.ArrowStyle != ArrowStyle.Straight, stroke);
                 var head = new Polygon { Fill = fill };
-                OverlayCanvas.Children.Add(shaft);
-                OverlayCanvas.Children.Add(head);
-                return new AnnotationVisual { Primary = shaft, Secondary = head, StrokeBrush = stroke, FillBrush = fill };
+                var group = new Canvas();
+                group.Children.Add(shaft);
+                group.Children.Add(head);
+                OverlayCanvas.Children.Add(group);
+                return new AnnotationVisual { Primary = shaft, Secondary = head, Group = group, StrokeBrush = stroke, FillBrush = fill };
             }
             case EditTool.Pen:
             {
@@ -883,6 +899,20 @@ public sealed partial class EditorCanvas : UserControl
         }
     }
 
+    private static PenLineCap ToPenLineCap(StrokeCap cap) => cap switch
+    {
+        StrokeCap.Butt => PenLineCap.Flat,
+        StrokeCap.Square => PenLineCap.Square,
+        _ => PenLineCap.Round,
+    };
+
+    private static PenLineJoin ToPenLineJoin(StrokeJoin join) => join switch
+    {
+        StrokeJoin.Miter => PenLineJoin.Miter,
+        StrokeJoin.Bevel => PenLineJoin.Bevel,
+        _ => PenLineJoin.Round,
+    };
+
     private static UIElement CreateArrowShaft(bool curved, SolidColorBrush stroke) =>
         curved
             ? new ShapesPath { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round }
@@ -920,6 +950,7 @@ public sealed partial class EditorCanvas : UserControl
                 rect.Width = b.Width * scale;
                 rect.Height = b.Height * scale;
                 rect.StrokeThickness = thickness;
+                rect.StrokeLineJoin = ToPenLineJoin(ann.LineJoin);
                 visual.StrokeBrush!.Color = ann.Color;
                 visual.FillBrush!.Color = ann.FillColor;
                 ApplyRotation(rect, ann.Rotation);
@@ -951,6 +982,8 @@ public sealed partial class EditorCanvas : UserControl
                 line.X2 = end.X;
                 line.Y2 = end.Y;
                 line.StrokeThickness = thickness;
+                line.StrokeStartLineCap = ToPenLineCap(ann.StartCap);
+                line.StrokeEndLineCap = ToPenLineCap(ann.EndCap);
                 visual.StrokeBrush!.Color = ann.Color;
                 break;
             }
@@ -1006,16 +1039,21 @@ public sealed partial class EditorCanvas : UserControl
             ann.ArrowStyle,
             scale);
 
-        visual.StrokeBrush!.Color = ann.Color;
-        visual.FillBrush!.Color = ann.Color;
+        // Opaque pieces faded as one group, matching the export's opacity layer.
+        var opaque = Color.FromArgb(255, ann.Color.R, ann.Color.G, ann.Color.B);
+        visual.StrokeBrush!.Color = opaque;
+        visual.FillBrush!.Color = opaque;
+        visual.Group!.Opacity = ann.Color.A / 255.0;
 
         // The retained element reflects the requested style. ArrowGeometry.Build deliberately reports a
         // zero-length curved arrow as non-curved because there is no meaningful tangent yet, so
         // branching on shape.Curved here would incorrectly cast its retained Path to Line during
         // the first/tiniest pointer moves.
+        var startCap = ToPenLineCap(ann.StartCap);
         if (visual.Primary is ShapesPath path)
         {
             path.StrokeThickness = thickness;
+            path.StrokeStartLineCap = startCap;
             var figure = new PathFigure { StartPoint = new Point(shape.ShaftStart.X, shape.ShaftStart.Y) };
             figure.Segments.Add(new QuadraticBezierSegment
             {
@@ -1029,6 +1067,7 @@ public sealed partial class EditorCanvas : UserControl
         else if (visual.Primary is Line line)
         {
             line.StrokeThickness = thickness;
+            line.StrokeStartLineCap = startCap;
             line.X1 = shape.ShaftStart.X;
             line.Y1 = shape.ShaftStart.Y;
             line.X2 = shape.ShaftEnd.X;

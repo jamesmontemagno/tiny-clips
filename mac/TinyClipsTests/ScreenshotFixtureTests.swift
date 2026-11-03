@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import TinyClips
 
@@ -37,6 +38,51 @@ final class ScreenshotFixtureTests: XCTestCase {
         XCTAssertEqual(AnnotationStrokeMath.defaultWidth(forImagePixelWidth: 1800), 8)
         XCTAssertEqual(AnnotationStrokeMath.defaultWidth(forImagePixelWidth: 2880), 13)
         XCTAssertEqual(AnnotationStrokeMath.defaultWidth(forImagePixelWidth: 20_000), 40)
+    }
+
+    func testMatchingCapsStrokeNativelyWithNoExtraShapes() {
+        let stroke = OpenStrokeShape(
+            start: .zero, startDirection: CGPoint(x: 10, y: 0), startCap: .square,
+            end: CGPoint(x: 10, y: 0), endDirection: .zero, endCap: .square,
+            width: 4
+        )
+        XCTAssertEqual(stroke.lineCap, .square)
+        XCTAssertTrue(stroke.capPaths.isEmpty)
+    }
+
+    func testMixedCapsStrokeFlatAndAddEachCapBeyondItsEnd() {
+        let stroke = OpenStrokeShape(
+            start: .zero, startDirection: CGPoint(x: 10, y: 0), startCap: .butt,
+            end: CGPoint(x: 10, y: 0), endDirection: .zero, endCap: .square,
+            width: 4
+        )
+        XCTAssertEqual(stroke.lineCap, .butt)
+        XCTAssertEqual(stroke.capPaths.count, 1)
+        let bounds = stroke.capPaths[0].boundingBoxOfPath
+        XCTAssertEqual(bounds.minX, 10, accuracy: tolerance)
+        XCTAssertEqual(bounds.maxX, 12, accuracy: tolerance)
+        XCTAssertEqual(bounds.minY, -2, accuracy: tolerance)
+        XCTAssertEqual(bounds.maxY, 2, accuracy: tolerance)
+    }
+
+    func testRoundCapIsACircleAroundTheEnd() throws {
+        let cap = try XCTUnwrap(OpenStrokeShape.capPath(.round, at: CGPoint(x: 5, y: 5), awayFrom: .zero, width: 6))
+        XCTAssertEqual(cap.boundingBoxOfPath, CGRect(x: 2, y: 2, width: 6, height: 6))
+    }
+
+    func testOpaqueComponentsSplitAlpha() {
+        let (opaque, alpha) = Color.red.opacity(0.4).opaqueComponents
+        XCTAssertEqual(alpha, 0.4, accuracy: 0.001)
+        XCTAssertEqual(opaque.opaqueComponents.alpha, 1, accuracy: 0.001)
+    }
+
+    func testOnlyOpenStrokesTakeCapsAndOnlyRectanglesTakeCorners() {
+        XCTAssertTrue(EditTool.line.usesStartCap && EditTool.line.usesEndCap)
+        XCTAssertTrue(EditTool.arrow.usesStartCap)
+        XCTAssertFalse(EditTool.arrow.usesEndCap)
+        XCTAssertFalse(EditTool.pencil.usesStartCap)
+        XCTAssertTrue(EditTool.rectangle.usesJoin)
+        XCTAssertFalse(EditTool.circle.usesJoin)
     }
 
     private func assertPoint(_ actual: CGPoint, _ expected: FixturePoint, _ label: String) {

@@ -70,6 +70,57 @@
                         ValueChanged="OnStrokeChanged" />
                 </StackPanel>
 
+                <!--  Line ends (index order matches StrokeCap)  -->
+                <StackPanel x:Name="StartCapSection" Spacing="2">
+                    <ComboBox
+                        x:Name="StartCapCombo"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorStartCapCombo"
+                        AutomationProperties.Name="Line start"
+                        Header="Start"
+                        SelectionChanged="OnStartCapChanged">
+                        <ComboBoxItem Content="Flat" />
+                        <ComboBoxItem Content="Round" />
+                        <ComboBoxItem Content="Square" />
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel x:Name="EndCapSection" Spacing="2">
+                    <ComboBox
+                        x:Name="EndCapCombo"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorEndCapCombo"
+                        AutomationProperties.Name="Line end"
+                        Header="End"
+                        SelectionChanged="OnEndCapChanged">
+                        <ComboBoxItem Content="Flat" />
+                        <ComboBoxItem Content="Round" />
+                        <ComboBoxItem Content="Square" />
+                    </ComboBox>
+                </StackPanel>
+
+                <!--  Advanced stroke options (index order matches StrokeJoin)  -->
+                <Expander
+                    x:Name="StrokeAdvancedExpander"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    AutomationProperties.AutomationId="EditorStrokeAdvancedExpander"
+                    Header="Advanced">
+                    <Expander.Resources>
+                        <Thickness x:Key="ExpanderContentPadding">12,8,12,12</Thickness>
+                    </Expander.Resources>
+                    <ComboBox
+                        x:Name="LineJoinCombo"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorLineJoinCombo"
+                        AutomationProperties.Name="Corners"
+                        Header="Corners"
+                        SelectionChanged="OnLineJoinChanged">
+                        <ComboBoxItem Content="Sharp" />
+                        <ComboBoxItem Content="Round" />
+                        <ComboBoxItem Content="Beveled" />
+                    </ComboBox>
+                </Expander>
+
                 <!--  Arrow style  -->
                 <StackPanel x:Name="ArrowStyleSection" Spacing="2">
                     <ComboBox
