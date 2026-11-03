@@ -14,6 +14,7 @@ using Windows.Graphics.Imaging;
 using Windows.UI;
 using TinyClips.Core.Editing;
 using TinyClips.Core.Services;
+using LineGeometry = TinyClips.Core.Editing.LineGeometry;
 using ShapesPath = Microsoft.UI.Xaml.Shapes.Path;
 
 namespace TinyClips.App.ScreenshotEditor;
