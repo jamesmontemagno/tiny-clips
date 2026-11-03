@@ -20,18 +20,53 @@ ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "shared" / "screenshot" / "fixtures"
 ARROW_DIR = FIXTURES / "arrow"
 ALIGNMENT_DIR = FIXTURES / "alignment"
-FIXTURE_DIRS = [ARROW_DIR, ALIGNMENT_DIR]
+LINE_DIR = FIXTURES / "line"
+FIXTURE_DIRS = [ARROW_DIR, ALIGNMENT_DIR, LINE_DIR]
 
-# Arrow geometry. Points are y-down; widths are in source-image pixels.
+# Arrow geometry. Points are y-down; widths are in source-image pixels and `scale` is the
+# caller's units per image pixel. An arrow is one filled outline: a tapered shaft along a
+# quadratic Bezier, the head, and the tail cap. `bend` is how far the curve's midpoint sits from
+# the chord's midpoint, as a fraction of the chord length; positive bows left of travel.
 MINIMUM_HEAD_LENGTH = 12
 HEAD_LENGTH_PER_WIDTH = 3.5
 HEAD_SPREAD = math.pi / 7
-CURVE_BOW = 0.22
-VALID_ARROW_STYLES = {"straight", "curvedLeft", "curvedRight"}
+MAXIMUM_HEAD_FRACTION = 0.45
+SHAFT_END_FRACTION = 0.8
+SHAFT_SAMPLES = 24
+CAP_SEGMENTS = 8
+CORNER_SEGMENTS = 6
+TRIM_ITERATIONS = 40
+VALID_CAPS = {"butt", "round", "square"}
+ARROW_PRESETS = {
+    "classic": {"bend": 0, "startWidthScale": 1, "endWidthScale": 1, "headScale": 1},
+    "tapered": {"bend": 0, "startWidthScale": 0.25, "endWidthScale": 1, "headScale": 1.2},
+    "curved": {"bend": 0.2, "startWidthScale": 1, "endWidthScale": 1, "headScale": 1},
+}
 
 
 def point(x, y):
     return {"x": x, "y": y}
+
+
+def add(a, b):
+    return point(a["x"] + b["x"], a["y"] + b["y"])
+
+
+def sub(a, b):
+    return point(a["x"] - b["x"], a["y"] - b["y"])
+
+
+def mul(a, k):
+    return point(a["x"] * k, a["y"] * k)
+
+
+def length(a):
+    return math.sqrt(a["x"] * a["x"] + a["y"] * a["y"])
+
+
+def normalize(a, fallback):
+    n = length(a)
+    return mul(a, 1 / n) if n > 1e-9 else fallback
 
 
 def lerp(a, b, t):
@@ -46,54 +81,121 @@ def head_length(width):
     return max(MINIMUM_HEAD_LENGTH, width * HEAD_LENGTH_PER_WIDTH)
 
 
-def wings(tip, angle, length):
-    return (
-        point(tip["x"] - length * math.cos(angle - HEAD_SPREAD), tip["y"] - length * math.sin(angle - HEAD_SPREAD)),
-        point(tip["x"] - length * math.cos(angle + HEAD_SPREAD), tip["y"] - length * math.sin(angle + HEAD_SPREAD)),
+def right_normal(direction):
+    """The unit normal to the right of travel in a y-down space."""
+    return point(-direction["y"], direction["x"])
+
+
+def quad(p0, c, p2, t):
+    u = 1 - t
+    return point(
+        u * u * p0["x"] + 2 * u * t * c["x"] + t * t * p2["x"],
+        u * u * p0["y"] + 2 * u * t * c["y"] + t * t * p2["y"],
     )
 
 
-def shape(curved, shaft_start, shaft_control, shaft_end, tip, head1, head2):
-    return {
-        "curved": curved,
-        "shaftStart": shaft_start,
-        "shaftControl": shaft_control,
-        "shaftEnd": shaft_end,
-        "tip": tip,
-        "head1": head1,
-        "head2": head2,
-    }
-
-
-def build_arrow(start, end, width, style, scale):
-    if style not in VALID_ARROW_STYLES:
-        raise ValueError(f"unknown arrow style {style!r}")
-    dx = end["x"] - start["x"]
-    dy = end["y"] - start["y"]
-    length = math.sqrt(dx * dx + dy * dy)
-    head = head_length(width) * scale
-
-    if length < 0.001:
-        return shape(False, start, start, start, end, end, end)
-
-    if style == "straight":
-        trim = min(head * 0.9, length * 0.98)
-        shaft_end = point(end["x"] - dx / length * trim, end["y"] - dy / length * trim)
-        head1, head2 = wings(end, math.atan2(dy, dx), head)
-        return shape(False, start, shaft_end, shaft_end, end, head1, head2)
-
-    # (-dy, dx) points to the right of travel in a y-down space, so a left curve bows against it.
-    bow = length * CURVE_BOW * (-1 if style == "curvedLeft" else 1)
-    control = point(
-        (start["x"] + end["x"]) / 2 - dy / length * bow,
-        (start["y"] + end["y"]) / 2 + dx / length * bow,
+def quad_tangent(p0, c, p2, t):
+    return point(
+        2 * (1 - t) * (c["x"] - p0["x"]) + 2 * t * (p2["x"] - c["x"]),
+        2 * (1 - t) * (c["y"] - p0["y"]) + 2 * t * (p2["y"] - c["y"]),
     )
-    head1, head2 = wings(end, math.atan2(end["y"] - control["y"], end["x"] - control["x"]), head)
-    trim = min(head * 0.9, length * 0.6)
-    t = clamp(1.0 - trim / length, 0.02, 0.98)
-    a = lerp(start, control, t)
-    b = lerp(control, end, t)
-    return shape(True, start, a, lerp(a, b, t), end, head1, head2)
+
+
+def arrow_handle(start, end, bend):
+    """The point on the curve at t = 1/2, where the bend handle sits."""
+    chord = sub(end, start)
+    mid = lerp(start, end, 0.5)
+    n = right_normal(normalize(chord, point(1, 0)))
+    return sub(mid, mul(n, bend * length(chord)))
+
+
+def arrow_bend(start, end, handle):
+    """The bend that puts the curve's midpoint nearest `handle`, clamped to -1...1."""
+    chord = sub(end, start)
+    l = length(chord)
+    if l < 0.001:
+        return 0
+    n = right_normal(mul(chord, 1 / l))
+    offset = sub(handle, lerp(start, end, 0.5))
+    return clamp(-(offset["x"] * n["x"] + offset["y"] * n["y"]) / l, -1, 1)
+
+
+def corner(prev, vertex, nxt, size, join):
+    if join == "miter" or size <= 0:
+        return [vertex]
+    to_prev = sub(prev, vertex)
+    to_next = sub(nxt, vertex)
+    k = min(size, 0.45 * length(to_prev), 0.45 * length(to_next))
+    a = add(vertex, mul(normalize(to_prev, point(0, 0)), k))
+    b = add(vertex, mul(normalize(to_next, point(0, 0)), k))
+    if join == "bevel":
+        return [a, b]
+    return [quad(a, vertex, b, j / CORNER_SEGMENTS) for j in range(CORNER_SEGMENTS + 1)]
+
+
+def arrow_outline(start, end, width, bend, start_scale, end_scale, head_scale, start_cap, join, scale):
+    if start_cap not in VALID_CAPS:
+        raise ValueError(f"unknown cap {start_cap!r}")
+    if join not in VALID_JOINS:
+        raise ValueError(f"unknown join {join!r}")
+    chord = sub(end, start)
+    l = length(chord)
+    handle = arrow_handle(start, end, bend)
+    control = sub(mul(handle, 2), lerp(start, end, 0.5))
+    if l < 0.001:
+        return {"control": control, "handle": handle, "points": []}
+    u = mul(chord, 1 / l)
+
+    head = min(head_scale * head_length(width) * scale, MAXIMUM_HEAD_FRACTION * l)
+    tip_direction = normalize(sub(end, control), u)
+    angle = math.atan2(tip_direction["y"], tip_direction["x"])
+    wing_right = point(end["x"] - head * math.cos(angle - HEAD_SPREAD), end["y"] - head * math.sin(angle - HEAD_SPREAD))
+    wing_left = point(end["x"] - head * math.cos(angle + HEAD_SPREAD), end["y"] - head * math.sin(angle + HEAD_SPREAD))
+
+    # The shaft stops where the curve is as far from the tip as the head's base.
+    base = head * math.cos(HEAD_SPREAD)
+    lo, hi = 0.0, 1.0
+    for _ in range(TRIM_ITERATIONS):
+        m = (lo + hi) / 2
+        if length(sub(quad(start, control, end, m), end)) > base:
+            lo = m
+        else:
+            hi = m
+    trim = (lo + hi) / 2
+
+    start_half = width * start_scale / 2 * scale
+    end_half = min(width * end_scale / 2 * scale, SHAFT_END_FRACTION * head * math.sin(HEAD_SPREAD))
+    left, right = [], []
+    for i in range(SHAFT_SAMPLES + 1):
+        f = i / SHAFT_SAMPLES
+        t = trim * f
+        p = quad(start, control, end, t)
+        n = right_normal(normalize(quad_tangent(start, control, end, t), u))
+        half = start_half + (end_half - start_half) * f
+        left.append(sub(p, mul(n, half)))
+        right.append(add(p, mul(n, half)))
+
+    size = min(width / 2 * scale, 0.2 * head)
+    points = list(left)
+    points += corner(left[-1], wing_left, end, size, join)
+    points += corner(wing_left, end, wing_right, size, join)
+    points += corner(end, wing_right, right[-1], size, join)
+    points += list(reversed(right))
+
+    tail_tangent = normalize(quad_tangent(start, control, end, 0), u)
+    tail_normal = right_normal(tail_tangent)
+    if start_cap == "round":
+        for j in range(1, CAP_SEGMENTS):
+            theta = math.pi * j / CAP_SEGMENTS
+            points.append(add(start, add(
+                mul(tail_normal, start_half * math.cos(theta)),
+                mul(tail_tangent, -start_half * math.sin(theta)),
+            )))
+    elif start_cap == "square":
+        back = mul(tail_tangent, -start_half)
+        points.append(add(right[0], back))
+        points.append(add(left[0], back))
+    return {"control": control, "handle": handle, "points": points}
 
 
 # Stroke alignment for closed shapes. A rectangle's stroke is drawn as a filled ring: the outer
@@ -170,36 +272,133 @@ def generate_alignments():
     }
 
 
-def arrow_case(start, end, width, style, scale=1):
+def line_outline(start, end, width, start_cap, end_cap, scale):
+    """A straight line's filled outline: its two edges joined by each end's cap."""
+    for cap in (start_cap, end_cap):
+        if cap not in VALID_CAPS:
+            raise ValueError(f"unknown cap {cap!r}")
+    chord = sub(end, start)
+    if length(chord) < 0.001:
+        return []
+    u = normalize(chord, point(1, 0))
+    n = right_normal(u)
+    half = width / 2 * scale
+    points = [sub(start, mul(n, half)), sub(end, mul(n, half))]
+    points += cap_points(end, u, n, half, end_cap)
+    points += [add(end, mul(n, half)), add(start, mul(n, half))]
+    points += cap_points(start, mul(u, -1), mul(n, -1), half, start_cap)
+    return points
+
+
+def cap_points(center, outward, normal, half, cap):
+    """Points between a line's left edge and right edge around one end, going away along
+    `outward`. `normal` points from the edge the outline arrives on to the one it leaves by."""
+    if cap == "round":
+        return [
+            add(center, add(
+                mul(normal, -half * math.cos(math.pi * j / CAP_SEGMENTS)),
+                mul(outward, half * math.sin(math.pi * j / CAP_SEGMENTS)),
+            ))
+            for j in range(1, CAP_SEGMENTS)
+        ]
+    if cap == "square":
+        out = mul(outward, half)
+        return [add(sub(center, mul(normal, half)), out), add(add(center, mul(normal, half)), out)]
+    return []
+
+
+def line_case(start, end, width, start_cap, end_cap, scale=1):
     start = point(*start)
     end = point(*end)
     return {
         "start": start,
         "end": end,
         "width": width,
-        "style": style,
+        "startCap": start_cap,
+        "endCap": end_cap,
         "scale": scale,
-        "expected": build_arrow(start, end, width, style, scale),
+        "expected": line_outline(start, end, width, start_cap, end_cap, scale),
+    }
+
+
+def generate_lines():
+    return {
+        "line.json": {
+            "description": "Straight line outlines for each pair of end caps, a diagonal, a preview scale, and a zero-length line (no points).",
+            "cases": [
+                line_case((100, 100), (400, 100), 8, start_cap, end_cap)
+                for start_cap in sorted(VALID_CAPS)
+                for end_cap in sorted(VALID_CAPS)
+            ] + [
+                line_case((50, 300), (350, 60), 6, "round", "square"),
+                line_case((100, 100), (400, 100), 6, "round", "round", scale=0.5),
+                line_case((120, 80), (120, 80), 6, "round", "round"),
+            ],
+        },
+    }
+
+
+def arrow_case(start, end, width, preset=None, scale=1, start_cap="round", join="round", **overrides):
+    values = dict(ARROW_PRESETS[preset or "classic"])
+    values.update(overrides)
+    start = point(*start)
+    end = point(*end)
+    return {
+        "start": start,
+        "end": end,
+        "width": width,
+        "bend": values["bend"],
+        "startWidthScale": values["startWidthScale"],
+        "endWidthScale": values["endWidthScale"],
+        "headScale": values["headScale"],
+        "startCap": start_cap,
+        "join": join,
+        "scale": scale,
+        "expected": arrow_outline(
+            start, end, width, values["bend"], values["startWidthScale"], values["endWidthScale"],
+            values["headScale"], start_cap, join, scale,
+        ),
     }
 
 
 def generate_arrows():
     fixtures = {}
-    for style in sorted(VALID_ARROW_STYLES):
-        fixtures[f"{style}.json"] = {
-            "description": f"{style} arrows: thin (minimum head), thick, diagonal, upward, short (trim clamp), and a preview scale.",
+    for preset in sorted(ARROW_PRESETS):
+        fixtures[f"{preset}.json"] = {
+            "description": f"The {preset} preset: thin (minimum head), thick, diagonal, upward, short (head clamp), and a preview scale.",
+            "preset": ARROW_PRESETS[preset],
             "cases": [
-                arrow_case((100, 100), (400, 100), 2, style),
-                arrow_case((100, 100), (400, 100), 10, style),
-                arrow_case((50, 300), (350, 60), 6, style),
-                arrow_case((200, 400), (200, 80), 4, style),
-                arrow_case((10, 10), (22, 14), 8, style),
-                arrow_case((100, 100), (400, 100), 6, style, 0.5),
+                arrow_case((100, 100), (400, 100), 2, preset),
+                arrow_case((100, 100), (400, 100), 10, preset),
+                arrow_case((50, 300), (350, 60), 6, preset),
+                arrow_case((200, 400), (200, 80), 4, preset),
+                arrow_case((10, 10), (22, 14), 8, preset),
+                arrow_case((100, 100), (400, 100), 6, preset, scale=0.5),
             ],
         }
-    fixtures["degenerate.json"] = {
-        "description": "A zero-length arrow has no direction yet, so every part collapses onto its endpoints and it reports straight.",
-        "cases": [arrow_case((120, 80), (120, 80), 6, style) for style in sorted(VALID_ARROW_STYLES)],
+    fixtures["options.json"] = {
+        "description": "Tail caps, head corners, a right bend, a full bend, a wide tail, a small head that clamps the shaft, and a zero-length arrow.",
+        "cases": [
+            arrow_case((100, 100), (400, 100), 8, start_cap="butt"),
+            arrow_case((100, 100), (400, 100), 8, start_cap="square"),
+            arrow_case((100, 100), (400, 100), 8, join="miter"),
+            arrow_case((100, 100), (400, 100), 8, join="bevel"),
+            arrow_case((100, 100), (400, 220), 6, bend=-0.3),
+            arrow_case((100, 100), (400, 100), 6, bend=1),
+            arrow_case((100, 100), (400, 100), 6, startWidthScale=2, endWidthScale=0.5),
+            arrow_case((100, 100), (400, 100), 20, endWidthScale=2, headScale=0.5),
+            arrow_case((120, 80), (120, 80), 6),
+        ],
+    }
+    fixtures["handle.json"] = {
+        "description": "The bend a dragged handle sets: on the curve, off to the side (projected), past the clamp, and on a zero-length arrow.",
+        "cases": [
+            {"start": point(100, 100), "end": point(400, 100), "handle": point(250, 40), "expected": arrow_bend(point(100, 100), point(400, 100), point(250, 40))},
+            {"start": point(100, 100), "end": point(400, 100), "handle": point(310, 130), "expected": arrow_bend(point(100, 100), point(400, 100), point(310, 130))},
+            {"start": point(50, 300), "end": point(350, 60), "handle": point(300, 300), "expected": arrow_bend(point(50, 300), point(350, 60), point(300, 300))},
+            {"start": point(100, 100), "end": point(110, 100), "handle": point(105, 400), "expected": arrow_bend(point(100, 100), point(110, 100), point(105, 400))},
+            {"start": point(120, 80), "end": point(120, 80), "handle": point(130, 90), "expected": arrow_bend(point(120, 80), point(120, 80), point(130, 90))},
+        ],
     }
     return fixtures
 
@@ -208,6 +407,8 @@ def generated_files():
     files = {}
     for filename, fixture in generate_arrows().items():
         files[Path("arrow") / filename] = fixture
+    for filename, fixture in generate_lines().items():
+        files[Path("line") / filename] = fixture
     for filename, fixture in generate_alignments().items():
         files[Path("alignment") / filename] = fixture
     return files

@@ -304,9 +304,11 @@ Pen                               pen only
 3. **Stroke alignment** for rectangle and ellipse.
    - Done. Rectangles fill a ring (outer outline shaped by the join, minus a sharp inner rectangle) on every renderer, so all four match exactly. Ellipses clip a doubled stroke everywhere except the Windows XAML preview, which strokes an inset or outset ellipse.
 4. **Arrow geometry.**
+   - Done. An arrow is one nonzero-filled outline (24-sample tapered shaft trimmed by bisection at the head's base, head with corner fillets, tail cap). `bend` is the handle's offset as a fraction of the chord, positive to the left. The preset is derived from the values rather than stored. `ArrowStyle` is gone on both platforms; no saved data needed migrating.
    - The outline polygon, bend, and on-canvas handle.
    - Presets plus the Advanced section (start width, end width, head size, arc).
    - Migrate `ArrowStyle`.
+   - Follow-up: arrows and lines are now a filled body (Fill = the annotation's color, Size = its width) with an optional outline (Stroke color, Stroke width, Stroke position defaulting to Outside), drawn by clipping a doubled stroke to the body. Lines became filled outlines (`shared/screenshot/fixtures/line`), which also replaced the macOS mixed-cap workaround and its fade layer.
 5. **Freehand pen** using the perfect-freehand port.
 6. **Sketch style** using the rough.js port, with the seed. Fixtures must lock the random-number sequence.
 7. Accessibility pass (VoiceOver and UI Automation for the new controls and the bend handle), then changelogs.

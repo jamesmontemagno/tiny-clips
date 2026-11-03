@@ -43,9 +43,26 @@
                     Style="{StaticResource BodyStrongTextBlockStyle}"
                     Text="Tool" />
 
+                <!--  Arrow shape (index order matches ArrowPreset)  -->
+                <StackPanel x:Name="ArrowStyleSection" Spacing="2">
+                    <ComboBox
+                        x:Name="ArrowPresetCombo"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorArrowPresetCombo"
+                        AutomationProperties.Name="Arrow shape"
+                        Header="Arrow"
+                        SelectionChanged="OnArrowPresetChanged">
+                        <ComboBoxItem Content="Classic" />
+                        <ComboBoxItem Content="Tapered" />
+                        <ComboBoxItem Content="Curved" />
+                        <ComboBoxItem Content="Custom" />
+                    </ComboBox>
+                </StackPanel>
+
                 <!--  Color  -->
                 <StackPanel x:Name="ColorSection" Spacing="6">
                     <TextBlock
+                        x:Name="ColorLabel"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Text="Color" />
@@ -68,6 +85,29 @@
                         Minimum="1"
                         StepFrequency="1"
                         ValueChanged="OnStrokeChanged" />
+                </StackPanel>
+
+                <!--  Outline for arrows and lines (their color and width above are the body)  -->
+                <StackPanel x:Name="OutlineSection" Spacing="6">
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Stroke color" />
+                    <local:SwatchColorPicker
+                        x:Name="OutlineColorPicker"
+                        AutomationProperties.AutomationId="EditorOutlineColorButton"
+                        AutomationProperties.Name="Stroke color"
+                        ColorChanged="OnOutlineColorChanged"
+                        IsAlphaEnabled="True" />
+                    <Slider
+                        x:Name="OutlineSlider"
+                        AutomationProperties.AutomationId="EditorOutlineSlider"
+                        AutomationProperties.Name="Stroke width"
+                        Header="Stroke"
+                        Maximum="20"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnOutlineWidthChanged" />
                 </StackPanel>
 
                 <!--  Stroke position for closed shapes (index order matches StrokeAlignment)  -->
@@ -123,6 +163,45 @@
                     <Expander.Resources>
                         <Thickness x:Key="ExpanderContentPadding">12,8,12,12</Thickness>
                     </Expander.Resources>
+                    <StackPanel Spacing="8">
+                        <StackPanel x:Name="ArrowAdvancedPanel" Spacing="8">
+                            <Slider
+                                x:Name="ArrowArcSlider"
+                                AutomationProperties.AutomationId="EditorArrowArcSlider"
+                                AutomationProperties.Name="Arc"
+                                Header="Arc"
+                                Maximum="100"
+                                Minimum="-100"
+                                StepFrequency="1"
+                                ValueChanged="OnArrowSliderChanged" />
+                            <Slider
+                                x:Name="ArrowStartWidthSlider"
+                                AutomationProperties.AutomationId="EditorArrowStartWidthSlider"
+                                AutomationProperties.Name="Start width"
+                                Header="Start width"
+                                Maximum="200"
+                                Minimum="0"
+                                StepFrequency="1"
+                                ValueChanged="OnArrowSliderChanged" />
+                            <Slider
+                                x:Name="ArrowEndWidthSlider"
+                                AutomationProperties.AutomationId="EditorArrowEndWidthSlider"
+                                AutomationProperties.Name="End width"
+                                Header="End width"
+                                Maximum="200"
+                                Minimum="0"
+                                StepFrequency="1"
+                                ValueChanged="OnArrowSliderChanged" />
+                            <Slider
+                                x:Name="ArrowHeadSizeSlider"
+                                AutomationProperties.AutomationId="EditorArrowHeadSizeSlider"
+                                AutomationProperties.Name="Head size"
+                                Header="Head size"
+                                Maximum="300"
+                                Minimum="50"
+                                StepFrequency="1"
+                                ValueChanged="OnArrowSliderChanged" />
+                        </StackPanel>
                     <ComboBox
                         x:Name="LineJoinCombo"
                         HorizontalAlignment="Stretch"
@@ -134,22 +213,8 @@
                         <ComboBoxItem Content="Round" />
                         <ComboBoxItem Content="Beveled" />
                     </ComboBox>
+                    </StackPanel>
                 </Expander>
-
-                <!--  Arrow style  -->
-                <StackPanel x:Name="ArrowStyleSection" Spacing="2">
-                    <ComboBox
-                        x:Name="ArrowStyleCombo"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="EditorArrowStyleCombo"
-                        AutomationProperties.Name="Arrow style"
-                        Header="Arrow"
-                        SelectionChanged="OnArrowStyleChanged">
-                        <ComboBoxItem Content="Straight" />
-                        <ComboBoxItem Content="Curved Left" />
-                        <ComboBoxItem Content="Curved Right" />
-                    </ComboBox>
-                </StackPanel>
 
                 <!--  Fill (rectangle / ellipse)  -->
                 <StackPanel x:Name="FillSection" Spacing="6">

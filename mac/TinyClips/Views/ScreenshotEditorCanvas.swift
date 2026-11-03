@@ -369,6 +369,17 @@ struct ScreenshotEditorCanvasView: View {
                             .frame(width: 12, height: 12)
                             .position(endPt)
                             .allowsHitTesting(false)
+
+                        // Bend handle (diamond) on the curve's midpoint
+                        if ann.tool == .arrow {
+                            Rectangle()
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                                .stroke(Color.accentColor, lineWidth: 2)
+                                .frame(width: 10, height: 10)
+                                .rotationEffect(.degrees(45))
+                                .position(ArrowGeometry.handle(start: startPt, end: endPt, bend: ann.arrow.bend))
+                                .allowsHitTesting(false)
+                        }
                     } else if let frame = viewModel.rotationFrame(for: ann) {
                         let corners = RotatableAnnotationGeometry.corners(of: frame.rect, rotation: frame.rotation, in: imageSize)
                             .map { CGPoint(x: origin.x + $0.x, y: origin.y + $0.y) }
@@ -564,36 +575,32 @@ struct ScreenshotEditorCanvasView: View {
         return (rotated, CGRect(x: -scaledRect.width / 2, y: -scaledRect.height / 2, width: scaledRect.width, height: scaledRect.height))
     }
 
-    /// Draws opaque pieces into a layer faded once by the color's alpha, matching the export.
-    private func drawFaded(_ color: Color, in context: GraphicsContext, _ draw: (GraphicsContext, Color) -> Void) {
-        let (opaque, alpha) = color.opaqueComponents
-        guard alpha < 1 else {
-            draw(context, color)
-            return
-        }
-        var faded = context
-        faded.opacity *= alpha
-        faded.drawLayer { layer in draw(layer, opaque) }
-    }
-
-    /// An ellipse's offset curve is not an ellipse, so inside and outside strokes are drawn at
-    /// double width and clipped to the shape (or to everything outside it), as the export does.
-    private func strokeAlignedEllipse(_ rect: CGRect, alignment: StrokeAlignment, color: Color, lineWidth: CGFloat, in context: GraphicsContext) {
-        let ellipse = Path(ellipseIn: rect)
+    /// Strokes a closed `shape` at its alignment. Inside and outside strokes are drawn at double
+    /// width and clipped to the shape (or to everything outside it), as the export does.
+    private func strokeAligned(_ shape: Path, alignment: StrokeAlignment, color: Color, style: StrokeStyle, in context: GraphicsContext) {
         guard alignment != .center else {
-            context.stroke(ellipse, with: .color(color), lineWidth: lineWidth)
+            context.stroke(shape, with: .color(color), style: style)
             return
         }
+        var doubled = style
+        doubled.lineWidth *= 2
         var clipped = context
-        clipped.clip(to: ellipse, options: alignment == .outside ? .inverse : [])
-        clipped.stroke(ellipse, with: .color(color), lineWidth: lineWidth * 2)
+        clipped.clip(to: shape, options: alignment == .outside ? .inverse : [])
+        clipped.stroke(shape, with: .color(color), style: doubled)
     }
 
-    private func drawOpenStroke(_ path: Path, _ stroke: OpenStrokeShape, color: Color, lineWidth: CGFloat, in context: GraphicsContext) {
-        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: stroke.lineCap))
-        for cap in stroke.capPaths {
-            context.fill(Path(cap), with: .color(color))
-        }
+    /// Fills an arrow's or line's body and draws its outline, if it has one.
+    private func drawBody(_ points: [CGPoint], annotation: ScreenshotAnnotation, pixelScale: CGFloat, in context: GraphicsContext) {
+        let body = Path(LineGeometry.path(points))
+        context.fill(body, with: .color(annotation.color))
+        guard annotation.outlineWidth > 0 else { return }
+        strokeAligned(
+            body,
+            alignment: annotation.strokeAlignment,
+            color: annotation.outlineColor,
+            style: StrokeStyle(lineWidth: annotation.outlineWidth * pixelScale, lineJoin: annotation.lineJoin.cgLineJoin),
+            in: context
+        )
     }
 
     private func drawAnnotation(_ annotation: ScreenshotAnnotation, in context: GraphicsContext, scaledRect: CGRect, imageSize: CGSize, origin: CGPoint, sourceImage: NSImage? = nil) {
@@ -617,48 +624,33 @@ struct ScreenshotEditorCanvasView: View {
             if annotation.fillColor != .clear {
                 ctx.fill(Path(ellipseIn: rect), with: .color(annotation.fillColor))
             }
-            strokeAlignedEllipse(rect, alignment: annotation.strokeAlignment, color: color, lineWidth: lineWidth, in: ctx)
+            strokeAligned(Path(ellipseIn: rect), alignment: annotation.strokeAlignment, color: color, style: StrokeStyle(lineWidth: lineWidth), in: ctx)
 
         case .arrow:
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
-            let shape = ArrowGeometry.build(
+            let outline = ArrowGeometry.build(
                 start: linePoints.start,
                 end: linePoints.end,
                 width: annotation.lineWidth,
-                style: annotation.arrowStyle,
+                options: annotation.arrow,
+                startCap: annotation.startCap,
+                join: annotation.lineJoin,
                 scale: pixelScale
             )
-            var linePath = Path()
-            linePath.move(to: shape.shaftStart)
-            if shape.curved {
-                linePath.addQuadCurve(to: shape.shaftEnd, control: shape.shaftControl)
-            } else {
-                linePath.addLine(to: shape.shaftEnd)
-            }
-            var arrowHead = Path()
-            arrowHead.move(to: shape.tip)
-            arrowHead.addLine(to: shape.head1)
-            arrowHead.addLine(to: shape.head2)
-            arrowHead.closeSubpath()
-            let stroke = shape.shaftStroke(startCap: annotation.startCap, width: lineWidth)
-            drawFaded(color, in: context) { layer, opaque in
-                drawOpenStroke(linePath, stroke, color: opaque, lineWidth: lineWidth, in: layer)
-                layer.fill(arrowHead, with: .color(opaque))
-            }
+            // One body, so a translucent color fills evenly without a layer.
+            drawBody(outline.points, annotation: annotation, pixelScale: pixelScale, in: context)
 
         case .line:
-            var path = Path()
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
-            path.move(to: linePoints.start)
-            path.addLine(to: linePoints.end)
-            let stroke = OpenStrokeShape(
-                start: linePoints.start, startDirection: linePoints.end, startCap: annotation.startCap,
-                end: linePoints.end, endDirection: linePoints.start, endCap: annotation.endCap,
-                width: lineWidth
+            let outline = LineGeometry.outline(
+                start: linePoints.start,
+                end: linePoints.end,
+                width: annotation.lineWidth,
+                startCap: annotation.startCap,
+                endCap: annotation.endCap,
+                scale: pixelScale
             )
-            drawFaded(color, in: context) { layer, opaque in
-                drawOpenStroke(path, stroke, color: opaque, lineWidth: lineWidth, in: layer)
-            }
+            drawBody(outline, annotation: annotation, pixelScale: pixelScale, in: context)
 
         case .pencil:
             if annotation.points.count > 1 {

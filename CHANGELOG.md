@@ -14,10 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - The macOS screenshot editor can now change the color, fill, and stroke width of a selected rectangle, circle, arrow, line, or pencil stroke, with undo. Stroke width is a 1–40 px slider measured in image pixels, like Windows; the starting width scales with the capture so large screenshots keep their previous look.
+- macOS Screenshot arrows and lines now have a **Fill** (the body's color), a **Size** (its thickness), and an optional outline: a **Stroke color** and **Stroke** width (none by default) placed by **Stroke position**, which starts at **Outside** for arrows and lines. For shapes, the color control is now named **Stroke color** and sits directly above the **Stroke** width.
+- macOS Screenshot arrows are now one smooth shape with an **Arrow** picker for **Classic**, **Tapered**, and **Curved** presets. Drag the diamond handle on a selected arrow's middle to bend it either way (it snaps straight near the line), and use **Advanced** to set its **Arc**, **Start width**, **End width**, **Head size**, and head **Corners**. Editing any of these shows **Custom**. The previous straight and curved arrow styles are replaced by these controls.
 - macOS screenshot lines and arrows now have **Start** and **End** controls for flat, round, or square ends (arrows have a start control; their other end is the head), and rectangles have a **Corners** option under **Advanced** for sharp, round, or beveled corners. New strokes default to round ends and corners, and pencil strokes are now smooth instead of jagged.
 - Rectangles and circles in the macOS screenshot editor have a **Stroke position** option to draw the border inside, centered on, or outside the shape's edge. Centered is the default, as before.
 - Translucent arrows and lines in the macOS screenshot editor no longer draw darker where the shaft meets the head or a cap.
-- macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrowhead. Curved arrows bow slightly less than before.
+- macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrow.
 - Upgraded GitHub Agentic Workflows to v1.0.1 and refreshed the agent and routing skill. The weekly parity workflow still runs on Sundays around 09:00 with the Copilot auto model and a five-issue limit.
 
 ## v2.0.0-mac - 2026-10-31

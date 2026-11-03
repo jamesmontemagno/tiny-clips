@@ -175,7 +175,7 @@ internal sealed class EditorController : IDisposable
 
     public RedactionStyle RedactionStyleDefault { get; private set; } = RedactionStyle.Blur;
 
-    public ArrowStyle ArrowStyleDefault { get; private set; } = ArrowStyle.Straight;
+    public ArrowShapeOptions ArrowDefault { get; private set; } = ArrowShapeOptions.Classic;
 
     public StrokeCap StartCapDefault { get; private set; } = AnnotationStroke.DefaultCap;
 
@@ -184,6 +184,14 @@ internal sealed class EditorController : IDisposable
     public StrokeJoin LineJoinDefault { get; private set; } = AnnotationStroke.DefaultJoin;
 
     public StrokeAlignment StrokeAlignmentDefault { get; private set; } = StrokeAlignment.Center;
+
+    public Color OutlineColorDefault { get; private set; } = Colors.Black;
+
+    /// <summary>New arrows and lines start without an outline.</summary>
+    public double OutlineWidthDefault { get; private set; }
+
+    /// <summary>Arrow and line outlines start outside the body, so they frame it rather than cover it.</summary>
+    public StrokeAlignment OutlineAlignmentDefault { get; private set; } = StrokeAlignment.Outside;
 
     public string EmojiDefault { get; private set; } = EmojiAnnotationMath.DefaultEmoji;
 
@@ -409,8 +417,19 @@ internal sealed class EditorController : IDisposable
                 continue;
             }
 
+            var pad = ann.Thickness + ann.OutlineWidth + 6;
+            if (ann.Tool == EditTool.Arrow)
+            {
+                // A curved arrow is hit along its curve, not anywhere in the box around it.
+                var (start, end) = Segment(ann);
+                if (ArrowGeometry.DistanceToCurve(new PointD(pixelPoint.X, pixelPoint.Y), ToPoint(start), ToPoint(end), ann.Arrow.Bend) <= pad)
+                {
+                    return ann;
+                }
+                continue;
+            }
+
             var b = InteractionBounds(ann);
-            var pad = ann.Thickness + 6;
             var inflated = new Rect(b.X - pad, b.Y - pad, b.Width + pad * 2, b.Height + pad * 2);
             if (inflated.Contains(pixelPoint))
             {
@@ -484,23 +503,45 @@ internal sealed class EditorController : IDisposable
         }
     }
 
-    public void SetArrowStyle(ArrowStyle style)
+    public void SetArrowShape(ArrowShapeOptions shape)
     {
         if (SelectedAnnotation is { Tool: EditTool.Arrow } ann)
         {
-            ann.ArrowStyle = style;
+            ann.Arrow = shape;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
         else
         {
-            ArrowStyleDefault = style;
+            ArrowDefault = shape;
             if (ActiveAnnotation is { Tool: EditTool.Arrow } active)
             {
-                active.ArrowStyle = style;
+                active.Arrow = shape;
                 AnnotationVisualInvalidated?.Invoke(this, active);
             }
         }
+    }
+
+    /// <summary>
+    /// Bends an arrow so its curve passes nearest <paramref name="pixelPoint"/>. Within
+    /// <paramref name="snapPixels"/> of the straight line it snaps straight.
+    /// </summary>
+    public void MoveArrowBend(Annotation ann, Point pixelPoint, double snapPixels)
+    {
+        if (ann.Tool != EditTool.Arrow)
+        {
+            return;
+        }
+        ClearTextStyleUndo();
+        var (start, end) = Segment(ann);
+        var bend = ArrowGeometry.Bend(ToPoint(start), ToPoint(end), new PointD(pixelPoint.X, pixelPoint.Y));
+        if (Math.Abs(bend) * Vector2.Distance(start, end) < snapPixels)
+        {
+            bend = 0;
+        }
+        ann.Arrow = ann.Arrow with { Bend = bend };
+        MarkDirty();
+        AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
     public void SetStartCap(StrokeCap cap)
@@ -545,6 +586,34 @@ internal sealed class EditorController : IDisposable
         }
     }
 
+    public void SetOutlineColor(Color color)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesOutline())
+        {
+            ann.OutlineColor = color;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            OutlineColorDefault = color;
+        }
+    }
+
+    public void SetOutlineWidth(double width)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesOutline())
+        {
+            ann.OutlineWidth = width;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            OutlineWidthDefault = width;
+        }
+    }
+
     public void SetStrokeAlignment(StrokeAlignment alignment)
     {
         if (SelectedAnnotation is { } ann && ann.Tool.UsesAlignment())
@@ -552,6 +621,10 @@ internal sealed class EditorController : IDisposable
             ann.StrokeAlignment = alignment;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else if (Tool.UsesOutline())
+        {
+            OutlineAlignmentDefault = alignment;
         }
         else
         {
@@ -1205,11 +1278,13 @@ internal sealed class EditorController : IDisposable
             Thickness = StrokeThickness,
             Redaction = RedactionLevelDefault,
             RedactStyle = RedactionStyleDefault,
-            ArrowStyle = ArrowStyleDefault,
+            Arrow = ArrowDefault,
             StartCap = StartCapDefault,
             EndCap = EndCapDefault,
             LineJoin = LineJoinDefault,
-            StrokeAlignment = StrokeAlignmentDefault,
+            StrokeAlignment = tool.UsesOutline() ? OutlineAlignmentDefault : StrokeAlignmentDefault,
+            OutlineColor = OutlineColorDefault,
+            OutlineWidth = OutlineWidthDefault,
             Bounds = new Rect(pixelStart.X, pixelStart.Y, 0, 0),
         };
 
@@ -1717,7 +1792,7 @@ internal sealed class EditorController : IDisposable
         annotation.SizeScale = snapshot.SizeScale;
         annotation.Redaction = snapshot.Redaction;
         annotation.RedactStyle = snapshot.RedactStyle;
-        annotation.ArrowStyle = snapshot.ArrowStyle;
+        annotation.Arrow = snapshot.Arrow;
         annotation.Points.Clear();
         annotation.Points.AddRange(snapshot.Points);
         annotation.TextColor = snapshot.TextColor;
@@ -1733,6 +1808,8 @@ internal sealed class EditorController : IDisposable
         annotation.EndCap = snapshot.EndCap;
         annotation.LineJoin = snapshot.LineJoin;
         annotation.StrokeAlignment = snapshot.StrokeAlignment;
+        annotation.OutlineColor = snapshot.OutlineColor;
+        annotation.OutlineWidth = snapshot.OutlineWidth;
     }
 
     // -- Crop -------------------------------------------------------------------------------
@@ -2352,13 +2429,9 @@ internal sealed class EditorController : IDisposable
             }
             case EditTool.Line:
             {
-                var (s, en) = Segment(ann);
-                ds.DrawLine(
-                    s,
-                    en,
-                    color,
-                    thickness,
-                    new CanvasStrokeStyle { StartCap = ToCanvasCap(ann.StartCap), EndCap = ToCanvasCap(ann.EndCap) });
+                var (start, end) = Segment(ann);
+                var outline = LineGeometry.Outline(ToPoint(start), ToPoint(end), thickness, ann.StartCap, ann.EndCap);
+                DrawBodyWithOutline(ds, outline, color, ann);
                 break;
             }
             case EditTool.Arrow:
@@ -2469,26 +2542,67 @@ internal sealed class EditorController : IDisposable
     private static void DrawArrowToSession(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)
     {
         var (start, end) = Segment(ann);
-        var shape = ArrowGeometry.Build(ToPoint(start), ToPoint(end), thickness, ann.ArrowStyle);
-        // The shaft's far end hides under the head, so only its start cap is the user's choice.
-        var strokeStyle = new CanvasStrokeStyle { StartCap = ToCanvasCap(ann.StartCap), EndCap = CanvasCapStyle.Round };
+        var outline = ArrowGeometry.Build(ToPoint(start), ToPoint(end), thickness, ann.Arrow, ann.StartCap, ann.LineJoin);
+        DrawBodyWithOutline(ds, outline.Points, color, ann);
+    }
 
-        if (shape.Curved)
+    /// <summary>
+    /// Fills an arrow's or line's body, then draws its outline. Inside and outside outlines are
+    /// drawn at double width clipped to (or outside) the body, so they sit exactly where asked.
+    /// </summary>
+    private static void DrawBodyWithOutline(CanvasDrawingSession ds, IReadOnlyList<PointD> points, Color fill, AnnotationSnapshot ann)
+    {
+        if (points.Count < 3)
         {
-            using var pb = new CanvasPathBuilder(ds.Device);
-            pb.BeginFigure(ToVector2(shape.ShaftStart));
-            pb.AddQuadraticBezier(ToVector2(shape.ShaftControl), ToVector2(shape.ShaftEnd));
-            pb.EndFigure(CanvasFigureLoop.Open);
-            using var geo = CanvasGeometry.CreatePath(pb);
-            ds.DrawGeometry(geo, color, thickness, strokeStyle);
-        }
-        else
-        {
-            ds.DrawLine(ToVector2(shape.ShaftStart), ToVector2(shape.ShaftEnd), color, thickness, strokeStyle);
+            return;
         }
 
-        using var head = CanvasGeometry.CreatePolygon(ds.Device, new[] { ToVector2(shape.Tip), ToVector2(shape.Head1), ToVector2(shape.Head2) });
-        ds.FillGeometry(head, color);
+        // The nonzero rule keeps a tight bend that folds the shaft over itself solid.
+        using var pb = new CanvasPathBuilder(ds.Device);
+        pb.SetFilledRegionDetermination(CanvasFilledRegionDetermination.Winding);
+        pb.BeginFigure(ToVector2(points[0]));
+        for (var i = 1; i < points.Count; i++)
+        {
+            pb.AddLine(ToVector2(points[i]));
+        }
+        pb.EndFigure(CanvasFigureLoop.Closed);
+        using var body = CanvasGeometry.CreatePath(pb);
+        ds.FillGeometry(body, fill);
+
+        var width = (float)ann.OutlineWidth;
+        if (width <= 0 || ann.OutlineColor.A == 0)
+        {
+            return;
+        }
+        var style = new CanvasStrokeStyle { LineJoin = ToCanvasJoin(ann.LineJoin) };
+        if (ann.StrokeAlignment == StrokeAlignment.Center)
+        {
+            ds.DrawGeometry(body, ann.OutlineColor, width, style);
+            return;
+        }
+
+        CanvasGeometry? outside = null;
+        try
+        {
+            var clip = body;
+            if (ann.StrokeAlignment == StrokeAlignment.Outside)
+            {
+                var bounds = body.ComputeBounds();
+                var margin = width * 2;
+                using var around = CanvasGeometry.CreateRectangle(
+                    ds, (float)bounds.X - margin, (float)bounds.Y - margin, (float)bounds.Width + margin * 2, (float)bounds.Height + margin * 2);
+                outside = around.CombineWith(body, Matrix3x2.Identity, CanvasGeometryCombine.Exclude);
+                clip = outside;
+            }
+            using (ds.CreateLayer(1f, clip))
+            {
+                ds.DrawGeometry(body, ann.OutlineColor, width * 2, style);
+            }
+        }
+        finally
+        {
+            outside?.Dispose();
+        }
     }
 
     // -- Geometry helpers (also used by EditorCanvas for the live XAML preview) ----------------

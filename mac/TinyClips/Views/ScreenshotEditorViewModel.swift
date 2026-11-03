@@ -73,11 +73,16 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var numberSizeMultiplier: CGFloat = 1.0
     @Published var numberTextColor: Color = .white
     @Published var redactionBlurPreset: RedactionBlurPreset = .medium
-    @Published var selectedArrowStylePreset: ArrowStyle = .straight
+    @Published var arrowShape: ArrowShapeOptions = .classic
     @Published var startCap: StrokeCap = .round
     @Published var endCap: StrokeCap = .round
     @Published var lineJoin: StrokeJoin = .round
     @Published var strokeAlignment: StrokeAlignment = .center
+    /// New arrows and lines start without an outline.
+    @Published var outlineColor: Color = .black
+    @Published var outlineWidth: CGFloat = 0
+    /// Arrow and line outlines start outside the body, so they frame it rather than cover it.
+    @Published var outlineAlignment: StrokeAlignment = .outside
     @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
     @Published var recentEmoji: [String] = []
     @Published var backgroundStyle: ExportBackgroundStyle = .transparent
@@ -96,6 +101,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var pencilPoints: [CGPoint] = []
     private var isAdjustingSelectedLineWidth = false
     private var didRecordLineWidthAdjustment = false
+    private var isAdjustingSelectedArrowShape = false
+    private var didRecordArrowShapeAdjustment = false
     private var imagePixelSize: CGSize = .zero
     private var sourcePixelScale: CGFloat = 1
     private var dragOffset: CGPoint = .zero
@@ -109,6 +116,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var isRotatingAnnotation = false
     private var isDraggingEndpoint = false // true = dragging arrowhead/line end
     private var isDraggingStartpoint = false // true = dragging arrow tail/line start
+    private var isDraggingBend = false // true = dragging an arrow's bend handle
     private var activeResizeHandle: AnnotationResizeHandle?
     private var cropDragMode: CropDragMode?
     private var cropDragOriginalRect: CGRect = .zero
@@ -392,9 +400,23 @@ class ScreenshotEditorViewModel: ObservableObject {
                 }
             } else {
                 let hitRect: CGRect
-                if ann.tool == .arrow || ann.tool == .line {
+                if ann.tool == .arrow {
+                        // Curves are measured in pixels, where the bend is defined.
+                        let size = hitTestImageSize
                         let line = linePoints(for: ann)
-                        if distanceFromPoint(point, toLineSegmentStart: line.start, end: line.end) <= 0.02 {
+                        let distance = ArrowGeometry.distance(
+                            from: CGPoint(x: point.x * size.width, y: point.y * size.height),
+                            start: CGPoint(x: line.start.x * size.width, y: line.start.y * size.height),
+                            end: CGPoint(x: line.end.x * size.width, y: line.end.y * size.height),
+                            bend: ann.arrow.bend
+                        )
+                        if distance <= 0.02 * size.width {
+                            return i
+                        }
+                        continue
+                } else if ann.tool == .line {
+                        let line = linePoints(for: ann)
+                        if distanceToSegment(from: point, start: line.start, end: line.end) <= 0.02 {
                             return i
                         }
                         continue
@@ -1004,6 +1026,39 @@ class ScreenshotEditorViewModel: ObservableObject {
         return true
     }
 
+    func selectedOutlineColor() -> Color? {
+        selectedIndex(using: \.usesOutline).map { annotations[$0].outlineColor }
+    }
+
+    @discardableResult
+    func updateSelectedOutlineColor(_ color: Color) -> Bool {
+        guard let index = selectedIndex(using: \.usesOutline) else { return false }
+        recordHistory()
+        annotations[index].outlineColor = color
+        markDirty()
+        return true
+    }
+
+    func selectedOutlineWidth() -> CGFloat? {
+        selectedIndex(using: \.usesOutline).map { annotations[$0].outlineWidth }
+    }
+
+    @discardableResult
+    func updateSelectedOutlineWidth(_ width: CGFloat) -> Bool {
+        guard let index = selectedIndex(using: \.usesOutline) else { return false }
+        guard annotations[index].outlineWidth != width else { return true }
+        // A slider drag is one undo step, recorded at its first change.
+        if !isAdjustingSelectedLineWidth || !didRecordLineWidthAdjustment {
+            recordHistory()
+            didRecordLineWidthAdjustment = isAdjustingSelectedLineWidth
+        }
+        annotations[index].outlineWidth = width
+        markDirty()
+        return true
+    }
+
+    var showsOutlineControls: Bool { inspectorTool.usesOutline }
+
     func selectedStrokeAlignment() -> StrokeAlignment? {
         selectedIndex(using: \.usesAlignment).map { annotations[$0].strokeAlignment }
     }
@@ -1017,28 +1072,33 @@ class ScreenshotEditorViewModel: ObservableObject {
         return true
     }
 
-    func selectedArrowStyle() -> ArrowStyle? {
-        guard let index = selectedAnnotationIndex, annotations.indices.contains(index), annotations[index].tool == .arrow else {
-            return nil
-        }
-        return annotations[index].arrowStyle
+    func selectedArrowShape() -> ArrowShapeOptions? {
+        selectedIndex(using: { $0 == .arrow }).map { annotations[$0].arrow }
     }
 
     @discardableResult
-    func updateSelectedArrowStyle(_ style: ArrowStyle) -> Bool {
-        guard let index = selectedAnnotationIndex, annotations.indices.contains(index), annotations[index].tool == .arrow else {
-            return false
+    func updateSelectedArrowShape(_ shape: ArrowShapeOptions) -> Bool {
+        guard let index = selectedIndex(using: { $0 == .arrow }) else { return false }
+        guard annotations[index].arrow != shape else { return true }
+        // A slider drag is one undo step, recorded at its first change.
+        if !isAdjustingSelectedArrowShape || !didRecordArrowShapeAdjustment {
+            recordHistory()
+            didRecordArrowShapeAdjustment = isAdjustingSelectedArrowShape
         }
-        recordHistory()
-        annotations[index].arrowStyle = style
+        annotations[index].arrow = shape
         markDirty()
         return true
+    }
+
+    func setAdjustingSelectedArrowShape(_ isAdjusting: Bool) {
+        isAdjustingSelectedArrowShape = isAdjusting
+        didRecordArrowShapeAdjustment = false
     }
 
     func handleDrag(start: CGPoint, current: CGPoint, isAspectLocked: Bool = false, displaySize: CGSize = .zero) {
         switch selectedTool {
         case .move:
-            if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint && !isRotatingAnnotation && activeResizeHandle == nil {
+            if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint && !isDraggingBend && !isRotatingAnnotation && activeResizeHandle == nil {
                 // First drag event — find what we hit
                 let selectedIndex = selectedAnnotationIndex.flatMap { (index: Int) -> Int? in
                     guard annotations.indices.contains(index) else { return nil }
@@ -1049,6 +1109,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                 }
                 if let idx = selectedIndex ?? annotationIndex(at: start) {
                     beginDragHistory()
+                    let wasSelected = selectedAnnotationIndex == idx
                     selectedAnnotationIndex = idx
                     let annotation = annotations[idx]
                     dragOriginalAnnotationRect = annotation.rect
@@ -1077,8 +1138,22 @@ class ScreenshotEditorViewModel: ObservableObject {
                         let distToEnd = hypot(start.x - endPt.x, start.y - endPt.y)
                         let distToStart = hypot(start.x - startPt.x, start.y - startPt.y)
                         let threshold: CGFloat = 0.04
+                        // The bend handle is only shown on a selected arrow, and it is grabbed
+                        // within a few screen points so the rest of the arrow still moves it.
+                        var distToBend = CGFloat.greatestFiniteMagnitude
+                        var isOnBendHandle = false
+                        if wasSelected, ann.tool == .arrow {
+                            let handle = arrowHandle(for: ann)
+                            distToBend = hypot(start.x - handle.x, start.y - handle.y)
+                            isOnBendHandle = hypot(
+                                (start.x - handle.x) * displaySize.width,
+                                (start.y - handle.y) * displaySize.height
+                            ) <= 8
+                        }
 
-                        if distToEnd < threshold && distToEnd <= distToStart {
+                        if isOnBendHandle && distToBend < min(distToEnd, distToStart) {
+                            isDraggingBend = true
+                        } else if distToEnd < threshold && distToEnd <= distToStart {
                             isDraggingEndpoint = true
                         } else if distToStart < threshold && distToStart < distToEnd {
                             isDraggingStartpoint = true
@@ -1117,6 +1192,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ann.points = [updated.start, updated.end]
                     ann.rect = directedRect(from: updated)
                     annotations[idx] = ann
+                } else if isDraggingBend {
+                    bendArrow(at: idx, toward: current, displaySize: displaySize)
                 } else if isDraggingStartpoint {
                     // Move the start point (reverse rotate)
                     var ann = annotations[idx]
@@ -1163,11 +1240,13 @@ class ScreenshotEditorViewModel: ObservableObject {
                 text: "",
                 points: (selectedTool == .arrow || selectedTool == .line) ? [start, current] : [],
                 redactionBlurPreset: redactionBlurPreset,
-                arrowStyle: selectedArrowStylePreset,
+                arrow: arrowShape,
                 startCap: startCap,
                 endCap: endCap,
                 lineJoin: lineJoin,
-                strokeAlignment: strokeAlignment
+                strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
+                outlineColor: outlineColor,
+                outlineWidth: outlineWidth
             )
         }
     }
@@ -1178,6 +1257,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             isDraggingAnnotation = false
             isDraggingEndpoint = false
             isDraggingStartpoint = false
+            isDraggingBend = false
             isRotatingAnnotation = false
             activeResizeHandle = nil
             commitDragHistory()
@@ -1219,11 +1299,13 @@ class ScreenshotEditorViewModel: ObservableObject {
                     text: "",
                     points: (selectedTool == .arrow || selectedTool == .line) ? [start, end] : [],
                     redactionBlurPreset: redactionBlurPreset,
-                    arrowStyle: selectedArrowStylePreset,
+                    arrow: arrowShape,
                     startCap: startCap,
                     endCap: endCap,
                     lineJoin: lineJoin,
-                    strokeAlignment: strokeAlignment
+                    strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
+                    outlineColor: outlineColor,
+                    outlineWidth: outlineWidth
                 ))
                 markDirty()
             }
@@ -1855,17 +1937,35 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
-    private func distanceFromPoint(_ point: CGPoint, toLineSegmentStart start: CGPoint, end: CGPoint) -> CGFloat {
-        let dx = end.x - start.x
-        let dy = end.y - start.y
-        let len2 = dx * dx + dy * dy
-        if len2 <= 0.000001 {
-            return hypot(point.x - start.x, point.y - start.y)
-        }
-        let t = max(0, min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / len2))
-        let proj = CGPoint(x: start.x + t * dx, y: start.y + t * dy)
-        return hypot(point.x - proj.x, point.y - proj.y)
+    /// An arrow's bend handle, normalized like its endpoints. The bend is defined in pixels, so
+    /// the handle is found there and mapped back.
+    private func arrowHandle(for annotation: ScreenshotAnnotation) -> CGPoint {
+        let size = hitTestImageSize
+        let line = linePoints(for: annotation)
+        let handle = ArrowGeometry.handle(
+            start: CGPoint(x: line.start.x * size.width, y: line.start.y * size.height),
+            end: CGPoint(x: line.end.x * size.width, y: line.end.y * size.height),
+            bend: annotation.arrow.bend
+        )
+        return CGPoint(x: handle.x / size.width, y: handle.y / size.height)
     }
+
+    /// Bends the arrow so its curve passes nearest `point`, snapping straight within a few
+    /// screen points of the chord.
+    private func bendArrow(at index: Int, toward point: CGPoint, displaySize: CGSize) {
+        let size = hitTestImageSize
+        let line = linePoints(for: annotations[index])
+        let start = CGPoint(x: line.start.x * size.width, y: line.start.y * size.height)
+        let end = CGPoint(x: line.end.x * size.width, y: line.end.y * size.height)
+        var bend = ArrowGeometry.bend(start: start, end: end, handle: CGPoint(x: point.x * size.width, y: point.y * size.height))
+        let pixelsPerPoint = displaySize.width > 0 ? size.width / displaySize.width : 1
+        if abs(bend) * hypot(end.x - start.x, end.y - start.y) < 6 * pixelsPerPoint {
+            bend = 0
+        }
+        annotations[index].arrow.bend = bend
+        markDirty()
+    }
+
 
     private func makeRect(from start: CGPoint, to end: CGPoint, isAspectLocked: Bool = false) -> CGRect {
         // Arrow/line store start in origin and end in maxX/maxY (can be negative width/height)
@@ -1924,7 +2024,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             isUnderlined: textIsUnderlined,
             textBoxStyle: textBoxStyle,
             redactionBlurPreset: redactionBlurPreset,
-            arrowStyle: selectedArrowStylePreset
+            arrow: arrowShape
         ))
         markDirty()
         textEditPosition = nil
@@ -1959,7 +2059,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             text: "\(nextNumberLabel)",
             points: [],
             redactionBlurPreset: redactionBlurPreset,
-            arrowStyle: selectedArrowStylePreset
+            arrow: arrowShape
         ))
         markDirty()
         nextNumberLabel += 1
@@ -2241,7 +2341,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ctx.setFillColor(fillCGColor)
                     ctx.fillEllipse(in: rect)
                 }
-                strokeAlignedEllipseCG(rect, alignment: annotation.strokeAlignment, width: strokeWidth, in: ctx)
+                strokeAlignedCG(CGPath(ellipseIn: rect, transform: nil), alignment: annotation.strokeAlignment, width: strokeWidth, in: ctx)
             }
 
         case .arrow:
@@ -2255,33 +2355,17 @@ class ScreenshotEditorViewModel: ObservableObject {
                 y: (line.end.y * fullSize.height) - cropOrigin.y + contentOffset.y
             )
             // Build in the y-down space the geometry is defined in, then flip into the context.
-            let shape = ArrowGeometry.build(start: startTopLeft, end: endTopLeft, width: strokeWidth, style: annotation.arrowStyle)
-            let flip = { (point: CGPoint) in CGPoint(x: point.x, y: outputSize.height - point.y) }
-            let flipped = ArrowShape(
-                curved: shape.curved,
-                shaftStart: flip(shape.shaftStart),
-                shaftControl: flip(shape.shaftControl),
-                shaftEnd: flip(shape.shaftEnd),
-                tip: flip(shape.tip),
-                head1: flip(shape.head1),
-                head2: flip(shape.head2)
+            let outline = ArrowGeometry.build(
+                start: startTopLeft,
+                end: endTopLeft,
+                width: strokeWidth,
+                options: annotation.arrow,
+                startCap: annotation.startCap,
+                join: annotation.lineJoin
             )
-            let shaft = CGMutablePath()
-            shaft.move(to: flipped.shaftStart)
-            if flipped.curved {
-                shaft.addQuadCurve(to: flipped.shaftEnd, control: flipped.shaftControl)
-            } else {
-                shaft.addLine(to: flipped.shaftEnd)
-            }
-            let stroke = flipped.shaftStroke(startCap: annotation.startCap, width: strokeWidth)
-            drawFadedCG(annotation.color, in: ctx) { opaque in
-                strokeOpenPathCG(shaft, stroke, color: opaque, in: ctx)
-                ctx.setFillColor(opaque)
-                ctx.move(to: flipped.tip)
-                ctx.addLine(to: flipped.head1)
-                ctx.addLine(to: flipped.head2)
-                ctx.closePath()
-                ctx.fillPath()
+            var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: outputSize.height)
+            if let flipped = outline.path.copy(using: &flip) {
+                drawBodyCG(flipped, annotation: annotation, in: ctx)
             }
 
         case .line:
@@ -2294,17 +2378,14 @@ class ScreenshotEditorViewModel: ObservableObject {
                 x: (line.end.x * fullSize.width) - cropOrigin.x + contentOffset.x,
                 y: imageOutputHeight - ((line.end.y * fullSize.height) - cropOrigin.y) + contentOffset.y
             )
-            let path = CGMutablePath()
-            path.move(to: start)
-            path.addLine(to: end)
-            let stroke = OpenStrokeShape(
-                start: start, startDirection: end, startCap: annotation.startCap,
-                end: end, endDirection: start, endCap: annotation.endCap,
-                width: strokeWidth
+            let outline = LineGeometry.outline(
+                start: start,
+                end: end,
+                width: strokeWidth,
+                startCap: annotation.startCap,
+                endCap: annotation.endCap
             )
-            drawFadedCG(annotation.color, in: ctx) { opaque in
-                strokeOpenPathCG(path, stroke, color: opaque, in: ctx)
-            }
+            drawBodyCG(LineGeometry.path(outline), annotation: annotation, in: ctx)
 
         case .pencil:
             if annotation.points.count > 1 {
@@ -2464,52 +2545,39 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
-    /// Draws opaque pieces into a transparency layer faded once by the color's alpha, so the
-    /// overlaps between a stroke and its caps or head don't darken.
-    private func drawFadedCG(_ color: Color, in ctx: CGContext, _ draw: (CGColor) -> Void) {
-        let (opaque, alpha) = color.opaqueComponents
-        guard alpha < 1 else {
-            draw(NSColor(color).cgColor)
-            return
-        }
+    /// Strokes a closed `shape` at its alignment with the context's stroke color and join. Inside
+    /// and outside strokes are drawn at double width clipped to the shape (or to everything outside
+    /// it), since an offset curve is generally not the same shape.
+    private func strokeAlignedCG(_ shape: CGPath, alignment: StrokeAlignment, width: CGFloat, in ctx: CGContext) {
         ctx.saveGState()
-        ctx.setAlpha(alpha)
-        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-        draw(NSColor(opaque).cgColor)
-        ctx.endTransparencyLayer()
-        ctx.restoreGState()
-    }
-
-    /// Inside and outside ellipse strokes are drawn at double width clipped to the shape (or to
-    /// everything outside it), since an ellipse's offset curve is not an ellipse.
-    private func strokeAlignedEllipseCG(_ rect: CGRect, alignment: StrokeAlignment, width: CGFloat, in ctx: CGContext) {
+        defer { ctx.restoreGState() }
+        ctx.setLineWidth(width)
         guard alignment != .center else {
-            ctx.strokeEllipse(in: rect)
+            ctx.addPath(shape)
+            ctx.strokePath()
             return
         }
-        ctx.saveGState()
         if alignment == .outside {
-            ctx.addRect(rect.insetBy(dx: -width * 2, dy: -width * 2))
+            ctx.addRect(shape.boundingBoxOfPath.insetBy(dx: -width * 2, dy: -width * 2))
         }
-        ctx.addEllipse(in: rect)
+        ctx.addPath(shape)
         ctx.clip(using: .evenOdd)
         ctx.setLineWidth(width * 2)
-        ctx.strokeEllipse(in: rect)
-        ctx.restoreGState()
+        ctx.addPath(shape)
+        ctx.strokePath()
     }
 
-    private func strokeOpenPathCG(_ path: CGPath, _ stroke: OpenStrokeShape, color: CGColor, in ctx: CGContext) {
+    /// Fills an arrow's or line's body and draws its outline, if it has one.
+    private func drawBodyCG(_ body: CGPath, annotation: ScreenshotAnnotation, in ctx: CGContext) {
         ctx.saveGState()
-        ctx.setStrokeColor(color)
-        ctx.setFillColor(color)
-        ctx.setLineCap(stroke.lineCap)
-        ctx.addPath(path)
-        ctx.strokePath()
-        for cap in stroke.capPaths {
-            ctx.addPath(cap)
-            ctx.fillPath()
-        }
-        ctx.restoreGState()
+        defer { ctx.restoreGState() }
+        ctx.setFillColor(NSColor(annotation.color).cgColor)
+        ctx.addPath(body)
+        ctx.fillPath()
+        guard annotation.outlineWidth > 0 else { return }
+        ctx.setStrokeColor(NSColor(annotation.outlineColor).cgColor)
+        ctx.setLineJoin(annotation.lineJoin.cgLineJoin)
+        strokeAlignedCG(body, alignment: annotation.strokeAlignment, width: annotation.outlineWidth, in: ctx)
     }
 
     /// Runs `draw` with the context rotated about `rect`'s center when the annotation is rotated.

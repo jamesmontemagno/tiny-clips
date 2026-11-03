@@ -6,30 +6,53 @@ final class ScreenshotFixtureTests: XCTestCase {
     private let tolerance: CGFloat = 1e-6
 
     func testSharedArrowFixtures() throws {
-        let files = try fixtureFiles(in: "arrow")
+        let files = try fixtureFiles(in: "arrow").filter { $0.lastPathComponent != "handle.json" }
         XCTAssertFalse(files.isEmpty, "Expected shared screenshot arrow fixtures")
 
         for file in files {
             let fixture = try JSONDecoder().decode(ArrowFixture.self, from: Data(contentsOf: file))
             for (index, testCase) in fixture.cases.enumerated() {
                 let label = "\(file.lastPathComponent) case \(index)"
-                let style = try XCTUnwrap(ArrowStyle(rawValue: testCase.style), "\(label) style")
                 let actual = ArrowGeometry.build(
                     start: testCase.start.point,
                     end: testCase.end.point,
                     width: testCase.width,
-                    style: style,
+                    options: ArrowShapeOptions(
+                        bend: testCase.bend,
+                        startWidthScale: testCase.startWidthScale,
+                        endWidthScale: testCase.endWidthScale,
+                        headScale: testCase.headScale
+                    ),
+                    startCap: try XCTUnwrap(StrokeCap(rawValue: testCase.startCap), label),
+                    join: try XCTUnwrap(StrokeJoin(rawValue: testCase.join), label),
                     scale: testCase.scale
                 )
-                let expected = testCase.expected
-                XCTAssertEqual(actual.curved, expected.curved, "\(label) curved")
-                assertPoint(actual.shaftStart, expected.shaftStart, "\(label) shaftStart")
-                assertPoint(actual.shaftControl, expected.shaftControl, "\(label) shaftControl")
-                assertPoint(actual.shaftEnd, expected.shaftEnd, "\(label) shaftEnd")
-                assertPoint(actual.tip, expected.tip, "\(label) tip")
-                assertPoint(actual.head1, expected.head1, "\(label) head1")
-                assertPoint(actual.head2, expected.head2, "\(label) head2")
+                assertPoint(actual.control, testCase.expected.control, "\(label) control")
+                assertPoint(actual.handle, testCase.expected.handle, "\(label) handle")
+                XCTAssertEqual(actual.points.count, testCase.expected.points.count, "\(label) point count")
+                for (pointIndex, pair) in zip(actual.points, testCase.expected.points).enumerated() {
+                    assertPoint(pair.0, pair.1, "\(label) point \(pointIndex)")
+                }
             }
+            if let preset = fixture.preset {
+                let name = file.deletingPathExtension().lastPathComponent
+                let options = ArrowShapeOptions(
+                    bend: preset.bend,
+                    startWidthScale: preset.startWidthScale,
+                    endWidthScale: preset.endWidthScale,
+                    headScale: preset.headScale
+                )
+                XCTAssertEqual(options.preset.rawValue, name)
+            }
+        }
+    }
+
+    func testSharedArrowHandleFixtures() throws {
+        let file = fixtureURL("arrow", "handle.json")
+        let fixture = try JSONDecoder().decode(HandleFixture.self, from: Data(contentsOf: file))
+        for (index, testCase) in fixture.cases.enumerated() {
+            let actual = ArrowGeometry.bend(start: testCase.start.point, end: testCase.end.point, handle: testCase.handle.point)
+            XCTAssertEqual(actual, testCase.expected, accuracy: tolerance, "handle.json case \(index)")
         }
     }
 
@@ -52,6 +75,16 @@ final class ScreenshotFixtureTests: XCTestCase {
         }
     }
 
+    func testCurvedArrowsAreHitAlongTheCurveNotInsideTheArc() {
+        let start = CGPoint(x: 100, y: 100)
+        let end = CGPoint(x: 400, y: 100)
+        let handle = ArrowGeometry.handle(start: start, end: end, bend: 0.2)
+
+        XCTAssertLessThan(ArrowGeometry.distance(from: handle, start: start, end: end, bend: 0.2), 0.5)
+        // The chord's midpoint is inside the arc, 60 px from the curve.
+        XCTAssertGreaterThan(ArrowGeometry.distance(from: CGPoint(x: 250, y: 100), start: start, end: end, bend: 0.2), 55)
+    }
+
     func testDefaultStrokeWidthKeepsTheOldLookOnLargeCaptures() {
         XCTAssertEqual(AnnotationStrokeMath.defaultWidth(forImagePixelWidth: 640), 4)
         XCTAssertEqual(AnnotationStrokeMath.defaultWidth(forImagePixelWidth: 1800), 8)
@@ -59,40 +92,32 @@ final class ScreenshotFixtureTests: XCTestCase {
         XCTAssertEqual(AnnotationStrokeMath.defaultWidth(forImagePixelWidth: 20_000), 40)
     }
 
-    func testMatchingCapsStrokeNativelyWithNoExtraShapes() {
-        let stroke = OpenStrokeShape(
-            start: .zero, startDirection: CGPoint(x: 10, y: 0), startCap: .square,
-            end: CGPoint(x: 10, y: 0), endDirection: .zero, endCap: .square,
-            width: 4
-        )
-        XCTAssertEqual(stroke.lineCap, .square)
-        XCTAssertTrue(stroke.capPaths.isEmpty)
+    func testSharedLineFixtures() throws {
+        let file = fixtureURL("line", "line.json")
+        let fixture = try JSONDecoder().decode(LineFixture.self, from: Data(contentsOf: file))
+        XCTAssertFalse(fixture.cases.isEmpty)
+        for (index, testCase) in fixture.cases.enumerated() {
+            let label = "line.json case \(index)"
+            let actual = LineGeometry.outline(
+                start: testCase.start.point,
+                end: testCase.end.point,
+                width: testCase.width,
+                startCap: try XCTUnwrap(StrokeCap(rawValue: testCase.startCap), label),
+                endCap: try XCTUnwrap(StrokeCap(rawValue: testCase.endCap), label),
+                scale: testCase.scale
+            )
+            XCTAssertEqual(actual.count, testCase.expected.count, "\(label) point count")
+            for (pointIndex, pair) in zip(actual, testCase.expected).enumerated() {
+                assertPoint(pair.0, pair.1, "\(label) point \(pointIndex)")
+            }
+        }
     }
 
-    func testMixedCapsStrokeFlatAndAddEachCapBeyondItsEnd() {
-        let stroke = OpenStrokeShape(
-            start: .zero, startDirection: CGPoint(x: 10, y: 0), startCap: .butt,
-            end: CGPoint(x: 10, y: 0), endDirection: .zero, endCap: .square,
-            width: 4
-        )
-        XCTAssertEqual(stroke.lineCap, .butt)
-        XCTAssertEqual(stroke.capPaths.count, 1)
-        let bounds = stroke.capPaths[0].boundingBoxOfPath
-        XCTAssertEqual(bounds.minX, 10, accuracy: tolerance)
-        XCTAssertEqual(bounds.maxX, 12, accuracy: tolerance)
-        XCTAssertEqual(bounds.minY, -2, accuracy: tolerance)
-        XCTAssertEqual(bounds.maxY, 2, accuracy: tolerance)
-    }
-
-    func testRoundCapIsACircleAroundTheEnd() throws {
-        let cap = try XCTUnwrap(OpenStrokeShape.capPath(.round, at: CGPoint(x: 5, y: 5), awayFrom: .zero, width: 6))
-        XCTAssertEqual(cap.boundingBoxOfPath, CGRect(x: 2, y: 2, width: 6, height: 6))
-    }
-
-    func testOpaqueComponentsSplitAlpha() {
-        let (opaque, alpha) = Color.red.opacity(0.4).opaqueComponents
-        XCTAssertEqual(alpha, 0.4, accuracy: 0.001)
-        XCTAssertEqual(opaque.opaqueComponents.alpha, 1, accuracy: 0.001)
+    func testOnlyArrowsAndLinesTakeAnOutline() {
+        XCTAssertTrue(EditTool.arrow.usesOutline)
+        XCTAssertTrue(EditTool.line.usesOutline)
+        XCTAssertFalse(EditTool.rectangle.usesOutline)
+        XCTAssertTrue(EditTool.line.usesAlignment)
     }
 
     func testOnlyOpenStrokesTakeCapsAndOnlyRectanglesTakeCorners() {
@@ -101,6 +126,7 @@ final class ScreenshotFixtureTests: XCTestCase {
         XCTAssertFalse(EditTool.arrow.usesEndCap)
         XCTAssertFalse(EditTool.pencil.usesStartCap)
         XCTAssertTrue(EditTool.rectangle.usesJoin)
+        XCTAssertTrue(EditTool.arrow.usesJoin)
         XCTAssertFalse(EditTool.circle.usesJoin)
     }
 
@@ -150,22 +176,55 @@ final class ScreenshotFixtureTests: XCTestCase {
     }
 
     private struct ExpectedArrow: Decodable {
-        var curved: Bool
-        var shaftStart: FixturePoint
-        var shaftControl: FixturePoint
-        var shaftEnd: FixturePoint
-        var tip: FixturePoint
-        var head1: FixturePoint
-        var head2: FixturePoint
+        var control: FixturePoint
+        var handle: FixturePoint
+        var points: [FixturePoint]
     }
 
     private struct ArrowCase: Decodable {
         var start: FixturePoint
         var end: FixturePoint
         var width: CGFloat
-        var style: String
+        var bend: CGFloat
+        var startWidthScale: CGFloat
+        var endWidthScale: CGFloat
+        var headScale: CGFloat
+        var startCap: String
+        var join: String
         var scale: CGFloat
         var expected: ExpectedArrow
+    }
+
+    private struct ArrowPresetValues: Decodable {
+        var bend: CGFloat
+        var startWidthScale: CGFloat
+        var endWidthScale: CGFloat
+        var headScale: CGFloat
+    }
+
+    private struct HandleCase: Decodable {
+        var start: FixturePoint
+        var end: FixturePoint
+        var handle: FixturePoint
+        var expected: CGFloat
+    }
+
+    private struct LineCase: Decodable {
+        var start: FixturePoint
+        var end: FixturePoint
+        var width: CGFloat
+        var startCap: String
+        var endCap: String
+        var scale: CGFloat
+        var expected: [FixturePoint]
+    }
+
+    private struct LineFixture: Decodable {
+        var cases: [LineCase]
+    }
+
+    private struct HandleFixture: Decodable {
+        var cases: [HandleCase]
     }
 
     private struct FixtureRect: Decodable {
@@ -196,6 +255,7 @@ final class ScreenshotFixtureTests: XCTestCase {
     }
 
     private struct ArrowFixture: Decodable {
+        var preset: ArrowPresetValues?
         var cases: [ArrowCase]
     }
 }
