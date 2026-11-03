@@ -34,17 +34,6 @@ public enum RedactionStyle
     Solid,
 }
 
-public enum ArrowStyle
-{
-    Straight,
-
-    /// <summary>Bows to the left of the direction of travel (the macOS "Curved Left").</summary>
-    Curved1,
-
-    /// <summary>Bows to the right of the direction of travel (the macOS "Curved Right").</summary>
-    Curved2,
-}
-
 public enum ExportBackgroundStyle
 {
     Transparent,
@@ -225,7 +214,7 @@ public class ScreenshotAnnotation
     public double SizeScale { get; set; } = 1.0;
     public RedactionLevel Redaction { get; set; } = RedactionLevel.Medium;
     public RedactionStyle RedactStyle { get; set; } = RedactionStyle.Blur;
-    public ArrowStyle ArrowStyle { get; set; } = ArrowStyle.Straight;
+    public ArrowShapeOptions Arrow { get; set; } = ArrowShapeOptions.Classic;
     public List<Vector2> Points { get; } = new();
     public Color TextColor { get; set; } = Color.FromArgb(255, 255, 255, 255);
     public double FontSize { get; set; } = 28;
@@ -240,13 +229,18 @@ public class ScreenshotAnnotation
     public StrokeCap EndCap { get; set; } = AnnotationStroke.DefaultCap;
     public StrokeJoin LineJoin { get; set; } = AnnotationStroke.DefaultJoin;
     public StrokeAlignment StrokeAlignment { get; set; } = StrokeAlignment.Center;
+
+    /// <summary>Arrows and lines fill their body with <see cref="Color"/> at <see cref="Thickness"/>
+    /// and can add an outline in this color; a width of 0 draws none.</summary>
+    public Color OutlineColor { get; set; } = Color.FromArgb(255, 0, 0, 0);
+    public double OutlineWidth { get; set; }
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 
     public AnnotationSnapshot CaptureSnapshot() => new(
         Tool, Bounds, Color, FillColor, Thickness, Text, Number, SizeScale,
-        Redaction, RedactStyle, ArrowStyle, Points.ToImmutableArray(), TextColor,
+        Redaction, RedactStyle, Arrow, Points.ToImmutableArray(), TextColor,
         FontSize, FontFamily, Bold, Italic, Underline, Strikethrough, TextBoxStyle, Rotation,
-        StartCap, EndCap, LineJoin, StrokeAlignment);
+        StartCap, EndCap, LineJoin, StrokeAlignment, OutlineColor, OutlineWidth);
 }
 
 /// <summary>Immutable image-pixel annotation data; deliberately excludes live XAML previews.</summary>
@@ -261,7 +255,7 @@ public sealed record AnnotationSnapshot(
     double SizeScale,
     RedactionLevel Redaction,
     RedactionStyle RedactStyle,
-    ArrowStyle ArrowStyle,
+    ArrowShapeOptions Arrow,
     ImmutableArray<Vector2> Points,
     Color TextColor,
     double FontSize,
@@ -275,7 +269,9 @@ public sealed record AnnotationSnapshot(
     StrokeCap StartCap = AnnotationStroke.DefaultCap,
     StrokeCap EndCap = AnnotationStroke.DefaultCap,
     StrokeJoin LineJoin = AnnotationStroke.DefaultJoin,
-    StrokeAlignment StrokeAlignment = StrokeAlignment.Center)
+    StrokeAlignment StrokeAlignment = StrokeAlignment.Center,
+    Color OutlineColor = default,
+    double OutlineWidth = 0)
 {
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 }

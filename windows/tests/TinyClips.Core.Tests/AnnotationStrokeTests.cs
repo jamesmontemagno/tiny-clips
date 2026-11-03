@@ -15,14 +15,15 @@ public sealed class AnnotationStrokeTests
         Assert.False(EditTool.Pen.UsesStartCap());
 
         Assert.True(EditTool.Rectangle.UsesJoin());
+        Assert.True(EditTool.Arrow.UsesJoin());
         Assert.False(EditTool.Ellipse.UsesJoin());
         Assert.False(EditTool.Line.UsesJoin());
     }
 
     [Fact]
-    public void ArrowsAndPenStrokesFadeAsOneLayer()
+    public void PenStrokesFadeAsOneLayer()
     {
-        Assert.True(EditTool.Arrow.NeedsOpacityLayer());
+        Assert.False(EditTool.Arrow.NeedsOpacityLayer());
         Assert.True(EditTool.Pen.NeedsOpacityLayer());
         Assert.False(EditTool.Line.NeedsOpacityLayer());
         Assert.False(EditTool.Rectangle.NeedsOpacityLayer());

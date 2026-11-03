@@ -37,20 +37,19 @@ public sealed partial class EditorCanvas : UserControl
         new(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore);
 
     /// <summary>A retained visual for one annotation. The element type is fixed for the
-    /// annotation's lifetime except for Arrow (its Primary shaft swaps Line/Path if the style
-    /// changes between straight/curved) and Redact (placeholder Rectangle swaps to Image once a
-    /// blurred preview is ready). Arrow's Secondary head and brushes survive shaft swaps. Brushes
-    /// are allocated once and mutated in place to avoid hot-path allocation.</summary>
+    /// annotation's lifetime except for Redact (placeholder Rectangle swaps to Image once a
+    /// blurred preview is ready). Brushes are allocated once and mutated in place to avoid
+    /// hot-path allocation.</summary>
     private sealed class AnnotationVisual
     {
         public UIElement Primary = null!;
         public UIElement? Secondary;
-        // Arrows hold their shaft and head in one container so a translucent color fades them
-        // together instead of darkening where they overlap.
-        public Canvas? Group;
         public SolidColorBrush? StrokeBrush;
         public SolidColorBrush? FillBrush;
         public SolidColorBrush? TextBrush;
+        // Arrows and lines hold their body and outline in one container, so the outline can
+        // move behind the body for an outside stroke.
+        public Canvas? Group;
 
         // Pen-stroke incremental sync bookkeeping: lets a growing stroke append only the new
         // points instead of rebuilding the whole polyline every pointer move.
@@ -83,6 +82,7 @@ public sealed partial class EditorCanvas : UserControl
     private TextBoxStyle _resizeOriginalTextBoxStyle;
     private Annotation? _endpointAnnotation;
     private bool _movingStartEndpoint;
+    private Annotation? _bendAnnotation;
     private Annotation? _rotatingAnnotation;
     private bool _spacePressed;
     private bool _panning;
@@ -278,6 +278,7 @@ public sealed partial class EditorCanvas : UserControl
         _resizingAnnotation = null;
         _resizeHandle = null;
         _endpointAnnotation = null;
+        _bendAnnotation = null;
         _rotatingAnnotation = null;
 
         var moved = _movingAnnotation;
@@ -645,11 +646,6 @@ public sealed partial class EditorCanvas : UserControl
     {
         var exists = _visuals.TryGetValue(ann, out var visual);
 
-        if (exists && ann.Tool == EditTool.Arrow)
-        {
-            EnsureArrowShaft(ann, visual!);
-        }
-
         if (ann.Tool == EditTool.Redact)
         {
             var isMoving = ReferenceEquals(ann, _movingAnnotation);
@@ -673,49 +669,10 @@ public sealed partial class EditorCanvas : UserControl
     }
 
     /// <summary>
-    /// Replaces only an arrow's polymorphic shaft when its style crosses the straight/curved
-    /// boundary. The retained head and brushes stay intact, and preserving the old child index
-    /// keeps the head after (and therefore above) the shaft when their ZIndex values tie.
-    /// </summary>
-    private void EnsureArrowShaft(Annotation ann, AnnotationVisual visual)
-    {
-        var wantsCurved = ann.ArrowStyle != ArrowStyle.Straight;
-        if ((wantsCurved && visual.Primary is ShapesPath)
-            || (!wantsCurved && visual.Primary is Line))
-        {
-            return;
-        }
-
-        var children = (visual.Group ?? OverlayCanvas).Children;
-        var oldShaft = visual.Primary;
-        var childIndex = children.IndexOf(oldShaft);
-        if (childIndex >= 0)
-        {
-            children.RemoveAt(childIndex);
-        }
-        else if (visual.Secondary is { } head)
-        {
-            childIndex = children.IndexOf(head);
-        }
-
-        var newShaft = CreateArrowShaft(wantsCurved, visual.StrokeBrush!);
-        if (childIndex >= 0)
-        {
-            children.Insert(childIndex, newShaft);
-        }
-        else
-        {
-            children.Add(newShaft);
-        }
-        visual.Primary = newShaft;
-    }
-
-    /// <summary>
     /// Assigns a stable <c>Canvas.ZIndex</c> derived from this annotation's position in the
     /// controller's ordered <see cref="EditorController.Annotations"/> list (or, for the
     /// not-yet-committed drag preview, just above the topmost committed annotation). Recreating a
-    /// visual — an arrow's shaft swapping Line/Path between straight/curved, or a redaction's
-    /// placeholder Rectangle swapping for its blurred Image — changes elements in
+    /// visual — a redaction's placeholder Rectangle swapping for its blurred Image — changes elements in
     /// <see cref="OverlayCanvas"/>'s Children collection. Pinning ZIndex to list order keeps preview
     /// stacking stable and matching export/undo order no matter how many times an element is
     /// replaced. The fixed crop-selection and selection-marquee adorners are pinned to a much
@@ -733,8 +690,8 @@ public sealed partial class EditorCanvas : UserControl
         if (visual.Secondary is not null)
         {
             // Same ZIndex as Primary: ties are broken by Children collection order, and Primary
-            // is always added before Secondary (see CreateVisual), so e.g. an arrow's head stays
-            // above its own shaft even after the shaft is replaced.
+            // is always added before Secondary (see CreateVisual), so e.g. a rectangle's stroke
+            // ring stays above its own fill.
             Canvas.SetZIndex(visual.Secondary, z);
         }
     }
@@ -789,23 +746,19 @@ public sealed partial class EditorCanvas : UserControl
                 return new AnnotationVisual { Primary = ellipse, StrokeBrush = stroke, FillBrush = fill };
             }
             case EditTool.Line:
-            {
-                var stroke = new SolidColorBrush();
-                var line = new Line { Stroke = stroke };
-                OverlayCanvas.Children.Add(line);
-                return new AnnotationVisual { Primary = line, StrokeBrush = stroke };
-            }
             case EditTool.Arrow:
             {
-                var stroke = new SolidColorBrush();
+                // One filled body (shaft, head, and caps), so a translucent color stays even, plus
+                // an optional outline drawn around it.
                 var fill = new SolidColorBrush();
-                var shaft = CreateArrowShaft(ann.ArrowStyle != ArrowStyle.Straight, stroke);
-                var head = new Polygon { Fill = fill };
+                var stroke = new SolidColorBrush();
+                var body = new Polygon { Fill = fill, FillRule = FillRule.Nonzero };
+                var outline = new Polygon { Stroke = stroke };
                 var group = new Canvas();
-                group.Children.Add(shaft);
-                group.Children.Add(head);
+                group.Children.Add(body);
+                group.Children.Add(outline);
                 OverlayCanvas.Children.Add(group);
-                return new AnnotationVisual { Primary = shaft, Secondary = head, Group = group, StrokeBrush = stroke, FillBrush = fill };
+                return new AnnotationVisual { Primary = body, Secondary = outline, Group = group, StrokeBrush = stroke, FillBrush = fill };
             }
             case EditTool.Pen:
             {
@@ -964,18 +917,6 @@ public sealed partial class EditorCanvas : UserControl
         return figure;
     }
 
-    private static PenLineCap ToPenLineCap(StrokeCap cap) => cap switch
-    {
-        StrokeCap.Butt => PenLineCap.Flat,
-        StrokeCap.Square => PenLineCap.Square,
-        _ => PenLineCap.Round,
-    };
-
-    private static UIElement CreateArrowShaft(bool curved, SolidColorBrush stroke) =>
-        curved
-            ? new ShapesPath { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round }
-            : new Line { Stroke = stroke, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
-
     /// <summary>Gives a visual a center-anchored <see cref="RotateTransform"/> so <see cref="ApplyRotation"/> can turn it in place.</summary>
     private static void MakeRotatable(FrameworkElement element)
     {
@@ -1047,19 +988,13 @@ public sealed partial class EditorCanvas : UserControl
                 var (s, en) = EditorController.Segment(ann);
                 var start = ToCanvas(new Point(s.X, s.Y), scale, offX, offY);
                 var end = ToCanvas(new Point(en.X, en.Y), scale, offX, offY);
-                var line = (Line)visual.Primary;
-                line.X1 = start.X;
-                line.Y1 = start.Y;
-                line.X2 = end.X;
-                line.Y2 = end.Y;
-                line.StrokeThickness = thickness;
-                line.StrokeStartLineCap = ToPenLineCap(ann.StartCap);
-                line.StrokeEndLineCap = ToPenLineCap(ann.EndCap);
-                visual.StrokeBrush!.Color = ann.Color;
+                var outline = LineGeometry.Outline(
+                    new PointD(start.X, start.Y), new PointD(end.X, end.Y), ann.Thickness, ann.StartCap, ann.EndCap, scale);
+                PositionBody(ann, visual, outline, scale);
                 break;
             }
             case EditTool.Arrow:
-                PositionArrow(ann, visual, scale, offX, offY, thickness);
+                PositionArrow(ann, visual, scale, offX, offY);
                 break;
             case EditTool.Pen:
                 PositionPen(ann, visual, scale, offX, offY, thickness);
@@ -1097,66 +1032,63 @@ public sealed partial class EditorCanvas : UserControl
         Canvas.SetTop(grid, tl.Y);
     }
 
-    private static void PositionArrow(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY, double thickness)
+    private static void PositionArrow(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)
     {
         var (s, en) = EditorController.Segment(ann);
         var start = ToCanvas(new Point(s.X, s.Y), scale, offX, offY);
         var end = ToCanvas(new Point(en.X, en.Y), scale, offX, offY);
-        // Head size comes from the image-pixel width and scales with the view, matching the export.
-        var shape = ArrowGeometry.Build(
+        // Sizes come from the image-pixel width and scale with the view, matching the export.
+        var outline = ArrowGeometry.Build(
             new PointD(start.X, start.Y),
             new PointD(end.X, end.Y),
             ann.Thickness,
-            ann.ArrowStyle,
+            ann.Arrow,
+            ann.StartCap,
+            ann.LineJoin,
             scale);
 
-        // Opaque pieces faded as one group, matching the export's opacity layer.
-        var opaque = Color.FromArgb(255, ann.Color.R, ann.Color.G, ann.Color.B);
-        visual.StrokeBrush!.Color = opaque;
-        visual.FillBrush!.Color = opaque;
-        visual.Group!.Opacity = ann.Color.A / 255.0;
+        PositionBody(ann, visual, outline.Points, scale);
+    }
 
-        // The retained element reflects the requested style. ArrowGeometry.Build deliberately reports a
-        // zero-length curved arrow as non-curved because there is no meaningful tangent yet, so
-        // branching on shape.Curved here would incorrectly cast its retained Path to Line during
-        // the first/tiniest pointer moves.
-        var startCap = ToPenLineCap(ann.StartCap);
-        if (visual.Primary is ShapesPath path)
-        {
-            path.StrokeThickness = thickness;
-            path.StrokeStartLineCap = startCap;
-            var figure = new PathFigure { StartPoint = new Point(shape.ShaftStart.X, shape.ShaftStart.Y) };
-            figure.Segments.Add(new QuadraticBezierSegment
-            {
-                Point1 = new Point(shape.ShaftControl.X, shape.ShaftControl.Y),
-                Point2 = new Point(shape.ShaftEnd.X, shape.ShaftEnd.Y),
-            });
-            var geometry = new PathGeometry();
-            geometry.Figures.Add(figure);
-            path.Data = geometry;
-        }
-        else if (visual.Primary is Line line)
-        {
-            line.StrokeThickness = thickness;
-            line.StrokeStartLineCap = startCap;
-            line.X1 = shape.ShaftStart.X;
-            line.Y1 = shape.ShaftStart.Y;
-            line.X2 = shape.ShaftEnd.X;
-            line.Y2 = shape.ShaftEnd.Y;
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unsupported arrow shaft visual: {visual.Primary.GetType().FullName}");
-        }
+    /// <summary>
+    /// Shows an arrow's or line's filled body and its outline. A centered outline is drawn over
+    /// the body and an outside one at double width behind it, both exact. XAML cannot clip to
+    /// the body, so an inside outline is shown centered here; the export draws it exactly.
+    /// </summary>
+    private static void PositionBody(Annotation ann, AnnotationVisual visual, IReadOnlyList<PointD> points, double scale)
+    {
+        visual.FillBrush!.Color = ann.Color;
+        var body = (Polygon)visual.Primary;
+        SetPoints(body, points);
 
-        if (visual.Secondary is not Polygon head)
+        var outline = (Polygon)visual.Secondary!;
+        var hasOutline = ann.OutlineWidth > 0 && points.Count >= 3;
+        outline.Visibility = hasOutline ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasOutline)
         {
-            throw new InvalidOperationException("Arrow visual is missing its polygon head.");
+            return;
         }
-        head.Points.Clear();
-        head.Points.Add(new Point(shape.Tip.X, shape.Tip.Y));
-        head.Points.Add(new Point(shape.Head1.X, shape.Head1.Y));
-        head.Points.Add(new Point(shape.Head2.X, shape.Head2.Y));
+        var isOutside = ann.StrokeAlignment == StrokeAlignment.Outside;
+        visual.StrokeBrush!.Color = ann.OutlineColor;
+        outline.StrokeThickness = ann.OutlineWidth * scale * (isOutside ? 2 : 1);
+        outline.StrokeLineJoin = ann.LineJoin switch
+        {
+            StrokeJoin.Miter => PenLineJoin.Miter,
+            StrokeJoin.Bevel => PenLineJoin.Bevel,
+            _ => PenLineJoin.Round,
+        };
+        Canvas.SetZIndex(outline, isOutside ? 0 : 2);
+        Canvas.SetZIndex(body, 1);
+        SetPoints(outline, points);
+    }
+
+    private static void SetPoints(Polygon polygon, IReadOnlyList<PointD> points)
+    {
+        polygon.Points.Clear();
+        foreach (var point in points)
+        {
+            polygon.Points.Add(new Point(point.X, point.Y));
+        }
     }
 
     private static void PositionPen(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY, double thickness)
@@ -1304,6 +1236,12 @@ public sealed partial class EditorCanvas : UserControl
             PositionHandle(EndEndpointHandle, ToCanvas(new Point(end.X, end.Y), scale, offX, offY));
             StartEndpointHandle.Visibility = Visibility.Visible;
             EndEndpointHandle.Visibility = Visibility.Visible;
+            if (ann.Tool == EditTool.Arrow)
+            {
+                var handle = ArrowGeometry.Handle(new PointD(start.X, start.Y), new PointD(end.X, end.Y), ann.Arrow.Bend);
+                PositionHandle(ArrowBendHandle, ToCanvas(new Point(handle.X, handle.Y), scale, offX, offY));
+                ArrowBendHandle.Visibility = Visibility.Visible;
+            }
             return;
         }
 
@@ -1340,6 +1278,7 @@ public sealed partial class EditorCanvas : UserControl
         BottomRightResizeHandle.Visibility = Visibility.Collapsed;
         StartEndpointHandle.Visibility = Visibility.Collapsed;
         EndEndpointHandle.Visibility = Visibility.Collapsed;
+        ArrowBendHandle.Visibility = Visibility.Collapsed;
         RotationHandle.Visibility = Visibility.Collapsed;
         RotationHandleStem.Visibility = Visibility.Collapsed;
     }
@@ -1468,7 +1407,9 @@ public sealed partial class EditorCanvas : UserControl
         return null;
     }
 
-    private bool TryBeginEndpointDrag(Point point, Annotation ann)
+    /// <param name="allowBend">Only an arrow that was already selected shows its bend handle, so
+    /// only then may pressing near its middle bend it rather than move it.</param>
+    private bool TryBeginEndpointDrag(Point point, Annotation ann, bool allowBend)
     {
         if (ann.Tool is not (EditTool.Line or EditTool.Arrow))
         {
@@ -1480,6 +1421,18 @@ public sealed partial class EditorCanvas : UserControl
         var endCanvas = ToCanvas(new Point(end.X, end.Y), scale, offX, offY);
         var startDistance = Math.Sqrt(Math.Pow(point.X - startCanvas.X, 2) + Math.Pow(point.Y - startCanvas.Y, 2));
         var endDistance = Math.Sqrt(Math.Pow(point.X - endCanvas.X, 2) + Math.Pow(point.Y - endCanvas.Y, 2));
+        if (allowBend && ann.Tool == EditTool.Arrow)
+        {
+            // The bend handle sits on the curve's midpoint, between the two endpoint handles.
+            var handle = ArrowGeometry.Handle(new PointD(start.X, start.Y), new PointD(end.X, end.Y), ann.Arrow.Bend);
+            var handleCanvas = ToCanvas(new Point(handle.X, handle.Y), scale, offX, offY);
+            var bendDistance = Math.Sqrt(Math.Pow(point.X - handleCanvas.X, 2) + Math.Pow(point.Y - handleCanvas.Y, 2));
+            if (bendDistance <= 10 && bendDistance < Math.Min(startDistance, endDistance))
+            {
+                _bendAnnotation = ann;
+                return true;
+            }
+        }
         if (Math.Min(startDistance, endDistance) > 10)
         {
             return false;
@@ -1585,7 +1538,7 @@ public sealed partial class EditorCanvas : UserControl
                     _capturedPointer = e.Pointer;
                     return;
                 }
-                if (TryBeginEndpointDrag(p, selected))
+                if (TryBeginEndpointDrag(p, selected, allowBend: true))
                 {
                     OverlayCanvas.CapturePointer(e.Pointer);
                     _capturedPointer = e.Pointer;
@@ -1596,7 +1549,7 @@ public sealed partial class EditorCanvas : UserControl
             _controller.Select(hit);
             if (hit is not null)
             {
-                if (TryBeginEndpointDrag(p, hit))
+                if (TryBeginEndpointDrag(p, hit, allowBend: false))
                 {
                     OverlayCanvas.CapturePointer(e.Pointer);
                     _capturedPointer = e.Pointer;
@@ -1707,6 +1660,15 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
+        if (tool == EditTool.Select && _bendAnnotation is not null)
+        {
+            var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
+            var (scale, _, _) = HostLayout();
+            // Snap straight within a few screen pixels of the chord.
+            _controller.MoveArrowBend(_bendAnnotation, pixel, 6 / Math.Max(scale, 0.0001));
+            return;
+        }
+
         if (tool == EditTool.Select && _endpointAnnotation is not null)
         {
             var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
@@ -1755,6 +1717,7 @@ public sealed partial class EditorCanvas : UserControl
             _resizingAnnotation = null;
             _resizeHandle = null;
             _endpointAnnotation = null;
+            _bendAnnotation = null;
             _rotatingAnnotation = null;
             // A moved redact block only shows the lightweight placeholder while dragging (see
             // UpdateVisual); re-blur it now that the drag has settled. Guarded on list

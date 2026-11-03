@@ -88,14 +88,20 @@ public static class AnnotationStroke
 
     public static bool UsesEndCap(this EditTool tool) => tool is EditTool.Line;
 
-    /// <summary>Only rectangles have corners; ellipses have none and pen strokes always round.</summary>
-    public static bool UsesJoin(this EditTool tool) => tool is EditTool.Rectangle;
+    /// <summary>Rectangles and arrowheads have corners; ellipses have none and pen strokes always round.</summary>
+    public static bool UsesJoin(this EditTool tool) => tool is EditTool.Rectangle or EditTool.Arrow;
 
-    public static bool UsesAlignment(this EditTool tool) => tool is EditTool.Rectangle or EditTool.Ellipse;
+    /// <summary>Closed shapes align their stroke; arrows and lines align their outline.</summary>
+    public static bool UsesAlignment(this EditTool tool) =>
+        tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Arrow or EditTool.Line;
+
+    /// <summary>Arrows and lines are filled bodies (in the annotation's color, at its thickness)
+    /// that can carry a separate outline.</summary>
+    public static bool UsesOutline(this EditTool tool) => tool is EditTool.Arrow or EditTool.Line;
 
     /// <summary>
-    /// Arrows and pen strokes are several overlapping pieces, so a translucent color has to be
-    /// applied to them as one layer or the overlaps draw darker.
+    /// Pen strokes are drawn as overlapping segments, so a translucent color has to be applied to
+    /// them as one layer or the overlaps draw darker. Arrows are a single outline and need none.
     /// </summary>
-    public static bool NeedsOpacityLayer(this EditTool tool) => tool is EditTool.Arrow or EditTool.Pen;
+    public static bool NeedsOpacityLayer(this EditTool tool) => tool is EditTool.Pen;
 }

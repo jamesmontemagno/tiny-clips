@@ -24,35 +24,6 @@ struct TextStyleToggleButton: View {
     }
 }
 
-struct ArrowStyleButton: View {
-    let style: ArrowStyle
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: iconName)
-                .font(.system(size: 15, weight: .semibold))
-                .frame(width: 34, height: 30)
-                .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 7))
-                .contentShape(RoundedRectangle(cornerRadius: 7))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(style.label)
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-        .help(style.label)
-    }
-
-    private var iconName: String {
-        switch style {
-        case .straight: return "arrowshape.right"
-        case .curvedLeft: return "arrowshape.turn.up.right"
-        case .curvedRight: return "arrowshape.turn.up.left"
-        }
-    }
-}
-
 struct EmojiPickerView: View {
     let selectedEmoji: String
     let recentEmoji: [String]

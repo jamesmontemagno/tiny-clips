@@ -12,35 +12,93 @@ public sealed class ScreenshotFixtureTests
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "ScreenshotFixtures", "arrow");
         var files = Directory.Exists(directory)
-            ? Directory.EnumerateFiles(directory, "*.json").Order().ToArray()
+            ? Directory.EnumerateFiles(directory, "*.json").Where(f => Path.GetFileName(f) != "handle.json").Order().ToArray()
             : [];
         Assert.True(files.Length > 0, $"No screenshot arrow fixtures were copied to {directory}.");
 
         foreach (var file in files)
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(file));
-            var index = 0;
-            foreach (var testCase in document.RootElement.GetProperty("cases").EnumerateArray())
+            foreach (var (label, testCase) in Cases("arrow", Path.GetFileName(file)))
             {
-                var label = $"{Path.GetFileName(file)} case {index++}";
                 var actual = ArrowGeometry.Build(
                     ReadPoint(testCase.GetProperty("start")),
                     ReadPoint(testCase.GetProperty("end")),
                     testCase.GetProperty("width").GetDouble(),
-                    ParseArrowStyle(testCase.GetProperty("style").GetString()),
+                    new ArrowShapeOptions(
+                        testCase.GetProperty("bend").GetDouble(),
+                        testCase.GetProperty("startWidthScale").GetDouble(),
+                        testCase.GetProperty("endWidthScale").GetDouble(),
+                        testCase.GetProperty("headScale").GetDouble()),
+                    ParseCap(testCase.GetProperty("startCap").GetString()),
+                    ParseJoin(testCase.GetProperty("join").GetString()),
                     testCase.GetProperty("scale").GetDouble());
                 var expected = testCase.GetProperty("expected");
 
-                Assert.True(expected.GetProperty("curved").GetBoolean() == actual.Curved, $"{label} curved");
-                AssertPoint(expected.GetProperty("shaftStart"), actual.ShaftStart, $"{label} shaftStart");
-                AssertPoint(expected.GetProperty("shaftControl"), actual.ShaftControl, $"{label} shaftControl");
-                AssertPoint(expected.GetProperty("shaftEnd"), actual.ShaftEnd, $"{label} shaftEnd");
-                AssertPoint(expected.GetProperty("tip"), actual.Tip, $"{label} tip");
-                AssertPoint(expected.GetProperty("head1"), actual.Head1, $"{label} head1");
-                AssertPoint(expected.GetProperty("head2"), actual.Head2, $"{label} head2");
+                AssertPoint(expected.GetProperty("control"), actual.Control, $"{label} control");
+                AssertPoint(expected.GetProperty("handle"), actual.Handle, $"{label} handle");
+                var points = expected.GetProperty("points").EnumerateArray().ToArray();
+                Assert.True(points.Length == actual.Points.Count, $"{label}: expected {points.Length} points but was {actual.Points.Count}.");
+                for (var i = 0; i < points.Length; i++)
+                {
+                    AssertPoint(points[i], actual.Points[i], $"{label} point {i}");
+                }
+            }
+
+            if (Path.GetFileName(file) is var name && name != "options.json")
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(file));
+                var preset = document.RootElement.GetProperty("preset");
+                var options = new ArrowShapeOptions(
+                    preset.GetProperty("bend").GetDouble(),
+                    preset.GetProperty("startWidthScale").GetDouble(),
+                    preset.GetProperty("endWidthScale").GetDouble(),
+                    preset.GetProperty("headScale").GetDouble());
+                Assert.Equal(Path.GetFileNameWithoutExtension(name), options.Preset.ToString().ToLowerInvariant());
             }
         }
     }
+
+    [Fact]
+    public void SharedArrowHandleFixturesMatchWindowsImplementation()
+    {
+        foreach (var (label, testCase) in Cases("arrow", "handle.json"))
+        {
+            var actual = ArrowGeometry.Bend(
+                ReadPoint(testCase.GetProperty("start")),
+                ReadPoint(testCase.GetProperty("end")),
+                ReadPoint(testCase.GetProperty("handle")));
+            Assert.True(Math.Abs(testCase.GetProperty("expected").GetDouble() - actual) <= Tolerance, $"{label}: bend was {actual}.");
+        }
+    }
+
+    [Fact]
+    public void SharedLineFixturesMatchWindowsImplementation()
+    {
+        foreach (var (label, testCase) in Cases("line", "line.json"))
+        {
+            var actual = LineGeometry.Outline(
+                ReadPoint(testCase.GetProperty("start")),
+                ReadPoint(testCase.GetProperty("end")),
+                testCase.GetProperty("width").GetDouble(),
+                ParseCap(testCase.GetProperty("startCap").GetString()),
+                ParseCap(testCase.GetProperty("endCap").GetString()),
+                testCase.GetProperty("scale").GetDouble());
+            var points = testCase.GetProperty("expected").EnumerateArray().ToArray();
+            Assert.True(points.Length == actual.Count, $"{label}: expected {points.Length} points but was {actual.Count}.");
+            for (var i = 0; i < points.Length; i++)
+            {
+                AssertPoint(points[i], actual[i], $"{label} point {i}");
+            }
+        }
+    }
+
+    private static StrokeCap ParseCap(string? value) => value switch
+    {
+        "butt" => StrokeCap.Butt,
+        "round" => StrokeCap.Round,
+        "square" => StrokeCap.Square,
+        _ => throw new InvalidOperationException($"Unknown cap {value}."),
+    };
 
     [Fact]
     public void SharedRectangleAlignmentFixturesMatchWindowsImplementation()
@@ -118,14 +176,6 @@ public sealed class ScreenshotFixtureTests
                 && Math.Abs(rect.Height - actual.Height) <= Tolerance,
             $"{label}: expected {rect} but was {actual}.");
     }
-
-    private static ArrowStyle ParseArrowStyle(string? value) => value switch
-    {
-        "straight" => ArrowStyle.Straight,
-        "curvedLeft" => ArrowStyle.Curved1,
-        "curvedRight" => ArrowStyle.Curved2,
-        _ => throw new InvalidOperationException($"Unknown arrow style {value}."),
-    };
 
     private static PointD ReadPoint(JsonElement element) =>
         new(element.GetProperty("x").GetDouble(), element.GetProperty("y").GetDouble());
