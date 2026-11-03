@@ -136,6 +136,10 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 | Picker: Cancel | Esc |
 | Stop Recording | Ctrl+Shift+S |
 
+## Linux (planned)
+
+A native GNOME port is planned but not yet available. The [Linux port plan](plans/linux-gtk-port-plan.md) covers supported workflows, Wayland limitations, and how the Flatpak will be tested.
+
 ## Usage
 
 1. Click the Tiny Clips icon in the menu bar (macOS) or system tray (Windows)
