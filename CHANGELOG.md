@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Agents can trim videos and GIFs (`editor.trim`, with optional audio removal) and save single frames (`editor.saveFrame`) without opening a trimmer; results are new library items and the source is unchanged. Stale Studio edits now return a distinct `conflict` error instead of `busy`.
 - The MCP server now uses the official C# SDK for stdio transport, lifecycle, protocol negotiation, and cancellation while preserving contract-driven tools and app permissions.
 - Added cross-platform agent CLI CI, isolated NuGet/dnx MCP smoke tests, and a dedicated `agent-v*` NuGet Trusted Publishing release workflow; shared automation changes now trigger both app builds.
+- The Release Hub now tracks Agent package versions, tags, releases, and workflows, and can publish a confirmed version-matched `agent-v*` tag to trigger NuGet Trusted Publishing.
 - Added the `tinyclips` [Agent Plugin](https://agent-plugins.org/) in `plugins/tinyclips`, bundling the MCP server and agent Skills in one installable package.
 - MCP setup uses a portable `dotnet dnx` launch with quiet restore to keep first-run NuGet messages off the protocol stream.
 - Agent Control settings and the in-app Guide now include installation, pairing, connection checks, MCP configuration, and example prompts.
