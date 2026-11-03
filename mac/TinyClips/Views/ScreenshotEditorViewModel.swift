@@ -412,13 +412,13 @@ class ScreenshotEditorViewModel: ObservableObject {
                             end: CGPoint(x: line.end.x * size.width, y: line.end.y * size.height),
                             bend: ann.arrow.bend
                         )
-                        if distance <= 0.02 * size.width {
+                        if distance <= 0.02 * size.width || drawnOutlineContains(ann, point: point) {
                             return i
                         }
                         continue
                 } else if ann.tool == .line {
                         let line = linePoints(for: ann)
-                        if distanceToSegment(from: point, start: line.start, end: line.end) <= 0.02 {
+                        if distanceToSegment(from: point, start: line.start, end: line.end) <= 0.02 || drawnOutlineContains(ann, point: point) {
                             return i
                         }
                         continue
@@ -452,6 +452,35 @@ class ScreenshotEditorViewModel: ObservableObject {
             }
         }
         return nil
+    }
+
+    /// Whether a normalized `point` lands on an arrow's or line's drawn shape (a thick shaft, a
+    /// wide head, a hand-drawn wobble) or its outline, measured in image pixels.
+    private func drawnOutlineContains(_ ann: ScreenshotAnnotation, point: CGPoint) -> Bool {
+        let size = hitTestImageSize
+        let line = linePoints(for: ann)
+        let start = CGPoint(x: line.start.x * size.width, y: line.start.y * size.height)
+        let end = CGPoint(x: line.end.x * size.width, y: line.end.y * size.height)
+        let outline: [CGPoint]
+        if ann.tool == .arrow {
+            outline = ArrowGeometry.build(
+                start: start, end: end, width: ann.lineWidth, options: ann.arrow,
+                startCap: ann.startCap, join: ann.lineJoin,
+                roughness: ann.sketchRoughness, seed: ann.seed
+            ).points
+        } else {
+            outline = LineGeometry.outline(
+                start: start, end: end, width: ann.lineWidth, startCap: ann.startCap, endCap: ann.endCap,
+                roughness: ann.sketchRoughness, seed: ann.seed
+            )
+        }
+        // An outside or centered outline reaches past the body by up to its width.
+        let reach = ann.strokeAlignment == .inside ? 0 : ann.outlineWidth
+        return ArrowGeometry.outlineContains(
+            outline,
+            point: CGPoint(x: point.x * size.width, y: point.y * size.height),
+            tolerance: reach + max(4, size.width * 0.005)
+        )
     }
 
     func pencilBounds(for annotation: ScreenshotAnnotation) -> CGRect? {
@@ -2612,7 +2641,11 @@ class ScreenshotEditorViewModel: ObservableObject {
             return
         }
         if alignment == .outside {
-            ctx.addRect(shape.boundingBoxOfPath.insetBy(dx: -width * 2, dy: -width * 2))
+            // Cover everything the doubled stroke can reach, mitered points included.
+            let reach = shape.copy(
+                strokingWithWidth: width * 2, lineCap: .butt, lineJoin: .miter, miterLimit: 10
+            ).boundingBoxOfPath
+            ctx.addRect(reach.insetBy(dx: -1, dy: -1))
         }
         ctx.addPath(shape)
         ctx.clip(using: .evenOdd)

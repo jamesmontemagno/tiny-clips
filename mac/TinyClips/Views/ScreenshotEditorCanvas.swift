@@ -622,7 +622,7 @@ struct ScreenshotEditorCanvasView: View {
                 ctx.fill(Path(rect), with: .color(annotation.fillColor))
             }
             if annotation.isSketch {
-                let ops = SketchGeometry.rectangle(rect.standardized, width: lineWidth, roughness: annotation.roughness, seed: annotation.seed)
+                let ops = SketchGeometry.rectangle(rect.standardized, width: annotation.lineWidth, roughness: annotation.roughness, seed: annotation.seed, scale: pixelScale)
                 ctx.stroke(Path(SketchGeometry.path(ops)), with: .color(color), style: Self.sketchStyle(lineWidth))
             } else {
                 let ring = RectStrokeRing(bounds: rect.standardized, width: lineWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
@@ -635,7 +635,7 @@ struct ScreenshotEditorCanvasView: View {
                 ctx.fill(Path(ellipseIn: rect), with: .color(annotation.fillColor))
             }
             if annotation.isSketch {
-                let ops = SketchGeometry.ellipse(rect.standardized, width: lineWidth, roughness: annotation.roughness, seed: annotation.seed)
+                let ops = SketchGeometry.ellipse(rect.standardized, width: annotation.lineWidth, roughness: annotation.roughness, seed: annotation.seed, scale: pixelScale)
                 ctx.stroke(Path(SketchGeometry.path(ops)), with: .color(color), style: Self.sketchStyle(lineWidth))
             } else {
                 strokeAligned(Path(ellipseIn: rect), alignment: annotation.strokeAlignment, color: color, style: StrokeStyle(lineWidth: lineWidth), in: ctx)

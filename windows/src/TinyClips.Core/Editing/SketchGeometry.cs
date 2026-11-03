@@ -27,16 +27,16 @@ public static class SketchGeometry
     /// <summary>A new non-zero seed for an annotation; zero would mean "not seeded".</summary>
     public static int NewSeed() => Random.Shared.Next(1, int.MaxValue);
 
-    public static IReadOnlyList<SketchOp> Rectangle(RectD bounds, double width, double roughness, int seed)
+    public static IReadOnlyList<SketchOp> Rectangle(RectD bounds, double width, double roughness, int seed, double scale = 1)
     {
-        var unit = Unit(width);
+        var unit = Unit(width, scale);
         var ops = new Rough(roughness, seed).Rectangle(bounds.X / unit, bounds.Y / unit, bounds.Width / unit, bounds.Height / unit);
         return Scale(ops, unit);
     }
 
-    public static IReadOnlyList<SketchOp> Ellipse(RectD bounds, double width, double roughness, int seed)
+    public static IReadOnlyList<SketchOp> Ellipse(RectD bounds, double width, double roughness, int seed, double scale = 1)
     {
-        var unit = Unit(width);
+        var unit = Unit(width, scale);
         var cx = (bounds.X + bounds.Width / 2) / unit;
         var cy = (bounds.Y + bounds.Height / 2) / unit;
         var ops = new Rough(roughness, seed).Ellipse(cx, cy, bounds.Width / unit, bounds.Height / unit);
@@ -44,9 +44,9 @@ public static class SketchGeometry
     }
 
     /// <summary>A hand-drawn cubic from start to end: rough.js's single-stroke line.</summary>
-    public static (PointD Start, PointD Control1, PointD Control2, PointD End) Centerline(PointD start, PointD end, double width, double roughness, int seed)
+    public static (PointD Start, PointD Control1, PointD Control2, PointD End) Centerline(PointD start, PointD end, double width, double roughness, int seed, double scale = 1)
     {
-        var unit = Unit(width);
+        var unit = Unit(width, scale);
         var ops = new Rough(roughness, seed).Line(start.X / unit, start.Y / unit, end.X / unit, end.Y / unit, move: true, overlay: false);
         var move = ops[0].End;
         var curve = ops[1];
@@ -69,7 +69,11 @@ public static class SketchGeometry
         return values;
     }
 
-    private static double Unit(double width) => Math.Max(MinimumUnit, width / 2);
+    /// <summary>
+    /// The geometry's unit for a width in image pixels, in the caller's units (scale per image
+    /// pixel). The minimum applies in image pixels, so the wobble looks the same at every zoom.
+    /// </summary>
+    private static double Unit(double width, double scale) => Math.Max(MinimumUnit, width / 2) * scale;
 
     private static List<SketchOp> Scale(List<SketchOp> ops, double unit) => ops
         .Select(op => new SketchOp(

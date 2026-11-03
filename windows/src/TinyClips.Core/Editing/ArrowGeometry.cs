@@ -119,6 +119,42 @@ public static class ArrowGeometry
         return best;
     }
 
+    /// <summary>
+    /// Whether <paramref name="point"/> is inside a filled outline (nonzero rule) or within
+    /// <paramref name="tolerance"/> of its edge, so a click anywhere on the drawn shape, its head
+    /// and its outline selects it.
+    /// </summary>
+    public static bool OutlineContains(IReadOnlyList<PointD> outline, PointD point, double tolerance)
+    {
+        if (outline.Count < 3)
+        {
+            return false;
+        }
+        var winding = 0;
+        var previous = outline[^1];
+        foreach (var current in outline)
+        {
+            if (DistanceToSegment(point, previous, current) <= tolerance)
+            {
+                return true;
+            }
+            var cross = (current.X - previous.X) * (point.Y - previous.Y) - (point.X - previous.X) * (current.Y - previous.Y);
+            if (previous.Y <= point.Y)
+            {
+                if (current.Y > point.Y && cross > 0)
+                {
+                    winding++;
+                }
+            }
+            else if (current.Y <= point.Y && cross < 0)
+            {
+                winding--;
+            }
+            previous = current;
+        }
+        return winding != 0;
+    }
+
     public static PointD PointOnCurve(PointD start, PointD control, PointD end, double t)
     {
         var u = 1 - t;
@@ -149,7 +185,7 @@ public static class ArrowGeometry
             return new ArrowOutline(control, handle, Array.Empty<PointD>());
         }
         var u = Mul(chord, 1 / length);
-        var (p0, c1, c2, p3) = Centerline(start, end, control, width * scale, roughness, seed);
+        var (p0, c1, c2, p3) = Centerline(start, end, control, width, scale, roughness, seed);
 
         var head = Math.Min(options.HeadScale * HeadLength(width) * scale, MaximumHeadFraction * length);
         var tipDirection = Normalize(Sub(p3, c2), u);
@@ -198,11 +234,11 @@ public static class ArrowGeometry
     /// The arrow's centerline as a cubic: its bend's quadratic raised to a cubic, plus the
     /// hand-drawn wobble when sketched.
     /// </summary>
-    private static (PointD, PointD, PointD, PointD) Centerline(PointD start, PointD end, PointD control, double width, double roughness, int seed)
+    private static (PointD, PointD, PointD, PointD) Centerline(PointD start, PointD end, PointD control, double width, double scale, double roughness, int seed)
     {
         if (roughness > 0)
         {
-            var (s0, c1, c2, e) = SketchGeometry.Centerline(start, end, width, roughness, seed);
+            var (s0, c1, c2, e) = SketchGeometry.Centerline(start, end, width, roughness, seed, scale);
             var d = Mul(Sub(control, Lerp(start, end, 0.5)), 2.0 / 3);
             return (s0, Add(c1, d), Add(c2, d), e);
         }

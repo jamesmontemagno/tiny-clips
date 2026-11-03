@@ -1451,7 +1451,7 @@ enum ArrowGeometry {
             return ArrowOutline(control: control, handle: handle, points: [])
         }
         let u = mul(chord, 1 / chordLength)
-        let (p0, c1, c2, p3) = centerline(start: start, end: end, control: control, width: width * scale, roughness: roughness, seed: seed)
+        let (p0, c1, c2, p3) = centerline(start: start, end: end, control: control, width: width, scale: scale, roughness: roughness, seed: seed)
 
         let head = min(options.headScale * headLength(width: width) * scale, maximumHeadFraction * chordLength)
         let tipDirection = normalize(sub(p3, c2), fallback: u)
@@ -1491,9 +1491,9 @@ enum ArrowGeometry {
 
     /// The arrow's centerline as a cubic: its bend's quadratic raised to a cubic, plus the
     /// hand-drawn wobble when sketched.
-    private static func centerline(start: CGPoint, end: CGPoint, control: CGPoint, width: CGFloat, roughness: CGFloat, seed: Int32) -> (CGPoint, CGPoint, CGPoint, CGPoint) {
+    private static func centerline(start: CGPoint, end: CGPoint, control: CGPoint, width: CGFloat, scale: CGFloat, roughness: CGFloat, seed: Int32) -> (CGPoint, CGPoint, CGPoint, CGPoint) {
         if roughness > 0 {
-            let (s0, c1, c2, e) = SketchGeometry.centerline(start: start, end: end, width: width, roughness: roughness, seed: seed)
+            let (s0, c1, c2, e) = SketchGeometry.centerline(start: start, end: end, width: width, roughness: roughness, seed: seed, scale: scale)
             let d = mul(sub(control, lerp(start, end, 0.5)), 2.0 / 3)
             return (s0, add(c1, d), add(c2, d), e)
         }
@@ -1556,6 +1556,27 @@ enum ArrowGeometry {
         return best
     }
 
+    /// Whether `point` is inside a filled outline (nonzero rule) or within `tolerance` of its edge,
+    /// so a click anywhere on the drawn shape, its head and its outline selects it.
+    static func outlineContains(_ outline: [CGPoint], point: CGPoint, tolerance: CGFloat) -> Bool {
+        guard outline.count >= 3 else { return false }
+        var winding = 0
+        var previous = outline[outline.count - 1]
+        for current in outline {
+            if distanceToSegment(from: point, start: previous, end: current) <= tolerance {
+                return true
+            }
+            let cross = (current.x - previous.x) * (point.y - previous.y) - (point.x - previous.x) * (current.y - previous.y)
+            if previous.y <= point.y {
+                if current.y > point.y, cross > 0 { winding += 1 }
+            } else if current.y <= point.y, cross < 0 {
+                winding -= 1
+            }
+            previous = current
+        }
+        return winding != 0
+    }
+
     private static func corner(previous: CGPoint, vertex: CGPoint, next: CGPoint, size: CGFloat, join: StrokeJoin) -> [CGPoint] {
         guard join != .miter, size > 0 else { return [vertex] }
         let toPrevious = sub(previous, vertex)
@@ -1614,7 +1635,7 @@ enum LineGeometry {
         let u = CGPoint(x: dx * (1 / length), y: dy * (1 / length))
         if roughness > 0 {
             let half = width / 2 * scale
-            let (p0, c1, c2, p3) = SketchGeometry.centerline(start: start, end: end, width: width * scale, roughness: roughness, seed: seed)
+            let (p0, c1, c2, p3) = SketchGeometry.centerline(start: start, end: end, width: width, roughness: roughness, seed: seed, scale: scale)
             let (left, right) = ArrowGeometry.shaftEdges(p0, c1, c2, p3, tEnd: 1, startHalf: half, endHalf: half, fallback: u)
             let endTangent = ArrowGeometry.normalize(ArrowGeometry.cubicTangent(p0, c1, c2, p3, 1), fallback: u)
             let startTangent = ArrowGeometry.normalize(ArrowGeometry.cubicTangent(p0, c1, c2, p3, 0), fallback: u)
@@ -1956,23 +1977,23 @@ enum SketchGeometry {
     /// A new non-zero seed for an annotation; zero would mean "not seeded".
     static func newSeed() -> Int32 { Int32.random(in: 1...Int32.max - 1) }
 
-    static func rectangle(_ bounds: CGRect, width: CGFloat, roughness: CGFloat, seed: Int32) -> [SketchOp] {
-        let unit = unit(width)
+    static func rectangle(_ bounds: CGRect, width: CGFloat, roughness: CGFloat, seed: Int32, scale: CGFloat = 1) -> [SketchOp] {
+        let unit = unit(width, scale: scale)
         var rough = Rough(roughness: roughness, seed: seed)
-        return scale(rough.rectangle(bounds.minX / unit, bounds.minY / unit, bounds.width / unit, bounds.height / unit), unit)
+        return scaled(rough.rectangle(bounds.minX / unit, bounds.minY / unit, bounds.width / unit, bounds.height / unit), unit)
     }
 
-    static func ellipse(_ bounds: CGRect, width: CGFloat, roughness: CGFloat, seed: Int32) -> [SketchOp] {
-        let unit = unit(width)
+    static func ellipse(_ bounds: CGRect, width: CGFloat, roughness: CGFloat, seed: Int32, scale: CGFloat = 1) -> [SketchOp] {
+        let unit = unit(width, scale: scale)
         let cx = (bounds.minX + bounds.width / 2) / unit
         let cy = (bounds.minY + bounds.height / 2) / unit
         var rough = Rough(roughness: roughness, seed: seed)
-        return scale(rough.ellipse(cx, cy, bounds.width / unit, bounds.height / unit), unit)
+        return scaled(rough.ellipse(cx, cy, bounds.width / unit, bounds.height / unit), unit)
     }
 
     /// A hand-drawn cubic from start to end: rough.js's single-stroke line.
-    static func centerline(start: CGPoint, end: CGPoint, width: CGFloat, roughness: CGFloat, seed: Int32) -> (CGPoint, CGPoint, CGPoint, CGPoint) {
-        let unit = unit(width)
+    static func centerline(start: CGPoint, end: CGPoint, width: CGFloat, roughness: CGFloat, seed: Int32, scale: CGFloat = 1) -> (CGPoint, CGPoint, CGPoint, CGPoint) {
+        let unit = unit(width, scale: scale)
         var rough = Rough(roughness: roughness, seed: seed)
         let ops = rough.line(start.x / unit, start.y / unit, end.x / unit, end.y / unit, move: true, overlay: false)
         let move = ops[0].end
@@ -2004,9 +2025,11 @@ enum SketchGeometry {
         return path
     }
 
-    private static func unit(_ width: CGFloat) -> CGFloat { max(minimumUnit, width / 2) }
+    /// The geometry's unit for a `width` in image pixels, in the caller's units (`scale` per image
+    /// pixel). The minimum applies in image pixels, so the wobble looks the same at every zoom.
+    private static func unit(_ width: CGFloat, scale: CGFloat) -> CGFloat { max(minimumUnit, width / 2) * scale }
 
-    private static func scale(_ ops: [SketchOp], _ unit: CGFloat) -> [SketchOp] {
+    private static func scaled(_ ops: [SketchOp], _ unit: CGFloat) -> [SketchOp] {
         ops.map {
             SketchOp(
                 isMove: $0.isMove,

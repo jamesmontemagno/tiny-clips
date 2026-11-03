@@ -50,7 +50,7 @@ public static class LineGeometry
         PointD start, PointD end, double width, double scale, StrokeCap startCap, StrokeCap endCap, double roughness, int seed, PointD u)
     {
         var half = width / 2 * scale;
-        var (p0, c1, c2, p3) = SketchGeometry.Centerline(start, end, width * scale, roughness, seed);
+        var (p0, c1, c2, p3) = SketchGeometry.Centerline(start, end, width, roughness, seed, scale);
         var (left, right) = ArrowGeometry.ShaftEdges(p0, c1, c2, p3, 1, half, half, u);
         var endTangent = ArrowGeometry.Normalize(ArrowGeometry.CubicTangent(p0, c1, c2, p3, 1), u);
         var startTangent = ArrowGeometry.Normalize(ArrowGeometry.CubicTangent(p0, c1, c2, p3, 0), u);

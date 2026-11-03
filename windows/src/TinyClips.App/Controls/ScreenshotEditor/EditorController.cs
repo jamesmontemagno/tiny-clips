@@ -426,7 +426,17 @@ internal sealed class EditorController : IDisposable
             {
                 // A curved arrow is hit along its curve, not anywhere in the box around it.
                 var (start, end) = Segment(ann);
-                if (ArrowGeometry.DistanceToCurve(new PointD(pixelPoint.X, pixelPoint.Y), ToPoint(start), ToPoint(end), ann.Arrow.Bend) <= pad)
+                var point = new PointD(pixelPoint.X, pixelPoint.Y);
+                if (ArrowGeometry.DistanceToCurve(point, ToPoint(start), ToPoint(end), ann.Arrow.Bend) <= pad)
+                {
+                    return ann;
+                }
+                // The head, wide shaft ends and a hand-drawn wobble reach past the curve's pad.
+                var outline = ArrowGeometry.Build(
+                    ToPoint(start), ToPoint(end), ann.Thickness, ann.Arrow, ann.StartCap, ann.LineJoin,
+                    roughness: ann.SketchRoughness, seed: ann.Seed);
+                var reach = ann.StrokeAlignment == StrokeAlignment.Inside ? 0 : ann.OutlineWidth;
+                if (ArrowGeometry.OutlineContains(outline.Points, point, reach + 6))
                 {
                     return ann;
                 }
@@ -2630,10 +2640,10 @@ internal sealed class EditorController : IDisposable
             var clip = body;
             if (ann.StrokeAlignment == StrokeAlignment.Outside)
             {
-                var bounds = body.ComputeBounds();
-                var margin = width * 2;
+                // Cover everything the doubled stroke reaches, mitered points included.
+                var bounds = body.ComputeStrokeBounds(width * 2, style);
                 using var around = CanvasGeometry.CreateRectangle(
-                    ds, (float)bounds.X - margin, (float)bounds.Y - margin, (float)bounds.Width + margin * 2, (float)bounds.Height + margin * 2);
+                    ds, (float)bounds.X - 1, (float)bounds.Y - 1, (float)bounds.Width + 2, (float)bounds.Height + 2);
                 outside = around.CombineWith(body, Matrix3x2.Identity, CanvasGeometryCombine.Exclude);
                 clip = outside;
             }
