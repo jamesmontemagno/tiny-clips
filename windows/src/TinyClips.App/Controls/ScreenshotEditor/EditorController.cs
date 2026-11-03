@@ -183,6 +183,8 @@ internal sealed class EditorController : IDisposable
 
     public StrokeJoin LineJoinDefault { get; private set; } = AnnotationStroke.DefaultJoin;
 
+    public StrokeAlignment StrokeAlignmentDefault { get; private set; } = StrokeAlignment.Center;
+
     public string EmojiDefault { get; private set; } = EmojiAnnotationMath.DefaultEmoji;
 
     // Shared across editor windows for the lifetime of the process so the "Recent" row survives
@@ -540,6 +542,20 @@ internal sealed class EditorController : IDisposable
         else
         {
             LineJoinDefault = join;
+        }
+    }
+
+    public void SetStrokeAlignment(StrokeAlignment alignment)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesAlignment())
+        {
+            ann.StrokeAlignment = alignment;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            StrokeAlignmentDefault = alignment;
         }
     }
 
@@ -1193,6 +1209,7 @@ internal sealed class EditorController : IDisposable
             StartCap = StartCapDefault,
             EndCap = EndCapDefault,
             LineJoin = LineJoinDefault,
+            StrokeAlignment = StrokeAlignmentDefault,
             Bounds = new Rect(pixelStart.X, pixelStart.Y, 0, 0),
         };
 
@@ -1715,6 +1732,7 @@ internal sealed class EditorController : IDisposable
         annotation.StartCap = snapshot.StartCap;
         annotation.EndCap = snapshot.EndCap;
         annotation.LineJoin = snapshot.LineJoin;
+        annotation.StrokeAlignment = snapshot.StrokeAlignment;
     }
 
     // -- Crop -------------------------------------------------------------------------------
@@ -2309,14 +2327,12 @@ internal sealed class EditorController : IDisposable
                 {
                     ds.FillRectangle((float)b.X, (float)b.Y, (float)b.Width, (float)b.Height, ann.FillColor);
                 }
-                ds.DrawRectangle(
-                    (float)b.X,
-                    (float)b.Y,
-                    (float)b.Width,
-                    (float)b.Height,
-                    color,
-                    thickness,
-                    new CanvasStrokeStyle { LineJoin = ToCanvasJoin(ann.LineJoin) });
+                var ring = StrokeAlignmentGeometry.RectangleRing(
+                    new RectD(b.X, b.Y, b.Width, b.Height), thickness, ann.StrokeAlignment, ann.LineJoin);
+                using (var ringGeometry = CreateRingGeometry(ds, ring))
+                {
+                    ds.FillGeometry(ringGeometry, color);
+                }
                 break;
             }
             case EditTool.Ellipse:
@@ -2331,13 +2347,7 @@ internal sealed class EditorController : IDisposable
                         (float)(b.Height / 2),
                         ann.FillColor);
                 }
-                ds.DrawEllipse(
-                    (float)(b.X + b.Width / 2),
-                    (float)(b.Y + b.Height / 2),
-                    (float)(b.Width / 2),
-                    (float)(b.Height / 2),
-                    color,
-                    thickness);
+                DrawAlignedEllipseStroke(ds, b, color, thickness, ann.StrokeAlignment);
                 break;
             }
             case EditTool.Line:
@@ -2484,6 +2494,73 @@ internal sealed class EditorController : IDisposable
     // -- Geometry helpers (also used by EditorCanvas for the live XAML preview) ----------------
 
     private static PointD ToPoint(Vector2 v) => new(v.X, v.Y);
+
+    /// <summary>A rectangle's stroke as one fillable ring, matching the macOS renderer exactly.</summary>
+    private static CanvasGeometry CreateRingGeometry(ICanvasResourceCreator resources, RectStrokeRing ring)
+    {
+        var o = ring.Outer;
+        var c = (float)ring.CornerSize;
+        using var outer = ring.OuterJoin switch
+        {
+            StrokeJoin.Round when c > 0 => CanvasGeometry.CreateRoundedRectangle(
+                resources, (float)o.X, (float)o.Y, (float)o.Width, (float)o.Height, c, c),
+            StrokeJoin.Bevel when c > 0 => CanvasGeometry.CreatePolygon(resources, new[]
+            {
+                new Vector2((float)o.Left + c, (float)o.Top),
+                new Vector2((float)o.Right - c, (float)o.Top),
+                new Vector2((float)o.Right, (float)o.Top + c),
+                new Vector2((float)o.Right, (float)o.Bottom - c),
+                new Vector2((float)o.Right - c, (float)o.Bottom),
+                new Vector2((float)o.Left + c, (float)o.Bottom),
+                new Vector2((float)o.Left, (float)o.Bottom - c),
+                new Vector2((float)o.Left, (float)o.Top + c),
+            }),
+            _ => CanvasGeometry.CreateRectangle(resources, (float)o.X, (float)o.Y, (float)o.Width, (float)o.Height),
+        };
+        var i = ring.Inner;
+        using var inner = CanvasGeometry.CreateRectangle(resources, (float)i.X, (float)i.Y, (float)i.Width, (float)i.Height);
+        return outer.CombineWith(inner, Matrix3x2.Identity, CanvasGeometryCombine.Exclude);
+    }
+
+    /// <summary>
+    /// An ellipse's offset curve is not an ellipse, so inside and outside strokes are drawn at
+    /// double width and clipped to the shape (or to everything outside it).
+    /// </summary>
+    private static void DrawAlignedEllipseStroke(CanvasDrawingSession ds, Rect b, Color color, float thickness, StrokeAlignment alignment)
+    {
+        var center = new Vector2((float)(b.X + b.Width / 2), (float)(b.Y + b.Height / 2));
+        var rx = (float)(b.Width / 2);
+        var ry = (float)(b.Height / 2);
+        if (alignment == StrokeAlignment.Center)
+        {
+            ds.DrawEllipse(center, rx, ry, color, thickness);
+            return;
+        }
+
+        using var ellipse = CanvasGeometry.CreateEllipse(ds, center, rx, ry);
+        CanvasGeometry clip = ellipse;
+        CanvasGeometry? outside = null;
+        if (alignment == StrokeAlignment.Outside)
+        {
+            var margin = thickness * 2;
+            using var around = CanvasGeometry.CreateRectangle(
+                ds, (float)b.X - margin, (float)b.Y - margin, (float)b.Width + margin * 2, (float)b.Height + margin * 2);
+            outside = around.CombineWith(ellipse, Matrix3x2.Identity, CanvasGeometryCombine.Exclude);
+            clip = outside;
+        }
+
+        try
+        {
+            using (ds.CreateLayer(1f, clip))
+            {
+                ds.DrawEllipse(center, rx, ry, color, thickness * 2);
+            }
+        }
+        finally
+        {
+            outside?.Dispose();
+        }
+    }
 
     private static CanvasCapStyle ToCanvasCap(StrokeCap cap) => cap switch
     {

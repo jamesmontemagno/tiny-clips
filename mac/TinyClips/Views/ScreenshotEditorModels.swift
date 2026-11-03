@@ -219,6 +219,85 @@ enum EditTool: String, CaseIterable {
 
     /// Only rectangles have corners; circles have none and pencil strokes always round.
     var usesJoin: Bool { self == .rectangle }
+
+    var usesAlignment: Bool { self == .rectangle || self == .circle }
+}
+
+/// Where a closed shape's stroke sits relative to its outline. Raw values match the Windows names.
+enum StrokeAlignment: String, CaseIterable, Identifiable {
+    case center
+    case inside
+    case outside
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .center: return "Center"
+        case .inside: return "Inside"
+        case .outside: return "Outside"
+        }
+    }
+}
+
+/// A rectangle's stroke as a filled ring: `outer` with its corners shaped by `outerJoin` (rounded
+/// or cut by `cornerSize`), minus the always-sharp `inner` rectangle. Shared with Windows through
+/// `shared/screenshot/fixtures/alignment`.
+struct RectStrokeRing: Equatable {
+    var outer: CGRect
+    var outerJoin: StrokeJoin
+    var cornerSize: CGFloat
+    var inner: CGRect
+
+    init(bounds: CGRect, width: CGFloat, alignment: StrokeAlignment, join: StrokeJoin) {
+        let outerOffset: CGFloat
+        let innerInset: CGFloat
+        switch alignment {
+        case .center:
+            outerOffset = width / 2
+            innerInset = width / 2
+        case .inside:
+            outerOffset = 0
+            innerInset = width
+        case .outside:
+            outerOffset = width
+            innerInset = 0
+        }
+        outer = Self.inset(bounds, by: -outerOffset)
+        outerJoin = outerOffset > 0 ? join : .miter
+        cornerSize = outerOffset > 0 && join != .miter ? outerOffset : 0
+        inner = Self.inset(bounds, by: innerInset)
+    }
+
+    /// The ring to fill with the even-odd rule.
+    var path: CGPath {
+        let path = CGMutablePath()
+        let o = outer
+        let c = cornerSize
+        switch outerJoin {
+        case .round where c > 0:
+            path.addRoundedRect(in: o, cornerWidth: c, cornerHeight: c)
+        case .bevel where c > 0:
+            path.addLines(between: [
+                CGPoint(x: o.minX + c, y: o.minY), CGPoint(x: o.maxX - c, y: o.minY),
+                CGPoint(x: o.maxX, y: o.minY + c), CGPoint(x: o.maxX, y: o.maxY - c),
+                CGPoint(x: o.maxX - c, y: o.maxY), CGPoint(x: o.minX + c, y: o.maxY),
+                CGPoint(x: o.minX, y: o.maxY - c), CGPoint(x: o.minX, y: o.minY + c),
+            ])
+            path.closeSubpath()
+        default:
+            path.addRect(o)
+        }
+        path.addRect(inner)
+        return path
+    }
+
+    /// Insets by `amount` (outsets when negative), never past an empty rectangle.
+    static func inset(_ rect: CGRect, by amount: CGFloat) -> CGRect {
+        let dx = min(amount, rect.width / 2)
+        let dy = min(amount, rect.height / 2)
+        return CGRect(x: rect.minX + dx, y: rect.minY + dy, width: rect.width - 2 * dx, height: rect.height - 2 * dy)
+    }
 }
 
 /// How an open stroke ends. Raw values match the Windows `StrokeCap` names and the shared contract.
@@ -293,6 +372,7 @@ struct ScreenshotAnnotation: Identifiable {
     var startCap: StrokeCap = .round
     var endCap: StrokeCap = .round
     var lineJoin: StrokeJoin = .round
+    var strokeAlignment: StrokeAlignment = .center
     /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
     var rotation: CGFloat = 0
 

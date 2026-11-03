@@ -239,13 +239,14 @@ public class ScreenshotAnnotation
     public StrokeCap StartCap { get; set; } = AnnotationStroke.DefaultCap;
     public StrokeCap EndCap { get; set; } = AnnotationStroke.DefaultCap;
     public StrokeJoin LineJoin { get; set; } = AnnotationStroke.DefaultJoin;
+    public StrokeAlignment StrokeAlignment { get; set; } = StrokeAlignment.Center;
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 
     public AnnotationSnapshot CaptureSnapshot() => new(
         Tool, Bounds, Color, FillColor, Thickness, Text, Number, SizeScale,
         Redaction, RedactStyle, ArrowStyle, Points.ToImmutableArray(), TextColor,
         FontSize, FontFamily, Bold, Italic, Underline, Strikethrough, TextBoxStyle, Rotation,
-        StartCap, EndCap, LineJoin);
+        StartCap, EndCap, LineJoin, StrokeAlignment);
 }
 
 /// <summary>Immutable image-pixel annotation data; deliberately excludes live XAML previews.</summary>
@@ -273,7 +274,8 @@ public sealed record AnnotationSnapshot(
     double Rotation,
     StrokeCap StartCap = AnnotationStroke.DefaultCap,
     StrokeCap EndCap = AnnotationStroke.DefaultCap,
-    StrokeJoin LineJoin = AnnotationStroke.DefaultJoin)
+    StrokeJoin LineJoin = AnnotationStroke.DefaultJoin,
+    StrokeAlignment StrokeAlignment = StrokeAlignment.Center)
 {
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 }

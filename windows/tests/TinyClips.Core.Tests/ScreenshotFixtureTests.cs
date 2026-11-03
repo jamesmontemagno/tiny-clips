@@ -42,6 +42,83 @@ public sealed class ScreenshotFixtureTests
         }
     }
 
+    [Fact]
+    public void SharedRectangleAlignmentFixturesMatchWindowsImplementation()
+    {
+        foreach (var (label, testCase) in Cases("alignment", "rectangle.json"))
+        {
+            var actual = StrokeAlignmentGeometry.RectangleRing(
+                ReadRect(testCase.GetProperty("bounds")),
+                testCase.GetProperty("width").GetDouble(),
+                ParseAlignment(testCase.GetProperty("alignment").GetString()),
+                ParseJoin(testCase.GetProperty("join").GetString()));
+            var expected = testCase.GetProperty("expected");
+
+            AssertRect(expected.GetProperty("outer"), actual.Outer, $"{label} outer");
+            Assert.True(ParseJoin(expected.GetProperty("outerJoin").GetString()) == actual.OuterJoin, $"{label} outerJoin");
+            Assert.True(Math.Abs(expected.GetProperty("cornerSize").GetDouble() - actual.CornerSize) <= Tolerance, $"{label} cornerSize");
+            AssertRect(expected.GetProperty("inner"), actual.Inner, $"{label} inner");
+        }
+    }
+
+    [Fact]
+    public void SharedEllipseAlignmentFixturesMatchWindowsImplementation()
+    {
+        foreach (var (label, testCase) in Cases("alignment", "ellipse.json"))
+        {
+            var actual = StrokeAlignmentGeometry.EllipseCenterline(
+                ReadRect(testCase.GetProperty("bounds")),
+                testCase.GetProperty("width").GetDouble(),
+                ParseAlignment(testCase.GetProperty("alignment").GetString()));
+            AssertRect(testCase.GetProperty("expected"), actual, label);
+        }
+    }
+
+    private static IEnumerable<(string Label, JsonElement Case)> Cases(string folder, string fileName)
+    {
+        var file = Path.Combine(AppContext.BaseDirectory, "ScreenshotFixtures", folder, fileName);
+        Assert.True(File.Exists(file), $"Missing screenshot fixture {file}.");
+        using var document = JsonDocument.Parse(File.ReadAllText(file));
+        var index = 0;
+        foreach (var testCase in document.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            yield return ($"{fileName} case {index++}", testCase.Clone());
+        }
+    }
+
+    private static StrokeAlignment ParseAlignment(string? value) => value switch
+    {
+        "center" => StrokeAlignment.Center,
+        "inside" => StrokeAlignment.Inside,
+        "outside" => StrokeAlignment.Outside,
+        _ => throw new InvalidOperationException($"Unknown alignment {value}."),
+    };
+
+    private static StrokeJoin ParseJoin(string? value) => value switch
+    {
+        "miter" => StrokeJoin.Miter,
+        "round" => StrokeJoin.Round,
+        "bevel" => StrokeJoin.Bevel,
+        _ => throw new InvalidOperationException($"Unknown join {value}."),
+    };
+
+    private static RectD ReadRect(JsonElement element) => new(
+        element.GetProperty("x").GetDouble(),
+        element.GetProperty("y").GetDouble(),
+        element.GetProperty("width").GetDouble(),
+        element.GetProperty("height").GetDouble());
+
+    private static void AssertRect(JsonElement expected, RectD actual, string label)
+    {
+        var rect = ReadRect(expected);
+        Assert.True(
+            Math.Abs(rect.X - actual.X) <= Tolerance
+                && Math.Abs(rect.Y - actual.Y) <= Tolerance
+                && Math.Abs(rect.Width - actual.Width) <= Tolerance
+                && Math.Abs(rect.Height - actual.Height) <= Tolerance,
+            $"{label}: expected {rect} but was {actual}.");
+    }
+
     private static ArrowStyle ParseArrowStyle(string? value) => value switch
     {
         "straight" => ArrowStyle.Straight,

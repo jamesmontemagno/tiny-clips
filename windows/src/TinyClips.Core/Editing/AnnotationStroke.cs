@@ -16,6 +16,67 @@ public enum StrokeJoin
     Bevel,
 }
 
+/// <summary>Where a closed shape's stroke sits relative to its outline.</summary>
+public enum StrokeAlignment
+{
+    Center,
+    Inside,
+    Outside,
+}
+
+/// <summary>
+/// A rectangle's stroke as a filled ring: <see cref="Outer"/> with its corners shaped by
+/// <see cref="OuterJoin"/> (rounded or cut by <see cref="CornerSize"/>), minus the always-sharp
+/// <see cref="Inner"/> rectangle. Fill it with the even-odd rule.
+/// </summary>
+public readonly record struct RectStrokeRing(RectD Outer, StrokeJoin OuterJoin, double CornerSize, RectD Inner);
+
+/// <summary>Stroke alignment geometry shared with macOS through <c>shared/screenshot/fixtures/alignment</c>.</summary>
+public static class StrokeAlignmentGeometry
+{
+    public static RectStrokeRing RectangleRing(RectD bounds, double width, StrokeAlignment alignment, StrokeJoin join)
+    {
+        var outerOffset = alignment switch
+        {
+            StrokeAlignment.Inside => 0,
+            StrokeAlignment.Outside => width,
+            _ => width / 2,
+        };
+        var innerInset = alignment switch
+        {
+            StrokeAlignment.Inside => width,
+            StrokeAlignment.Outside => 0,
+            _ => width / 2,
+        };
+        return new RectStrokeRing(
+            Inset(bounds, -outerOffset),
+            outerOffset > 0 ? join : StrokeJoin.Miter,
+            outerOffset > 0 && join != StrokeJoin.Miter ? outerOffset : 0,
+            Inset(bounds, innerInset));
+    }
+
+    /// <summary>
+    /// The ellipse to stroke at the plain width for an alignment. An ellipse's offset curve is not
+    /// an ellipse, so this is only an approximation for renderers that cannot clip; exact
+    /// renderers stroke at double width clipped to (or outside) the shape instead.
+    /// </summary>
+    public static RectD EllipseCenterline(RectD bounds, double width, StrokeAlignment alignment) =>
+        Inset(bounds, alignment switch
+        {
+            StrokeAlignment.Inside => width / 2,
+            StrokeAlignment.Outside => -width / 2,
+            _ => 0,
+        });
+
+    /// <summary>Insets by <paramref name="amount"/> (outsets when negative), never past an empty rectangle.</summary>
+    public static RectD Inset(RectD rect, double amount)
+    {
+        var dx = Math.Min(amount, rect.Width / 2);
+        var dy = Math.Min(amount, rect.Height / 2);
+        return new RectD(rect.X + dx, rect.Y + dy, rect.Width - 2 * dx, rect.Height - 2 * dy);
+    }
+}
+
 /// <summary>Which stroke options each annotation tool uses; the inspector and renderers share these.</summary>
 public static class AnnotationStroke
 {
@@ -29,6 +90,8 @@ public static class AnnotationStroke
 
     /// <summary>Only rectangles have corners; ellipses have none and pen strokes always round.</summary>
     public static bool UsesJoin(this EditTool tool) => tool is EditTool.Rectangle;
+
+    public static bool UsesAlignment(this EditTool tool) => tool is EditTool.Rectangle or EditTool.Ellipse;
 
     /// <summary>
     /// Arrows and pen strokes are several overlapping pieces, so a translucent color has to be

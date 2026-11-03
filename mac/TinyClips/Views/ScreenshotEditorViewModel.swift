@@ -77,6 +77,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var startCap: StrokeCap = .round
     @Published var endCap: StrokeCap = .round
     @Published var lineJoin: StrokeJoin = .round
+    @Published var strokeAlignment: StrokeAlignment = .center
     @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
     @Published var recentEmoji: [String] = []
     @Published var backgroundStyle: ExportBackgroundStyle = .transparent
@@ -480,6 +481,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     var showsEndCapControl: Bool { inspectorTool.usesEndCap }
 
     var showsLineJoinControl: Bool { inspectorTool.usesJoin }
+
+    var showsStrokeAlignmentControl: Bool { inspectorTool.usesAlignment }
 
     var showsEmojiPicker: Bool {
         inspectorTool == .emoji
@@ -1001,6 +1004,19 @@ class ScreenshotEditorViewModel: ObservableObject {
         return true
     }
 
+    func selectedStrokeAlignment() -> StrokeAlignment? {
+        selectedIndex(using: \.usesAlignment).map { annotations[$0].strokeAlignment }
+    }
+
+    @discardableResult
+    func updateSelectedStrokeAlignment(_ alignment: StrokeAlignment) -> Bool {
+        guard let index = selectedIndex(using: \.usesAlignment) else { return false }
+        recordHistory()
+        annotations[index].strokeAlignment = alignment
+        markDirty()
+        return true
+    }
+
     func selectedArrowStyle() -> ArrowStyle? {
         guard let index = selectedAnnotationIndex, annotations.indices.contains(index), annotations[index].tool == .arrow else {
             return nil
@@ -1150,7 +1166,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                 arrowStyle: selectedArrowStylePreset,
                 startCap: startCap,
                 endCap: endCap,
-                lineJoin: lineJoin
+                lineJoin: lineJoin,
+                strokeAlignment: strokeAlignment
             )
         }
     }
@@ -1205,7 +1222,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                     arrowStyle: selectedArrowStylePreset,
                     startCap: startCap,
                     endCap: endCap,
-                    lineJoin: lineJoin
+                    lineJoin: lineJoin,
+                    strokeAlignment: strokeAlignment
                 ))
                 markDirty()
             }
@@ -2210,8 +2228,10 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ctx.fill(rect)
                 }
 
-                ctx.setLineJoin(annotation.lineJoin.cgLineJoin)
-                ctx.stroke(rect)
+                let ring = RectStrokeRing(bounds: rect.standardized, width: strokeWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
+                ctx.setFillColor(cgColor)
+                ctx.addPath(ring.path)
+                ctx.fillPath(using: .evenOdd)
             }
 
         case .circle:
@@ -2221,7 +2241,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ctx.setFillColor(fillCGColor)
                     ctx.fillEllipse(in: rect)
                 }
-                ctx.strokeEllipse(in: rect)
+                strokeAlignedEllipseCG(rect, alignment: annotation.strokeAlignment, width: strokeWidth, in: ctx)
             }
 
         case .arrow:
@@ -2457,6 +2477,24 @@ class ScreenshotEditorViewModel: ObservableObject {
         ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         draw(NSColor(opaque).cgColor)
         ctx.endTransparencyLayer()
+        ctx.restoreGState()
+    }
+
+    /// Inside and outside ellipse strokes are drawn at double width clipped to the shape (or to
+    /// everything outside it), since an ellipse's offset curve is not an ellipse.
+    private func strokeAlignedEllipseCG(_ rect: CGRect, alignment: StrokeAlignment, width: CGFloat, in ctx: CGContext) {
+        guard alignment != .center else {
+            ctx.strokeEllipse(in: rect)
+            return
+        }
+        ctx.saveGState()
+        if alignment == .outside {
+            ctx.addRect(rect.insetBy(dx: -width * 2, dy: -width * 2))
+        }
+        ctx.addEllipse(in: rect)
+        ctx.clip(using: .evenOdd)
+        ctx.setLineWidth(width * 2)
+        ctx.strokeEllipse(in: rect)
         ctx.restoreGState()
     }
 

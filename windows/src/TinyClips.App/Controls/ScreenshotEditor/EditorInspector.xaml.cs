@@ -250,7 +250,7 @@ public sealed partial class EditorInspector : UserControl
         ColorSection.Visibility = showsColor ? Visibility.Visible : Visibility.Collapsed;
         StrokeSection.Visibility = showsStroke ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = showsArrowStyle ? Visibility.Visible : Visibility.Collapsed;
-        ShowStrokeEnds(tool, _controller.StartCapDefault, _controller.EndCapDefault, _controller.LineJoinDefault);
+        ShowStrokeEnds(tool, _controller.StartCapDefault, _controller.EndCapDefault, _controller.LineJoinDefault, _controller.StrokeAlignmentDefault);
         FillSection.Visibility = showsFill ? Visibility.Visible : Visibility.Collapsed;
         TextSection.Visibility = showsText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = showsNumber ? Visibility.Visible : Visibility.Collapsed;
@@ -321,7 +321,7 @@ public sealed partial class EditorInspector : UserControl
         ColorSection.Visibility = hasColor ? Visibility.Visible : Visibility.Collapsed;
         StrokeSection.Visibility = isShape ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = isArrow ? Visibility.Visible : Visibility.Collapsed;
-        ShowStrokeEnds(ann.Tool, ann.StartCap, ann.EndCap, ann.LineJoin);
+        ShowStrokeEnds(ann.Tool, ann.StartCap, ann.EndCap, ann.LineJoin, ann.StrokeAlignment);
         FillSection.Visibility = isFillable ? Visibility.Visible : Visibility.Collapsed;
         TextSection.Visibility = isText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = isCounter ? Visibility.Visible : Visibility.Collapsed;
@@ -442,14 +442,26 @@ public sealed partial class EditorInspector : UserControl
     }
 
     // Callers hold _inspectorInitializing, so loading the combos doesn't write back.
-    private void ShowStrokeEnds(EditTool tool, StrokeCap startCap, StrokeCap endCap, StrokeJoin join)
+    private void ShowStrokeEnds(EditTool tool, StrokeCap startCap, StrokeCap endCap, StrokeJoin join, StrokeAlignment alignment)
     {
+        StrokeAlignmentSection.Visibility = tool.UsesAlignment() ? Visibility.Visible : Visibility.Collapsed;
+        StrokeAlignmentCombo.SelectedIndex = (int)alignment;
         StartCapSection.Visibility = tool.UsesStartCap() ? Visibility.Visible : Visibility.Collapsed;
         EndCapSection.Visibility = tool.UsesEndCap() ? Visibility.Visible : Visibility.Collapsed;
         StrokeAdvancedExpander.Visibility = tool.UsesJoin() ? Visibility.Visible : Visibility.Collapsed;
         StartCapCombo.SelectedIndex = (int)startCap;
         EndCapCombo.SelectedIndex = (int)endCap;
         LineJoinCombo.SelectedIndex = (int)join;
+    }
+
+    private void OnStrokeAlignmentChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_inspectorInitializing || StrokeAlignmentCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        _controller.SetStrokeAlignment((StrokeAlignment)StrokeAlignmentCombo.SelectedIndex);
     }
 
     private void OnStartCapChanged(object sender, SelectionChangedEventArgs e)

@@ -33,6 +33,25 @@ final class ScreenshotFixtureTests: XCTestCase {
         }
     }
 
+    func testSharedRectangleAlignmentFixtures() throws {
+        let file = fixtureURL("alignment", "rectangle.json")
+        let fixture = try JSONDecoder().decode(RectangleAlignmentFixture.self, from: Data(contentsOf: file))
+        XCTAssertFalse(fixture.cases.isEmpty)
+        for (index, testCase) in fixture.cases.enumerated() {
+            let label = "rectangle.json case \(index)"
+            let actual = RectStrokeRing(
+                bounds: testCase.bounds.rect,
+                width: testCase.width,
+                alignment: try XCTUnwrap(StrokeAlignment(rawValue: testCase.alignment), label),
+                join: try XCTUnwrap(StrokeJoin(rawValue: testCase.join), label)
+            )
+            assertRect(actual.outer, testCase.expected.outer, "\(label) outer")
+            XCTAssertEqual(actual.outerJoin.rawValue, testCase.expected.outerJoin, "\(label) outerJoin")
+            XCTAssertEqual(actual.cornerSize, testCase.expected.cornerSize, accuracy: tolerance, "\(label) cornerSize")
+            assertRect(actual.inner, testCase.expected.inner, "\(label) inner")
+        }
+    }
+
     func testDefaultStrokeWidthKeepsTheOldLookOnLargeCaptures() {
         XCTAssertEqual(AnnotationStrokeMath.defaultWidth(forImagePixelWidth: 640), 4)
         XCTAssertEqual(AnnotationStrokeMath.defaultWidth(forImagePixelWidth: 1800), 8)
@@ -85,6 +104,20 @@ final class ScreenshotFixtureTests: XCTestCase {
         XCTAssertFalse(EditTool.circle.usesJoin)
     }
 
+    private func assertRect(_ actual: CGRect, _ expected: FixtureRect, _ label: String) {
+        XCTAssertEqual(actual.minX, expected.x, accuracy: tolerance, "\(label).x")
+        XCTAssertEqual(actual.minY, expected.y, accuracy: tolerance, "\(label).y")
+        XCTAssertEqual(actual.width, expected.width, accuracy: tolerance, "\(label).width")
+        XCTAssertEqual(actual.height, expected.height, accuracy: tolerance, "\(label).height")
+    }
+
+    private func fixtureURL(_ folder: String, _ name: String) -> URL {
+        repoRoot()
+            .appendingPathComponent("shared/screenshot/fixtures", isDirectory: true)
+            .appendingPathComponent(folder, isDirectory: true)
+            .appendingPathComponent(name)
+    }
+
     private func assertPoint(_ actual: CGPoint, _ expected: FixturePoint, _ label: String) {
         XCTAssertEqual(actual.x, expected.x, accuracy: tolerance, "\(label).x")
         XCTAssertEqual(actual.y, expected.y, accuracy: tolerance, "\(label).y")
@@ -133,6 +166,33 @@ final class ScreenshotFixtureTests: XCTestCase {
         var style: String
         var scale: CGFloat
         var expected: ExpectedArrow
+    }
+
+    private struct FixtureRect: Decodable {
+        var x: CGFloat
+        var y: CGFloat
+        var width: CGFloat
+        var height: CGFloat
+        var rect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
+    }
+
+    private struct ExpectedRing: Decodable {
+        var outer: FixtureRect
+        var outerJoin: String
+        var cornerSize: CGFloat
+        var inner: FixtureRect
+    }
+
+    private struct RectangleAlignmentCase: Decodable {
+        var bounds: FixtureRect
+        var width: CGFloat
+        var alignment: String
+        var join: String
+        var expected: ExpectedRing
+    }
+
+    private struct RectangleAlignmentFixture: Decodable {
+        var cases: [RectangleAlignmentCase]
     }
 
     private struct ArrowFixture: Decodable {

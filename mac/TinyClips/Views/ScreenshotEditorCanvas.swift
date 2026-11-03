@@ -576,6 +576,19 @@ struct ScreenshotEditorCanvasView: View {
         faded.drawLayer { layer in draw(layer, opaque) }
     }
 
+    /// An ellipse's offset curve is not an ellipse, so inside and outside strokes are drawn at
+    /// double width and clipped to the shape (or to everything outside it), as the export does.
+    private func strokeAlignedEllipse(_ rect: CGRect, alignment: StrokeAlignment, color: Color, lineWidth: CGFloat, in context: GraphicsContext) {
+        let ellipse = Path(ellipseIn: rect)
+        guard alignment != .center else {
+            context.stroke(ellipse, with: .color(color), lineWidth: lineWidth)
+            return
+        }
+        var clipped = context
+        clipped.clip(to: ellipse, options: alignment == .outside ? .inverse : [])
+        clipped.stroke(ellipse, with: .color(color), lineWidth: lineWidth * 2)
+    }
+
     private func drawOpenStroke(_ path: Path, _ stroke: OpenStrokeShape, color: Color, lineWidth: CGFloat, in context: GraphicsContext) {
         context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: stroke.lineCap))
         for cap in stroke.capPaths {
@@ -596,14 +609,15 @@ struct ScreenshotEditorCanvasView: View {
             if annotation.fillColor != .clear {
                 ctx.fill(Path(rect), with: .color(annotation.fillColor))
             }
-            ctx.stroke(Path(rect), with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineJoin: annotation.lineJoin.cgLineJoin))
+            let ring = RectStrokeRing(bounds: rect.standardized, width: lineWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
+            ctx.fill(Path(ring.path), with: .color(color), style: FillStyle(eoFill: true))
 
         case .circle:
             let (ctx, rect) = rotatedDrawing(context, annotation: annotation, scaledRect: scaledRect)
             if annotation.fillColor != .clear {
                 ctx.fill(Path(ellipseIn: rect), with: .color(annotation.fillColor))
             }
-            ctx.stroke(Path(ellipseIn: rect), with: .color(color), lineWidth: lineWidth)
+            strokeAlignedEllipse(rect, alignment: annotation.strokeAlignment, color: color, lineWidth: lineWidth, in: ctx)
 
         case .arrow:
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
