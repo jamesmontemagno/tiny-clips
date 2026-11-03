@@ -564,6 +564,25 @@ struct ScreenshotEditorCanvasView: View {
         return (rotated, CGRect(x: -scaledRect.width / 2, y: -scaledRect.height / 2, width: scaledRect.width, height: scaledRect.height))
     }
 
+    /// Draws opaque pieces into a layer faded once by the color's alpha, matching the export.
+    private func drawFaded(_ color: Color, in context: GraphicsContext, _ draw: (GraphicsContext, Color) -> Void) {
+        let (opaque, alpha) = color.opaqueComponents
+        guard alpha < 1 else {
+            draw(context, color)
+            return
+        }
+        var faded = context
+        faded.opacity *= alpha
+        faded.drawLayer { layer in draw(layer, opaque) }
+    }
+
+    private func drawOpenStroke(_ path: Path, _ stroke: OpenStrokeShape, color: Color, lineWidth: CGFloat, in context: GraphicsContext) {
+        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: stroke.lineCap))
+        for cap in stroke.capPaths {
+            context.fill(Path(cap), with: .color(color))
+        }
+    }
+
     private func drawAnnotation(_ annotation: ScreenshotAnnotation, in context: GraphicsContext, scaledRect: CGRect, imageSize: CGSize, origin: CGPoint, sourceImage: NSImage? = nil) {
         let color = annotation.color
         // Stroke widths are in source-image pixels; `imageSize` is the displayed image, so this
@@ -577,7 +596,7 @@ struct ScreenshotEditorCanvasView: View {
             if annotation.fillColor != .clear {
                 ctx.fill(Path(rect), with: .color(annotation.fillColor))
             }
-            ctx.stroke(Path(rect), with: .color(color), lineWidth: lineWidth)
+            ctx.stroke(Path(rect), with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineJoin: annotation.lineJoin.cgLineJoin))
 
         case .circle:
             let (ctx, rect) = rotatedDrawing(context, annotation: annotation, scaledRect: scaledRect)
@@ -602,21 +621,30 @@ struct ScreenshotEditorCanvasView: View {
             } else {
                 linePath.addLine(to: shape.shaftEnd)
             }
-            context.stroke(linePath, with: .color(color), lineWidth: lineWidth)
-
             var arrowHead = Path()
             arrowHead.move(to: shape.tip)
             arrowHead.addLine(to: shape.head1)
             arrowHead.addLine(to: shape.head2)
             arrowHead.closeSubpath()
-            context.fill(arrowHead, with: .color(color))
+            let stroke = shape.shaftStroke(startCap: annotation.startCap, width: lineWidth)
+            drawFaded(color, in: context) { layer, opaque in
+                drawOpenStroke(linePath, stroke, color: opaque, lineWidth: lineWidth, in: layer)
+                layer.fill(arrowHead, with: .color(opaque))
+            }
 
         case .line:
             var path = Path()
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
             path.move(to: linePoints.start)
             path.addLine(to: linePoints.end)
-            context.stroke(path, with: .color(color), lineWidth: lineWidth)
+            let stroke = OpenStrokeShape(
+                start: linePoints.start, startDirection: linePoints.end, startCap: annotation.startCap,
+                end: linePoints.end, endDirection: linePoints.start, endCap: annotation.endCap,
+                width: lineWidth
+            )
+            drawFaded(color, in: context) { layer, opaque in
+                drawOpenStroke(path, stroke, color: opaque, lineWidth: lineWidth, in: layer)
+            }
 
         case .pencil:
             if annotation.points.count > 1 {
@@ -631,7 +659,7 @@ struct ScreenshotEditorCanvasView: View {
                 for pt in scaledPoints.dropFirst() {
                     path.addLine(to: pt)
                 }
-                context.stroke(path, with: .color(color), lineWidth: lineWidth)
+                context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
             }
 
         case .blur:

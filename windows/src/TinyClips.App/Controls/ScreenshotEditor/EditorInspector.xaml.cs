@@ -250,6 +250,7 @@ public sealed partial class EditorInspector : UserControl
         ColorSection.Visibility = showsColor ? Visibility.Visible : Visibility.Collapsed;
         StrokeSection.Visibility = showsStroke ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = showsArrowStyle ? Visibility.Visible : Visibility.Collapsed;
+        ShowStrokeEnds(tool, _controller.StartCapDefault, _controller.EndCapDefault, _controller.LineJoinDefault);
         FillSection.Visibility = showsFill ? Visibility.Visible : Visibility.Collapsed;
         TextSection.Visibility = showsText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = showsNumber ? Visibility.Visible : Visibility.Collapsed;
@@ -320,6 +321,7 @@ public sealed partial class EditorInspector : UserControl
         ColorSection.Visibility = hasColor ? Visibility.Visible : Visibility.Collapsed;
         StrokeSection.Visibility = isShape ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = isArrow ? Visibility.Visible : Visibility.Collapsed;
+        ShowStrokeEnds(ann.Tool, ann.StartCap, ann.EndCap, ann.LineJoin);
         FillSection.Visibility = isFillable ? Visibility.Visible : Visibility.Collapsed;
         TextSection.Visibility = isText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = isCounter ? Visibility.Visible : Visibility.Collapsed;
@@ -437,6 +439,47 @@ public sealed partial class EditorInspector : UserControl
 
         _controller.SetStrokeThickness(e.NewValue);
         UpdateInspectorHeaders();
+    }
+
+    // Callers hold _inspectorInitializing, so loading the combos doesn't write back.
+    private void ShowStrokeEnds(EditTool tool, StrokeCap startCap, StrokeCap endCap, StrokeJoin join)
+    {
+        StartCapSection.Visibility = tool.UsesStartCap() ? Visibility.Visible : Visibility.Collapsed;
+        EndCapSection.Visibility = tool.UsesEndCap() ? Visibility.Visible : Visibility.Collapsed;
+        StrokeAdvancedExpander.Visibility = tool.UsesJoin() ? Visibility.Visible : Visibility.Collapsed;
+        StartCapCombo.SelectedIndex = (int)startCap;
+        EndCapCombo.SelectedIndex = (int)endCap;
+        LineJoinCombo.SelectedIndex = (int)join;
+    }
+
+    private void OnStartCapChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_inspectorInitializing || StartCapCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        _controller.SetStartCap((StrokeCap)StartCapCombo.SelectedIndex);
+    }
+
+    private void OnEndCapChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_inspectorInitializing || EndCapCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        _controller.SetEndCap((StrokeCap)EndCapCombo.SelectedIndex);
+    }
+
+    private void OnLineJoinChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_inspectorInitializing || LineJoinCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        _controller.SetLineJoin((StrokeJoin)LineJoinCombo.SelectedIndex);
     }
 
     private void OnArrowStyleChanged(object sender, SelectionChangedEventArgs e)

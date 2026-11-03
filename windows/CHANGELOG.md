@@ -6,6 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Changed
+- Screenshot editor lines and arrows now have **Start** and **End** controls for flat, round, or square ends (arrows have a start control; their other end is the head), and rectangles have a **Corners** option under **Advanced** for sharp, round, or beveled corners. New rectangles now default to round corners.
+- Translucent arrows and pen strokes in the screenshot editor no longer draw darker where pieces overlap, in the live preview or the saved image.
 - Screenshot editor arrow styles are now named **Curved Left** and **Curved Right**, matching macOS. **Curved Left** bows to the left of the arrow's direction, so it now curves the other way from the old **Curved** option. Arrowheads in the live preview now match the saved image at every zoom level.
 
 ### Added

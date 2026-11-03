@@ -211,6 +211,64 @@ enum EditTool: String, CaseIterable {
     var storesRotation: Bool {
         supportsRotation && self != .pencil
     }
+
+    /// Lines and arrow tails take a start cap; an arrow's other end is its head.
+    var usesStartCap: Bool { self == .line || self == .arrow }
+
+    var usesEndCap: Bool { self == .line }
+
+    /// Only rectangles have corners; circles have none and pencil strokes always round.
+    var usesJoin: Bool { self == .rectangle }
+}
+
+/// How an open stroke ends. Raw values match the Windows `StrokeCap` names and the shared contract.
+enum StrokeCap: String, CaseIterable, Identifiable {
+    case butt
+    case round
+    case square
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .butt: return "Flat"
+        case .round: return "Round"
+        case .square: return "Square"
+        }
+    }
+
+    var cgLineCap: CGLineCap {
+        switch self {
+        case .butt: return .butt
+        case .round: return .round
+        case .square: return .square
+        }
+    }
+}
+
+/// How a stroke turns a corner. Raw values match the Windows `StrokeJoin` names.
+enum StrokeJoin: String, CaseIterable, Identifiable {
+    case miter
+    case round
+    case bevel
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .miter: return "Sharp"
+        case .round: return "Round"
+        case .bevel: return "Beveled"
+        }
+    }
+
+    var cgLineJoin: CGLineJoin {
+        switch self {
+        case .miter: return .miter
+        case .round: return .round
+        case .bevel: return .bevel
+        }
+    }
 }
 
 struct ScreenshotAnnotation: Identifiable {
@@ -232,6 +290,9 @@ struct ScreenshotAnnotation: Identifiable {
     var redactionBlurPreset: RedactionBlurPreset = .medium
     var isOpaqueRedaction = false
     var arrowStyle: ArrowStyle = .straight
+    var startCap: StrokeCap = .round
+    var endCap: StrokeCap = .round
+    var lineJoin: StrokeJoin = .round
     /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
     var rotation: CGFloat = 0
 
@@ -1232,6 +1293,84 @@ enum ArrowGeometry {
 
     private static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
         CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+    }
+}
+
+extension Color {
+    /// This color at full opacity, and its alpha. Annotations built from overlapping pieces draw
+    /// opaque inside a layer that is faded once, so a translucent color stays even.
+    var opaqueComponents: (color: Color, alpha: CGFloat) {
+        guard let rgb = NSColor(self).usingColorSpace(.sRGB) else { return (self, 1) }
+        return (Color(nsColor: rgb.withAlphaComponent(1)), rgb.alphaComponent)
+    }
+}
+
+extension ArrowShape {
+    /// The arrow's shaft with the user's tail cap; the far end hides under the head, so it rounds.
+    func shaftStroke(startCap: StrokeCap, width: CGFloat) -> OpenStrokeShape {
+        OpenStrokeShape(
+            start: shaftStart,
+            startDirection: curved ? shaftControl : shaftEnd,
+            startCap: startCap,
+            end: shaftEnd,
+            endDirection: curved ? shaftControl : shaftStart,
+            endCap: .round,
+            width: width
+        )
+    }
+}
+
+/// An open stroke whose two ends may be capped differently. Core Graphics has a single line cap
+/// per stroke, so mixed ends are stroked flat and each cap is added as its own filled shape. Draw
+/// it inside a transparency layer when the color is translucent so the overlaps don't darken.
+struct OpenStrokeShape {
+    /// The cap to stroke `path` with natively.
+    var lineCap: CGLineCap
+    /// Extra cap shapes to fill, already positioned; empty when the native cap covers both ends.
+    var capPaths: [CGPath]
+
+    /// - Parameters:
+    ///   - startDirection: a point the stroke heads toward from `start` (the next point or control).
+    ///   - endDirection: a point the stroke arrives from at `end`.
+    init(start: CGPoint, startDirection: CGPoint, startCap: StrokeCap,
+         end: CGPoint, endDirection: CGPoint, endCap: StrokeCap, width: CGFloat) {
+        guard startCap != endCap else {
+            lineCap = startCap.cgLineCap
+            capPaths = []
+            return
+        }
+        lineCap = .butt
+        capPaths = [
+            Self.capPath(startCap, at: start, awayFrom: startDirection, width: width),
+            Self.capPath(endCap, at: end, awayFrom: endDirection, width: width),
+        ].compactMap { $0 }
+    }
+
+    /// The shape a `cap` adds beyond a flat end at `point`, extending away from `inner`.
+    static func capPath(_ cap: StrokeCap, at point: CGPoint, awayFrom inner: CGPoint, width: CGFloat) -> CGPath? {
+        let half = width / 2
+        switch cap {
+        case .butt:
+            return nil
+        case .round:
+            return CGPath(ellipseIn: CGRect(x: point.x - half, y: point.y - half, width: width, height: width), transform: nil)
+        case .square:
+            let dx = point.x - inner.x
+            let dy = point.y - inner.y
+            let length = (dx * dx + dy * dy).squareRoot()
+            guard length > 0.0001 else { return nil }
+            let out = CGPoint(x: dx / length * half, y: dy / length * half)
+            let side = CGPoint(x: -out.y, y: out.x)
+            let path = CGMutablePath()
+            path.addLines(between: [
+                CGPoint(x: point.x + side.x, y: point.y + side.y),
+                CGPoint(x: point.x + side.x + out.x, y: point.y + side.y + out.y),
+                CGPoint(x: point.x - side.x + out.x, y: point.y - side.y + out.y),
+                CGPoint(x: point.x - side.x, y: point.y - side.y),
+            ])
+            path.closeSubpath()
+            return path
+        }
     }
 }
 

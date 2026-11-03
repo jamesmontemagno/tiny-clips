@@ -300,6 +300,7 @@ Pen                               pen only
    - Move `BuildArrow` into Core.
    - Add the `shared/screenshot` fixture generator and the test harness on both platforms.
 2. **Caps, joins, and alpha layers** for existing tools. This is low-risk and immediately visible: rounded ends and no darker overlaps.
+   - Done for lines, arrow tails, rectangles, and the pencil. Arrowhead corners wait for step 4, when the head becomes part of the arrow's outline.
 3. **Stroke alignment** for rectangle and ellipse.
 4. **Arrow geometry.**
    - The outline polygon, bend, and on-canvas handle.

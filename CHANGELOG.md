@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - The macOS screenshot editor can now change the color, fill, and stroke width of a selected rectangle, circle, arrow, line, or pencil stroke, with undo. Stroke width is a 1–40 px slider measured in image pixels, like Windows; the starting width scales with the capture so large screenshots keep their previous look.
+- macOS screenshot lines and arrows now have **Start** and **End** controls for flat, round, or square ends (arrows have a start control; their other end is the head), and rectangles have a **Corners** option under **Advanced** for sharp, round, or beveled corners. New strokes default to round ends and corners, and pencil strokes are now smooth instead of jagged.
+- Translucent arrows and lines in the macOS screenshot editor no longer draw darker where the shaft meets the head or a cap.
 - macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrowhead. Curved arrows bow slightly less than before.
 - Upgraded GitHub Agentic Workflows to v1.0.1 and refreshed the agent and routing skill. The weekly parity workflow still runs on Sundays around 09:00 with the Copilot auto model and a five-issue limit.
 

@@ -576,6 +576,39 @@ struct ScreenshotEditorView: View {
         )
     }
 
+    private var startCapBinding: Binding<StrokeCap> {
+        Binding(
+            get: { viewModel.selectedStartCap() ?? viewModel.startCap },
+            set: { newValue in
+                if !viewModel.updateSelectedStartCap(newValue) {
+                    viewModel.startCap = newValue
+                }
+            }
+        )
+    }
+
+    private var endCapBinding: Binding<StrokeCap> {
+        Binding(
+            get: { viewModel.selectedEndCap() ?? viewModel.endCap },
+            set: { newValue in
+                if !viewModel.updateSelectedEndCap(newValue) {
+                    viewModel.endCap = newValue
+                }
+            }
+        )
+    }
+
+    private var lineJoinBinding: Binding<StrokeJoin> {
+        Binding(
+            get: { viewModel.selectedLineJoin() ?? viewModel.lineJoin },
+            set: { newValue in
+                if !viewModel.updateSelectedLineJoin(newValue) {
+                    viewModel.lineJoin = newValue
+                }
+            }
+        )
+    }
+
     private var lineWidthBinding: Binding<CGFloat> {
         Binding(
             get: {
@@ -1297,6 +1330,34 @@ struct ScreenshotEditorView: View {
                     }
                 }
                 .accessibilityElement(children: .combine)
+            }
+
+            if viewModel.showsStartCapControl {
+                Picker("Start", selection: startCapBinding) {
+                    ForEach(StrokeCap.allCases) { cap in
+                        Text(cap.label).tag(cap)
+                    }
+                }
+                .accessibilityLabel("Line start")
+            }
+
+            if viewModel.showsEndCapControl {
+                Picker("End", selection: endCapBinding) {
+                    ForEach(StrokeCap.allCases) { cap in
+                        Text(cap.label).tag(cap)
+                    }
+                }
+                .accessibilityLabel("Line end")
+            }
+
+            if viewModel.showsLineJoinControl {
+                DisclosureGroup("Advanced") {
+                    Picker("Corners", selection: lineJoinBinding) {
+                        ForEach(StrokeJoin.allCases) { join in
+                            Text(join.label).tag(join)
+                        }
+                    }
+                }
             }
 
             if viewModel.showsArrowStyleControl {

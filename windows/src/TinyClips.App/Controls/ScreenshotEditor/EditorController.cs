@@ -177,6 +177,12 @@ internal sealed class EditorController : IDisposable
 
     public ArrowStyle ArrowStyleDefault { get; private set; } = ArrowStyle.Straight;
 
+    public StrokeCap StartCapDefault { get; private set; } = AnnotationStroke.DefaultCap;
+
+    public StrokeCap EndCapDefault { get; private set; } = AnnotationStroke.DefaultCap;
+
+    public StrokeJoin LineJoinDefault { get; private set; } = AnnotationStroke.DefaultJoin;
+
     public string EmojiDefault { get; private set; } = EmojiAnnotationMath.DefaultEmoji;
 
     // Shared across editor windows for the lifetime of the process so the "Recent" row survives
@@ -492,6 +498,48 @@ internal sealed class EditorController : IDisposable
                 active.ArrowStyle = style;
                 AnnotationVisualInvalidated?.Invoke(this, active);
             }
+        }
+    }
+
+    public void SetStartCap(StrokeCap cap)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesStartCap())
+        {
+            ann.StartCap = cap;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            StartCapDefault = cap;
+        }
+    }
+
+    public void SetEndCap(StrokeCap cap)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesEndCap())
+        {
+            ann.EndCap = cap;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            EndCapDefault = cap;
+        }
+    }
+
+    public void SetLineJoin(StrokeJoin join)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesJoin())
+        {
+            ann.LineJoin = join;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            LineJoinDefault = join;
         }
     }
 
@@ -1142,6 +1190,9 @@ internal sealed class EditorController : IDisposable
             Redaction = RedactionLevelDefault,
             RedactStyle = RedactionStyleDefault,
             ArrowStyle = ArrowStyleDefault,
+            StartCap = StartCapDefault,
+            EndCap = EndCapDefault,
+            LineJoin = LineJoinDefault,
             Bounds = new Rect(pixelStart.X, pixelStart.Y, 0, 0),
         };
 
@@ -1661,6 +1712,9 @@ internal sealed class EditorController : IDisposable
         annotation.Strikethrough = snapshot.Strikethrough;
         annotation.TextBoxStyle = snapshot.TextBoxStyle;
         annotation.Rotation = snapshot.Rotation;
+        annotation.StartCap = snapshot.StartCap;
+        annotation.EndCap = snapshot.EndCap;
+        annotation.LineJoin = snapshot.LineJoin;
     }
 
     // -- Crop -------------------------------------------------------------------------------
@@ -2225,7 +2279,18 @@ internal sealed class EditorController : IDisposable
 
         try
         {
-            DrawAnnotationCore(ds, ann, color, thickness);
+            if (ann.Tool.NeedsOpacityLayer() && color.A < 255)
+            {
+                // Draw opaque, then fade the whole annotation once so overlaps don't darken.
+                using (ds.CreateLayer(color.A / 255f))
+                {
+                    DrawAnnotationCore(ds, ann, Color.FromArgb(255, color.R, color.G, color.B), thickness);
+                }
+            }
+            else
+            {
+                DrawAnnotationCore(ds, ann, color, thickness);
+            }
         }
         finally
         {
@@ -2244,7 +2309,14 @@ internal sealed class EditorController : IDisposable
                 {
                     ds.FillRectangle((float)b.X, (float)b.Y, (float)b.Width, (float)b.Height, ann.FillColor);
                 }
-                ds.DrawRectangle((float)b.X, (float)b.Y, (float)b.Width, (float)b.Height, color, thickness);
+                ds.DrawRectangle(
+                    (float)b.X,
+                    (float)b.Y,
+                    (float)b.Width,
+                    (float)b.Height,
+                    color,
+                    thickness,
+                    new CanvasStrokeStyle { LineJoin = ToCanvasJoin(ann.LineJoin) });
                 break;
             }
             case EditTool.Ellipse:
@@ -2276,7 +2348,7 @@ internal sealed class EditorController : IDisposable
                     en,
                     color,
                     thickness,
-                    new CanvasStrokeStyle { StartCap = CanvasCapStyle.Round, EndCap = CanvasCapStyle.Round });
+                    new CanvasStrokeStyle { StartCap = ToCanvasCap(ann.StartCap), EndCap = ToCanvasCap(ann.EndCap) });
                 break;
             }
             case EditTool.Arrow:
@@ -2388,7 +2460,8 @@ internal sealed class EditorController : IDisposable
     {
         var (start, end) = Segment(ann);
         var shape = ArrowGeometry.Build(ToPoint(start), ToPoint(end), thickness, ann.ArrowStyle);
-        var strokeStyle = new CanvasStrokeStyle { StartCap = CanvasCapStyle.Round, EndCap = CanvasCapStyle.Round };
+        // The shaft's far end hides under the head, so only its start cap is the user's choice.
+        var strokeStyle = new CanvasStrokeStyle { StartCap = ToCanvasCap(ann.StartCap), EndCap = CanvasCapStyle.Round };
 
         if (shape.Curved)
         {
@@ -2411,6 +2484,20 @@ internal sealed class EditorController : IDisposable
     // -- Geometry helpers (also used by EditorCanvas for the live XAML preview) ----------------
 
     private static PointD ToPoint(Vector2 v) => new(v.X, v.Y);
+
+    private static CanvasCapStyle ToCanvasCap(StrokeCap cap) => cap switch
+    {
+        StrokeCap.Butt => CanvasCapStyle.Flat,
+        StrokeCap.Square => CanvasCapStyle.Square,
+        _ => CanvasCapStyle.Round,
+    };
+
+    private static CanvasLineJoin ToCanvasJoin(StrokeJoin join) => join switch
+    {
+        StrokeJoin.Miter => CanvasLineJoin.Miter,
+        StrokeJoin.Bevel => CanvasLineJoin.Bevel,
+        _ => CanvasLineJoin.Round,
+    };
 
     private static Vector2 ToVector2(PointD p) => new((float)p.X, (float)p.Y);
 
