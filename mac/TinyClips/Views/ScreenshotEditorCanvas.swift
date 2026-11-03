@@ -575,6 +575,11 @@ struct ScreenshotEditorCanvasView: View {
         return (rotated, CGRect(x: -scaledRect.width / 2, y: -scaledRect.height / 2, width: scaledRect.width, height: scaledRect.height))
     }
 
+    /// Hand-drawn strokes have round ends and corners, as rough.js draws them.
+    private static func sketchStyle(_ lineWidth: CGFloat) -> StrokeStyle {
+        StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+    }
+
     /// Strokes a closed `shape` at its alignment. Inside and outside strokes are drawn at double
     /// width and clipped to the shape (or to everything outside it), as the export does.
     private func strokeAligned(_ shape: Path, alignment: StrokeAlignment, color: Color, style: StrokeStyle, in context: GraphicsContext) {
@@ -616,15 +621,25 @@ struct ScreenshotEditorCanvasView: View {
             if annotation.fillColor != .clear {
                 ctx.fill(Path(rect), with: .color(annotation.fillColor))
             }
-            let ring = RectStrokeRing(bounds: rect.standardized, width: lineWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
-            ctx.fill(Path(ring.path), with: .color(color), style: FillStyle(eoFill: true))
+            if annotation.isSketch {
+                let ops = SketchGeometry.rectangle(rect.standardized, width: lineWidth, roughness: annotation.roughness, seed: annotation.seed)
+                ctx.stroke(Path(SketchGeometry.path(ops)), with: .color(color), style: Self.sketchStyle(lineWidth))
+            } else {
+                let ring = RectStrokeRing(bounds: rect.standardized, width: lineWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
+                ctx.fill(Path(ring.path), with: .color(color), style: FillStyle(eoFill: true))
+            }
 
         case .circle:
             let (ctx, rect) = rotatedDrawing(context, annotation: annotation, scaledRect: scaledRect)
             if annotation.fillColor != .clear {
                 ctx.fill(Path(ellipseIn: rect), with: .color(annotation.fillColor))
             }
-            strokeAligned(Path(ellipseIn: rect), alignment: annotation.strokeAlignment, color: color, style: StrokeStyle(lineWidth: lineWidth), in: ctx)
+            if annotation.isSketch {
+                let ops = SketchGeometry.ellipse(rect.standardized, width: lineWidth, roughness: annotation.roughness, seed: annotation.seed)
+                ctx.stroke(Path(SketchGeometry.path(ops)), with: .color(color), style: Self.sketchStyle(lineWidth))
+            } else {
+                strokeAligned(Path(ellipseIn: rect), alignment: annotation.strokeAlignment, color: color, style: StrokeStyle(lineWidth: lineWidth), in: ctx)
+            }
 
         case .arrow:
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
@@ -635,7 +650,9 @@ struct ScreenshotEditorCanvasView: View {
                 options: annotation.arrow,
                 startCap: annotation.startCap,
                 join: annotation.lineJoin,
-                scale: pixelScale
+                scale: pixelScale,
+                roughness: annotation.sketchRoughness,
+                seed: annotation.seed
             )
             // One body, so a translucent color fills evenly without a layer.
             drawBody(outline.points, annotation: annotation, pixelScale: pixelScale, in: context)
@@ -648,7 +665,9 @@ struct ScreenshotEditorCanvasView: View {
                 width: annotation.lineWidth,
                 startCap: annotation.startCap,
                 endCap: annotation.endCap,
-                scale: pixelScale
+                scale: pixelScale,
+                roughness: annotation.sketchRoughness,
+                seed: annotation.seed
             )
             drawBody(outline, annotation: annotation, pixelScale: pixelScale, in: context)
 

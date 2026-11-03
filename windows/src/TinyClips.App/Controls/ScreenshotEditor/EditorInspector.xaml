@@ -153,6 +153,25 @@
                     </ComboBox>
                 </StackPanel>
 
+                <!--  Hand-drawn style for rectangles, ellipses, lines, and arrows  -->
+                <StackPanel x:Name="SketchSection" Spacing="2">
+                    <ToggleSwitch
+                        x:Name="SketchToggle"
+                        AutomationProperties.AutomationId="EditorSketchToggle"
+                        AutomationProperties.Name="Hand-drawn"
+                        Header="Hand-drawn"
+                        Toggled="OnSketchToggled" />
+                    <Slider
+                        x:Name="RoughnessSlider"
+                        AutomationProperties.AutomationId="EditorRoughnessSlider"
+                        AutomationProperties.Name="Roughness"
+                        Header="Roughness"
+                        Maximum="3"
+                        Minimum="0"
+                        StepFrequency="0.25"
+                        ValueChanged="OnRoughnessChanged" />
+                </StackPanel>
+
                 <!--  Advanced stroke options (index order matches StrokeJoin)  -->
                 <Expander
                     x:Name="StrokeAdvancedExpander"

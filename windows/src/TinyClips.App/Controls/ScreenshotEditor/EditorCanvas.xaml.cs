@@ -730,8 +730,11 @@ public sealed partial class EditorCanvas : UserControl
                 var fill = new SolidColorBrush();
                 var ellipse = new Ellipse { Stroke = stroke, Fill = fill };
                 MakeRotatable(ellipse);
+                // Shown instead of the ellipse's own stroke when it is hand-drawn.
+                var sketch = new ShapesPath { RenderTransform = new RotateTransform(), Visibility = Visibility.Collapsed };
                 OverlayCanvas.Children.Add(ellipse);
-                return new AnnotationVisual { Primary = ellipse, StrokeBrush = stroke, FillBrush = fill };
+                OverlayCanvas.Children.Add(sketch);
+                return new AnnotationVisual { Primary = ellipse, Secondary = sketch, StrokeBrush = stroke, FillBrush = fill };
             }
             case EditTool.Line:
             case EditTool.Arrow:
@@ -839,6 +842,37 @@ public sealed partial class EditorCanvas : UserControl
         }
     }
 
+    /// <summary>Strokes a hand-drawn shape's ops on <paramref name="path"/> with round ends and corners.</summary>
+    private static void ShowSketch(ShapesPath path, IReadOnlyList<SketchOp> ops, SolidColorBrush brush, double thickness)
+    {
+        var geometry = new PathGeometry();
+        PathFigure? figure = null;
+        foreach (var op in ops)
+        {
+            if (op.IsMove)
+            {
+                figure = new PathFigure { StartPoint = new Point(op.End.X, op.End.Y), IsClosed = false, IsFilled = false };
+                geometry.Figures.Add(figure);
+            }
+            else
+            {
+                figure?.Segments.Add(new BezierSegment
+                {
+                    Point1 = new Point(op.Control1.X, op.Control1.Y),
+                    Point2 = new Point(op.Control2.X, op.Control2.Y),
+                    Point3 = new Point(op.End.X, op.End.Y),
+                });
+            }
+        }
+        path.Data = geometry;
+        path.Fill = null;
+        path.Stroke = brush;
+        path.StrokeThickness = thickness;
+        path.StrokeStartLineCap = PenLineCap.Round;
+        path.StrokeEndLineCap = PenLineCap.Round;
+        path.StrokeLineJoin = PenLineJoin.Round;
+    }
+
     /// <summary>The XAML twin of the export's ring geometry: the outer outline minus the inner rectangle.</summary>
     private static PathGeometry CreateRingGeometry(RectStrokeRing ring)
     {
@@ -937,8 +971,18 @@ public sealed partial class EditorCanvas : UserControl
 
                 var bounds = new RectD(tl.X, tl.Y, b.Width * scale, b.Height * scale);
                 var ring = (ShapesPath)visual.Secondary!;
-                ring.Data = CreateRingGeometry(
-                    StrokeAlignmentGeometry.RectangleRing(bounds, thickness, ann.StrokeAlignment, ann.LineJoin));
+                if (ann.IsSketch)
+                {
+                    // A hand-drawn rectangle is stroked; the ring is filled.
+                    ShowSketch(ring, SketchGeometry.Rectangle(bounds, thickness, ann.Roughness, ann.Seed), visual.StrokeBrush!, thickness);
+                }
+                else
+                {
+                    ring.Stroke = null;
+                    ring.Fill = visual.StrokeBrush;
+                    ring.Data = CreateRingGeometry(
+                        StrokeAlignmentGeometry.RectangleRing(bounds, thickness, ann.StrokeAlignment, ann.LineJoin));
+                }
                 if (ring.RenderTransform is RotateTransform ringRotation)
                 {
                     ringRotation.CenterX = bounds.Center.X;
@@ -954,16 +998,31 @@ public sealed partial class EditorCanvas : UserControl
                 var ellipse = (Ellipse)visual.Primary;
                 // XAML cannot clip to an ellipse, so inside and outside strokes are approximated
                 // by stroking a smaller or larger ellipse; the export is exact.
-                var centerline = StrokeAlignmentGeometry.EllipseCenterline(
-                    new RectD(tl.X, tl.Y, b.Width * scale, b.Height * scale), thickness, ann.StrokeAlignment);
+                var ellipseBounds = new RectD(tl.X, tl.Y, b.Width * scale, b.Height * scale);
+                var centerline = ann.IsSketch
+                    ? ellipseBounds
+                    : StrokeAlignmentGeometry.EllipseCenterline(ellipseBounds, thickness, ann.StrokeAlignment);
                 Canvas.SetLeft(ellipse, centerline.X);
                 Canvas.SetTop(ellipse, centerline.Y);
                 ellipse.Width = centerline.Width;
                 ellipse.Height = centerline.Height;
-                ellipse.StrokeThickness = thickness;
+                ellipse.StrokeThickness = ann.IsSketch ? 0 : thickness;
                 visual.StrokeBrush!.Color = ann.Color;
                 visual.FillBrush!.Color = ann.FillColor;
                 ApplyRotation(ellipse, ann.Rotation);
+
+                var sketch = (ShapesPath)visual.Secondary!;
+                sketch.Visibility = ann.IsSketch ? Visibility.Visible : Visibility.Collapsed;
+                if (ann.IsSketch)
+                {
+                    ShowSketch(sketch, SketchGeometry.Ellipse(ellipseBounds, thickness, ann.Roughness, ann.Seed), visual.StrokeBrush, thickness);
+                    if (sketch.RenderTransform is RotateTransform sketchRotation)
+                    {
+                        sketchRotation.CenterX = ellipseBounds.Center.X;
+                        sketchRotation.CenterY = ellipseBounds.Center.Y;
+                        sketchRotation.Angle = ann.Rotation;
+                    }
+                }
                 break;
             }
             case EditTool.Line:
@@ -972,7 +1031,8 @@ public sealed partial class EditorCanvas : UserControl
                 var start = ToCanvas(new Point(s.X, s.Y), scale, offX, offY);
                 var end = ToCanvas(new Point(en.X, en.Y), scale, offX, offY);
                 var outline = LineGeometry.Outline(
-                    new PointD(start.X, start.Y), new PointD(end.X, end.Y), ann.Thickness, ann.StartCap, ann.EndCap, scale);
+                    new PointD(start.X, start.Y), new PointD(end.X, end.Y), ann.Thickness, ann.StartCap, ann.EndCap, scale,
+                    ann.SketchRoughness, ann.Seed);
                 PositionBody(ann, visual, outline, scale);
                 break;
             }
@@ -1028,7 +1088,9 @@ public sealed partial class EditorCanvas : UserControl
             ann.Arrow,
             ann.StartCap,
             ann.LineJoin,
-            scale);
+            scale,
+            ann.SketchRoughness,
+            ann.Seed);
 
         PositionBody(ann, visual, outline.Points, scale);
     }

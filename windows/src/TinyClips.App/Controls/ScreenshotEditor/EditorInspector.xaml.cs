@@ -260,6 +260,7 @@ public sealed partial class EditorInspector : UserControl
         ColorSection.Visibility = showsColor ? Visibility.Visible : Visibility.Collapsed;
         ShowColorLabel(tool);
         ShowOutline(tool, _controller.OutlineColorDefault, _controller.OutlineWidthDefault);
+        ShowSketch(tool, _controller.SketchDefault, _controller.RoughnessDefault);
         StrokeSection.Visibility = showsStroke ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = showsArrowStyle ? Visibility.Visible : Visibility.Collapsed;
         ShowStrokeEnds(
@@ -338,6 +339,7 @@ public sealed partial class EditorInspector : UserControl
         ColorSection.Visibility = hasColor ? Visibility.Visible : Visibility.Collapsed;
         ShowColorLabel(ann.Tool);
         ShowOutline(ann.Tool, ann.OutlineColor, ann.OutlineWidth);
+        ShowSketch(ann.Tool, ann.IsSketch, ann.Roughness);
         StrokeSection.Visibility = isShape ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = isArrow ? Visibility.Visible : Visibility.Collapsed;
         ShowStrokeEnds(ann.Tool, ann.StartCap, ann.EndCap, ann.LineJoin, ann.StrokeAlignment);
@@ -482,6 +484,34 @@ public sealed partial class EditorInspector : UserControl
         OutlineSection.Visibility = tool.UsesOutline() ? Visibility.Visible : Visibility.Collapsed;
         OutlineColorPicker.Color = color;
         OutlineSlider.Value = width;
+    }
+
+    // Callers hold _inspectorInitializing, so loading the controls doesn't write back.
+    private void ShowSketch(EditTool tool, bool isSketch, double roughness)
+    {
+        SketchSection.Visibility = tool.UsesSketch() ? Visibility.Visible : Visibility.Collapsed;
+        SketchToggle.IsOn = isSketch;
+        RoughnessSlider.Value = roughness;
+        RoughnessSlider.Visibility = isSketch ? Visibility.Visible : Visibility.Collapsed;
+        RoughnessSlider.Header = $"Roughness — {roughness:0.##}";
+    }
+
+    private void OnSketchToggled(object sender, RoutedEventArgs e)
+    {
+        RoughnessSlider.Visibility = SketchToggle.IsOn ? Visibility.Visible : Visibility.Collapsed;
+        if (!_inspectorInitializing)
+        {
+            _controller.SetSketch(SketchToggle.IsOn);
+        }
+    }
+
+    private void OnRoughnessChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        RoughnessSlider.Header = $"Roughness — {e.NewValue:0.##}";
+        if (!_inspectorInitializing)
+        {
+            _controller.SetRoughness(e.NewValue);
+        }
     }
 
     private void OnOutlineColorChanged(object? sender, Color color)

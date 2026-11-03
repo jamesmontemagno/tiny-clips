@@ -127,6 +127,80 @@ final class ScreenshotFixtureTests: XCTestCase {
         }
     }
 
+    func testSharedSketchRandomFixturesMatchBitForBit() throws {
+        let fixture = try JSONDecoder().decode(RandomFixture.self, from: Data(contentsOf: fixtureURL("sketch", "random.json")))
+        for testCase in fixture.cases {
+            let actual = SketchGeometry.randomValues(seed: testCase.seed, count: testCase.values.count)
+            XCTAssertEqual(actual.map(Double.init), testCase.values, "seed \(testCase.seed)")
+        }
+    }
+
+    func testSharedSketchShapeFixtures() throws {
+        for name in ["rectangle.json", "ellipse.json"] {
+            let fixture = try JSONDecoder().decode(SketchShapeFixture.self, from: Data(contentsOf: fixtureURL("sketch", name)))
+            for (index, testCase) in fixture.cases.enumerated() {
+                let label = "\(name) case \(index)"
+                let ops = name == "rectangle.json"
+                    ? SketchGeometry.rectangle(testCase.bounds.rect, width: testCase.width, roughness: testCase.roughness, seed: testCase.seed)
+                    : SketchGeometry.ellipse(testCase.bounds.rect, width: testCase.width, roughness: testCase.roughness, seed: testCase.seed)
+                XCTAssertEqual(ops.count, testCase.expected.count, "\(label) op count")
+                for (opIndex, pair) in zip(ops, testCase.expected).enumerated() {
+                    let (op, expected) = pair
+                    XCTAssertEqual(op.isMove, expected.op == "move", "\(label) op \(opIndex) kind")
+                    let actual = op.isMove ? [op.end] : [op.control1, op.control2, op.end]
+                    for (pointIndex, point) in actual.enumerated() {
+                        XCTAssertEqual(point.x, expected.data[pointIndex * 2], accuracy: tolerance, "\(label) op \(opIndex)")
+                        XCTAssertEqual(point.y, expected.data[pointIndex * 2 + 1], accuracy: tolerance, "\(label) op \(opIndex)")
+                    }
+                }
+            }
+        }
+    }
+
+    func testSharedSketchLineAndArrowFixtures() throws {
+        let lines = try JSONDecoder().decode(SketchLineFixture.self, from: Data(contentsOf: fixtureURL("sketch", "line.json")))
+        for (index, testCase) in lines.cases.enumerated() {
+            let actual = LineGeometry.outline(
+                start: testCase.start.point,
+                end: testCase.end.point,
+                width: testCase.width,
+                startCap: try XCTUnwrap(StrokeCap(rawValue: testCase.startCap)),
+                endCap: try XCTUnwrap(StrokeCap(rawValue: testCase.endCap)),
+                scale: testCase.scale,
+                roughness: testCase.roughness,
+                seed: testCase.seed
+            )
+            assertPoints(actual, testCase.expected, "sketch line \(index)")
+        }
+        let arrows = try JSONDecoder().decode(SketchArrowFixture.self, from: Data(contentsOf: fixtureURL("sketch", "arrow.json")))
+        for (index, testCase) in arrows.cases.enumerated() {
+            let actual = ArrowGeometry.build(
+                start: testCase.start.point,
+                end: testCase.end.point,
+                width: testCase.width,
+                options: ArrowShapeOptions(
+                    bend: testCase.bend,
+                    startWidthScale: testCase.startWidthScale,
+                    endWidthScale: testCase.endWidthScale,
+                    headScale: testCase.headScale
+                ),
+                startCap: try XCTUnwrap(StrokeCap(rawValue: testCase.startCap)),
+                join: try XCTUnwrap(StrokeJoin(rawValue: testCase.join)),
+                scale: testCase.scale,
+                roughness: testCase.roughness,
+                seed: testCase.seed
+            )
+            assertPoints(actual.points, testCase.expected.points, "sketch arrow \(index)")
+        }
+    }
+
+    private func assertPoints(_ actual: [CGPoint], _ expected: [FixturePoint], _ label: String) {
+        XCTAssertEqual(actual.count, expected.count, "\(label) point count")
+        for (index, pair) in zip(actual, expected).enumerated() {
+            assertPoint(pair.0, pair.1, "\(label) point \(index)")
+        }
+    }
+
     func testOnlyArrowsAndLinesTakeAnOutline() {
         XCTAssertTrue(EditTool.arrow.usesOutline)
         XCTAssertTrue(EditTool.line.usesOutline)
@@ -231,6 +305,68 @@ final class ScreenshotFixtureTests: XCTestCase {
         var endCap: String
         var scale: CGFloat
         var expected: [FixturePoint]
+    }
+
+    private struct RandomCase: Decodable {
+        var seed: Int32
+        var values: [Double]
+    }
+
+    private struct RandomFixture: Decodable {
+        var cases: [RandomCase]
+    }
+
+    private struct FixtureOp: Decodable {
+        var op: String
+        var data: [CGFloat]
+    }
+
+    private struct SketchShapeCase: Decodable {
+        var bounds: FixtureRect
+        var width: CGFloat
+        var roughness: CGFloat
+        var seed: Int32
+        var expected: [FixtureOp]
+    }
+
+    private struct SketchShapeFixture: Decodable {
+        var cases: [SketchShapeCase]
+    }
+
+    private struct SketchLineCase: Decodable {
+        var start: FixturePoint
+        var end: FixturePoint
+        var width: CGFloat
+        var startCap: String
+        var endCap: String
+        var scale: CGFloat
+        var roughness: CGFloat
+        var seed: Int32
+        var expected: [FixturePoint]
+    }
+
+    private struct SketchLineFixture: Decodable {
+        var cases: [SketchLineCase]
+    }
+
+    private struct SketchArrowCase: Decodable {
+        var start: FixturePoint
+        var end: FixturePoint
+        var width: CGFloat
+        var bend: CGFloat
+        var startWidthScale: CGFloat
+        var endWidthScale: CGFloat
+        var headScale: CGFloat
+        var startCap: String
+        var join: String
+        var scale: CGFloat
+        var roughness: CGFloat
+        var seed: Int32
+        var expected: ExpectedArrow
+    }
+
+    private struct SketchArrowFixture: Decodable {
+        var cases: [SketchArrowCase]
     }
 
     private struct PenCase: Decodable {

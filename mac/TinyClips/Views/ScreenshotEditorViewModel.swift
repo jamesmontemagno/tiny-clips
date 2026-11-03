@@ -83,6 +83,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var outlineWidth: CGFloat = 0
     /// Arrow and line outlines start outside the body, so they frame it rather than cover it.
     @Published var outlineAlignment: StrokeAlignment = .outside
+    @Published var isSketch = false
+    @Published var roughness: CGFloat = SketchGeometry.defaultRoughness
     @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
     @Published var recentEmoji: [String] = []
     @Published var backgroundStyle: ExportBackgroundStyle = .transparent
@@ -1059,6 +1061,39 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     var showsOutlineControls: Bool { inspectorTool.usesOutline }
 
+    var showsSketchControls: Bool { inspectorTool.usesSketch }
+
+    func selectedIsSketch() -> Bool? {
+        selectedIndex(using: \.usesSketch).map { annotations[$0].isSketch }
+    }
+
+    @discardableResult
+    func updateSelectedIsSketch(_ isSketch: Bool) -> Bool {
+        guard let index = selectedIndex(using: \.usesSketch) else { return false }
+        recordHistory()
+        annotations[index].isSketch = isSketch
+        markDirty()
+        return true
+    }
+
+    func selectedRoughness() -> CGFloat? {
+        selectedIndex(using: \.usesSketch).map { annotations[$0].roughness }
+    }
+
+    @discardableResult
+    func updateSelectedRoughness(_ roughness: CGFloat) -> Bool {
+        guard let index = selectedIndex(using: \.usesSketch) else { return false }
+        guard annotations[index].roughness != roughness else { return true }
+        // A slider drag is one undo step, recorded at its first change.
+        if !isAdjustingSelectedLineWidth || !didRecordLineWidthAdjustment {
+            recordHistory()
+            didRecordLineWidthAdjustment = isAdjustingSelectedLineWidth
+        }
+        annotations[index].roughness = roughness
+        markDirty()
+        return true
+    }
+
     func selectedStrokeAlignment() -> StrokeAlignment? {
         selectedIndex(using: \.usesAlignment).map { annotations[$0].strokeAlignment }
     }
@@ -1246,7 +1281,9 @@ class ScreenshotEditorViewModel: ObservableObject {
                 lineJoin: lineJoin,
                 strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
                 outlineColor: outlineColor,
-                outlineWidth: outlineWidth
+                outlineWidth: outlineWidth,
+                isSketch: selectedTool.usesSketch && isSketch,
+                roughness: roughness
             )
         }
     }
@@ -1305,7 +1342,9 @@ class ScreenshotEditorViewModel: ObservableObject {
                     lineJoin: lineJoin,
                     strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
                     outlineColor: outlineColor,
-                    outlineWidth: outlineWidth
+                    outlineWidth: outlineWidth,
+                    isSketch: selectedTool.usesSketch && isSketch,
+                    roughness: roughness
                 ))
                 markDirty()
             }
@@ -2328,6 +2367,10 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ctx.fill(rect)
                 }
 
+                if annotation.isSketch {
+                    strokeSketchCG(SketchGeometry.rectangle(rect.standardized, width: strokeWidth, roughness: annotation.roughness, seed: annotation.seed), in: rect, width: strokeWidth, ctx: ctx)
+                    return
+                }
                 let ring = RectStrokeRing(bounds: rect.standardized, width: strokeWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
                 ctx.setFillColor(cgColor)
                 ctx.addPath(ring.path)
@@ -2340,6 +2383,10 @@ class ScreenshotEditorViewModel: ObservableObject {
                     let fillCGColor = NSColor(annotation.fillColor).cgColor
                     ctx.setFillColor(fillCGColor)
                     ctx.fillEllipse(in: rect)
+                }
+                if annotation.isSketch {
+                    strokeSketchCG(SketchGeometry.ellipse(rect.standardized, width: strokeWidth, roughness: annotation.roughness, seed: annotation.seed), in: rect, width: strokeWidth, ctx: ctx)
+                    return
                 }
                 strokeAlignedCG(CGPath(ellipseIn: rect, transform: nil), alignment: annotation.strokeAlignment, width: strokeWidth, in: ctx)
             }
@@ -2361,7 +2408,9 @@ class ScreenshotEditorViewModel: ObservableObject {
                 width: strokeWidth,
                 options: annotation.arrow,
                 startCap: annotation.startCap,
-                join: annotation.lineJoin
+                join: annotation.lineJoin,
+                roughness: annotation.sketchRoughness,
+                seed: annotation.seed
             )
             var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: outputSize.height)
             if let flipped = outline.path.copy(using: &flip) {
@@ -2369,23 +2418,29 @@ class ScreenshotEditorViewModel: ObservableObject {
             }
 
         case .line:
+            // Built y-down, where the geometry (and its hand-drawn wobble) is defined, then flipped.
             let line = linePoints(for: annotation)
             let start = CGPoint(
                 x: (line.start.x * fullSize.width) - cropOrigin.x + contentOffset.x,
-                y: imageOutputHeight - ((line.start.y * fullSize.height) - cropOrigin.y) + contentOffset.y
+                y: (line.start.y * fullSize.height) - cropOrigin.y
             )
             let end = CGPoint(
                 x: (line.end.x * fullSize.width) - cropOrigin.x + contentOffset.x,
-                y: imageOutputHeight - ((line.end.y * fullSize.height) - cropOrigin.y) + contentOffset.y
+                y: (line.end.y * fullSize.height) - cropOrigin.y
             )
             let outline = LineGeometry.outline(
                 start: start,
                 end: end,
                 width: strokeWidth,
                 startCap: annotation.startCap,
-                endCap: annotation.endCap
+                endCap: annotation.endCap,
+                roughness: annotation.sketchRoughness,
+                seed: annotation.seed
             )
-            drawBodyCG(LineGeometry.path(outline), annotation: annotation, in: ctx)
+            var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: imageOutputHeight + contentOffset.y)
+            if let flipped = LineGeometry.path(outline).copy(using: &flip) {
+                drawBodyCG(flipped, annotation: annotation, in: ctx)
+            }
 
         case .pencil:
             if annotation.points.count > 1 {
@@ -2563,6 +2618,20 @@ class ScreenshotEditorViewModel: ObservableObject {
         ctx.clip(using: .evenOdd)
         ctx.setLineWidth(width * 2)
         ctx.addPath(shape)
+        ctx.strokePath()
+    }
+
+    /// Strokes a hand-drawn shape built for `rect` as if y pointed down, mirrored about the rect's
+    /// middle so its wobble matches the preview in this y-up context.
+    private func strokeSketchCG(_ ops: [SketchOp], in rect: CGRect, width: CGFloat, ctx: CGContext) {
+        var mirror = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: rect.minY + rect.maxY)
+        guard let path = SketchGeometry.path(ops).copy(using: &mirror) else { return }
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        ctx.setLineWidth(width)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.addPath(path)
         ctx.strokePath()
     }
 

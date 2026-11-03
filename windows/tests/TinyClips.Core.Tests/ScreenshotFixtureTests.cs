@@ -109,6 +109,98 @@ public sealed class ScreenshotFixtureTests
         }
     }
 
+    [Fact]
+    public void SharedSketchRandomFixturesMatchBitForBit()
+    {
+        foreach (var (label, testCase) in Cases("sketch", "random.json"))
+        {
+            var expected = testCase.GetProperty("values").EnumerateArray().Select(v => v.GetDouble()).ToArray();
+            var actual = SketchGeometry.RandomValues(testCase.GetProperty("seed").GetInt32(), expected.Length);
+            Assert.True(expected.SequenceEqual(actual), $"{label}: the generator drifted.");
+        }
+    }
+
+    [Theory]
+    [InlineData("rectangle.json")]
+    [InlineData("ellipse.json")]
+    public void SharedSketchShapeFixturesMatchWindowsImplementation(string fileName)
+    {
+        foreach (var (label, testCase) in Cases("sketch", fileName))
+        {
+            var bounds = ReadRect(testCase.GetProperty("bounds"));
+            var width = testCase.GetProperty("width").GetDouble();
+            var roughness = testCase.GetProperty("roughness").GetDouble();
+            var seed = testCase.GetProperty("seed").GetInt32();
+            var ops = fileName == "rectangle.json"
+                ? SketchGeometry.Rectangle(bounds, width, roughness, seed)
+                : SketchGeometry.Ellipse(bounds, width, roughness, seed);
+            var expected = testCase.GetProperty("expected").EnumerateArray().ToArray();
+            Assert.True(expected.Length == ops.Count, $"{label}: expected {expected.Length} ops but was {ops.Count}.");
+            for (var i = 0; i < expected.Length; i++)
+            {
+                var data = expected[i].GetProperty("data").EnumerateArray().Select(v => v.GetDouble()).ToArray();
+                var isMove = expected[i].GetProperty("op").GetString() == "move";
+                Assert.True(isMove == ops[i].IsMove, $"{label} op {i} kind");
+                var actual = isMove
+                    ? new[] { ops[i].End }
+                    : new[] { ops[i].Control1, ops[i].Control2, ops[i].End };
+                for (var j = 0; j < actual.Length; j++)
+                {
+                    Assert.True(
+                        Math.Abs(data[j * 2] - actual[j].X) <= Tolerance && Math.Abs(data[j * 2 + 1] - actual[j].Y) <= Tolerance,
+                        $"{label} op {i} point {j}");
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void SharedSketchLineAndArrowFixturesMatchWindowsImplementation()
+    {
+        foreach (var (label, testCase) in Cases("sketch", "line.json"))
+        {
+            var actual = LineGeometry.Outline(
+                ReadPoint(testCase.GetProperty("start")),
+                ReadPoint(testCase.GetProperty("end")),
+                testCase.GetProperty("width").GetDouble(),
+                ParseCap(testCase.GetProperty("startCap").GetString()),
+                ParseCap(testCase.GetProperty("endCap").GetString()),
+                testCase.GetProperty("scale").GetDouble(),
+                testCase.GetProperty("roughness").GetDouble(),
+                testCase.GetProperty("seed").GetInt32());
+            AssertPoints(testCase.GetProperty("expected"), actual, label);
+        }
+
+        foreach (var (label, testCase) in Cases("sketch", "arrow.json"))
+        {
+            var actual = ArrowGeometry.Build(
+                ReadPoint(testCase.GetProperty("start")),
+                ReadPoint(testCase.GetProperty("end")),
+                testCase.GetProperty("width").GetDouble(),
+                new ArrowShapeOptions(
+                    testCase.GetProperty("bend").GetDouble(),
+                    testCase.GetProperty("startWidthScale").GetDouble(),
+                    testCase.GetProperty("endWidthScale").GetDouble(),
+                    testCase.GetProperty("headScale").GetDouble()),
+                ParseCap(testCase.GetProperty("startCap").GetString()),
+                ParseJoin(testCase.GetProperty("join").GetString()),
+                testCase.GetProperty("scale").GetDouble(),
+                testCase.GetProperty("roughness").GetDouble(),
+                testCase.GetProperty("seed").GetInt32());
+            AssertPoints(testCase.GetProperty("expected").GetProperty("points"), actual.Points, label);
+        }
+    }
+
+    private static void AssertPoints(JsonElement expected, IReadOnlyList<PointD> actual, string label)
+    {
+        var points = expected.EnumerateArray().ToArray();
+        Assert.True(points.Length == actual.Count, $"{label}: expected {points.Length} points but was {actual.Count}.");
+        for (var i = 0; i < points.Length; i++)
+        {
+            AssertPoint(points[i], actual[i], $"{label} point {i}");
+        }
+    }
+
     private static StrokeCap ParseCap(string? value) => value switch
     {
         "butt" => StrokeCap.Butt,
