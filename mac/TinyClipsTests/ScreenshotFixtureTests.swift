@@ -419,4 +419,16 @@ final class ScreenshotFixtureTests: XCTestCase {
         var preset: ArrowPresetValues?
         var cases: [ArrowCase]
     }
+
+    func testThickArrowsAreHitAcrossTheirHeadAndShaft() {
+        let outline = ArrowGeometry.build(
+            start: CGPoint(x: 100, y: 100), end: CGPoint(x: 400, y: 100), width: 20,
+            options: .classic, startCap: .round, join: .miter
+        ).points
+        // In the head's wing, 24 px from the centerline: farther than half the shaft's width.
+        XCTAssertTrue(ArrowGeometry.outlineContains(outline, point: CGPoint(x: 345, y: 124), tolerance: 0))
+        // Beside the 20 px shaft.
+        XCTAssertFalse(ArrowGeometry.outlineContains(outline, point: CGPoint(x: 250, y: 130), tolerance: 0))
+        XCTAssertTrue(ArrowGeometry.outlineContains(outline, point: CGPoint(x: 250, y: 113), tolerance: 4))
+    }
 }

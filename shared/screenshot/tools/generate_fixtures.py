@@ -266,8 +266,10 @@ class Rough:
         return ops
 
 
-def sketch_unit(width):
-    return max(ROUGH_MINIMUM_UNIT, width / 2)
+def sketch_unit(width, scale=1):
+    """The unit for a width in image pixels, in the caller's units (scale per image pixel). The
+    minimum applies in image pixels, so the wobble looks the same at every zoom."""
+    return max(ROUGH_MINIMUM_UNIT, width / 2) * scale
 
 
 def scale_ops(ops, unit):
@@ -288,9 +290,9 @@ def sketch_ellipse(r, width, roughness, seed):
     return scale_ops(ops, unit)
 
 
-def sketch_centerline(start, end, width, roughness, seed):
+def sketch_centerline(start, end, width, roughness, seed, scale=1):
     """A hand-drawn cubic from start to end: rough.js's single-stroke line."""
-    unit = sketch_unit(width)
+    unit = sketch_unit(width, scale)
     ops = Rough(roughness, seed).line(start["x"] / unit, start["y"] / unit, end["x"] / unit, end["y"] / unit, True, False)
     m, c = ops[0]["data"], ops[1]["data"]
     return (
@@ -319,11 +321,11 @@ def cubic_tangent(p0, c1, c2, p3, t):
     )
 
 
-def arrow_centerline(start, end, control, width, roughness, seed):
+def arrow_centerline(start, end, control, width, scale, roughness, seed):
     """The arrow's centerline as a cubic: its bend's quadratic, raised to a cubic, plus the
     hand-drawn wobble when sketched."""
     if roughness > 0:
-        s0, c1, c2, e = sketch_centerline(start, end, width, roughness, seed)
+        s0, c1, c2, e = sketch_centerline(start, end, width, roughness, seed, scale)
         d = mul(sub(control, lerp(start, end, 0.5)), 2 / 3)
         return s0, add(c1, d), add(c2, d), e
     return start, add(start, mul(sub(control, start), 2 / 3)), add(end, mul(sub(control, end), 2 / 3)), end
@@ -354,7 +356,7 @@ def arrow_outline(start, end, width, bend, start_scale, end_scale, head_scale, s
     if l < 0.001:
         return {"control": control, "handle": handle, "points": []}
     u = mul(chord, 1 / l)
-    p0, c1, c2, p3 = arrow_centerline(start, end, control, width * scale, roughness, seed)
+    p0, c1, c2, p3 = arrow_centerline(start, end, control, width, scale, roughness, seed)
 
     head = min(head_scale * head_length(width) * scale, MAXIMUM_HEAD_FRACTION * l)
     tip_direction = normalize(sub(p3, c2), u)
@@ -490,7 +492,7 @@ def line_outline(start, end, width, start_cap, end_cap, scale, roughness=0, seed
     if roughness > 0:
         u = normalize(chord, point(1, 0))
         half = width / 2 * scale
-        p0, c1, c2, p3 = sketch_centerline(start, end, width * scale, roughness, seed)
+        p0, c1, c2, p3 = sketch_centerline(start, end, width, roughness, seed, scale)
         left, right = shaft_edges(p0, c1, c2, p3, 1, half, half, u)
         end_tangent = normalize(cubic_tangent(p0, c1, c2, p3, 1), u)
         start_tangent = normalize(cubic_tangent(p0, c1, c2, p3, 0), u)
@@ -861,29 +863,33 @@ def generate_sketches():
         for b, w, rough, seed in [(box, 4, 1, 1), (box, 12, 2, 12345), (small, 2, 1, 987654321), (box, 6, 0, 42)]
     ]
     line_cases = []
-    for start, end, w, rough, seed, caps in [
-        ((100, 100), (400, 100), 6, 1, 1, ("round", "round")),
-        ((50, 300), (350, 60), 10, 2, 12345, ("butt", "square")),
-        ((10, 10), (40, 20), 4, 1, 987654321, ("square", "round")),
+    # The last case is a thin line zoomed out, where the wobble's minimum unit applies in pixels.
+    for start, end, w, rough, seed, caps, scale in [
+        ((100, 100), (400, 100), 6, 1, 1, ("round", "round"), 1),
+        ((50, 300), (350, 60), 10, 2, 12345, ("butt", "square"), 1),
+        ((10, 10), (40, 20), 4, 1, 987654321, ("square", "round"), 1),
+        ((50, 50), (200, 120), 0.5, 2, 42, ("round", "round"), 0.5),
     ]:
-        case = line_case(start, end, w, caps[0], caps[1])
+        case = line_case(start, end, w, caps[0], caps[1], scale)
         case["roughness"] = rough
         case["seed"] = seed
-        case["expected"] = line_outline(case["start"], case["end"], w, caps[0], caps[1], 1, rough, seed)
+        case["expected"] = line_outline(case["start"], case["end"], w, caps[0], caps[1], scale, rough, seed)
         line_cases.append(case)
     arrow_cases = []
-    for start, end, w, preset, rough, seed in [
-        ((100, 100), (400, 100), 6, "classic", 1, 1),
-        ((50, 300), (350, 60), 8, "tapered", 2, 12345),
-        ((100, 100), (400, 220), 6, "curved", 1, 2147483646),
-        ((10, 10), (40, 20), 4, "classic", 3, 987654321),
+    # The last case is a thin arrow zoomed out, where the wobble's minimum unit applies in pixels.
+    for start, end, w, preset, rough, seed, scale in [
+        ((100, 100), (400, 100), 6, "classic", 1, 1, 1),
+        ((50, 300), (350, 60), 8, "tapered", 2, 12345, 1),
+        ((100, 100), (400, 220), 6, "curved", 1, 2147483646, 1),
+        ((10, 10), (40, 20), 4, "classic", 3, 987654321, 1),
+        ((50, 50), (200, 120), 0.5, "curved", 2, 42, 0.5),
     ]:
-        case = arrow_case(start, end, w, preset)
+        case = arrow_case(start, end, w, preset, scale)
         case["roughness"] = rough
         case["seed"] = seed
         case["expected"] = arrow_outline(
             case["start"], case["end"], w, case["bend"], case["startWidthScale"], case["endWidthScale"],
-            case["headScale"], case["startCap"], case["join"], 1, rough, seed,
+            case["headScale"], case["startCap"], case["join"], scale, rough, seed,
         )
         arrow_cases.append(case)
     return {
