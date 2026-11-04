@@ -89,7 +89,7 @@ public sealed record AutomationCaptureRequest(
         }
     }
 
-    private static PixelRect ParseRegion(JsonNode node)
+    internal static PixelRect ParseRegion(JsonNode? node)
     {
         if (node is not JsonObject region)
         {

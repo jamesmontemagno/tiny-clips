@@ -9,6 +9,7 @@ internal sealed class CliEnvironment
     public TextWriter Out { get; init; } = Console.Out;
     public TextWriter Error { get; init; } = Console.Error;
     public bool IsWindows { get; init; } = OperatingSystem.IsWindows();
+    public bool IsLinux { get; init; } = OperatingSystem.IsLinux();
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(1);
     public TimeSpan PairTimeout { get; init; } = TimeSpan.FromSeconds(130);
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(150);
@@ -35,10 +36,26 @@ internal sealed class CliEnvironment
     public string Home =>
         GetVariable("HOME") ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-    public IReadOnlyList<string> EndpointCandidates()
+    public IReadOnlyList<string> EndpointCandidates() => EndpointCandidates(out _);
+
+    public IReadOnlyList<string> EndpointCandidates(out bool linuxDiscovery)
     {
+        linuxDiscovery = false;
         if (GetVariable("TINYCLIPS_AUTOMATION_ENDPOINT") is { Length: > 0 } custom) return [custom];
         if (IsWindows) return [$@"\\.\pipe\TinyClips.Automation.{GetVariable("USERNAME") ?? Environment.UserName}"];
+        if (IsLinux)
+        {
+            // Never fall back to a shared directory, a relative location, or a macOS endpoint.
+            var runtime = GetVariable("XDG_RUNTIME_DIR")?.TrimEnd('/');
+            if (runtime is not { Length: > 1 } || runtime[0] != '/' || runtime.Contains('\0')
+                || runtime.Split('/').Skip(1).Any(part => part is "" or "." or "..")) return [];
+            linuxDiscovery = true;
+            return
+            [
+                $"{runtime}/app/com.refractored.tinyclips/automation.sock",
+                $"{runtime}/app/com.refractored.tinyclips.Devel/automation.sock",
+            ];
+        }
         return
         [
             Path.Combine(Home, "Library", "Application Support", "TinyClips", "automation.sock"),

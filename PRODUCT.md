@@ -20,7 +20,7 @@ TinyClips is a tray-first native capture utility with an integrated post-capture
 
 ## Operating Context
 
-- The app starts from a menu bar item on macOS and a system-tray item on Windows.
+- The app starts from a menu bar item on macOS and a system-tray item on Windows. The [Linux development preview](linux/README.md) opens a GNOME capture bar; starting and stopping capture cannot depend on a tray extension.
 - Screenshot annotations are created immediately after capture in the native screenshot editor.
 - Annotated images are commonly shared outside TinyClips, so exported visuals must remain legible without depending on the viewer's theme or installed app state.
 

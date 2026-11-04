@@ -1,0 +1,18 @@
+[package]
+name = "tinyclips-gnome"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+description = "Native Tiny Clips capture utility for GNOME Wayland"
+license = "MIT"
+
+[dependencies]
+tinyclips-media = { path = "../media" }
+tinyclips-automation = { path = "../automation" }
+tinyclips-clips = { path = "../clips" }
+serde_json = "1"
+tempfile = "3"
+gtk = { package = "gtk4", version = "=0.10.2", features = ["v4_14"] }
+adw = { package = "libadwaita", version = "=0.8.1", features = ["v1_5"] }
+ashpd = { version = "=0.12.3", default-features = false, features = ["async-std", "gtk4_wayland"] }

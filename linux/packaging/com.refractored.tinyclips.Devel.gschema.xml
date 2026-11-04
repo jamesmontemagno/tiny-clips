@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="com.refractored.tinyclips.Devel" path="/com/refractored/tinyclips/devel/">
+    <key name="record-microphone" type="b"><default>false</default><summary>Include microphone audio in recordings</summary></key>
+    <key name="record-audio" type="b"><default>false</default><summary>Include system output audio in recordings</summary></key>
+    <key name="video-countdown-enabled" type="b"><default>false</default><summary>Count down before recording</summary></key>
+    <key name="video-countdown-duration" type="i"><range min="1" max="10"/><default>3</default><summary>Countdown duration in seconds</summary></key>
+  </schema>
+</schemalist>

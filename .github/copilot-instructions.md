@@ -3,8 +3,9 @@
 TinyClips is now a cross-platform repository with:
 - macOS app in `mac/` (SwiftUI + AppKit, Xcode project)
 - Windows app in `windows/` (WinUI 3 + Windows App SDK, .NET solution)
+- Linux development preview in `linux/` (Rust, GTK4/libadwaita, GNOME Wayland Flatpak)
 
-If I ask a question or need something and I don't specify Windows or macOS or both, ask me.
+If the intended platform(s) are not specified, ask me.
 
 Use this file for repo-wide rules and platform selection. Keep behavior platform-aware and avoid cross-app assumptions.
 
@@ -24,7 +25,8 @@ Use this file for repo-wide rules and platform selection. Keep behavior platform
 
 - If a request touches only `mac/**`, follow mac conventions and build mac schemes.
 - If a request touches only `windows/**`, follow WinUI conventions and build/test Windows projects.
-- If a request touches both, validate both platforms before finishing.
+- For `linux/**`, use the [Linux build and test guide](../linux/README.md) and [GTK instructions](instructions/linux-gtk.instructions.md).
+- When a request touches multiple platforms, validate each affected platform.
 
 Do not mix platform-specific implementation patterns:
 - mac: Swift/SwiftUI/AppKit, `#if APPSTORE`, `#if canImport(Sparkle)`
@@ -32,8 +34,8 @@ Do not mix platform-specific implementation patterns:
 
 ## Agent API Coverage
 
-- Treat agent access as part of every new or changed user-facing capability on both platforms. In the same change, expose its meaningful actions and state through Agent Control so agents can use it autonomously without relying on UI interaction.
-- Add or update commands and schemas in `shared/automation/commands.json`, then implement and advertise them in the macOS and Windows automation handlers wherever the feature exists. Do not invent cross-platform feature parity: an unsupported platform must return `not_supported` and must not advertise the command.
+- Treat agent access as part of every new or changed user-facing capability. In the same change, expose its meaningful actions and state through Agent Control so agents can use it autonomously without relying on UI interaction.
+- Add or update commands and schemas in `shared/automation/commands.json`, then implement and advertise them in each platform handler wherever the feature exists. Do not invent cross-platform feature parity: an unsupported platform must return `not_supported` and must not advertise the command.
 - Ensure the shared CLI and MCP server expose the capability with the correct schema. Update relevant Skills, `docs/agent-integration.md`, and examples when workflows change; test the contract, platform behavior, errors, and CLI/MCP exposure as appropriate.
 - Preserve opt-in Agent Control, pairing, least-privilege scopes, sensitive-action approvals, audit logging, path restrictions, OS permissions, and Pro/Store requirements. Never bypass these protections to make a feature autonomous.
 - If a capability cannot be safely or meaningfully exposed, explain the limitation and get user direction rather than silently omitting agent support.
@@ -91,10 +93,11 @@ dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c De
 
 ## PR Checklist
 
-- Build/test only what changed at minimum, and both platforms when cross-platform files are touched.
+- Build/test what changed, including affected consumers of shared contracts and fixtures.
 - Update changelog for the affected platform:
   - root [CHANGELOG.md](../CHANGELOG.md) for mac/shared changes
   - [windows/CHANGELOG.md](../windows/CHANGELOG.md) for Windows app changes
+  - [linux/CHANGELOG.md](../linux/CHANGELOG.md) for Linux preview changes
 - Preserve accessibility quality gates:
   - mac: VoiceOver + keyboard for affected flows
   - windows: keyboard navigation and accessible names for new/changed controls

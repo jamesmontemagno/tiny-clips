@@ -13,7 +13,7 @@ final class AutomationCommandRouter {
         "capture.scrolling.start", "capture.scrolling.stop", "capture.scrolling.status", "capture.scrolling.cancel",
         "recording.startVideo", "recording.startGif", "recording.stop", "recording.togglePause",
         "recording.restart", "recording.discard",
-        "editor.open", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
+        "editor.open", "editor.annotate", "editor.crop", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
         "library.delete", "library.upload", "studio.projects.list", "studio.project.get",
         "studio.project.edit", "studio.zoom.suggest", "studio.export",
     ]
@@ -59,6 +59,7 @@ final class AutomationCommandRouter {
         case "studio.zoom.suggest": return try suggestStudioZooms(params)
         case "studio.export": return try await exportStudioProject(params)
         case "editor.annotate": return try annotate(params)
+        case "editor.crop": return try crop(params)
         case "editor.trim": return try await trim(params)
         case "editor.saveFrame": return try await saveFrame(params)
         case "library.reveal": return try reveal(params)
@@ -321,6 +322,22 @@ final class AutomationCommandRouter {
         ]
     }
 
+    private func crop(_ params: [String: Any]) throws -> [String: Any] {
+        if let unknown = params.keys.first(where: { $0 != "path" && $0 != "region" }) {
+            throw AutomationError(.invalidParams, "Unknown parameter \(unknown).")
+        }
+        let source = try libraryFile(params, allowRecentAliases: false)
+        guard AutomationLibrary.kind(forPath: source.path) == "screenshot" else {
+            throw AutomationError(.invalidParams, "editor.crop works on screenshots only.")
+        }
+        let result = try AutomationMediaEditing.crop(source: source, region: params["region"]) {
+            SaveService.shared.generateURL(for: .screenshot, fileExtension: "png", stemSuffix: "cropped")
+        }
+        // An edit grant does not authorize automatic upload, Finder, or clipboard actions.
+        RecentCaptureStore.shared.record(url: result.url, type: .screenshot)
+        return ["path": result.url.path, "sourcePath": source.path, "width": result.width, "height": result.height]
+    }
+
     private func trim(_ params: [String: Any]) async throws -> [String: Any] {
         if let unknown = params.keys.first(where: { !["path", "start", "end", "removeAudio"].contains($0) }) {
             throw AutomationError(.invalidParams, "Unknown parameter \(unknown).")
@@ -516,18 +533,11 @@ final class AutomationCommandRouter {
         return url
     }
 
-    /// Delete and upload act only on captures the library shows, never on arbitrary files.
-    private func libraryFile(_ params: [String: Any]) throws -> URL {
+    /// Restrict file operations to captures the library shows, never arbitrary files.
+    private func libraryFile(_ params: [String: Any], allowRecentAliases: Bool = true) throws -> URL {
         let url = try existingFile(params)
-        let resolved = url.resolvingSymlinksInPath().path
-        let inLibraryFolder = libraryDirectories().contains { directory in
-            let folder = directory.resolvingSymlinksInPath().path
-            return (resolved as NSString).deletingLastPathComponent == folder
-        }
-        let isRecent = RecentCaptureStore.shared.items.contains {
-            URL(fileURLWithPath: $0.path).resolvingSymlinksInPath().path == resolved
-        }
-        guard (inLibraryFolder || isRecent), AutomationLibrary.kind(forPath: resolved) != nil else {
+        guard AutomationLibrary.contains(url, directories: libraryDirectories(),
+            recentPaths: RecentCaptureStore.shared.items.map(\.path), allowRecentAliases: allowRecentAliases) else {
             throw AutomationError(.notFound, "\(url.lastPathComponent) is not a capture in the Tiny Clips library.")
         }
         return url
@@ -838,6 +848,16 @@ enum AutomationLibrary {
         var kind: String
         var createdAt: Date
         var sizeBytes: Int
+    }
+
+    static func contains(_ url: URL, directories: [URL], recentPaths: [String], allowRecentAliases: Bool) -> Bool {
+        let resolved = url.resolvingSymlinksInPath()
+        guard kind(forPath: resolved.path) != nil else { return false }
+        if directories.contains(where: { $0.resolvingSymlinksInPath().path == resolved.deletingLastPathComponent().path }) {
+            return true
+        }
+        if !allowRecentAliases { return recentPaths.contains(url.path) }
+        return recentPaths.contains { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path == resolved.path }
     }
 
     static func kind(forPath path: String) -> String? {

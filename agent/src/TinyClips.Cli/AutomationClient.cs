@@ -1,5 +1,6 @@
 using System.IO.Pipes;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
 using System.Text;
@@ -71,11 +72,12 @@ internal static class AutomationClient
     private static async Task<Stream> ConnectAsync(CliEnvironment env, CancellationToken cancellationToken)
     {
         Exception? lastFailure = null;
-        foreach (var endpoint in env.EndpointCandidates())
+        var candidates = env.EndpointCandidates(out bool linuxDiscovery);
+        foreach (var endpoint in candidates)
         {
             try
             {
-                return await ConnectEndpointAsync(endpoint, cancellationToken);
+                return await ConnectEndpointAsync(endpoint, linuxDiscovery, cancellationToken);
             }
             catch (Exception ex) when (ex is SocketException or IOException or TimeoutException or UnauthorizedAccessException)
             {
@@ -86,7 +88,7 @@ internal static class AutomationClient
         throw lastFailure ?? new IOException("No Tiny Clips automation endpoint was configured.");
     }
 
-    private static async Task<Stream> ConnectEndpointAsync(string endpoint, CancellationToken cancellationToken)
+    private static async Task<Stream> ConnectEndpointAsync(string endpoint, bool linuxDiscovery, CancellationToken cancellationToken)
     {
         const string pipePrefix = @"\\.\pipe\";
         if (endpoint.StartsWith(pipePrefix, StringComparison.OrdinalIgnoreCase))
@@ -111,10 +113,13 @@ internal static class AutomationClient
         }
 
         if (!File.Exists(endpoint)) throw new IOException("Socket not found.");
+        if (linuxDiscovery && OperatingSystem.IsLinux()) ValidateLinuxEndpoint(endpoint);
         var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {
             await socket.ConnectAsync(new UnixDomainSocketEndPoint(endpoint), cancellationToken);
+            // Check the actual peer after connect, before writing any pairing token.
+            if (linuxDiscovery && OperatingSystem.IsLinux()) ValidateLinuxPeer(socket);
             return new NetworkStream(socket, ownsSocket: true);
         }
         catch
@@ -122,6 +127,41 @@ internal static class AutomationClient
             socket.Dispose();
             throw;
         }
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static void ValidateLinuxEndpoint(string path)
+    {
+        const UnixFileMode privateFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        const UnixFileMode privateDirectory = privateFile | UnixFileMode.UserExecute;
+        var file = new FileInfo(path);
+        var app = file.Directory!;
+        var runtime = app.Parent!.Parent!;
+        if (file.UnixFileMode != privateFile || file.LinkTarget is not null
+            || app.UnixFileMode != privateDirectory || runtime.UnixFileMode != privateDirectory)
+            throw new UnauthorizedAccessException("Unsafe Linux automation endpoint permissions.");
+        for (var dir = app; dir is not null; dir = dir.Parent)
+            if (dir.LinkTarget is not null) throw new UnauthorizedAccessException("Unsafe Linux automation endpoint path.");
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LinuxPeerCredentials { public int Pid; public uint Uid; public uint Gid; }
+
+    [DllImport("libc", EntryPoint = "getsockopt")]
+    private static extern int GetPeerCredentials(SafeSocketHandle fd, int level, int option,
+        out LinuxPeerCredentials credentials, ref uint size);
+
+    [DllImport("libc", EntryPoint = "geteuid")]
+    private static extern uint GetEffectiveUserId();
+
+    [SupportedOSPlatform("linux")]
+    private static void ValidateLinuxPeer(Socket socket)
+    {
+        const int solSocket = 1, soPeerCred = 17; // Linux socket ABI (x64/arm64).
+        uint size = (uint)Marshal.SizeOf<LinuxPeerCredentials>();
+        if (GetPeerCredentials(socket.SafeHandle, solSocket, soPeerCred, out var peer, ref size) != 0
+            || size != Marshal.SizeOf<LinuxPeerCredentials>() || peer.Uid != GetEffectiveUserId())
+            throw new UnauthorizedAccessException("The Tiny Clips socket peer is not the current user.");
     }
 
     [SupportedOSPlatform("windows")]

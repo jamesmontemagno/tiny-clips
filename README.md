@@ -136,6 +136,10 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 | Picker: Cancel | Esc |
 | Stop Recording | Ctrl+Shift+S |
 
+## Linux (development preview)
+
+The [GNOME Wayland preview](linux/README.md) includes a capture bar, screenshot editing and an MP4 recorder. It is distributed as a Flatpak **test build**; there is no stable Linux or Flathub release yet. See the [port plan](plans/linux-gtk-port-plan.md) for feature gaps and the 30-minute recording release gate.
+
 ## Usage
 
 1. Click the Tiny Clips icon in the menu bar (macOS) or system tray (Windows)

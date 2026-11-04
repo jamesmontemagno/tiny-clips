@@ -159,6 +159,57 @@ public class CliTests
     }
 
     [Fact]
+    public void LinuxDiscoveryUsesOnlyPrivateRuntimeCandidatesAndHonorsExplicitOverride()
+    {
+        static CliEnvironment Linux(string? runtime, string? endpoint = null) => new()
+        {
+            IsWindows = false, IsLinux = true,
+            GetVariable = key => key switch
+            {
+                "XDG_RUNTIME_DIR" => runtime, "TINYCLIPS_AUTOMATION_ENDPOINT" => endpoint, _ => null,
+            },
+        };
+        Assert.Equal(["/run/user/1001/app/com.refractored.tinyclips/automation.sock",
+            "/run/user/1001/app/com.refractored.tinyclips.Devel/automation.sock"],
+            Linux("/run/user/1001/").EndpointCandidates());
+        foreach (var unsafeRoot in new[] { null, "", "/", "relative", "/run/user/../public", "/run/user/./a", "//public" })
+            Assert.Empty(Linux(unsafeRoot).EndpointCandidates());
+        Assert.Equal(["explicit"], Linux(null, "explicit").EndpointCandidates());
+
+        var mac = new CliEnvironment { IsWindows = false, IsLinux = false, GetVariable = k => k switch { "HOME" => "home", "XDG_RUNTIME_DIR" => "/ignored", _ => null } };
+        Assert.Equal([Path.Combine("home", "Library", "Application Support", "TinyClips", "automation.sock"),
+            Path.Combine("home", "Library", "Containers", "com.refractored.tinyclips", "Data", "tinyclips-automation.sock")], mac.EndpointCandidates());
+    }
+
+    [Fact]
+    public async Task LinuxDiscoveredSocketRequiresPrivatePathAndAcceptsSameUid()
+    {
+        if (!OperatingSystem.IsLinux()) { Assert.Skip("Requires Linux SO_PEERCRED."); return; }
+        var runtime = Path.GetFullPath($".tc-{Guid.NewGuid():N}"[..12]);
+        var appDir = Path.Combine(runtime, "app", "com.refractored.tinyclips.Devel");
+        var endpoint = Path.Combine(appDir, "automation.sock");
+        Assert.SkipWhen(System.Text.Encoding.UTF8.GetByteCount(endpoint) > 107, "Checkout exceeds the Linux UDS pathname limit.");
+        const UnixFileMode privateFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        Directory.CreateDirectory(runtime, privateFile | UnixFileMode.UserExecute);
+        try
+        {
+            Directory.CreateDirectory(appDir, privateFile | UnixFileMode.UserExecute);
+            await using var app = new FakeApp(endpoint);
+            app.Clients["t"] = ["read"];
+            var env = new CliEnvironment { GetVariable = key => key switch { "XDG_RUNTIME_DIR" => runtime, "TINYCLIPS_TOKEN" => "t", _ => null } };
+            File.SetUnixFileMode(endpoint, privateFile | UnixFileMode.GroupWrite);
+            var denied = await Assert.ThrowsAsync<AutomationException>(() => AutomationClient.SendAsync(env, "app.status", cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Equal("not_running", denied.Code);
+            Assert.Empty(app.Received);
+            File.SetUnixFileMode(endpoint, privateFile);
+            var result = await AutomationClient.SendAsync(env, "app.status", cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal("app.status", result["command"]!.GetValue<string>());
+            Assert.Single(app.Received);
+        }
+        finally { Directory.Delete(runtime, recursive: true); }
+    }
+
+    [Fact]
     public async Task StaleDirectSocketFallsBackToStoreSocketButExplicitOverrideDoesNot()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "macOS socket discovery uses Unix domain sockets.");
@@ -177,6 +228,7 @@ public class CliTests
                 Out = output,
                 Error = new StringWriter(),
                 IsWindows = false,
+                IsLinux = false,
                 RequestTimeout = TimeSpan.FromSeconds(10),
             };
             Assert.Equal(0, await Cli.RunAsync(["status"], env, TestContext.Current.CancellationToken));
@@ -194,6 +246,7 @@ public class CliTests
                 Out = new StringWriter(),
                 Error = error,
                 IsWindows = false,
+                IsLinux = false,
                 RequestTimeout = TimeSpan.FromSeconds(10),
             };
             Assert.Equal(2, await Cli.RunAsync(["status"], overridden, TestContext.Current.CancellationToken));
@@ -224,6 +277,7 @@ public class CliTests
                 Out = new StringWriter(),
                 Error = error,
                 IsWindows = false,
+                IsLinux = false,
                 RequestTimeout = TimeSpan.FromSeconds(10),
             };
 

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.refractored.tinyclips.Devel</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Tiny Clips (Preview)</name>
+  <summary>Capture screenshots and record a shared window or screen</summary>
+  <description>
+    <p>This development preview is a native GNOME Wayland capture utility. Choose what to share using the desktop permission dialog, crop or annotate a screenshot, and browse captures in the local library.</p>
+    <p>Video recording and recovery are under test. Microphone audio, system audio and local Agent Control are optional; no account is required.</p>
+  </description>
+  <launchable type="desktop-id">com.refractored.tinyclips.Devel.desktop</launchable>
+  <developer id="com.refractored"><name>Tiny Clips contributors</name></developer>
+  <url type="homepage">https://github.com/jamesmontemagno/tiny-clips</url>
+  <url type="bugtracker">https://github.com/jamesmontemagno/tiny-clips/issues</url>
+</component>
