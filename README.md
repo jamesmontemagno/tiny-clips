@@ -136,9 +136,9 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 | Picker: Cancel | Esc |
 | Stop Recording | Ctrl+Shift+S |
 
-## Linux (planned)
+## Linux (development preview)
 
-A native GNOME port is in development; there is no Linux release yet. See the [Linux port plan](plans/linux-gtk-port-plan.md) for scope and recording requirements, or the [developer Flatpak probe](linux/README.md) to test screenshot permission on GNOME Wayland.
+The [GNOME Wayland preview](linux/README.md) includes a capture bar, screenshot editing and an MP4 recorder. It is distributed as a Flatpak **test build**; there is no stable Linux or Flathub release yet. See the [port plan](plans/linux-gtk-port-plan.md) for feature gaps and the 30-minute recording release gate.
 
 ## Usage
 

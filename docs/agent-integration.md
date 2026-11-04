@@ -1,6 +1,6 @@
 # Agent integration (CLI, MCP, Skills)
 
-Tiny Clips can be driven by AI agents and scripts on macOS and Windows. Every interface goes through one command layer inside the running app:
+Tiny Clips can be driven by AI agents and scripts on macOS, Windows, and the native Linux development build. Each build advertises its own supported commands. Every interface goes through one command layer inside the running app:
 
 ```
 agent ── tinyclips CLI ───────────┐
@@ -8,14 +8,14 @@ agent ── tinyclips mcp (stdio) ───┼── local socket / named pipe 
 skills/ (workflow guidance) ──────┘
 ```
 
-- **Contract:** [`shared/automation/commands.json`](../shared/automation/commands.json) lists every command, its scope, and its parameters. Both apps, the CLI, and the MCP server read the same file.
+- **Contract:** [`shared/automation/commands.json`](../shared/automation/commands.json) lists every command, its scope, and its parameters. The apps, CLI, and MCP server read the same file.
 - **CLI + MCP:** [`agent/`](../agent/README.md) — the `TinyClips` .NET 10 tool (`dnx TinyClips`, or `dotnet tool install -g TinyClips`); `tinyclips mcp` starts the MCP server.
 - **Skills:** [`plugins/tinyclips/skills/`](../plugins/tinyclips/skills) teach agents common workflows. Skills are guidance only; the app enforces permissions.
 - **Agent Plugin:** [`plugins/tinyclips/`](../plugins/tinyclips/README.md) packages the MCP server and Skills as a portable [Agent Plugin](https://agent-plugins.org/).
 
 ## Set up your agent
 
-Use a Tiny Clips release that includes **Agent Control**, running on the same Mac or Windows PC as your agent. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) for the commands below. Your agent needs either terminal access or support for a local stdio MCP server. Tiny Clips provides capture tools, not an AI model; bring your own agent.
+Use a Tiny Clips build that includes **Agent Control**, running in your agent's local desktop session. On Linux, use the [native development build](../linux/README.md) and check `tinyclips status` for available commands; examples below may describe other platforms' capabilities. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) for the commands below. Your agent needs either terminal access or support for a local stdio MCP server. Tiny Clips provides capture tools, not an AI model; bring your own agent.
 
 1. Open **Settings → Agent Control** and turn on **Allow agents to control Tiny Clips**. Leave the app running.
 2. Install the published NuGet tool in Terminal or PowerShell:
@@ -126,12 +126,15 @@ Revoke an individual agent in **Settings → Agent Control → Paired Agents**, 
 | macOS (direct) | Unix socket `~/Library/Application Support/TinyClips/automation.sock` |
 | macOS (App Store) | Unix socket `~/Library/Containers/com.refractored.tinyclips/Data/tinyclips-automation.sock` |
 | Windows | Named pipe `\\.\pipe\TinyClips.Automation.<UserName>` (current-user ACL) |
+| Linux (development Flatpak) | Unix socket `$XDG_RUNTIME_DIR/app/com.refractored.tinyclips.Devel/automation.sock` |
 
-`TINYCLIPS_AUTOMATION_ENDPOINT` selects a single endpoint for the CLI. Without an override, the CLI tries the standard endpoints before sending a request. `TINYCLIPS_AGENT_CONFIG` overrides the pairing configuration file; relative paths are resolved from the CLI's working directory.
+Linux discovery tries `com.refractored.tinyclips` (reserved stable ID), then `com.refractored.tinyclips.Devel`, under the absolute user runtime directory. There is no fallback to a shared temporary directory. The app verifies the peer's UID with `SO_PEERCRED`; the CLI also verifies private directories, socket permissions and peer UID for discovered endpoints. The host creates a mode `0600` socket in the private `0700` app directory only after local opt-in. No network or session-bus service carries Agent Control requests. To pair with a specific build when both are running, set the explicit endpoint override.
+
+`TINYCLIPS_AUTOMATION_ENDPOINT` selects a single endpoint for the CLI. Set an explicit Unix socket override only to a path you trust with the saved token. Without an override, the CLI tries the standard endpoints before sending a request. `TINYCLIPS_AGENT_CONFIG` overrides the pairing configuration file; relative paths are resolved from the CLI's working directory.
 
 The CLI and MCP server wait up to 150 seconds for ordinary requests and two hours for `studio.export` or `editor.trim`. Set `TINYCLIPS_REQUEST_TIMEOUT_SECONDS` in the CLI or MCP server's environment to override the deadline, or set it to `0` for no deadline. Explicit caller cancellation still applies.
 
-Framing is one UTF-8 JSON object per line (`\n`). A connection may send several requests; responses come back in order. On Windows, at most 16 requests may be queued per connection; exceeding that limit closes the connection.
+Framing is one UTF-8 JSON object per line (`\n`). A connection may send several requests; responses come back in order. On Windows, at most 16 requests may be queued per connection; exceeding that limit closes the connection. Linux processes requests serially per connection, with at most 16 concurrent connections and a 256 KiB limit per request line. Linux pairing requests expire after 120 seconds; only requested scopes with an implemented command can be approved. The token is issued on a single approved poll, and revocation takes effect for queued requests and pending approvals. Audit records contain server-generated client IDs, contract command names and outcomes, not request payloads or credentials.
 
 ```json
 {"id":"1","token":"<token>","command":"capture.screenshot","params":{"mode":"screen"}}
@@ -143,15 +146,34 @@ Framing is one UTF-8 JSON object per line (`\n`). A connection may send several 
 
 | Command | Params | Result |
 |---|---|---|
-| `session.hello` | – | `app`, `version`, `platform` (`macos`/`windows`), `build` (`direct`/`store`), `protocolVersion`, `automationEnabled`, `commands` (supported names) |
+| `session.hello` | – | `app`, `version`, `platform` (`macos`/`windows`/`linux`), `build` (`direct`/`store`/`flatpak`), `protocolVersion`, `automationEnabled`, `commands` (supported names) |
 | `session.pair` | `clientName`, `scopes[]` | `pairingId` |
 | `session.pairStatus` | `pairingId` | `status` (`pending`/`approved`/`denied`), and when approved `token`, `scopes` |
+
+### Linux development build: discover first
+
+Run `tinyclips status` (MCP: `tinyclips_status`) to get the **running host's** supported command names without pairing. The CLI/MCP contract catalog also contains commands for other platforms; a tool appearing in that catalog does not mean this host can execute it. After pairing, `tinyclips app.status` reports live app state. Request only the scopes you need, for example `tinyclips pair --name "Local library reader" --scopes read` followed by `tinyclips library.list limit=5`.
+
+| Scope | Commands implemented by the Linux development app |
+|---|---|
+| `read` | `app.status`, `app.open`, `recording.status`, `settings.get`, `library.list`, `library.reveal` |
+| `capture` | `capture.targets`, `capture.screenshot` |
+| `record` | `recording.startVideo`, `recording.togglePause`, `recording.stop` |
+| `edit` | `editor.open`, `editor.annotate`, `editor.crop` (library PNG screenshots) |
+| `export` | `library.copy` |
+| `settings` | `settings.set` (only the keys reported writable by `settings.get`) |
+
+Pairing does not authorize a screen or window. `capture.targets` on Linux describes only a source the user explicitly shared via **Main menu → Choose shared source…**. Choosing a target for a local Screenshot or Record action does not grant a new agent target, and the agent cannot open the portal picker. A paired client calling an unimplemented command such as `capture.ocr`, `recording.startGif` or `library.upload` receives `not_supported`. There is no upload, delete or discard command in the Linux host's advertised list.
+
+**Developer transport check:** On Linux with Python 3, set `TINYCLIPS_TEST_CLI` to an absolute path to the Linux CLI published from this checkout and run `cargo test --locked --manifest-path linux/Cargo.toml -p tinyclips-automation published_cli_and_mcp_use_live_linux_host -- --ignored --nocapture`. Use a short checkout path to stay within the kernel's Unix socket pathname limit. This test pairs through the real host with a private fixture approving only `read` and exercises the actual stdio MCP server. For an emulated guest, `TINYCLIPS_TEST_IO_TIMEOUT_SECONDS` (1–900) can extend the test client wait, not the host's approval deadline. It does not start the desktop app or grant capture consent.
 
 ### Autonomous capture and annotation
 
 `capture.targets` lists display and visible-window targets. IDs are opaque and valid only for the current app session; refresh the list before using an ID after a restart. Display-relative regions use physical pixels with `(0,0)` at that display's top-left. `capture.screenshot` and `capture.ocr` accept a `windowId`, or `displayId` plus `region: {x,y,width,height}`; no picker is shown, and OCR returns recognized text without changing the clipboard.
 
 `editor.annotate` accepts a screenshot path and typed annotation objects for rectangles, ellipses, arrows, lines, pen strokes, text, numbered callouts, emoji, and redactions. Bounds and points use source-image pixels from the top-left. It renders to a new library capture and never overwrites the source. It does not open the interactive editor.
+
+`editor.crop` takes a library screenshot `path` and a `region` object (`x`, `y`, `width`, `height`) in **source-image pixels**, not logical display units. Bounds must fit entirely within the image. The `edit` scope is required; the result is a new PNG and the source is never overwritten.
 
 ### Trimming and frames
 
@@ -183,4 +205,4 @@ Studio commands work on both platforms when Studio is enabled. `studio.projects.
 6. Command scope not granted → `missing_scope`.
 7. Scope is sensitive → ask the user in the app (`approval_denied` if declined); otherwise run.
 
-[`shared/automation/fixtures/policy.json`](../shared/automation/fixtures/policy.json) holds the expected decisions, and both platforms test against it.
+[`shared/automation/fixtures/policy.json`](../shared/automation/fixtures/policy.json) holds the expected decisions, and all three platforms test against it.

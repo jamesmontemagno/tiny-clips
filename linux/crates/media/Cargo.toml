@@ -1,0 +1,24 @@
+[package]
+name = "tinyclips-media"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+description = "Portal-authorized Linux capture and recoverable MP4 recording"
+
+[features]
+default = ["portal"]
+portal = ["dep:ashpd", "dep:gtk", "dep:futures-util"]
+
+[dependencies]
+ashpd = { version = "=0.12.3", default-features = false, features = ["async-std", "gtk4_wayland"], optional = true }
+gtk = { package = "gtk4", version = "=0.10.2", features = ["v4_8"], optional = true }
+gst = { package = "gstreamer", version = "0.24" }
+async-channel = "2"
+futures-lite = "2"
+futures-util = { version = "0.3", optional = true }
+libc = "0.2"
+
+[[bin]]
+name = "tinyclips-media-check"
+path = "src/smoke.rs"

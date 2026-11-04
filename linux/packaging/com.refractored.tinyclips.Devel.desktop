@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Tiny Clips Portal Probe
-Comment=Test interactive screenshot permission on GNOME
-Exec=tinyclips-portal-probe
+Name=Tiny Clips (Preview)
+Comment=Capture screenshots and record an authorized screen or window
+Exec=tinyclips-gnome
 Icon=com.refractored.tinyclips.Devel
 Categories=Utility;GTK;
 Terminal=false

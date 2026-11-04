@@ -1,0 +1,17 @@
+[package]
+name = "tinyclips-clips"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+license = "MIT"
+description = "Private local GTK clips library and source-pixel screenshot editor"
+
+[dependencies]
+gtk = { package = "gtk4", version = "=0.10.2", features = ["v4_8"] }
+adw = { package = "libadwaita", version = "=0.8.1" }
+ashpd = { version = "=0.12.3", default-features = false, features = ["async-std", "gtk4_wayland"] }
+pangocairo = "0.21"
+rustix = { version = "1", features = ["fs", "process"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

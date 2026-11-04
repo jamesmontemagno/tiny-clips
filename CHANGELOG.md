@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
 
 ### Added
+- Agents with the `edit` scope can crop a saved screenshot by source pixels (`editor.crop`). The result is a new PNG in the library; the original is unchanged and no editor opens.
 - Any video can now be opened in Studio from the video trimmer or the Clips Manager (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
 - Agents can trim videos and GIFs (`editor.trim`, with optional audio removal) and save single frames (`editor.saveFrame`) without opening a trimmer; results are new library items and the source is unchanged. Stale Studio edits now return a distinct `conflict` error instead of `busy`.
 - The MCP server now uses the official C# SDK for stdio transport, lifecycle, protocol negotiation, and cancellation while preserving contract-driven tools and app permissions.

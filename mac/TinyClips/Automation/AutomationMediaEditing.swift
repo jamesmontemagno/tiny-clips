@@ -1,6 +1,9 @@
 import AVFoundation
 import CoreGraphics
+import Darwin
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 /// Maps agent-supplied seconds onto video time ranges and GIF frames.
 enum AutomationMediaRange {
@@ -74,7 +77,7 @@ enum AutomationMediaRange {
     }
 }
 
-/// Non-destructive trim and frame export for automation. Sources are never modified or deleted.
+/// Non-destructive crop, trim, and frame export for automation. Sources are never modified or deleted.
 @MainActor
 enum AutomationMediaEditing {
     struct TrimResult {
@@ -87,6 +90,55 @@ enum AutomationMediaEditing {
         var url: URL
         var time: Double
         var frame: Int?
+    }
+
+    static func crop(source: URL, region: Any?, destination: () -> URL) throws -> (url: URL, width: Int, height: Int) {
+        let bounds = try AutomationCaptureTargets.parseRegion(region)
+        // Authorizing a library entry must not also authorize data behind a symlink or a FIFO.
+        let fd = open(source.path, O_RDONLY | O_NOFOLLOW_ANY | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { throw AutomationError(.notFound, "That file is not a library screenshot.") }
+        defer { close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else {
+            throw AutomationError(.notFound, "That file is not a regular library screenshot.")
+        }
+        // Decode only the bytes from the authorized descriptor; never reopen the client path.
+        let input = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
+        guard info.st_size > 0, info.st_size <= 256 * 1024 * 1024 else {
+            throw AutomationError(.invalidParams, "Expected a nonempty screenshot file of 256 MiB or less.")
+        }
+        guard let data = try input.read(upToCount: Int(info.st_size)), data.count == Int(info.st_size),
+              let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
+              let type = CGImageSourceGetType(imageSource) as String?,
+              [UTType.png, .jpeg, .webP, .heic].contains(where: { $0.identifier == type }),
+              CGImageSourceGetCount(imageSource) == 1,
+              let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int, width > 0,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int, height > 0,
+              width <= 32_000_000 / height else {
+            throw AutomationError(.invalidParams, "Expected a readable still screenshot of 32 megapixels or less.")
+        }
+        // Parsed components are bounded 32-bit integers; their sums are exact in CGFloat on macOS.
+        guard bounds.maxX <= CGFloat(width), bounds.maxY <= CGFloat(height) else {
+            throw AutomationError(.invalidParams, "region must fit inside the source image (\(width) × \(height) pixels).")
+        }
+        guard let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil),
+              let crop = image.cropping(to: bounds) else {
+            throw AutomationError(.invalidParams, "Could not crop the source image.")
+        }
+        let png = NSMutableData()
+        guard let encoder = CGImageDestinationCreateWithData(png as CFMutableData, UTType.png.identifier as CFString, 1, nil) else {
+            throw AutomationError(.internal, "Could not create the cropped PNG.")
+        }
+        CGImageDestinationAddImage(encoder, crop, nil)
+        guard CGImageDestinationFinalize(encoder) else { throw AutomationError(.internal, "Could not encode the cropped PNG.") }
+        let result = destination()
+        do {
+            try (png as Data).write(to: result, options: .withoutOverwriting)
+        } catch {
+            throw AutomationError(.internal, "Could not save the cropped PNG as a new file: \(error.localizedDescription)")
+        }
+        return (result, crop.width, crop.height)
     }
 
     static func trimVideo(source: URL, start: Double, end: Double, removeAudio: Bool) async throws -> TrimResult {

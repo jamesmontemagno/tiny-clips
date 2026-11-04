@@ -4,10 +4,9 @@ use ashpd::{
     url::Url,
     zbus,
 };
-use gtk::{gdk, gdk_pixbuf::Pixbuf, gio, glib, prelude::*};
 use std::path::PathBuf;
 
-pub async fn request_preview(window: &adw::ApplicationWindow) -> Result<gdk::Texture, String> {
+pub async fn request_image(window: &adw::ApplicationWindow) -> Result<PathBuf, String> {
     // Older portals ignore the interactive hint. Do not fall back to that behavior.
     let version = screenshot_version()
         .await
@@ -19,7 +18,7 @@ pub async fn request_preview(window: &adw::ApplicationWindow) -> Result<gdk::Tex
     }
     let parent = WindowIdentifier::from_native(window)
         .await
-        .ok_or("Cannot identify the probe window. Use a GNOME Wayland session.")?;
+        .ok_or("Cannot identify the capture window. Use a GNOME Wayland session.")?;
     let response = Screenshot::request()
         .identifier(parent)
         .interactive(true)
@@ -28,15 +27,7 @@ pub async fn request_preview(window: &adw::ApplicationWindow) -> Result<gdk::Tex
         .await
         .and_then(|request| request.response())
         .map_err(request_error)?;
-    let path = local_image_path(response.uri()).ok_or("The portal did not return a local file.")?;
-    let stream = gio::File::for_path(path)
-        .read_future(glib::Priority::DEFAULT)
-        .await
-        .map_err(|_| "Could not open the returned image. It may no longer be accessible.")?;
-    let image = Pixbuf::from_stream_at_scale_future(&stream, 960, 640, true)
-        .await
-        .map_err(|_| "The returned file could not be decoded as an image.")?;
-    Ok(gdk::Texture::for_pixbuf(&image))
+    local_image_path(response.uri()).ok_or_else(|| "The portal did not return a local file.".into())
 }
 
 async fn screenshot_version() -> zbus::Result<u32> {

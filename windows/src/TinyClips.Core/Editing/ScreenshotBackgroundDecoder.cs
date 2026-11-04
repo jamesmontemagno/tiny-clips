@@ -39,33 +39,20 @@ public static class ScreenshotBackgroundDecoder
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var stream = File.OpenRead(path);
-        RejectAnimatedPng(stream, cancellationToken);
-        using var codec = SKCodec.Create(stream)
-            ?? throw new InvalidDataException("The background image could not be read. Choose a PNG, JPEG, or WebP image.");
-        if (codec.EncodedFormat is not (SKEncodedImageFormat.Png or SKEncodedImageFormat.Jpeg or SKEncodedImageFormat.Webp))
-            throw new InvalidDataException("Choose a PNG, JPEG, or WebP background image.");
-        ValidateDimensions(codec.Info.Width, codec.Info.Height, maximumDimension);
-        if (codec.FrameCount > 1)
-            throw new InvalidDataException("Animated backgrounds are not supported. Choose a still image.");
+        using var decoded = DecodeSourcePixels(stream, maximumDimension, cancellationToken, out var origin);
         cancellationToken.ThrowIfCancellationRequested();
-
-        var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-        using var decoded = new SKBitmap(info);
-        if (codec.GetPixels(info, decoded.GetPixels()) != SKCodecResult.Success)
-            throw new InvalidDataException("The background image is incomplete or damaged.");
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var swapAxes = (int)codec.EncodedOrigin >= 5;
+        var info = decoded.Info;
+        var swapAxes = (int)origin >= 5;
         var width = swapAxes ? info.Height : info.Width;
         var height = swapAxes ? info.Width : info.Height;
-        using var upright = codec.EncodedOrigin == SKEncodedOrigin.TopLeft
+        using var upright = origin == SKEncodedOrigin.TopLeft
             ? null : new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
         if (upright is not null)
         {
             using var canvas = new SKCanvas(upright);
             canvas.Clear(SKColors.Transparent);
             // EXIF orientations map encoded pixel edges into upright image coordinates.
-            var matrix = (int)codec.EncodedOrigin switch
+            var matrix = (int)origin switch
             {
                 2 => new SKMatrix(-1, 0, width, 0, 1, 0, 0, 0, 1),
                 3 => new SKMatrix(-1, 0, width, 0, -1, height, 0, 0, 1),
@@ -90,6 +77,27 @@ public static class ScreenshotBackgroundDecoder
             Marshal.Copy(output.GetPixels() + row * output.RowBytes, pixels, row * rowBytes, rowBytes);
         }
         return new ScreenshotBackgroundPixels(pixels, width, height);
+    }
+
+    internal static SKBitmap DecodeSourcePixels(Stream stream, int maximumDimension, CancellationToken cancellationToken,
+        out SKEncodedOrigin origin)
+    {
+        RejectAnimatedPng(stream, cancellationToken);
+        using var codec = SKCodec.Create(stream)
+            ?? throw new InvalidDataException("The background image could not be read. Choose a PNG, JPEG, or WebP image.");
+        if (codec.EncodedFormat is not (SKEncodedImageFormat.Png or SKEncodedImageFormat.Jpeg or SKEncodedImageFormat.Webp))
+            throw new InvalidDataException("Choose a PNG, JPEG, or WebP background image.");
+        ValidateDimensions(codec.Info.Width, codec.Info.Height, maximumDimension);
+        if (codec.FrameCount > 1)
+            throw new InvalidDataException("Animated backgrounds are not supported. Choose a still image.");
+        cancellationToken.ThrowIfCancellationRequested();
+
+        origin = codec.EncodedOrigin;
+        var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        var decoded = new SKBitmap(info);
+        if (codec.GetPixels(info, decoded.GetPixels()) == SKCodecResult.Success) return decoded;
+        decoded.Dispose();
+        throw new InvalidDataException("The background image is incomplete or damaged.");
     }
 
     private static void RejectAnimatedPng(Stream stream, CancellationToken cancellationToken)

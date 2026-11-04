@@ -72,6 +72,7 @@ final class AutomationPolicyTests: XCTestCase {
             "studio.project.get": "read",
             "studio.project.edit": "edit",
             "studio.zoom.suggest": "read",
+            "editor.crop": "edit",
             "editor.trim": "edit",
             "editor.saveFrame": "edit",
             "studio.export": "export"

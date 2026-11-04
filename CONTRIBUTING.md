@@ -101,6 +101,8 @@ Copilot app configuration, extensions, and standalone tooling outside those inpu
 also skip platform builds. Manually dispatching **Build** or **Windows Build** forces
 its platform's builds and tests. Existing app release/tag workflows are unchanged.
 
+The **Linux Flatpak** workflow builds the GNOME development preview and installs the bundle for a toolkit and synthetic media smoke test. For Linux dependencies, source authorization, and the optional endurance run, see the [Linux contributor and tester guide](linux/README.md). A headless run does not establish that the desktop consent or real-device audio flow works.
+
 The separate **Agent CLI** workflow validates `agent/`, `plugins/tinyclips/`, shared
 automation inputs, root .NET/NuGet/MSBuild configuration, and its build/release
 workflows on Linux, Windows, Apple silicon macOS, and Intel macOS. It includes

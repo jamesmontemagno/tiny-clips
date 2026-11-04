@@ -1,6 +1,6 @@
 # Tiny Clips CLI, MCP server, and Skills
 
-Lets scripts and AI agents control Tiny Clips on macOS and Windows. Ships as the `TinyClips` .NET 10 tool on NuGet. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) for the `dnx` and `dotnet tool` commands below, and keep Tiny Clips running with **Settings → Agent control** turned on. See the [setup guide, example prompts, and security model](../docs/agent-integration.md).
+Lets scripts and AI agents control Tiny Clips on macOS, Windows, and the [GNOME development preview](../linux/README.md). Check the running app's advertised commands; package-level tools are not a promise of platform support. Ships as the `TinyClips` .NET 10 tool on NuGet. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) for the `dnx` and `dotnet tool` commands below, and keep Tiny Clips running with **Settings → Agent control** turned on. See the [setup guide, example prompts, and security model](../docs/agent-integration.md).
 
 ## Run
 

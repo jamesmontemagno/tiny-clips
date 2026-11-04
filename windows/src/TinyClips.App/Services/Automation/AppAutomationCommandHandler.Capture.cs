@@ -160,6 +160,23 @@ internal sealed partial class AppAutomationCommandHandler
         _ => "screen",
     };
 
+    private async Task<JsonNode> CropAsync(AutomationCommandContext context, CancellationToken cancellationToken)
+    {
+        var (source, type) = ResolveLibraryFile(context.GetString("path"));
+        if (type != CaptureType.Screenshot)
+            throw new AutomationException(AutomationErrorCodes.InvalidParams, "editor.crop works on screenshots only.");
+
+        var output = App.Services.GetRequiredService<IClipStorageService>()
+            .GenerateFilePath(CaptureType.Screenshot, ".png", "(cropped)");
+        var crop = await Task.Run(() => AutomationImageCrop.SaveAsync(source, context.Params["region"], output, cancellationToken), cancellationToken);
+        await OnUiAsync(() =>
+        {
+            App.Services.GetRequiredService<IRecentCaptureService>().Record(crop.Path, CaptureType.Screenshot);
+            return true;
+        });
+        return new JsonObject { ["path"] = crop.Path, ["sourcePath"] = source, ["width"] = crop.Width, ["height"] = crop.Height };
+    }
+
     // -- editor.annotate ---------------------------------------------------------------------
 
     private async Task<JsonNode> AnnotateAsync(AutomationCommandContext context, CancellationToken cancellationToken)

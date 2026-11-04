@@ -1,6 +1,8 @@
 # Tiny Clips for Linux — native GNOME port plan
 
-**Status: Phase 0 in progress, not shipped.** The [developer Flatpak probe](../linux/README.md) exercises the interactive Screenshot portal. The product goal is a Rust application for GNOME on Wayland, distributed as a Flatpak. The first question to answer is whether someone on a clean desktop can capture, annotate, and copy a region, then record, stop, and play back an MP4 with sound. Neither workflow should require a shell extension, a global shortcut, or terminal access. Occasional **10–30 minute video recordings** must work; 30 minutes is a test case, not a cutoff.
+**Status: development preview, not a stable release.** The [Linux implementation and test guide](../linux/README.md) covers the capture bar, screenshot editing, ScreenCast recording, local library and scoped Agent Control. Phase exit criteria below are acceptance tests, not claims that the preview has passed them. The product goal is a Rust application for GNOME on Wayland, distributed as a Flatpak. The first question to answer is whether someone on a clean desktop can capture, annotate, and copy a region, then record, stop, and play back an MP4 with sound. Neither workflow should require a shell extension, a global shortcut, or terminal access. Occasional **10–30 minute video recordings** must work; 30 minutes is a test case, not a cutoff.
+
+Studio is planned separately: the [Linux Studio implementation plan](linux-studio-plan.md) starts with opening and editing existing footage, before adding project recording and camera capture.
 
 ## 1. Platform and framework decision
 

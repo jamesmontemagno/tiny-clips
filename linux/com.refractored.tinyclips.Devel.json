@@ -4,27 +4,36 @@
   "runtime-version": "50",
   "sdk": "org.gnome.Sdk",
   "sdk-extensions": ["org.freedesktop.Sdk.Extension.rust-stable"],
-  "command": "tinyclips-portal-probe",
-  "finish-args": ["--socket=wayland", "--device=dri"],
+  "command": "tinyclips-gnome",
+  "finish-args": ["--socket=wayland", "--device=dri", "--socket=pulseaudio", "--env=GSETTINGS_BACKEND=keyfile"],
   "modules": [
     {
-      "name": "portal-probe",
+      "name": "tinyclips",
       "buildsystem": "simple",
       "build-options": {
         "append-path": "/usr/lib/sdk/rust-stable/bin",
-        "env": { "CARGO_HOME": "/run/build/portal-probe/cargo", "CARGO_NET_OFFLINE": "true" }
+        "env": { "CARGO_HOME": "/run/build/tinyclips/cargo", "CARGO_NET_OFFLINE": "true", "TINYCLIPS_CONTRACT_DIR": "/run/build/tinyclips/automation" }
       },
       "build-commands": [
-        "cargo build --frozen --release",
-        "install -Dm755 target/release/tinyclips-portal-probe /app/bin/tinyclips-portal-probe",
+        "cargo build --workspace --frozen --release",
+        "install -Dm755 target/release/tinyclips-gnome /app/bin/tinyclips-gnome",
+        "install -Dm755 target/release/tinyclips-media-check /app/bin/tinyclips-media-check",
+        "install -Dm644 com.refractored.tinyclips.Devel.gschema.xml /app/share/glib-2.0/schemas/com.refractored.tinyclips.Devel.gschema.xml",
+        "glib-compile-schemas --strict /app/share/glib-2.0/schemas",
         "install -Dm644 com.refractored.tinyclips.Devel.desktop /app/share/applications/com.refractored.tinyclips.Devel.desktop",
+        "install -Dm644 com.refractored.tinyclips.Devel.metainfo.xml /app/share/metainfo/com.refractored.tinyclips.Devel.metainfo.xml",
         "install -Dm644 com.refractored.tinyclips.Devel.svg /app/share/icons/hicolor/scalable/apps/com.refractored.tinyclips.Devel.svg"
       ],
-      "test-commands": ["cargo test --frozen --release", "/app/bin/tinyclips-portal-probe --help"],
+      "test-commands": ["cargo test --workspace --frozen --release", "/app/bin/tinyclips-gnome --help"],
       "sources": [
         "packaging/cargo-sources.json",
-        { "type": "dir", "path": "spikes/portal-capture", "skip": ["target"] },
+        { "type": "file", "path": "Cargo.toml" },
+        { "type": "file", "path": "Cargo.lock" },
+        { "type": "dir", "path": "crates", "dest": "crates" },
+        { "type": "dir", "path": ".build/automation", "dest": "automation" },
+        { "type": "file", "path": "packaging/com.refractored.tinyclips.Devel.gschema.xml" },
         { "type": "file", "path": "packaging/com.refractored.tinyclips.Devel.desktop" },
+        { "type": "file", "path": "packaging/com.refractored.tinyclips.Devel.metainfo.xml" },
         { "type": "file", "path": "packaging/com.refractored.tinyclips.Devel.svg" }
       ]
     }

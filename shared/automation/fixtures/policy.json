@@ -73,6 +73,20 @@
       "decision": "allow"
     },
     {
+      "name": "crop allows edit",
+      "enabled": true,
+      "scopes": ["edit"],
+      "command": "editor.crop",
+      "decision": "allow"
+    },
+    {
+      "name": "crop denies read without edit",
+      "enabled": true,
+      "scopes": ["read"],
+      "command": "editor.crop",
+      "decision": "missing_scope"
+    },
+    {
       "name": "missing record",
       "enabled": true,
       "scopes": [

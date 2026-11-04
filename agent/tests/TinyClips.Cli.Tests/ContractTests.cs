@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
+using ModelContextProtocol.Client;
 
 namespace TinyClips.Cli.Tests;
 
@@ -51,6 +51,49 @@ public class ContractTests
         Assert.Equal("array", schema["properties"]!["annotations"]!["type"]!.GetValue<string>());
         Assert.Contains("type", schema["properties"]!["annotations"]!["items"]!["required"]!.AsArray()
             .Select(item => item!.GetValue<string>()));
+    }
+
+    [Fact]
+    public async Task CropUsesTheSameSchemaAndArgumentsOverCliAndMcp()
+    {
+        var command = Contract.Current.Find("editor.crop")!;
+        Assert.Equal("edit", command.Scope);
+        var schema = Contract.InputSchema(command);
+        Assert.Equal(["path", "region"], schema["required"]!.AsArray().Select(v => (string)v!).Order());
+        var region = schema["properties"]!["region"]!;
+        Assert.Equal(4, (int)region["minProperties"]!);
+        Assert.False((bool)region["additionalProperties"]!);
+        foreach (var name in new[] { "x", "y", "width", "height" })
+        {
+            Assert.Equal("integer", (string?)region["properties"]![name]!["type"]);
+            Assert.Equal(name is "x" or "y" ? 0 : 1, (int)region["properties"]![name]!["minimum"]!);
+        }
+        var tool = Assert.Single(McpServer.ListTools(), t => t.Name == "tinyclips_editor_crop");
+        Assert.True(JsonNode.DeepEquals(schema, JsonNode.Parse(tool.InputSchema.GetRawText())));
+
+        const string args = """{"path":"shot.png","region":{"x":2,"y":3,"width":7,"height":8}}""";
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["edit"];
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(20));
+        var env = app.Environment(new StringWriter(), new StringWriter(), token: "t");
+        Assert.Equal(0, await Cli.RunAsync(["editor.crop", "--params", args], env, deadline.Token));
+        await using var client = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "crop-test", Command = "dotnet", Arguments = [typeof(Contract).Assembly.Location, "mcp"],
+            EnvironmentVariables = new Dictionary<string, string?> { ["TINYCLIPS_AUTOMATION_ENDPOINT"] = app.Endpoint, ["TINYCLIPS_TOKEN"] = "t" },
+        }), cancellationToken: deadline.Token);
+        var result = await client.CallToolAsync(tool.Name, new Dictionary<string, object?>
+        {
+            ["path"] = "shot.png", ["region"] = JsonNode.Parse(args)!["region"],
+        }, cancellationToken: deadline.Token);
+        Assert.False(result.IsError);
+        Assert.Collection(app.Received, CheckCrop, CheckCrop);
+        static void CheckCrop(JsonObject request)
+        {
+            Assert.Equal("editor.crop", (string?)request["command"]);
+            Assert.True(JsonNode.DeepEquals(JsonNode.Parse(args), request["params"]));
+        }
     }
 
     [Fact]
@@ -109,6 +152,9 @@ public class ContractTests
     [InlineData("library.list", "{\"limit\":1.5}", "integer")]
     [InlineData("library.list", "{\"kind\":\"pdf\"}", "one of")]
     [InlineData("editor.open", "{}", "Missing required")]
+    [InlineData("editor.crop", """{"path":"shot.png"}""", "Missing required")]
+    [InlineData("editor.crop", """{"path":"shot.png","region":{"x":0,"y":0,"width":0,"height":3}}""", "at least 1")]
+    [InlineData("editor.crop", """{"path":"shot.png","region":{"x":0,"y":0.5,"width":1,"height":1}}""", "integer")]
     [InlineData("app.status", "{\"extra\":1}", "Unknown parameter")]
     [InlineData("recording.startVideo", "{\"studio\":\"yes\"}", "true or false")]
     [InlineData("studio.project.edit", "{\"projectId\":\"p\",\"expectedModifiedAt\":\"now\",\"expectedRevision\":\"rev\",\"patch\":{\"sources\":{}}}", "Unknown parameter")]

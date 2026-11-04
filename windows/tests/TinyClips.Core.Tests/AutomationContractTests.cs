@@ -90,6 +90,10 @@ public sealed class AutomationContractTests
     public void MediaEditCommands_UseEditScopeAndRequiredRange()
     {
         var contract = AutomationContract.Default;
+        Assert.True(contract.TryGetCommand("editor.crop", out var crop));
+        Assert.Equal("edit", crop.Scope);
+        Assert.True(crop.Parameters["path"].Required);
+        Assert.True(crop.Parameters["region"].Required);
         Assert.True(contract.TryGetCommand("editor.trim", out var trim));
         Assert.Equal("edit", trim.Scope);
         Assert.True(trim.Parameters["path"].Required);

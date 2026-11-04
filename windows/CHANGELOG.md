@@ -14,6 +14,7 @@ own `CHANGELOG.md` at the repository root.
 - Studio handoff protects pending trimmer edits and prevents competing actions; the footer fits the minimum window width. Existing project links are checked before importing, and portable project saving explains why external videos cannot be saved as a folder.
 
 ### Added
+- Agents with the `edit` scope can crop a saved screenshot by source pixels (`editor.crop`). The result is a new PNG in the library; the original is unchanged and no editor opens.
 - Any video can now be opened in Studio from the video trimmer or the Clips Library (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
 - Agents can trim videos and GIFs (`editor.trim`) and save a PNG frame (`editor.saveFrame`) without opening a trimmer; output is a new library item and the source is unchanged. Stale Studio edits return `conflict` instead of `busy`.
 - The shared MCP server uses the official C# SDK, with SDK-client interoperability smoke checks and unchanged app-enforced pairing and scopes.
