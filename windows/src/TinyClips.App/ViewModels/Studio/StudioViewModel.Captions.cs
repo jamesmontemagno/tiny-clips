@@ -97,7 +97,9 @@ public sealed partial class StudioViewModel
 
     public bool HasSelectedCaption => _session.SelectedCaptionIndex is not null;
 
-    public string SelectedCaptionText => _session.SelectedCaption?.Text ?? string.Empty;
+    // What is typed wins over the project: whatever refreshes the box while someone types in it
+    // must not put the old text back.
+    public string SelectedCaptionText => _pendingCaptionText ?? _session.SelectedCaption?.Text ?? string.Empty;
 
     public string SelectedCaptionTimeText =>
         _session.SelectedCaption is { } cue ? StudioCaptionText.GetRangeText(cue) : string.Empty;

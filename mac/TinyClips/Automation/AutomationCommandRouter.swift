@@ -760,6 +760,7 @@ final class AutomationCommandRouter {
             throw AutomationError(.invalidParams, "The export destination already exists; choose a new filename.")
         }
 
+        StudioWindowRegistry.shared.automationViewModel(forProjectID: id)?.commitCaptionText()
         let captions = StudioCaptionResolver.resolve(project: try currentStudioProject(id))
         guard !captions.isEmpty else {
             throw AutomationError(.invalidParams, "This video has no captions to export.")

@@ -77,6 +77,9 @@ public sealed class StudioViewModelCaptionTests : StudioViewModelTestBase
         viewModel.SetPendingCaptionText("Changed");
         Assert.Equal("First", viewModel.Project!.Captions.Cues[1].Text);
 
+        // A refresh of the box while someone types in it does not put the old text back.
+        Assert.Equal("Changed", viewModel.SelectedCaptionText);
+
         viewModel.CommitCaptionText();
 
         Assert.Equal("Changed", viewModel.Project!.Captions.Cues[1].Text);

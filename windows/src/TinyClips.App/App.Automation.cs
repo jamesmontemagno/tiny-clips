@@ -589,6 +589,7 @@ public partial class App : IAutomationAppActions
                         "The configured video-save folder does not exist.");
                 }
 
+                StudioWindows().FindOpenViewModel(projectId)?.CommitCaptionText();
                 var captions = StudioCaptionResolver.Resolve(ReadAutomationProject(projectId, store));
                 if (captions.Length == 0)
                 {
@@ -656,6 +657,7 @@ public partial class App : IAutomationAppActions
 
                 var project = ReadAutomationProject(projectId, store);
                 var openEditor = StudioWindows().FindOpenViewModel(projectId);
+                openEditor?.CommitCaptionText();
                 if (openEditor is not null)
                 {
                     if (!openEditor.SaveForAutomationExport() || openEditor.Project is not { } current)

@@ -41,6 +41,7 @@ public sealed partial class StudioInspector : UserControl
     private StudioInspectorPanel? _shownPanel;
     private bool _isSyncingRail;
     private bool _isSyncingCaptionList;
+    private IReadOnlyList<StudioCaptionRow>? _captionListRows;
     private bool _isSyncingSwatches;
 
     public StudioInspector(StudioViewModel viewModel)
@@ -146,8 +147,9 @@ public sealed partial class StudioInspector : UserControl
         try
         {
             var rows = ViewModel.CaptionRows;
-            if (!ReferenceEquals(CaptionList.ItemsSource, rows))
+            if (!ReferenceEquals(_captionListRows, rows))
             {
+                _captionListRows = rows;
                 CaptionList.ItemsSource = rows;
             }
 
@@ -168,9 +170,11 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
+    // New items let go of the selection, perhaps after the sync above is over, so only a row being
+    // chosen counts. A list in single selection is not emptied by the user.
     private void OnCaptionListSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_isSyncingCaptionList)
+        if (!_isSyncingCaptionList && e.AddedItems.Count > 0 && CaptionList.SelectedIndex != ViewModel.SelectedCaptionRow)
         {
             ViewModel.SelectCaptionRow(CaptionList.SelectedIndex);
         }
