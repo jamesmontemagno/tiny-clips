@@ -6,6 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Tiny Clips no longer runs in Windows Efficiency Mode. The tray library was putting the whole app at idle priority with EcoQoS, which delayed the tray popup, capture shortcuts, overlays, editors, and recordings, and could stop them responding at all while other apps were busy.
+- The capture picker appears right away: it no longer captures every monitor before showing, for frames that were almost never used.
 - Choosing an item from the tray popup's **Open folders** or **Recent** menu no longer leaves an empty white window on screen.
 - Agent Control now preserves Studio gestures and existing annotated captures, reports saved screenshot dimensions accurately, persists agent activity, and cancels pending approvals when an agent disconnects.
 - Revoking an agent cancels its pending approvals, and the CLI verifies the named-pipe owner before sending its token.
