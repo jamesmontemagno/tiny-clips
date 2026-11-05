@@ -657,10 +657,11 @@ struct ScreenshotEditorCanvasView: View {
             }
 
         case .blur:
-            if annotation.isOpaqueRedaction {
-                context.fill(Path(scaledRect), with: .color(.black))
+            if !annotation.isOpaqueRedaction, let patch = viewModel.redactionPatch(for: annotation) {
+                let rect = viewModel.scaledRect(patch.normalizedRect, imageSize: imageSize, origin: origin)
+                context.draw(Image(decorative: patch.image, scale: 1), in: rect)
             } else {
-                drawCheckerboardRedaction(in: context, rect: scaledRect, preset: annotation.redactionBlurPreset)
+                context.fill(Path(scaledRect), with: .color(.black))
             }
 
         case .number:

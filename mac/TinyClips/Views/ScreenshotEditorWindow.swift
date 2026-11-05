@@ -585,14 +585,14 @@ struct ScreenshotEditorView: View {
         )
     }
 
-    private var blurPresetBinding: Binding<RedactionBlurPreset> {
+    private var redactionStrengthBinding: Binding<RedactionStrength> {
         Binding(
             get: {
-                viewModel.selectedRedactionBlurPreset() ?? viewModel.redactionBlurPreset
+                viewModel.selectedRedactionStrength() ?? viewModel.redactionStrength
             },
             set: { newValue in
-                if !viewModel.updateSelectedRedactionBlurPreset(newValue) {
-                    viewModel.redactionBlurPreset = newValue
+                if !viewModel.updateSelectedRedactionStrength(newValue) {
+                    viewModel.redactionStrength = newValue
                 }
             }
         )
@@ -1290,11 +1290,22 @@ struct ScreenshotEditorView: View {
                 }
             }
 
-            if viewModel.showsRedactionPresetControl {
-                Picker("Redaction", selection: blurPresetBinding) {
-                    ForEach(RedactionBlurPreset.allCases) { preset in
-                        Text(preset.label).tag(preset)
+            if viewModel.showsRedactionStrengthControl {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Blur level")
+                        .accessibilityHidden(true)
+                    Picker("Blur level", selection: redactionStrengthBinding) {
+                        ForEach(RedactionStrength.allCases) { strength in
+                            Text(strength.label).tag(strength)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    Text(redactionStrengthBinding.wrappedValue.guidance)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 

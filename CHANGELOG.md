@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
 - macOS adds opt-in **Agent Control** (Settings → Agent Control, off by default) so AI agents and scripts on your Mac can drive TinyClips over a private local socket: screenshots, OCR, video and GIF recording, editors, the clips library, and selected settings. Each agent pairs once with your approval and only gets the permissions you grant. Deleting, uploading, and discarding always ask first, every request is written to a local audit log, and you can revoke agents or turn it off from Settings or the menu bar.
 
 ### Changed
+- macOS screenshot editor's Redact tool now applies a real blur from your screenshot instead of a gray checkerboard, with **Light**, **Medium**, and **Heavy** levels plus **Solid** black. The preview matches copied and exported images. Medium and Heavy discard detail rather than only softening it, but Light can stay readable; use Solid for passwords, keys, and other secrets. Agent `redact` annotations follow the same levels, and `pixelate` now produces real blocks.
 - Contributor instructions now require new and changed app capabilities to include agent API coverage on supported platforms.
 - Upgraded GitHub Agentic Workflows to v1.0.1 and refreshed the agent and routing skill. The weekly parity workflow still runs on Sundays around 09:00 with the Copilot auto model and a five-issue limit.
 
