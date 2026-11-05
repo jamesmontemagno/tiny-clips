@@ -15,6 +15,7 @@
             x:Name="ResolutionChoice"
             HorizontalAlignment="Stretch"
             AutomationProperties.AutomationId="StudioExportResolutionComboBox"
+            AutomationProperties.Name="Resolution"
             Header="Resolution"
             SelectionChanged="OnResolutionChanged" />
 
@@ -22,6 +23,7 @@
             x:Name="QualityChoice"
             HorizontalAlignment="Stretch"
             AutomationProperties.AutomationId="StudioExportQualityComboBox"
+            AutomationProperties.Name="Quality"
             Header="Quality"
             SelectionChanged="OnQualityChanged" />
 
