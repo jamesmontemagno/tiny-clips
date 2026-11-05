@@ -736,7 +736,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
         var groups = _controls.Bindings.Where(binding => binding.Control == "RadioButtons").ToArray();
-        Assert.Equal(5, groups.Length);
+        Assert.Equal(8, groups.Length);
 
         foreach (var group in groups)
         {
@@ -812,7 +812,6 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     public async Task AListThatHoldsNoChoiceWhileItIsBuilt_ChangesNothing_AndIsToldItsChoiceAgain()
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
-        viewModel.SelectSpeed(0);
         viewModel.ShowScene(1);
         Pump();
         var lists = _controls.Bindings.Where(binding => _controls.Shown(binding) is int).ToArray();
@@ -820,6 +819,9 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
 
         foreach (var list in lists)
         {
+            // What is selected decides what a list has to show, and one thing is selected at a time.
+            Select(viewModel, list.Property.StartsWith("Annotation", StringComparison.Ordinal) ? list.Property : "SpeedRateIndex");
+            Pump();
             var shown = (int)_controls.Shown(list)!;
             Assert.True(shown >= 0, $"{list} has no choice to show in this project");
 
@@ -864,6 +866,10 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         {
             viewModel.SelectSpeed(0);
         }
+        else if (property.StartsWith("Annotation", StringComparison.Ordinal))
+        {
+            viewModel.SelectAnnotation(0);
+        }
         else if (property.StartsWith("Scene", StringComparison.Ordinal) && viewModel.CurrentSceneIndex != 1)
         {
             viewModel.ShowScene(1);
@@ -907,6 +913,10 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         {
             Cuts = [new StudioTimeRange { Start = 8.5, End = 9.2 }],
             Speed = [new StudioSpeedRange { Start = 3.2, End = 3.9, Rate = 2 }],
+        },
+        Overlays = project.Overlays with
+        {
+            Annotations = [new StudioAnnotation { Id = "a", Kind = StudioAnnotationKinds.Callout, Start = 2, End = 4, X = 0.4, Y = 0.4, OffsetX = 0.1, OffsetY = 0.1, Text = "Note" }],
         },
     });
 

@@ -159,7 +159,7 @@ internal sealed partial class WindowChecks
         }
 
         _report.Check(
-            "each of the nine items, selected through UI Automation as a screen reader selects it, shows its panel at once: the name over the inspector is the panel's, and the rail has that item selected and no other",
+            "each of the items, selected through UI Automation as a screen reader selects it, shows its panel at once: the name over the inspector is the panel's, and the rail has that item selected and no other",
             wrongShown.Count == 0,
             wrongShown.Count == 0 ? string.Join(", ", titles) : string.Join(" | ", wrongShown));
         _report.Check(

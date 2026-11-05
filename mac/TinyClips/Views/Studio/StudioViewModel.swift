@@ -1199,7 +1199,10 @@ final class StudioViewModel: ObservableObject {
         var result = StudioAnnotationEditResult(changed: false, index: nil)
         editAndSelect { model in
             result = model.addAnnotation(kind: kind, at: time, events: recordedEvents)
-            return result.index.map { .annotation($0) } ?? .follow
+            if let index = result.index {
+                return .annotation(index)
+            }
+            return .follow
         }
         announce(result.changed ? StudioEditorModel.annotationAddedMessage(kind) : StudioEditorModel.noRoomForAnnotationMessage)
     }

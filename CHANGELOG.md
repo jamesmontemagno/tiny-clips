@@ -15,7 +15,8 @@ All notable changes to this project will be documented in this file.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
 
 ### Added
-- Studio can draw arrows, callouts, and text over a video, in the preview and the export. A screen annotation follows zooms and crops; a frame annotation stays where it is. Agents add them through `overlays.annotations` in `studio.project.edit`. Editing them in the Studio window comes next.
+- Studio can add arrows, callouts, and text over a video, from the new tools in the editor's header or with A, C, and T. The Annotate panel sets their text, style, size, position, timing, and drawing order, and a lane on the timeline moves and resizes them. A screen annotation follows zooms and crops; a frame annotation stays where it is. Agents edit the same list through `overlays.annotations` in `studio.project.edit`.
+- The Studio timeline shows a lane only when it has something on it, including the existing scene, zoom, cut, and speed lanes, so a new project starts with just the trim bar. The buttons, keys, and inspector add the first of each.
 - Agent Control settings now show both plugin install paths and a separate CLI-only setup with `dnx` and global tool commands on macOS and Windows.
 - Agent permissions are now yours to choose: the pairing prompt lists every scope with the agent's request pre-checked, so you can remove or add permissions before approving, and each paired agent has a **Permissions** control in Settings → Agent Control that applies changes immediately without re-pairing. Sensitive scopes still ask every time.
 - Moved the portable Agent Plugin to the repository root so VS Code can install it directly from the repository URL without a manual clone or marketplace; updated installation guidance, CI, and release packaging.
