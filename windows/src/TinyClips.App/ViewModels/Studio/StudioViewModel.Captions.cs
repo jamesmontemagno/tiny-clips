@@ -1,6 +1,8 @@
 using TinyClips.App.Models.Studio;
 using TinyClips.Core.Models;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App.ViewModels.Studio;
 
@@ -293,6 +295,8 @@ public sealed partial class StudioViewModel
                 OnPropertyChanged(nameof(CaptionModelNote));
                 OnPropertyChanged(nameof(CaptionGenerateActionText));
             }
+
+            ResyncIfDifferent(value, SelectedCaptionModelIndex);
         }
     }
 

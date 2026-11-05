@@ -1,3 +1,4 @@
+using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Transcription;
