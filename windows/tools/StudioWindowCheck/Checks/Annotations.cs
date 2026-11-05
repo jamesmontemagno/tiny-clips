@@ -168,8 +168,8 @@ internal sealed partial class WindowChecks
         var undone = Invoke(editor, "StudioUndoButton");
         var back = Until(() => AnnotationsOf(editor).Length, count => count == 3, 1.5);
         _report.Check(
-            "what Delete runs takes away the selected annotation and says so; Undo brings it back, selected",
-            key == StudioShortcutAction.RemoveSelectedAnnotation && said.Said && left == 2 && undone && back == 3 && SelectedAnnotationOf(editor) == 0,
+            "what Delete runs takes away the selected annotation and says so; Undo brings it back and selects nothing, as with a cut",
+            key == StudioShortcutAction.RemoveSelectedAnnotation && said.Said && left == 2 && undone && back == 3 && SelectedAnnotationOf(editor) is null,
             $"Delete ran {key}, {left} left; sent: {said.Heard}; after Undo {back}, selected {SelectedAnnotationOf(editor)}");
 
         // With the Delete annotation button, one after the other. The last takes the lane and the list with it.

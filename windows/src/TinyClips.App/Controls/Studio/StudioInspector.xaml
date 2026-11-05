@@ -1549,7 +1549,7 @@
                                 <RadioButtons
                                     AutomationProperties.AutomationId="StudioAnnotationSizeChoice"
                                     Header="Size"
-                                    MaxColumns="3"
+                                    MaxColumns="1"
                                     SelectedIndex="{x:Bind ViewModel.AnnotationSizeIndex, Mode=TwoWay}"
                                     ToolTipService.ToolTip="How large this annotation is">
                                     <x:String>Small</x:String>

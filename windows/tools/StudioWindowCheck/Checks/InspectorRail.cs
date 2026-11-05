@@ -76,6 +76,7 @@ internal sealed partial class WindowChecks
         var folder = NewCameraProject("Inspector rail", p => p with
         {
             Scenes = [p.Scenes[0], p.Scenes[0] with { Start = 6.0, Transition = new StudioTransition { Kind = StudioTransitionKind.Morph } }],
+            Overlays = p.Overlays with { Annotations = [new StudioAnnotation { Id = "rail", Kind = StudioAnnotationKinds.Arrow, Start = 9, End = 10 }] },
         });
         if (OpenReady(folder, "inspector rail") is not { } editor)
         {
