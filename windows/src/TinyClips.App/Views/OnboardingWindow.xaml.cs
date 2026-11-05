@@ -9,14 +9,16 @@ using Windows.Graphics;
 namespace TinyClips.App;
 
 /// <summary>
-/// First-run welcome wizard. Three steps introduce the app and its shortcuts, then mark
-/// onboarding complete so it does not appear again. Raised via the tray on first launch.
+/// First-run welcome wizard. Four steps introduce the app, offer launch at login, and show the
+/// shortcuts, then mark onboarding complete so it does not appear again. Raised via the tray on
+/// first launch.
 /// </summary>
 public sealed partial class OnboardingWindow : Window
 {
-    private const int LastStep = 2;
+    private const int LaunchAtLoginStep = 2;
+    private const int LastStep = 3;
 
-    // 480×520 DIP: step 2 (the densest step) holds an 88-DIP illustration, title, body,
+    // 480×520 DIP: step 3 (the densest step) holds an 88-DIP illustration, title, body,
     // shortcut card, and navigation footer; 520 keeps all content in-frame at 100% DPI.
     private const int MinimumWidthDip  = 480;
     private const int MinimumHeightDip = 520;
@@ -25,9 +27,12 @@ public sealed partial class OnboardingWindow : Window
     private int _step;
     private readonly WindowChromeController _chromeController;
 
+    public OnboardingViewModel ViewModel { get; }
+
     public OnboardingWindow()
     {
         _settings = App.Services.GetRequiredService<ICaptureSettings>();
+        ViewModel = new OnboardingViewModel(App.Services.GetRequiredService<ILaunchAtLoginService>(), _settings);
 
         InitializeComponent();
         WindowCaptureVisibility.Register(this);
@@ -54,6 +59,10 @@ public sealed partial class OnboardingWindow : Window
         VideoShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
         GifShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
 
+        // A change can still finish after the wizard closes; it no longer has a toggle to update.
+        Closed += (_, _) => Bindings.StopTracking();
+
+        _ = ViewModel.RefreshAsync();
         UpdateStep();
     }
 
@@ -66,6 +75,7 @@ public sealed partial class OnboardingWindow : Window
         }
 
         _step++;
+        RefreshLaunchAtLoginOnItsStep();
         UpdateStep();
     }
 
@@ -74,6 +84,7 @@ public sealed partial class OnboardingWindow : Window
         if (_step > 0)
         {
             _step--;
+            RefreshLaunchAtLoginOnItsStep();
             UpdateStep();
         }
     }
@@ -86,11 +97,21 @@ public sealed partial class OnboardingWindow : Window
         Close();
     }
 
+    // The state can change outside the wizard, such as from Settings or Windows Settings.
+    private void RefreshLaunchAtLoginOnItsStep()
+    {
+        if (_step == LaunchAtLoginStep)
+        {
+            _ = ViewModel.RefreshAsync();
+        }
+    }
+
     private void UpdateStep()
     {
         Step0.Visibility = _step == 0 ? Visibility.Visible : Visibility.Collapsed;
         Step1.Visibility = _step == 1 ? Visibility.Visible : Visibility.Collapsed;
         Step2.Visibility = _step == 2 ? Visibility.Visible : Visibility.Collapsed;
+        Step3.Visibility = _step == 3 ? Visibility.Visible : Visibility.Collapsed;
 
         BackButton.Visibility = _step > 0 ? Visibility.Visible : Visibility.Collapsed;
         SkipButton.Visibility = _step >= LastStep ? Visibility.Collapsed : Visibility.Visible;
@@ -101,5 +122,6 @@ public sealed partial class OnboardingWindow : Window
         Dot0.Style = _step == 0 ? active : inactive;
         Dot1.Style = _step == 1 ? active : inactive;
         Dot2.Style = _step == 2 ? active : inactive;
+        Dot3.Style = _step == 3 ? active : inactive;
     }
 }
