@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Choosing an item from the tray popup's **Open folders** or **Recent** menu no longer leaves an empty white window on screen.
 - Agent Control now preserves Studio gestures and existing annotated captures, reports saved screenshot dimensions accurately, persists agent activity, and cancels pending approvals when an agent disconnects.
 - Revoking an agent cancels its pending approvals, and the CLI verifies the named-pipe owner before sending its token.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
