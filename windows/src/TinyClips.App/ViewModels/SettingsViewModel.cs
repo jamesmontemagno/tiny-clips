@@ -1841,7 +1841,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private void ApplyLaunchAtLoginState(LaunchAtLoginState state)
     {
-        var enabled = state is LaunchAtLoginState.Enabled or LaunchAtLoginState.EnabledByPolicy;
+        var enabled = state.IsOn();
 
         // Reflect OS truth without re-triggering the change handler.
         _suppressLaunchAtLogin = true;
@@ -1855,17 +1855,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         // The app can only flip the toggle when Windows hasn't locked it.
-        LaunchAtLoginToggleEnabled = state is LaunchAtLoginState.Enabled or LaunchAtLoginState.Disabled;
+        LaunchAtLoginToggleEnabled = state.CanChange();
 
-        LaunchAtLoginNote = state switch
-        {
-            LaunchAtLoginState.DisabledByUser =>
-                "Turned off in Windows Settings \u2192 Apps \u2192 Startup. Re-enable Tiny Clips there to allow launch at login.",
-            LaunchAtLoginState.DisabledByPolicy => "Launch at login is disabled by your organization's policy.",
-            LaunchAtLoginState.EnabledByPolicy => "Launch at login is enabled by your organization's policy.",
-            LaunchAtLoginState.Unavailable => "Launch at login isn't available for this installation.",
-            _ => string.Empty,
-        };
+        LaunchAtLoginNote = state.Describe();
 
         // Keep the persisted mirror aligned with the real state.
         _settings.LaunchAtLogin = enabled;

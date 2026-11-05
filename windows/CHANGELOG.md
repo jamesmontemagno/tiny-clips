@@ -14,6 +14,7 @@ own `CHANGELOG.md` at the repository root.
 - Studio handoff protects pending trimmer edits and prevents competing actions; the footer fits the minimum window width. Existing project links are checked before importing, and portable project saving explains why external videos cannot be saved as a folder.
 
 ### Added
+- The welcome wizard now asks whether to start Tiny Clips when you sign in to Windows. It stays off unless you turn it on, and it can be changed later in Settings.
 - Agent Control settings now show a CLI-only setup alongside both plugin install paths, with copyable `dnx` and global tool commands.
 - Agent permissions are now yours to choose: the pairing prompt lists every scope as a checkbox with the agent's request pre-checked, and each paired agent in Settings → Agent control has a **Permissions** flyout that applies changes immediately without re-pairing. Sensitive scopes still ask every time, and a scope removed while an approval is open is re-checked before the command runs.
 - Any video can now be opened in Studio from the video trimmer or the Clips Library (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.

@@ -41,7 +41,8 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   for the screen and the camera, cuts, speed changes, trim, and MP4 export.
   The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
 - **Region outline** — a red outline frames the selected region during the countdown.
-- **Onboarding & Guide** — a first-run welcome wizard and an in-app help reference.
+- **Onboarding & Guide** — a first-run welcome wizard, including an optional launch-at-login
+  choice, and an in-app help reference.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
   **Smart Collections** (All, Recent, This Week, This Month, Large Files, Favorites, Screenshots,
   Videos, GIFs), your **Collections**, and **Tags**; search across names, tags and notes; a
@@ -58,7 +59,8 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   Stop recording `Ctrl+Shift+S`. The Video hotkey always makes an ordinary recording; Studio
   recording has no hotkey. Optional Recognize Text (OCR) and direct Screenshot region, screen,
   and window shortcuts can be set in Settings → Keyboard shortcuts; they are unbound by default.
-- **Launch at login** — optionally start TinyClips when you sign in to Windows.
+- **Launch at login** — optionally start TinyClips when you sign in to Windows, from the welcome
+  wizard or Settings.
 - **Pre-capture countdown** and **save toast notifications** (both opt-in via Settings).
 - **Include Tiny Clips in captures** (Settings → General → Capture behavior) lets app windows
   and capture controls appear in screenshots and recordings for demos, and makes eligible
