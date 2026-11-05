@@ -72,9 +72,9 @@ Stage 1 answers the first two, on a Mac:
 - **WhisperKit:** word timings, and how the Mac App Store network entitlement fares in App Review.
 - **Project size:** test an hour-long project, because Windows compares undo state as serialized
   text (`StudioEditableState.ContentEquals`).
-- **Package size:** `Whisper.net.Runtime` copies the libraries of every Windows architecture and
-  pulls in a small Metal package, about 5.5 MB more than one architecture needs. Trim it if it
-  matters.
+- **Package size:** captions add about 2.8 MiB to the MSIX and 7 MiB once installed.
+  `Whisper.net.Runtime` copies the libraries of all three Windows architectures, so about 3.4 MiB
+  of the installed size is libraries a package cannot use. Trim it if it matters.
 - **Language:** Windows detects the language, and a recording can be heard as the wrong one. A
   language picker can use the same setting SpeechAnalyzer needs on macOS.
 - **GPU:** Whisper.net has Vulkan and CUDA runtimes. Both are large, and neither is in the package.
