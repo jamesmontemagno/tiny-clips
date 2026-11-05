@@ -1,7 +1,9 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 using WinRT.Interop;
@@ -14,6 +16,7 @@ internal sealed class TrayPopupWindow : Window
 {
     private readonly AppWindow _appWindow;
     private readonly nint _hwnd;
+    private bool _hideRequested;
 
     public TrayPopupWindow(UIElement content)
     {
@@ -41,7 +44,7 @@ internal sealed class TrayPopupWindow : Window
     {
         if (e.WindowActivationState == WindowActivationState.Deactivated)
         {
-            _appWindow.Hide();
+            Hide();
         }
     }
 
@@ -54,7 +57,57 @@ internal sealed class TrayPopupWindow : Window
 
     public bool IsOpen => _appWindow.IsVisible;
 
-    public void Hide() => _appWindow.Hide();
+    public void Hide()
+    {
+        _hideRequested = true;
+        if (!_appWindow.IsVisible)
+        {
+            return;
+        }
+
+        // Hiding the window while one of its flyouts (Open folders / Recent) is still open
+        // leaves an empty white frame on screen once the flyout finishes closing. Close the
+        // flyouts first and hide the window only after they have gone.
+        var openPopups = Content.XamlRoot is { } root
+            ? VisualTreeHelper.GetOpenPopupsForXamlRoot(root)
+            : [];
+        if (openPopups.Count == 0)
+        {
+            _appWindow.Hide();
+            return;
+        }
+
+        foreach (var popup in openPopups)
+        {
+            popup.Closed -= OnPopupClosed;
+            popup.Closed += OnPopupClosed;
+            popup.IsOpen = false;
+        }
+    }
+
+    private void OnPopupClosed(object? sender, object e)
+    {
+        if (sender is Popup popup)
+        {
+            popup.Closed -= OnPopupClosed;
+        }
+
+        // Let the flyout finish closing (focus restore, owner reactivation) before hiding.
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            if (!_hideRequested || !_appWindow.IsVisible)
+            {
+                return;
+            }
+
+            if (Content.XamlRoot is { } root && VisualTreeHelper.GetOpenPopupsForXamlRoot(root).Count > 0)
+            {
+                return;
+            }
+
+            _appWindow.Hide();
+        });
+    }
 
     public void Resize(double logicalWidth, double logicalHeight)
     {
@@ -96,6 +149,7 @@ internal sealed class TrayPopupWindow : Window
             height);
 
         _appWindow.MoveAndResize(rect);
+        _hideRequested = false;
         _appWindow.Show();
         Activate();
         SetForegroundWindow(_hwnd);
