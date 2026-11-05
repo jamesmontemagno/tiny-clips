@@ -202,10 +202,10 @@ final class StudioViewModel: ObservableObject {
         return Self.renderSize(for: project, longSide: Self.previewLongSide)
     }
 
-    /// The size the next export comes to with the resolution Export offers first.
-    var exportRenderSize: CGSize {
+    /// The size the next export comes to at `resolution`.
+    func exportRenderSize(for resolution: StudioExportResolution) -> CGSize {
         guard let project else { return CGSize(width: 1920, height: 1080) }
-        let size = StudioExportPresets.size(project: project, resolution: CaptureSettings.shared.studioExportChoice.resolution)
+        let size = StudioExportPresets.size(project: project, resolution: resolution)
         return CGSize(width: size.width, height: size.height)
     }
 

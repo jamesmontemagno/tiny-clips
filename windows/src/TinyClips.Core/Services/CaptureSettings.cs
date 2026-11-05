@@ -200,8 +200,18 @@ public sealed class CaptureSettings : ICaptureSettings
         get => StudioExportPresets.TryParseResolution(_settings.Get("studioExportResolution", string.Empty), out var resolution)
             ? resolution
             : StudioExportChoice.Default.Resolution;
-        set => _settings.Set("studioExportResolution", StudioExportPresets.Id(value));
+        set
+        {
+            var changed = StudioExportResolution != value;
+            _settings.Set("studioExportResolution", StudioExportPresets.Id(value));
+            if (changed)
+            {
+                StudioExportResolutionChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
+
+    public event EventHandler? StudioExportResolutionChanged;
 
     public StudioExportQuality StudioExportQuality
     {

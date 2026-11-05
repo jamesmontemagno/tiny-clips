@@ -12,6 +12,11 @@ enum StudioExportResolution: String, CaseIterable, Sendable {
     case p720 = "720p"
     case p480 = "480p"
 
+    /// What a stored setting stands for. A value that is not known counts as the default.
+    init(stored: String) {
+        self = StudioExportResolution(rawValue: stored) ?? StudioExportChoice.default.resolution
+    }
+
     var label: String {
         switch self {
         case .maximum: return "Maximum"

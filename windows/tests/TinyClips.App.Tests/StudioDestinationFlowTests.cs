@@ -50,7 +50,7 @@ public sealed class StudioDestinationFlowTests : StudioViewModelTestBase
             for (var turns = 0; turns < 200 && !outcome.IsCompleted; turns++)
             {
                 Pump();
-                await Task.Delay(5);
+                await Task.Delay(5, TestContext.Current.CancellationToken);
             }
 
             Assert.Equal(StudioExportOutcome.Exported, await outcome);
@@ -68,6 +68,33 @@ public sealed class StudioDestinationFlowTests : StudioViewModelTestBase
         {
             Directory.Delete(folder, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task EveryOpenEditorsHeaderFollowsAResolutionChosenElsewhereUntilItCloses()
+    {
+        var settings = CreateSettings();
+        var first = await OpenAsync(CreateProject(), settings: settings);
+        var second = await OpenAsync(CreateProject(), settings: settings);
+        var raised = new List<string?>();
+        second.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        Assert.Equal("Exports at 1920 × 1080", second.ExportSizeText);
+
+        settings.StudioExportResolution = StudioExportResolution.P720;
+
+        // It comes on the UI thread, wherever the setting was changed from.
+        Assert.DoesNotContain(nameof(StudioViewModel.ExportSizeText), raised);
+        Pump();
+        Assert.Contains(nameof(StudioViewModel.ExportSizeText), raised);
+        Assert.Equal("Exports at 1280 × 720", second.ExportSizeText);
+
+        await CloseAsync(second);
+        raised.Clear();
+        settings.StudioExportResolution = StudioExportResolution.P480;
+        Pump();
+
+        Assert.DoesNotContain(nameof(StudioViewModel.ExportSizeText), raised);
+        Assert.Equal("Exports at 854 × 480", first.ExportSizeText);
     }
 
     [Fact]

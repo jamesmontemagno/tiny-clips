@@ -84,14 +84,14 @@ public abstract class StudioViewModelTestBase : IDisposable
     /// are bound to it while it still says it is loading, and then the project is read. A test
     /// that opens a project which cannot be shown says so.
     /// </summary>
-    protected async Task<StudioViewModel> OpenAsync(string projectId, StudioBoundControls? controls = null, bool expectReady = true)
+    protected async Task<StudioViewModel> OpenAsync(string projectId, StudioBoundControls? controls = null, bool expectReady = true, CaptureSettings? settings = null)
     {
         var viewModel = new StudioViewModel(
             projectId,
             _store,
             _previews,
             new StudioTestExporter(),
-            new CaptureSettings(new StudioTestSettings()),
+            settings ?? CreateSettings(),
             new StudioTestVideoNames(Path.Combine(_directory, "Videos")),
             Post,
             canFindPeople: true,
@@ -106,6 +106,9 @@ public abstract class StudioViewModelTestBase : IDisposable
         Assert.True(viewModel.IsReady == expectReady, expectReady ? viewModel.UnavailableMessage : "the project opened");
         return viewModel;
     }
+
+    /// <summary>Settings for editors that are to share them, as the app's editors do.</summary>
+    protected static CaptureSettings CreateSettings() => new(new StudioTestSettings());
 
     /// <summary>Closes the editor as its window does, which saves what is not saved yet.</summary>
     protected async Task CloseAsync(StudioViewModel viewModel)

@@ -109,6 +109,11 @@ private struct StudioEditorView: View {
 private struct StudioHeaderView: View {
     @ObservedObject var viewModel: StudioViewModel
 
+    /// The resolution Export offers first. The view holds it so that a choice made in another
+    /// window, or by an agent, reaches the header, which otherwise follows only its view model.
+    @AppStorage(CaptureSettings.studioExportResolutionKey)
+    private var exportResolution = StudioExportChoice.default.resolution.rawValue
+
     private static let aspects: [StudioCanvasAspect] = [
         .auto, .square, .landscape4x3, .landscape16x9, .portrait3x4, .portrait9x16
     ]
@@ -225,7 +230,7 @@ private struct StudioHeaderView: View {
     }
 
     private var exportSizeText: String {
-        let size = viewModel.exportRenderSize
+        let size = viewModel.exportRenderSize(for: StudioExportResolution(stored: exportResolution))
         return "Exports at \(Int(size.width)) × \(Int(size.height))"
     }
 

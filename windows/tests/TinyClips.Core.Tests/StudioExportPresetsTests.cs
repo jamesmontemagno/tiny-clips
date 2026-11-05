@@ -142,6 +142,24 @@ public sealed class StudioExportPresetsTests
     }
 
     [Fact]
+    public void Settings_SayWhenTheResolutionChanges_AndOnlyThen()
+    {
+        var settings = new CaptureSettings(new MemorySettings());
+        var changes = 0;
+        settings.StudioExportResolutionChanged += (_, _) => changes++;
+
+        settings.StudioExportResolution = StudioExportChoice.Default.Resolution;
+        settings.StudioExportQuality = StudioExportQuality.Best;
+        Assert.Equal(0, changes);
+
+        settings.StudioExportResolution = StudioExportResolution.P720;
+        Assert.Equal(1, changes);
+
+        new AutomationSettingsCatalog(settings).Set("studioExportResolution", JsonValue("480p"));
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
     public void Settings_AreAvailableToAgents_AndRefuseAnythingElse()
     {
         var settings = new CaptureSettings(new MemorySettings());

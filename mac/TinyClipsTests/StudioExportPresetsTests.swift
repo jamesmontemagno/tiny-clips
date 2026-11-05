@@ -134,6 +134,12 @@ final class StudioExportPresetsTests: XCTestCase {
         XCTAssertEqual(StudioExportChoice.default, StudioExportChoice(resolution: .p1080, quality: .high))
     }
 
+    func testAStoredResolutionThatIsNotKnownCountsAsTheDefault() {
+        XCTAssertEqual(StudioExportResolution(stored: "720p"), .p720)
+        XCTAssertEqual(StudioExportResolution(stored: "8k"), StudioExportChoice.default.resolution)
+        XCTAssertEqual(CaptureSettings.studioExportResolutionKey, "studioExportResolution")
+    }
+
     private func model(width: Double, height: Double, saved: StudioExportChoice) -> StudioExportOptionsModel {
         StudioExportOptionsModel(
             naturalWidth: width,

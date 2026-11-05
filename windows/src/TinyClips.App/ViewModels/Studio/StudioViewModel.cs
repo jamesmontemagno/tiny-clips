@@ -135,6 +135,7 @@ public sealed partial class StudioViewModel : ObservableObject
         _session.Exported += OnSessionExported;
         _session.ScreenRecordingSaved += OnSessionScreenRecordingSaved;
         _session.ErrorReported += OnSessionErrorReported;
+        _settings.StudioExportResolutionChanged += OnExportResolutionChanged;
     }
 
     /// <summary>Raised when the editor goes from loading to ready or unavailable, or stops being ready.</summary>
@@ -605,7 +606,6 @@ public sealed partial class StudioViewModel : ObservableObject
         var remembered = options.ChoiceToRemember;
         _settings.StudioExportResolution = remembered.Resolution;
         _settings.StudioExportQuality = remembered.Quality;
-        OnPropertyChanged(nameof(ExportSizeText));
         return options.Choice;
     }
 
@@ -621,7 +621,23 @@ public sealed partial class StudioViewModel : ObservableObject
     /// saved at that moment (<see cref="SaveScreenRecordingAsync"/>) is waited for as well, so
     /// that the editor has not closed before it has been said what came of that save.
     /// </summary>
-    public Task CloseAsync(bool deleteProject) => _session.CloseAsync(deleteProject);
+    public Task CloseAsync(bool deleteProject)
+    {
+        // The settings outlive every editor, and would keep this one in memory.
+        _settings.StudioExportResolutionChanged -= OnExportResolutionChanged;
+        return _session.CloseAsync(deleteProject);
+    }
+
+    // The header says what the next export comes to, and the resolution can be chosen in another
+    // editor or by an agent.
+    private void OnExportResolutionChanged(object? sender, EventArgs e) =>
+        _post(() =>
+        {
+            if (!_session.IsClosed)
+            {
+                OnPropertyChanged(nameof(ExportSizeText));
+            }
+        });
 
     // Session events
 

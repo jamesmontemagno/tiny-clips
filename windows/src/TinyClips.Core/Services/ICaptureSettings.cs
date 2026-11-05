@@ -43,6 +43,9 @@ public interface ICaptureSettings
     /// <summary>The resolution Studio's Export popup offers first: the last one chosen there.</summary>
     StudioExportResolution StudioExportResolution { get; set; }
 
+    /// <summary>Raised when <see cref="StudioExportResolution"/> changes value, on the thread that changed it.</summary>
+    event EventHandler? StudioExportResolutionChanged;
+
     /// <summary>The quality Studio's Export popup offers first: the last one chosen there.</summary>
     StudioExportQuality StudioExportQuality { get; set; }
 
