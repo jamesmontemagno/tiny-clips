@@ -40,6 +40,12 @@ public interface ICaptureSettings
     /// <summary>H.264 (default, universally playable) or HEVC (smaller files, needs an HEVC decoder to play).</summary>
     VideoCodec VideoCodec { get; set; }
 
+    /// <summary>The resolution Studio's Export popup offers first: the last one chosen there.</summary>
+    StudioExportResolution StudioExportResolution { get; set; }
+
+    /// <summary>The quality Studio's Export popup offers first: the last one chosen there.</summary>
+    StudioExportQuality StudioExportQuality { get; set; }
+
     /// <summary>
     /// Marker for the last "What's new" the user dismissed: <c>rev{N};{version}</c>, where N is the
     /// window's content revision. Empty = never shown.

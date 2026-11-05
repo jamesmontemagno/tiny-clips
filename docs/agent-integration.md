@@ -190,6 +190,8 @@ Studio commands work on both platforms when Studio is enabled. `studio.projects.
 
 `studio.export` requires an explicit MP4 path directly inside the configured video-save folder. It never overwrites an existing file or writes inside the project/source folders. A successful export is added to the library and linked back to its Studio project.
 
+`studio.export` takes an optional `resolution` (`maximum`, `2160p`, `1440p`, `1080p`, `720p`, or `480p`) and `quality` (`best`, `high`, `standard`, or `small`). A video keeps the shape of its canvas, fits inside the named frame turned to match the canvas, and is never scaled up, so check the `width` and `height` it reports. Omitted values use the choices last made in Studio's Export popup, which start at `1080p` and `high`; agents can read and set them as the `studioExportResolution` and `studioExportQuality` settings. `studio.export.options` is the read-only view of the same popup: the resolutions offered for a project with their sizes, and each quality's video bitrate and estimated file size at the chosen resolution.
+
 ### Policy order
 
 1. `session.hello` is allowed without a token while the listener is available.

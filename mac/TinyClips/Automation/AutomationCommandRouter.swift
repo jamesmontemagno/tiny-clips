@@ -15,7 +15,7 @@ final class AutomationCommandRouter {
         "recording.restart", "recording.discard",
         "editor.open", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
         "library.delete", "library.upload", "studio.projects.list", "studio.project.get",
-        "studio.project.edit", "studio.zoom.suggest", "studio.export",
+        "studio.project.edit", "studio.zoom.suggest", "studio.export.options", "studio.export",
     ]
 
     private unowned let controller: AutomationController
@@ -57,6 +57,7 @@ final class AutomationCommandRouter {
         case "studio.project.get": return try getStudioProject(params)
         case "studio.project.edit": return try editStudioProject(params)
         case "studio.zoom.suggest": return try suggestStudioZooms(params)
+        case "studio.export.options": return try studioExportOptions(params)
         case "studio.export": return try await exportStudioProject(params)
         case "editor.annotate": return try annotate(params)
         case "editor.trim": return try await trim(params)
@@ -672,9 +673,64 @@ final class AutomationCommandRouter {
         ]
     }
 
+    /// What was asked for, and for what was not, the choice last made in the Export popover.
+    private static func studioExportChoice(_ params: [String: Any]) throws -> StudioExportChoice {
+        var choice = CaptureSettings.shared.studioExportChoice
+        if let asked = params["resolution"] {
+            guard let id = asked as? String, let resolution = StudioExportResolution(rawValue: id) else {
+                let ids = StudioExportResolution.allCases.map(\.rawValue).joined(separator: ", ")
+                throw AutomationError(.invalidParams, "resolution must be one of: \(ids).")
+            }
+            choice.resolution = resolution
+        }
+        if let asked = params["quality"] {
+            guard let id = asked as? String, let quality = StudioExportQuality(rawValue: id) else {
+                let ids = StudioExportQuality.allCases.map(\.rawValue).joined(separator: ", ")
+                throw AutomationError(.invalidParams, "quality must be one of: \(ids).")
+            }
+            choice.quality = quality
+        }
+        return choice
+    }
+
+    private func studioExportOptions(_ params: [String: Any]) throws -> [String: Any] {
+        try requireStudioEnabled()
+        let id = try Self.requiredString(params, "projectId")
+        let project = try currentStudioProject(id)
+        let isHEVC = CaptureSettings.shared.videoCodec == .hevc
+        let options = StudioExportOptionsModel(project: project, isHEVC: isHEVC, saved: try Self.studioExportChoice(params))
+        return [
+            "projectId": id,
+            "resolution": options.choice.resolution.rawValue,
+            "quality": options.choice.quality.rawValue,
+            "width": Int(options.size.width),
+            "height": Int(options.size.height),
+            "canvasWidth": Int(options.naturalWidth),
+            "canvasHeight": Int(options.naturalHeight),
+            "codec": isHEVC ? "hevc" : "h264",
+            "resolutions": options.resolutions.map { option in
+                [
+                    "id": option.resolution.rawValue,
+                    "label": option.resolution.label,
+                    "width": Int(option.width),
+                    "height": Int(option.height),
+                ] as [String: Any]
+            },
+            "qualities": options.qualities.map { option in
+                [
+                    "id": option.quality.rawValue,
+                    "label": option.quality.label,
+                    "videoBitrate": option.videoBitrate,
+                    "estimatedBytes": option.estimatedBytes,
+                ] as [String: Any]
+            },
+        ]
+    }
+
     private func exportStudioProject(_ params: [String: Any]) async throws -> [String: Any] {
         try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
+        let choice = try Self.studioExportChoice(params)
         let rawPath = try Self.requiredString(params, "outputPath")
         let outputURL = URL(fileURLWithPath: (rawPath as NSString).expandingTildeInPath).standardizedFileURL
         let outputDirectory = SaveService.shared.outputDirectoryURL(for: .video).resolvingSymlinksInPath()
@@ -713,7 +769,9 @@ final class AutomationCommandRouter {
             throw AutomationError(.invalidParams, "The export destination cannot be inside the Studio project or overwrite a source recording.")
         }
 
-        let size = StudioCanvasMath.exportSize(project: project, longSideLimit: 3840)
+        let natural = StudioCanvasMath.naturalCanvas(project: project)
+        let size = StudioExportPresets.size(naturalWidth: natural.width, naturalHeight: natural.height, resolution: choice.resolution)
+        let resolution = StudioExportPresets.effective(naturalWidth: natural.width, naturalHeight: natural.height, resolution: choice.resolution)
         do {
             _ = try await StudioExporter.export(
                 project: project,
@@ -721,11 +779,19 @@ final class AutomationCommandRouter {
                 paths: paths,
                 outputURL: outputURL,
                 renderSize: CGSize(width: size.width, height: size.height),
-                codec: CaptureSettings.shared.videoCodec
+                codec: CaptureSettings.shared.videoCodec,
+                quality: choice.quality
             )
             _ = try store.recordExport(id: id, path: outputURL.path)
             SaveService.shared.handleSavedFile(url: outputURL, type: .video)
-            return ["projectId": id, "path": outputURL.path]
+            return [
+                "projectId": id,
+                "path": outputURL.path,
+                "resolution": resolution.rawValue,
+                "quality": choice.quality.rawValue,
+                "width": Int(size.width),
+                "height": Int(size.height),
+            ]
         } catch {
             throw AutomationError(.internal, "Studio export failed: \(error.localizedDescription)")
         }

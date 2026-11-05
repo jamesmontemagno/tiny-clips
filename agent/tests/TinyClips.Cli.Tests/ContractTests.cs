@@ -78,6 +78,7 @@ public class ContractTests
         Assert.Equal("read", contract.Find("studio.project.get")!.Scope);
         Assert.Equal("edit", contract.Find("studio.project.edit")!.Scope);
         Assert.Equal("read", contract.Find("studio.zoom.suggest")!.Scope);
+        Assert.Equal("read", contract.Find("studio.export.options")!.Scope);
         Assert.Equal("export", contract.Find("studio.export")!.Scope);
 
         var edit = Contract.InputSchema(contract.Find("studio.project.edit")!);
@@ -108,6 +109,10 @@ public class ContractTests
     [InlineData("library.list", "{\"limit\":5,\"kind\":\"gif\"}", null)]
     [InlineData("library.list", "{\"limit\":1.5}", "integer")]
     [InlineData("library.list", "{\"kind\":\"pdf\"}", "one of")]
+    [InlineData("studio.export", "{\"projectId\":\"p\",\"outputPath\":\"a.mp4\",\"resolution\":\"8k\"}", "one of")]
+    [InlineData("studio.export", "{\"projectId\":\"p\",\"outputPath\":\"a.mp4\",\"quality\":\"nice\"}", "one of")]
+    [InlineData("studio.export", "{\"projectId\":\"p\",\"outputPath\":\"a.mp4\",\"resolution\":\"1080p\",\"quality\":\"high\"}", null)]
+    [InlineData("studio.export.options", "{\"projectId\":\"p\",\"resolution\":\"720p\"}", null)]
     [InlineData("editor.open", "{}", "Missing required")]
     [InlineData("app.status", "{\"extra\":1}", "Unknown parameter")]
     [InlineData("recording.startVideo", "{\"studio\":\"yes\"}", "true or false")]

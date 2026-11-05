@@ -203,6 +203,7 @@ public abstract class StudioViewModelTestBase : IDisposable
             StudioProjectPaths paths,
             string outputPath,
             VideoCodec codec,
+            StudioExportChoice choice,
             IProgress<double>? progress,
             CancellationToken cancellationToken)
         {

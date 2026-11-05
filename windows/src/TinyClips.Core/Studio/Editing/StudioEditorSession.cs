@@ -1276,8 +1276,10 @@ public sealed partial class StudioEditorSession
     /// finished and a file has taken that name in the meantime, for the name the video gets then.
     /// </param>
     /// <param name="codec">The video codec chosen in settings.</param>
+    /// <param name="selectedTarget">The file the user chose, when one was.</param>
+    /// <param name="choice">The size and quality to export at; <see cref="StudioExportChoice.Default"/> when not given.</param>
     /// <returns>How the export ended. The task itself never fails.</returns>
-    public Task<StudioExportOutcome> ExportAsync(Func<string> createOutputPath, VideoCodec codec, StudioExportTarget? selectedTarget = null)
+    public Task<StudioExportOutcome> ExportAsync(Func<string> createOutputPath, VideoCodec codec, StudioExportTarget? selectedTarget = null, StudioExportChoice? choice = null)
     {
         ArgumentNullException.ThrowIfNull(createOutputPath);
         if (!CanExport || Model is not { } model || _paths is not { } paths)
@@ -1291,7 +1293,7 @@ public sealed partial class StudioEditorSession
             return Task.FromResult(StudioExportOutcome.NotStarted);
         }
 
-        var task = ExportCoreAsync(model, paths, createOutputPath, codec, selectedTarget);
+        var task = ExportCoreAsync(model, paths, createOutputPath, codec, selectedTarget, choice ?? StudioExportChoice.Default);
         _exportTask = task;
         return task;
     }
@@ -1304,7 +1306,8 @@ public sealed partial class StudioEditorSession
         StudioProjectPaths paths,
         Func<string> createOutputPath,
         VideoCodec codec,
-        StudioExportTarget? selectedTarget)
+        StudioExportTarget? selectedTarget,
+        StudioExportChoice choice)
     {
         var generation = ++_exportGeneration;
         var cancellation = new CancellationTokenSource();
@@ -1332,7 +1335,7 @@ public sealed partial class StudioEditorSession
             stagedPath = StudioRenderingMath.StagedOutputPath(outputPath);
             var progress = new ExportProgressRelay(this, generation);
             await _exporter
-                .ExportAsync(project, events, paths, stagedPath, codec, progress, cancellation.Token)
+                .ExportAsync(project, events, paths, stagedPath, codec, choice, progress, cancellation.Token)
                 .ConfigureAwait(false);
             isWritten = true;
         }

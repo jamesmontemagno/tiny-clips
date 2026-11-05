@@ -195,6 +195,22 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("videoCodec", value == VideoCodec.Hevc ? "hevc" : "h264");
     }
 
+    public StudioExportResolution StudioExportResolution
+    {
+        get => StudioExportPresets.TryParseResolution(_settings.Get("studioExportResolution", string.Empty), out var resolution)
+            ? resolution
+            : StudioExportChoice.Default.Resolution;
+        set => _settings.Set("studioExportResolution", StudioExportPresets.Id(value));
+    }
+
+    public StudioExportQuality StudioExportQuality
+    {
+        get => StudioExportPresets.TryParseQuality(_settings.Get("studioExportQuality", string.Empty), out var quality)
+            ? quality
+            : StudioExportChoice.Default.Quality;
+        set => _settings.Set("studioExportQuality", StudioExportPresets.Id(value));
+    }
+
     /// <summary>Version string (e.g. "1.8.0.0") of the last "What's new" the user has seen; empty if never.</summary>
     public string LastSeenWhatsNewVersion
     {
@@ -896,6 +912,8 @@ public sealed class CaptureSettings : ICaptureSettings
         UseGpuRecordingPipeline = true;
         VideoEncoderBackend = VideoEncoderBackend.SinkWriter;
         VideoCodec = VideoCodec.H264;
+        StudioExportResolution = StudioExportChoice.Default.Resolution;
+        StudioExportQuality = StudioExportChoice.Default.Quality;
         KeepDisplayAwakeWhileRecording = true;
         ShowMouseClickVisualsInVideo = false;
         ShowMouseClickVisualsInGif = false;

@@ -302,7 +302,10 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public string ClipName => _session.ClipName;
 
-    public string ExportSizeText => _session.ExportSizeText;
+    /// <summary>The size the next export comes to with the resolution Export offers first.</summary>
+    public string ExportSizeText => _session.Project is { } project
+        ? StudioEditorText.GetExportSizeText(StudioExportPresets.GetSize(StudioCanvasMath.NaturalSize(project), _settings.StudioExportResolution))
+        : _session.ExportSizeText;
 
     public bool CanUndo => _session.CanUndo;
 
@@ -510,19 +513,32 @@ public sealed partial class StudioViewModel : ObservableObject
     // Export
 
     public Func<string, string, Task<string?>>? ChooseExportFile { get; set; }
+
+    /// <summary>
+    /// Asks for the resolution and quality, and answers whether to go on. The choices are read
+    /// from the options it is given. Without one, the saved choice is used without asking.
+    /// </summary>
+    public Func<StudioExportOptionsModel, Task<bool>>? ChooseExportOptions { get; set; }
+
     private bool _isChoosingExport;
 
     /// <summary>
-    /// Asks for the video filename and folder, then renders using the codec chosen in settings.
+    /// Asks for the resolution and quality, then for the video filename and folder, and renders
+    /// using the codec chosen in settings.
     /// </summary>
     public async Task<StudioExportOutcome> ExportAsync()
     {
         if (_isChoosingExport || !_session.CanExport) return StudioExportOutcome.NotStarted;
         StudioExportTarget target;
+        StudioExportChoice choice;
         _isChoosingExport = true;
         try
         {
             Pause();
+            var chosen = await ChooseExportChoiceAsync();
+            if (!_session.CanExport) return StudioExportOutcome.NotStarted;
+            if (chosen is not { } answered) return StudioExportOutcome.Cancelled;
+            choice = answered;
             var saved = SavedProjectFile;
             var folder = saved is not null ? Path.GetDirectoryName(saved)! : _storage.OutputDirectory(CaptureType.Video);
             if (saved is not null && !Directory.Exists(folder))
@@ -552,7 +568,7 @@ public sealed partial class StudioViewModel : ObservableObject
         }
 
         var wasExporting = _session.IsExporting;
-        var export = _session.ExportAsync(() => target.Path, _settings.VideoCodec, target);
+        var export = _session.ExportAsync(() => target.Path, _settings.VideoCodec, target, choice);
         if (!wasExporting && _session.IsExporting)
         {
             Announce("Export started.", "StudioExportStarted", StudioAnnouncementKind.Information);
@@ -570,6 +586,28 @@ public sealed partial class StudioViewModel : ObservableObject
     }
 
     public void CancelExport() => _session.CancelExport();
+
+    // The saved choice is what Export offers first. Null when the user decided against exporting.
+    private async Task<StudioExportChoice?> ChooseExportChoiceAsync()
+    {
+        var saved = new StudioExportChoice(_settings.StudioExportResolution, _settings.StudioExportQuality);
+        if (ChooseExportOptions is not { } ask || _session.Project is not { } project)
+        {
+            return saved;
+        }
+
+        var options = StudioExportPresets.CreateOptions(project, _settings.VideoCodec, saved);
+        if (!await ask(options))
+        {
+            return null;
+        }
+
+        var remembered = options.ChoiceToRemember;
+        _settings.StudioExportResolution = remembered.Resolution;
+        _settings.StudioExportQuality = remembered.Quality;
+        OnPropertyChanged(nameof(ExportSizeText));
+        return options.Choice;
+    }
 
     // Closing
 

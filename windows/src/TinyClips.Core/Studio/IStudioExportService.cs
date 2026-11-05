@@ -22,7 +22,8 @@ public interface IStudioExportService
     /// <summary>
     /// Renders the project to an MP4 at <paramref name="outputPath"/>, replacing a file that is
     /// already there once the new one is complete. <paramref name="progress"/> receives values
-    /// from 0 to 1, and reaches 1 only when the file is in place.
+    /// from 0 to 1, and reaches 1 only when the file is in place. <paramref name="choice"/> is the
+    /// size and quality to make it at.
     /// </summary>
     /// <exception cref="OperationCanceledException">
     /// The export was cancelled. A cancelled or failed export leaves nothing new at
@@ -34,6 +35,7 @@ public interface IStudioExportService
         StudioProjectPaths paths,
         string outputPath,
         VideoCodec codec,
+        StudioExportChoice choice,
         IProgress<double>? progress,
         CancellationToken cancellationToken);
 

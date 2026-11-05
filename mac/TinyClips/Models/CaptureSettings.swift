@@ -436,6 +436,22 @@ class CaptureSettings: ObservableObject {
     /// The most disk space the Studio projects that cleanup may remove can use before the ones
     /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
     @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
+    @AppStorage("studioExportResolution") var studioExportResolution: String = StudioExportChoice.default.resolution.rawValue
+    @AppStorage("studioExportQuality") var studioExportQuality: String = StudioExportChoice.default.quality.rawValue
+
+    /// What the Export popover offers first: the last choice made there.
+    var studioExportChoice: StudioExportChoice {
+        get {
+            StudioExportChoice(
+                resolution: StudioExportResolution(rawValue: studioExportResolution) ?? StudioExportChoice.default.resolution,
+                quality: StudioExportQuality(rawValue: studioExportQuality) ?? StudioExportChoice.default.quality
+            )
+        }
+        set {
+            studioExportResolution = newValue.resolution.rawValue
+            studioExportQuality = newValue.quality.rawValue
+        }
+    }
     var studioCleanupOptions: StudioCleanupOptions {
         StudioCleanupOptions(retentionDays: studioSourceRetentionDays, sizeCapGigabytes: studioStorageCapGigabytes)
     }
@@ -870,7 +886,7 @@ class CaptureSettings: ObservableObject {
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
-        "studioSourceRetentionDays", "studioStorageCapGigabytes",
+        "studioSourceRetentionDays", "studioStorageCapGigabytes", "studioExportResolution", "studioExportQuality",
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",

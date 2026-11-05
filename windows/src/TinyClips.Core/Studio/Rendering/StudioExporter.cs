@@ -36,12 +36,16 @@ public enum StudioRenderDevicePreference
 /// hardware, and linear sampling in software (WARP), where high-quality sampling makes an export
 /// slower than the video plays. A value given here is used on either.
 /// </param>
+/// <param name="Resolution">The size to export at, in place of <paramref name="LongSideLimit"/>. Null means the limit decides.</param>
+/// <param name="Quality">How many bits the video spends on each frame.</param>
 public sealed record StudioExportOptions(
     double LongSideLimit = StudioExportLimits.LongSide,
     VideoCodec Codec = VideoCodec.H264,
     StudioEncoderPreference EncoderPreference = StudioEncoderPreference.HardwareWithSoftwareFallback,
     StudioRenderDevicePreference DevicePreference = StudioRenderDevicePreference.HardwareWithWarpFallback,
-    StudioRenderQuality? RenderQuality = null);
+    StudioRenderQuality? RenderQuality = null,
+    StudioExportResolution? Resolution = null,
+    StudioExportQuality Quality = StudioExportQuality.Standard);
 
 /// <summary>What a completed export wrote.</summary>
 /// <param name="EncoderDescription">The codec and the encoder Media Foundation used, as read back from the writer.</param>
@@ -286,7 +290,10 @@ internal sealed class StudioExportJob
             StudioSourceFiles.Require(cameraPath, "camera recording");
         }
 
-        var size = StudioCanvasMath.ExportSize(StudioCanvasMath.NaturalSize(_project), _options.LongSideLimit);
+        var natural = StudioCanvasMath.NaturalSize(_project);
+        var size = _options.Resolution is { } resolution
+            ? StudioExportPresets.GetSize(natural, resolution)
+            : StudioCanvasMath.ExportSize(natural, _options.LongSideLimit);
         var width = _width = (int)size.Width;
         var height = _height = (int)size.Height;
         var rate = StudioRenderingMath.FrameRate(_project.Sources.Screen.FrameRate);
@@ -410,7 +417,7 @@ internal sealed class StudioExportJob
                 width,
                 height,
                 rate,
-                StudioRenderingMath.VideoBitrate(width, height, rate.FramesPerSecond, _options.Codec),
+                StudioRenderingMath.VideoBitrate(width, height, rate.FramesPerSecond, _options.Codec, _options.Quality),
                 _options.Codec,
                 attempt.AllowHardware,
                 attempt.GpuFrames);

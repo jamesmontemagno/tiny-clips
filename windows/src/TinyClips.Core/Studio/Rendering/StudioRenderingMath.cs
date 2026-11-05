@@ -227,12 +227,9 @@ public static class StudioRenderingMath
     public static long SecondsToMfTicks(double seconds) =>
         (long)Math.Round(seconds * MediaFoundationTicksPerSecond, MidpointRounding.AwayFromZero);
 
-    /// <summary>The recorder's bitrate rule, so an export weighs what a recording of that size does.</summary>
-    public static uint VideoBitrate(int width, int height, double framesPerSecond, VideoCodec codec)
-    {
-        var bitrate = Math.Clamp((long)(width * (double)height * framesPerSecond / 10), 2_000_000, 24_000_000);
-        return codec == VideoCodec.Hevc ? (uint)(bitrate * 0.6) : (uint)bitrate;
-    }
+    /// <summary>The bitrate of an export. At Standard, the recorder's rule: an export weighs what a recording of that size does.</summary>
+    public static uint VideoBitrate(int width, int height, double framesPerSecond, VideoCodec codec, StudioExportQuality quality = StudioExportQuality.Standard) =>
+        StudioExportPresets.GetVideoBitrate(width, height, framesPerSecond, codec, quality);
 
     public static (double StartX, double StartY, double EndX, double EndY) GradientEndpoints(double width, double height, double degrees = 45)
     {

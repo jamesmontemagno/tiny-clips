@@ -7,6 +7,70 @@ namespace TinyClips.App.Tests;
 public sealed class StudioDestinationFlowTests : StudioViewModelTestBase
 {
     [Fact]
+    public async Task ExportOptionsAreAskedBeforeTheFileAndCancellingThemAsksNothingElse()
+    {
+        var model = await OpenAsync(CreateProject());
+        StudioExportOptionsModel? offered = null;
+        var filesAsked = 0;
+        model.ChooseExportOptions = options =>
+        {
+            offered = options;
+            return Task.FromResult(false);
+        };
+        model.ChooseExportFile = (_, _) =>
+        {
+            filesAsked++;
+            return Task.FromResult<string?>(null);
+        };
+
+        Assert.Equal(StudioExportOutcome.Cancelled, await model.ExportAsync());
+
+        Assert.Equal(StudioExportChoice.Default.Quality, offered?.Choice.Quality);
+        Assert.Equal(0, filesAsked);
+        Assert.False(model.IsExporting);
+    }
+
+    [Fact]
+    public async Task ExportUsesTheOptionsChosenAndOffersThemNextTime()
+    {
+        var model = await OpenAsync(CreateProject());
+        var chosen = new StudioExportChoice(StudioExportResolution.P480, StudioExportQuality.Small);
+        var folder = Path.Combine(Path.GetTempPath(), "tinyclips-export-options-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        StudioExportChoice? offeredNext = null;
+        model.ChooseExportOptions = options =>
+        {
+            options.Choice = chosen;
+            return Task.FromResult(true);
+        };
+        model.ChooseExportFile = (_, name) => Task.FromResult<string?>(Path.Combine(folder, name));
+        try
+        {
+            var outcome = model.ExportAsync();
+            for (var turns = 0; turns < 200 && !outcome.IsCompleted; turns++)
+            {
+                Pump();
+                await Task.Delay(5);
+            }
+
+            Assert.Equal(StudioExportOutcome.Exported, await outcome);
+            Assert.Equal("Exports at 854 × 480", model.ExportSizeText);
+
+            model.ChooseExportOptions = options =>
+            {
+                offeredNext = options.Choice;
+                return Task.FromResult(false);
+            };
+            Assert.Equal(StudioExportOutcome.Cancelled, await model.ExportAsync());
+            Assert.Equal(chosen, offeredNext);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task CancelledExportAsksWithConfiguredDefaultsAndStartsNothing()
     {
         var model = await OpenAsync(CreateProject());

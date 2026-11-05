@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- Studio **Export** on macOS now opens a popover to choose the resolution (Maximum, 4K, 1440p, 1080p, 720p or 480p) and quality (Best, High, Standard or Small File), and shows the pixel size and estimated file size they come to. It starts at 1080p and High, and offers your last choice next time. A video keeps its canvas's shape and is never scaled up. Exports now use an explicit bitrate instead of the system's "highest quality" preset, so file sizes follow the chosen quality.
+- Agents can pass `resolution` and `quality` to `studio.export`, list what is on offer with `studio.export.options`, and read or set the remembered choice as the `studioExportResolution` and `studioExportQuality` settings. Omitted values now use that choice rather than the largest size.
+
 ### Fixed
 - Overlapping macOS screenshot redactions preserve the stronger level in preview and export, including while drawing a new redaction.
 - Resolved macOS Swift concurrency warnings in webcam composition, recent-capture thumbnails, and automation contract tests.

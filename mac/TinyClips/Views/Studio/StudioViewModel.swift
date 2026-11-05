@@ -18,7 +18,6 @@ final class StudioViewModel: ObservableObject {
     }
 
     static let previewLongSide = 1600.0
-    static let exportLongSide = 3840.0
     static let posterLongSide = 640.0
 
     let projectID: String
@@ -33,6 +32,8 @@ final class StudioViewModel: ObservableObject {
     @Published private(set) var isExporting = false
     @Published private(set) var exportProgress: Double = 0
 
+    /// Whether the Export popover is showing, asking for the resolution and quality.
+    @Published var isChoosingExportOptions = false
     /// The zoom the inspector shows, as its place in the project's zooms, or nil. It stays on its
     /// zoom while edits, undo, and redo change the list around it.
     @Published private(set) var selectedZoomIndex: Int?
@@ -88,6 +89,7 @@ final class StudioViewModel: ObservableObject {
     private var exportTask: Task<Void, Never>?
     private var hasUnsavedEdits = false
     private var closesAfterExport = false
+    private var closesAfterChoosingExportOptions = false
     private var deletesOnClose = false
     private var isTornDown = false
     private var destinationScope: URL?
@@ -200,9 +202,11 @@ final class StudioViewModel: ObservableObject {
         return Self.renderSize(for: project, longSide: Self.previewLongSide)
     }
 
+    /// The size the next export comes to with the resolution Export offers first.
     var exportRenderSize: CGSize {
         guard let project else { return CGSize(width: 1920, height: 1080) }
-        return Self.renderSize(for: project, longSide: Self.exportLongSide)
+        let size = StudioExportPresets.size(project: project, resolution: CaptureSettings.shared.studioExportChoice.resolution)
+        return CGSize(width: size.width, height: size.height)
     }
 
     var timeText: String {
@@ -1327,14 +1331,50 @@ final class StudioViewModel: ObservableObject {
     // MARK: - Export
 
     func export() {
-        startExport(closingAfterward: false)
+        requestExportOptions(closingAfterward: false)
+    }
+
+    /// The Export popover's content, starting from the choice last made there.
+    func makeExportOptions() -> StudioExportOptionsModel? {
+        guard let project else { return nil }
+        let settings = CaptureSettings.shared
+        return StudioExportOptionsModel(
+            project: project,
+            isHEVC: settings.videoCodec == .hevc,
+            saved: settings.studioExportChoice
+        )
+    }
+
+    /// The popover answered: the choices are kept, and the save panel comes up once the popover
+    /// has gone. A modal panel opened from its button would run with the popover still on screen.
+    func confirmExportOptions(_ options: StudioExportOptionsModel) {
+        CaptureSettings.shared.studioExportChoice = options.choiceToRemember
+        let closingAfterward = closesAfterChoosingExportOptions
+        closesAfterChoosingExportOptions = false
+        isChoosingExportOptions = false
+        DispatchQueue.main.async { [weak self] in
+            self?.startExport(closingAfterward: closingAfterward, choice: options.choice)
+        }
+    }
+
+    /// The popover went away without an answer. A window waiting on it stays open.
+    func cancelExportOptions() {
+        closesAfterChoosingExportOptions = false
+        isChoosingExportOptions = false
+    }
+
+    private func requestExportOptions(closingAfterward: Bool) {
+        guard canExport, !isChoosingDestination, !isChoosingExportOptions else { return }
+        pause()
+        closesAfterChoosingExportOptions = closingAfterward
+        isChoosingExportOptions = true
     }
 
     func cancelExport() {
         exportTask?.cancel()
     }
 
-    private func startExport(closingAfterward: Bool) {
+    private func startExport(closingAfterward: Bool, choice: StudioExportChoice) {
         guard canExport, !isChoosingDestination, let paths else { return }
         pause()
         let outputURL: URL
@@ -1401,7 +1441,9 @@ final class StudioViewModel: ObservableObject {
         let rendered = editor.editableState
         let projectEvents = events
         let projectStore = store
-        let renderSize = Self.renderSize(for: project, longSide: Self.exportLongSide)
+        let exportedSize = StudioExportPresets.size(project: project, resolution: choice.resolution)
+        let renderSize = CGSize(width: exportedSize.width, height: exportedSize.height)
+        let quality = choice.quality
         let posterSize = Self.renderSize(for: project, longSide: Self.posterLongSide)
         let codec = CaptureSettings.shared.videoCodec
         let reportProgress: @Sendable (Double) -> Void = { [weak self] progress in
@@ -1421,6 +1463,7 @@ final class StudioViewModel: ObservableObject {
                     outputURL: outputURL,
                     renderSize: renderSize,
                     codec: codec,
+                    quality: quality,
                     onProgress: reportProgress,
                     destination: target
                 )
@@ -1633,7 +1676,7 @@ final class StudioViewModel: ObservableObject {
 
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            startExport(closingAfterward: true)
+            requestExportOptions(closingAfterward: true)
             return false
         case .alertThirdButtonReturn:
             deletesOnClose = true
