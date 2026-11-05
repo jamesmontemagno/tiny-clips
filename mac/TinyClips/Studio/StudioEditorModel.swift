@@ -54,6 +54,7 @@ struct StudioEditableState: Equatable, Sendable {
     var edits: StudioEdits
     var audio: StudioAudio
     var overlays: StudioOverlays
+    var captions: StudioCaptions
 
     init(project: StudioProject) {
         canvas = project.canvas
@@ -64,6 +65,7 @@ struct StudioEditableState: Equatable, Sendable {
         edits = project.edits
         audio = project.audio
         overlays = project.overlays
+        captions = project.captions
     }
 
     func applied(to project: StudioProject) -> StudioProject {
@@ -76,6 +78,7 @@ struct StudioEditableState: Equatable, Sendable {
         copy.edits = edits
         copy.audio = audio
         copy.overlays = overlays
+        copy.captions = captions
         return copy
     }
 }
@@ -1092,6 +1095,7 @@ struct StudioEditorModel: Equatable, Sendable {
             $0.edits = updated.edits
             $0.audio = updated.audio
             $0.overlays = updated.overlays
+            $0.captions = updated.captions
         }
     }
 

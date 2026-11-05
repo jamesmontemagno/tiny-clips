@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- Studio projects can hold captions, shared with the Windows app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. There is no captions UI yet; agents can read and change them with `studio.project.get` and `studio.project.edit`.
+
 ### Fixed
 - Overlapping macOS screenshot redactions preserve the stronger level in preview and export, including while drawing a new redaction.
 - Resolved macOS Swift concurrency warnings in webcam composition, recent-capture thumbnails, and automation contract tests.

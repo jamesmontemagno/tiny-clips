@@ -1,0 +1,97 @@
+{
+  "description": "A caption ends where the next starts, and one left too short to read is dropped.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-1",
+        "start": 1,
+        "end": 4,
+        "text": "First."
+      },
+      {
+        "id": "cue-3",
+        "start": 3,
+        "end": 5,
+        "text": "Second."
+      },
+      {
+        "id": "cue-6",
+        "start": 6,
+        "end": 8,
+        "text": "Long one."
+      },
+      {
+        "id": "cue-6",
+        "start": 6,
+        "end": 7,
+        "text": "Same start."
+      },
+      {
+        "id": "cue-9",
+        "start": 9,
+        "end": 12,
+        "text": "Early."
+      },
+      {
+        "id": "cue-9.05",
+        "start": 9.05,
+        "end": 10,
+        "text": "Late."
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 1,
+      "end": 3,
+      "text": "First."
+    },
+    {
+      "start": 3,
+      "end": 5,
+      "text": "Second."
+    },
+    {
+      "start": 6,
+      "end": 8,
+      "text": "Long one."
+    },
+    {
+      "start": 9.05,
+      "end": 10,
+      "text": "Late."
+    }
+  ],
+  "at": [
+    {
+      "output": 2.5,
+      "index": 0
+    },
+    {
+      "output": 3,
+      "index": 1
+    },
+    {
+      "output": 6.5,
+      "index": 2
+    },
+    {
+      "output": 9,
+      "index": null
+    },
+    {
+      "output": 9.05,
+      "index": 3
+    }
+  ],
+  "srt": "1\n00:00:01,000 --> 00:00:03,000\nFirst.\n\n2\n00:00:03,000 --> 00:00:05,000\nSecond.\n\n3\n00:00:06,000 --> 00:00:08,000\nLong one.\n\n4\n00:00:09,050 --> 00:00:10,000\nLate.\n",
+  "vtt": "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nFirst.\n\n00:00:03.000 --> 00:00:05.000\nSecond.\n\n00:00:06.000 --> 00:00:08.000\nLong one.\n\n00:00:09.050 --> 00:00:10.000\nLate.\n"
+}

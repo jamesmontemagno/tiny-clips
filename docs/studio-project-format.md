@@ -2,7 +2,7 @@
 
 This is the contract between the macOS and Windows implementations of Tiny Clips Studio: the files a project is made of, every field in them, and the math that turns a project into a frame layout. The design it serves is in [plans/video-studio-plan.md](../plans/video-studio-plan.md).
 
-Both platforms implement sections 5 to 8 as pure functions, and both test suites run the shared fixtures in `shared/studio/fixtures/`. If the two implementations disagree, this document decides which one is wrong.
+Both platforms implement sections 5 to 8 and the rules of sections 15.2 and 15.3 as pure functions, and both test suites run the shared fixtures in `shared/studio/fixtures/`. If the two implementations disagree, this document decides which one is wrong.
 
 ## 1. Files
 
@@ -63,6 +63,7 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 | `edits` | Edits | | |
 | `audio` | Audio | | |
 | `overlays` | Overlays | | |
+| `captions` | Captions | | See section 15 |
 | `exports` | Export[] | `[]` | |
 
 ### Sources
@@ -170,9 +171,26 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `overlays.clicks.opacity` | number | 0.85 | |
 | `overlays.clicks.duration` | number | 0.45 | Seconds |
 | `overlays.branding` | bool | false | |
+| `overlays.captions.enabled` | bool | false | Draw the captions into the video (section 15.4) |
+| `overlays.captions.size` | enum | `medium` | `small`, `medium`, `large` |
+| `overlays.captions.position` | enum | `bottom` | `bottom`, `top` |
+| `overlays.captions.appearance` | enum | `classicOutline` | `classicOutline`, `contrastPanel`, `boldImpact`, `cleanShadow` |
 | `exports[].path` | string | | Absolute path of a rendered video |
 | `exports[].exportedAt` | timestamp | | |
 | `exports[].bytes` | int or null | null | How large the video file was when it was exported, in bytes. Left out, or null, when that is not known; 0 or less is read the same way. Section 12 says what it is used for |
+
+### Captions
+
+| Property | Type | Default | Notes |
+|---|---|---|---|
+| `captions.language` | string or null | null | The language of the cues as a BCP 47 tag, such as `en` or `pt-BR`. Left out when it is not known |
+| `captions.cues` | Cue[] | `[]` | In any order |
+| `cues[].id` | string | `""` | A lowercase UUID that tells a cue apart while it is edited. Nothing else depends on it |
+| `cues[].start`, `cues[].end` | number | 0 | Source time |
+| `cues[].text` | string | `""` | One or more lines, separated by `\n` |
+| `cues[].words` | Word[] | `[]` | When each word is said. Whoever changes `text` empties this, because the words no longer match it |
+| `words[].start`, `words[].end` | number | 0 | Source time |
+| `words[].text` | string | `""` | One word |
 
 ## 4. events.json
 
@@ -770,6 +788,8 @@ Fixtures only sit on a decision boundary (a rounding midpoint, or either side of
 
 Project files, in `folder/`: the `.tinyclips` file of a project saved as a folder (section 14), as an app really wrote it, byte for byte. These are not generated and have no expected values: a test puts a few bytes under the names the file gives, opens the folder, and holds what was read against the file. `saved-on-macos-1.9.0.tinyclips` is from a folder the macOS app saved on 7 October 2026. Only the Windows tests load it so far.
 
+Caption fixtures, in `captions/`: a source duration, edits, `captions`, the `expected` captions of section 15.2, `at` queries with the index of the caption showing at an output time (`null` for none), and the `srt` and `vtt` text of section 15.3. In `captionfiles/`: the `text` of a file, the `expected` cues, and how many blocks are `skipped`. Text there is compared exactly.
+
 ## 14. A project saved as a folder
 
 A project lives in the projects root (section 1), which no one is meant to look into. To keep a project elsewhere, or take it to another computer, the editor saves a copy of it as a folder:
@@ -827,3 +847,105 @@ A `.tinyclips` file larger than 16 MB is refused unread; one a writer wrote is a
 - A folder the macOS app saved was opened by the Windows store, from its file and from its folder, and saved again as a folder: the only value that differs in the project file is the `id`. Since 8 October the Windows file has one property more, `audio.volume` at 1, which a Mac of 1.9.0 does not write; nothing the Mac wrote is dropped or changed. Its project file is the fixture `folder/saved-on-macos-1.9.0.tinyclips` (section 13). The same project was exported by the Windows exporter and held against the Mac's export; `windows/docs/studio-project-folders.md` has what agreed and what did not.
 - The Windows app has the commands for both since the night of 7 October: built and unit tested, and the editor's part run in the real window by the window check. The app itself was not started, so no folder has been saved or opened by a person there, and the folder from the Mac has been opened by the store only. `windows/docs/studio-project-folders.md` has what was run and what was not.
 - A folder saved on Windows has not been opened on a Mac.
+
+## 15. Captions
+
+### 15.1 What a project holds
+
+Captions are words on the recording's timeline: `captions.cues` in section 3. Their times are source time, so a trim, a cut, or a speed change never calls for a new transcription. What a video shows is worked out from the cues and the time map whenever it is needed, by section 15.2. A file and a drawn caption both come from there, so they cannot disagree.
+
+`captions` and `overlays.captions` are not part of a look, are undone and redone with the other edits, and go with a project saved as a folder. A reader from before captions keeps both as properties it does not recognize (section 2) and shows no captions.
+
+### 15.2 From cues to captions
+
+```
+clean(text): lines end at \r\n, \r, or \n. Every line without the white space around
+             it, leaving out blank lines, joined by \n.
+
+words of a cue: drop a word whose start or end is not finite, whose end < start, or
+                whose text is only white space. Sort by start, then by end; words equal
+                in both keep the order of the file.
+
+cues: drop a cue whose start or end is not finite, whose end <= start, or whose
+      clean(text) is empty. Sort by start, then by end; cues equal in both keep the
+      order of the file.
+
+parts: for each cue, for each piece k of the time map (section 7) with r_k == 1, in order:
+    s = max(cue.start, a_k)
+    e = min(cue.end, b_k)
+    text = clean(cue.text)
+    next piece if e <= s
+    if the cue has words:
+        kept = its words with a_k <= (word.start + word.end) / 2 < b_k
+        next piece if kept is empty
+        if kept is not all of its words:
+            text = the text of each kept word, without the white space around it,
+                   joined by one space
+            s = max(a_k, kept[first].start)
+            e = min(b_k, kept[last].end)
+    next piece if e - s < 0.1
+    part: start = c_k + (s - a_k), end = c_k + (e - a_k), text
+
+captions: sort the parts by start, then by end; parts equal in both keep the order above.
+    In that order, when the caption before this part ends after this part starts:
+        its end = this part's start
+        drop it if it now lasts less than 0.1
+    Add this part.
+```
+
+What follows from that:
+
+- **A piece at another rate has no captions**, faster or slower, because it has no sound (section 7).
+- **A cut takes the words said in it.** A word stays or goes by where its middle is, and each side of the cut covers only the words it keeps.
+- **A cue without words cannot be divided**, so it is clipped, and each side of a cut shows all of its text. That is what an imported or edited cue is.
+- **One caption shows at a time.** A caption ends where the next starts. At output time `u` the caption showing is the one with `start <= u < end`, or none.
+- **Mute changes nothing.** A muted video still has its captions.
+
+### 15.3 SRT and WebVTT
+
+**Writing.** Both are UTF-8 with no byte order mark, lines end with `\n`, and the file ends with one. A time is rounded to whole milliseconds with `floor(seconds * 1000 + 0.5)`, and hours take at least two digits.
+
+```
+1                                  WEBVTT
+00:00:01,000 --> 00:00:02,500
+First line                         00:00:01.000 --> 00:00:02.500
+Second line                        First line
+                                   Second line
+2
+00:00:03,000 --> 00:00:04,000      00:00:03.000 --> 00:00:04.000
+Third line                         Third line
+```
+
+An SRT with no captions is empty, and a WebVTT is only its first line. A WebVTT writes `&`, `<`, and `>` in its text as `&amp;`, `&lt;`, and `&gt;`. An SRT writes its text as it is.
+
+**Reading.** A leading byte order mark is ignored, and lines end at `\r\n`, `\r`, or `\n`. Lines of only white space divide the text into blocks. It is a WebVTT when its first block's first line is `WEBVTT`, or starts with that and a space or a tab. Otherwise it is read as an SRT, which has no sign of its own.
+
+- In a WebVTT the first block is the header, and a block whose first line is, or starts with and a space or a tab, `NOTE`, `STYLE`, or `REGION` is not a cue. Neither is counted as skipped.
+- The timing is the first line of a block, or the second after a number or a name. It is `[hours:]minutes:seconds` with a `.` or a `,` before one to three digits of fraction, `-->`, and another time. A fraction of fewer than three digits is filled with zeros on the right, so `.5` is 500 ms. Anything after the second time, such as WebVTT cue settings, is ignored.
+- The lines after the timing are the text. An SRT loses its tags (`b`, `i`, `u`, `s`, `font`, in any case) and its `{\...}` overrides. A WebVTT loses everything shaped like a tag (`<v Sam>`, `</c>`, `<00:00:03.500>`), and then `&lt;`, `&gt;`, `&nbsp;`, `&lrm;`, `&rlm;`, and last `&amp;` become what they stand for. An SRT has no way to write a literal tag, so `<now>` stays. The result is `clean`ed.
+- A block with no timing, with an end at or before its start, or with no text left is skipped and counted, so the app can say so.
+
+Times read this way are taken as source time. Each cue gets a new `id` and no `words`. The cues stay in the order of the file; section 15.2 sorts them when it uses them.
+
+### 15.4 Drawing
+
+With `overlays.captions.enabled`, a frame at output time `u` has the caption showing at `u` drawn over everything else, on the canvas: after the camera and the branding, not moved by a zoom or a scene, and not part of any layer that fades. These rules are not covered by fixtures, because they describe pixels. Both renderers follow them so an export looks alike on either platform, but each lays text out with its own system, so lines may wrap at different words.
+
+`unit = canvas short side / 288`. All sizes below are in units, so captions look the same at 720p and 4K and stay in proportion on a portrait canvas.
+
+| `size` | Text height |
+|---|---|
+| `small` | 14 |
+| `medium` | 18 |
+| `large` | 24 |
+
+- **Font.** The platform's system sans-serif, regular weight unless the appearance below says bold.
+- **Lines.** The text is centered on the canvas. It keeps its own lines, and a line wider than 90 percent of the canvas wraps between words.
+- **Position.** With `bottom`, the bottom of the last line is 12 above the bottom of the canvas. With `top`, the top of the first line is 12 below the top of the canvas.
+
+| `appearance` | Text | Outline | Shadow | Panel |
+|---|---|---|---|---|
+| `classicOutline` | `#FFFFFF` | `#000000`, 1.2 wide | none | none |
+| `contrastPanel` | `#FFFFFF` | none | none | `#000000` at 60 percent behind the lines, reaching 4 past them |
+| `boldImpact` | `#FFD700`, bold | `#000000`, 2.4 wide | `#000000`, 1.2 down and right | none |
+| `cleanShadow` | `#F5F5F5` | `#000000` at 50 percent, 0.6 wide | `#000000` at 50 percent, 1.5 down and right | none |

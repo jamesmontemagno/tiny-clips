@@ -732,7 +732,7 @@ final class AutomationCommandRouter {
     }
 
     private static let studioEditableProjectKeys: Set<String> = [
-        "canvas", "screen", "camera", "scenes", "zooms", "edits", "audio", "overlays"
+        "canvas", "screen", "camera", "scenes", "zooms", "edits", "audio", "overlays", "captions"
     ]
 
     private func applyingStudioPatch(_ patch: [String: Any], to project: StudioProject) throws -> StudioProject {

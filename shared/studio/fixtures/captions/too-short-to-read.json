@@ -1,0 +1,42 @@
+{
+  "description": "What a cut leaves of a cue is dropped when it is under a tenth of a second.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [
+      {
+        "start": 2.05,
+        "end": 8
+      }
+    ],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-2",
+        "start": 2,
+        "end": 8.5,
+        "text": "Only the end is left."
+      },
+      {
+        "id": "cue-9",
+        "start": 9,
+        "end": 9.05,
+        "text": "Blink."
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 2.05,
+      "end": 2.55,
+      "text": "Only the end is left."
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:02,050 --> 00:00:02,550\nOnly the end is left.\n",
+  "vtt": "WEBVTT\n\n00:00:02.050 --> 00:00:02.550\nOnly the end is left.\n"
+}

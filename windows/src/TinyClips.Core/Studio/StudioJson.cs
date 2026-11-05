@@ -268,6 +268,7 @@ public static class StudioProjectJson
 
         var overlays = project.Overlays ?? new StudioOverlays();
         var clicks = overlays.Clicks ?? new StudioClickOverlay();
+        var captionOverlay = overlays.Captions ?? new StudioCaptionOverlay();
         overlays = overlays with
         {
             Clicks = clicks with
@@ -278,6 +279,13 @@ public static class StudioProjectJson
                 StrokeWidth = HasNonNull(root, "overlays", "clicks", "strokeWidth") ? clicks.StrokeWidth : defaultProject.Overlays.Clicks.StrokeWidth,
                 Opacity = HasNonNull(root, "overlays", "clicks", "opacity") ? clicks.Opacity : defaultProject.Overlays.Clicks.Opacity,
                 Duration = HasNonNull(root, "overlays", "clicks", "duration") ? clicks.Duration : defaultProject.Overlays.Clicks.Duration,
+            },
+            Captions = captionOverlay with
+            {
+                Enabled = HasNonNull(root, "overlays", "captions", "enabled") ? captionOverlay.Enabled : defaultProject.Overlays.Captions.Enabled,
+                Size = HasNonNull(root, "overlays", "captions", "size") ? captionOverlay.Size : defaultProject.Overlays.Captions.Size,
+                Position = HasNonNull(root, "overlays", "captions", "position") ? captionOverlay.Position : defaultProject.Overlays.Captions.Position,
+                Appearance = HasNonNull(root, "overlays", "captions", "appearance") ? captionOverlay.Appearance : defaultProject.Overlays.Captions.Appearance,
             },
         };
 
@@ -298,6 +306,7 @@ public static class StudioProjectJson
             Edits = NormalizeEdits(project.Edits, root),
             Audio = NormalizeAudio(project.Audio, root),
             Overlays = overlays,
+            Captions = NormalizeCaptions(project.Captions),
             Exports = NormalizeExports(project.Exports, root),
         };
     }
@@ -424,6 +433,29 @@ public static class StudioProjectJson
             SystemVolume = HasNonNull(root, "audio", "systemVolume") ? audio.SystemVolume : 1,
             MicrophoneVolume = HasNonNull(root, "audio", "microphoneVolume") ? audio.MicrophoneVolume : 1,
         };
+    }
+
+    private static StudioCaptions NormalizeCaptions(StudioCaptions? captions)
+    {
+        captions ??= new StudioCaptions();
+        var cues = NonNullItems(captions.Cues);
+        for (var i = 0; i < cues.Length; i++)
+        {
+            var words = NonNullItems(cues[i].Words);
+            for (var j = 0; j < words.Length; j++)
+            {
+                words[j] = words[j] with { Text = words[j].Text ?? string.Empty };
+            }
+
+            cues[i] = cues[i] with
+            {
+                Id = cues[i].Id ?? string.Empty,
+                Text = cues[i].Text ?? string.Empty,
+                Words = words,
+            };
+        }
+
+        return captions with { Cues = cues };
     }
 
     private static StudioExport[] NormalizeExports(StudioExport[]? exports, JsonElement root)
@@ -906,6 +938,56 @@ internal sealed class StudioMouseButtonJsonConverter : StudioEnumJsonConverter<S
         StudioMouseButton.Middle => "middle",
         StudioMouseButton.Other => "other",
         _ => "left",
+    };
+}
+
+internal sealed class StudioCaptionSizeJsonConverter : StudioEnumJsonConverter<StudioCaptionSize>
+{
+    protected override StudioCaptionSize DefaultValue => StudioCaptionSize.Medium;
+    protected override StudioCaptionSize? ReadValue(string value) => value switch
+    {
+        "small" => StudioCaptionSize.Small,
+        "medium" => StudioCaptionSize.Medium,
+        "large" => StudioCaptionSize.Large,
+        _ => null,
+    };
+    protected override string Write(StudioCaptionSize value) => value switch
+    {
+        StudioCaptionSize.Small => "small",
+        StudioCaptionSize.Large => "large",
+        _ => "medium",
+    };
+}
+
+internal sealed class StudioCaptionPositionJsonConverter : StudioEnumJsonConverter<StudioCaptionPosition>
+{
+    protected override StudioCaptionPosition DefaultValue => StudioCaptionPosition.Bottom;
+    protected override StudioCaptionPosition? ReadValue(string value) => value switch
+    {
+        "bottom" => StudioCaptionPosition.Bottom,
+        "top" => StudioCaptionPosition.Top,
+        _ => null,
+    };
+    protected override string Write(StudioCaptionPosition value) => value == StudioCaptionPosition.Top ? "top" : "bottom";
+}
+
+internal sealed class StudioCaptionAppearanceJsonConverter : StudioEnumJsonConverter<StudioCaptionAppearance>
+{
+    protected override StudioCaptionAppearance DefaultValue => StudioCaptionAppearance.ClassicOutline;
+    protected override StudioCaptionAppearance? ReadValue(string value) => value switch
+    {
+        "classicOutline" => StudioCaptionAppearance.ClassicOutline,
+        "contrastPanel" => StudioCaptionAppearance.ContrastPanel,
+        "boldImpact" => StudioCaptionAppearance.BoldImpact,
+        "cleanShadow" => StudioCaptionAppearance.CleanShadow,
+        _ => null,
+    };
+    protected override string Write(StudioCaptionAppearance value) => value switch
+    {
+        StudioCaptionAppearance.ContrastPanel => "contrastPanel",
+        StudioCaptionAppearance.BoldImpact => "boldImpact",
+        StudioCaptionAppearance.CleanShadow => "cleanShadow",
+        _ => "classicOutline",
     };
 }
 

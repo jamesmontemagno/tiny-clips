@@ -88,6 +88,7 @@ public class ContractTests
         Assert.Contains("patch", edit["required"]!.AsArray()
             .Select(parameter => parameter!.GetValue<string>()));
         Assert.False(edit["properties"]!["patch"]!["additionalProperties"]!.GetValue<bool>());
+        Assert.Equal("object", edit["properties"]!["patch"]!["properties"]!["captions"]!["type"]!.GetValue<string>());
     }
 
     [Theory]

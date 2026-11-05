@@ -1,0 +1,17 @@
+{
+  "description": "No number, a dot, a short fraction, no spaces around the arrow, and extra blank lines.",
+  "text": "\n\n00:00:01.5 --> 00:00:02.25\nNo number\n\n\n\n7\n0:00:03,000-->0:00:04,000\nNo spaces\n",
+  "expected": [
+    {
+      "start": 1.5,
+      "end": 2.25,
+      "text": "No number"
+    },
+    {
+      "start": 3.0,
+      "end": 4.0,
+      "text": "No spaces"
+    }
+  ],
+  "skipped": 0
+}

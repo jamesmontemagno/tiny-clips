@@ -479,7 +479,7 @@ public partial class App : IAutomationAppActions
 
                 var allowed = new HashSet<string>(StringComparer.Ordinal)
                 {
-                    "canvas", "screen", "camera", "scenes", "zooms", "edits", "audio", "overlays",
+                    "canvas", "screen", "camera", "scenes", "zooms", "edits", "audio", "overlays", "captions",
                 };
                 if (patch.Any(item => !allowed.Contains(item.Key)))
                 {

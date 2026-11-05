@@ -3,7 +3,7 @@
 
 This is a stdlib-only reference implementation of docs/studio-project-format.md
 sections 5 to 8, including scene transitions (section 6.9) and speed in the time map (section 7),
-and of the scenes a new project gets from its recording (section 9.1).
+of the scenes a new project gets from its recording (section 9.1), and of captions (section 15).
 It intentionally does not import platform code.
 """
 
@@ -13,6 +13,7 @@ import argparse
 import copy
 import json
 import math
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -25,7 +26,9 @@ LAYOUT_DIR = FIXTURES / "layout"
 TIMEMAP_DIR = FIXTURES / "timemap"
 AUTOZOOM_DIR = FIXTURES / "autozoom"
 RECORDING_DIR = FIXTURES / "recording"
-FIXTURE_DIRS = [CANVAS_DIR, LAYOUT_DIR, TIMEMAP_DIR, AUTOZOOM_DIR, RECORDING_DIR]
+CAPTIONS_DIR = FIXTURES / "captions"
+CAPTION_FILES_DIR = FIXTURES / "captionfiles"
+FIXTURE_DIRS = [CANVAS_DIR, LAYOUT_DIR, TIMEMAP_DIR, AUTOZOOM_DIR, RECORDING_DIR, CAPTIONS_DIR, CAPTION_FILES_DIR]
 STAMP = "2026-10-02T22:41:00Z"
 EPS = 1e-9
 CLAIMS = {}
@@ -55,6 +58,14 @@ SPEED_FASTEST = 8
 # Section 9.1: scenes from the recording.
 RECORDED_SCENE_SHORTEST = 0.3
 RECORDED_MOVE = {"kind": "morph", "duration": 0.35}
+
+# Section 15 of the format.
+CAPTION_SHORTEST_PART = 0.1
+CAPTION_TIMING = re.compile(
+    r"^\s*(?:([0-9]+):)?([0-9]{1,2}):([0-9]{2})[.,]([0-9]{1,3})\s*-->\s*(?:([0-9]+):)?([0-9]{1,2}):([0-9]{2})[.,]([0-9]{1,3})"
+)
+CAPTION_SRT_MARKUP = re.compile(r"</?(?:[bBiIuUsS]|[fF][oO][nN][tT])(?:\s[^<>]*)?>|\{\\[^{}]*\}")
+CAPTION_VTT_MARKUP = re.compile(r"</?[A-Za-z][^<>]*>|<[0-9][0-9:.]*>")
 
 
 class BoundaryLog:
@@ -2673,6 +2684,285 @@ def generate_canvases():
     return fixtures
 
 
+def clean_caption_text(text):
+    """Section 15.2: every line without the space around it, and no blank lines."""
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    return "\n".join(line.strip() for line in lines if line.strip())
+
+
+def caption_words(cue):
+    words = []
+    for word in cue.get("words") or []:
+        if word is None:
+            continue
+        s, e = word.get("start") or 0, word.get("end") or 0
+        text = (word.get("text") or "").strip()
+        if text and math.isfinite(s) and math.isfinite(e) and e >= s:
+            words.append({"start": s, "end": e, "text": text})
+    return sorted(words, key=lambda item: (item["start"], item["end"]))
+
+
+def resolve_captions(duration, edits, captions):
+    """Section 15.2: the captions a video has, in output time and clear of each other."""
+    _, _, pieces, _ = time_map(duration, edits)
+    cues = []
+    for cue in captions.get("cues") or []:
+        if cue is None:
+            continue
+        s, e = cue.get("start") or 0, cue.get("end") or 0
+        text = clean_caption_text(cue.get("text") or "")
+        if text and math.isfinite(s) and math.isfinite(e) and e > s:
+            cues.append({"start": s, "end": e, "text": text, "words": caption_words(cue)})
+    cues = sorted(cues, key=lambda item: (item["start"], item["end"]))
+
+    parts = []
+    for cue in cues:
+        elapsed = 0
+        for piece in pieces:
+            a, b, rate = piece["start"], piece["end"], piece["rate"]
+            if rate == 1:
+                s = max(cue["start"], a)
+                e = min(cue["end"], b)
+                text = cue["text"]
+                keep = e > s
+                if keep and cue["words"]:
+                    kept = [w for w in cue["words"] if a <= (w["start"] + w["end"]) / 2 < b]
+                    keep = len(kept) > 0
+                    if keep and len(kept) < len(cue["words"]):
+                        text = " ".join(w["text"] for w in kept)
+                        s = max(a, kept[0]["start"])
+                        e = min(b, kept[-1]["end"])
+                if keep and e - s >= CAPTION_SHORTEST_PART:
+                    parts.append({"start": elapsed + (s - a), "end": elapsed + (e - a), "text": text})
+            elapsed = elapsed + at_rate(b - a, rate)
+    parts = sorted(parts, key=lambda item: (item["start"], item["end"]))
+
+    result = []
+    for part in parts:
+        if result and result[-1]["end"] > part["start"]:
+            result[-1]["end"] = part["start"]
+            if result[-1]["end"] - result[-1]["start"] < CAPTION_SHORTEST_PART:
+                result.pop()
+        result.append(part)
+    return result
+
+
+def caption_index_at(captions, output_time):
+    for index, caption in enumerate(captions):
+        if caption["start"] <= output_time < caption["end"]:
+            return index
+    return None
+
+
+def caption_timestamp(seconds, separator):
+    ms = math.floor(seconds * 1000 + 0.5)
+    return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d}{separator}{ms % 1000:03d}"
+
+
+def write_srt(captions):
+    blocks = []
+    for number, caption in enumerate(captions, start=1):
+        timing = f"{caption_timestamp(caption['start'], ',')} --> {caption_timestamp(caption['end'], ',')}"
+        blocks.append(f"{number}\n{timing}\n{caption['text']}\n")
+    return "\n".join(blocks)
+
+
+def write_vtt(captions):
+    text = "WEBVTT\n"
+    for caption in captions:
+        escaped = caption["text"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        timing = f"{caption_timestamp(caption['start'], '.')} --> {caption_timestamp(caption['end'], '.')}"
+        text += f"\n{timing}\n{escaped}\n"
+    return text
+
+
+def read_caption_file(text):
+    """Section 15.3: the cues of an SRT or WebVTT file, and how many blocks could not be read."""
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    blocks = []
+    current = []
+    for line in lines:
+        if line.strip():
+            current.append(line)
+        elif current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+
+    is_vtt = bool(blocks) and re.match(r"WEBVTT(?:[ \t]|$)", blocks[0][0]) is not None
+    if is_vtt:
+        blocks = blocks[1:]
+    cues = []
+    skipped = 0
+    for block in blocks:
+        if is_vtt and re.match(r"(?:NOTE|STYLE|REGION)(?:[ \t]|$)", block[0]):
+            continue
+        timing_index = next((i for i in range(min(2, len(block))) if CAPTION_TIMING.match(block[i])), None)
+        if timing_index is None:
+            skipped += 1
+            continue
+        match = CAPTION_TIMING.match(block[timing_index])
+        start = caption_file_seconds(match.group(1, 2, 3, 4))
+        end = caption_file_seconds(match.group(5, 6, 7, 8))
+        markup = CAPTION_VTT_MARKUP if is_vtt else CAPTION_SRT_MARKUP
+        body = markup.sub("", "\n".join(block[timing_index + 1:]))
+        if is_vtt:
+            for entity, value in (("&lt;", "<"), ("&gt;", ">"), ("&nbsp;", "\u00a0"), ("&lrm;", "\u200e"), ("&rlm;", "\u200f"), ("&amp;", "&")):
+                body = body.replace(entity, value)
+        body = clean_caption_text(body)
+        if end <= start or not body:
+            skipped += 1
+            continue
+        cues.append({"start": start, "end": end, "text": body})
+    return cues, skipped
+
+
+def caption_file_seconds(groups):
+    hours, minutes, seconds, fraction = groups
+    ms = int(hours or 0) * 3600000 + int(minutes) * 60000 + int(seconds) * 1000 + int(fraction.ljust(3, "0"))
+    return ms / 1000
+
+
+def caption_edits(trim_start=0, trim_end=None, cuts=(), speeds=()):
+    return {
+        "trimStart": trim_start,
+        "trimEnd": trim_end,
+        "cuts": [{"start": s, "end": e} for s, e in cuts],
+        "speed": [speed(s, e, rate) for s, e, rate in speeds],
+    }
+
+
+def caption_cue(start, end, text, words=None):
+    cue = {"id": f"cue-{start}", "start": start, "end": end, "text": text}
+    if words is not None:
+        cue["words"] = [{"start": s, "end": e, "text": t} for s, e, t in words]
+    return cue
+
+
+def caption_fixture(description, duration, edits, cues, expected, at=()):
+    """`expected` is worked out by hand, which is what checks the code above."""
+    captions = {"language": "en", "cues": cues}
+    resolved = resolve_captions(duration, edits, captions)
+    assert_equal(len(resolved), len(expected), f"{description}: how many captions")
+    for actual, (start, end, text) in zip(resolved, expected):
+        assert_close(actual["start"], start, f"{description}: start")
+        assert_close(actual["end"], end, f"{description}: end")
+        assert_equal(actual["text"], text, f"{description}: text")
+    return {
+        "description": description,
+        "sourceDuration": duration,
+        "edits": edits,
+        "captions": captions,
+        "expected": resolved,
+        "at": [{"output": u, "index": caption_index_at(resolved, u)} for u in at],
+        "srt": write_srt(resolved),
+        "vtt": write_vtt(resolved),
+    }
+
+
+def caption_file_fixture(description, text, expected, skipped):
+    cues, actual_skipped = read_caption_file(text)
+    assert_equal(actual_skipped, skipped, f"{description}: skipped")
+    assert_equal(len(cues), len(expected), f"{description}: how many cues")
+    for actual, (start, end, body) in zip(cues, expected):
+        assert_close(actual["start"], start, f"{description}: start")
+        assert_close(actual["end"], end, f"{description}: end")
+        assert_equal(actual["text"], body, f"{description}: text")
+    return {"description": description, "text": text, "expected": cues, "skipped": skipped}
+
+
+def generate_captions():
+    fixtures = {}
+
+    def add(filename, *args, **kwargs):
+        fixtures[filename] = caption_fixture(*args, **kwargs)
+
+    add("no-edits.json", "With no edits a caption is where its cue is, and only one shows at a time.", 20, caption_edits(),
+        [caption_cue(1, 3, "Hello there."), caption_cue(3.5, 5.25, "Second line\nof text.")],
+        [(1, 3, "Hello there."), (3.5, 5.25, "Second line\nof text.")],
+        at=[0, 1, 2.999, 3, 3.25, 3.5, 5.25, 6])
+    add("trim.json", "The trim clips a cue and moves what is left to the start of the video.", 20, caption_edits(2, 10),
+        [caption_cue(0, 1, "Before the trim."), caption_cue(1, 4, "Starts before."), caption_cue(5, 6, "Inside."),
+         caption_cue(9, 12, "Ends after."), caption_cue(11, 13, "After the trim.")],
+        [(0, 2, "Starts before."), (3, 4, "Inside."), (7, 8, "Ends after.")])
+    add("cut-splits-a-cue-without-words.json", "A cue without words cannot be divided, so each side of a cut shows all of its text.", 20,
+        caption_edits(cuts=[(4, 6)]),
+        [caption_cue(3, 8, "All of it, twice."), caption_cue(9, 10, "Moved earlier.")],
+        [(3, 4, "All of it, twice."), (4, 6, "All of it, twice."), (7, 8, "Moved earlier.")])
+    add("cut-takes-words.json", "Words in a cut are gone, and each side covers only the words it keeps.", 20, caption_edits(cuts=[(4, 6)]),
+        [caption_cue(2, 8, "One two three four five six.", [(2, 3, "One"), (3, 3.9, "two"), (4, 4.9, "three"), (5, 5.9, "four"), (6, 7, "five"), (7, 8, "six.")])],
+        [(2, 3.9, "One two"), (4, 6, "five six.")])
+    add("word-goes-by-its-middle.json", "A word a cut reaches into stays or goes by where its middle is.", 20, caption_edits(cuts=[(5, 7)]),
+        [caption_cue(3, 8, "before stays goes after", [(3, 4, "before"), (4, 5.4, "stays"), (5.4, 6, "goes"), (6.8, 8, "after")])],
+        [(3, 5, "before stays"), (5, 6, "after")])
+    add("all-words-kept-keeps-the-text.json", "A part with all the words keeps the cue's own text, with its punctuation and lines.", 20, caption_edits(1),
+        [caption_cue(0.5, 4, "Hi,\nthere!", [(1, 2, "Hi"), (2, 3.5, "there")])],
+        [(0, 3, "Hi,\nthere!")])
+    add("speed-has-no-captions.json", "Pieces at another rate have no sound, so they have no captions, faster or slower.", 20,
+        caption_edits(speeds=[(5, 10, 2), (15, 18, 0.5)]),
+        [caption_cue(1, 3, "Before."), caption_cue(4, 6, "Runs into the fast part."), caption_cue(6, 9, "In the fast part."),
+         caption_cue(9, 11, "Comes out of it."), caption_cue(16, 17, "In the slow part."), caption_cue(18.5, 19, "After.")],
+        [(1, 3, "Before."), (4, 5, "Runs into the fast part."), (7.5, 8.5, "Comes out of it."), (19, 19.5, "After.")])
+    add("overlapping-cues.json", "A caption ends where the next starts, and one left too short to read is dropped.", 20, caption_edits(),
+        [caption_cue(1, 4, "First."), caption_cue(3, 5, "Second."), caption_cue(6, 8, "Long one."), caption_cue(6, 7, "Same start."),
+         caption_cue(9, 12, "Early."), caption_cue(9.05, 10, "Late.")],
+        [(1, 3, "First."), (3, 5, "Second."), (6, 8, "Long one."), (9.05, 10, "Late.")],
+        at=[2.5, 3, 6.5, 9, 9.05])
+    add("unsorted-and-invalid-cues.json", "Cues are put in time order. One with no time or no text is not shown.", 20, caption_edits(),
+        [caption_cue(5, 6, "Later."), caption_cue(1, 2, "Earlier."), caption_cue(3, 3, "No time."), caption_cue(4, 3.5, "Backwards."), caption_cue(7, 8, "   \n ")],
+        [(1, 2, "Earlier."), (5, 6, "Later.")])
+    add("too-short-to-read.json", "What a cut leaves of a cue is dropped when it is under a tenth of a second.", 20, caption_edits(cuts=[(2.05, 8)]),
+        [caption_cue(2, 8.5, "Only the end is left."), caption_cue(9, 9.05, "Blink.")],
+        [(2.05, 2.55, "Only the end is left.")])
+    add("text-is-cleaned.json", "Space around lines and blank lines go, whatever ends the lines.", 10, caption_edits(),
+        [caption_cue(1, 2, "  Line one  \r\n\r\n  Line two\rLine three \n")],
+        [(1, 2, "Line one\nLine two\nLine three")])
+    add("nulls-and-missing.json", "Section 2 applies: null and missing values take their defaults and null elements are dropped.", 20, caption_edits(),
+        [None, {"id": "a", "start": 1, "end": 2, "text": "No words."}, {"start": 3, "end": 4, "text": "No id.", "words": None},
+         {"start": None, "end": 0.5, "text": "Start counts as 0."}, {"start": 7, "end": 8, "text": None},
+         {"start": 9, "end": 10, "text": "A null word.", "words": [None, {"start": 9, "end": 10, "text": "A"}]}],
+        [(0, 0.5, "Start counts as 0."), (1, 2, "No words."), (3, 4, "No id."), (9, 10, "A null word.")])
+    add("everything-cut.json", "Nothing is kept, so there are no captions.", 10, caption_edits(cuts=[(0, 10)]), [caption_cue(1, 2, "Gone.")], [])
+    add("no-cues.json", "No cues: an SRT is empty and a VTT is only its header.", 10, caption_edits(), [], [])
+    add("file-text.json", "Times round to the nearest millisecond, half up. A VTT escapes its text and an SRT does not.", 7200, caption_edits(),
+        [caption_cue(3661.5, 3662.0625, "Fish & chips <now> -> later"), caption_cue(0.0625, 1, "Half a millisecond rounds up.")],
+        [(0.0625, 1, "Half a millisecond rounds up."), (3661.5, 3662.0625, "Fish & chips <now> -> later")])
+    assert_equal(fixtures["file-text.json"]["srt"], "1\n00:00:00,063 --> 00:00:01,000\nHalf a millisecond rounds up.\n\n2\n01:01:01,500 --> 01:01:02,063\nFish & chips <now> -> later\n", "srt")
+    assert_equal(fixtures["file-text.json"]["vtt"], "WEBVTT\n\n00:00:00.063 --> 00:00:01.000\nHalf a millisecond rounds up.\n\n01:01:01.500 --> 01:01:02.063\nFish &amp; chips &lt;now&gt; -&gt; later\n", "vtt")
+    assert_equal(fixtures["no-cues.json"]["srt"], "", "empty srt")
+    assert_equal(fixtures["no-cues.json"]["vtt"], "WEBVTT\n", "empty vtt")
+    return fixtures
+
+
+def generate_caption_files():
+    def fixture(*args):
+        return caption_file_fixture(*args)
+
+    return {
+        "srt.json": fixture("A byte order mark and Windows line ends. Text keeps its lines, and hours go past the first.",
+            "\ufeff1\r\n00:00:01,000 --> 00:00:02,500\r\nFirst line\r\nSecond line\r\n\r\n2\r\n00:00:03,000 --> 01:00:04,250\r\nThird\r\n",
+            [(1, 2.5, "First line\nSecond line"), (3, 3604.25, "Third")], 0),
+        "srt-markup.json": fixture("The tags and overrides of an SRT go, and what only looks like them stays. An SRT has no entities.",
+            "1\n00:00:01,000 --> 00:00:02,000\n<i>Slanted</i> and <FONT color=\"#fff\">white</FONT>\n\n2\n00:00:03,000 --> 00:00:04,000\n{\\an8}On top\n\n3\n00:00:05,000 --> 00:00:06,000\n3 < 4 & 5 > 2 &amp; <now>\n",
+            [(1, 2, "Slanted and white"), (3, 4, "On top"), (5, 6, "3 < 4 & 5 > 2 &amp; <now>")], 0),
+        "srt-loose.json": fixture("No number, a dot, a short fraction, no spaces around the arrow, and extra blank lines.",
+            "\n\n00:00:01.5 --> 00:00:02.25\nNo number\n\n\n\n7\n0:00:03,000-->0:00:04,000\nNo spaces\n",
+            [(1.5, 2.25, "No number"), (3, 4, "No spaces")], 0),
+        "srt-bad-blocks.json": fixture("Blocks with no timing, a backwards timing, no text, or only markup are skipped and counted.",
+            "1\nnot a time\nHello\n\n2\n00:00:05,000 --> 00:00:04,000\nBackwards\n\n3\n00:00:06,000 --> 00:00:07,000\n\n4\n00:00:08,000 --> 00:00:09,000\n<i></i>\n\n5\n00:00:10,000 --> 00:00:11,000\nGood\n",
+            [(10, 11, "Good")], 4),
+        "vtt.json": fixture("A title, a comment, a style, a cue name, cue settings, short times, voices, inline times, and entities.",
+            "WEBVTT - a title\n\nNOTE a comment\nover two lines\n\nSTYLE\n::cue { color: red }\n\nintro\n00:01.000 --> 00:02.500 align:start position:10%\n<v Sam>Fish &amp; chips</v>\n\n00:00:03.000 --> 00:00:04.000\n<00:00:03.500><c.yellow>1 &lt; 2</c> &gt; 0\n\n01:00:05.000 --> 01:00:06.000\nAn &amp;lt; stays\n",
+            [(1, 2.5, "Fish & chips"), (3, 4, "1 < 2 > 0"), (3605, 3606, "An &lt; stays")], 0),
+        "vtt-only-a-header.json": fixture("A VTT with no cues has nothing to skip.", "WEBVTT\n", [], 0),
+        "not-captions.json": fixture("Text with no times has no cues.", "Just some words.\nNothing here has a time.\n\nAnother paragraph.\n", [], 2),
+        "empty.json": fixture("An empty file has no cues.", "", [], 0),
+    }
+
+
 def parse_path(path):
     parts = []
     for piece in path.split("."):
@@ -2738,6 +3028,10 @@ def generated_files():
         files[Path("autozoom") / filename] = fixture
     for filename, fixture in generate_recordings().items():
         files[Path("recording") / filename] = fixture
+    for filename, fixture in generate_captions().items():
+        files[Path("captions") / filename] = fixture
+    for filename, fixture in generate_caption_files().items():
+        files[Path("captionfiles") / filename] = fixture
     verify_claims(files)
     return files
 

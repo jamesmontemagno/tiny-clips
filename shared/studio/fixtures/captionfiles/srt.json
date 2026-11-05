@@ -1,0 +1,17 @@
+{
+  "description": "A byte order mark and Windows line ends. Text keeps its lines, and hours go past the first.",
+  "text": "﻿1\r\n00:00:01,000 --> 00:00:02,500\r\nFirst line\r\nSecond line\r\n\r\n2\r\n00:00:03,000 --> 01:00:04,250\r\nThird\r\n",
+  "expected": [
+    {
+      "start": 1.0,
+      "end": 2.5,
+      "text": "First line\nSecond line"
+    },
+    {
+      "start": 3.0,
+      "end": 3604.25,
+      "text": "Third"
+    }
+  ],
+  "skipped": 0
+}

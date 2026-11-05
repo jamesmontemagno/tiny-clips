@@ -1,0 +1,87 @@
+{
+  "description": "Pieces at another rate have no sound, so they have no captions, faster or slower.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 5,
+        "end": 10,
+        "rate": 2
+      },
+      {
+        "start": 15,
+        "end": 18,
+        "rate": 0.5
+      }
+    ]
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-1",
+        "start": 1,
+        "end": 3,
+        "text": "Before."
+      },
+      {
+        "id": "cue-4",
+        "start": 4,
+        "end": 6,
+        "text": "Runs into the fast part."
+      },
+      {
+        "id": "cue-6",
+        "start": 6,
+        "end": 9,
+        "text": "In the fast part."
+      },
+      {
+        "id": "cue-9",
+        "start": 9,
+        "end": 11,
+        "text": "Comes out of it."
+      },
+      {
+        "id": "cue-16",
+        "start": 16,
+        "end": 17,
+        "text": "In the slow part."
+      },
+      {
+        "id": "cue-18.5",
+        "start": 18.5,
+        "end": 19,
+        "text": "After."
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 1,
+      "end": 3,
+      "text": "Before."
+    },
+    {
+      "start": 4,
+      "end": 5,
+      "text": "Runs into the fast part."
+    },
+    {
+      "start": 7.5,
+      "end": 8.5,
+      "text": "Comes out of it."
+    },
+    {
+      "start": 19.0,
+      "end": 19.5,
+      "text": "After."
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:01,000 --> 00:00:03,000\nBefore.\n\n2\n00:00:04,000 --> 00:00:05,000\nRuns into the fast part.\n\n3\n00:00:07,500 --> 00:00:08,500\nComes out of it.\n\n4\n00:00:19,000 --> 00:00:19,500\nAfter.\n",
+  "vtt": "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nBefore.\n\n00:00:04.000 --> 00:00:05.000\nRuns into the fast part.\n\n00:00:07.500 --> 00:00:08.500\nComes out of it.\n\n00:00:19.000 --> 00:00:19.500\nAfter.\n"
+}

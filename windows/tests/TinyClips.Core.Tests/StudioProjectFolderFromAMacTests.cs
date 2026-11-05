@@ -27,6 +27,8 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
     /// Windows writes every property it knows, this one at its default.
     /// </summary>
     private const string VolumeWindowsAdds = "audio.volume: only the Windows file has it: 1";
+    private const string CaptionsWindowsAdds = "captions: only the Windows file has it: { \"cues\": [] }";
+    private const string CaptionStyleWindowsAdds = "overlays.captions: only the Windows file has it: { \"enabled\": false, \"size\": \"medium\", \"position\": \"bottom\", \"appearance\": \"classicOutline\" }";
 
     private static string MacsProjectFile =>
         Path.Combine(AppContext.BaseDirectory, "StudioFixtures", "folder", "saved-on-macos-1.9.0.tinyclips");
@@ -96,12 +98,14 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
 
         // Nothing the Mac wrote is dropped or changed. One value differs, the id the project
         // got when it was opened. New fields absent from this older file are written at
-        // their defaults: volume and gradient direction.
+        // their defaults: volume, gradient direction, and captions.
         Assert.Equal(
             [
                 VolumeWindowsAdds,
                 "canvas.background.gradientDirectionDegrees: only the Windows file has it: 45",
                 $"id: the Mac's file has \"{IdInTheMacsFile}\", the Windows file has \"{opened.Id}\"",
+                CaptionStyleWindowsAdds,
+                CaptionsWindowsAdds,
             ],
             comparison.Values);
 
@@ -187,10 +191,23 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
             File.WriteAllLines(findingsFile, findings);
         }
 
-        // The id, and the volume where the Mac that saved the folder did not write one.
-        string[] expected = macProject["audio"]?["volume"] is null
-            ? [VolumeWindowsAdds, $"id: the Mac's file has \"{macId}\", the Windows file has \"{fromFile.Id}\""]
-            : [$"id: the Mac's file has \"{macId}\", the Windows file has \"{fromFile.Id}\""];
+        // The id, and what the Mac that saved the folder did not write.
+        List<string> expected = [$"id: the Mac's file has \"{macId}\", the Windows file has \"{fromFile.Id}\""];
+        if (macProject["audio"]?["volume"] is null)
+        {
+            expected.Add(VolumeWindowsAdds);
+        }
+
+        if (macProject["captions"] is null)
+        {
+            expected.Add(CaptionsWindowsAdds);
+        }
+
+        if (macProject["overlays"]?["captions"] is null)
+        {
+            expected.Add(CaptionStyleWindowsAdds);
+        }
+
         Assert.Equal(expected.Order(StringComparer.Ordinal), comparison.Values.Order(StringComparer.Ordinal));
     }
 

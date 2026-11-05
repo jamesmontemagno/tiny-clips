@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- Studio projects can hold captions, shared with the macOS app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. There is no captions UI yet; agents can read and change them with `studio.project.get` and `studio.project.edit`.
+
 ### Fixed
 - Agent Control now preserves Studio gestures and existing annotated captures, reports saved screenshot dimensions accurately, persists agent activity, and cancels pending approvals when an agent disconnects.
 - Revoking an agent cancels its pending approvals, and the CLI verifies the named-pipe owner before sending its token.

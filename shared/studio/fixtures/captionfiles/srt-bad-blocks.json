@@ -1,0 +1,12 @@
+{
+  "description": "Blocks with no timing, a backwards timing, no text, or only markup are skipped and counted.",
+  "text": "1\nnot a time\nHello\n\n2\n00:00:05,000 --> 00:00:04,000\nBackwards\n\n3\n00:00:06,000 --> 00:00:07,000\n\n4\n00:00:08,000 --> 00:00:09,000\n<i></i>\n\n5\n00:00:10,000 --> 00:00:11,000\nGood\n",
+  "expected": [
+    {
+      "start": 10.0,
+      "end": 11.0,
+      "text": "Good"
+    }
+  ],
+  "skipped": 4
+}
