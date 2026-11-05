@@ -205,36 +205,45 @@
                 AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="Get started" />
+            <controls:SettingsCard
+                Description="Install the .NET 10 SDK, turn on Agent Control above, and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant."
+                Header="Before you begin">
+                <HyperlinkButton Content="Download .NET 10" NavigateUri="https://dotnet.microsoft.com/download/dotnet/10.0" />
+            </controls:SettingsCard>
             <controls:SettingsExpander
-                Description="The plugin includes the MCP server and workflow Skills. Install the .NET 10 SDK, add the plugin, then pair once."
+                Description="Recommended: the plugin includes the MCP server and workflow Skills. Choose one plugin install method, then pair once."
                 Header="Set up with the Agent Plugin (recommended)"
-                HeaderIcon="{ui:FontIcon Glyph=&#xE756;}">
+                HeaderIcon="{ui:FontIcon Glyph=&#xE756;}"
+                IsExpanded="True">
                 <controls:SettingsExpander.Items>
-                    <controls:SettingsCard Header="1. Install the .NET 10 SDK">
-                        <HyperlinkButton Content="Download .NET 10" NavigateUri="https://dotnet.microsoft.com/download/dotnet/10.0" />
-                    </controls:SettingsCard>
                     <controls:SettingsCard
-                        Description="In VS Code, run Chat: Install Plugin from Source from the Command Palette and enter this repository URL. No manual clone, marketplace, separate MCP configuration, or global CLI installation is needed."
-                        Header="2. Install the Tiny Clips Agent Plugin">
+                        Description="Both options install the same plugin. Use the one for your agent; you do not need to use both."
+                        Header="Choose one plugin install method">
                         <StackPanel Spacing="8">
-                            <TextBlock AutomationProperties.Name="Plugin repository URL" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.PluginRepositoryUrl}" TextWrapping="Wrap" />
-                            <Button Content="Copy plugin repository URL" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.PluginRepositoryUrl}" />
-                            <TextBlock Text="For GitHub Copilot CLI, run:" TextWrapping="Wrap" />
-                            <TextBlock AutomationProperties.Name="Plugin install command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.PluginInstallCommand}" TextWrapping="Wrap" />
-                            <Button Content="Copy plugin install command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.PluginInstallCommand}" />
+                            <StackPanel Spacing="4">
+                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="VS Code" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Run Chat: Install Plugin from Source from the Command Palette, then enter this repository URL." TextWrapping="Wrap" />
+                                <TextBlock AutomationProperties.Name="VS Code plugin repository URL" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.PluginRepositoryUrl}" TextWrapping="Wrap" />
+                                <Button Content="Copy VS Code plugin repository URL" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.PluginRepositoryUrl}" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="GitHub Copilot CLI" />
+                                <TextBlock AutomationProperties.Name="Copilot CLI plugin install command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.PluginInstallCommand}" TextWrapping="Wrap" />
+                                <Button Content="Copy Copilot CLI plugin install command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.PluginInstallCommand}" />
+                            </StackPanel>
                         </StackPanel>
                     </controls:SettingsCard>
                     <controls:SettingsCard
-                        Description="Keep Tiny Clips running and run this command in a terminal."
-                        Header="3. Turn on agent control above, then pair">
+                        Description="After installing either plugin option, pair this agent once from a terminal."
+                        Header="Pair the agent">
                         <StackPanel Spacing="8">
                             <TextBlock AutomationProperties.Name="Pair command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.PairCommand}" TextWrapping="Wrap" />
                             <Button Content="Copy pair command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.PairCommand}" />
                         </StackPanel>
                     </controls:SettingsCard>
                     <controls:SettingsCard
-                        Description="Keep Tiny Clips running. Choose the permissions to grant in the app, approve, then check the connection."
-                        Header="4. Approve and verify">
+                        Description="Choose the permissions to grant in Tiny Clips, approve the request, then check the connection."
+                        Header="Approve and verify">
                         <StackPanel Spacing="8">
                             <TextBlock AutomationProperties.Name="Status command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.StatusCommand}" TextWrapping="Wrap" />
                             <Button Content="Copy status command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.StatusCommand}" />
@@ -242,19 +251,48 @@
                     </controls:SettingsCard>
                     <controls:SettingsCard
                         Description="Start a fresh agent session, then ask: Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy."
-                        Header="5. Try your first capture" />
+                        Header="Try your first capture" />
                     <controls:SettingsCard
                         Description="Agents request permissions when they pair, and you choose which to grant. Change an agent's permissions under Paired agents at any time. Deleting, uploading, and discarding always need approval. Turn off Agent Control or revoke access at any time. OS microphone and camera permissions still apply."
                         Header="You stay in control" />
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
             <controls:SettingsExpander
-                Description="For agents without plugin support. Skip this if you installed the plugin."
-                Header="Manual MCP setup (without a plugin)"
+                Description="For terminal agents and scripts without plugin support, run with dnx or install the CLI globally."
+                Header="Use the CLI directly (without a plugin)"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE756;}">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard
+                        Description="No global installation is required. Pair once, then check the connection."
+                        Header="Run with dnx">
+                        <StackPanel Spacing="8">
+                            <TextBlock AutomationProperties.Name="Pair command using dnx" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.PairCommand}" TextWrapping="Wrap" />
+                            <Button Content="Copy dnx pair command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.PairCommand}" />
+                            <TextBlock AutomationProperties.Name="Status command using dnx" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.StatusCommand}" TextWrapping="Wrap" />
+                            <Button Content="Copy dnx status command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.StatusCommand}" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                    <controls:SettingsCard
+                        Description="Or install once, then use the tinyclips command for pairing and terminal workflows."
+                        Header="Install the CLI globally">
+                        <StackPanel Spacing="8">
+                            <TextBlock AutomationProperties.Name="Standalone CLI install command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.InstallCommand}" TextWrapping="Wrap" />
+                            <Button Content="Copy CLI install command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.InstallCommand}" />
+                            <TextBlock AutomationProperties.Name="Pair command using global CLI" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.GlobalPairCommand}" TextWrapping="Wrap" />
+                            <Button Content="Copy global CLI pair command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.GlobalPairCommand}" />
+                            <TextBlock AutomationProperties.Name="Status command using global CLI" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.GlobalStatusCommand}" TextWrapping="Wrap" />
+                            <Button Content="Copy global CLI status command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.GlobalStatusCommand}" />
+                        </StackPanel>
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+            <controls:SettingsExpander
+                Description="Advanced option for agents that support MCP but not plugins. CLI-only use does not require this."
+                Header="Configure MCP manually"
                 HeaderIcon="{ui:FontIcon Glyph=&#xE968;}">
                 <controls:SettingsExpander.Items>
                     <controls:SettingsCard
-                        Description="Install the .NET 10 SDK and pair as above, then add this local stdio server in your agent's MCP settings. Use the same Windows account. Restart or reload the MCP connection afterward. Configuration placement varies by agent."
+                        Description="Pair using either setup above, then add this local stdio server in your agent's MCP settings. Use the same Windows account. Restart or reload the MCP connection afterward. Configuration placement varies by agent."
                         Header="Configure the MCP server">
                         <StackPanel MaxWidth="360" Spacing="8">
                             <TextBlock AutomationProperties.Name="MCP configuration" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.McpConfiguration}" TextWrapping="Wrap" />
@@ -262,13 +300,8 @@
                         </StackPanel>
                     </controls:SettingsCard>
                     <controls:SettingsCard
-                        Description="Optional for scripts and terminal use. With the global tool installed, MCP can use command tinyclips with args [&quot;mcp&quot;]. Workflow Skills are included with the plugin, not this manual configuration."
-                        Header="Install the standalone CLI">
-                        <StackPanel Spacing="8">
-                            <TextBlock AutomationProperties.Name="Standalone CLI install command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.InstallCommand}" TextWrapping="Wrap" />
-                            <Button Content="Copy CLI install command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.InstallCommand}" />
-                        </StackPanel>
-                    </controls:SettingsCard>
+                        Description="With the global CLI installed, MCP can use command tinyclips with args [&quot;mcp&quot;]. Workflow Skills are included with the plugin, not this manual configuration."
+                        Header="Use the global CLI for MCP" />
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
             <HyperlinkButton
