@@ -1,4 +1,5 @@
 import XCTest
+import CoreImage
 @testable import TinyClips
 
 /// Section 6.10 of the project format, against the fixtures Windows is held to as well.
@@ -353,5 +354,144 @@ final class StudioAnnotationTests: XCTestCase {
             var textRect: StudioRect?
             var pointer: [StudioAnnotationPoint]?
         }
+    }
+}
+
+/// Whether what the geometry works out reaches the picture: the compositor's drawing, read back.
+/// Places count from the top, as the format does, so a picture drawn upside down fails here.
+final class StudioAnnotationDrawingTests: XCTestCase {
+    private let size = CGSize(width: 1280, height: 720)
+    private let compositor = StudioCompositor()
+    private let context = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
+    private let red = [255, 0, 0]
+    private let blue = [0, 0, 255]
+    private let white = [255, 255, 255]
+    private let black = [0, 0, 0]
+
+    private var background: CIImage {
+        CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: CGRect(origin: .zero, size: size))
+    }
+
+    private func pixels(_ image: CIImage, x: Int, y: Int, width: Int = 1) -> [[Int]] {
+        var bytes = [UInt8](repeating: 0, count: width * 4)
+        context.render(
+            image,
+            toBitmap: &bytes,
+            rowBytes: width * 4,
+            bounds: CGRect(x: x, y: Int(size.height) - 1 - y, width: width, height: 1),
+            format: .RGBA8,
+            colorSpace: nil
+        )
+        return (0..<width).map { [Int(bytes[$0 * 4]), Int(bytes[$0 * 4 + 1]), Int(bytes[$0 * 4 + 2])] }
+    }
+
+    private func assertColor(_ image: CIImage, _ x: Int, _ y: Int, _ expected: [Int], _ what: String, line: UInt = #line) {
+        let actual = pixels(image, x: x, y: y)[0]
+        let isClose = zip(actual, expected).allSatisfy { abs($0 - $1) <= 3 }
+        XCTAssertTrue(isClose, "\(what): at \(x), \(y) the color is \(actual), not \(expected)", line: line)
+    }
+
+    private func arrow(fill: String, from tail: StudioAnnotationPoint, to tip: StudioAnnotationPoint, headBase: StudioAnnotationPoint, opacity: Double = 1) -> StudioResolvedAnnotation {
+        StudioResolvedAnnotation(
+            index: 0,
+            kind: StudioAnnotationKind.arrow,
+            opacity: opacity,
+            fill: fill,
+            textColor: "#FFFFFF",
+            anchor: tip,
+            stroke: 12,
+            tail: tail,
+            headBase: headBase,
+            halfWidth: 30,
+            hasShaft: true
+        )
+    }
+
+    private var flatArrow: StudioResolvedAnnotation {
+        arrow(
+            fill: "#FF0000",
+            from: StudioAnnotationPoint(x: 300, y: 100),
+            to: StudioAnnotationPoint(x: 900, y: 100),
+            headBase: StudioAnnotationPoint(x: 840, y: 100)
+        )
+    }
+
+    func testAnArrowIsDrawnWhereItsPointsAre() {
+        let drawn = compositor.drawAnnotations([flatArrow], over: background, renderSize: size)
+
+        assertColor(drawn, 600, 100, red, "the shaft")
+        assertColor(drawn, 845, 80, red, "the head, wider than the shaft")
+        assertColor(drawn, 600, 80, black, "beside the shaft")
+        assertColor(drawn, 950, 100, black, "past the tip")
+        assertColor(drawn, 600, 619, black, "where an arrow drawn upside down would be")
+    }
+
+    func testAFadedAnnotationLetsThroughWhatIsUnderIt() {
+        var faded = flatArrow
+        faded.opacity = 0.5
+        let drawn = compositor.drawAnnotations([faded], over: background, renderSize: size)
+
+        assertColor(drawn, 600, 100, [128, 0, 0], "half of the red over black")
+    }
+
+    func testTheLastInTheListIsOnTop() {
+        let across = arrow(
+            fill: "#0000FF",
+            from: StudioAnnotationPoint(x: 600, y: 20),
+            to: StudioAnnotationPoint(x: 600, y: 300),
+            headBase: StudioAnnotationPoint(x: 600, y: 240)
+        )
+        let blueOnTop = compositor.drawAnnotations([flatArrow, across], over: background, renderSize: size)
+        let redOnTop = compositor.drawAnnotations([across, flatArrow], over: background, renderSize: size)
+
+        assertColor(blueOnTop, 600, 100, blue, "the last of red, blue")
+        assertColor(redOnTop, 600, 100, red, "the last of blue, red")
+    }
+
+    func testACalloutIsABoxWithItsTextAndAPointerToWhatItPointsAt() {
+        let callout = StudioResolvedAnnotation(
+            index: 0,
+            kind: StudioAnnotationKind.callout,
+            opacity: 1,
+            fill: "#FFFFFF",
+            textColor: "#000000",
+            anchor: StudioAnnotationPoint(x: 900, y: 200),
+            boxCenter: StudioAnnotationPoint(x: 300, y: 200),
+            font: 40,
+            maxTextWidth: 400,
+            radius: 8,
+            text: "MMMM"
+        )
+        let drawn = compositor.drawAnnotations([callout], over: background, renderSize: size)
+        let row = pixels(drawn, x: 100, y: 200, width: 400)
+
+        XCTAssertTrue(row.contains { $0.allSatisfy { $0 > 250 } }, "the box's fill is on the row through its middle")
+        XCTAssertTrue(row.contains { $0.allSatisfy { $0 < 60 } }, "the text's ink is on the row through its middle")
+        assertColor(drawn, 800, 200, white, "the pointer, on its way to the anchor")
+        assertColor(drawn, 920, 200, black, "past the anchor")
+        assertColor(drawn, 300, 80, black, "above the box")
+        assertColor(drawn, 800, 519, black, "where a pointer drawn upside down would be")
+    }
+
+    func testATextHasABoxAndNoPointer() {
+        let text = StudioResolvedAnnotation(
+            index: 0,
+            kind: StudioAnnotationKind.text,
+            opacity: 1,
+            fill: "#FFFFFF",
+            textColor: "#000000",
+            anchor: StudioAnnotationPoint(x: 640, y: 500),
+            boxCenter: StudioAnnotationPoint(x: 640, y: 500),
+            font: 40,
+            maxTextWidth: 400,
+            radius: 8,
+            text: "MMMM"
+        )
+        let drawn = compositor.drawAnnotations([text], over: background, renderSize: size)
+        let row = pixels(drawn, x: 440, y: 500, width: 400)
+
+        XCTAssertTrue(row.contains { $0.allSatisfy { $0 > 250 } }, "the box's fill is on the row through its middle")
+        XCTAssertTrue(row.contains { $0.allSatisfy { $0 < 60 } }, "the text's ink is on the row through its middle")
+        assertColor(drawn, 1000, 500, black, "beside the box")
     }
 }

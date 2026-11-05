@@ -641,7 +641,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     // MARK: - Annotations
 
     /// Section 6.10 of the project format: over the camera and under the badge, last on top.
-    private func drawAnnotations(
+    func drawAnnotations(
         _ annotations: [StudioResolvedAnnotation],
         over image: CIImage,
         renderSize: CGSize

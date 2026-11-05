@@ -1,9 +1,12 @@
 # Tiny Clips Studio: annotations
 
 **Status:** planned with the owner on 5 November 2026. The code of phases 1 and 2 is written, and
-compiled and unit tested in CI. No annotation has been checked by eye yet on a Mac or a Windows PC,
-so the "done when" of phase 1 and the walkthrough of phase 2 are still open. Phases 3 and 4 have not
-started. Both platforms ship each phase together, because
+compiled and unit tested in CI. On Windows, `StudioRenderCheck`'s annotation checks and
+`StudioWindowCheck`'s `annotation` group have run on a CI runner, which cannot capture a window, so
+their pictures and the preview in the real window have not been seen. On the Mac the drawing is read
+back in a unit test and the editing UI has only been compiled. No annotation has been checked by eye
+on a Mac or a Windows PC, so the "done when" of phase 1 and the walkthrough of phase 2 are still open.
+Phases 3 and 4 have not started. Both platforms ship each phase together, because
 projects move between them and a build without annotations keeps them in the file but does not
 draw them.
 
