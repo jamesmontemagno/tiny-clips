@@ -704,7 +704,8 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 height: Int(height),
                 bitsPerComponent: 8,
                 bytesPerRow: 0,
-                space: CGColorSpaceCreateDeviceRGB(),
+                // The format's colors are sRGB, and so is cgColor(_:alpha:). Another space here converts them.
+                space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
             )
         }
