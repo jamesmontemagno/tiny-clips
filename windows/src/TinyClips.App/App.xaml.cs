@@ -666,7 +666,9 @@ public partial class App : Application
 
         try
         {
-            _taskbarIcon.ForceCreate();
+            // The default also puts the whole process in Efficiency Mode (idle priority + EcoQoS)
+            // and nothing restores it, which delays every hotkey, overlay, editor and recording.
+            _taskbarIcon.ForceCreate(enablesEfficiencyMode: false);
             return true;
         }
         catch (Exception ex)
@@ -1322,9 +1324,6 @@ public partial class App : Application
 
         var captureFlowCts = new CancellationTokenSource();
         _captureFlowCts = captureFlowCts;
-        IReadOnlyList<Task<CapturedFrame?>>? earlyBackdrops = null;
-        IReadOnlyList<MonitorInfo>? earlyBackdropMonitors = null;
-        long earlyBackdropStarted = 0;
         Task? recorderPrepare = null;
         try
         {
@@ -1345,18 +1344,6 @@ public partial class App : Application
             var wasPickerInitiated = automationSelection is null
                 && forcedMode is null
                 && settings.ShouldShowCapturePicker(type);
-            if (wasPickerInitiated)
-            {
-                // Start grabbing the region-overlay backdrop while the user reads the picker bar,
-                // so choosing "Region" shows the overlay immediately. If the user dawdles the
-                // frame is refreshed on selection (see ResolveTargetAsync) so it never goes stale.
-                earlyBackdropMonitors = ResolveBackdropMonitors(settings);
-                if (earlyBackdropMonitors.Count > 0)
-                {
-                    earlyBackdropStarted = Stopwatch.GetTimestamp();
-                    earlyBackdrops = RegionSelectController.CaptureBackdropsAsync(earlyBackdropMonitors);
-                }
-            }
 
             var pick = automationSelection is not null
                 ? new CapturePickerResult(CapturePickerMode.Screen, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
@@ -1375,14 +1362,10 @@ public partial class App : Application
 
             var isTextRecognition = pick.Mode == CapturePickerMode.RecognizeText;
             var isScrolling = type == CaptureType.Screenshot && pick.Mode == CapturePickerMode.Scrolling;
-            var earlyBackdrop = earlyBackdrops is null
-                ? null
-                : new EarlyBackdrop(earlyBackdropMonitors!, earlyBackdrops, earlyBackdropStarted);
             var resolved = automationSelection is { } selected
                 ? selected
                 : await ResolveTargetAsync(
                     isTextRecognition || isScrolling ? CapturePickerMode.Region : pick.Mode,
-                    earlyBackdrop,
                     captureFlowCts.Token);
             CaptureFlowTrace.Mark($"target: {(resolved is null ? "cancelled" : "resolved")}");
             if (resolved is not { } selection)
@@ -1601,31 +1584,6 @@ public partial class App : Application
 
             captureFlowCts.Dispose();
         }
-    }
-
-    /// <summary>Monitor(s) the region overlay will cover, mirroring <see cref="ResolveTargetAsync"/>.</summary>
-    private static IReadOnlyList<MonitorInfo> ResolveBackdropMonitors(ICaptureSettings settings)
-    {
-        var monitors = Services.GetRequiredService<IMonitorService>();
-        var all = monitors.GetMonitors();
-        if (all.Count == 0)
-        {
-            return all;
-        }
-
-        var preferred = ResolvePreferredMonitor(monitors, settings.MultiMonitorCaptureMode);
-        return preferred is { } single ? new[] { single } : all;
-    }
-
-    // A backdrop captured while the picker was showing; refreshed if older than this on use.
-    private static readonly TimeSpan EarlyBackdropMaxAge = TimeSpan.FromMilliseconds(600);
-
-    private sealed record EarlyBackdrop(IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<Task<CapturedFrame?>> Frames, long StartedTimestamp)
-    {
-        public bool IsFreshFor(IReadOnlyList<MonitorInfo> monitors) =>
-            Stopwatch.GetElapsedTime(StartedTimestamp) <= EarlyBackdropMaxAge
-            && monitors.Count == Monitors.Count
-            && monitors.Zip(Monitors).All(pair => pair.First.HMonitor == pair.Second.HMonitor);
     }
 
     /// <summary>
@@ -2146,7 +2104,6 @@ public partial class App : Application
 
     private async Task<TargetSelection?> ResolveTargetAsync(
         CapturePickerMode mode,
-        EarlyBackdrop? earlyBackdrop = null,
         CancellationToken cancellationToken = default)
     {
         var monitors = Services.GetRequiredService<IMonitorService>();
@@ -2166,14 +2123,8 @@ public partial class App : Application
                 var preferredMonitor = ResolvePreferredMonitor(monitors, settings.MultiMonitorCaptureMode);
                 var overlayMonitors = preferredMonitor is { } single ? new[] { single } : all;
 
-                // Reuse the backdrop grabbed while the picker was up if it is still fresh;
-                // otherwise the controller captures a new one (in parallel with window creation).
-                var backdrops = earlyBackdrop is { } early && early.IsFreshFor(overlayMonitors)
-                    ? early.Frames
-                    : null;
-                CaptureFlowTrace.Mark(backdrops is null ? "region: capturing fresh backdrop" : "region: reusing early backdrop");
-
-                var result = await RegionSelectController.RunAsync(overlayMonitors, backdrops, cancellationToken);
+                CaptureFlowTrace.Mark("region: starting overlay");
+                var result = await RegionSelectController.RunAsync(overlayMonitors, cancellationToken);
                 if (result is not { } selection)
                 {
                     return null;
@@ -2209,10 +2160,7 @@ public partial class App : Application
             {
                 // The window picker always spans every monitor so any window can be chosen.
                 var all = monitors.GetMonitors();
-                var backdrops = earlyBackdrop is { } early && early.IsFreshFor(all)
-                    ? early.Frames
-                    : null;
-                var hwnd = await WindowPickerController.RunAsync(all, backdrops, cancellationToken);
+                var hwnd = await WindowPickerController.RunAsync(all, cancellationToken);
                 return hwnd is { } h
                     ? new TargetSelection(CaptureTarget.Window(h), null, null)
                     : null;

@@ -6,6 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Tiny Clips no longer runs in Windows Efficiency Mode. The tray library was putting the whole app at idle priority with EcoQoS, which delayed the tray popup, capture shortcuts, overlays, editors, and recordings, and could stop them responding at all while other apps were busy.
+- The capture picker appears right away: it no longer captures every monitor before showing, for frames that were almost never used.
 - Agent Control now preserves Studio gestures and existing annotated captures, reports saved screenshot dimensions accurately, persists agent activity, and cancels pending approvals when an agent disconnects.
 - Revoking an agent cancels its pending approvals, and the CLI verifies the named-pipe owner before sending its token.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
