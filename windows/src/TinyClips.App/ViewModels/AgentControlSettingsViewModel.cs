@@ -252,6 +252,9 @@ public sealed partial class AgentClientItem : ObservableObject
     [ObservableProperty]
     private string _usageText = string.Empty;
 
+    [ObservableProperty]
+    private string _permissionErrorText = string.Empty;
+
     public string RevokeName { get; }
 
     public string PermissionsName { get; }
@@ -301,11 +304,29 @@ public sealed partial class AgentClientItem : ObservableObject
 
         try
         {
-            _store.UpdateScopes(Id, selected);
+            if (!_store.UpdateScopes(Id, selected))
+            {
+                RestoreSavedScopes();
+                PermissionErrorText = "This agent is no longer paired. Its permissions were not changed.";
+                return;
+            }
+
+            PermissionErrorText = string.Empty;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Debug.WriteLine($"Updating agent permissions failed: {ex}");
+            RestoreSavedScopes();
+            PermissionErrorText = "Could not save permissions. The change was not applied. Check disk space and access, then try again.";
+        }
+    }
+
+    private void RestoreSavedScopes()
+    {
+        var savedClient = _store.List().FirstOrDefault(client => client.Id == Id);
+        if (savedClient is not null)
+        {
+            Update(savedClient);
         }
     }
 

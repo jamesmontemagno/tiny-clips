@@ -156,6 +156,23 @@ final class AutomationClientStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.updateScopes(id: "missing", scopes: ["read"]))
     }
 
+    func testUpdateScopesRestoresOriginalScopesWhenPersistenceFails() throws {
+        let blockedDirectory = directory.appendingPathComponent("blocked", isDirectory: true)
+        let store = AutomationClientStore(directory: blockedDirectory)
+        let (client, _) = try store.addClient(name: "Agent", scopes: ["read"])
+
+        try FileManager.default.removeItem(at: blockedDirectory)
+        try Data().write(to: blockedDirectory)
+
+        XCTAssertThrowsError(try store.updateScopes(id: client.id, scopes: ["delete"]))
+        XCTAssertEqual(store.clients.first?.scopes, ["read"])
+
+        try FileManager.default.removeItem(at: blockedDirectory)
+        try FileManager.default.createDirectory(at: blockedDirectory, withIntermediateDirectories: true)
+        try store.updateScopes(id: client.id, scopes: ["delete"])
+        XCTAssertEqual(AutomationClientStore(directory: blockedDirectory).clients.first?.scopes, ["delete"])
+    }
+
     @MainActor
     func testScopeSelectionStartsWithRequestedScopesInDisplayOrder() throws {
         let repoRoot = URL(fileURLWithPath: #filePath)

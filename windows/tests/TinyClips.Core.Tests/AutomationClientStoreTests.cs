@@ -84,6 +84,23 @@ public sealed class AutomationClientStoreTests : IDisposable
     }
 
     [Fact]
+    public void UpdateScopes_RestoresOriginalScopesWhenPersistenceFails()
+    {
+        var store = new AutomationClientStore(FilePath);
+        var (client, token) = store.Add("Agent", ["read"]);
+        Directory.CreateDirectory(FilePath + ".tmp");
+
+        Assert.Throws<UnauthorizedAccessException>(() => store.UpdateScopes(client.Id, ["delete"]));
+
+        Assert.Equal(["read"], store.FindByToken(token)!.Scopes);
+        Assert.Equal(["read"], new AutomationClientStore(FilePath).FindByToken(token)!.Scopes);
+
+        Directory.Delete(FilePath + ".tmp");
+        Assert.True(store.UpdateScopes(client.Id, ["delete"]));
+        Assert.Equal(["delete"], new AutomationClientStore(FilePath).FindByToken(token)!.Scopes);
+    }
+
+    [Fact]
     public void RevocationTokens_CancelOnlyRemovedClientsIncludingRevokeAll()
     {
         var store = new AutomationClientStore(FilePath);

@@ -91,8 +91,14 @@ final class AutomationClientStore {
             throw AutomationError(.notFound, "That agent is no longer paired.")
         }
         guard clients[index].scopes != updated else { return }
+        let previousScopes = clients[index].scopes
         clients[index].scopes = updated
-        try persist()
+        do {
+            try persist()
+        } catch {
+            clients[index].scopes = previousScopes
+            throw error
+        }
     }
 
     func revokeAll() {

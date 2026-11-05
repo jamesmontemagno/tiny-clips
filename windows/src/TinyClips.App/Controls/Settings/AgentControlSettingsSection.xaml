@@ -143,6 +143,11 @@
                                                                 </DataTemplate>
                                                             </ItemsControl.ItemTemplate>
                                                         </ItemsControl>
+                                                        <TextBlock
+                                                            AutomationProperties.LiveSetting="Polite"
+                                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                            Text="{x:Bind PermissionErrorText, Mode=OneWay}"
+                                                            TextWrapping="Wrap" />
                                                     </StackPanel>
                                                 </Flyout>
                                             </Button.Flyout>

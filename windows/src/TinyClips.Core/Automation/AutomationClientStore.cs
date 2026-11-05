@@ -159,8 +159,17 @@ public sealed class AutomationClientStore
                 return true;
             }
 
-            _clients[index] = _clients[index] with { Scopes = updated };
-            WriteFile();
+            var previous = _clients[index];
+            _clients[index] = previous with { Scopes = updated };
+            try
+            {
+                WriteFile();
+            }
+            catch
+            {
+                _clients[index] = previous;
+                throw;
+            }
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
