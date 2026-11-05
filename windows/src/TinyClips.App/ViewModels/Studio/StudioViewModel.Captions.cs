@@ -263,6 +263,8 @@ public sealed partial class StudioViewModel
         nameof(IsCaptionGenerateVisible),
         nameof(CaptionProgressPercent),
         nameof(CaptionProgressText),
+        nameof(IsStoppingCaptionGeneration),
+        nameof(CanCancelCaptionGeneration),
     ];
 
     public IReadOnlyList<StudioCaptionModelOption> CaptionModelOptions => AllCaptionModelOptions;
@@ -318,9 +320,22 @@ public sealed partial class StudioViewModel
 
     public double CaptionProgressPercent => _session.CaptionGenerationProgress.Fraction * 100;
 
-    public string CaptionProgressText => StudioCaptionText.GetProgressText(_session.CaptionGenerationProgress);
+    public string CaptionProgressText => IsStoppingCaptionGeneration
+        ? StudioCaptionText.StoppingMessage
+        : StudioCaptionText.GetProgressText(_session.CaptionGenerationProgress);
 
-    public void CancelCaptionGeneration() => _session.CancelCaptionGeneration();
+    public bool IsStoppingCaptionGeneration => _session.IsStoppingCaptionGeneration;
+
+    public bool CanCancelCaptionGeneration => IsGeneratingCaptions && !IsStoppingCaptionGeneration;
+
+    public void CancelCaptionGeneration()
+    {
+        if (CanCancelCaptionGeneration)
+        {
+            _session.CancelCaptionGeneration();
+            Announce(StudioCaptionText.StoppingMessage, CaptionActivityId, StudioAnnouncementKind.Information);
+        }
+    }
 
     /// <summary>Hears the recording with the chosen model, and says what came of it.</summary>
     public async Task GenerateCaptionsAsync()

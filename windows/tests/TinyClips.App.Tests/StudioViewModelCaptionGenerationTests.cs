@@ -20,6 +20,9 @@ public sealed class StudioViewModelCaptionGenerationTests : StudioViewModelTestB
 
         public IProgress<StudioCaptionProgress>? Progress { get; private set; }
 
+        /// <summary>Goes on after being told to stop, as speech recognition does for a while.</summary>
+        public bool StopsLate { get; set; }
+
         public bool IsModelInstalled(StudioCaptionModel model) => Installed.Contains(model.Id);
 
         public async Task<StudioGeneratedCaptions> GenerateAsync(
@@ -31,6 +34,11 @@ public sealed class StudioViewModelCaptionGenerationTests : StudioViewModelTestB
         {
             Requested = model;
             Progress = progress;
+            if (StopsLate)
+            {
+                return await _completion.Task.ConfigureAwait(false);
+            }
+
             await using (cancellationToken.Register(() => _completion.TrySetCanceled(cancellationToken)))
             {
                 return await _completion.Task.ConfigureAwait(false);
@@ -188,6 +196,41 @@ public sealed class StudioViewModelCaptionGenerationTests : StudioViewModelTestB
         Assert.Equal(StudioCaptionText.CancelledMessage, viewModel.CaptionStatus);
         Assert.Empty(viewModel.CaptionRows);
         Assert.False(viewModel.IsGeneratingCaptions);
+    }
+
+    [Fact]
+    public async Task WhileItIsStopping_ThePanelSaysSo_AndCancelIsOff()
+    {
+        var (viewModel, generator) = await OpenWithGeneratorAsync();
+        generator.StopsLate = true;
+        Assert.False(viewModel.CanCancelCaptionGeneration);
+
+        var generating = viewModel.GenerateCaptionsAsync();
+
+        Assert.True(viewModel.CanCancelCaptionGeneration);
+        Assert.False(viewModel.IsStoppingCaptionGeneration);
+
+        viewModel.CancelCaptionGeneration();
+        viewModel.CancelCaptionGeneration();
+
+        Assert.True(viewModel.IsStoppingCaptionGeneration);
+        Assert.False(viewModel.CanCancelCaptionGeneration);
+        Assert.True(viewModel.IsGeneratingCaptions);
+        Assert.Equal(StudioCaptionText.StoppingMessage, viewModel.CaptionProgressText);
+        Assert.Single(Announcements, static message => message == StudioCaptionText.StoppingMessage);
+
+        generator.Progress!.Report(new StudioCaptionProgress(StudioCaptionStage.Transcribing, 0.9));
+        Pump();
+
+        Assert.Equal(StudioCaptionText.StoppingMessage, viewModel.CaptionProgressText);
+
+        generator.Finish(Heard);
+        await FinishAsync(generating);
+
+        Assert.False(viewModel.IsStoppingCaptionGeneration);
+        Assert.False(viewModel.CanCancelCaptionGeneration);
+        Assert.Equal(StudioCaptionText.CancelledMessage, viewModel.CaptionStatus);
+        Assert.Empty(viewModel.CaptionRows);
     }
 
     [Fact]

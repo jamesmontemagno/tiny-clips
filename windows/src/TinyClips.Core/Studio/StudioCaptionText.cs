@@ -83,6 +83,9 @@ public static class StudioCaptionText
     /// <summary>Said when generating starts.</summary>
     public const string GeneratingMessage = "Generating captions.";
 
+    /// <summary>Said from when stopping is asked for until it has stopped, which can take a while.</summary>
+    public const string StoppingMessage = "Stopping captions\u2026";
+
     /// <summary>Said when generating was stopped.</summary>
     public const string CancelledMessage = "Generating captions stopped. The captions are as they were.";
 

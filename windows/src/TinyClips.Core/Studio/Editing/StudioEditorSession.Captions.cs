@@ -178,8 +178,24 @@ public sealed partial class StudioEditorSession
         return task;
     }
 
+    /// <summary>
+    /// Whether generating was asked to stop and has not yet. Speech recognition stops between
+    /// stretches of work, so this can last for seconds, and longer with a large model.
+    /// </summary>
+    public bool IsStoppingCaptionGeneration { get; private set; }
+
     /// <summary>Stops generating captions. The captions stay as they were.</summary>
-    public void CancelCaptionGeneration() => _captionCancellation?.Cancel();
+    public void CancelCaptionGeneration()
+    {
+        if (_captionCancellation is not { } cancellation || IsStoppingCaptionGeneration)
+        {
+            return;
+        }
+
+        IsStoppingCaptionGeneration = true;
+        cancellation.Cancel();
+        RaiseChanged(StudioEditorChanges.Captions);
+    }
 
     private async Task<StudioCaptionGenerationResult> GenerateCaptionsCoreAsync(
         IStudioCaptionGenerator generator,
@@ -218,6 +234,7 @@ public sealed partial class StudioEditorSession
         {
             _captionCancellation = null;
             IsGeneratingCaptions = false;
+            IsStoppingCaptionGeneration = false;
             if (heard is not null && !_isClosed && !cancellation.IsCancellationRequested)
             {
                 if (IsEditable)

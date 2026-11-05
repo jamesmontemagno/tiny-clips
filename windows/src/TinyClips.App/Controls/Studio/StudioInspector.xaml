@@ -1504,12 +1504,14 @@
                                 <ProgressBar
                                     AutomationProperties.AutomationId="StudioCaptionsProgress"
                                     AutomationProperties.Name="Generating captions"
+                                    IsIndeterminate="{x:Bind ViewModel.IsStoppingCaptionGeneration, Mode=OneWay}"
                                     Maximum="100"
                                     Value="{x:Bind ViewModel.CaptionProgressPercent, Mode=OneWay}" />
                                 <Button
                                     AutomationProperties.AutomationId="StudioCaptionsCancelButton"
                                     Click="{x:Bind ViewModel.CancelCaptionGeneration}"
                                     Content="Cancel"
+                                    IsEnabled="{x:Bind ViewModel.CanCancelCaptionGeneration, Mode=OneWay}"
                                     ToolTipService.ToolTip="Stop generating. The captions stay as they were." />
                             </StackPanel>
                             <Grid ColumnSpacing="8">

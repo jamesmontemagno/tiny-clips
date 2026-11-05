@@ -15,6 +15,9 @@ internal sealed class FakeCaptionGenerator : IStudioCaptionGenerator
 
     public IProgress<StudioCaptionProgress>? Progress { get; private set; }
 
+    /// <summary>Goes on after being told to stop, as speech recognition does for a while.</summary>
+    public bool StopsLate { get; set; }
+
     public bool IsModelInstalled(StudioCaptionModel model) => Installed.Contains(model.Id);
 
     public async Task<StudioGeneratedCaptions> GenerateAsync(
@@ -26,6 +29,11 @@ internal sealed class FakeCaptionGenerator : IStudioCaptionGenerator
     {
         Requests.Add(model);
         Progress = progress;
+        if (StopsLate)
+        {
+            return await _completion.Task.ConfigureAwait(false);
+        }
+
         await using (cancellationToken.Register(() => _completion.TrySetCanceled(cancellationToken)))
         {
             return await _completion.Task.ConfigureAwait(false);
@@ -179,6 +187,49 @@ public sealed class StudioEditorSessionCaptionGenerationTests : StudioEditorSess
         Assert.Equal(StudioCaptionGenerationOutcome.Cancelled, (await generating).Outcome);
         Assert.False(session.IsGeneratingCaptions);
         Assert.Equal("Imported", session.Model!.Project.Captions.Cues[0].Text);
+    }
+
+    [Fact]
+    public async Task WhileItIsStopping_ItSaysSo_AndWhatItThenHeardIsNotUsed()
+    {
+        var (session, generator) = await OpenWithGeneratorAsync();
+        generator.StopsLate = true;
+        session.ImportCaptions("1\n00:00:05,000 --> 00:00:06,000\nImported\n", StudioCaptionTiming.Recording);
+        var generating = session.GenerateCaptionsAsync(StudioCaptionModels.Default);
+        Assert.False(session.IsStoppingCaptionGeneration);
+        Changes.Clear();
+
+        session.CancelCaptionGeneration();
+        session.CancelCaptionGeneration();
+
+        Assert.True(session.IsStoppingCaptionGeneration);
+        Assert.True(session.IsGeneratingCaptions);
+        Assert.False(session.CanGenerateCaptions);
+        Assert.Equal([StudioEditorChanges.Captions], Changes);
+
+        generator.Finish("en", Heard);
+        await PumpUntilCompletedAsync(generating);
+
+        Assert.Equal(StudioCaptionGenerationOutcome.Cancelled, (await generating).Outcome);
+        Assert.False(session.IsStoppingCaptionGeneration);
+        Assert.False(session.IsGeneratingCaptions);
+        Assert.Equal("Imported", session.Model!.Project.Captions.Cues[0].Text);
+    }
+
+    [Fact]
+    public async Task StoppingWhenNothingIsRunning_DoesNothing()
+    {
+        var (session, generator) = await OpenWithGeneratorAsync();
+
+        session.CancelCaptionGeneration();
+
+        Assert.False(session.IsStoppingCaptionGeneration);
+
+        var generating = session.GenerateCaptionsAsync(StudioCaptionModels.Default);
+        generator.Finish(null, Heard);
+        await PumpUntilCompletedAsync(generating);
+
+        Assert.Equal(StudioCaptionGenerationOutcome.Generated, (await generating).Outcome);
     }
 
     [Fact]
