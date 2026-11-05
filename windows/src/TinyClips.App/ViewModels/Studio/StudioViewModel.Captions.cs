@@ -251,6 +251,66 @@ public sealed partial class StudioViewModel
         }
     }
 
+    // Drawing them into the picture
+
+    public bool AreCaptionsDrawn
+    {
+        get => Project?.Overlays.Captions.Enabled ?? false;
+        set
+        {
+            if (value != AreCaptionsDrawn)
+            {
+                _session.SetCaptionsDrawn(value);
+            }
+
+            ResyncIfDifferent(value, AreCaptionsDrawn);
+        }
+    }
+
+    public int CaptionSizeIndex
+    {
+        get => (int)(Project?.Overlays.Captions.Size ?? StudioCaptionSize.Medium);
+        set
+        {
+            if (value is >= 0 and <= (int)StudioCaptionSize.Large && value != CaptionSizeIndex)
+            {
+                _session.SetCaptionSize((StudioCaptionSize)value);
+            }
+
+            ResyncIfDifferent(value, CaptionSizeIndex);
+        }
+    }
+
+    public int CaptionPositionIndex
+    {
+        get => (int)(Project?.Overlays.Captions.Position ?? StudioCaptionPosition.Bottom);
+        set
+        {
+            if (value is >= 0 and <= (int)StudioCaptionPosition.Top && value != CaptionPositionIndex)
+            {
+                _session.SetCaptionPosition((StudioCaptionPosition)value);
+            }
+
+            ResyncIfDifferent(value, CaptionPositionIndex);
+        }
+    }
+
+    public int CaptionAppearanceIndex
+    {
+        get => (int)(Project?.Overlays.Captions.Appearance ?? StudioCaptionAppearance.ClassicOutline);
+        set
+        {
+            if (value is >= 0 and <= (int)StudioCaptionAppearance.CleanShadow && value != CaptionAppearanceIndex)
+            {
+                _session.SetCaptionAppearance((StudioCaptionAppearance)value);
+            }
+
+            ResyncIfDifferent(value, CaptionAppearanceIndex);
+        }
+    }
+
+    public string CaptionDrawnNote => StudioCaptionText.DrawnNote;
+
     // Generating
 
     private static readonly IReadOnlyList<StudioCaptionModelOption> AllCaptionModelOptions =

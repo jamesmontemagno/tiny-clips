@@ -7,6 +7,17 @@ struct StudioRenderSnapshot: Sendable {
     var project: StudioProject
     var events: StudioEvents
     var timeMap: StudioTimeMap
+    /// What the video shows, in output time. Empty when the project does not draw its captions.
+    var captions: [StudioResolvedCaption]
+
+    init(project: StudioProject, events: StudioEvents) {
+        self.project = project
+        self.events = events
+        timeMap = StudioTimeMap(sourceDuration: project.sources.screen.duration, edits: project.edits)
+        captions = project.overlays.captions.enabled
+            ? StudioCaptionResolver.resolve(captions: project.captions, timeMap: timeMap)
+            : []
+    }
 
     var timelineSignature: StudioTimelineSignature {
         StudioTimelineSignature(project: project)
@@ -40,11 +51,7 @@ final class StudioRenderState: @unchecked Sendable {
     private var snapshot: StudioRenderSnapshot
 
     init(project: StudioProject, events: StudioEvents = StudioEvents()) {
-        snapshot = StudioRenderSnapshot(
-            project: project,
-            events: events,
-            timeMap: StudioTimeMap(sourceDuration: project.sources.screen.duration, edits: project.edits)
-        )
+        snapshot = StudioRenderSnapshot(project: project, events: events)
     }
 
     func read() -> StudioRenderSnapshot {
@@ -57,11 +64,7 @@ final class StudioRenderState: @unchecked Sendable {
     @discardableResult
     func update(project: StudioProject, events: StudioEvents? = nil) -> StudioTimelineSignature {
         lock.lock()
-        snapshot = StudioRenderSnapshot(
-            project: project,
-            events: events ?? snapshot.events,
-            timeMap: StudioTimeMap(sourceDuration: project.sources.screen.duration, edits: project.edits)
-        )
+        snapshot = StudioRenderSnapshot(project: project, events: events ?? snapshot.events)
         let signature = snapshot.timelineSignature
         lock.unlock()
         return signature

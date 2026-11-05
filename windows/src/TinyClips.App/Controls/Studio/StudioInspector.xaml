@@ -1587,6 +1587,51 @@
                                 ToolTipService.ToolTip="Take this caption out of the project" />
                         </StackPanel>
                         <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
+                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="In the video" />
+                            <CheckBox
+                                AutomationProperties.AutomationId="StudioCaptionsDrawnCheckBox"
+                                Content="Draw captions on the video"
+                                IsChecked="{x:Bind ViewModel.AreCaptionsDrawn, Mode=TwoWay}"
+                                ToolTipService.ToolTip="Shows them in the preview, and puts them into the picture of what you export" />
+                            <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreCaptionsDrawn, Mode=OneWay}">
+                                <ComboBox
+                                    HorizontalAlignment="Stretch"
+                                    AutomationProperties.AutomationId="StudioCaptionsLookComboBox"
+                                    Header="Look"
+                                    SelectedIndex="{x:Bind ViewModel.CaptionAppearanceIndex, Mode=TwoWay}">
+                                    <ComboBoxItem Content="Classic outline" />
+                                    <ComboBoxItem Content="Contrast panel" />
+                                    <ComboBoxItem Content="Bold impact" />
+                                    <ComboBoxItem Content="Clean shadow" />
+                                </ComboBox>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox
+                                        HorizontalAlignment="Stretch"
+                                        AutomationProperties.AutomationId="StudioCaptionsSizeComboBox"
+                                        Header="Size"
+                                        SelectedIndex="{x:Bind ViewModel.CaptionSizeIndex, Mode=TwoWay}">
+                                        <ComboBoxItem Content="Small" />
+                                        <ComboBoxItem Content="Medium" />
+                                        <ComboBoxItem Content="Large" />
+                                    </ComboBox>
+                                    <ComboBox
+                                        Grid.Column="1"
+                                        HorizontalAlignment="Stretch"
+                                        AutomationProperties.AutomationId="StudioCaptionsPositionComboBox"
+                                        Header="Position"
+                                        SelectedIndex="{x:Bind ViewModel.CaptionPositionIndex, Mode=TwoWay}">
+                                        <ComboBoxItem Content="Bottom" />
+                                        <ComboBoxItem Content="Top" />
+                                    </ComboBox>
+                                </Grid>
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource StudioNoteStyle}" Text="{x:Bind ViewModel.CaptionDrawnNote}" />
+                        </StackPanel>
+                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
                             <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="All captions" />
                             <ListView
                                 x:Name="CaptionList"

@@ -228,4 +228,59 @@ public sealed class StudioViewModelCaptionTests : StudioViewModelTestBase
         Assert.False(viewModel.CanFixCaptions);
         Assert.Contains("Made 1 fix.", heard);
     }
+
+    [Fact]
+    public async Task DrawingCaptions_IsOffUntilAskedFor_WithTheDefaultsOfTheFormat()
+    {
+        var viewModel = await OpenAsync(CreateProject(WithCues));
+
+        Assert.False(viewModel.AreCaptionsDrawn);
+        Assert.Equal((int)StudioCaptionSize.Medium, viewModel.CaptionSizeIndex);
+        Assert.Equal((int)StudioCaptionPosition.Bottom, viewModel.CaptionPositionIndex);
+        Assert.Equal((int)StudioCaptionAppearance.ClassicOutline, viewModel.CaptionAppearanceIndex);
+    }
+
+    [Fact]
+    public async Task EachChoiceOfHowCaptionsAreDrawn_GoesInTheProject_AsOneEdit_ThatCanBeUndone()
+    {
+        var viewModel = await OpenAsync(CreateProject(WithCues));
+
+        viewModel.AreCaptionsDrawn = true;
+        Pump();
+        viewModel.CaptionSizeIndex = (int)StudioCaptionSize.Large;
+        Pump();
+        viewModel.CaptionPositionIndex = (int)StudioCaptionPosition.Top;
+        Pump();
+        viewModel.CaptionAppearanceIndex = (int)StudioCaptionAppearance.BoldImpact;
+        Pump();
+
+        Assert.Equal(4, Preview.Updates.Count);
+        var overlay = viewModel.Project!.Overlays.Captions;
+        Assert.True(overlay.Enabled);
+        Assert.Equal(StudioCaptionSize.Large, overlay.Size);
+        Assert.Equal(StudioCaptionPosition.Top, overlay.Position);
+        Assert.Equal(StudioCaptionAppearance.BoldImpact, overlay.Appearance);
+
+        viewModel.Undo();
+        Pump();
+
+        Assert.Equal((int)StudioCaptionAppearance.ClassicOutline, viewModel.CaptionAppearanceIndex);
+        Assert.Equal((int)StudioCaptionPosition.Top, viewModel.CaptionPositionIndex);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(99)]
+    public async Task AChoiceThatIsNotInTheList_ChangesNothing(int choice)
+    {
+        var viewModel = await OpenAsync(CreateProject(WithCues));
+
+        viewModel.CaptionSizeIndex = choice;
+        viewModel.CaptionPositionIndex = choice;
+        viewModel.CaptionAppearanceIndex = choice;
+        Pump();
+
+        Assert.Empty(Preview.Updates);
+        Assert.Equal((int)StudioCaptionSize.Medium, viewModel.CaptionSizeIndex);
+    }
 }

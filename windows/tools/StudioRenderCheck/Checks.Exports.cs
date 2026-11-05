@@ -106,6 +106,64 @@ internal static class ExportChecks
             }
         });
 
+        await harness.Check("exports", "export: captions are in the picture, at the frames they show in", async context =>
+        {
+            // The panel reaches below the line, where no letter can be, so a point there is the panel or the background.
+            var background = new Rgb(0xC8, 0x64, 0x32);
+            const int Width = 1280;
+            const int Height = 720;
+
+            // At 720p the line ends 30 px above the bottom, and the panel 10 px below that.
+            var inPanel = (X: Width / 2, Y: Height - 30 + 5);
+            foreach (var (label, cut, firstFrame, frameAfter) in new[]
+            {
+                ("captions", (StudioTimeRange?)null, 30, 60),
+                ("captions-after-a-cut", new StudioTimeRange { Start = 0.2, End = 0.6 }, 18, 48),
+            })
+            {
+                var project = Projects.Create(clips.Screen, null) with
+                {
+                    Canvas = new StudioCanvas
+                    {
+                        Padding = 0.15,
+                        Background = new StudioBackground { Style = StudioBackgroundStyle.Solid, Primary = "#C86432" },
+                    },
+                    Screen = new StudioScreenStyle { Shadow = 0 },
+                    Edits = new StudioEdits { TrimEnd = 3, Cuts = cut is null ? [] : [cut] },
+                    Captions = new StudioCaptions { Cues = [new StudioCaptionCue { Id = "cue", Start = 1, End = 2, Text = "Caption" }] },
+                    Overlays = new StudioOverlays
+                    {
+                        Captions = new StudioCaptionOverlay { Enabled = true, Appearance = StudioCaptionAppearance.ContrastPanel },
+                    },
+                };
+                project = StudioProjectJson.ReadProject(StudioProjectJson.WriteProject(project));
+                var folder = context.Folder();
+                var output = Path.Combine(folder, label + ".mp4");
+                var result = await new StudioExporter().ExportAsync(
+                    project, Projects.Events(clips.Screen), Projects.Paths(folder, clips.Screen, null),
+                    output, new StudioExportOptions(LongSideLimit: Width)).ConfigureAwait(false);
+                context.Expect(result.Width == Width && result.Height == Height, $"{label}: the export is {result.Width}×{result.Height}");
+
+                var wrong = new List<int>();
+                var found = string.Empty;
+                var frames = Media.ReadFrames(output, chroma: true, frame =>
+                {
+                    var shows = frame.Index >= firstFrame && frame.Index < frameAfter;
+                    var want = shows ? background.Mix(new Rgb(0, 0, 0), 0.6) : background;
+                    var got = frame.Picture.Average(inPanel.X, inPanel.Y, 2);
+                    if (got.Distance(want) > ExportVerifier.ColorTolerance)
+                    {
+                        wrong.Add(frame.Index);
+                        found = $"{got}, want {want}";
+                    }
+
+                    return true;
+                });
+                context.Expect(frames == result.FrameCount, $"{label}: decoded {frames} of {result.FrameCount} frames");
+                context.Expect(wrong.Count == 0, $"{label}: the panel is wrong ({found}) in frames {string.Join(", ", wrong)}; it belongs in {firstFrame} to {frameAfter - 1}");
+            }
+        });
+
         await harness.Check("exports", "export (a): untrimmed, camera in the bubble", async context =>
         {
             // Size, rate and duration as a real project carries them: read from the file, as the app does.

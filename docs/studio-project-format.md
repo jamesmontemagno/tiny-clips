@@ -941,7 +941,8 @@ With `overlays.captions.enabled`, a frame at output time `u` has the caption sho
 
 - **Font.** The platform's system sans-serif, regular weight unless the appearance below says bold.
 - **Lines.** The text is centered on the canvas. It keeps its own lines, and a line wider than 90 percent of the canvas wraps between words.
-- **Position.** With `bottom`, the bottom of the last line is 12 above the bottom of the canvas. With `top`, the top of the first line is 12 below the top of the canvas.
+- **Position.** With `bottom`, the bottom of the last line is 12 above the bottom of the canvas. With `top`, the top of the first line is 12 below the top of the canvas. Text too tall for the canvas keeps its first line on it.
+- **Paints.** An outline reaches that far outside the letters, under them. A shadow is the letters and their outline in the shadow's color, moved by that much. One panel lies behind all the lines. A paint that is not solid is laid on as one sheet, so it does not darken where letters overlap.
 
 | `appearance` | Text | Outline | Shadow | Panel |
 |---|---|---|---|---|

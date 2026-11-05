@@ -1614,6 +1614,23 @@ struct StudioEditorModel: Equatable, Sendable {
         project.sources.screen.audioTracks?.contains(kind.rawValue) ?? false
     }
 
+    /// Whether the captions are drawn into the picture (section 15.4 of the project format).
+    mutating func setCaptionsDrawn(_ isDrawn: Bool) {
+        mutate { $0.overlays.captions.enabled = isDrawn }
+    }
+
+    mutating func setCaptionSize(_ size: StudioCaptionSize) {
+        mutate { $0.overlays.captions.size = size }
+    }
+
+    mutating func setCaptionPosition(_ position: StudioCaptionPosition) {
+        mutate { $0.overlays.captions.position = position }
+    }
+
+    mutating func setCaptionAppearance(_ appearance: StudioCaptionAppearance) {
+        mutate { $0.overlays.captions.appearance = appearance }
+    }
+
     mutating func setClickRingsEnabled(_ isEnabled: Bool) {
         mutate { $0.overlays.clicks.enabled = isEnabled }
     }

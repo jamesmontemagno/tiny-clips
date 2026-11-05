@@ -4,6 +4,18 @@ namespace TinyClips.Core.Studio;
 // time order, and what an agent or another app wrote need not be. Each edit is one undo step.
 public sealed partial class StudioEditorModel
 {
+    /// <summary>Whether the captions are drawn into the picture (section 15.4 of the project format).</summary>
+    public void SetCaptionsDrawn(bool isDrawn) => SetCaptionOverlay(overlay => overlay with { Enabled = isDrawn });
+
+    public void SetCaptionSize(StudioCaptionSize size) => SetCaptionOverlay(overlay => overlay with { Size = size });
+
+    public void SetCaptionPosition(StudioCaptionPosition position) => SetCaptionOverlay(overlay => overlay with { Position = position });
+
+    public void SetCaptionAppearance(StudioCaptionAppearance appearance) => SetCaptionOverlay(overlay => overlay with { Appearance = appearance });
+
+    private void SetCaptionOverlay(Func<StudioCaptionOverlay, StudioCaptionOverlay> change) =>
+        Mutate(project => project with { Overlays = project.Overlays with { Captions = change(project.Overlays.Captions) } });
+
     /// <summary>What a list of the captions shows: the places of the cues in time order.</summary>
     public int[] GetCaptionIndexesInOrder()
     {

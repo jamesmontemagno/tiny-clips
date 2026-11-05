@@ -1,5 +1,89 @@
 import Foundation
 
+// MARK: - Drawing
+
+/// A colour of a drawn caption. An opacity of 0 means the part it paints is not drawn.
+struct StudioCaptionPaint: Equatable, Sendable {
+    var red: UInt8
+    var green: UInt8
+    var blue: UInt8
+    var opacity: Double
+
+    static let none = StudioCaptionPaint(red: 0, green: 0, blue: 0, opacity: 0)
+}
+
+/// How a caption looks on a canvas of a given size, in that canvas's pixels: section 15.4 of the
+/// project format. How the text is laid out is the renderer's business.
+struct StudioCaptionStyle: Equatable, Sendable {
+    /// The canvas's short side is this many units.
+    static let unitsInShortSide = 288.0
+
+    var textHeight: Double
+    var margin: Double
+    var longestLine: Double
+    var isBold = false
+    var text: StudioCaptionPaint
+    var outline = StudioCaptionPaint.none
+    /// How far the outline reaches outside the letters. 0 for none.
+    var outlineWidth = 0.0
+    var shadow = StudioCaptionPaint.none
+    /// How far the shadow lies down and to the right. 0 for none.
+    var shadowOffset = 0.0
+    var panel = StudioCaptionPaint.none
+    /// How far the panel reaches past the lines. 0 for none.
+    var panelReach = 0.0
+
+    /// How far anything is drawn outside the text's own box.
+    var reach: Double {
+        max(panelReach, outlineWidth + shadowOffset)
+    }
+
+    init(overlay: StudioCaptionOverlay, canvasWidth: Double, canvasHeight: Double) {
+        let unit = min(canvasWidth, canvasHeight) / Self.unitsInShortSide
+        switch overlay.size {
+        case .small: textHeight = 14 * unit
+        case .medium: textHeight = 18 * unit
+        case .large: textHeight = 24 * unit
+        }
+        margin = 12 * unit
+        longestLine = canvasWidth * 0.9
+
+        let white = StudioCaptionPaint(red: 0xFF, green: 0xFF, blue: 0xFF, opacity: 1)
+        let black = StudioCaptionPaint(red: 0, green: 0, blue: 0, opacity: 1)
+        let halfBlack = StudioCaptionPaint(red: 0, green: 0, blue: 0, opacity: 0.5)
+        switch overlay.appearance {
+        case .classicOutline:
+            text = white
+            outline = black
+            outlineWidth = 1.2 * unit
+        case .contrastPanel:
+            text = white
+            panel = StudioCaptionPaint(red: 0, green: 0, blue: 0, opacity: 0.6)
+            panelReach = 4 * unit
+        case .boldImpact:
+            isBold = true
+            text = StudioCaptionPaint(red: 0xFF, green: 0xD7, blue: 0x00, opacity: 1)
+            outline = black
+            outlineWidth = 2.4 * unit
+            shadow = black
+            shadowOffset = 1.2 * unit
+        case .cleanShadow:
+            text = StudioCaptionPaint(red: 0xF5, green: 0xF5, blue: 0xF5, opacity: 1)
+            outline = halfBlack
+            outlineWidth = 0.6 * unit
+            shadow = halfBlack
+            shadowOffset = 1.5 * unit
+        }
+    }
+
+    /// Where the top of the first line goes, counted down from the top of the canvas, for text
+    /// `textHeight` tall. Text too tall for the canvas keeps its top on the canvas, because a
+    /// caption starts at its first line.
+    func topOfText(position: StudioCaptionPosition, textHeight: Double, canvasHeight: Double) -> Double {
+        position == .top ? margin : max(0, canvasHeight - margin - textHeight)
+    }
+}
+
 // MARK: - Resolver
 
 /// A caption as a video shows it, in output time.

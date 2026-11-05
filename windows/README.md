@@ -259,7 +259,9 @@ With the switch on:
   speech model and says its size. A model is downloaded the first time it is used, and
   **Settings > Studio > Speech models for captions** says how much room they take and deletes
   them. Generating replaces the captions as one step that Undo reverses; the editor stays usable
-  while it runs, except Export and saving a project copy.
+  while it runs, except Export and saving a project copy. **Draw captions on the video** puts them
+  into the preview and the picture of an export, in a choice of look, size, and position. It is off
+  by default, and SRT and WebVTT files can be exported either way.
 - **The editor** has a live preview, an inspector, a scene lane, a zoom lane, a cut lane, and a
   speed lane above a trim bar, a Project menu, undo and redo, and Export. A recording without a
   camera has no scenes.

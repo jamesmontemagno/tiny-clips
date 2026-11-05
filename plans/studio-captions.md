@@ -1,7 +1,7 @@
 # Tiny Clips Studio: captions
 
-**Status:** in progress, started 5 November 2026. Stages 2, 3, and 5 below are in place; the rest
-is not built yet. The format is specified in section 15 of
+**Status:** in progress, started 5 November 2026. Stages 2 to 5 below are in place; generating
+captions on the Mac is not built yet. The format is specified in section 15 of
 [`docs/studio-project-format.md`](../docs/studio-project-format.md), which decides if this
 document and the code disagree.
 
@@ -49,9 +49,9 @@ Each stage is a pull request that updates the changelogs and validates the platf
    Useful by itself with an SRT from OutroKit. Imports assume recording time, with an option for
    files timed to the edited video. Changing a cue's times by hand, and adding a cue, are not in
    this stage.
-4. **Burn-in.** Both renderers, the preview, style controls, and a `StudioRenderCheck` group.
-   - Windows draws in `StudioSceneRenderer` with DirectWrite, which needs the `Vortice.DirectWrite`
-     package. `StudioPreviewStillness.SameLayout` must return false across a cue change.
+4. **Burn-in (done).** Both renderers, the preview, style controls, and a `StudioRenderCheck` group.
+   - Windows draws in `StudioSceneRenderer` with DirectWrite, which comes with `Vortice.Direct2D1`,
+     so no package was added. `StudioPreviewStillness.SameLayout` returns false across a cue change.
    - macOS draws cached Core Text images in `StudioCompositor`. `containsTweening` is already true.
 5. **Windows transcription (done).** Whisper.net, model management in Studio settings, and
    `studio.captions.models` and `studio.captions.generate`. Built ahead of stage 4, because making

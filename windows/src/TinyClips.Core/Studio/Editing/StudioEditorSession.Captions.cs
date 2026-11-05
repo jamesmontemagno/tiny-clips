@@ -85,6 +85,14 @@ public sealed partial class StudioEditorSession
         return true;
     }
 
+    public void SetCaptionsDrawn(bool isDrawn) => Edit(model => model.SetCaptionsDrawn(isDrawn));
+
+    public void SetCaptionSize(StudioCaptionSize size) => Edit(model => model.SetCaptionSize(size));
+
+    public void SetCaptionPosition(StudioCaptionPosition position) => Edit(model => model.SetCaptionPosition(position));
+
+    public void SetCaptionAppearance(StudioCaptionAppearance appearance) => Edit(model => model.SetCaptionAppearance(appearance));
+
     /// <summary>Changes what the selected cue says. It stays selected.</summary>
     public void SetSelectedCaptionText(string text)
     {

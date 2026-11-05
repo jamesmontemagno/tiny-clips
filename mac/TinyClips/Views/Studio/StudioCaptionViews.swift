@@ -45,6 +45,7 @@ struct StudioCaptionsInspectorSection: View {
             StudioSelectedCaptionEditor(viewModel: viewModel)
         }
         if !rows.isEmpty {
+            drawing
             StudioInspectorSection(title: "All Captions") {
                 list(rows)
             }
@@ -99,6 +100,51 @@ struct StudioCaptionsInspectorSection: View {
             }
         }
         .accessibilityLabel("Captions")
+    }
+
+    /// Whether, and how, the captions are drawn into the picture.
+    private var drawing: some View {
+        StudioInspectorSection(title: "In the Video") {
+            Toggle("Draw captions on the video", isOn: Binding(
+                get: { viewModel.project?.overlays.captions.enabled ?? false },
+                set: { viewModel.setCaptionsDrawn($0) }
+            ))
+            .disabled(!viewModel.isEditable)
+            .help("Shows them in the preview, and puts them into the picture of what you export")
+            if viewModel.project?.overlays.captions.enabled == true {
+                Picker("Look", selection: Binding(
+                    get: { viewModel.project?.overlays.captions.appearance ?? .classicOutline },
+                    set: { viewModel.setCaptionAppearance($0) }
+                )) {
+                    Text("Classic outline").tag(StudioCaptionAppearance.classicOutline)
+                    Text("Contrast panel").tag(StudioCaptionAppearance.contrastPanel)
+                    Text("Bold impact").tag(StudioCaptionAppearance.boldImpact)
+                    Text("Clean shadow").tag(StudioCaptionAppearance.cleanShadow)
+                }
+                .disabled(!viewModel.isEditable)
+                Picker("Size", selection: Binding(
+                    get: { viewModel.project?.overlays.captions.size ?? .medium },
+                    set: { viewModel.setCaptionSize($0) }
+                )) {
+                    Text("Small").tag(StudioCaptionSize.small)
+                    Text("Medium").tag(StudioCaptionSize.medium)
+                    Text("Large").tag(StudioCaptionSize.large)
+                }
+                .disabled(!viewModel.isEditable)
+                Picker("Position", selection: Binding(
+                    get: { viewModel.project?.overlays.captions.position ?? .bottom },
+                    set: { viewModel.setCaptionPosition($0) }
+                )) {
+                    Text("Bottom").tag(StudioCaptionPosition.bottom)
+                    Text("Top").tag(StudioCaptionPosition.top)
+                }
+                .disabled(!viewModel.isEditable)
+            }
+            Text(StudioCaptionText.drawnNote)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var checks: some View {

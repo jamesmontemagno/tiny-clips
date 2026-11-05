@@ -692,6 +692,22 @@ final class StudioViewModel: ObservableObject {
         edit { $0.setMicrophoneVolume(value) }
     }
 
+    func setCaptionsDrawn(_ value: Bool) {
+        edit { $0.setCaptionsDrawn(value) }
+    }
+
+    func setCaptionSize(_ value: StudioCaptionSize) {
+        edit { $0.setCaptionSize(value) }
+    }
+
+    func setCaptionPosition(_ value: StudioCaptionPosition) {
+        edit { $0.setCaptionPosition(value) }
+    }
+
+    func setCaptionAppearance(_ value: StudioCaptionAppearance) {
+        edit { $0.setCaptionAppearance(value) }
+    }
+
     func setClickRingsEnabled(_ value: Bool) {
         edit { $0.setClickRingsEnabled(value) }
     }

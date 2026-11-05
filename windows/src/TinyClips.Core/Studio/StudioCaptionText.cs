@@ -21,6 +21,9 @@ public static class StudioCaptionText
     /// <summary>What the checks say when they find nothing.</summary>
     public const string NoProblems = "No problems found.";
 
+    /// <summary>Said about drawing captions into the picture.</summary>
+    public const string DrawnNote = "Drawn captions are part of the picture, so viewers cannot turn them off. Export a file as well for players that can.";
+
     /// <summary>Said when a file has no cues in it.</summary>
     public const string NothingToImport = "No captions could be read from that file.";
 

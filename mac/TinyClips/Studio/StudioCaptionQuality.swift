@@ -320,6 +320,9 @@ enum StudioCaptionText {
     /// What the checks say when they find nothing.
     static let noProblems = "No problems found."
 
+    /// Said about drawing captions into the picture.
+    static let drawnNote = "Drawn captions are part of the picture, so viewers cannot turn them off. Export a file as well for players that can."
+
     /// Said when a file has no cues in it.
     static let nothingToImport = "No captions could be read from that file."
 
