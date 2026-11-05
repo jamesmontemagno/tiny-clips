@@ -137,13 +137,11 @@ internal sealed partial class WindowChecks
         SetSlider(editor, "StudioPlayhead", 2.0);
 
         // No speed changes.
-        var list = Find(editor, SpeedLane);
-        var text = Find(editor, "StudioSpeedLaneEmptyText", 1);
+        var list = Find(editor, SpeedLane, 0.5);
         _report.Check(
-            "a recording without speed changes: the lane is a list called Speed changes with no items, which can take the keyboard focus, and it says how to make one, as a text and as the list's description",
-            list is { ControlType: ControlTypeNames.List, Name: "Speed changes", IsKeyboardFocusable: true, IsEnabled: true } && list.IsSelectionRequired == false && LaneItems(editor, SpeedLane).Count == 0
-                && text?.Name == StudioEditorText.NoSpeedHint && list.HelpText == StudioEditorText.NoSpeedHint && list.Patterns.Contains("Selection", StringComparison.Ordinal) && list.SelectedNames.Length == 0,
-            $"{list} with {LaneItems(editor, SpeedLane).Count} item(s), described as \"{list?.HelpText}\"; the text: \"{text?.Name}\"; patterns({list?.Patterns})");
+            "a recording without speed changes has no speed lane",
+            list is null,
+            $"{list}");
         var section = SpeedSectionShows(editor, "No speed changes yet", range: null);
         var row = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioAddSpeedButton") is { } button ? (Text: (button.Content as StudioButtonLabel)?.Text, Tip: ToolTipService.GetToolTip(button) as string) : default);
         var inSection = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioSpeedSectionAddButton") is { } button ? ToolTipService.GetToolTip(button) as string : null);

@@ -5,6 +5,9 @@ public enum StudioShortcutKey
 {
     Other,
     Space,
+    A,
+    C,
+    T,
     Left,
     Right,
     Escape,
@@ -47,6 +50,10 @@ public enum StudioShortcutAction
     RemoveSelectedCut,
     AddSpeed,
     RemoveSelectedSpeed,
+    AddArrow,
+    AddCallout,
+    AddText,
+    RemoveSelectedAnnotation,
     Undo,
     Redo,
     Export,
@@ -123,6 +130,9 @@ public readonly record struct StudioShortcutInput(
     /// </summary>
     public bool HasSelectedSpeed { get; init; }
 
+    /// <summary>Whether an annotation is selected. Delete removes it.</summary>
+    public bool HasSelectedAnnotation { get; init; }
+
     /// <summary>
     /// True when the focused control is a scene on the scene lane. Delete then removes the scene
     /// the playhead is in, and not the selected zoom, cut or speed change.
@@ -152,8 +162,8 @@ public readonly record struct StudioShortcutInput(
 /// <summary>
 /// The Studio editor's keyboard model, the same as on the Mac: Space plays or pauses, Left and
 /// Right step a frame, I and O set the trim at the playhead, 1 to 4 choose the layout, S splits the
-/// scene at the playhead, Z adds a zoom there, X a cut and R a speed change, Delete removes the
-/// selected zoom, cut or speed change, or the current scene while a scene on the lane has the
+/// scene at the playhead, Z adds a zoom there, X a cut and R a speed change, A an arrow, C a
+/// callout and T text, Delete removes the selected zoom, cut, speed change or annotation, or the current scene while a scene on the lane has the
 /// focus, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Ctrl+O opens a
 /// project that was saved as a folder and Ctrl+S saves this one as a folder, where the Mac
 /// has Command-O and Shift-Command-S. Esc stops a running export or a save of the project
@@ -282,6 +292,9 @@ public static class StudioShortcuts
         return input.Key switch
         {
             StudioShortcutKey.Space => StudioShortcutAction.TogglePlayback,
+            StudioShortcutKey.A => StudioShortcutAction.AddArrow,
+            StudioShortcutKey.C => StudioShortcutAction.AddCallout,
+            StudioShortcutKey.T => StudioShortcutAction.AddText,
             StudioShortcutKey.I => StudioShortcutAction.SetTrimStartAtPlayhead,
             StudioShortcutKey.O => StudioShortcutAction.SetTrimEndAtPlayhead,
             StudioShortcutKey.R => StudioShortcutAction.AddSpeed,
@@ -291,6 +304,7 @@ public static class StudioShortcuts
             StudioShortcutKey.Delete when input.IsSceneFocused => StudioShortcutAction.RemoveCurrentScene,
             StudioShortcutKey.Delete when input.HasSelectedCut => StudioShortcutAction.RemoveSelectedCut,
             StudioShortcutKey.Delete when input.HasSelectedSpeed => StudioShortcutAction.RemoveSelectedSpeed,
+            StudioShortcutKey.Delete when input.HasSelectedAnnotation => StudioShortcutAction.RemoveSelectedAnnotation,
             StudioShortcutKey.Delete when input.HasSelectedZoom => StudioShortcutAction.RemoveSelectedZoom,
             StudioShortcutKey.Digit1 => StudioShortcutAction.ShowScreenLayout,
             StudioShortcutKey.Digit2 => StudioShortcutAction.ShowBubbleLayout,

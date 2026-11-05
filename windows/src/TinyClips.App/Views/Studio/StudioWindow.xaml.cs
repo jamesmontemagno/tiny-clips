@@ -544,6 +544,7 @@ public sealed partial class StudioWindow : Window
             HasSelectedZoom = ViewModel.HasSelectedZoom,
             HasSelectedCut = ViewModel.HasSelectedCut,
             HasSelectedSpeed = ViewModel.HasSelectedSpeed,
+            HasSelectedAnnotation = ViewModel.HasSelectedAnnotation,
 
             // With the focus on the scene lane, Delete is about the scene the playhead is in.
             IsSceneFocused = focused is StudioSceneLane,
@@ -570,6 +571,7 @@ public sealed partial class StudioWindow : Window
             if (!ViewModel.IsExporting)
             {
                 _inspector.KeepFocusAfterKey(held);
+                _timeline.KeepFocusAfterKey(focused as StudioLane);
             }
         }
 
@@ -582,6 +584,9 @@ public sealed partial class StudioWindow : Window
         VirtualKey.Left => StudioShortcutKey.Left,
         VirtualKey.Right => StudioShortcutKey.Right,
         VirtualKey.Escape => StudioShortcutKey.Escape,
+        VirtualKey.A => StudioShortcutKey.A,
+        VirtualKey.C => StudioShortcutKey.C,
+        VirtualKey.T => StudioShortcutKey.T,
         VirtualKey.I => StudioShortcutKey.I,
         VirtualKey.O => StudioShortcutKey.O,
         VirtualKey.R => StudioShortcutKey.R,

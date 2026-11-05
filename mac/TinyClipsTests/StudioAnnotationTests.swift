@@ -148,6 +148,158 @@ final class StudioAnnotationTests: XCTestCase {
         XCTAssertNotEqual(state, StudioEditableState(project: project))
     }
 
+    // MARK: - Editing
+
+    private func model(_ annotations: [StudioAnnotation] = [], zooms: [StudioZoom] = []) -> StudioEditorModel {
+        var project = StudioProject(
+            id: "00000000-0000-0000-0000-000000000001",
+            sources: StudioSources(screen: StudioScreenSource(width: 1920, height: 1080, duration: 60)),
+            scenes: [StudioScene(layout: .screen)]
+        )
+        project.canvas.padding = 0
+        project.zooms = zooms
+        project.overlays.annotations = annotations
+        return StudioEditorModel(project: project)
+    }
+
+    func testAddingPutsItOnTopForThreeSecondsWithTheDefaultsOfItsKind() {
+        var editor = model()
+        XCTAssertEqual(editor.addAnnotation(kind: StudioAnnotationKind.arrow, at: 10, events: nil), StudioAnnotationEditResult(changed: true, index: 0))
+        XCTAssertEqual(editor.addAnnotation(kind: StudioAnnotationKind.callout, at: 10, events: nil), StudioAnnotationEditResult(changed: true, index: 1))
+        XCTAssertEqual(editor.addAnnotation(kind: StudioAnnotationKind.text, at: 59.95, events: nil), StudioAnnotationEditResult(changed: true, index: 2))
+
+        let list = editor.project.overlays.annotations
+        XCTAssertEqual(list[0].start, 10)
+        XCTAssertEqual(list[0].end, 13)
+        XCTAssertEqual(list[0].attach, .screen)
+        XCTAssertEqual(list[0].style, .red)
+        XCTAssertEqual(list[0].text, "")
+        XCTAssertEqual(list[1].style, .dark)
+        XCTAssertEqual(list[1].text, StudioEditorModel.newAnnotationText)
+        XCTAssertEqual(list[2].attach, .frame)
+        XCTAssertEqual(list[2].style, .white)
+        XCTAssertEqual(list[2].start, 60 - StudioEditorModel.minimumAnnotationDuration, accuracy: 1e-9)
+        XCTAssertEqual(list[2].end, 60)
+        XCTAssertEqual(Set(list.map(\.id)).count, 3)
+    }
+
+    func testAddingGoesInTheMiddleOfWhatIsInView() {
+        let zoom = StudioZoom(start: 5, end: 15, scale: 2, focus: StudioZoomFocus(x: 0.25, y: 0.25), easeIn: 0, easeOut: 0)
+        var editor = model(zooms: [zoom])
+        _ = editor.addAnnotation(kind: StudioAnnotationKind.arrow, at: 1, events: nil)
+        _ = editor.addAnnotation(kind: StudioAnnotationKind.arrow, at: 10, events: nil)
+        _ = editor.addAnnotation(kind: StudioAnnotationKind.text, at: 10, events: nil)
+
+        let list = editor.project.overlays.annotations
+        XCTAssertEqual(list[0].x, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(list[1].x, 0.25, accuracy: 1e-9)
+        XCTAssertEqual(list[1].y, 0.25, accuracy: 1e-9)
+        XCTAssertEqual(list[2].x, 0.5, accuracy: 1e-9)
+    }
+
+    func testTimingKeepsAnAnnotationInsideTheRecordingAndAtLeastTheShortest() {
+        var editor = model([StudioAnnotation(start: 10, end: 20)])
+        _ = editor.setAnnotationStart(at: 0, to: 30)
+        XCTAssertEqual(editor.project.overlays.annotations[0].start, 20 - StudioEditorModel.minimumAnnotationDuration, accuracy: 1e-9)
+        _ = editor.setAnnotationStart(at: 0, to: -5)
+        XCTAssertEqual(editor.project.overlays.annotations[0].start, 0)
+        _ = editor.setAnnotationEnd(at: 0, to: 500)
+        XCTAssertEqual(editor.project.overlays.annotations[0].end, 60)
+        _ = editor.setAnnotationEnd(at: 0, to: -5)
+        XCTAssertEqual(editor.project.overlays.annotations[0].end, StudioEditorModel.minimumAnnotationDuration, accuracy: 1e-9)
+        XCTAssertFalse(editor.setAnnotationStart(at: 0, to: .nan).changed)
+        XCTAssertEqual(editor.setAnnotationStart(at: 5, to: 1), StudioAnnotationEditResult(changed: false, index: nil))
+    }
+
+    func testMovingKeepsItsLengthAndStopsAtBothEnds() {
+        var editor = model([StudioAnnotation(start: 10, end: 14)])
+        _ = editor.moveAnnotation(at: 0, to: 100)
+        XCTAssertEqual(editor.project.overlays.annotations[0].start, 56)
+        XCTAssertEqual(editor.project.overlays.annotations[0].end, 60)
+        _ = editor.moveAnnotation(at: 0, to: -3)
+        XCTAssertEqual(editor.project.overlays.annotations[0].start, 0)
+        XCTAssertEqual(editor.project.overlays.annotations[0].end, 4)
+    }
+
+    func testTheLayerMovesOnePlaceAndNotPastEitherEnd() {
+        var editor = model([StudioAnnotation(id: "a", end: 1), StudioAnnotation(id: "b", end: 1)])
+        XCTAssertEqual(editor.moveAnnotationLayer(at: 0, by: 1), StudioAnnotationEditResult(changed: true, index: 1))
+        XCTAssertEqual(editor.project.overlays.annotations.map(\.id), ["b", "a"])
+        XCTAssertEqual(editor.moveAnnotationLayer(at: 1, by: 1), StudioAnnotationEditResult(changed: false, index: 1))
+        XCTAssertEqual(editor.moveAnnotationLayer(at: 1, by: -1), StudioAnnotationEditResult(changed: true, index: 0))
+        XCTAssertEqual(editor.moveAnnotationLayer(at: 0, by: -1), StudioAnnotationEditResult(changed: false, index: 0))
+    }
+
+    func testTypingIsOneUndoStepUntilItStops() {
+        var editor = model([StudioAnnotation(kind: StudioAnnotationKind.text, end: 1, text: "x")])
+        _ = editor.setAnnotationText(at: 0, to: "a")
+        _ = editor.setAnnotationText(at: 0, to: "ab")
+        editor.endAnnotationTyping()
+        _ = editor.setAnnotationText(at: 0, to: "abc")
+
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations[0].text, "ab")
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations[0].text, "x")
+        XCTAssertFalse(editor.canUndo)
+    }
+
+    func testAnotherEditEndsTheTypingToo() {
+        var editor = model([StudioAnnotation(kind: StudioAnnotationKind.text, end: 1, text: "x")])
+        _ = editor.setAnnotationText(at: 0, to: "a")
+        _ = editor.setAnnotationStyle(at: 0, to: .blue)
+        _ = editor.setAnnotationText(at: 0, to: "ab")
+
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations[0].text, "a")
+        XCTAssertEqual(editor.project.overlays.annotations[0].style, .blue)
+    }
+
+    func testChangingWhatItIsFixedToKeepsItWhereItIsInThePicture() {
+        let zoom = StudioZoom(start: 5, end: 15, scale: 2, focus: StudioZoomFocus(x: 0.5, y: 0.5), easeIn: 0, easeOut: 0)
+        var editor = model([StudioAnnotation(end: 20, x: 0.5, y: 0.25), StudioAnnotation(end: 20, x: 0.1, y: 0.1)], zooms: [zoom])
+
+        _ = editor.setAnnotationAttach(at: 0, to: .frame, time: 10, events: nil)
+        XCTAssertEqual(editor.project.overlays.annotations[0].y, 0, accuracy: 1e-9)
+        _ = editor.setAnnotationAttach(at: 0, to: .screen, time: 10, events: nil)
+        XCTAssertEqual(editor.project.overlays.annotations[0].y, 0.25, accuracy: 1e-9)
+
+        // Out of view it keeps its numbers.
+        _ = editor.setAnnotationAttach(at: 1, to: .frame, time: 10, events: nil)
+        XCTAssertEqual(editor.project.overlays.annotations[1].attach, .frame)
+        XCTAssertEqual(editor.project.overlays.annotations[1].x, 0.1, accuracy: 1e-9)
+    }
+
+    func testSteppingGoesByTimeAndThenByPlaceInTheList() {
+        let editor = model([StudioAnnotation(start: 20, end: 25), StudioAnnotation(start: 5, end: 8), StudioAnnotation(start: 5, end: 6)])
+        XCTAssertEqual(editor.annotationIndex(after: 1, sourceTime: 0), 2)
+        XCTAssertEqual(editor.annotationIndex(after: 2, sourceTime: 0), 0)
+        XCTAssertNil(editor.annotationIndex(after: 0, sourceTime: 0))
+        XCTAssertEqual(editor.annotationIndex(before: 2, sourceTime: 0), 1)
+        XCTAssertNil(editor.annotationIndex(before: 1, sourceTime: 0))
+        XCTAssertEqual(editor.annotationIndex(after: nil, sourceTime: 7), 1)
+        XCTAssertEqual(editor.annotationIndex(after: nil, sourceTime: 10), 0)
+        XCTAssertEqual(editor.annotationIndex(before: nil, sourceTime: 10), 2)
+        XCTAssertNil(editor.annotationIndex(before: nil, sourceTime: 1))
+    }
+
+    func testFollowingAnAnnotationGoesByItsIdOrItsPlaceWithoutOne() {
+        let before = [StudioAnnotation(id: "a"), StudioAnnotation(id: "b"), StudioAnnotation()]
+        XCTAssertEqual(StudioEditorModel.annotationIndex(following: 1, from: before, to: [StudioAnnotation(id: "b")]), 0)
+        XCTAssertNil(StudioEditorModel.annotationIndex(following: 1, from: before, to: [StudioAnnotation(id: "a")]))
+        XCTAssertEqual(StudioEditorModel.annotationIndex(following: 2, from: before, to: before), 2)
+        XCTAssertNil(StudioEditorModel.annotationIndex(following: 2, from: before, to: [StudioAnnotation()]))
+    }
+
+    func testTheWordsNameAnAnnotationInOneLine() {
+        let callout = StudioAnnotation(kind: StudioAnnotationKind.callout, start: 12, end: 16.5, text: "Billing lives\nhere")
+        XCTAssertEqual(StudioEditorModel.annotationLabel(StudioAnnotation()), "Arrow")
+        XCTAssertEqual(StudioEditorModel.annotationLabel(callout), "Callout: Billing lives here")
+        XCTAssertEqual(StudioEditorModel.annotationLabel(StudioAnnotation(kind: StudioAnnotationKind.text, text: "a very long title that goes on and on")), "Text: a very long title that g\u{2026}")
+        XCTAssertEqual(StudioEditorModel.annotationDescription(callout), "Callout: Billing lives here, 12.0 to 16.5 seconds")
+        XCTAssertEqual(StudioEditorModel.annotationStepText(index: 1, count: 3, annotation: callout), "Annotation 2 of 3, Callout: Billing lives here, 12.0 to 16.5 seconds")
+    }
+
     // MARK: - Helpers
 
     private func near(_ actual: Double, _ expected: Double, _ message: String) {

@@ -97,13 +97,11 @@ internal sealed partial class WindowChecks
         SetSlider(editor, "StudioPlayhead", 2.0);
 
         // No cuts.
-        var list = Find(editor, CutLane);
-        var text = Find(editor, "StudioCutLaneEmptyText", 1);
+        var list = Find(editor, CutLane, 0.5);
         _report.Check(
-            "a recording without cuts: the lane is a list called Cuts with no items, which can take the keyboard focus, and it says how to make a cut, as a text and as the list's description",
-            list is { ControlType: ControlTypeNames.List, Name: "Cuts", IsKeyboardFocusable: true, IsEnabled: true } && list.IsSelectionRequired == false && LaneItems(editor, CutLane).Count == 0
-                && text?.Name == StudioEditorText.NoCutsHint && list.HelpText == StudioEditorText.NoCutsHint && list.Patterns.Contains("Selection", StringComparison.Ordinal) && list.SelectedNames.Length == 0,
-            $"{list} with {LaneItems(editor, CutLane).Count} item(s), described as \"{list?.HelpText}\"; the text: \"{text?.Name}\"; patterns({list?.Patterns})");
+            "a recording without cuts has no cut lane",
+            list is null,
+            $"{list}");
         var section = CutSectionShows(editor, "No cuts yet", range: null);
         _report.Check(
             "without cuts the Cut panel says so, has nothing to step to and no cut's controls, says how to add the first one, and offers Add cut; Cut in the transport row has the same name for a screen reader",

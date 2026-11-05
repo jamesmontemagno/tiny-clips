@@ -127,6 +127,8 @@ private struct StudioHeaderView: View {
 
             Spacer(minLength: 12)
 
+            annotationTools
+
             projectMenu
 
             Button {
@@ -167,6 +169,30 @@ private struct StudioHeaderView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    /// What goes over the picture. These are up here, and not with the buttons that edit along the
+    /// timeline, because they are about a place in the picture.
+    private var annotationTools: some View {
+        HStack(spacing: 4) {
+            Button("Arrow", systemImage: StudioSymbol.addArrow) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.arrow)
+            }
+            .accessibilityLabel("Add arrow")
+            .help("Add an arrow at the playhead (A)")
+            Button("Callout", systemImage: StudioSymbol.addCallout) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.callout)
+            }
+            .accessibilityLabel("Add callout")
+            .help("Add a callout at the playhead (C)")
+            Button("Text", systemImage: StudioSymbol.addText) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.text)
+            }
+            .accessibilityLabel("Add text")
+            .help("Add text at the playhead (T)")
+        }
+        .disabled(!viewModel.canAddAnnotation)
+        .fixedSize()
     }
 
     /// Opening another project, saving this one as a folder, and deleting it.
@@ -435,6 +461,8 @@ private struct StudioInspectorView: View {
             StudioCutInspectorSection(viewModel: viewModel)
         case .speed:
             StudioSpeedInspectorSection(viewModel: viewModel)
+        case .annotate:
+            StudioAnnotationInspectorSection(viewModel: viewModel)
         case .audio:
             audioPanel
         case .project:
@@ -1345,25 +1373,43 @@ private struct StudioTimelineView: View {
                 .help("End the video at the playhead (O)")
             }
 
-            if viewModel.hasCamera {
-                StudioSceneLane(viewModel: viewModel)
-                    .frame(height: 24)
+            // A lane shows only with something on it, so the timeline stays low until then.
+            VStack(spacing: 4) {
+                if isLaneShown(.scene) {
+                    StudioSceneLane(viewModel: viewModel)
+                        .frame(height: 24)
+                }
+
+                if isLaneShown(.zoom) {
+                    StudioZoomLane(viewModel: viewModel)
+                        .frame(height: 26)
+                }
+
+                if isLaneShown(.cut) {
+                    StudioCutLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                if isLaneShown(.speed) {
+                    StudioSpeedLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                if isLaneShown(.annotate) {
+                    StudioAnnotationLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                StudioTrimBar(viewModel: viewModel)
+                    .frame(height: 36)
             }
-
-            StudioZoomLane(viewModel: viewModel)
-                .frame(height: 26)
-
-            StudioCutLane(viewModel: viewModel)
-                .frame(height: 22)
-
-            StudioSpeedLane(viewModel: viewModel)
-                .frame(height: 22)
-
-            StudioTrimBar(viewModel: viewModel)
-                .frame(height: 36)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    private func isLaneShown(_ lane: StudioTimelineLane) -> Bool {
+        viewModel.project.map(lane.isShown(in:)) ?? false
     }
 }
 

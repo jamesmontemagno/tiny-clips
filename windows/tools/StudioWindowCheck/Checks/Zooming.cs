@@ -422,14 +422,11 @@ internal sealed partial class WindowChecks
     /// <summary>A recording without zooms: what the lane, the buttons and the Zoom panel say, and the picture the zoom checks start from.</summary>
     private void EmptyLane(Editor editor, PartSight? before, int frame)
     {
-        var list = Find(editor, "StudioZoomLane");
-        var text = Find(editor, "StudioZoomLaneEmptyText", 1);
-        const string HowToAdd = "No zooms. Press Z to add one at the playhead.";
+        var list = Find(editor, "StudioZoomLane", 0.5);
         _report.Check(
-            "a recording without zooms: the lane is a list called Zooms with no items, which can take the keyboard focus, and it says how to add a zoom, as a text and as the list's description",
-            list is { ControlType: ControlTypeNames.List, Name: "Zooms", IsKeyboardFocusable: true, IsEnabled: true } && LaneItems(editor).Count == 0 && text?.Name == HowToAdd && list.HelpText == HowToAdd
-                && list.Patterns.Contains("Selection", StringComparison.Ordinal) && list.SelectedNames.Length == 0,
-            $"{list} with {LaneItems(editor).Count} item(s), described as \"{list?.HelpText}\"; the text: \"{text?.Name}\"; patterns({list?.Patterns})");
+            "a recording without zooms has no zoom lane",
+            list is null,
+            $"{list}");
 
         var suggest = Find(editor, "StudioSuggestZoomsButton");
         var note = NameOf(editor, "StudioNoClicksNote", 1);

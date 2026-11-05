@@ -18,8 +18,8 @@ namespace TinyClips.App.Controls.Studio;
 /// </remarks>
 public abstract partial class StudioRangeLane : StudioLane
 {
-    protected StudioRangeLane(StudioViewModel viewModel, string automationId, string name, string emptyText, double height)
-        : base(viewModel, automationId, name, emptyText, height)
+    protected StudioRangeLane(StudioViewModel viewModel, string automationId, string name, double height)
+        : base(viewModel, automationId, name, height)
     {
     }
 

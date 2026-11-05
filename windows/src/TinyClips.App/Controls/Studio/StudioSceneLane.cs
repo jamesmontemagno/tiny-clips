@@ -21,7 +21,7 @@ public sealed partial class StudioSceneLane : StudioLane
     private const double GripWidth = 6;
 
     public StudioSceneLane(StudioViewModel viewModel)
-        : base(viewModel, "StudioSceneLane", "Scenes", string.Empty, height: 24)
+        : base(viewModel, "StudioSceneLane", "Scenes", height: 24)
     {
     }
 
