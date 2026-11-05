@@ -191,30 +191,73 @@ struct AgentControlSetupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("1. Install the .NET 10 SDK.")
-            Link("Download .NET 10", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
-            Text("2. Install the Tiny Clips Agent Plugin (recommended). It includes the MCP server and workflow Skills; no separate MCP configuration or global CLI installation is needed.")
-            Text("In VS Code, run Chat: Install Plugin from Source from the Command Palette and enter this repository URL. No manual clone or marketplace is required.")
-            command("https://github.com/jamesmontemagno/tiny-clips.git", label: "Copy plugin repository URL")
-            Text("For GitHub Copilot CLI, run:")
-            command("copilot plugin install jamesmontemagno/tiny-clips", label: "Copy plugin install command")
-            Text("3. Turn on Agent Control in Settings, keep Tiny Clips running, then run this in Terminal to pair your agent.")
-            command("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Pair an agent")
-            Text("4. Choose the permissions to grant in Tiny Clips, approve, then check the connection.")
-            command("dnx TinyClips --yes -- status", label: "Check agent connection")
-            Text("Start a fresh agent session, then ask: “Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy.”")
-                .textSelection(.enabled)
+            GroupBox("Before you begin") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Link("Install the .NET 10 SDK", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
+                    Text("Turn on Agent Control above and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant.")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Choose the install method for your agent. Both install the same plugin; you only need one.")
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("VS Code")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Run Chat: Install Plugin from Source from the Command Palette, then enter this repository URL. No manual clone or marketplace is required.")
+                        command("https://github.com/jamesmontemagno/tiny-clips.git", label: "Copy VS Code plugin repository URL")
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("GitHub Copilot CLI")
+                            .font(.subheadline.weight(.semibold))
+                        command("copilot plugin install jamesmontemagno/tiny-clips", label: "Copy Copilot CLI plugin install command")
+                    }
+                    Divider()
+                    Text("Pair once, then approve the requested permissions in Tiny Clips.")
+                    command("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Copy pair command")
+                    Text("Check the connection:")
+                    command("dnx TinyClips --yes -- status", label: "Copy status command")
+                    Text("Start a fresh agent session, then ask: “Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy.”")
+                        .textSelection(.enabled)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                Label("Recommended: Install the Agent Plugin", systemImage: "puzzlepiece.extension")
+                    .font(.headline)
+            }
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("For terminal agents and scripts without plugin support, choose either dnx or a global CLI install.")
+                        .foregroundStyle(.secondary)
+                    Text("Run without a global install:")
+                        .font(.subheadline.weight(.semibold))
+                    command("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Copy dnx pair command")
+                    command("dnx TinyClips --yes -- status", label: "Copy dnx status command")
+                    Text("Or install once, then use the tinyclips command:")
+                        .font(.subheadline.weight(.semibold))
+                    command("dotnet tool install -g TinyClips", label: "Copy global CLI install command")
+                    command("tinyclips pair --name \"My agent\"", label: "Copy global CLI pair command")
+                    command("tinyclips status", label: "Copy global CLI status command")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                Label("Use the CLI directly (without a plugin)", systemImage: "terminal")
+                    .font(.headline)
+            }
 
             DisclosureGroup("Manual MCP setup (without a plugin)") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Skip this if you installed the plugin. For agents without plugin support, install the .NET 10 SDK and pair as above, then add this local stdio server in your agent's MCP settings. The agent must run as the same macOS user. Restart or reload its MCP connection after configuring it.")
+                    Text("For agents that support MCP but not plugins, pair using either route above, then add this local stdio server in the agent's MCP settings. The agent must run as the same macOS user. Restart or reload its MCP connection after configuring it.")
                     command(
                         "{\"mcpServers\":{\"tinyclips\":{\"command\":\"dotnet\",\"args\":[\"dnx\",\"TinyClips\",\"--verbosity\",\"quiet\",\"--yes\",\"--\",\"mcp\"]}}}",
                         label: "Copy MCP configuration"
                     )
-                    Text("Optional: install the standalone CLI for scripts and terminal use.")
-                    command("dotnet tool install -g TinyClips", label: "Install TinyClips CLI")
-                    Text("With the global tool installed, you can use command tinyclips with args [\"mcp\"] instead. MCP setup varies by agent; workflow Skills are included with the plugin, not this manual configuration.")
+                    Text("If you installed the global CLI, use command tinyclips with args [\"mcp\"] instead. MCP setup varies by agent; workflow Skills are included with the plugin, not this manual configuration.")
                 }
                 .padding(.top, 6)
             }

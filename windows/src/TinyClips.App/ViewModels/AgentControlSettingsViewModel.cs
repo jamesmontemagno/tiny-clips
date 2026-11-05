@@ -44,6 +44,10 @@ public sealed partial class AgentControlSettingsViewModel : ObservableObject
 
     public string StatusCommand => "dnx TinyClips --yes -- status";
 
+    public string GlobalPairCommand => "tinyclips pair --name \"My agent\"";
+
+    public string GlobalStatusCommand => "tinyclips status";
+
     public string McpConfiguration => """{"mcpServers":{"tinyclips":{"command":"dotnet","args":["dnx","TinyClips","--verbosity","quiet","--yes","--","mcp"]}}}""";
 
     [RelayCommand]
