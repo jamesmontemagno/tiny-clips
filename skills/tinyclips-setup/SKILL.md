@@ -9,11 +9,11 @@ description: Connect an agent to the Tiny Clips screen capture app on macOS or W
    - `not_running`: ask the user to open Tiny Clips. Do not try to start it with elevated rights.
    - `automationEnabled: false` or `automation_disabled`: ask the user to turn on **Settings → Agent control → Allow agents to control Tiny Clips**. You cannot turn it on yourself.
 2. Pair once: `tinyclips pair --name "<your agent name>" --scopes read,capture,record,edit,export`.
-   The user must approve the prompt in Tiny Clips. Request only the scopes the task needs.
+   The user approves the prompt in Tiny Clips and may grant different scopes than requested; use the `scopes` returned by pairing. Request only the scopes the task needs.
    Add `delete`, `upload`, or `discard` only when the task needs them; those commands still ask the user every time.
 3. Confirm: `tinyclips app.status`.
 
-`unauthorized` after pairing means the client was revoked; pair again. `missing_scope` means re-pair with the extra scope, after telling the user why.
+`unauthorized` after pairing means the client was revoked; pair again. `missing_scope` means the user hasn't granted that scope: tell the user why it's needed and ask them to enable it under Settings → Agent Control → Paired Agents → Permissions (or re-pair with the extra scope).
 
 Install the .NET 10 SDK for `dotnet tool install -g TinyClips`, or prefix commands with `dnx TinyClips --yes --`. Keep the app running; pair from the same OS account/environment as the agent. See `docs/agent-integration.md` for setup and troubleshooting.
 

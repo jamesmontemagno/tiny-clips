@@ -36,7 +36,7 @@ jobs:
               raise SystemExit(f"Invalid agent release tag: {tag}")
           version = tag.removeprefix("agent-v")
           project = ET.parse("agent/src/TinyClips.Cli/TinyClips.Cli.csproj")
-          plugin = json.loads(pathlib.Path("plugins/tinyclips/plugin.json").read_text())
+          plugin = json.loads(pathlib.Path("plugin.json").read_text())
           registry = json.loads(pathlib.Path("agent/src/TinyClips.Cli/.mcp/server.json").read_text())
           versions = [project.findtext(".//PackageVersion"), plugin["version"], registry["version"],
                       registry["packages"][0]["version"]]

@@ -23,7 +23,7 @@
                 <TextBlock
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="Let AI agents on this PC take captures, record, and manage your clips through the tinyclips command-line tool and MCP server."
+                    Text="Let AI agents on this PC take captures, record, and manage your clips through the Agent Plugin, MCP server, or command-line tool."
                     TextWrapping="Wrap" />
             </StackPanel>
 
@@ -75,7 +75,7 @@
                 Text="Paired agents" />
             <StackPanel Spacing="2">
                 <controls:SettingsCard
-                    Description="When an agent pairs, Tiny Clips asks you first. Deleting, uploading, and discarding always ask again."
+                    Description="When an agent pairs, Tiny Clips asks you first and you choose its permissions. Deleting, uploading, and discarding always ask again."
                     Header="No agents are paired"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE716;}"
                     Visibility="{x:Bind ViewModel.NoClientsVisibility, Mode=OneWay}" />
@@ -91,7 +91,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:AgentClientItem">
                             <controls:SettingsCard
-                                Description="{x:Bind UsageText}"
+                                Description="{x:Bind UsageText, Mode=OneWay}"
                                 Header="{x:Bind Name}"
                                 HeaderIcon="{ui:FontIcon Glyph=&#xE99A;}">
                                 <controls:SettingsCard.Content>
@@ -103,8 +103,50 @@
                                             VerticalAlignment="Center"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                             Style="{StaticResource CaptionTextBlockStyle}"
-                                            Text="{x:Bind ScopesText}"
+                                            Text="{x:Bind ScopesText, Mode=OneWay}"
                                             TextWrapping="Wrap" />
+                                        <Button
+                                            AutomationProperties.Name="{x:Bind PermissionsName}"
+                                            ToolTipService.ToolTip="Change permissions">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <FontIcon FontSize="14" Glyph="&#xE72E;" />
+                                                <TextBlock Text="Permissions" />
+                                            </StackPanel>
+                                            <Button.Flyout>
+                                                <Flyout Placement="BottomEdgeAlignedRight">
+                                                    <StackPanel MaxWidth="360" Spacing="8">
+                                                        <TextBlock
+                                                            AutomationProperties.HeadingLevel="Level3"
+                                                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                            Text="Permissions" />
+                                                        <TextBlock
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                                            Text="Changes apply right away. An agent needs at least one permission; use Revoke to remove it entirely."
+                                                            TextWrapping="Wrap" />
+                                                        <ItemsControl ItemsSource="{x:Bind ScopeOptions}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate x:DataType="vm:AgentScopeOption">
+                                                                    <CheckBox
+                                                                        AutomationProperties.Name="{x:Bind AccessibleName}"
+                                                                        IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                                                                        IsEnabled="{x:Bind IsEnabled, Mode=OneWay}">
+                                                                        <StackPanel>
+                                                                            <TextBlock Text="{x:Bind Label}" />
+                                                                            <TextBlock
+                                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                                                Text="{x:Bind Description}"
+                                                                                TextWrapping="Wrap" />
+                                                                        </StackPanel>
+                                                                    </CheckBox>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </Flyout>
+                                            </Button.Flyout>
+                                        </Button>
                                         <Button
                                             AutomationProperties.Name="{x:Bind RevokeName}"
                                             Command="{x:Bind RevokeCommand}"
@@ -159,45 +201,69 @@
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="Get started" />
             <controls:SettingsExpander
-                Description="Install the .NET 10 SDK and TinyClips tool, pair once, then try a capture."
-                Header="Connect an agent"
+                Description="The plugin includes the MCP server and workflow Skills. Install the .NET 10 SDK, add the plugin, then pair once."
+                Header="Set up with the Agent Plugin (recommended)"
                 HeaderIcon="{ui:FontIcon Glyph=&#xE756;}">
                 <controls:SettingsExpander.Items>
-                    <controls:SettingsCard Header="1. Install the tool (requires the .NET 10 SDK)">
+                    <controls:SettingsCard Header="1. Install the .NET 10 SDK">
+                        <HyperlinkButton Content="Download .NET 10" NavigateUri="https://dotnet.microsoft.com/download/dotnet/10.0" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard
+                        Description="In VS Code, run Chat: Install Plugin from Source from the Command Palette and enter this repository URL. No manual clone, marketplace, separate MCP configuration, or global CLI installation is needed."
+                        Header="2. Install the Tiny Clips Agent Plugin">
                         <StackPanel Spacing="8">
-                            <HyperlinkButton Content="Download .NET 10" NavigateUri="https://dotnet.microsoft.com/download/dotnet/10.0" />
-                            <TextBlock AutomationProperties.Name="Install command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.InstallCommand}" TextWrapping="Wrap" />
-                            <Button Content="Copy install command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.InstallCommand}" />
+                            <TextBlock AutomationProperties.Name="Plugin repository URL" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.PluginRepositoryUrl}" TextWrapping="Wrap" />
+                            <Button Content="Copy plugin repository URL" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.PluginRepositoryUrl}" />
+                            <TextBlock Text="For GitHub Copilot CLI, run:" TextWrapping="Wrap" />
+                            <TextBlock AutomationProperties.Name="Plugin install command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.PluginInstallCommand}" TextWrapping="Wrap" />
+                            <Button Content="Copy plugin install command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.PluginInstallCommand}" />
                         </StackPanel>
                     </controls:SettingsCard>
-                    <controls:SettingsCard Header="2. Turn on agent control above, then pair">
+                    <controls:SettingsCard
+                        Description="Keep Tiny Clips running and run this command in a terminal."
+                        Header="3. Turn on agent control above, then pair">
                         <StackPanel Spacing="8">
                             <TextBlock AutomationProperties.Name="Pair command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.PairCommand}" TextWrapping="Wrap" />
                             <Button Content="Copy pair command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.PairCommand}" />
                         </StackPanel>
                     </controls:SettingsCard>
                     <controls:SettingsCard
-                        Description="Keep Tiny Clips running. Approve the requested permissions in the app, then check the connection."
-                        Header="3. Approve and verify">
+                        Description="Keep Tiny Clips running. Choose the permissions to grant in the app, approve, then check the connection."
+                        Header="4. Approve and verify">
                         <StackPanel Spacing="8">
                             <TextBlock AutomationProperties.Name="Status command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.StatusCommand}" TextWrapping="Wrap" />
                             <Button Content="Copy status command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.StatusCommand}" />
                         </StackPanel>
                     </controls:SettingsCard>
                     <controls:SettingsCard
-                        Description="Ask an agent with terminal access: Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy."
-                        Header="4. Try your first capture" />
+                        Description="Start a fresh agent session, then ask: Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy."
+                        Header="5. Try your first capture" />
                     <controls:SettingsCard
-                        Description="Pair first, then add this local stdio server in your agent's MCP settings. Use the same Windows account. Restart or reload the MCP connection afterward. Configuration placement varies by agent."
-                        Header="Connect through MCP">
+                        Description="Agents request permissions when they pair, and you choose which to grant. Change an agent's permissions under Paired agents at any time. Deleting, uploading, and discarding always need approval. Turn off Agent Control or revoke access at any time. OS microphone and camera permissions still apply."
+                        Header="You stay in control" />
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+            <controls:SettingsExpander
+                Description="For agents without plugin support. Skip this if you installed the plugin."
+                Header="Manual MCP setup (without a plugin)"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE968;}">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard
+                        Description="Install the .NET 10 SDK and pair as above, then add this local stdio server in your agent's MCP settings. Use the same Windows account. Restart or reload the MCP connection afterward. Configuration placement varies by agent."
+                        Header="Configure the MCP server">
                         <StackPanel MaxWidth="360" Spacing="8">
                             <TextBlock AutomationProperties.Name="MCP configuration" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.McpConfiguration}" TextWrapping="Wrap" />
                             <Button Content="Copy MCP configuration" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.McpConfiguration}" />
                         </StackPanel>
                     </controls:SettingsCard>
                     <controls:SettingsCard
-                        Description="Default pairing grants read, capture, record, edit, and export. Deleting, uploading, and discarding always need approval. Turn off Agent Control or revoke access at any time. OS microphone and camera permissions still apply."
-                        Header="You stay in control" />
+                        Description="Optional for scripts and terminal use. With the global tool installed, MCP can use command tinyclips with args [&quot;mcp&quot;]. Workflow Skills are included with the plugin, not this manual configuration."
+                        Header="Install the standalone CLI">
+                        <StackPanel Spacing="8">
+                            <TextBlock AutomationProperties.Name="Standalone CLI install command" FontFamily="Consolas" IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.InstallCommand}" TextWrapping="Wrap" />
+                            <Button Content="Copy CLI install command" Command="{x:Bind ViewModel.CopySetupTextCommand}" CommandParameter="{x:Bind ViewModel.InstallCommand}" />
+                        </StackPanel>
+                    </controls:SettingsCard>
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
             <HyperlinkButton

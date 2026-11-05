@@ -136,6 +136,37 @@ public sealed class AutomationClientStore
         }
     }
 
+    /// <summary>Replaces a client's scopes. Its token stays valid. Returns false if the client is gone.</summary>
+    public bool UpdateScopes(string clientId, IEnumerable<string> scopes)
+    {
+        ArgumentNullException.ThrowIfNull(scopes);
+        var updated = scopes.Distinct(StringComparer.Ordinal).ToArray();
+        if (updated.Length == 0)
+        {
+            throw new ArgumentException("A paired client needs at least one scope. Revoke it instead.", nameof(scopes));
+        }
+
+        lock (_gate)
+        {
+            var index = _clients.FindIndex(c => c.Id == clientId);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            if (_clients[index].Scopes.SequenceEqual(updated, StringComparer.Ordinal))
+            {
+                return true;
+            }
+
+            _clients[index] = _clients[index] with { Scopes = updated };
+            WriteFile();
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     public bool Revoke(string clientId)
     {
         bool removed;

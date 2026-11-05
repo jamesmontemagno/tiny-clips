@@ -60,6 +60,15 @@ struct AutomationContract: Decodable {
     func isSensitive(scope: String) -> Bool {
         sensitiveScopes.contains(scope)
     }
+
+    /// Scope names in a stable order for display: everyday capabilities first, sensitive scopes last.
+    var displayScopes: [String] {
+        let preferred = ["read", "capture", "record", "edit", "export", "settings"]
+        let regular = scopes.keys
+            .filter { !isSensitive(scope: $0) }
+            .sorted { (preferred.firstIndex(of: $0) ?? .max, $0) < (preferred.firstIndex(of: $1) ?? .max, $1) }
+        return regular + sensitiveScopes.filter { scopes[$0] != nil }
+    }
 }
 
 /// Error codes from the contract's `errors` table.

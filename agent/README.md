@@ -23,7 +23,7 @@ tinyclips call capture.screenshot --params '{"mode":"region","displayId":"...","
 
 Region coordinates are display-local physical pixels from the top left. `capture.ocr` accepts the same target parameters and returns text without opening a picker or changing the clipboard. `editor.annotate` accepts typed annotations in source-image pixel coordinates and saves a new capture without opening the editor or overwriting its input. `editor.trim` (video or GIF, `start`/`end` seconds, optional `removeAudio`) and `editor.saveFrame` (video `time`, or GIF `time`/`frame`) also save new library items and leave the source untouched.
 
-Studio workflows can list/read projects, atomically patch editable settings and timeline data with the observed `modifiedAt` and opaque revision token, request non-mutating zoom suggestions, and export a new MP4 into the configured video folder. See the [Studio skill](../plugins/tinyclips/skills/tinyclips-studio/SKILL.md) and [integration guide](../docs/agent-integration.md#studio-projects) for safe patch and export usage.
+Studio workflows can list/read projects, atomically patch editable settings and timeline data with the observed `modifiedAt` and opaque revision token, request non-mutating zoom suggestions, and export a new MP4 into the configured video folder. See the [Studio skill](../skills/tinyclips-studio/SKILL.md) and [integration guide](../docs/agent-integration.md#studio-projects) for safe patch and export usage.
 
 CLI and MCP requests normally time out after 150 seconds; `studio.export` and `editor.trim` default to two hours. Set `TINYCLIPS_REQUEST_TIMEOUT_SECONDS` for a different deadline, or `0` for no request deadline. Caller cancellation still stops the request.
 
@@ -41,7 +41,15 @@ Each contract command becomes a `tinyclips_<domain>_<verb>` tool, plus `tinyclip
 
 ## Skills
 
-The [`plugins/tinyclips`](https://github.com/jamesmontemagno/tiny-clips/tree/main/plugins/tinyclips) [Agent Plugin](https://agent-plugins.org/) bundles this MCP server with portable SKILL.md workflows (setup, capture, Studio editing, record a demo, library). Install the plugin in a client that supports Agent Plugins, or copy folders from [`plugins/tinyclips/skills/`](https://github.com/jamesmontemagno/tiny-clips/tree/main/plugins/tinyclips/skills) into your agent's skills folder (for example `.github/skills/` or `~/.claude/skills/`).
+The [repository-root Agent Plugin](../docs/agent-plugin.md) bundles this MCP server with portable SKILL.md workflows (setup, capture, Studio editing, record a demo, library). GitHub Copilot CLI can install it directly, without a marketplace:
+
+```sh
+copilot plugin install jamesmontemagno/tiny-clips
+```
+
+In VS Code, run **Chat: Install Plugin from Source** and enter `https://github.com/jamesmontemagno/tiny-clips.git`. No manual clone is needed. VS Code also discovers CLI-installed plugins. See the [VS Code install instructions](../docs/agent-plugin.md#vs-code).
+
+Other clients that support Agent Plugins have their own install flows. Alternatively, copy folders from [`skills/`](https://github.com/jamesmontemagno/tiny-clips/tree/main/skills) into your agent's skills folder (for example `.github/skills/` or `~/.claude/skills/`). See the [integration guide](../docs/agent-integration.md#install-the-agent-plugin).
 
 ## Develop
 
@@ -74,7 +82,7 @@ They inspect the actual `.nupkg`, install it into an isolated tool directory, an
 
 [`agent-build.yml`](../.github/workflows/agent-build.yml) packs the candidate once on Linux, then builds, tests, and runs smoke tests against that same package on Linux, Windows, Apple silicon macOS, and Intel macOS. Relevant PRs and pushes to `main`/`develop` run these jobs; manual dispatch always runs them. The stable **Agent CLI result** check succeeds on an intentional skip but fails on failed detection or validation. Agent/plugin Markdown is included because it ships in the package or supplies workflow Skills.
 
-[`agent-release.yml`](../.github/workflows/agent-release.yml) publishes only on **`agent-v<version>` tags**, independently of the macOS and Windows app tags. Before tagging, update `PackageVersion` in the CLI project, `version` in `plugins/tinyclips/plugin.json`, and both versions in `agent/src/TinyClips.Cli/.mcp/server.json` to the same value. The tag must match those committed versions. The release reuses the full CI matrix, publishes the tested Linux `.nupkg`, and attaches that package and a portable plugin ZIP to a separate GitHub release. Prerelease tags such as `agent-v0.2.0-preview.1` create prereleases. Merging a PR alone does not publish.
+[`agent-release.yml`](../.github/workflows/agent-release.yml) publishes only on **`agent-v<version>` tags**, independently of the macOS and Windows app tags. Before tagging, update `PackageVersion` in the CLI project, `version` in the root [`plugin.json`](../plugin.json), and both versions in `agent/src/TinyClips.Cli/.mcp/server.json` to the same value. The tag must match those committed versions. The release reuses the full CI matrix, publishes the tested Linux `.nupkg`, and attaches that package and a portable plugin ZIP to a separate GitHub release. Prerelease tags such as `agent-v0.2.0-preview.1` create prereleases. Merging a PR alone does not publish.
 
 Configure [NuGet.org Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) with:
 

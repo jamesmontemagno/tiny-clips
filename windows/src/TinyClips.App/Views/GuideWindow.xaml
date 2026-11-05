@@ -53,11 +53,20 @@
                         <local:GuideRow
                             Glyph="&#xE99A;"
                             Title="Connect your AI agent"
-                            Subtitle="In Settings → Agent control, enable access. Install the .NET 10 SDK, then run the commands below in a terminal. Keep Tiny Clips running and approve the pairing request." />
+                            Subtitle="In Settings → Agent control, follow the recommended Agent Plugin setup. Install the .NET 10 SDK. In VS Code, run Chat: Install Plugin from Source and enter the repository URL below. The plugin includes the MCP server and workflow Skills; no manual clone or separate MCP configuration is needed." />
+                        <TextBlock
+                            AutomationProperties.Name="Plugin repository URL"
+                            FontFamily="Consolas"
+                            IsTextSelectionEnabled="True"
+                            Text="https://github.com/jamesmontemagno/tiny-clips.git"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Text="Enable Agent Control and keep Tiny Clips running. Run these commands in a terminal and approve the pairing request, then start a fresh agent session."
+                            TextWrapping="Wrap" />
                         <TextBlock
                             FontFamily="Consolas"
                             IsTextSelectionEnabled="True"
-                            Text="dotnet tool install -g TinyClips&#x0a;tinyclips pair --name &quot;My agent&quot;&#x0a;tinyclips status"
+                            Text="dnx TinyClips --yes -- pair --name &quot;My agent&quot;&#x0a;dnx TinyClips --yes -- status"
                             TextWrapping="Wrap" />
                         <TextBlock
                             Text="Try asking: Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy."
@@ -65,7 +74,7 @@
                             TextWrapping="Wrap" />
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="Agents can capture, annotate, record, and edit/export Studio projects through the CLI or MCP server. Deleting, uploading, and discarding always need approval. Revoke agents or turn off access in Settings; the audit log records requests. Agents need their own tools to scroll or interact with other apps."
+                            Text="Agents can capture, annotate, record, and edit/export Studio projects through the plugin, CLI, or MCP server. For agents without plugin support, use the manual MCP setup in Settings. Deleting, uploading, and discarding always need approval. Revoke agents or turn off access in Settings; the audit log records requests. Agents need their own tools to scroll or interact with other apps."
                             TextWrapping="Wrap" />
                         <HyperlinkButton
                             HorizontalAlignment="Left"

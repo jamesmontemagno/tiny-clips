@@ -4,10 +4,11 @@ import SwiftUI
 struct AgentControlSettingsSection: View {
     @ObservedObject private var controller = AutomationController.shared
     @AppStorage(AutomationController.enabledKey) private var automationEnabled = false
+    @State private var permissionsClientID: String?
 
     var body: some View {
         Section("Agent Control") {
-            Text("Let AI agents and scripts on this Mac drive Tiny Clips through the tinyclips command-line tool: take screenshots, record, open editors, and manage your library. Each agent has to be approved here once and only gets the permissions you allow. Deleting, uploading, and discarding always ask you first.")
+            Text("Let AI agents and scripts on this Mac drive Tiny Clips through the Agent Plugin, MCP server, or command-line tool: take screenshots, record, open editors, and manage your library. Each agent has to be approved here once and only gets the permissions you allow. Deleting, uploading, and discarding always ask you first.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -45,7 +46,7 @@ struct AgentControlSettingsSection: View {
 
         Section("Paired Agents") {
             if controller.clients.isEmpty {
-                Text("No agents are paired. Run tinyclips pair from a terminal to connect one.")
+                Text("No agents are paired. Follow Get Started to install the plugin and pair an agent.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -101,6 +102,17 @@ struct AgentControlSettingsSection: View {
             }
             .accessibilityElement(children: .combine)
             Spacer()
+            Button("Permissions…") {
+                permissionsClientID = client.id
+            }
+            .help("Choose what this agent is allowed to do.")
+            .accessibilityLabel("Change permissions for \(client.name)")
+            .popover(isPresented: Binding(
+                get: { permissionsClientID == client.id },
+                set: { if !$0, permissionsClientID == client.id { permissionsClientID = nil } }
+            )) {
+                AgentPermissionsEditor(clientID: client.id)
+            }
             Button("Revoke", role: .destructive) {
                 controller.revoke(client)
             }
@@ -125,33 +137,88 @@ struct AgentControlSettingsSection: View {
     }
 }
 
+/// Edits one paired agent's scopes. Changes apply immediately; the last enabled scope is locked
+/// because an agent needs at least one (Revoke removes it instead).
+private struct AgentPermissionsEditor: View {
+    @ObservedObject private var controller = AutomationController.shared
+    let clientID: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Permissions")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            Text("Changes apply right away. Delete, upload, and discard still ask you each time.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let contract = controller.contract, let client = client {
+                ForEach(contract.displayScopes, id: \.self) { scope in
+                    let isOn = client.scopes.contains(scope)
+                    Toggle(isOn: Binding(
+                        get: { isOn },
+                        set: { newValue in
+                            var scopes = Set(client.scopes)
+                            if newValue { scopes.insert(scope) } else { scopes.remove(scope) }
+                            controller.updateScopes(client, scopes: Array(scopes))
+                        }
+                    )) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(contract.isSensitive(scope: scope) ? "\(scope) (asks every time)" : scope)
+                            Text(contract.scopes[scope] ?? "")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    .disabled(isOn && client.scopes.count == 1)
+                    .accessibilityLabel("\(scope): \(contract.scopes[scope] ?? "")")
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 340)
+    }
+
+    private var client: AutomationClient? {
+        controller.clients.first { $0.id == clientID }
+    }
+}
+
 struct AgentControlSetupView: View {
     @State private var copyStatus = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("1. Install the .NET 10 SDK, then run this in Terminal.")
+            Text("1. Install the .NET 10 SDK.")
             Link("Download .NET 10", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
-            command("dotnet tool install -g TinyClips", label: "Install TinyClips CLI")
-            Text("2. Turn on Agent Control in Settings, keep Tiny Clips running, then pair your agent.")
-            command("tinyclips pair --name \"My agent\"", label: "Pair an agent")
-            Text("3. Approve the requested permissions in Tiny Clips, then check the connection.")
-            command("tinyclips status", label: "Check agent connection")
-            Text("Ask an agent with terminal access: “Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy.”")
+            Text("2. Install the Tiny Clips Agent Plugin (recommended). It includes the MCP server and workflow Skills; no separate MCP configuration or global CLI installation is needed.")
+            Text("In VS Code, run Chat: Install Plugin from Source from the Command Palette and enter this repository URL. No manual clone or marketplace is required.")
+            command("https://github.com/jamesmontemagno/tiny-clips.git", label: "Copy plugin repository URL")
+            Text("For GitHub Copilot CLI, run:")
+            command("copilot plugin install jamesmontemagno/tiny-clips", label: "Copy plugin install command")
+            Text("3. Turn on Agent Control in Settings, keep Tiny Clips running, then run this in Terminal to pair your agent.")
+            command("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Pair an agent")
+            Text("4. Choose the permissions to grant in Tiny Clips, approve, then check the connection.")
+            command("dnx TinyClips --yes -- status", label: "Check agent connection")
+            Text("Start a fresh agent session, then ask: “Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy.”")
                 .textSelection(.enabled)
 
-            DisclosureGroup("Connect through MCP") {
+            DisclosureGroup("Manual MCP setup (without a plugin)") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Pair first, then add this local stdio server in your agent's MCP settings. The agent must run as the same macOS user. Restart or reload its MCP connection after configuring it.")
+                    Text("Skip this if you installed the plugin. For agents without plugin support, install the .NET 10 SDK and pair as above, then add this local stdio server in your agent's MCP settings. The agent must run as the same macOS user. Restart or reload its MCP connection after configuring it.")
                     command(
                         "{\"mcpServers\":{\"tinyclips\":{\"command\":\"dotnet\",\"args\":[\"dnx\",\"TinyClips\",\"--verbosity\",\"quiet\",\"--yes\",\"--\",\"mcp\"]}}}",
                         label: "Copy MCP configuration"
                     )
-                    Text("Already installed the tool? Use command tinyclips with args [\"mcp\"] instead. MCP setup varies by agent.")
+                    Text("Optional: install the standalone CLI for scripts and terminal use.")
+                    command("dotnet tool install -g TinyClips", label: "Install TinyClips CLI")
+                    Text("With the global tool installed, you can use command tinyclips with args [\"mcp\"] instead. MCP setup varies by agent; workflow Skills are included with the plugin, not this manual configuration.")
                 }
                 .padding(.top, 6)
             }
-            Text("Default pairing grants read, capture, record, edit, and export. Deleting, uploading, and discarding always need approval. Turn off Agent Control or revoke an agent to stop access. Screen Recording, Microphone, and Camera permissions still apply.")
+            Text("Agents request permissions when they pair, and you choose which to grant. Change an agent's permissions under Paired Agents at any time. Deleting, uploading, and discarding always need approval. Turn off Agent Control or revoke an agent to stop access. Screen Recording, Microphone, and Camera permissions still apply.")
                 .foregroundStyle(.secondary)
             Link("Full setup, Skills, and example prompts", destination: URL(string: "https://github.com/jamesmontemagno/tiny-clips/blob/main/docs/agent-integration.md")!)
             if !copyStatus.isEmpty {

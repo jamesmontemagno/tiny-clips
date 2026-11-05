@@ -22,7 +22,7 @@ public class PackageSmokeTests
         get
         {
             for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-                if (File.Exists(Path.Combine(directory.FullName, "plugins", "tinyclips", "plugin.json")))
+                if (File.Exists(Path.Combine(directory.FullName, "plugin.json")))
                     return directory.FullName;
             throw new InvalidOperationException("Cannot find the Tiny Clips plugin above the test output.");
         }
@@ -69,7 +69,7 @@ public class PackageSmokeTests
         Assert.True(JsonNode.DeepEquals(sourceRegistry, registry), "Packaged MCP registry metadata differs from the source.");
         Assert.Equal(PackageVersion, (string?)registry["version"]);
         Assert.Equal(PackageVersion, (string?)registry["packages"]![0]!["version"]);
-        var plugin = JsonNode.Parse(File.ReadAllText(Path.Combine(RepoRoot, "plugins", "tinyclips", "plugin.json")))!;
+        var plugin = JsonNode.Parse(File.ReadAllText(Path.Combine(RepoRoot, "plugin.json")))!;
         Assert.Equal(PackageVersion, (string?)plugin["version"]);
     }
 
@@ -104,7 +104,7 @@ public class PackageSmokeTests
             string[] prefix;
             if (useDnx)
             {
-                var mcp = JsonNode.Parse(File.ReadAllText(Path.Combine(RepoRoot, "plugins", "tinyclips", "mcp.json")))!;
+                var mcp = JsonNode.Parse(File.ReadAllText(Path.Combine(RepoRoot, "mcp.json")))!;
                 var server = mcp["mcpServers"]!["tinyclips"]!;
                 executable = server["command"]!.GetValue<string>();
                 var pluginArgs = server["args"]!.AsArray().Select(a => a!.GetValue<string>()).ToArray();

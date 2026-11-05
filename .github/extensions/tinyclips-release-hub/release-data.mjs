@@ -163,7 +163,7 @@ async function readMacVersion(root) {
 async function readAgentVersions(root) {
     const [project, pluginText, registryText] = await Promise.all([
         readFile(`${root}/agent/src/TinyClips.Cli/TinyClips.Cli.csproj`, "utf8"),
-        readFile(`${root}/plugins/tinyclips/plugin.json`, "utf8"),
+        readFile(`${root}/plugin.json`, "utf8"),
         readFile(`${root}/agent/src/TinyClips.Cli/.mcp/server.json`, "utf8"),
     ]);
     const registry = JSON.parse(registryText);

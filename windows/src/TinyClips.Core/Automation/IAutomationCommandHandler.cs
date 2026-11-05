@@ -55,8 +55,11 @@ public interface IAutomationCommandHandler
 /// <summary>Asks the user, in the app, to approve pairing and sensitive commands.</summary>
 public interface IAutomationApprovalPrompt
 {
-    /// <summary>Returns true only if the user approved. Cancellation means no answer (denied).</summary>
-    Task<bool> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken);
+    /// <summary>
+    /// Returns the scopes the user granted, which may differ from the requested scopes, or null if the
+    /// user denied. Cancellation means no answer (denied).
+    /// </summary>
+    Task<IReadOnlyList<string>?> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken);
 
     /// <summary>Returns true only if the user approved. Cancellation means no answer (denied).</summary>
     Task<bool> RequestCommandApprovalAsync(AutomationCommandContext context, CancellationToken cancellationToken);

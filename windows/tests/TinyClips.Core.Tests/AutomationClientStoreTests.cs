@@ -67,6 +67,23 @@ public sealed class AutomationClientStoreTests : IDisposable
     }
 
     [Fact]
+    public void UpdateScopes_KeepsTokenAndPersists()
+    {
+        var store = new AutomationClientStore(FilePath);
+        var (client, token) = store.Add("Agent", ["read"]);
+        var changes = 0;
+        store.Changed += (_, _) => changes++;
+
+        Assert.True(store.UpdateScopes(client.Id, ["read", "delete", "delete"]));
+        Assert.True(store.UpdateScopes(client.Id, ["read", "delete"]));
+        Assert.Equal(1, changes);
+        Assert.Equal(["read", "delete"], store.FindByToken(token)!.Scopes);
+        Assert.Equal(["read", "delete"], new AutomationClientStore(FilePath).FindByToken(token)!.Scopes);
+        Assert.Throws<ArgumentException>(() => store.UpdateScopes(client.Id, []));
+        Assert.False(store.UpdateScopes("missing", ["read"]));
+    }
+
+    [Fact]
     public void RevocationTokens_CancelOnlyRemovedClientsIncludingRevokeAll()
     {
         var store = new AutomationClientStore(FilePath);

@@ -125,6 +125,50 @@ final class AutomationClientStoreTests: XCTestCase {
         XCTAssertNil(pairings.status(id: pairing.id), "The token must only be returned once")
     }
 
+    func testPairingGrantsTheScopesTheUserChose() throws {
+        let store = AutomationClientStore(directory: directory)
+        var pairings = AutomationPairings()
+        let pairing = try pairings.begin(clientName: "Agent", scopes: ["read", "record"])
+
+        try pairings.resolve(id: pairing.id, approved: true, scopes: ["read", "delete"], store: store)
+        let approved = try XCTUnwrap(pairings.status(id: pairing.id))
+        XCTAssertEqual(approved.scopes, ["delete", "read"])
+        XCTAssertEqual(store.client(forToken: approved.token)?.scopes, ["delete", "read"])
+    }
+
+    func testPairingWithNoScopesChosenIsDenied() throws {
+        let store = AutomationClientStore(directory: directory)
+        var pairings = AutomationPairings()
+        let pairing = try pairings.begin(clientName: "Agent", scopes: ["read"])
+        try pairings.resolve(id: pairing.id, approved: true, scopes: [], store: store)
+        XCTAssertEqual(pairings.status(id: pairing.id)?.status, .denied)
+        XCTAssertTrue(store.clients.isEmpty)
+    }
+
+    func testUpdateScopesKeepsTokenAndPersists() throws {
+        let store = AutomationClientStore(directory: directory)
+        let (client, token) = try store.addClient(name: "Agent", scopes: ["read"])
+
+        try store.updateScopes(id: client.id, scopes: ["read", "delete", "delete"])
+        XCTAssertEqual(store.client(forToken: token)?.scopes, ["delete", "read"])
+        XCTAssertEqual(AutomationClientStore(directory: directory).client(forToken: token)?.scopes, ["delete", "read"])
+        XCTAssertThrowsError(try store.updateScopes(id: client.id, scopes: []))
+        XCTAssertThrowsError(try store.updateScopes(id: "missing", scopes: ["read"]))
+    }
+
+    @MainActor
+    func testScopeSelectionStartsWithRequestedScopesInDisplayOrder() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let contract = try AutomationContract.load(from: repoRoot.appendingPathComponent("shared/automation/commands.json"))
+        XCTAssertEqual(Array(contract.displayScopes.prefix(2)), ["read", "capture"])
+        XCTAssertEqual(Array(contract.displayScopes.suffix(3)), contract.sensitiveScopes)
+        let selection = AutomationScopeSelection(contract: contract, requested: ["delete", "read", "bogus"])
+        XCTAssertEqual(selection.grantedScopes, ["read", "delete"])
+    }
+
     func testDeniedPairingAddsNoClient() throws {
         let store = AutomationClientStore(directory: directory)
         var pairings = AutomationPairings()
