@@ -41,13 +41,18 @@ final class ScreenshotRedactionTests: XCTestCase {
     func testEachLevelRemovesMoreOfTheSourceDetail() throws {
         let source = try makeBars(width: 400, height: 200)
         let rect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
-        let sourceSpread = try luminanceSpread(of: XCTUnwrap(source.cropping(to: CGRect(x: 100, y: 50, width: 200, height: 100))))
+        // Edge clamping preserves broad color changes; measure repeating detail inside the patch.
+        let inset = 40
+        let sourceSpread = try luminanceSpread(
+            of: XCTUnwrap(source.cropping(to: CGRect(x: 100, y: 50, width: 200, height: 100))),
+            inset: inset
+        )
 
         let spreads = try RedactionBlurPreset.allCases.map { preset -> CGFloat in
             let patch = try XCTUnwrap(ScreenshotRedactionRenderer.patch(normalizedRect: rect, source: source, preset: preset))
             XCTAssertEqual(patch.image.width, 200)
             XCTAssertEqual(patch.image.height, 100)
-            return try luminanceSpread(of: patch.image)
+            return try luminanceSpread(of: patch.image, inset: inset)
         }
 
         XCTAssertLessThan(spreads[0], sourceSpread * 0.95, "Light must visibly soften the source")
@@ -63,7 +68,7 @@ final class ScreenshotRedactionTests: XCTestCase {
             source: source,
             preset: .medium
         ))
-        XCTAssertLessThan(try luminanceSpread(of: patch.image), 0.02)
+        XCTAssertLessThan(try luminanceSpread(of: patch.image, inset: 40), 0.02)
     }
 
     func testPatchCoversWholePixelsInsideTheImage() throws {
@@ -136,7 +141,7 @@ final class ScreenshotRedactionTests: XCTestCase {
 
         var inside: [CGFloat] = []
         var outside: [CGFloat] = []
-        for x in 110..<290 {
+        for x in 140..<260 {
             inside.append(try luminance(output, x: x, y: 100))
             outside.append(try luminance(output, x: x, y: 20))
         }
@@ -150,6 +155,39 @@ final class ScreenshotRedactionTests: XCTestCase {
             try luminance(output, x: 200, y: 100),
             accuracy: 0.05
         )
+    }
+
+    @MainActor
+    func testOffCenterRedactionUsesTheMatchingSourceRows() throws {
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 400, height: 200, bitsPerComponent: 8, bytesPerRow: 0,
+            space: XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.setFillColor(NSColor.blue.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 400, height: 100))
+        context.setFillColor(NSColor.red.cgColor)
+        context.fill(CGRect(x: 0, y: 100, width: 400, height: 100))
+        let (editor, cleanup) = try makeEditor(source: XCTUnwrap(context.makeImage()))
+        defer { cleanup() }
+        let annotation = ScreenshotAnnotation(
+            tool: .blur,
+            rect: CGRect(x: 0.25, y: 0.1, width: 0.5, height: 0.3),
+            color: .black, lineWidth: 0, text: "", points: []
+        )
+        editor.annotations = [annotation]
+
+        let patch = try XCTUnwrap(editor.redactionPatch(for: annotation))
+        let preview = NSBitmapImageRep(cgImage: patch.image)
+        let output = try XCTUnwrap(editor.renderFinalImage(includesExportDecorations: false))
+        for (bitmap, x, y) in [(preview, 100, 30), (output, 200, 50)] {
+            let color = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+            XCTAssertGreaterThan(color.redComponent, 0.95)
+            XCTAssertLessThan(color.blueComponent, 0.05)
+        }
+        let untouched = try XCTUnwrap(output.colorAt(x: 200, y: 150)?.usingColorSpace(.sRGB))
+        XCTAssertGreaterThan(untouched.blueComponent, 0.95)
+        XCTAssertLessThan(untouched.redComponent, 0.05)
     }
 
     @MainActor
@@ -221,10 +259,10 @@ final class ScreenshotRedactionTests: XCTestCase {
     // MARK: - Helpers
 
     @MainActor
-    private func makeEditor() throws -> (ScreenshotEditorViewModel, () -> Void) {
+    private func makeEditor(source: CGImage? = nil) throws -> (ScreenshotEditorViewModel, () -> Void) {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScreenshotRedactionTests-\(UUID().uuidString).png")
-        let bitmap = try NSBitmapImageRep(cgImage: makeBars(width: 400, height: 200))
+        let bitmap = try NSBitmapImageRep(cgImage: source ?? makeBars(width: 400, height: 200))
         try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: url)
         let editor = ScreenshotEditorViewModel(url: url)
         XCTAssertNotNil(editor.originalImage)
@@ -257,10 +295,10 @@ final class ScreenshotRedactionTests: XCTestCase {
         return 0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent
     }
 
-    private func luminanceSpread(of image: CGImage) throws -> CGFloat {
+    private func luminanceSpread(of image: CGImage, inset: Int = 0) throws -> CGFloat {
         let bitmap = NSBitmapImageRep(cgImage: image)
         var values: [CGFloat] = []
-        for x in 0..<bitmap.pixelsWide {
+        for x in inset..<(bitmap.pixelsWide - inset) {
             values.append(try luminance(bitmap, x: x, y: bitmap.pixelsHigh / 2))
         }
         return spread(values)
