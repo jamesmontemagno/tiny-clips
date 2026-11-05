@@ -119,7 +119,7 @@ final class RecentCaptureStore: ObservableObject {
             Task.detached(priority: .utility) { [weak self] in
                 let image = await Self.generateThumbnail(url: url, type: type)
                 guard let image else { return }
-                await MainActor.run {
+                await MainActor.run { [weak self] in
                     guard let self,
                           self.items.prefix(Self.menuDisplayLimit).contains(where: {
                               $0.id == itemID && $0.type == type && $0.capturedAt == capturedAt

@@ -26,6 +26,7 @@ final class AutomationCaptureTargetsTests: XCTestCase {
 
     // MARK: - Contract
 
+    @MainActor
     func testContractDecodesNestedSchemaAndSupportsAutonomousCommands() throws {
         let contract = try AutomationContract.load(from: Self.repoRoot.appendingPathComponent("shared/automation/commands.json"))
         for name in [
