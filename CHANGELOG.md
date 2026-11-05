@@ -4,9 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-### Added
-- Studio can draw arrows, callouts, and text over a video, in the preview and the export. A screen annotation follows zooms and crops; a frame annotation stays where it is. Agents add them through `overlays.annotations` in `studio.project.edit`. Editing them in the Studio window comes next.
-
 ### Fixed
 - Overlapping macOS screenshot redactions preserve the stronger level in preview and export, including while drawing a new redaction.
 - Resolved macOS Swift concurrency warnings in webcam composition, recent-capture thumbnails, and automation contract tests.
@@ -18,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
 
 ### Added
+- Studio can draw arrows, callouts, and text over a video, in the preview and the export. A screen annotation follows zooms and crops; a frame annotation stays where it is. Agents add them through `overlays.annotations` in `studio.project.edit`. Editing them in the Studio window comes next.
 - Agent Control settings now show both plugin install paths and a separate CLI-only setup with `dnx` and global tool commands on macOS and Windows.
 - Agent permissions are now yours to choose: the pairing prompt lists every scope with the agent's request pre-checked, so you can remove or add permissions before approving, and each paired agent has a **Permissions** control in Settings → Agent Control that applies changes immediately without re-pairing. Sensitive scopes still ask every time.
 - Moved the portable Agent Plugin to the repository root so VS Code can install it directly from the repository URL without a manual clone or marketplace; updated installation guidance, CI, and release packaging.
