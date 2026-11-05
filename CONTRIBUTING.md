@@ -101,7 +101,8 @@ Copilot app configuration, extensions, and standalone tooling outside those inpu
 also skip platform builds. Manually dispatching **Build** or **Windows Build** forces
 its platform's builds and tests. Existing app release/tag workflows are unchanged.
 
-The separate **Agent CLI** workflow validates `agent/`, `plugins/tinyclips/`, shared
+The separate **Agent CLI** workflow validates `agent/`, the root plugin manifest,
+MCP configuration, `skills/`, plugin documentation and license, shared
 automation inputs, root .NET/NuGet/MSBuild configuration, and its build/release
 workflows on Linux, Windows, Apple silicon macOS, and Intel macOS. It includes
 Markdown under agent/plugin paths because the NuGet README and Skills ship to users.

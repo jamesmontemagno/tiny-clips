@@ -185,6 +185,13 @@ public sealed class AutomationHost
                 return Fail(id, command, client, AutomationErrorCodes.Unauthorized, MessageFor(AutomationErrorCodes.Unauthorized, command, client), approved);
             }
 
+            // Scopes can be edited in Settings while an approval prompt is open.
+            if (approved is not null
+                && _policy.Decide(true, _clients.FindByToken(request.Token)?.Scopes, command).Kind == AutomationDecisionKind.Deny)
+            {
+                return Fail(id, command, client, AutomationErrorCodes.MissingScope, MessageFor(AutomationErrorCodes.MissingScope, command, client), approved);
+            }
+
             requestLifetime.Token.ThrowIfCancellationRequested();
             var result = await _handler.ExecuteAsync(context, requestLifetime.Token).ConfigureAwait(false);
             Audit(command, "ok", client, null, approved);
@@ -283,19 +290,25 @@ public sealed class AutomationHost
 
     private async Task CompletePairingAsync(PendingPairing pairing, CancellationToken cancellationToken)
     {
-        bool approved;
+        IReadOnlyList<string>? granted;
         try
         {
-            approved = await AskAsync(
+            granted = await AskAsync(
                 ct => _approvals.RequestPairingApprovalAsync(new AutomationPairingRequest(pairing.Id, pairing.ClientName, pairing.Scopes), ct),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                denied: null).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"AutomationHost: pairing prompt failed: {ex}");
-            approved = false;
+            granted = null;
         }
 
+        var grantedScopes = granted?
+            .Where(_contract.Scopes.ContainsKey)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray() ?? [];
+        var approved = grantedScopes.Length > 0;
         lock (_pairingGate)
         {
             if (pairing.Status != PairingStatus.Pending || !_isEnabled())
@@ -305,7 +318,8 @@ public sealed class AutomationHost
             }
             else if (approved)
             {
-                var (client, token) = _clients.Add(pairing.ClientName, pairing.Scopes);
+                pairing.Scopes = grantedScopes;
+                var (client, token) = _clients.Add(pairing.ClientName, grantedScopes);
                 pairing.ClientId = client.Id;
                 pairing.Token = token;
                 pairing.Status = PairingStatus.Approved;
@@ -380,7 +394,10 @@ public sealed class AutomationHost
         }
     }
 
-    private async Task<bool> AskAsync(Func<CancellationToken, Task<bool>> prompt, CancellationToken cancellationToken)
+    private Task<bool> AskAsync(Func<CancellationToken, Task<bool>> prompt, CancellationToken cancellationToken) =>
+        AskAsync(prompt, cancellationToken, denied: false);
+
+    private async Task<T> AskAsync<T>(Func<CancellationToken, Task<T>> prompt, CancellationToken cancellationToken, T denied)
     {
         using var timeout = new CancellationTokenSource(_approvalTimeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, cancellationToken);
@@ -390,7 +407,7 @@ public sealed class AutomationHost
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return false;
+            return denied;
         }
     }
 
@@ -496,7 +513,7 @@ public sealed class AutomationHost
 
         public string ClientName { get; } = clientName;
 
-        public IReadOnlyList<string> Scopes { get; } = scopes;
+        public IReadOnlyList<string> Scopes { get; set; } = scopes;
 
         public DateTimeOffset CreatedAt { get; } = createdAt;
 

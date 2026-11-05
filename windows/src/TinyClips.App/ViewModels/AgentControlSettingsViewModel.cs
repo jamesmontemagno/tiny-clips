@@ -34,11 +34,15 @@ public sealed partial class AgentControlSettingsViewModel : ObservableObject
 
     public string Endpoint { get; }
 
+    public string PluginRepositoryUrl => "https://github.com/jamesmontemagno/tiny-clips.git";
+
+    public string PluginInstallCommand => "copilot plugin install jamesmontemagno/tiny-clips";
+
     public string InstallCommand => "dotnet tool install -g TinyClips";
 
-    public string PairCommand => "tinyclips pair --name \"My agent\"";
+    public string PairCommand => "dnx TinyClips --yes -- pair --name \"My agent\"";
 
-    public string StatusCommand => "tinyclips status";
+    public string StatusCommand => "dnx TinyClips --yes -- status";
 
     public string McpConfiguration => """{"mcpServers":{"tinyclips":{"command":"dotnet","args":["dnx","TinyClips","--verbosity","quiet","--yes","--","mcp"]}}}""";
 
@@ -193,10 +197,22 @@ public sealed partial class AgentControlSettingsViewModel : ObservableObject
 
     private void RefreshClients()
     {
-        Clients.Clear();
-        foreach (var client in _service.Clients.List().OrderByDescending(c => c.LastUsedAt ?? c.CreatedAt))
+        var clients = _service.Clients.List().OrderByDescending(c => c.LastUsedAt ?? c.CreatedAt).ToArray();
+        if (clients.Select(c => c.Id).SequenceEqual(Clients.Select(c => c.Id), StringComparer.Ordinal))
         {
-            Clients.Add(new AgentClientItem(client, _service.Clients));
+            // Update rows in place so an open permissions flyout is not torn down.
+            for (var i = 0; i < clients.Length; i++)
+            {
+                Clients[i].Update(clients[i]);
+            }
+        }
+        else
+        {
+            Clients.Clear();
+            foreach (var client in clients)
+            {
+                Clients.Add(new AgentClientItem(client, _service.Clients));
+            }
         }
 
         HasClients = Clients.Count > 0;
@@ -206,33 +222,152 @@ public sealed partial class AgentControlSettingsViewModel : ObservableObject
 }
 
 /// <summary>A paired agent, as listed in Settings → Agent control.</summary>
-public sealed partial class AgentClientItem
+public sealed partial class AgentClientItem : ObservableObject
 {
     private readonly AutomationClientStore _store;
+    private bool _updating;
 
     internal AgentClientItem(AutomationClient client, AutomationClientStore store)
     {
         _store = store;
         Id = client.Id;
         Name = client.Name;
-        ScopesText = client.Scopes.Count == 0 ? "No permissions" : "Can: " + string.Join(", ", client.Scopes);
-        var paired = $"Paired {client.CreatedAt.ToLocalTime():d}";
-        UsageText = client.LastUsedAt is { } lastUsed
-            ? $"{paired} · Last used {lastUsed.ToLocalTime():g}"
-            : $"{paired} · Never used";
         RevokeName = $"Revoke {client.Name}";
+        PermissionsName = $"Change permissions for {client.Name}";
         RevokeCommand = new RelayCommand(() => _store.Revoke(Id));
+        var contract = AutomationContract.Default;
+        ScopeOptions = contract.Scopes
+            .Select(s => new AgentScopeOption(s.Key, s.Value, contract.IsSensitiveScope(s.Key), OnScopeToggled))
+            .ToArray();
+        Update(client);
     }
 
     public string Id { get; }
 
     public string Name { get; }
 
-    public string ScopesText { get; }
+    [ObservableProperty]
+    private string _scopesText = string.Empty;
 
-    public string UsageText { get; }
+    [ObservableProperty]
+    private string _usageText = string.Empty;
+
+    [ObservableProperty]
+    private string _permissionErrorText = string.Empty;
 
     public string RevokeName { get; }
 
+    public string PermissionsName { get; }
+
     public IRelayCommand RevokeCommand { get; }
+
+    /// <summary>Every contract scope, checked when the agent has it. Changes apply immediately.</summary>
+    public IReadOnlyList<AgentScopeOption> ScopeOptions { get; }
+
+    internal void Update(AutomationClient client)
+    {
+        ScopesText = client.Scopes.Count == 0 ? "No permissions" : "Can: " + string.Join(", ", client.Scopes);
+        var paired = $"Paired {client.CreatedAt.ToLocalTime():d}";
+        UsageText = client.LastUsedAt is { } lastUsed
+            ? $"{paired} · Last used {lastUsed.ToLocalTime():g}"
+            : $"{paired} · Never used";
+
+        _updating = true;
+        try
+        {
+            foreach (var option in ScopeOptions)
+            {
+                option.IsSelected = client.Scopes.Contains(option.Name, StringComparer.Ordinal);
+            }
+        }
+        finally
+        {
+            _updating = false;
+        }
+
+        UpdateOptionAvailability();
+    }
+
+    private void OnScopeToggled()
+    {
+        if (_updating)
+        {
+            return;
+        }
+
+        var selected = ScopeOptions.Where(o => o.IsSelected).Select(o => o.Name).ToArray();
+        UpdateOptionAvailability();
+        if (selected.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!_store.UpdateScopes(Id, selected))
+            {
+                RestoreSavedScopes();
+                PermissionErrorText = "This agent is no longer paired. Its permissions were not changed.";
+                return;
+            }
+
+            PermissionErrorText = string.Empty;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Debug.WriteLine($"Updating agent permissions failed: {ex}");
+            RestoreSavedScopes();
+            PermissionErrorText = "Could not save permissions. The change was not applied. Check disk space and access, then try again.";
+        }
+    }
+
+    private void RestoreSavedScopes()
+    {
+        var savedClient = _store.List().FirstOrDefault(client => client.Id == Id);
+        if (savedClient is not null)
+        {
+            Update(savedClient);
+        }
+    }
+
+    // An agent needs at least one scope; the last checked box is locked. Revoke removes the agent instead.
+    private void UpdateOptionAvailability()
+    {
+        var onlyOne = ScopeOptions.Count(o => o.IsSelected) == 1;
+        foreach (var option in ScopeOptions)
+        {
+            option.IsEnabled = !(onlyOne && option.IsSelected);
+        }
+    }
+}
+
+/// <summary>One permission checkbox in a paired agent's permissions flyout.</summary>
+public sealed partial class AgentScopeOption : ObservableObject
+{
+    private readonly Action _toggled;
+
+    internal AgentScopeOption(string name, string description, bool isSensitive, Action toggled)
+    {
+        Name = name;
+        Description = description;
+        Label = isSensitive ? $"{name} (asks every time)" : name;
+        AccessibleName = $"{name}: {description}";
+        _toggled = toggled;
+    }
+
+    public string Name { get; }
+
+    public string Label { get; }
+
+    public string Description { get; }
+
+    public string AccessibleName { get; }
+
+    [ObservableProperty]
+    private bool _isSelected;
+
+    [ObservableProperty]
+    private bool _isEnabled = true;
+
+    partial void OnIsSelectedChanged(bool value) => _toggled();
 }

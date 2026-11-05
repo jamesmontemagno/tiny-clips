@@ -224,6 +224,69 @@ public sealed class AutomationProtocolTests : IDisposable
     }
 
     [Fact]
+    public async Task Host_PairingGrantsTheScopesTheUserChose()
+    {
+        var approvals = new FakeApprovals(true) { GrantedScopes = ["read", "delete", "not-a-scope"] };
+        var host = CreateHost(new FakeHandler(), approvals, () => true);
+        var pair = await HandleAsync(host, """{"id":"1","command":"session.pair","params":{"clientName":"x","scopes":["read","record"]}}""");
+        var pairingId = pair.Result!["pairingId"]!.GetValue<string>();
+
+        AutomationResponse status;
+        do
+        {
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+            status = await HandleAsync(host, $$$"""{"id":"2","command":"session.pairStatus","params":{"pairingId":"{{{pairingId}}}"}}""");
+        }
+        while (status.Result!["status"]!.GetValue<string>() == "pending");
+
+        Assert.Equal(["read", "delete"], status.Result!["scopes"]!.AsArray().Select(n => n!.GetValue<string>()));
+        var client = Assert.Single(new AutomationClientStore(Path.Combine(_directory, "clients.json")).List());
+        Assert.Equal(["read", "delete"], client.Scopes);
+    }
+
+    [Fact]
+    public async Task Host_PairingWithNoScopesChosenIsDenied()
+    {
+        var approvals = new FakeApprovals(true) { GrantedScopes = [] };
+        var host = CreateHost(new FakeHandler(), approvals, () => true);
+        var pair = await HandleAsync(host, """{"id":"1","command":"session.pair","params":{"clientName":"x","scopes":["read"]}}""");
+        var pairingId = pair.Result!["pairingId"]!.GetValue<string>();
+
+        AutomationResponse status;
+        do
+        {
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+            status = await HandleAsync(host, $$$"""{"id":"2","command":"session.pairStatus","params":{"pairingId":"{{{pairingId}}}"}}""");
+        }
+        while (status.Result!["status"]!.GetValue<string>() == "pending");
+
+        Assert.Equal("denied", status.Result!["status"]!.GetValue<string>());
+        Assert.Empty(new AutomationClientStore(Path.Combine(_directory, "clients.json")).List());
+    }
+
+    [Fact]
+    public async Task Host_RechecksScopesWhenApprovalReturnsAfterScopesChanged()
+    {
+        var clients = new AutomationClientStore(Path.Combine(_directory, "clients.json"));
+        var (client, token) = clients.Add("Agent", ["read", "delete"]);
+        var handler = new FakeHandler();
+        var approvals = new DelayedApproval();
+        var host = new AutomationHost(AutomationContract.Default, clients, null, handler, approvals, () => true);
+        var pending = host.HandleLineAsync(
+            $$$"""{"id":"1","token":"{{{token}}}","command":"library.delete","params":{"path":"a.png"}}""",
+            TestContext.Current.CancellationToken);
+        await approvals.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        clients.UpdateScopes(client.Id, ["read"]);
+        approvals.Result.TrySetResult(true);
+
+        var response = AutomationProtocol.ParseResponse(
+            await pending.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(AutomationErrorCodes.MissingScope, response.Error!.Code);
+        Assert.Equal(0, handler.Deletes);
+    }
+
+    [Fact]
     public async Task Host_UnknownCommandAndBadJson()
     {
         var host = CreateHost(new FakeHandler(), new FakeApprovals(true), () => true);
@@ -312,16 +375,19 @@ public sealed class AutomationProtocolTests : IDisposable
 
         public bool Hang { get; set; }
 
+        /// <summary>Scopes the user picks in the pairing prompt; null keeps the requested scopes.</summary>
+        public IReadOnlyList<string>? GrantedScopes { get; set; }
+
         public int CommandPrompts { get; private set; }
 
-        public async Task<bool> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<string>?> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken)
         {
             if (Hang)
             {
                 await Task.Delay(Timeout.Infinite, cancellationToken);
             }
 
-            return Answer;
+            return Answer ? GrantedScopes ?? request.Scopes : null;
         }
 
         public Task<bool> RequestCommandApprovalAsync(AutomationCommandContext context, CancellationToken cancellationToken)
@@ -336,8 +402,8 @@ public sealed class AutomationProtocolTests : IDisposable
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task<bool> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken) =>
-            Task.FromResult(false);
+        public Task<IReadOnlyList<string>?> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<string>?>(null);
 
         public Task<bool> RequestCommandApprovalAsync(AutomationCommandContext context, CancellationToken cancellationToken)
         {
@@ -351,8 +417,8 @@ public sealed class AutomationProtocolTests : IDisposable
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Cancelled { get; private set; }
 
-        public Task<bool> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken) =>
-            Task.FromResult(false);
+        public Task<IReadOnlyList<string>?> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<string>?>(null);
 
         public async Task<bool> RequestCommandApprovalAsync(AutomationCommandContext context, CancellationToken cancellationToken)
         {

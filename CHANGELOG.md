@@ -13,14 +13,16 @@ All notable changes to this project will be documented in this file.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
 
 ### Added
+- Agent permissions are now yours to choose: the pairing prompt lists every scope with the agent's request pre-checked, so you can remove or add permissions before approving, and each paired agent has a **Permissions** control in Settings → Agent Control that applies changes immediately without re-pairing. Sensitive scopes still ask every time.
+- Moved the portable Agent Plugin to the repository root so VS Code can install it directly from the repository URL without a manual clone or marketplace; updated installation guidance, CI, and release packaging.
 - Any video can now be opened in Studio from the video trimmer or the Clips Manager (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
 - Agents can trim videos and GIFs (`editor.trim`, with optional audio removal) and save single frames (`editor.saveFrame`) without opening a trimmer; results are new library items and the source is unchanged. Stale Studio edits now return a distinct `conflict` error instead of `busy`.
 - The MCP server now uses the official C# SDK for stdio transport, lifecycle, protocol negotiation, and cancellation while preserving contract-driven tools and app permissions.
 - Added cross-platform agent CLI CI, isolated NuGet/dnx MCP smoke tests, and a dedicated `agent-v*` NuGet Trusted Publishing release workflow; shared automation changes now trigger both app builds.
 - The Release Hub now tracks Agent package versions, tags, releases, and workflows, and can publish a confirmed version-matched `agent-v*` tag to trigger NuGet Trusted Publishing.
-- Added the `tinyclips` [Agent Plugin](https://agent-plugins.org/) in `plugins/tinyclips`, bundling the MCP server and agent Skills in one installable package.
+- Added the `tinyclips` [Agent Plugin](https://agent-plugins.org/), bundling the MCP server and agent Skills in one installable package.
 - MCP setup uses a portable `dotnet dnx` launch with quiet restore to keep first-run NuGet messages off the protocol stream.
-- Agent Control settings and the in-app Guide now include installation, pairing, connection checks, MCP configuration, and example prompts.
+- Agent Control settings and the in-app Guide recommend the Agent Plugin with copyable installation and pairing steps; manual MCP setup remains available for agents without plugin support.
 - Added a shared .NET 10 agent CLI and stdio MCP server, packaged as the `TinyClips` NuGet tool for `dnx`, plus Skills for pairing, capture, recording demos, and library workflows on macOS and Windows.
 - Agents can discover displays and windows, capture explicit screen regions or windows, run OCR without a picker, and annotate screenshots through structured commands without opening the editor. Annotated output is saved as a new capture; the source remains unchanged.
 - Agents can start targeted video/GIF recordings and scrolling screenshots without pickers; recordings save without opening a trimmer, and scrolling is controlled by the agent's own UI tools.

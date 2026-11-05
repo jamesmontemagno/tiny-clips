@@ -17,23 +17,28 @@ internal sealed class AutomationApprovalPrompt : IAutomationApprovalPrompt
         _dispatcher = dispatcher;
     }
 
-    public Task<bool> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<string>?> RequestPairingApprovalAsync(AutomationPairingRequest request, CancellationToken cancellationToken)
     {
-        var scopes = AutomationContract.Default.Scopes;
-        var lines = request.Scopes
-            .Select(s => scopes.TryGetValue(s, out var description) ? $"{s} — {description}" : s)
+        var contract = AutomationContract.Default;
+        var choices = contract.Scopes
+            .Select(s => new AutomationScopeChoice(
+                s.Key,
+                s.Value,
+                contract.IsSensitiveScope(s.Key),
+                request.Scopes.Contains(s.Key, StringComparer.Ordinal)))
             .ToArray();
         var content = new AutomationApprovalContent(
             Title: "Allow an agent to control Tiny Clips?",
             Message: $"“{request.ClientName}” wants to pair with Tiny Clips. Only allow agents you started yourself.",
-            ListHeader: "It asks for:",
-            Items: lines,
-            Footnote: "Deleting, uploading, and discarding always ask again. You can revoke access in Settings → Agent control.",
-            AllowText: "Allow");
-        return ShowAsync(content, cancellationToken);
+            ListHeader: "Permissions (the agent's request is checked):",
+            Items: [],
+            Footnote: "Deleting, uploading, and discarding always ask again. You can change permissions or revoke access in Settings → Agent control.",
+            AllowText: "Allow",
+            ScopeChoices: choices);
+        return await ShowAsync(content, cancellationToken);
     }
 
-    public Task<bool> RequestCommandApprovalAsync(AutomationCommandContext context, CancellationToken cancellationToken)
+    public async Task<bool> RequestCommandApprovalAsync(AutomationCommandContext context, CancellationToken cancellationToken)
     {
         var path = context.GetString("path");
         var action = context.Command.Name switch
@@ -51,10 +56,11 @@ internal sealed class AutomationApprovalPrompt : IAutomationApprovalPrompt
             Items: path is null ? [] : [path],
             Footnote: $"Command: {context.Command.Name}",
             AllowText: action.Item3);
-        return ShowAsync(content, cancellationToken);
+        return await ShowAsync(content, cancellationToken) is not null;
     }
 
-    private async Task<bool> ShowAsync(AutomationApprovalContent content, CancellationToken cancellationToken)
+    /// <summary>Returns the chosen scopes (empty for a plain approval), or null if denied.</summary>
+    private async Task<IReadOnlyList<string>?> ShowAsync(AutomationApprovalContent content, CancellationToken cancellationToken)
     {
         try
         {
@@ -62,17 +68,17 @@ internal sealed class AutomationApprovalPrompt : IAutomationApprovalPrompt
         }
         catch (OperationCanceledException)
         {
-            return false;
+            return null;
         }
 
         try
         {
             if (_dispatcher() is not { } dispatcher || cancellationToken.IsCancellationRequested)
             {
-                return false;
+                return null;
             }
 
-            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var completion = new TaskCompletionSource<IReadOnlyList<string>?>(TaskCreationOptions.RunContinuationsAsynchronously);
             var queued = dispatcher.TryEnqueue(async () =>
             {
                 try
@@ -82,11 +88,11 @@ internal sealed class AutomationApprovalPrompt : IAutomationApprovalPrompt
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Agent approval prompt failed: {ex}");
-                    completion.TrySetResult(false);
+                    completion.TrySetResult(null);
                 }
             });
 
-            return queued && await completion.Task;
+            return queued ? await completion.Task : null;
         }
         finally
         {
@@ -101,4 +107,7 @@ internal sealed record AutomationApprovalContent(
     string? ListHeader,
     IReadOnlyList<string> Items,
     string Footnote,
-    string AllowText);
+    string AllowText,
+    IReadOnlyList<AutomationScopeChoice>? ScopeChoices = null);
+
+internal sealed record AutomationScopeChoice(string Name, string Description, bool IsSensitive, bool IsRequested);

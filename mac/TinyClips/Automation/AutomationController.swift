@@ -97,6 +97,22 @@ final class AutomationController: ObservableObject {
         auditLog.record(client: client.name, command: "settings.revokeClient", outcome: "ok")
     }
 
+    /// Changes a paired agent's scopes from Settings. The agent keeps its token.
+    func updateScopes(_ client: AutomationClient, scopes: [String]) {
+        do {
+            try clientStore.updateScopes(id: client.id, scopes: scopes)
+            auditLog.record(
+                client: client.name,
+                command: "settings.updateClientScopes",
+                outcome: "ok",
+                detail: clientStore.clients.first { $0.id == client.id }?.scopes.joined(separator: ",")
+            )
+        } catch {
+            auditLog.record(client: client.name, command: "settings.updateClientScopes", outcome: "error", detail: "\(error)")
+        }
+        clients = clientStore.clients
+    }
+
     func syncWithSetting() {
         let enabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
         let turnedOn = enabled && !isEnabled
@@ -195,6 +211,13 @@ final class AutomationController: ObservableObject {
             guard isEnabled else { throw AutomationError(.automationDisabled) }
             try requireCurrentClient(client)
             guard approved else { throw AutomationError(.approvalDenied) }
+            // Scopes can be edited in Settings while an approval prompt is open.
+            let currentScopes = client.flatMap { current in clientStore.clients.first { $0.id == current.id } }.map { Set($0.scopes) }
+            if case .deny(let code) = AutomationPolicy.decide(
+                enabled: true, clientScopes: currentScopes, command: command, contract: contract
+            ) {
+                throw AutomationError(code)
+            }
         case .allow:
             break
         }
@@ -264,28 +287,32 @@ final class AutomationController: ObservableObject {
             throw AutomationError(.invalidParams, "scopes must list one or more of: \(contract.scopes.keys.sorted().joined(separator: ", ")).")
         }
         let pairing = try pairings.begin(clientName: name, scopes: scopes)
-        let sensitive = pairing.scopes.filter { contract.isSensitive(scope: $0) }
-        var details = pairing.scopes.map { "\($0): \(contract.scopes[$0] ?? "")" }
-        if !sensitive.isEmpty {
-            details.append("Delete, upload, and discard still ask you each time.")
-        }
+        let selection = AutomationScopeSelection(contract: contract, requested: pairing.scopes)
         let request = AutomationApprovalCenter.Request(
             title: "Allow “\(name)” to control Tiny Clips?",
-            message: "An agent on this Mac asks to pair with Tiny Clips with these permissions. You can revoke it in Settings → Agent Control.",
-            details: details,
-            allowTitle: "Pair"
+            message: "An agent on this Mac asks to pair with Tiny Clips. Its requested permissions are checked; change them if you like. Delete, upload, and discard still ask you each time. You can change permissions or revoke access in Settings → Agent Control.",
+            details: [],
+            allowTitle: "Pair",
+            scopeSelection: selection
         )
         let pairingID = pairing.id
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let approved = await self.approvals.request(request) && self.isEnabled
+            let answered = await self.approvals.request(request) && self.isEnabled
+            let granted = answered ? selection.grantedScopes : []
+            let approved = !granted.isEmpty
             do {
-                try self.pairings.resolve(id: pairingID, approved: approved, store: self.clientStore)
+                try self.pairings.resolve(id: pairingID, approved: approved, scopes: granted, store: self.clientStore)
             } catch {
                 try? self.pairings.resolve(id: pairingID, approved: false, store: self.clientStore)
             }
             self.clients = self.clientStore.clients
-            self.auditLog.record(client: name, command: "session.pair", outcome: approved ? "approved" : "denied")
+            self.auditLog.record(
+                client: name,
+                command: "session.pair",
+                outcome: approved ? "approved" : "denied",
+                detail: approved ? granted.joined(separator: ",") : nil
+            )
         }
         return ["pairingId": pairingID]
     }

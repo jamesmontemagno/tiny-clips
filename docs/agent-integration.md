@@ -10,39 +10,40 @@ skills/ (workflow guidance) ──────┘
 
 - **Contract:** [`shared/automation/commands.json`](../shared/automation/commands.json) lists every command, its scope, and its parameters. Both apps, the CLI, and the MCP server read the same file.
 - **CLI + MCP:** [`agent/`](../agent/README.md) — the `TinyClips` .NET 10 tool (`dnx TinyClips`, or `dotnet tool install -g TinyClips`); `tinyclips mcp` starts the MCP server.
-- **Skills:** [`plugins/tinyclips/skills/`](../plugins/tinyclips/skills) teach agents common workflows. Skills are guidance only; the app enforces permissions.
-- **Agent Plugin:** [`plugins/tinyclips/`](../plugins/tinyclips/README.md) packages the MCP server and Skills as a portable [Agent Plugin](https://agent-plugins.org/).
+- **Skills:** [`skills/`](../skills) teach agents common workflows. Skills are guidance only; the app enforces permissions.
+- **Agent Plugin:** The [repository-root plugin](agent-plugin.md) packages the MCP server and Skills as a portable [Agent Plugin](https://agent-plugins.org/).
 
 ## Set up your agent
 
 Use a Tiny Clips release that includes **Agent Control**, running on the same Mac or Windows PC as your agent. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) for the commands below. Your agent needs either terminal access or support for a local stdio MCP server. Tiny Clips provides capture tools, not an AI model; bring your own agent.
 
 1. Open **Settings → Agent Control** and turn on **Allow agents to control Tiny Clips**. Leave the app running.
-2. Install the published NuGet tool in Terminal or PowerShell:
-   ```sh
-   dotnet tool install -g TinyClips
+2. **Recommended: install the Agent Plugin.** It bundles the MCP server and workflow Skills, so no separate MCP configuration or global CLI installation is needed. In VS Code, run **Chat: Install Plugin from Source** and enter:
+   ```text
+   https://github.com/jamesmontemagno/tiny-clips.git
    ```
+   See [plugin installation](#install-the-agent-plugin) for Copilot CLI and other clients. If your agent does not support plugins, use the [manual MCP setup](#connect-an-mcp-capable-agent) instead.
 3. Pair from the same OS account your agent uses:
    ```sh
-   tinyclips pair --name "My agent"
+   dnx TinyClips --yes -- pair --name "My agent"
    ```
-   Approve the request in Tiny Clips. Default scopes are `read`, `capture`, `record`, `edit`, and `export`. Only grant additional scopes if you need them.
-4. Verify the connection and discover a capture target:
+   Tiny Clips shows the requested permissions as checkboxes. By default the CLI asks for `read`, `capture`, `record`, `edit`, and `export`. Uncheck anything you don't want to grant, or check more, then approve. You can change them later in Settings without pairing again.
+4. Verify the connection and discover a capture target in Terminal or PowerShell:
    ```sh
-   tinyclips status
-   tinyclips capture.targets kind=windows
+   dnx TinyClips --yes -- status
+   dnx TinyClips --yes -- capture.targets kind=windows
    ```
-5. Ask your agent to take and inspect its first screenshot using a returned window ID:
+5. Start a fresh agent session and ask it to take and inspect its first screenshot using a returned window ID. The equivalent terminal command is:
    ```sh
-   tinyclips capture.screenshot mode=window windowId=<returned-window-id>
+   dnx TinyClips --yes -- capture.screenshot mode=window windowId=<returned-window-id>
    ```
    The result includes the saved path and image dimensions. Do not paste the angle-bracket placeholder literally. Saved screenshot settings determine PNG, JPEG, or WebP output.
 
-To update an existing installation, run `dotnet tool update -g TinyClips`. The .NET 10 SDK also supports running without permanently installing the tool: use `dnx TinyClips --yes -- status` or `dnx TinyClips --yes -- pair --name "My agent"`. CLI and MCP use the same saved pairing token. Keep it private; never include it in prompts, screenshots, issues, or source control.
+For scripts and terminal use, optionally install the standalone CLI with `dotnet tool install -g TinyClips`, then use `tinyclips` in place of `dnx TinyClips --yes --`. Update an existing global tool with `dotnet tool update -g TinyClips`. CLI and MCP use the same saved pairing token. Keep it private; never include it in prompts, screenshots, issues, or source control.
 
 ### Connect an MCP-capable agent
 
-Pair first, then add a **local stdio** server to your agent's MCP settings:
+**Manual alternative for agents without plugin support.** Skip this if you installed the plugin, which already configures the MCP server. Install the .NET 10 SDK and pair as above, then add a **local stdio** server to your agent's MCP settings:
 
 ```json
 {
@@ -65,11 +66,27 @@ The server uses the official [MCP C# SDK](https://github.com/modelcontextprotoco
 
 ### Install the Agent Plugin
 
-If your agent supports [Agent Plugins](https://agent-plugins.org/), install [`plugins/tinyclips`](../plugins/tinyclips/README.md) from this repository using your client's plugin install flow. The plugin adds the `tinyclips` MCP server (launched with `dotnet dnx`) and all Skills below, so you can skip the manual MCP and Skills steps. You still need the .NET 10 SDK, Agent Control turned on, and a one-time `tinyclips pair` (or `dnx TinyClips --yes -- pair`) before the tools work.
+For **VS Code**, run **Chat: Install Plugin from Source** and enter:
+
+```text
+https://github.com/jamesmontemagno/tiny-clips.git
+```
+
+Confirm the plugin is enabled in **Chat: Open Customizations → Plugins**, then start a fresh session. VS Code downloads the plugin; you do not need to clone the repository yourself or register a marketplace. The manifest, MCP configuration, and Skills live at the repository root. See the [VS Code installation steps](agent-plugin.md#vs-code).
+
+For **GitHub Copilot CLI**, install directly from this repository:
+
+```sh
+copilot plugin install jamesmontemagno/tiny-clips
+```
+
+Update or uninstall CLI installs with `copilot plugin update tinyclips` or `copilot plugin uninstall tinyclips`. VS Code also discovers CLI-installed plugins. Other Agent Plugins-compatible clients may have their own install flow.
+
+The plugin adds the `tinyclips` MCP server (launched with `dotnet dnx`) and all Skills below, so you can skip the manual MCP and Skills setup. You still need the .NET 10 SDK, Agent Control turned on, and a one-time pairing (`tinyclips pair` if installed, or `dnx TinyClips --yes -- pair`) before the tools work. See the [plugin installation guide](agent-plugin.md) for its prerequisites and install details.
 
 ### Add workflow Skills
 
-The [`plugins/tinyclips/skills/`](../plugins/tinyclips/skills) folder contains `tinyclips-setup`, `tinyclips-capture`, `tinyclips-record-demo`, `tinyclips-library`, and `tinyclips-studio`. Copy the relevant Skill folders (including their `SKILL.md`) into the directory supported by your agent, such as a repository's `.github/skills/` or `~/.claude/skills/` for Claude Code. Follow your client's Skill discovery rules. Skills supply workflow guidance; they do not install the CLI, configure MCP, or approve access.
+The [`skills/`](../skills) folder contains `tinyclips-setup`, `tinyclips-capture`, `tinyclips-record-demo`, `tinyclips-library`, and `tinyclips-studio`. Copy the relevant Skill folders (including their `SKILL.md`) into the directory supported by your agent, such as a repository's `.github/skills/` or `~/.claude/skills/` for Claude Code. Follow your client's Skill discovery rules. Skills supply workflow guidance; they do not install the CLI, configure MCP, or approve access.
 
 ## Prompts to try
 
@@ -102,18 +119,18 @@ An agent needs its own browser/desktop tools to click, type, or scroll in other 
 | `dotnet`, `dnx`, or `tinyclips` is not found | Install the .NET 10 SDK/tool, reopen the terminal or agent so it picks up PATH, and confirm the global .NET tools directory is on PATH. |
 | Cannot connect | Start Tiny Clips and enable Agent Control. Check the listening status and endpoint in Settings. Local access does not bridge to a remote machine or container. |
 | `unauthorized` or revoked access | Run `tinyclips pair` again as the same OS account/environment used by the agent and approve it in Tiny Clips. |
-| `missing_scope` | Pair again requesting the needed scope with `--scopes read,capture,record,edit,export,settings` (adjust to your needs), then approve only the permissions you want to grant. |
+| `missing_scope` | Grant the scope to that agent in **Settings → Agent Control → Paired Agents → Permissions** (it applies immediately), or pair again requesting it with `--scopes`. |
 | `permission_required` | Grant the relevant OS screen/audio/camera permission. On macOS, follow System Settings → Privacy & Security and restart Tiny Clips if required. |
 | `pro_required` or `not_supported` | Check your app's Pro access, version, and feature settings; enable Studio for Studio commands. |
 | MCP connects but calls fail | Verify the server runs locally under the same account, can find the CLI/SDK, and shares the pairing configuration. Restart or reload the MCP connection. |
 | Studio edit returns `conflict` | Read the project again and reconcile changes with its latest `modifiedAt` and `revision`; do not blindly resend the old patch. |
 
-Revoke an individual agent in **Settings → Agent Control → Paired Agents**, or turn Agent Control off to stop all connections. **Activity → Open Audit Log** shows local request history.
+Change what an individual agent may do with **Permissions**, or revoke it, in **Settings → Agent Control → Paired Agents**. Turn Agent Control off to stop all connections. **Activity → Open Audit Log** shows local request history.
 
 ## Security model
 
 1. **Off by default.** Turn on **Settings → Agent control → Allow agents to control Tiny Clips**. The local listener exists only while enabled; when off, clients cannot connect.
-2. **Pairing.** A client calls `session.pair` with a name and the scopes it wants. The app shows an approval prompt. If you approve, the client receives a token once (`session.pairStatus`). The app stores only a SHA-256 hash of the token. Revoke clients any time in Settings.
+2. **Pairing.** A client calls `session.pair` with a name and the scopes it wants. The app shows an approval prompt listing every scope, with the requested ones pre-checked; you choose the scopes actually granted (at least one). If you approve, the client receives a token once (`session.pairStatus`), and `scopes` reports what you granted, which can differ from the request. The app stores only a SHA-256 hash of the token. Change a client's scopes or revoke it any time in Settings; scope changes keep the token and take effect on the next request, and a sensitive action approved after its scope was removed still fails with `missing_scope`.
 3. **Scopes.** `read`, `capture`, `record`, `edit`, `export`, `settings` run unattended once granted. Capture targets, regions, OCR, annotations, video/GIF recording, and scrolling captures use structured commands; they do not depend on a human-operated picker or simulated mouse input.
 4. **Sensitive scopes.** `delete`, `upload`, and `discard` (discarding or restarting a recording, discarding unsaved work) always show an in-app approval prompt, even when granted. No answer within 120 seconds returns `approval_denied`. A pending sensitive-action approval is dismissed when its client disconnects.
 5. **No bypasses.** OS permissions (Screen Recording, Microphone, Camera) and Pro/Store gating still apply. Commands return `permission_required` or `pro_required` instead of prompting around them.

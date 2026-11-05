@@ -20,9 +20,11 @@ internal sealed partial class AutomationApprovalWindow : Window
 {
     private const int WidthDip = 480;
     private const int HeightDip = 380;
+    private const int ScopeChoicesHeightDip = 640;
 
-    private readonly TaskCompletionSource<bool> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<IReadOnlyList<string>?> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Button _denyButton;
+    private readonly List<(string Name, CheckBox Box)> _scopeBoxes = [];
     private bool _focused;
 
     private AutomationApprovalWindow(AutomationApprovalContent content)
@@ -41,7 +43,8 @@ internal sealed partial class AutomationApprovalWindow : Window
         }
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, WidthDip, HeightDip);
+        AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(
+            AppWindow, hwnd, WidthDip, content.ScopeChoices is null ? HeightDip : ScopeChoicesHeightDip);
 
         var root = new Grid
         {
@@ -79,7 +82,7 @@ internal sealed partial class AutomationApprovalWindow : Window
 
         var body = new StackPanel { Spacing = 8 };
         body.Children.Add(new TextBlock { Text = content.Message, TextWrapping = TextWrapping.Wrap });
-        if (content.ListHeader is { } listHeader && content.Items.Count > 0)
+        if (content.ListHeader is { } listHeader && (content.Items.Count > 0 || content.ScopeChoices is { Count: > 0 }))
         {
             body.Children.Add(new TextBlock
             {
@@ -96,6 +99,11 @@ internal sealed partial class AutomationApprovalWindow : Window
                     IsTextSelectionEnabled = true,
                 });
             }
+        }
+
+        foreach (var choice in content.ScopeChoices ?? [])
+        {
+            body.Children.Add(CreateScopeCheckBox(choice));
         }
 
         body.Children.Add(new TextBlock
@@ -124,12 +132,23 @@ internal sealed partial class AutomationApprovalWindow : Window
         };
         AutomationProperties.SetName(allowButton, content.AllowText);
         AutomationProperties.SetAutomationId(allowButton, "AgentApprovalAllowButton");
-        allowButton.Click += (_, _) => Finish(true);
+        allowButton.Click += (_, _) => Finish(SelectedScopes());
+        if (_scopeBoxes.Count > 0)
+        {
+            void UpdateAllow() => allowButton.IsEnabled = _scopeBoxes.Any(s => s.Box.IsChecked == true);
+            foreach (var (_, box) in _scopeBoxes)
+            {
+                box.Checked += (_, _) => UpdateAllow();
+                box.Unchecked += (_, _) => UpdateAllow();
+            }
+
+            UpdateAllow();
+        }
 
         _denyButton = new Button { Content = "Deny", MinWidth = 96 };
         AutomationProperties.SetName(_denyButton, "Deny");
         AutomationProperties.SetAutomationId(_denyButton, "AgentApprovalDenyButton");
-        _denyButton.Click += (_, _) => Finish(false);
+        _denyButton.Click += (_, _) => Finish(null);
 
         buttons.Children.Add(allowButton);
         buttons.Children.Add(_denyButton);
@@ -140,24 +159,52 @@ internal sealed partial class AutomationApprovalWindow : Window
         escape.Invoked += (_, args) =>
         {
             args.Handled = true;
-            Finish(false);
+            Finish(null);
         };
         root.KeyboardAccelerators.Add(escape);
 
         Content = root;
         Activated += OnActivated;
-        Closed += (_, _) => _result.TrySetResult(false);
+        Closed += (_, _) => _result.TrySetResult(null);
     }
 
-    /// <summary>Shows the prompt and returns true only if the user chose Allow. Call on the UI thread.</summary>
-    public static async Task<bool> ShowAsync(AutomationApprovalContent content, CancellationToken cancellationToken)
+    /// <summary>
+    /// Shows the prompt and returns null unless the user chose Allow. When allowed, returns the checked
+    /// scopes, or an empty list if the prompt has no scope choices. Call on the UI thread.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>?> ShowAsync(AutomationApprovalContent content, CancellationToken cancellationToken)
     {
         var window = new AutomationApprovalWindow(content);
         using var registration = cancellationToken.Register(() =>
-            window.DispatcherQueue.TryEnqueue(() => window.Finish(false)));
+            window.DispatcherQueue.TryEnqueue(() => window.Finish(null)));
         ((App)Application.Current).ActivateAutomationWindow(window);
         return await window._result.Task;
     }
+
+    private CheckBox CreateScopeCheckBox(AutomationScopeChoice choice)
+    {
+        var label = new StackPanel();
+        label.Children.Add(new TextBlock
+        {
+            Text = choice.IsSensitive ? $"{choice.Name} (asks every time)" : choice.Name,
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+        });
+        label.Children.Add(new TextBlock
+        {
+            Text = choice.Description,
+            TextWrapping = TextWrapping.Wrap,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        });
+        var box = new CheckBox { Content = label, IsChecked = choice.IsRequested };
+        AutomationProperties.SetName(box, $"{choice.Name}: {choice.Description}");
+        AutomationProperties.SetAutomationId(box, $"AgentApprovalScope_{choice.Name}");
+        _scopeBoxes.Add((choice.Name, box));
+        return box;
+    }
+
+    private IReadOnlyList<string> SelectedScopes() =>
+        _scopeBoxes.Where(s => s.Box.IsChecked == true).Select(s => s.Name).ToArray();
 
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
@@ -168,9 +215,9 @@ internal sealed partial class AutomationApprovalWindow : Window
         }
     }
 
-    private void Finish(bool approved)
+    private void Finish(IReadOnlyList<string>? approvedScopes)
     {
-        if (_result.TrySetResult(approved))
+        if (_result.TrySetResult(approvedScopes))
         {
             Close();
         }

@@ -81,6 +81,26 @@ final class AutomationClientStore {
         try? persist()
     }
 
+    /// Replaces a client's scopes. Its token stays valid. A client needs at least one scope.
+    func updateScopes(id: String, scopes: [String]) throws {
+        let updated = Array(Set(scopes)).sorted()
+        guard !updated.isEmpty else {
+            throw AutomationError(.invalidParams, "A paired agent needs at least one scope. Revoke it instead.")
+        }
+        guard let index = clients.firstIndex(where: { $0.id == id }) else {
+            throw AutomationError(.notFound, "That agent is no longer paired.")
+        }
+        guard clients[index].scopes != updated else { return }
+        let previousScopes = clients[index].scopes
+        clients[index].scopes = updated
+        do {
+            try persist()
+        } catch {
+            clients[index].scopes = previousScopes
+            throw error
+        }
+    }
+
     func revokeAll() {
         clients.removeAll()
         try? persist()
@@ -165,11 +185,14 @@ struct AutomationPairings {
         return pairing
     }
 
-    /// Records the user's answer. Approval adds the client to `store` and holds its token for one read.
-    mutating func resolve(id: String, approved: Bool, store: AutomationClientStore) throws {
+    /// Records the user's answer. Approval adds the client to `store` with `scopes` (the scopes the user
+    /// granted, or the requested ones when nil) and holds its token for one read.
+    mutating func resolve(id: String, approved: Bool, scopes: [String]? = nil, store: AutomationClientStore) throws {
         guard var pairing = pairings[id], pairing.status == .pending else { return }
-        if approved {
-            let (_, token) = try store.addClient(name: pairing.clientName, scopes: pairing.scopes)
+        let granted = Array(Set(scopes ?? pairing.scopes)).sorted()
+        if approved, !granted.isEmpty {
+            let (_, token) = try store.addClient(name: pairing.clientName, scopes: granted)
+            pairing.scopes = granted
             pairing.status = .approved
             pairing.token = token
         } else {

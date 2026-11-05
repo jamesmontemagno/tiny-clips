@@ -7,16 +7,16 @@ namespace TinyClips.Cli.Tests;
 public class PluginTests
 {
     static readonly string RepoRoot = FindRepoRoot();
-    static readonly string PluginRoot = Path.Combine(RepoRoot, "plugins", "tinyclips");
+    static readonly string PluginRoot = RepoRoot;
 
     static string FindRepoRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "plugins", "tinyclips", "plugin.json")))
+            if (File.Exists(Path.Combine(dir.FullName, "plugin.json")))
                 return dir.FullName;
         }
-        throw new InvalidOperationException("Could not find plugins/tinyclips/plugin.json above the test output.");
+        throw new InvalidOperationException("Could not find plugin.json above the test output.");
     }
 
     static JsonObject Read(string file) => JsonNode.Parse(File.ReadAllText(Path.Combine(PluginRoot, file)))!.AsObject();

@@ -7,6 +7,41 @@ protocol AutomationApprovalPresenting: AnyObject {
     func dismiss()
 }
 
+/// The permissions a user grants while approving a pairing. Starts with the agent's requested scopes.
+@MainActor
+final class AutomationScopeSelection: ObservableObject {
+    struct Option: Identifiable {
+        let name: String
+        let description: String
+        let isSensitive: Bool
+        var id: String { name }
+    }
+
+    let options: [Option]
+    @Published var selected: Set<String>
+
+    init(contract: AutomationContract, requested: [String]) {
+        options = contract.displayScopes.map {
+            Option(name: $0, description: contract.scopes[$0] ?? "", isSensitive: contract.isSensitive(scope: $0))
+        }
+        selected = Set(requested).intersection(contract.scopes.keys)
+    }
+
+    /// The selected scopes in display order.
+    var grantedScopes: [String] {
+        options.map(\.name).filter(selected.contains)
+    }
+
+    func binding(for name: String) -> Binding<Bool> {
+        Binding(
+            get: { self.selected.contains(name) },
+            set: { isOn in
+                if isOn { self.selected.insert(name) } else { self.selected.remove(name) }
+            }
+        )
+    }
+}
+
 /// Asks the user, inside the app, to allow an automation request. One prompt shows at a time;
 /// a request without an answer within `timeout` counts as denied.
 @MainActor
@@ -16,6 +51,8 @@ final class AutomationApprovalCenter {
         var message: String
         var details: [String]
         var allowTitle: String
+        /// When set, the prompt lists every scope as a toggle and Allow needs at least one selected.
+        var scopeSelection: AutomationScopeSelection? = nil
     }
 
     static let timeout: TimeInterval = 120
@@ -204,6 +241,9 @@ private struct AutomationApprovalView: View {
                             .lineLimit(3)
                             .truncationMode(.middle)
                     }
+                    if let selection = request.scopeSelection {
+                        AutomationScopeToggles(selection: selection)
+                    }
                     Text("No answer within 2 minutes denies the request.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -214,12 +254,57 @@ private struct AutomationApprovalView: View {
                 Button("Deny", role: .cancel, action: onDeny)
                     .keyboardShortcut(.cancelAction)
                     .accessibilityHint("Refuses this agent request.")
-                Button(request.allowTitle, action: onAllow)
-                    .accessibilityHint("Lets the agent continue.")
+                if let selection = request.scopeSelection {
+                    ScopeAwareAllowButton(selection: selection, title: request.allowTitle, action: onAllow)
+                } else {
+                    Button(request.allowTitle, action: onAllow)
+                        .accessibilityHint("Lets the agent continue.")
+                }
             }
         }
         .padding(20)
         .frame(width: 420)
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// Toggles for every scope; the agent's requested scopes start on.
+struct AutomationScopeToggles: View {
+    @ObservedObject var selection: AutomationScopeSelection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Permissions")
+                .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            ForEach(selection.options) { option in
+                Toggle(isOn: selection.binding(for: option.name)) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(option.isSensitive ? "\(option.name) (asks every time)" : option.name)
+                        Text(option.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .toggleStyle(.checkbox)
+                .accessibilityLabel("\(option.name): \(option.description)")
+            }
+        }
+        .padding(.top, 4)
+    }
+}
+
+private struct ScopeAwareAllowButton: View {
+    @ObservedObject var selection: AutomationScopeSelection
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(title, action: action)
+            .disabled(selection.selected.isEmpty)
+            .accessibilityHint(selection.selected.isEmpty
+                ? "Select at least one permission to pair."
+                : "Pairs the agent with the selected permissions.")
     }
 }

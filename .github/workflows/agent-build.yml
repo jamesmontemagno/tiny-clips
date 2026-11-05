@@ -40,7 +40,12 @@ jobs:
           filters: |
             agent:
               - 'agent/**'
-              - 'plugins/tinyclips/**'
+              - 'plugin.json'
+              - 'mcp.json'
+              - 'skills/**'
+              - 'README.md'
+              - 'LICENSE'
+              - 'docs/agent-plugin.md'
               - 'shared/automation/**'
               - 'global.json'
               - '[Nn]u[Gg]et.[Cc]onfig'
@@ -69,17 +74,19 @@ jobs:
           import json
           import pathlib
           import zipfile
-          plugin = pathlib.Path("plugins/tinyclips")
+          plugin = pathlib.Path(".")
           root = plugin.resolve()
           version = json.loads((plugin / "plugin.json").read_text())["version"]
           with zipfile.ZipFile(f"agent/out/tinyclips-plugin-{version}.zip", "w", zipfile.ZIP_DEFLATED) as archive:
-              for path in sorted(plugin.rglob("*")):
+              paths = [plugin / name for name in ("plugin.json", "mcp.json", "README.md", "LICENSE")]
+              paths.extend(sorted((plugin / "skills").rglob("*")))
+              for path in paths:
                   try:
                       path.resolve().relative_to(root)
                   except ValueError:
                       raise SystemExit(f"Plugin path escapes its root: {path}")
                   if path.is_file():
-                      archive.write(path, path.relative_to(plugin.parent))
+                      archive.write(path, pathlib.Path("tinyclips") / path.relative_to(plugin))
           PY
       - name: Upload candidate package and plugin
         uses: actions/upload-artifact@v7
