@@ -101,6 +101,32 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     }
 
     [Fact]
+    public async Task AnAnnotationsTextWithOtherLineBreaks_IsNoEdit_UntilTheTextChanges()
+    {
+        var id = CreateProject(project => project with
+        {
+            Overlays = project.Overlays with
+            {
+                Annotations = [new StudioAnnotation { Id = "a", Kind = StudioAnnotationKinds.Text, Start = 1, End = 3, Text = "one\r\ntwo" }],
+            },
+        });
+        var viewModel = await OpenAsync(id, _controls);
+        viewModel.SelectAnnotation(0);
+        Pump();
+
+        // The text box holds a line break as \r, and hands back what it was given a moment later.
+        viewModel.AnnotationText = "one\rtwo";
+        viewModel.AnnotationText = "one\ntwo";
+        Pump();
+        AssertNothingWasEdited(viewModel, "the text box handing the text back");
+
+        viewModel.AnnotationText = "one\rthree";
+        Pump();
+        Assert.Single(Preview.Updates);
+        Assert.Equal("one\nthree", LastProject().Overlays.Annotations[0].Text);
+    }
+
+    [Fact]
     public async Task AProjectThatCannotBeShown_TakesWhatTheControlsHandBack()
     {
         // The screen recording is gone. The window opens all the same, with its controls
@@ -259,6 +285,14 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Pump();
         AssertNothingWasEdited(viewModel, "showing the second scene and selecting the zoom");
 
+        // An annotation holds what no slider of its can show, which the format allows.
+        viewModel.SelectAnnotation(0);
+        Pump();
+        Assert.Equal(0, viewModel.SelectedAnnotationIndex);
+        _controls.HandBackEverything();
+        Pump();
+        AssertNothingWasEdited(viewModel, "selecting the annotation");
+
         // The one slider that is moved writes its own value, and no other.
         _controls.Move(nameof(StudioViewModel.CanvasPadding), 0.3);
         Pump();
@@ -283,6 +317,10 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Assert.Equal(-0.3, stored.Zooms[0].Focus.Y, Precision);
         Assert.Equal(9, stored.Zooms[0].EaseIn, Precision);
         Assert.Equal(9, stored.Zooms[0].EaseOut, Precision);
+        Assert.Equal(-1, stored.Overlays.Annotations[0].X, Precision);
+        Assert.Equal(1.5, stored.Overlays.Annotations[0].Y, Precision);
+        Assert.Equal(5, stored.Overlays.Annotations[0].OffsetX, Precision);
+        Assert.Equal(-5, stored.Overlays.Annotations[0].OffsetY, Precision);
         Assert.Equal(3, stored.Audio.Volume, Precision);
     }
 
@@ -736,7 +774,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
         var groups = _controls.Bindings.Where(binding => binding.Control == "RadioButtons").ToArray();
-        Assert.Equal(5, groups.Length);
+        Assert.Equal(8, groups.Length);
 
         foreach (var group in groups)
         {
@@ -812,7 +850,6 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     public async Task AListThatHoldsNoChoiceWhileItIsBuilt_ChangesNothing_AndIsToldItsChoiceAgain()
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
-        viewModel.SelectSpeed(0);
         viewModel.ShowScene(1);
         Pump();
         var lists = _controls.Bindings.Where(binding => _controls.Shown(binding) is int).ToArray();
@@ -820,6 +857,9 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
 
         foreach (var list in lists)
         {
+            // What is selected decides what a list has to show, and one thing is selected at a time.
+            Select(viewModel, list.Property.StartsWith("Annotation", StringComparison.Ordinal) ? list.Property : "SpeedRateIndex");
+            Pump();
             var shown = (int)_controls.Shown(list)!;
             Assert.True(shown >= 0, $"{list} has no choice to show in this project");
 
@@ -863,6 +903,10 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         else if (property.StartsWith("Speed", StringComparison.Ordinal))
         {
             viewModel.SelectSpeed(0);
+        }
+        else if (property.StartsWith("Annotation", StringComparison.Ordinal))
+        {
+            viewModel.SelectAnnotation(0);
         }
         else if (property.StartsWith("Scene", StringComparison.Ordinal) && viewModel.CurrentSceneIndex != 1)
         {
@@ -908,6 +952,10 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
             Cuts = [new StudioTimeRange { Start = 8.5, End = 9.2 }],
             Speed = [new StudioSpeedRange { Start = 3.2, End = 3.9, Rate = 2 }],
         },
+        Overlays = project.Overlays with
+        {
+            Annotations = [new StudioAnnotation { Id = "a", Kind = StudioAnnotationKinds.Callout, Start = 2, End = 4, X = 0.4, Y = 0.4, OffsetX = 0.1, OffsetY = 0.1, Text = "Note" }],
+        },
     });
 
     /// <summary>
@@ -939,6 +987,10 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         [
             new StudioZoom { Start = 1, End = 3, Scale = 7, Focus = new StudioZoomFocus { X = 1.4, Y = -0.3 }, EaseIn = 9, EaseOut = 9 },
         ],
+        Overlays = project.Overlays with
+        {
+            Annotations = [new StudioAnnotation { Id = "a", Kind = StudioAnnotationKinds.Arrow, Start = 1, End = 3, X = -1, Y = 1.5, OffsetX = 5, OffsetY = -5 }],
+        },
         Audio = project.Audio with { Volume = 3 },
     });
 }

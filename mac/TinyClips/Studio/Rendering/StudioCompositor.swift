@@ -641,7 +641,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     // MARK: - Annotations
 
     /// Section 6.10 of the project format: over the camera and under the badge, last on top.
-    private func drawAnnotations(
+    func drawAnnotations(
         _ annotations: [StudioResolvedAnnotation],
         over image: CIImage,
         renderSize: CGSize
@@ -704,7 +704,8 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 height: Int(height),
                 bitsPerComponent: 8,
                 bytesPerRow: 0,
-                space: CGColorSpaceCreateDeviceRGB(),
+                // The format's colors are sRGB, as annotationColor(_:) makes them, so they stay as written.
+                space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
             )
         }
@@ -745,7 +746,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         ].joined(separator: "|")
         let image = StudioCompositorImageCache.shared.image(for: key, in: .annotation) {
             guard let context = bitmap.makeContext() else { return nil }
-            let color = cgColor(arrow.fill, alpha: 1)
+            let color = annotationColor(arrow.fill)
             let alongX = Double(headBase.x - tip.x)
             let alongY = Double(headBase.y - tip.y)
             let head = (alongX * alongX + alongY * alongY).squareRoot()
@@ -833,7 +834,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
 
         let image = StudioCompositorImageCache.shared.image(for: key.joined(separator: "|"), in: .annotation) {
             guard let context = bitmap.makeContext() else { return nil }
-            context.setFillColor(cgColor(annotation.fill, alpha: 1))
+            context.setFillColor(annotationColor(annotation.fill))
             if let triangle, let first = triangle.first {
                 context.move(to: first)
                 triangle.dropFirst().forEach { context.addLine(to: $0) }
@@ -867,7 +868,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         }
         let attributes: [NSAttributedString.Key: Any] = [
             kCTFontAttributeName as NSAttributedString.Key: font,
-            kCTForegroundColorAttributeName as NSAttributedString.Key: cgColor(annotation.textColor, alpha: 1),
+            kCTForegroundColorAttributeName as NSAttributedString.Key: annotationColor(annotation.textColor),
             kCTParagraphStyleAttributeName as NSAttributedString.Key: paragraph,
         ]
         return CTFramesetterCreateWithAttributedString(NSAttributedString(string: annotation.text, attributes: attributes))
@@ -1102,6 +1103,18 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     private func ciColor(_ hex: String, fallback: CIColor) -> CIColor {
         guard let components = colorComponents(hex) else { return fallback }
         return CIColor(red: components.r, green: components.g, blue: components.b, alpha: components.a)
+    }
+
+    /// A color of an annotation, which the format says is sRGB. `cgColor(_:alpha:)` makes Generic RGB
+    /// colors, which come out shifted: #FF0000 draws as #FF2600.
+    private func annotationColor(_ hex: String) -> CGColor {
+        let components = colorComponents(hex)
+        return CGColor(
+            srgbRed: components?.r ?? 1,
+            green: components?.g ?? 1,
+            blue: components?.b ?? 1,
+            alpha: components?.a ?? 1
+        )
     }
 
     private func cgColor(_ hex: String, alpha: CGFloat) -> CGColor {

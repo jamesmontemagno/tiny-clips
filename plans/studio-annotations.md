@@ -1,8 +1,12 @@
 # Tiny Clips Studio: annotations
 
-**Status:** planned with the owner on 5 November 2026. The code of phase 1 (format, rendering,
-agent access) is written, and its rules pass their tests, but its drawing has not yet run on a Mac
-or a Windows PC, so its "done when" below is still open. Phases 2 to 4 have not started. Both platforms ship each phase together, because
+**Status:** planned with the owner on 5 November 2026. The code of phases 1 and 2 is written, and
+compiled and unit tested in CI. On Windows, `StudioRenderCheck`'s annotation checks and
+`StudioWindowCheck`'s `annotation` group have run on a CI runner, which cannot capture a window, so
+their pictures and the preview in the real window have not been seen. On the Mac the drawing is read
+back in a unit test and the editing UI has only been compiled. No annotation has been checked by eye
+on a Mac or a Windows PC, so the "done when" of phase 1 and the walkthrough of phase 2 are still open.
+Phases 3 and 4 have not started. Both platforms ship each phase together, because
 projects move between them and a build without annotations keeps them in the file but does not
 draw them.
 
@@ -56,9 +60,8 @@ What follows from it, and has to be handled in the same change:
   remain still do.
 - **Undo and redo** can make a lane come and go. That is the rule working, and it must not change
   the inspector panel on show.
-- **Keyboard focus.** On Windows a lane takes the focus. When a lane goes because its last block
-  was deleted, focus moves to the rail, as it does when a panel's control goes away. Moving focus
-  must not start from a control that has already been removed.
+- **Keyboard focus.** On Windows a lane takes the focus. When a lane goes because a key took its last block
+  away, focus moves to Play, so the keyboard stays with the timeline.
 - **The preview resizes** when a lane comes or goes, by the height of one lane (22 to 26). No
   animation. On Windows this resizes the swap chain, which is already handled and measured for
   window resizes, but it should be looked at while playing.
@@ -156,6 +159,8 @@ opens on the other platform looking the same apart from the font.
 
 ### Phase 2: hidden lanes and editing
 
+Built in this order. Where the build differs from what was first written here, it says so below.
+
 1. Hidden lanes, as above, with the rule and its tests on both platforms.
 2. Editor model: add at playhead, select, change, reorder, delete, one undo step each, with the
    same words on both platforms (`StudioEditorModel`, `StudioEditorText`).
@@ -168,6 +173,11 @@ opens on the other platform looking the same apart from the font.
    the Mac.
 7. Agent coverage reviewed again: anything new the editor can do must be reachable through
    `studio.project.edit`.
+
+Typing in the panel's text box is one undo step until the box loses the focus or something else
+is edited. The model keeps a small marker for this instead of an open edit group, so nothing is left
+open if the window closes mid-word. Changing **Attach to** keeps the annotation where it is in the
+picture at the playhead wherever that can be worked out.
 
 Adding from a tool drops the annotation at the center of the visible picture, or for a `screen`
 annotation at the center of the zoom window, lasting three seconds from the playhead.

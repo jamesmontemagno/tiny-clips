@@ -161,6 +161,44 @@ public static class StudioAnnotationGeometry
     }
 
     /// <summary>
+    /// The numbers of the middle of what is in view: of the part of the recording a frame shows,
+    /// or of the canvas. A frame with no screen has the middle of the recording.
+    /// </summary>
+    public static StudioPoint GetCenterInView(StudioAnnotationAttach attach, in StudioResolvedFrame frame) =>
+        attach == StudioAnnotationAttach.Screen && frame.Screen is { } screen
+            ? new StudioPoint(screen.Source.X + (screen.Source.Width / 2), screen.Source.Y + (screen.Source.Height / 2))
+            : new StudioPoint(0.5, 0.5);
+
+    /// <summary>
+    /// The numbers that keep an annotation where it is in the picture once it is fixed to
+    /// <paramref name="attach"/>. Its own numbers where it is not in the picture to begin with, or
+    /// the frame has no screen to fix it to. A point beside the screen goes to the screen's edge.
+    /// </summary>
+    public static StudioPoint GetPointWhenAttached(StudioAnnotation annotation, StudioAnnotationAttach attach, in StudioResolvedFrame frame, double canvasWidth, double canvasHeight)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        var own = new StudioPoint(annotation.X, annotation.Y);
+        if (attach == annotation.Attach || !TryAnchor(annotation, frame, canvasWidth, canvasHeight, out var anchor, out _))
+        {
+            return own;
+        }
+
+        if (attach == StudioAnnotationAttach.Frame)
+        {
+            return new StudioPoint(anchor.X / canvasWidth, anchor.Y / canvasHeight);
+        }
+
+        if (frame.Screen is not { } screen || !(screen.Rect.Width > 0) || !(screen.Rect.Height > 0))
+        {
+            return own;
+        }
+
+        var acrossX = Math.Clamp((anchor.X - screen.Rect.X) / screen.Rect.Width, 0, 1);
+        var acrossY = Math.Clamp((anchor.Y - screen.Rect.Y) / screen.Rect.Height, 0, 1);
+        return new StudioPoint(screen.Source.X + (acrossX * screen.Source.Width), screen.Source.Y + (acrossY * screen.Source.Height));
+    }
+
+    /// <summary>
     /// True when any annotation comes or goes after <paramref name="from"/>, up to and including
     /// <paramref name="to"/>, so that a picture drawn for one of those times is not right for the other.
     /// </summary>

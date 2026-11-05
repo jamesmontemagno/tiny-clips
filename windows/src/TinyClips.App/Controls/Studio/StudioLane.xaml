@@ -31,18 +31,6 @@
             CornerRadius="{ThemeResource ControlCornerRadius}"
             IsHitTestVisible="False" />
 
-        <!--  What a lane without blocks says. Its text and automation id come from the lane.  -->
-        <TextBlock
-            x:Name="EmptyText"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            IsHitTestVisible="False"
-            Style="{StaticResource CaptionTextBlockStyle}"
-            TextTrimming="CharacterEllipsis"
-            TextWrapping="NoWrap"
-            Visibility="Collapsed" />
-
         <!--  One block for each scene, zoom, cut or speed change, in time order.  -->
         <Canvas x:Name="Blocks" />
 

@@ -41,6 +41,7 @@ public sealed partial class StudioInspector : UserControl
     private StudioInspectorPanel? _shownPanel;
     private bool _isSyncingRail;
     private bool _isSyncingSwatches;
+    private bool _isSyncingAnnotations;
 
     public StudioInspector(StudioViewModel viewModel)
     {
@@ -97,6 +98,8 @@ public sealed partial class StudioInspector : UserControl
         SyncSwatches();
         FocusPad.Update(ViewModel.ZoomPad);
         SyncPanels();
+        SyncAnnotationLayers();
+        SyncAnnotationText();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e) =>
@@ -117,6 +120,13 @@ public sealed partial class StudioInspector : UserControl
         if (string.IsNullOrEmpty(e.PropertyName))
         {
             SyncPanels();
+            SyncAnnotationLayers();
+            SyncAnnotationText();
+        }
+        else if (e.PropertyName == nameof(StudioViewModel.SelectedAnnotationIndex))
+        {
+            SyncAnnotationLayers();
+            SyncAnnotationText();
         }
         else if (e.PropertyName == nameof(StudioViewModel.InspectorPanel))
         {
@@ -249,6 +259,7 @@ public sealed partial class StudioInspector : UserControl
         SetVisible(ZoomPanel, panel == StudioInspectorPanel.Zoom);
         SetVisible(CutPanel, panel == StudioInspectorPanel.Cut);
         SetVisible(SpeedPanel, panel == StudioInspectorPanel.Speed);
+        SetVisible(AnnotatePanel, panel == StudioInspectorPanel.Annotate);
         SetVisible(AudioPanel, panel == StudioInspectorPanel.Audio);
         SetVisible(ProjectPanel, panel == StudioInspectorPanel.Project);
         PanelTitle.Text = StudioInspectorPanels.GetTitle(panel);
@@ -630,6 +641,141 @@ public sealed partial class StudioInspector : UserControl
         if (!ViewModel.HasSelectedCut)
         {
             StudioFocus.Move(focus, NextCutButton, PreviousCutButton, CutSectionAddButton);
+        }
+    }
+
+    // The annotations. The list and the text box are kept in step here, not by a binding: a row keeps
+    // its place while its text is typed, and the box keeps its caret.
+
+    /// <summary>Fills the list of annotations, the top of the picture first, and marks the selected one.</summary>
+    private void SyncAnnotationLayers()
+    {
+        var annotations = ViewModel.Annotations;
+        var items = AnnotationLayerList.Items;
+        _isSyncingAnnotations = true;
+        try
+        {
+            while (items.Count > annotations.Count)
+            {
+                items.RemoveAt(items.Count - 1);
+            }
+
+            while (items.Count < annotations.Count)
+            {
+                items.Add(new ListViewItem());
+            }
+
+            for (var row = 0; row < annotations.Count; row++)
+            {
+                var annotation = annotations[annotations.Count - 1 - row];
+                var item = (ListViewItem)items[row];
+                item.Content = StudioEditorText.GetAnnotationLabel(annotation);
+                AutomationProperties.SetName(item, StudioEditorText.GetAnnotationDescription(annotation));
+                AutomationProperties.SetAutomationId(item, string.Create(CultureInfo.InvariantCulture, $"StudioAnnotationLayer_{row}"));
+            }
+
+            AnnotationLayerList.SelectedIndex = ViewModel.SelectedAnnotationIndex is { } index ? annotations.Count - 1 - index : -1;
+            AnnotationLayerList.Visibility = annotations.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        finally
+        {
+            _isSyncingAnnotations = false;
+        }
+    }
+
+    private void OnAnnotationLayerSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isSyncingAnnotations && AnnotationLayerList.SelectedIndex is >= 0 and var row)
+        {
+            ViewModel.SelectAnnotationInView(ViewModel.Annotations.Count - 1 - row);
+        }
+    }
+
+    // The box writes a line break its own way, and a project can hold another, so both are compared by what they mean.
+    private void SyncAnnotationText()
+    {
+        var text = ViewModel.AnnotationText;
+        if (AnnotationTextBox.Text.ReplaceLineEndings("\n") != text.ReplaceLineEndings("\n"))
+        {
+            _isSyncingAnnotations = true;
+            try
+            {
+                AnnotationTextBox.Text = text;
+            }
+            finally
+            {
+                _isSyncingAnnotations = false;
+            }
+        }
+    }
+
+    private void OnAnnotationTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_isSyncingAnnotations)
+        {
+            ViewModel.AnnotationText = AnnotationTextBox.Text;
+        }
+    }
+
+    private void OnAnnotationTextLostFocus(object sender, RoutedEventArgs e) => ViewModel.EndAnnotationTyping();
+
+    private void OnPreviousAnnotationClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.ShowPreviousAnnotation();
+        if (!ViewModel.CanSelectPreviousAnnotation)
+        {
+            StudioFocus.Move(focus, NextAnnotationButton, AnnotationLayerList);
+        }
+    }
+
+    private void OnNextAnnotationClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.ShowNextAnnotation();
+        if (!ViewModel.CanSelectNextAnnotation)
+        {
+            StudioFocus.Move(focus, PreviousAnnotationButton, AnnotationLayerList);
+        }
+    }
+
+    private void OnBringAnnotationForwardClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.BringAnnotationForward();
+        if (!ViewModel.CanBringAnnotationForward)
+        {
+            StudioFocus.Move(focus, SendAnnotationBackButton, AnnotationLayerList);
+        }
+    }
+
+    private void OnSendAnnotationBackClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.SendAnnotationBack();
+        if (!ViewModel.CanSendAnnotationBack)
+        {
+            StudioFocus.Move(focus, BringAnnotationForwardButton, AnnotationLayerList);
+        }
+    }
+
+    private void OnDeleteAnnotationClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.RemoveSelectedAnnotation();
+        if (ViewModel.HasSelectedAnnotation || focus == FocusState.Unfocused)
+        {
+            return;
+        }
+
+        // The last one takes the list and both of these buttons with it, which leaves the rail.
+        if (ViewModel.Annotations.Count > 0)
+        {
+            StudioFocus.Move(focus, NextAnnotationButton, PreviousAnnotationButton);
+        }
+        else
+        {
+            FocusOnRail(ViewModel.InspectorPanel, focus);
         }
     }
 

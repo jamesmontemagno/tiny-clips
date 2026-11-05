@@ -44,6 +44,9 @@ final class StudioViewModel: ObservableObject {
     /// The speed change the inspector shows, as its place in the project's speed changes, or nil.
     @Published private(set) var selectedSpeedIndex: Int?
 
+    /// The annotation the inspector shows, as its place in the project's annotations, or nil.
+    @Published private(set) var selectedAnnotationIndex: Int?
+
     /// The inspector panel on show. Taking hold of a zoom, a cut, a speed change, a scene, or the
     /// camera shows the panel that edits it.
     @Published private(set) var inspectorPanel: StudioInspectorPanel = .background
@@ -583,6 +586,7 @@ final class StudioViewModel: ObservableObject {
         if selectedZoomIndex != nil {
             setSelectedCutIndex(nil)
             setSelectedSpeedIndex(nil)
+            setSelectedAnnotationIndex(nil)
             showInspectorPanel(.zoom)
         }
     }
@@ -596,13 +600,14 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
-    /// Lets go of whatever is selected: a zoom, a cut, or a speed change. The playhead stays. A
+    /// Lets go of whatever is selected: a zoom, a cut, a speed change, or an annotation. The playhead stays. A
     /// press on an empty part of a lane does this: selecting no zoom alone would leave a selected
     /// cut as it is.
     func selectNothing() {
         setSelectedZoomIndex(nil)
         setSelectedCutIndex(nil)
         setSelectedSpeedIndex(nil)
+        setSelectedAnnotationIndex(nil)
     }
 
     /// Selects a zoom and moves the playhead to where it has moved in.
@@ -806,6 +811,7 @@ final class StudioViewModel: ObservableObject {
         if selectedCutIndex != nil {
             setSelectedZoomIndex(nil)
             setSelectedSpeedIndex(nil)
+            setSelectedAnnotationIndex(nil)
             showInspectorPanel(.cut)
         }
     }
@@ -968,6 +974,7 @@ final class StudioViewModel: ObservableObject {
     func selectSpeed(_ index: Int?) {
         setSelectedSpeedIndex(index)
         if selectedSpeedIndex != nil {
+            setSelectedAnnotationIndex(nil)
             setSelectedZoomIndex(nil)
             setSelectedCutIndex(nil)
             showInspectorPanel(.speed)
@@ -1109,6 +1116,214 @@ final class StudioViewModel: ObservableObject {
     func nudgeSelectedSpeedEnd(by seconds: Double) {
         guard let index = selectedSpeedIndex, let speed = selectedSpeed else { return }
         setSpeedEnd(at: index, to: speed.end + seconds)
+    }
+
+    // MARK: - Annotations
+    //
+    // An index is an annotation's place in `project.overlays.annotations`, the order they are drawn
+    // in. One can be selected, in place of a zoom, a cut, or a speed change. Through an edit that
+    // does not say, and undo and redo, the selection follows its annotation by its id.
+
+    var annotations: [StudioAnnotation] { project?.overlays.annotations ?? [] }
+
+    var selectedAnnotation: StudioAnnotation? {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return nil }
+        return annotations[index]
+    }
+
+    var canAddAnnotation: Bool { isEditable && (editor?.canAddAnnotation ?? false) }
+
+    var canSelectPreviousAnnotation: Bool {
+        isEditable && editor?.annotationIndex(before: selectedAnnotationIndex, sourceTime: playhead) != nil
+    }
+
+    var canSelectNextAnnotation: Bool {
+        isEditable && editor?.annotationIndex(after: selectedAnnotationIndex, sourceTime: playhead) != nil
+    }
+
+    /// Selects an annotation, or none with nil. The playhead stays. What else was selected is let
+    /// go, and the inspector shows the Annotate panel.
+    func selectAnnotation(_ index: Int?) {
+        setSelectedAnnotationIndex(index)
+        if selectedAnnotationIndex != nil {
+            setSelectedZoomIndex(nil)
+            setSelectedCutIndex(nil)
+            setSelectedSpeedIndex(nil)
+            showInspectorPanel(.annotate)
+        }
+    }
+
+    /// Selects an annotation and moves the playhead to where it starts.
+    @discardableResult
+    func selectAndShowAnnotation(_ index: Int?) -> Bool {
+        guard isEditable, let index, annotations.indices.contains(index) else { return false }
+        selectAnnotation(index)
+        scrub(to: annotations[index].start)
+        return true
+    }
+
+    /// Selects an annotation from the panel's list, and moves the playhead to where it starts when
+    /// it would not be on the picture otherwise.
+    func selectAnnotationInView(_ index: Int) {
+        guard annotations.indices.contains(index) else { return }
+        let annotation = annotations[index]
+        if annotation.start <= playhead, playhead < annotation.end {
+            selectAnnotation(index)
+        } else {
+            selectAndShowAnnotation(index)
+        }
+    }
+
+    func showPreviousAnnotation() {
+        if selectAndShowAnnotation(editor?.annotationIndex(before: selectedAnnotationIndex, sourceTime: playhead)) {
+            announceSelectedAnnotation()
+        }
+    }
+
+    func showNextAnnotation() {
+        if selectAndShowAnnotation(editor?.annotationIndex(after: selectedAnnotationIndex, sourceTime: playhead)) {
+            announceSelectedAnnotation()
+        }
+    }
+
+    private func announceSelectedAnnotation() {
+        guard let index = selectedAnnotationIndex, let annotation = selectedAnnotation else { return }
+        announce(StudioEditorModel.annotationStepText(index: index, count: annotations.count, annotation: annotation))
+    }
+
+    /// Adds an annotation at the playhead, on top of the others, and selects it. The playhead stays.
+    func addAnnotationAtPlayhead(kind: String) {
+        guard isEditable else { return }
+        let time = playhead
+        let recordedEvents = events
+        var result = StudioAnnotationEditResult(changed: false, index: nil)
+        editAndSelect { model in
+            result = model.addAnnotation(kind: kind, at: time, events: recordedEvents)
+            if let index = result.index {
+                return .annotation(index)
+            }
+            return .follow
+        }
+        announce(result.changed ? StudioEditorModel.annotationAddedMessage(kind) : StudioEditorModel.noRoomForAnnotationMessage)
+    }
+
+    func removeSelectedAnnotation() {
+        guard let index = selectedAnnotationIndex else { return }
+        if editAnnotation(at: index, { $0.removeAnnotation(at: index) }).changed {
+            announce(StudioEditorModel.annotationDeletedMessage)
+        }
+    }
+
+    /// Moves when an annotation starts, and shows the first picture that has it.
+    @discardableResult
+    func setAnnotationStart(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editAnnotation(at: index) { $0.setAnnotationStart(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, annotations.indices.contains(place) {
+            scrub(to: annotations[place].start)
+        }
+        return result.index
+    }
+
+    /// Moves when an annotation ends, and shows the last picture that has it.
+    @discardableResult
+    func setAnnotationEnd(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editAnnotation(at: index) { $0.setAnnotationEnd(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, annotations.indices.contains(place), let editor {
+            scrub(to: max(annotations[place].start, annotations[place].end - editor.frameDuration))
+        }
+        return result.index
+    }
+
+    /// Moves a whole annotation so it starts at `sourceTime`. The playhead stays.
+    @discardableResult
+    func moveAnnotation(at index: Int, to sourceTime: Double) -> Int? {
+        editAnnotation(at: index) { $0.moveAnnotation(at: index, to: sourceTime) }.index
+    }
+
+    func nudgeSelectedAnnotationStart(by seconds: Double) {
+        guard let index = selectedAnnotationIndex, let annotation = selectedAnnotation else { return }
+        setAnnotationStart(at: index, to: annotation.start + seconds)
+    }
+
+    func nudgeSelectedAnnotationEnd(by seconds: Double) {
+        guard let index = selectedAnnotationIndex, let annotation = selectedAnnotation else { return }
+        setAnnotationEnd(at: index, to: annotation.end + seconds)
+    }
+
+    func setSelectedAnnotationStartAtPlayhead() {
+        guard let index = selectedAnnotationIndex else { return }
+        let time = playhead
+        editAnnotation(at: index) { $0.setAnnotationStart(at: index, to: time) }
+    }
+
+    func setSelectedAnnotationEndAtPlayhead() {
+        guard let index = selectedAnnotationIndex else { return }
+        let time = playhead
+        editAnnotation(at: index) { $0.setAnnotationEnd(at: index, to: time) }
+    }
+
+    func setSelectedAnnotationText(_ text: String) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationText(at: index, to: text) }
+    }
+
+    /// The text field has lost the focus: what is typed from now on is another undo step.
+    func endAnnotationTyping() {
+        editor?.endAnnotationTyping()
+    }
+
+    func setSelectedAnnotationStyle(_ style: StudioAnnotationStyle) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationStyle(at: index, to: style) }
+    }
+
+    func setSelectedAnnotationSize(_ size: StudioAnnotationSize) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationSize(at: index, to: size) }
+    }
+
+    /// What the selected annotation is fixed to. It stays where it is in the picture where it can.
+    func setSelectedAnnotationAttach(_ attach: StudioAnnotationAttach) {
+        guard let index = selectedAnnotationIndex else { return }
+        let time = playhead
+        let recordedEvents = events
+        editAnnotation(at: index) { $0.setAnnotationAttach(at: index, to: attach, time: time, events: recordedEvents) }
+    }
+
+    func setSelectedAnnotationPoint(x: Double, y: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationPoint(at: index, x: x, y: y) }
+    }
+
+    func setSelectedAnnotationOffset(x: Double, y: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationOffset(at: index, x: x, y: y) }
+    }
+
+    func bringSelectedAnnotationForward() {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.moveAnnotationLayer(at: index, by: 1) }
+    }
+
+    func sendSelectedAnnotationBack() {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.moveAnnotationLayer(at: index, by: -1) }
+    }
+
+    /// An edit to one annotation. The selection goes with it when it is the selected one. An edit
+    /// that changes nothing shows no panel.
+    @discardableResult
+    private func editAnnotation(
+        at index: Int,
+        _ change: (inout StudioEditorModel) -> StudioAnnotationEditResult
+    ) -> StudioAnnotationEditResult {
+        var result = StudioAnnotationEditResult(changed: false, index: index)
+        let isSelected = selectedAnnotationIndex == index
+        editAndSelect { model in
+            result = change(&model)
+            return isSelected && result.changed ? .annotation(result.index) : .follow
+        }
+        return result
     }
 
     // MARK: - Scenes
@@ -1702,6 +1917,9 @@ final class StudioViewModel: ObservableObject {
 
         /// The edit knows where its speed change went, or that it is gone.
         case speed(Int?)
+
+        /// The edit knows where its annotation went, or that it is gone.
+        case annotation(Int?)
     }
 
     private func edit(_ change: (inout StudioEditorModel) -> Void) {
@@ -1784,6 +2002,7 @@ final class StudioViewModel: ObservableObject {
         let zoomsBefore = model.project.zooms
         let cutsBefore = model.project.edits.cuts
         let speedBefore = model.project.edits.speed
+        let annotationsBefore = model.project.overlays.annotations
         let selection = change(&model)
         editor = model
         let isChanged = model.editableState != before
@@ -1793,6 +2012,7 @@ final class StudioViewModel: ObservableObject {
         var zoomIndex = selectedZoomIndex
         var cutIndex = selectedCutIndex
         var speedIndex = selectedSpeedIndex
+        var annotationIndex = selectedAnnotationIndex
         if isChanged, let selected = zoomIndex {
             zoomIndex = StudioEditorModel.zoomIndex(following: selected, from: zoomsBefore, to: model.project.zooms)
         }
@@ -1801,6 +2021,10 @@ final class StudioViewModel: ObservableObject {
         }
         if isChanged, let selected = speedIndex {
             speedIndex = StudioEditorModel.speedIndex(following: selected, from: speedBefore, to: model.project.edits.speed)
+        }
+
+        if isChanged, let selected = annotationIndex {
+            annotationIndex = StudioEditorModel.annotationIndex(following: selected, from: annotationsBefore, to: model.project.overlays.annotations)
         }
 
         // One selection: an edit that says where a zoom is lets go of a cut and a speed change,
@@ -1813,18 +2037,27 @@ final class StudioViewModel: ObservableObject {
             zoomIndex = index
             cutIndex = nil
             speedIndex = nil
+            annotationIndex = nil
         case .cut(let index):
             cutIndex = index
             zoomIndex = nil
             speedIndex = nil
+            annotationIndex = nil
         case .speed(let index):
             speedIndex = index
             zoomIndex = nil
             cutIndex = nil
+            annotationIndex = nil
+        case .annotation(let index):
+            annotationIndex = index
+            zoomIndex = nil
+            cutIndex = nil
+            speedIndex = nil
         }
         setSelectedZoomIndex(zoomIndex)
         setSelectedCutIndex(cutIndex)
         setSelectedSpeedIndex(speedIndex)
+        setSelectedAnnotationIndex(annotationIndex)
 
         // An edit that says which zoom, cut, or speed change it left selected shows its panel.
         // Adding one does, from the timeline, the menu, or the keyboard.
@@ -1837,6 +2070,8 @@ final class StudioViewModel: ObservableObject {
             if selectedCutIndex != nil { showInspectorPanel(.cut) }
         case .speed:
             if selectedSpeedIndex != nil { showInspectorPanel(.speed) }
+        case .annotation:
+            if selectedAnnotationIndex != nil { showInspectorPanel(.annotate) }
         }
 
         guard isChanged else { return }
@@ -1881,6 +2116,18 @@ final class StudioViewModel: ObservableObject {
         }
         if selectedSpeedIndex != valid {
             selectedSpeedIndex = valid
+        }
+    }
+
+    /// Sets the selection to an annotation that exists, or to none. It is published only when it
+    /// changes.
+    private func setSelectedAnnotationIndex(_ index: Int?) {
+        var valid: Int?
+        if let index, annotations.indices.contains(index) {
+            valid = index
+        }
+        if selectedAnnotationIndex != valid {
+            selectedAnnotationIndex = valid
         }
     }
 

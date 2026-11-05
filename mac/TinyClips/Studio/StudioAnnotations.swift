@@ -199,6 +199,37 @@ enum StudioAnnotationGeometry {
         return StudioRect(x: left, y: top, width: (right - left).rounded(.up), height: (bottom - top).rounded(.up))
     }
 
+    /// The numbers of the middle of what is in view: of the part of the recording a frame shows, or
+    /// of the canvas. A frame with no screen has the middle of the recording.
+    static func centerInView(attach: StudioAnnotationAttach, frame: StudioResolvedFrame) -> StudioAnnotationPoint {
+        guard attach == .screen, let source = frame.screen?.source else { return StudioAnnotationPoint(x: 0.5, y: 0.5) }
+        return StudioAnnotationPoint(x: source.x + source.width / 2, y: source.y + source.height / 2)
+    }
+
+    /// The numbers that keep an annotation where it is in the picture once it is fixed to `attach`.
+    /// Its own numbers where it is not in the picture to begin with, or the frame has no screen to
+    /// fix it to. A point beside the screen goes to the screen's edge.
+    static func pointWhenAttached(
+        _ annotation: StudioAnnotation,
+        to attach: StudioAnnotationAttach,
+        frame: StudioResolvedFrame,
+        canvasWidth: Double,
+        canvasHeight: Double
+    ) -> StudioAnnotationPoint {
+        let own = StudioAnnotationPoint(x: annotation.x, y: annotation.y)
+        guard attach != annotation.attach,
+              let (anchor, _) = anchorAndOpacity(annotation, frame: frame, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else {
+            return own
+        }
+        if attach == .frame {
+            return StudioAnnotationPoint(x: anchor.x / canvasWidth, y: anchor.y / canvasHeight)
+        }
+        guard let screen = frame.screen, screen.rect.width > 0, screen.rect.height > 0 else { return own }
+        let acrossX = StudioCanvasMath.clamped((anchor.x - screen.rect.x) / screen.rect.width, 0, 1)
+        let acrossY = StudioCanvasMath.clamped((anchor.y - screen.rect.y) / screen.rect.height, 0, 1)
+        return StudioAnnotationPoint(x: screen.source.x + acrossX * screen.source.width, y: screen.source.y + acrossY * screen.source.height)
+    }
+
     /// What the project's annotations draw at `time`, bottom first.
     static func resolveAll(
         project: StudioProject,
@@ -365,5 +396,270 @@ enum StudioAnnotationGeometry {
         case .medium: return (0.036, 0.009)
         case .large: return (0.05, 0.013)
         }
+    }
+}
+
+// MARK: - Editing
+
+/// What an edit to an annotation did: whether the project changed, and where the annotation is in
+/// the list afterwards. The index is nil when there is no such annotation, which is also the case
+/// once it has been deleted.
+struct StudioAnnotationEditResult: Equatable, Sendable {
+    var changed: Bool
+    var index: Int?
+}
+
+// Annotations are stored in source time, like zooms, and may overlap. The list is the order they
+// are drawn in, bottom first, so an edit leaves an annotation at its place in the list and only
+// changing its layer moves it there. The same on Windows (`StudioEditorModel.Annotations.cs`).
+extension StudioEditorModel {
+    /// The shortest annotation the editor makes, in seconds of the recording.
+    static let minimumAnnotationDuration = 0.1
+
+    /// How long an annotation lasts when it is added, in seconds, where there is room for it.
+    static let newAnnotationDuration = 3.0
+
+    /// What a callout or a text box says when it is added.
+    static let newAnnotationText = "Your text"
+
+    var canAddAnnotation: Bool { sourceDuration >= Self.minimumAnnotationDuration }
+
+    private func hasAnnotation(_ index: Int) -> Bool {
+        project.overlays.annotations.indices.contains(index)
+    }
+
+    /// Adds an annotation at `sourceTime`, on top of the others. Text is fixed to the frame, and an
+    /// arrow and a callout to the screen, unless the frame has no screen then. It goes in the
+    /// middle of what is in view.
+    mutating func addAnnotation(kind: String, at sourceTime: Double, events: StudioEvents?) -> StudioAnnotationEditResult {
+        guard canAddAnnotation, sourceTime.isFinite else { return StudioAnnotationEditResult(changed: false, index: nil) }
+        let start = min(max(0, sourceTime), sourceDuration - Self.minimumAnnotationDuration)
+        let canvas = StudioCanvasMath.naturalCanvas(project: project)
+        let frame = StudioLayoutResolver.resolve(project: project, time: start, canvasWidth: canvas.width, canvasHeight: canvas.height, events: events)
+        let attach: StudioAnnotationAttach = kind != StudioAnnotationKind.text && frame.screen != nil ? .screen : .frame
+        let point = StudioAnnotationGeometry.centerInView(attach: attach, frame: frame)
+        let style: StudioAnnotationStyle
+        switch kind {
+        case StudioAnnotationKind.callout: style = .dark
+        case StudioAnnotationKind.text: style = .white
+        default: style = .red
+        }
+        let annotation = StudioAnnotation(
+            id: UUID().uuidString.lowercased(),
+            kind: kind,
+            attach: attach,
+            start: start,
+            end: min(start + Self.newAnnotationDuration, sourceDuration),
+            x: point.x,
+            y: point.y,
+            text: kind == StudioAnnotationKind.arrow ? "" : Self.newAnnotationText,
+            style: style
+        )
+        mutate { $0.overlays.annotations.append(annotation) }
+        return StudioAnnotationEditResult(changed: true, index: project.overlays.annotations.count - 1)
+    }
+
+    mutating func removeAnnotation(at index: Int) -> StudioAnnotationEditResult {
+        guard hasAnnotation(index) else { return StudioAnnotationEditResult(changed: false, index: nil) }
+        mutate { $0.overlays.annotations.remove(at: index) }
+        return StudioAnnotationEditResult(changed: true, index: nil)
+    }
+
+    /// One edit to one annotation.
+    private mutating func editAnnotation(at index: Int, _ change: (inout StudioAnnotation) -> Void) -> StudioAnnotationEditResult {
+        guard hasAnnotation(index) else { return StudioAnnotationEditResult(changed: false, index: nil) }
+        let before = project.overlays.annotations[index]
+        mutate { change(&$0.overlays.annotations[index]) }
+        return StudioAnnotationEditResult(changed: project.overlays.annotations[index] != before, index: index)
+    }
+
+    private func annotationUnchanged(_ index: Int) -> StudioAnnotationEditResult {
+        StudioAnnotationEditResult(changed: false, index: hasAnnotation(index) ? index : nil)
+    }
+
+    /// Moves when an annotation starts, up to the shortest it can be.
+    mutating func setAnnotationStart(at index: Int, to sourceTime: Double) -> StudioAnnotationEditResult {
+        guard sourceTime.isFinite else { return annotationUnchanged(index) }
+        return editAnnotation(at: index) { $0.start = max(0, min(sourceTime, $0.end - Self.minimumAnnotationDuration)) }
+    }
+
+    /// Moves when an annotation ends, down to the shortest it can be.
+    mutating func setAnnotationEnd(at index: Int, to sourceTime: Double) -> StudioAnnotationEditResult {
+        guard sourceTime.isFinite else { return annotationUnchanged(index) }
+        let duration = sourceDuration
+        return editAnnotation(at: index) { $0.end = min(duration, max(sourceTime, $0.start + Self.minimumAnnotationDuration)) }
+    }
+
+    /// Moves a whole annotation so it starts at `sourceTime`, keeping its length.
+    mutating func moveAnnotation(at index: Int, to sourceTime: Double) -> StudioAnnotationEditResult {
+        guard sourceTime.isFinite else { return annotationUnchanged(index) }
+        let duration = sourceDuration
+        return editAnnotation(at: index) {
+            let length = $0.end - $0.start
+            $0.start = max(0, min(sourceTime, duration - length))
+            $0.end = $0.start + length
+        }
+    }
+
+    /// Sets what a callout or a text box says. Text typed with no other edit in between is one
+    /// undo step, until `endAnnotationTyping()`.
+    mutating func setAnnotationText(at index: Int, to text: String) -> StudioAnnotationEditResult {
+        guard hasAnnotation(index) else { return StudioAnnotationEditResult(changed: false, index: nil) }
+        guard project.overlays.annotations[index].text != text else { return StudioAnnotationEditResult(changed: false, index: index) }
+        if typingInAnnotation == index {
+            applyWithoutUndoStep { $0.overlays.annotations[index].text = text }
+        } else {
+            mutate { $0.overlays.annotations[index].text = text }
+        }
+        typingInAnnotation = index
+        return StudioAnnotationEditResult(changed: true, index: index)
+    }
+
+    /// Typing has stopped: what is typed from now on is another undo step.
+    mutating func endAnnotationTyping() {
+        typingInAnnotation = nil
+    }
+
+    mutating func setAnnotationStyle(at index: Int, to style: StudioAnnotationStyle) -> StudioAnnotationEditResult {
+        editAnnotation(at: index) { $0.style = style }
+    }
+
+    mutating func setAnnotationSize(at index: Int, to size: StudioAnnotationSize) -> StudioAnnotationEditResult {
+        editAnnotation(at: index) { $0.size = size }
+    }
+
+    /// What an annotation is fixed to. It stays where it is in the picture at `sourceTime` where it
+    /// can: a point out of view, or a screen the frame does not have, leaves its numbers.
+    mutating func setAnnotationAttach(at index: Int, to attach: StudioAnnotationAttach, time sourceTime: Double, events: StudioEvents?) -> StudioAnnotationEditResult {
+        let canvas = StudioCanvasMath.naturalCanvas(project: project)
+        let frame = StudioLayoutResolver.resolve(project: project, time: sourceTime, canvasWidth: canvas.width, canvasHeight: canvas.height, events: events)
+        return editAnnotation(at: index) {
+            let point = StudioAnnotationGeometry.pointWhenAttached($0, to: attach, frame: frame, canvasWidth: canvas.width, canvasHeight: canvas.height)
+            $0.attach = attach
+            $0.x = point.x
+            $0.y = point.y
+        }
+    }
+
+    /// Moves what an annotation points at, or the center of a text box, in normalized numbers.
+    mutating func setAnnotationPoint(at index: Int, x: Double, y: Double) -> StudioAnnotationEditResult {
+        guard x.isFinite, y.isFinite else { return annotationUnchanged(index) }
+        return editAnnotation(at: index) {
+            $0.x = StudioCanvasMath.clamped(x, 0, 1)
+            $0.y = StudioCanvasMath.clamped(y, 0, 1)
+        }
+    }
+
+    /// Moves an arrow's tail or a callout's box, in short sides of the canvas from what it points at.
+    mutating func setAnnotationOffset(at index: Int, x: Double, y: Double) -> StudioAnnotationEditResult {
+        guard x.isFinite, y.isFinite else { return annotationUnchanged(index) }
+        return editAnnotation(at: index) {
+            $0.offsetX = StudioCanvasMath.clamped(x, -1, 1)
+            $0.offsetY = StudioCanvasMath.clamped(y, -1, 1)
+        }
+    }
+
+    /// Moves an annotation one place up (1) or down (-1) in the drawing order. Nothing past either end.
+    mutating func moveAnnotationLayer(at index: Int, by places: Int) -> StudioAnnotationEditResult {
+        guard hasAnnotation(index) else { return StudioAnnotationEditResult(changed: false, index: nil) }
+        let target = index + places.signum()
+        guard target != index, hasAnnotation(target) else { return StudioAnnotationEditResult(changed: false, index: index) }
+        mutate { $0.overlays.annotations.swapAt(index, target) }
+        return StudioAnnotationEditResult(changed: true, index: target)
+    }
+
+    private var annotationsInTimeOrder: [Int] {
+        let annotations = project.overlays.annotations
+        return annotations.indices.sorted { (annotations[$0].start, $0) < (annotations[$1].start, $1) }
+    }
+
+    /// The annotation after the selected one in time, or with none selected the one at `sourceTime`
+    /// or the first one after it. Those that start together go by their place in the list.
+    func annotationIndex(after selected: Int?, sourceTime: Double) -> Int? {
+        let order = annotationsInTimeOrder
+        if let selected, let at = order.firstIndex(of: selected) {
+            return at + 1 < order.count ? order[at + 1] : nil
+        }
+        return order.first { project.overlays.annotations[$0].end > sourceTime }
+    }
+
+    /// The annotation before the selected one in time, or with none selected the one at `sourceTime`
+    /// or the last one before it.
+    func annotationIndex(before selected: Int?, sourceTime: Double) -> Int? {
+        let order = annotationsInTimeOrder
+        if let selected, let at = order.firstIndex(of: selected) {
+            return at > 0 ? order[at - 1] : nil
+        }
+        return order.last { project.overlays.annotations[$0].start <= sourceTime }
+    }
+
+    /// Where the annotation at `index` of `before` is in `after`, for an edit that did not say, such
+    /// as undo: the one with the same id, or for one without an id, which only an agent or a project
+    /// file makes, the same place in a list of the same length. Nil when it is gone.
+    static func annotationIndex(following index: Int, from before: [StudioAnnotation], to after: [StudioAnnotation]) -> Int? {
+        guard before.indices.contains(index) else { return nil }
+        let id = before[index].id
+        if id.isEmpty {
+            return before.count == after.count ? index : nil
+        }
+        return after.firstIndex { $0.id == id }
+    }
+}
+
+// MARK: - Words
+
+extension StudioEditorModel {
+    static let annotationEmptyHint = "Press A, C, or T, or use the tools at the top of the window, to add an arrow, a callout, or text at the playhead."
+    static let selectAnnotationHint = "Select an annotation on the timeline or in the list, or step to one with the arrows above."
+    static let annotationNotDrawnNote = "This annotation comes from a newer version of Tiny Clips, so it is not drawn here. You can still change when it shows, or delete it."
+    static let annotationDeletedMessage = "Annotation deleted."
+    static let noRoomForAnnotationMessage = "There is no room for an annotation here."
+    private static let annotationLabelLength = 24
+
+    /// What a kind of annotation is called. Another kind is an "Annotation".
+    static func annotationKindName(_ kind: String) -> String {
+        switch kind {
+        case StudioAnnotationKind.arrow: return "Arrow"
+        case StudioAnnotationKind.callout: return "Callout"
+        case StudioAnnotationKind.text: return "Text"
+        default: return "Annotation"
+        }
+    }
+
+    static func annotationAddedMessage(_ kind: String) -> String {
+        "\(annotationKindName(kind)) added."
+    }
+
+    /// An annotation in a list: "Arrow", or "Callout: Billing lives here", with long text shortened
+    /// and on one line.
+    static func annotationLabel(_ annotation: StudioAnnotation) -> String {
+        let name = annotationKindName(annotation.kind)
+        let words = annotation.text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard annotation.kind != StudioAnnotationKind.arrow, !words.isEmpty else { return name }
+        guard words.count > annotationLabelLength else { return "\(name): \(words)" }
+        let shortened = String(words.prefix(annotationLabelLength))
+        let trimmed = shortened.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+        return "\(name): \(trimmed)\u{2026}"
+    }
+
+    /// When an annotation starts and ends: "12.0 to 16.5 seconds".
+    static func annotationRangeText(_ annotation: StudioAnnotation) -> String {
+        let start = annotation.start.isFinite ? annotation.start : 0
+        let end = annotation.end.isFinite ? annotation.end : 0
+        return String(format: "%.1f to %.1f seconds", start, end)
+    }
+
+    /// An annotation for VoiceOver: "Callout: Billing lives here, 12.0 to 16.5 seconds".
+    static func annotationDescription(_ annotation: StudioAnnotation) -> String {
+        "\(annotationLabel(annotation)), \(annotationRangeText(annotation))"
+    }
+
+    static func annotationPositionText(index: Int, count: Int) -> String {
+        "Annotation \(index + 1) of \(count)"
+    }
+
+    /// What is read out when an annotation is stepped to with Previous or Next.
+    static func annotationStepText(index: Int, count: Int, annotation: StudioAnnotation) -> String {
+        "\(annotationPositionText(index: index, count: count)), \(annotationDescription(annotation))"
     }
 }

@@ -480,6 +480,18 @@ public sealed partial class StudioViewModel : ObservableObject
             case StudioShortcutAction.RemoveSelectedSpeed:
                 RemoveSelectedSpeed();
                 break;
+            case StudioShortcutAction.AddArrow:
+                AddArrowAtPlayhead();
+                break;
+            case StudioShortcutAction.AddCallout:
+                AddCalloutAtPlayhead();
+                break;
+            case StudioShortcutAction.AddText:
+                AddTextAtPlayhead();
+                break;
+            case StudioShortcutAction.RemoveSelectedAnnotation:
+                RemoveSelectedAnnotation();
+                break;
             case StudioShortcutAction.Undo:
                 Undo();
                 break;
@@ -596,6 +608,7 @@ public sealed partial class StudioViewModel : ObservableObject
             RememberZoomStateAtPlayhead();
             RememberCutStateAtPlayhead();
             RememberSpeedStateAtPlayhead();
+            RememberAnnotationStateAtPlayhead();
             RememberSceneStateAtPlayhead();
             OnPropertyChanged(string.Empty);
         }
@@ -618,6 +631,7 @@ public sealed partial class StudioViewModel : ObservableObject
                 RaiseZoomStateAtPlayhead();
                 RaiseCutStateAtPlayhead();
                 RaiseSpeedStateAtPlayhead();
+                RaiseAnnotationStateAtPlayhead();
                 RaiseSceneStateAtPlayhead();
             }
 

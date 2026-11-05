@@ -14,7 +14,8 @@ own `CHANGELOG.md` at the repository root.
 - Studio handoff protects pending trimmer edits and prevents competing actions; the footer fits the minimum window width. Existing project links are checked before importing, and portable project saving explains why external videos cannot be saved as a folder.
 
 ### Added
-- Studio can draw arrows, callouts, and text over a video, in the preview and the export. A screen annotation follows zooms and crops; a frame annotation stays where it is. Agents add them through `overlays.annotations` in `studio.project.edit`. Editing them in the Studio window comes next.
+- Studio can add arrows, callouts, and text over a video, from the new tools in the editor's header or with A, C, and T. The Annotate panel sets their text, style, size, position, timing, and drawing order, and a lane on the timeline moves and resizes them. A screen annotation follows zooms and crops; a frame annotation stays where it is. Agents edit the same list through `overlays.annotations` in `studio.project.edit`.
+- The Studio timeline shows a lane only when it has something on it, including the existing scene, zoom, cut, and speed lanes, so a new project starts with just the trim bar. The buttons, keys, and inspector add the first of each.
 - The welcome wizard now asks whether to start Tiny Clips when you sign in to Windows. It stays off unless you turn it on, and it can be changed later in Settings.
 - Agent Control settings now show a CLI-only setup alongside both plugin install paths, with copyable `dnx` and global tool commands.
 - Agent permissions are now yours to choose: the pairing prompt lists every scope as a checkbox with the agent's request pre-checked, and each paired agent in Settings → Agent control has a **Permissions** flyout that applies changes immediately without re-pairing. Sensitive scopes still ask every time, and a scope removed while an approval is open is re-checked before the command runs.

@@ -132,12 +132,18 @@
             </Button>
         </Grid>
 
-        <!--  The scenes, the zooms, the cuts, the speed changes and the trim, one above the other on the same time scale.  -->
+        <!--
+            The scenes, the zooms, the cuts, the speed changes, the annotations and the trim, one
+            above the other on the same time scale. A lane shows only with something on it
+            (StudioTimelineLanes), so the first one of a kind is added with the buttons, the keys
+            or the inspector. The trim bar always shows.
+        -->
         <StackPanel Spacing="4">
-            <Border x:Name="SceneLaneHost" Visibility="{x:Bind ViewModel.HasCamera, Mode=OneWay}" />
-            <Border x:Name="ZoomLaneHost" />
-            <Border x:Name="CutLaneHost" />
-            <Border x:Name="SpeedLaneHost" />
+            <Border x:Name="SceneLaneHost" Visibility="{x:Bind ViewModel.IsSceneLaneShown, Mode=OneWay}" />
+            <Border x:Name="ZoomLaneHost" Visibility="{x:Bind ViewModel.IsZoomLaneShown, Mode=OneWay}" />
+            <Border x:Name="CutLaneHost" Visibility="{x:Bind ViewModel.IsCutLaneShown, Mode=OneWay}" />
+            <Border x:Name="SpeedLaneHost" Visibility="{x:Bind ViewModel.IsSpeedLaneShown, Mode=OneWay}" />
+            <Border x:Name="AnnotationLaneHost" Visibility="{x:Bind ViewModel.IsAnnotationLaneShown, Mode=OneWay}" />
             <local:StudioTrimBar
                 x:Name="TrimBar"
                 AutomationProperties.AutomationId="StudioTrimBar"

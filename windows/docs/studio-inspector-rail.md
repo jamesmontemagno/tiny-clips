@@ -53,6 +53,7 @@ In rail order. A recording without a camera has neither Scene nor Camera.
 | Timeline | **Zoom** | Previous/next, Add Zoom, Suggest Zooms; for the selected zoom: Zoom level, **Focus** (Fixed Point or Follow Pointer, the pad, Horizontal, Vertical), **Timing** (Start, End, Zoom-in time, Zoom-out time), Delete Zoom |
 | Timeline | **Cut** | Previous/next, Add Cut; for the selected cut: **Timing** (Start, End, its length), Delete Cut |
 | Timeline | **Speed** | Previous/next, Add Speed Change; for the selected one: the rate, **Timing** (Start, End, its length), the note about sound, Delete Speed Change |
+| Timeline | **Annotate** | Previous/next, the list of annotations (top first); for the selected one: Text, Style, Size, Attach to, **Position**, **Timing**, Bring Forward, Send Back, Delete Annotation. Added since this brief, by `plans/studio-annotations.md` |
 | Rest | **Audio** | Mute, and the volume sliders a recording has. On Windows: Mute and one **Volume**, of the whole video (8 October 2026) |
 | Rest | **Project** | **Export** (Tiny Clips badge); **Storage** (Keep this project, with its reason written under it); **New Recordings** (Save as Default Look, with what it saves written under it) |
 

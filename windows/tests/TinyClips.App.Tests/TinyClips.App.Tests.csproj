@@ -47,6 +47,7 @@
       read from it which values a control is bound to both ways.
     -->
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.cs" Link="Studio\StudioViewModel.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Annotation.cs" Link="Studio\StudioViewModel.Annotation.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Cut.cs" Link="Studio\StudioViewModel.Cut.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Inspector.cs" Link="Studio\StudioViewModel.Inspector.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Project.cs" Link="Studio\StudioViewModel.Project.cs" />

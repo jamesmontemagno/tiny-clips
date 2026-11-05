@@ -396,25 +396,22 @@ internal sealed partial class WindowChecks
         mark = heard.Mark();
         var pressedAgain = Invoke(editor, "StudioDeleteSceneButton");
         StudioScene[] one = [four[1] with { Start = 0 }];
-        var afterFirst = WaitForLane(editor, SceneLaneFor(one, 0), 2, SceneLane);
+        var afterFirst = WaitForLane(editor, "empty", 2, SceneLane);
         var firstSaid = Said(heard, mark, StudioEditorText.SceneDeletedMessage);
         var gone = Absent(editor, "StudioDeleteSceneButton");
         var focusOnSplit = Until(() => FocusedId(editor), id => id == "StudioSceneSectionSplitButton", 1.5);
         var note = NameOf(editor, "StudioOneSceneNote", 1);
         _report.Check(
-            "deleting the first scene hands its time to the second, which then starts with the recording; with one scene left Delete scene is gone, the panel says what scenes are for, and the keyboard focus is on Split scene",
-            pressedAgain && afterFirst == "*Scene 1 of 1, Side by side, 0.0 to 12.0 seconds" && Describe(ScenesOf(editor)) == Describe(one) && firstSaid.Said && gone && focusOnSplit == "StudioSceneSectionSplitButton" && note == StudioEditorText.OneSceneExplanation,
+            "deleting the first scene hands its time to the second, which then starts with the recording; with one scene left the lane and Delete scene are gone, the panel says what scenes are for, and the keyboard focus is on Split scene",
+            pressedAgain && afterFirst == "empty" && Describe(ScenesOf(editor)) == Describe(one) && firstSaid.Said && gone && focusOnSplit == "StudioSceneSectionSplitButton" && note == StudioEditorText.OneSceneExplanation,
             $"the lane: {afterFirst}; the editor holds {Describe(ScenesOf(editor))}; sent: {firstSaid.Heard}; Delete scene gone: {gone}; the focus is on \"{focusOnSplit}\"; the note: \"{note}\"");
 
-        // The only scene stays, and Delete on the lane says so.
-        FocusOn(editor, SceneLane);
-        mark = heard.Mark();
+        // The only scene stays, and there is no lane left to press Delete on.
         var onlyKey = Key(editor, StudioShortcutKey.Delete);
-        var onlySaid = Said(heard, mark, StudioEditorText.OnlySceneExplanation);
         _report.Check(
-            "with one scene, what Delete runs on the scene lane deletes nothing and tells a screen reader that the only scene cannot be deleted",
-            onlyKey == StudioShortcutAction.RemoveCurrentScene && onlySaid.Said && Describe(ScenesOf(editor)) == Describe(one),
-            $"Delete ran {onlyKey}; sent: {onlySaid.Heard}; the lane: {Lane()}");
+            "with one scene there is no lane to press Delete on: what Delete runs does nothing, and the scene stays",
+            Absent(editor, SceneLane, 0.5) && onlyKey == StudioShortcutAction.None && Describe(ScenesOf(editor)) == Describe(one),
+            $"Delete ran {onlyKey}; the lane: {Lane()}");
 
         // Four Undo: the two scenes, the zoom, and the first scene that was deleted.
         string[] wanted = [SceneLaneFor(two, 0), SceneLaneFor(three, 0), SceneLaneFor(three, 0), SceneLaneFor(four, 0)];

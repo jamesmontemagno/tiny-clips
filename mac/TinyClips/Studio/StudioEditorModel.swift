@@ -324,9 +324,6 @@ struct StudioEditorModel: Equatable, Sendable {
     /// `StudioTimeMap.slowestRate` to `StudioTimeMap.fastestRate`.
     static let speedRates: [Double] = [0.25, 0.5, 1.5, 2, 4, 8]
 
-    /// What the speed lane says while no stretch plays at another speed.
-    static let noSpeedHint = "No speed changes. Press R to speed up two seconds from the playhead."
-
     /// What the Speed section says while there are speed changes and none is selected.
     static let selectSpeedHint = "Select a speed change on the timeline, or step to one with the arrows above."
 
@@ -357,6 +354,10 @@ struct StudioEditorModel: Equatable, Sendable {
     private var undoStack: [StudioEditableState] = []
     private var redoStack: [StudioEditableState] = []
     private var groupedSnapshot: StudioEditableState?
+
+    /// The annotation whose text was last typed in, for as long as nothing else has been edited:
+    /// what is typed next is part of the same undo step.
+    var typingInAnnotation: Int?
     private var exportedState: StudioEditableState?
 
     init(project: StudioProject) {
@@ -490,6 +491,7 @@ struct StudioEditorModel: Equatable, Sendable {
     /// the step that is taken back, and the gesture goes on: whatever it does next is one step
     /// again, and not a step for every move of the pointer.
     mutating func undo() {
+        typingInAnnotation = nil
         let wasGrouping = isGroupingEdits
         commitEditingGroup()
         if let previous = undoStack.popLast() {
@@ -504,6 +506,7 @@ struct StudioEditorModel: Equatable, Sendable {
     /// Does the step that was last taken back again. A gesture goes on afterwards, as it does
     /// after `undo()`.
     mutating func redo() {
+        typingInAnnotation = nil
         let wasGrouping = isGroupingEdits
         commitEditingGroup()
         if let next = redoStack.popLast() {
@@ -1965,7 +1968,13 @@ struct StudioEditorModel: Equatable, Sendable {
 
     // MARK: - Private
 
-    private mutating func mutate(_ body: (inout StudioProject) -> Void) {
+    /// Changes the project as part of the undo step before it, for text that is being typed.
+    mutating func applyWithoutUndoStep(_ body: (inout StudioProject) -> Void) {
+        body(&project)
+    }
+
+    mutating func mutate(_ body: (inout StudioProject) -> Void) {
+        typingInAnnotation = nil
         let before = editableState
         body(&project)
         guard before != editableState else { return }

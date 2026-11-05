@@ -53,6 +53,7 @@ public sealed partial class StudioEditorSession
         {
             _selectedZoomIndex = null;
             _selectedSpeedIndex = null;
+            _selectedAnnotationIndex = null;
             ShowInspectorPanel(StudioInspectorPanel.Cut);
         }
 

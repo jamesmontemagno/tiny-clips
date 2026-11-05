@@ -13,7 +13,7 @@ namespace TinyClips.App.Controls.Studio;
 public sealed partial class StudioSpeedLane : StudioRangeLane
 {
     public StudioSpeedLane(StudioViewModel viewModel)
-        : base(viewModel, "StudioSpeedLane", "Speed changes", StudioEditorText.NoSpeedHint, height: 24)
+        : base(viewModel, "StudioSpeedLane", "Speed changes", height: 24)
     {
     }
 
