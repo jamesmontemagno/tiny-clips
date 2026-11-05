@@ -1,7 +1,7 @@
 # Tiny Clips Studio: captions
 
-**Status:** in progress, started 5 November 2026. Stages 1 to 6 below are in place, except for
-SpeechAnalyzer on the Mac, which needs a real Mac to test. The format is specified in section 15 of
+**Status:** in progress, started 5 November 2026. Stages 1 to 6 below are in place. Apple Speech on
+the Mac still needs a real Mac to run on, because `SpeechTranscriber` is not available in a VM. The format is specified in section 15 of
 [`docs/studio-project-format.md`](../docs/studio-project-format.md), which decides if this
 document and the code disagree.
 
@@ -14,8 +14,9 @@ into the picture of an exported video. They work on macOS and Windows from one s
   carries them to the other platform.
 - **"Embed" means burning into the picture**, plus SRT and VTT files. A subtitle track inside the
   MP4 that a player can turn on and off is left out.
-- **Speech engines.** Windows uses Whisper.net. macOS uses WhisperKit. SpeechAnalyzer on macOS 26
-  and later was the plan, and can still sit behind the same protocol once it can be tested.
+- **Speech engines.** Windows uses Whisper.net. macOS uses SpeechAnalyzer's `SpeechTranscriber` where
+  macOS 26 and the Mac's hardware support it and it can hear the system's language, and WhisperKit
+  otherwise. Either can be chosen in the Generate popover, and a choice is kept.
 - **Audio never leaves the device.**
 - **No new Pro gate.** The Studio views have none today.
 - **Burn-in is off by default.**
@@ -32,7 +33,7 @@ is ported and the pipeline is not.
 |---|---|
 | `CaptionStyle`, `BuildForceStyle` values | The sizes, positions, and looks in section 15.4 of the format |
 | `CaptionQualityService` | Ported to C#, rewritten in Swift, tested against shared fixtures |
-| `WhisperModelCatalog`, `WhisperModelService` | Windows only |
+| `WhisperModelCatalog`, `WhisperModelService` | The Windows catalog and store. The Mac's follow them, with WhisperKit's models |
 | `MediaTranscriptService` | Windows keeps the Whisper.net loop, takes its audio from `StudioAudioMixSource` in place of ffmpeg, and adds `WithTokenTimestamps` |
 | `SrtConverter` | Replaced by the shared reader and writer in section 15.3 |
 | `BurnAsync`, `FfmpegRunner` | Not used. Both renderers draw captions themselves |
@@ -57,9 +58,9 @@ Each stage is a pull request that updates the changelogs and validates the platf
 5. **Windows transcription (done).** Whisper.net, model management in Studio settings, and
    `studio.captions.models` and `studio.captions.generate`. Built ahead of stage 4, because making
    captions is more use than drawing them. It listens on the CPU, in the language it detects.
-6. **macOS transcription (done, with WhisperKit).** `com.apple.security.network.client` in the Mac
-   App Store entitlements for its downloads. SpeechAnalyzer is left until a real Mac can test it.
-   The privacy answers in App Store Connect still need checking by whoever submits the build.
+6. **macOS transcription (done).** Both engines, and `com.apple.security.network.client` in the Mac
+   App Store entitlements for WhisperKit's downloads. macOS downloads Apple Speech's languages
+   itself. The privacy answers in App Store Connect still need checking by whoever submits the build.
 
 Transcription is a cancellable background job behind one interface, applied as a single undoable
 edit. Models download only after the user agrees to the size. `studio.captions.generate` downloads
@@ -78,17 +79,19 @@ and garbled, so detection is only as good as the speech.
 
 The first needs a real Mac, and the second needs a submission:
 
-- **SpeechAnalyzer:** long-file reliability, word timings, whether it needs Speech permission, and
-  a language picker, since it seems to need a chosen language rather than detecting one. On a
-  GitHub macOS 26 VM, `SpeechTranscriber.isAvailable` is false with no supported locales.
+- **Apple Speech on a real Mac:** `SpeechTranscriber.isAvailable` is false on GitHub's macOS 26 VMs,
+  arm64 and Intel, so it has never run. Its steps have: `StudioSpeechAnalysis` is the same code
+  with `DictationTranscriber`, which does run there, on real speech. What is left to see is how
+  `SpeechTranscriber` itself breaks up long files, its word timings, and its punctuation. Apple
+  says no Speech permission is needed, and does not list which Macs have it.
 - **App Review:** how the Mac App Store network entitlement fares.
 - **Project size:** test an hour-long project, because Windows compares undo state as serialized
   text (`StudioEditableState.ContentEquals`).
 - **Package size:** captions add about 2.8 MiB to the MSIX and 7 MiB once installed.
   `Whisper.net.Runtime` copies the libraries of all three Windows architectures, so about 3.4 MiB
   of the installed size is libraries a package cannot use. Trim it if it matters.
-- **Language:** Windows detects the language, and a recording can be heard as the wrong one. A
-  language picker can use the same setting SpeechAnalyzer needs on macOS.
+- **Language:** Whisper detects the language, and a recording can be heard as the wrong one. Apple
+  Speech has a picker, and Whisper could use the same setting on both platforms.
 - **GPU:** Whisper.net has Vulkan and CUDA runtimes. Both are large, and neither is in the package.
 - **Long recordings:** the sound is held in memory while it is heard, about 230 MB an hour.
 - **System sound in captions:** the Windows recorder writes one mixed track, so what the computer

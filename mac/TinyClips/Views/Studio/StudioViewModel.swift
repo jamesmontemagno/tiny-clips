@@ -165,7 +165,7 @@ final class StudioViewModel: ObservableObject {
     init(
         projectID: String,
         store: StudioProjectStore = .shared,
-        captionGenerator: StudioCaptionGenerating = StudioWhisperCaptionGenerator.shared
+        captionGenerator: StudioCaptionGenerating = StudioCaptionEngines.shared
     ) {
         self.projectID = projectID
         self.store = store
@@ -443,7 +443,7 @@ final class StudioViewModel: ObservableObject {
 
     /// Makes captions from the recording's sound. They replace the ones there are when they are
     /// ready, as one edit, so Undo brings those back.
-    func generateCaptions(model: StudioCaptionModel) {
+    func generateCaptions(model: StudioCaptionModel, language: String? = nil) {
         guard canGenerateCaptions, let project, let paths else { return }
         commitCaptionText()
         captionStatus = ""
@@ -466,7 +466,7 @@ final class StudioViewModel: ObservableObject {
         captionGenerationTask = Task { [weak self] in
             let outcome: Result<StudioGeneratedCaptions, Error>
             do {
-                outcome = .success(try await generator.generate(project: project, paths: paths, model: model, progress: report))
+                outcome = .success(try await generator.generate(project: project, paths: paths, model: model, language: language, progress: report))
             } catch {
                 outcome = .failure(error)
             }

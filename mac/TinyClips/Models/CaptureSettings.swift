@@ -436,8 +436,11 @@ class CaptureSettings: ObservableObject {
     /// The most disk space the Studio projects that cleanup may remove can use before the ones
     /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
     @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
-    /// The speech model captions are generated with: an id of `StudioCaptionModels`.
-    @AppStorage("studioCaptionModel") var studioCaptionModel: String = StudioCaptionModels.defaultModel.id
+    /// The speech model captions are generated with: an id of `StudioCaptionModels`, or empty until
+    /// someone chooses, which leaves it to `StudioCaptionModels.resolve`.
+    @AppStorage("studioCaptionModel") var studioCaptionModel: String = ""
+    /// The language Apple Speech listens for, as a BCP 47 tag, or empty for the system's.
+    @AppStorage("studioCaptionLanguage") var studioCaptionLanguage: String = ""
     var studioCleanupOptions: StudioCleanupOptions {
         StudioCleanupOptions(retentionDays: studioSourceRetentionDays, sizeCapGigabytes: studioStorageCapGigabytes)
     }
@@ -872,7 +875,7 @@ class CaptureSettings: ObservableObject {
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
-        "studioSourceRetentionDays", "studioStorageCapGigabytes", "studioCaptionModel",
+        "studioSourceRetentionDays", "studioStorageCapGigabytes", "studioCaptionModel", "studioCaptionLanguage",
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",

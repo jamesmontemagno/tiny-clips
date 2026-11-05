@@ -343,13 +343,21 @@ enum StudioCaptionText {
     }
 
     static func modelNote(_ model: StudioCaptionModel, isInstalled: Bool) -> String {
-        isInstalled
+        if model.isAppleSpeech {
+            return isInstalled
+                ? "\(model.guidance). This language is already on this Mac."
+                : "\(model.guidance). macOS downloads this language the first time, and keeps it for other apps too."
+        }
+        return isInstalled
             ? "\(model.guidance). Already on this Mac."
             : "\(model.guidance). Downloads \(model.sizeText) the first time."
     }
 
     static func generateActionText(_ model: StudioCaptionModel, isInstalled: Bool) -> String {
-        isInstalled ? "Generate" : "Download \(model.sizeText) and Generate"
+        if isInstalled {
+            return "Generate"
+        }
+        return model.isAppleSpeech ? "Download and Generate" : "Download \(model.sizeText) and Generate"
     }
 
     /// How much room the models take, in the words of Settings.

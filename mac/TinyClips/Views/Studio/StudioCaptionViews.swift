@@ -15,11 +15,33 @@ struct StudioCaptionRow: Identifiable {
 /// playhead to it. Its text goes into the project when the box is left, so typing is one undo step.
 struct StudioCaptionsInspectorSection: View {
     @ObservedObject var viewModel: StudioViewModel
-    @AppStorage("studioCaptionModel") private var modelID = StudioCaptionModels.defaultModel.id
+    @AppStorage("studioCaptionModel") private var modelID = ""
+    @AppStorage("studioCaptionLanguage") private var languageID = ""
     @State private var isChoosingModel = false
+    @State private var languages: [StudioCaptionLanguage] = []
+    @State private var systemLanguage: String?
+    @State private var hasLoadedLanguages = false
 
     private var model: StudioCaptionModel {
-        StudioCaptionModels.find(modelID) ?? StudioCaptionModels.defaultModel
+        StudioCaptionModels.resolve(
+            id: modelID,
+            appleSpeechIsAvailable: StudioAppleSpeech.isAvailable,
+            canHearSystemLanguage: !hasLoadedLanguages || systemLanguage != nil
+        )
+    }
+
+    private var language: StudioCaptionLanguage? {
+        StudioCaptionLanguages.choose(stored: languageID, systemLanguage: systemLanguage, from: languages)
+    }
+
+    private var isModelReady: Bool {
+        model.isAppleSpeech ? (language?.isInstalled ?? false) : viewModel.isCaptionModelInstalled(model)
+    }
+
+    private func loadLanguages() async {
+        languages = await StudioAppleSpeech.languages()
+        systemLanguage = await StudioAppleSpeech.language(equivalentTo: nil)
+        hasLoadedLanguages = true
     }
 
     var body: some View {
@@ -74,12 +96,21 @@ struct StudioCaptionsInspectorSection: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Generate Captions")
                     .font(.headline)
-                Picker("Model", selection: $modelID) {
-                    ForEach(StudioCaptionModels.all) { model in
+                Picker("Model", selection: Binding(get: { model.id }, set: { modelID = $0 })) {
+                    ForEach(StudioCaptionModels.options(appleSpeechIsAvailable: StudioAppleSpeech.isAvailable)) { model in
                         Text("\(model.name) (\(model.sizeText))").tag(model.id)
                     }
                 }
-                Text(StudioCaptionText.modelNote(model, isInstalled: viewModel.isCaptionModelInstalled(model)))
+                if model.isAppleSpeech {
+                    Picker("Language", selection: Binding(get: { language?.id ?? "" }, set: { languageID = $0 })) {
+                        ForEach(languages) { language in
+                            Text(language.name).tag(language.id)
+                        }
+                    }
+                    .disabled(languages.isEmpty)
+                    .help("Apple Speech listens for one language, and does not detect it")
+                }
+                Text(StudioCaptionText.modelNote(model, isInstalled: isModelReady))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -95,15 +126,19 @@ struct StudioCaptionsInspectorSection: View {
                 }
                 HStack {
                     Spacer()
-                    Button(StudioCaptionText.generateActionText(model, isInstalled: viewModel.isCaptionModelInstalled(model))) {
+                    Button(StudioCaptionText.generateActionText(model, isInstalled: isModelReady)) {
                         isChoosingModel = false
-                        viewModel.generateCaptions(model: model)
+                        viewModel.generateCaptions(model: model, language: model.isAppleSpeech ? language?.id : nil)
                     }
                     .keyboardShortcut(.defaultAction)
+                    .disabled(model.isAppleSpeech && language == nil)
                 }
             }
             .padding()
             .frame(width: 280)
+            .task {
+                await loadLanguages()
+            }
         }
     }
 

@@ -104,6 +104,7 @@ public sealed class AutomationContractTests
         Assert.True(captionGenerate.Parameters["expectedRevision"].Required);
         Assert.False(captionGenerate.Parameters["model"].Required);
         Assert.False(captionGenerate.Parameters["allowModelDownload"].Required);
+        Assert.False(captionGenerate.Parameters["language"].Required);
     }
 
     [Fact]

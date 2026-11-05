@@ -17,6 +17,19 @@ struct StudioCaptionModel: Identifiable, Equatable, Sendable {
 
     /// Whether it only knows English, and so has no language to detect.
     var isEnglishOnly: Bool { variant.hasSuffix(".en") }
+
+    /// Whether it is the speech recognition built into macOS, which is told a language rather than
+    /// detecting one, and whose languages macOS downloads and manages.
+    var isAppleSpeech: Bool { id == StudioCaptionModels.appleSpeech.id }
+}
+
+/// A language Apple Speech can listen for on this Mac.
+struct StudioCaptionLanguage: Identifiable, Equatable, Sendable {
+    /// A BCP 47 tag.
+    let id: String
+    let name: String
+    /// Whether macOS has it already. Otherwise it downloads it the first time.
+    let isInstalled: Bool
 }
 
 enum StudioCaptionModels {
@@ -37,8 +50,50 @@ enum StudioCaptionModels {
 
     static let defaultModel = all[2]
 
+    /// The speech recognition built into macOS 26 and later. Not one of `all`, because not every
+    /// Mac has it and nothing of it is kept in the app's own folder.
+    static let appleSpeech = StudioCaptionModel(
+        id: "AppleSpeech",
+        name: "Apple Speech",
+        sizeText: "built into macOS",
+        approximateBytes: 0,
+        guidance: "Fast, for the language you choose",
+        variant: ""
+    )
+
     static func find(_ id: String?) -> StudioCaptionModel? {
-        all.first { $0.id == id }
+        id == appleSpeech.id ? appleSpeech : all.first { $0.id == id }
+    }
+
+    /// What can be chosen on this Mac, best first.
+    static func options(appleSpeechIsAvailable: Bool) -> [StudioCaptionModel] {
+        appleSpeechIsAvailable ? [appleSpeech] + all : all
+    }
+
+    /// The model to use for a stored choice. Without one, Apple Speech where it can hear the
+    /// system's language, and otherwise a Whisper model, which detects the language by itself.
+    static func resolve(id: String?, appleSpeechIsAvailable: Bool, canHearSystemLanguage: Bool = true) -> StudioCaptionModel {
+        if id == appleSpeech.id {
+            return appleSpeechIsAvailable ? appleSpeech : defaultModel
+        }
+        if let found = find(id) {
+            return found
+        }
+        return appleSpeechIsAvailable && canHearSystemLanguage ? appleSpeech : defaultModel
+    }
+}
+
+enum StudioCaptionLanguages {
+    /// The language to listen for: the stored choice, then the system's, then the first there is.
+    static func choose(stored: String?, systemLanguage: String?, from languages: [StudioCaptionLanguage]) -> StudioCaptionLanguage? {
+        languages.first { $0.id == stored } ?? languages.first { $0.id == systemLanguage } ?? languages.first
+    }
+
+    /// The reservation to give up so that `wanted` can have one. macOS limits how many languages
+    /// an app may hold, and asking for one more is an error rather than a wait.
+    static func reservationToRelease(reserved: [String], wanted: String, maximum: Int) -> String? {
+        guard !reserved.contains(wanted), reserved.count >= max(1, maximum) else { return nil }
+        return reserved.first
     }
 }
 
@@ -140,10 +195,13 @@ protocol StudioCaptionGenerating: Sendable {
     func isModelInstalled(_ model: StudioCaptionModel) -> Bool
 
     /// Stops with `CancellationError` when its task is cancelled, which can take a few seconds.
+    /// - Parameter language: A BCP 47 tag for Apple Speech to listen for, or nil for the system's.
+    ///   A Whisper model detects the language and does not use it.
     func generate(
         project: StudioProject,
         paths: StudioProjectPaths,
         model: StudioCaptionModel,
+        language: String?,
         progress: @escaping @Sendable (StudioCaptionProgress) -> Void
     ) async throws -> StudioGeneratedCaptions
 }
@@ -188,26 +246,44 @@ enum StudioCaptionTranscript {
         }
 
         // Too long for one cue. It is broken between words, so each part keeps the words it says.
-        var parts: [[StudioCaptionWord]] = [[]]
-        var length = 0
-        for word in words {
-            let added = word.text.count + (length == 0 ? 0 : 1)
-            if length + added > longestCue, !parts[parts.count - 1].isEmpty {
-                parts.append([])
-                length = 0
+        // Each part's text comes out of the text itself: not every language puts spaces between
+        // its words, and a word can have one inside it, as Apple Speech's `out of` does.
+        let places = self.places(of: words, in: text)
+        var parts: [Range<Int>] = []
+        var first = 0
+        for index in words.indices where index > first {
+            if text[places[first].lowerBound..<places[index].upperBound].count > longestCue {
+                parts.append(first..<index)
+                first = index
             }
-            parts[parts.count - 1].append(word)
-            length += word.text.count + (parts[parts.count - 1].count == 1 ? 0 : 1)
         }
-        return parts.enumerated().map { index, part in
-            let partStart = index == 0 ? segment.start : part[0].start
-            let next = index + 1 < parts.count ? parts[index + 1][0].start : end
+        parts.append(first..<words.count)
+
+        return parts.enumerated().map { partIndex, part in
+            let partStart = partIndex == 0 ? segment.start : words[part.lowerBound].start
+            let next = partIndex + 1 < parts.count ? words[parts[partIndex + 1].lowerBound].start : end
             return cue(
                 start: partStart,
                 end: max(next, partStart + StudioCaptionResolver.shortestPart),
-                text: part.map(\.text).joined(separator: " "),
-                words: part
+                text: String(text[places[part.lowerBound].lowerBound..<places[part.upperBound - 1].upperBound]),
+                words: Array(words[part])
             )
+        }
+    }
+
+    /// Where each word is in `text`, which `spelledWords` has found them to spell out.
+    private static func places(of words: [StudioCaptionWord], in text: String) -> [Range<String.Index>] {
+        var index = text.startIndex
+        return words.map { word in
+            var start: String.Index?
+            for character in word.text where !character.isWhitespace {
+                while text[index].isWhitespace {
+                    index = text.index(after: index)
+                }
+                start = start ?? index
+                index = text.index(after: index)
+            }
+            return (start ?? index)..<index
         }
     }
 
@@ -223,7 +299,7 @@ enum StudioCaptionTranscript {
             guard !cleaned.isEmpty else { return nil }
             return StudioCaptionWord(start: min(word.start, sourceDuration), end: min(word.end, sourceDuration), text: cleaned)
         }
-        let spelled = words.map(\.text).joined()
+        let spelled = words.map(\.text).joined().filter { !$0.isWhitespace }
         let expected = text.filter { !$0.isWhitespace }
         return spelled == expected ? words : []
     }

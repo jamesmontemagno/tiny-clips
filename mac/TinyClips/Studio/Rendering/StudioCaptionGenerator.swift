@@ -4,7 +4,7 @@ import WhisperKit
 
 /// Reads a recording's sound as speech recognition wants it: one channel of floats at 16 kHz.
 enum StudioCaptionSound {
-    private static let sampleRate = 16_000.0
+    static let sampleRate = 16_000.0
 
     static func read(
         url: URL,
@@ -84,6 +84,41 @@ enum StudioCaptionSound {
     }
 }
 
+extension StudioCaptionSound {
+    /// The samples as a file in the temporary folder, for SpeechAnalyzer to read. The caller
+    /// deletes it.
+    static func writeTemporaryFile(_ samples: [Float]) throws -> URL {
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false) else {
+            throw StudioCaptionGenerationError.unreadableSound
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tinyclips-captions-\(UUID().uuidString).wav")
+        do {
+            let file = try AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let framesAtOnce = 65_536
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(framesAtOnce)),
+                  let channel = buffer.floatChannelData?[0] else {
+                throw StudioCaptionGenerationError.unreadableSound
+            }
+            var written = 0
+            while written < samples.count {
+                try Task.checkCancellation()
+                let count = min(framesAtOnce, samples.count - written)
+                samples.withUnsafeBufferPointer { source in
+                    channel.update(from: source.baseAddress!.advanced(by: written), count: count)
+                }
+                buffer.frameLength = AVAudioFrameCount(count)
+                try file.write(from: buffer)
+                written += count
+            }
+            return url
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
+    }
+}
+
 /// Makes captions with WhisperKit, on this computer. Only the model is downloaded.
 struct StudioWhisperCaptionGenerator: StudioCaptionGenerating {
     static let shared = StudioWhisperCaptionGenerator()
@@ -102,6 +137,7 @@ struct StudioWhisperCaptionGenerator: StudioCaptionGenerating {
         project: StudioProject,
         paths: StudioProjectPaths,
         model: StudioCaptionModel,
+        language: String?,
         progress: @escaping @Sendable (StudioCaptionProgress) -> Void
     ) async throws -> StudioGeneratedCaptions {
         // The sound first: a recording without any should not cost a download.
@@ -206,7 +242,7 @@ struct StudioWhisperCaptionGenerator: StudioCaptionGenerating {
 
         progress(StudioCaptionProgress(stage: .downloadingModel, fraction: 0))
         let download = await StudioCaptionDownloads.shared.task(for: model, store: store, progress: progress)
-        let wait = StudioCaptionDownloadWait()
+        let wait = StudioCaptionWait<URL>()
         do {
             return try await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation { continuation in
@@ -228,7 +264,7 @@ struct StudioWhisperCaptionGenerator: StudioCaptionGenerating {
 
 /// Passes on how far a stage is once for each percent. Reading the sound and recognizing speech
 /// each say so thousands of times, and all of that would otherwise land on the main thread.
-private final class StudioCaptionPercentReports: @unchecked Sendable {
+final class StudioCaptionPercentReports: @unchecked Sendable {
     private let lock = NSLock()
     private let stage: StudioCaptionProgress.Stage
     private let progress: @Sendable (StudioCaptionProgress) -> Void
@@ -292,12 +328,12 @@ private actor StudioCaptionDownloads {
 }
 
 /// Ends a wait for a download with whichever comes first: the download, or being cancelled.
-private final class StudioCaptionDownloadWait: @unchecked Sendable {
+final class StudioCaptionWait<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<URL, Error>?
-    private var outcome: Result<URL, Error>?
+    private var continuation: CheckedContinuation<Value, Error>?
+    private var outcome: Result<Value, Error>?
 
-    func begin(_ continuation: CheckedContinuation<URL, Error>) {
+    func begin(_ continuation: CheckedContinuation<Value, Error>) {
         lock.lock()
         if let outcome {
             lock.unlock()
@@ -308,7 +344,7 @@ private final class StudioCaptionDownloadWait: @unchecked Sendable {
         lock.unlock()
     }
 
-    func finish(_ result: Result<URL, Error>) {
+    func finish(_ result: Result<Value, Error>) {
         lock.lock()
         guard outcome == nil else {
             lock.unlock()

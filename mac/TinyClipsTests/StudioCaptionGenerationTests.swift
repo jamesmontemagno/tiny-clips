@@ -1,3 +1,5 @@
+import AVFoundation
+import Speech
 import XCTest
 @testable import TinyClips
 
@@ -166,5 +168,157 @@ final class StudioCaptionGenerationTests: XCTestCase {
         XCTAssertEqual(StudioCaptionText.generateActionText(base, isInstalled: false), "Download 147 MB and Generate")
         XCTAssertEqual(StudioCaptionText.installedModelsText(count: 0, bytes: 0), "No models downloaded.")
         XCTAssertTrue(StudioCaptionText.installedModelsText(count: 2, bytes: 5_000_000).hasPrefix("2 models downloaded, using "))
+    }
+
+    // MARK: - Apple Speech
+
+    func testAppleSpeech_IsOfferedFirst_OnlyWhereItIsAvailable() {
+        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: false), StudioCaptionModels.all)
+        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true).first, StudioCaptionModels.appleSpeech)
+        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true).count, StudioCaptionModels.all.count + 1)
+        XCTAssertEqual(StudioCaptionModels.find("AppleSpeech"), StudioCaptionModels.appleSpeech)
+        XCTAssertTrue(StudioCaptionModels.appleSpeech.isAppleSpeech)
+        XCTAssertFalse(StudioCaptionModels.defaultModel.isAppleSpeech)
+        XCTAssertFalse(StudioCaptionModels.all.contains { $0.isAppleSpeech })
+    }
+
+    func testWithoutAChoice_AppleSpeechIsUsedWhereItCanHearTheSystemsLanguage() {
+        let apple = StudioCaptionModels.appleSpeech
+        let base = StudioCaptionModels.defaultModel
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true), apple)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: nil, appleSpeechIsAvailable: true), apple)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: false), base)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true, canHearSystemLanguage: false), base)
+    }
+
+    func testAChoiceIsKept_UnlessThisMacCannotDoIt() {
+        let small = StudioCaptionModels.find("Small")
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "Small", appleSpeechIsAvailable: true), small)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "AppleSpeech", appleSpeechIsAvailable: true, canHearSystemLanguage: false), StudioCaptionModels.appleSpeech)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "AppleSpeech", appleSpeechIsAvailable: false), StudioCaptionModels.defaultModel)
+    }
+
+    func testTheLanguage_IsTheStoredOne_ThenTheSystems_ThenTheFirst() {
+        let languages = ["de-DE", "en-US", "fr-FR"].map { StudioCaptionLanguage(id: $0, name: $0, isInstalled: false) }
+        XCTAssertEqual(StudioCaptionLanguages.choose(stored: "fr-FR", systemLanguage: "en-US", from: languages)?.id, "fr-FR")
+        XCTAssertEqual(StudioCaptionLanguages.choose(stored: "", systemLanguage: "en-US", from: languages)?.id, "en-US")
+        XCTAssertEqual(StudioCaptionLanguages.choose(stored: "ja-JP", systemLanguage: "en-US", from: languages)?.id, "en-US")
+        XCTAssertEqual(StudioCaptionLanguages.choose(stored: nil, systemLanguage: "ja-JP", from: languages)?.id, "de-DE")
+        XCTAssertNil(StudioCaptionLanguages.choose(stored: "en-US", systemLanguage: "en-US", from: []))
+    }
+
+    func testAReservationIsGivenUp_OnlyWhenThereIsNoRoomForTheLanguage() {
+        let reserved = ["en-US", "fr-FR"]
+        XCTAssertEqual(StudioCaptionLanguages.reservationToRelease(reserved: reserved, wanted: "de-DE", maximum: 2), "en-US")
+        XCTAssertNil(StudioCaptionLanguages.reservationToRelease(reserved: reserved, wanted: "de-DE", maximum: 5))
+        XCTAssertNil(StudioCaptionLanguages.reservationToRelease(reserved: reserved, wanted: "fr-FR", maximum: 2))
+        XCTAssertNil(StudioCaptionLanguages.reservationToRelease(reserved: [], wanted: "de-DE", maximum: 0))
+    }
+
+    func testThePanel_DoesNotPromiseASizeForAppleSpeech() {
+        let apple = StudioCaptionModels.appleSpeech
+        XCTAssertEqual(StudioCaptionText.generateActionText(apple, isInstalled: true), "Generate")
+        XCTAssertEqual(StudioCaptionText.generateActionText(apple, isInstalled: false), "Download and Generate")
+        XCTAssertTrue(StudioCaptionText.modelNote(apple, isInstalled: false).contains("macOS downloads this language"))
+        XCTAssertTrue(StudioCaptionText.modelNote(apple, isInstalled: true).contains("already on this Mac"))
+    }
+
+    /// What a real result from SpeechAnalyzer looks like: runs that end with their space, one with
+    /// two words in it, and a single result that spans far more than one cue can hold.
+    func testARealResult_IsBrokenIntoCues_ThatKeepTheirWords() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("SpeechAnalyzer needs macOS 26") }
+        let spoken = "I believe that this nation should commit itself to achieving the goal before this decade is out of landing a man on the moon and returning him safely"
+        var pieces = spoken.split(separator: " ").map { String($0) + " " }
+        if let at = pieces.firstIndex(of: "out "), pieces[at + 1] == "of " {
+            pieces[at] = "out of "
+            pieces.remove(at: at + 1)
+        }
+        let segment = try XCTUnwrap(StudioAppleSpeechResults.segment(
+            text: attributed(pieces.enumerated().map { ($1, Double($0) * 0.4) }),
+            range: CMTimeRange(start: CMTime(seconds: 0.2, preferredTimescale: 600), end: CMTime(seconds: 11, preferredTimescale: 600))
+        ))
+        XCTAssertEqual(segment.start, 0.2, accuracy: 0.01)
+        XCTAssertEqual(segment.words.count, pieces.count)
+        XCTAssertTrue(segment.words.contains { $0.text == "out of " })
+
+        let cues = StudioCaptionTranscript.cues(from: [segment], sourceDuration: 20)
+        XCTAssertGreaterThan(cues.count, 1)
+        XCTAssertEqual(cues.map(\.text).joined(separator: " "), spoken)
+        for cue in cues {
+            XCTAssertLessThanOrEqual(cue.text.count, StudioCaptionTranscript.longestCue)
+            XCTAssertFalse(cue.words.isEmpty)
+            XCTAssertEqual(cue.words.map(\.text).joined(separator: " "), cue.text)
+        }
+    }
+
+    func testPunctuationInARunOfItsOwn_JoinsItsWord() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("SpeechAnalyzer needs macOS 26") }
+        let segment = try XCTUnwrap(StudioAppleSpeechResults.segment(
+            text: attributed([("Hello", 0), (", ", 0.5), ("world", 1), (".", 1.5)]),
+            range: CMTimeRange(start: .zero, end: CMTime(seconds: 2, preferredTimescale: 600))
+        ))
+        XCTAssertEqual(segment.text, "Hello, world.")
+        XCTAssertEqual(segment.words.map(\.text), ["Hello, ", "world."])
+    }
+
+    func testALanguageWithoutSpaces_CanStillBeBrokenBetweenItsWords_AndGainsNoSpaces() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("SpeechAnalyzer needs macOS 26") }
+        let pieces = Array(repeating: "これは字幕です", count: 20)
+        let segment = try XCTUnwrap(StudioAppleSpeechResults.segment(
+            text: attributed(pieces.enumerated().map { ($1, Double($0)) }),
+            range: CMTimeRange(start: .zero, end: CMTime(seconds: 20, preferredTimescale: 600))
+        ))
+        XCTAssertEqual(segment.words.count, 20)
+
+        let cues = StudioCaptionTranscript.cues(from: [segment], sourceDuration: 30)
+        XCTAssertGreaterThan(cues.count, 1)
+        XCTAssertEqual(cues.map(\.text).joined(), pieces.joined())
+        XCTAssertFalse(cues.contains { $0.text.contains(" ") })
+    }
+
+    func testAResultWithoutTimes_HasNoWords_AndKeepsItsText() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("SpeechAnalyzer needs macOS 26") }
+        let segment = try XCTUnwrap(StudioAppleSpeechResults.segment(
+            text: AttributedString("No times here."),
+            range: CMTimeRange(start: .zero, end: CMTime(seconds: 2, preferredTimescale: 600))
+        ))
+        XCTAssertTrue(segment.words.isEmpty)
+        XCTAssertEqual(StudioCaptionTranscript.cues(from: [segment], sourceDuration: 5).map(\.text), ["No times here."])
+    }
+
+    func testAResultOfNothing_IsNoSegment() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("SpeechAnalyzer needs macOS 26") }
+        XCTAssertNil(StudioAppleSpeechResults.segment(text: AttributedString("  \n"), range: .zero))
+    }
+
+    func testTheSamples_GoToATemporaryFile_ThatReadsBackTheSame() throws {
+        let samples = (0..<200_000).map { Float(sin(Double($0) * 0.05)) * 0.5 }
+        let url = try StudioCaptionSound.writeTemporaryFile(samples)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let file = try AVAudioFile(forReading: url)
+        XCTAssertEqual(file.length, AVAudioFramePosition(samples.count))
+        XCTAssertEqual(file.processingFormat.sampleRate, 16_000)
+        XCTAssertEqual(file.processingFormat.channelCount, 1)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(samples.count)))
+        try file.read(into: buffer)
+        let channel = try XCTUnwrap(buffer.floatChannelData?[0])
+        for index in stride(from: 0, to: samples.count, by: 9973) {
+            XCTAssertEqual(channel[index], samples[index], accuracy: 0.0001)
+        }
+    }
+
+    @available(macOS 26.0, *)
+    private func attributed(_ runs: [(String, Double)]) -> AttributedString {
+        var whole = AttributedString()
+        for (text, start) in runs {
+            var piece = AttributedString(text)
+            piece.audioTimeRange = CMTimeRange(
+                start: CMTime(seconds: start, preferredTimescale: 600),
+                end: CMTime(seconds: start + 0.3, preferredTimescale: 600)
+            )
+            whole.append(piece)
+        }
+        return whole
     }
 }

@@ -61,7 +61,7 @@ final class AutomationCommandRouter {
         case "studio.zoom.suggest": return try suggestStudioZooms(params)
         case "studio.export": return try await exportStudioProject(params)
         case "studio.captions.check": return try checkStudioCaptions(params)
-        case "studio.captions.models": return try listCaptionModels()
+        case "studio.captions.models": return try await listCaptionModels()
         case "studio.captions.generate": return try await generateStudioCaptions(params)
         case "studio.captions.import": return try importStudioCaptions(params)
         case "studio.captions.fix": return try fixStudioCaptions(params)
@@ -726,20 +726,34 @@ final class AutomationCommandRouter {
         ]
     }
 
-    private func listCaptionModels() throws -> [String: Any] {
+    private func listCaptionModels() async throws -> [String: Any] {
         try requireStudioEnabled()
-        let generator = StudioWhisperCaptionGenerator.shared
+        let generator = StudioCaptionEngines.shared
+        let languages = await StudioAppleSpeech.languages()
+        let systemLanguage = await StudioAppleSpeech.language(equivalentTo: nil)
+        let isAvailable = StudioAppleSpeech.isAvailable
+        let models = StudioCaptionModels.options(appleSpeechIsAvailable: isAvailable).map { model -> [String: Any] in
+            var entry: [String: Any] = [
+                "id": model.id,
+                "name": model.name,
+                "size": model.sizeText,
+                "guidance": model.guidance,
+                "installed": generator.isModelInstalled(model),
+            ]
+            if model.isAppleSpeech {
+                entry["installed"] = languages.first { $0.id == systemLanguage }?.isInstalled ?? false
+                entry["languages"] = languages.map { ["id": $0.id, "name": $0.name, "installed": $0.isInstalled] as [String: Any] }
+                entry["systemLanguage"] = systemLanguage ?? NSNull()
+            }
+            return entry
+        }
         return [
-            "models": StudioCaptionModels.all.map { model -> [String: Any] in
-                [
-                    "id": model.id,
-                    "name": model.name,
-                    "size": model.sizeText,
-                    "guidance": model.guidance,
-                    "installed": generator.isModelInstalled(model),
-                ]
-            },
-            "selected": CaptureSettings.shared.studioCaptionModel,
+            "models": models,
+            "selected": StudioCaptionModels.resolve(
+                id: CaptureSettings.shared.studioCaptionModel,
+                appleSpeechIsAvailable: isAvailable,
+                canHearSystemLanguage: systemLanguage != nil
+            ).id,
         ]
     }
 
@@ -754,10 +768,29 @@ final class AutomationCommandRouter {
             }
             model = found
         } else {
-            model = StudioCaptionModels.find(CaptureSettings.shared.studioCaptionModel) ?? StudioCaptionModels.defaultModel
+            model = StudioCaptionModels.resolve(
+                id: CaptureSettings.shared.studioCaptionModel,
+                appleSpeechIsAvailable: StudioAppleSpeech.isAvailable,
+                canHearSystemLanguage: await StudioAppleSpeech.language(equivalentTo: nil) != nil
+            )
         }
-        let generator = StudioWhisperCaptionGenerator.shared
-        guard generator.isModelInstalled(model) || params["allowModelDownload"] as? Bool == true else {
+
+        let requestedLanguage = (params["language"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let generator = StudioCaptionEngines.shared
+        var language: String?
+        if model.isAppleSpeech {
+            guard StudioAppleSpeech.isAvailable else {
+                throw AutomationError(.invalidParams, "Apple Speech is not available on this Mac. Use studio.captions.models to see what is.")
+            }
+            guard let found = await StudioAppleSpeech.language(equivalentTo: requestedLanguage) else {
+                throw AutomationError(.invalidParams, "Apple Speech cannot listen for \(requestedLanguage ?? "the system's language") on this Mac. Use studio.captions.models to see the languages it can.")
+            }
+            language = found
+            let isInstalled = await StudioAppleSpeech.languages().first { $0.id == found }?.isInstalled ?? false
+            guard isInstalled || params["allowModelDownload"] as? Bool == true else {
+                throw AutomationError(.invalidParams, "Apple Speech does not have \(found) on this Mac yet. Set allowModelDownload to true to have macOS download it.")
+            }
+        } else if !generator.isModelInstalled(model), params["allowModelDownload"] as? Bool != true {
             throw AutomationError(.invalidParams, "The \(model.name) model (\(model.sizeText)) is not on this Mac. Set allowModelDownload to true to download it.")
         }
 
@@ -767,6 +800,7 @@ final class AutomationCommandRouter {
                 project: current,
                 paths: try StudioProjectStore.shared.paths(for: current),
                 model: model,
+                language: language,
                 progress: { _ in }
             )
         } catch let error as StudioCaptionGenerationError {

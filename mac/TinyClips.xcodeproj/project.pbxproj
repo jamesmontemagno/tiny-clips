@@ -225,6 +225,8 @@
 		322CB3FB9F91146FB467C8DF /* StudioRenderState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FE5AD266D2D88BE76DBA9C7 /* StudioRenderState.swift */; };
 		40548B5C1CEC09E72682102E /* StudioCompositionBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */; };
 		D73E4D374157B85A9EF1C9E1 /* StudioCompositionBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */; };
+		AA00C4A1B0000000000000E2 /* StudioAppleSpeechGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000E1 /* StudioAppleSpeechGenerator.swift */; };
+		AA00C4A1B0000000000000E3 /* StudioAppleSpeechGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000E1 /* StudioAppleSpeechGenerator.swift */; };
 		AA00C4A1B0000000000000D2 /* StudioCaptionGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000D1 /* StudioCaptionGenerator.swift */; };
 		AA00C4A1B0000000000000D3 /* StudioCaptionGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000D1 /* StudioCaptionGenerator.swift */; };
 		AA00C4A1B0000000000000B1 /* StudioCaptionPainter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000A1 /* StudioCaptionPainter.swift */; };
@@ -401,6 +403,7 @@
 		D1C92E15965D592980D7254C /* StudioCaptureEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptureEvents.swift; sourceTree = "<group>"; };
 		4FE5AD266D2D88BE76DBA9C7 /* StudioRenderState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioRenderState.swift; sourceTree = "<group>"; };
 		D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCompositionBuilder.swift; sourceTree = "<group>"; };
+		AA00C4A1B0000000000000E1 /* StudioAppleSpeechGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioAppleSpeechGenerator.swift; sourceTree = "<group>"; };
 		AA00C4A1B0000000000000D1 /* StudioCaptionGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionGenerator.swift; sourceTree = "<group>"; };
 		AA00C4A1B0000000000000A1 /* StudioCaptionPainter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionPainter.swift; sourceTree = "<group>"; };
 		FE54467E687EC983845F1A47 /* StudioCompositor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCompositor.swift; sourceTree = "<group>"; };
@@ -677,6 +680,7 @@
 			children = (
 				4FE5AD266D2D88BE76DBA9C7 /* StudioRenderState.swift */,
 				D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */,
+				AA00C4A1B0000000000000E1 /* StudioAppleSpeechGenerator.swift */,
 				AA00C4A1B0000000000000D1 /* StudioCaptionGenerator.swift */,
 				AA00C4A1B0000000000000A1 /* StudioCaptionPainter.swift */,
 				FE54467E687EC983845F1A47 /* StudioCompositor.swift */,
@@ -928,6 +932,7 @@
 				919755A630E5FA97FA82A34C /* StudioCaptureEvents.swift in Sources */,
 				B8EDC14A56F0ECC682744CCA /* StudioRenderState.swift in Sources */,
 				40548B5C1CEC09E72682102E /* StudioCompositionBuilder.swift in Sources */,
+				AA00C4A1B0000000000000E2 /* StudioAppleSpeechGenerator.swift in Sources */,
 				AA00C4A1B0000000000000D2 /* StudioCaptionGenerator.swift in Sources */,
 				AA00C4A1B0000000000000B1 /* StudioCaptionPainter.swift in Sources */,
 				F7EE90646BDD9AC23B804EF0 /* StudioCompositor.swift in Sources */,
@@ -1044,6 +1049,7 @@
 				BF95D6F237E260C603BB3B05 /* StudioCaptureEvents.swift in Sources */,
 				322CB3FB9F91146FB467C8DF /* StudioRenderState.swift in Sources */,
 				D73E4D374157B85A9EF1C9E1 /* StudioCompositionBuilder.swift in Sources */,
+				AA00C4A1B0000000000000E3 /* StudioAppleSpeechGenerator.swift in Sources */,
 				AA00C4A1B0000000000000D3 /* StudioCaptionGenerator.swift in Sources */,
 				AA00C4A1B0000000000000B2 /* StudioCaptionPainter.swift in Sources */,
 				C15E5D215EE86B4B5BC530DC /* StudioCompositor.swift in Sources */,
