@@ -5,8 +5,7 @@ import VideoToolbox
 // MARK: - Write Job
 
 /// Reads a composition's frames and sound and writes them to an MP4 at a chosen bitrate. The
-/// reader, the writer, and the streams are used only on the job's queue until `run` returns, and
-/// `cancel` touches only the reader, which may be told to stop from any thread.
+/// reader, the writer, and the streams are used only on the job's queue until `run` returns.
 final class StudioExportWriteJob: @unchecked Sendable {
     private struct Stream {
         let output: AVAssetReaderOutput
@@ -19,6 +18,14 @@ final class StudioExportWriteJob: @unchecked Sendable {
     private let streams: [Stream]
     private let duration: CMTime
     private let onProgress: (@Sendable (Double) -> Void)?
+    private let cancellationLock = NSLock()
+    private var isCancelledFlag = false
+
+    private var isCancelled: Bool {
+        cancellationLock.lock()
+        defer { cancellationLock.unlock() }
+        return isCancelledFlag
+    }
 
     init(
         build: StudioCompositionBuildResult,
@@ -86,12 +93,17 @@ final class StudioExportWriteJob: @unchecked Sendable {
         self.streams = streams
     }
 
-    /// Whatever is being read comes to an end, and `run` throws.
+    /// Asks `run` to stop, from any thread. The reader is not told from here: asked for a sample
+    /// once it has been cancelled, as the copy loop could be at this very moment, it raises an
+    /// exception that stops the app. The loop looks at this between samples and stops it itself.
     func cancel() {
-        reader.cancelReading()
+        cancellationLock.lock()
+        isCancelledFlag = true
+        cancellationLock.unlock()
     }
 
     func run() async throws {
+        guard !isCancelled else { throw CancellationError() }
         guard reader.startReading() else {
             throw reader.error ?? StudioExporter.Error.readerSetupFailed
         }
@@ -135,12 +147,15 @@ final class StudioExportWriteJob: @unchecked Sendable {
         var finished = Array(repeating: false, count: streams.count)
         var reported = -1.0
         let seconds = max(duration.seconds, .leastNonzeroMagnitude)
-        while finished.contains(false) {
+        reading: while finished.contains(false) {
+            guard !isCancelled else { throw CancellationError() }
             guard writer.status == .writing else {
                 throw writer.error ?? StudioExporter.Error.incompleteOutput
             }
             var didAppend = false
             for (index, stream) in streams.enumerated() where !finished[index] && stream.input.isReadyForMoreMediaData {
+                // A reader that has failed or completed raises an exception when asked for more.
+                guard reader.status == .reading else { break reading }
                 guard let sample = stream.output.copyNextSampleBuffer() else {
                     stream.input.markAsFinished()
                     finished[index] = true
@@ -164,13 +179,11 @@ final class StudioExportWriteJob: @unchecked Sendable {
         }
 
         // A reader that stops early also returns nil, so the end is only good if it completed.
-        switch reader.status {
-        case .completed:
-            return
-        case .cancelled:
-            throw CancellationError()
-        default:
+        guard reader.status == .completed else {
             throw reader.error ?? StudioExporter.Error.incompleteOutput
+        }
+        for (index, stream) in streams.enumerated() where !finished[index] {
+            stream.input.markAsFinished()
         }
     }
 
