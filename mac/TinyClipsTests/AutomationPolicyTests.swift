@@ -60,11 +60,13 @@ final class AutomationPolicyTests: XCTestCase {
         XCTAssertEqual(bundled.protocolVersion, shared.protocolVersion)
     }
 
+    @MainActor
     func testRouterOnlyClaimsContractCommands() throws {
         let names = Set(try loadContract().commands.map(\.name))
         XCTAssertTrue(AutomationCommandRouter.supportedCommands.isSubset(of: names))
     }
 
+    @MainActor
     func testStudioAutomationCommandsAreDeclaredWithLeastPrivilegeScopes() throws {
         let contract = try loadContract()
         let expected = [

@@ -23,7 +23,10 @@ private enum AnnotationResizeHandle {
 class ScreenshotEditorViewModel: ObservableObject {
     let sourceURL: URL
     @Published var originalImage: NSImage? {
-        didSet { invalidateSensitiveText() }
+        didSet {
+            invalidateSensitiveText()
+            invalidateRedactionPatches()
+        }
     }
     @Published var selectedTool: EditTool = .move {
         didSet {
@@ -71,7 +74,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var nextNumberLabel: Int = 1
     @Published var numberSizeMultiplier: CGFloat = 1.0
     @Published var numberTextColor: Color = .white
-    @Published var redactionBlurPreset: RedactionBlurPreset = .medium
+    @Published var redactionStrength: RedactionStrength = .medium
     @Published var selectedArrowStylePreset: ArrowStyle = .straight
     @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
     @Published var recentEmoji: [String] = []
@@ -91,6 +94,9 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var pencilPoints: [CGPoint] = []
     private var imagePixelSize: CGSize = .zero
     private var sourcePixelScale: CGFloat = 1
+    private var redactionSourceImage: CGImage?
+    private var redactionPatches: [RedactionPatchKey: RedactionPatch] = [:]
+    private var redactionPatchBytes = 0
     private var dragOffset: CGPoint = .zero
     private var dragOriginalRect: CGRect = .zero
     private var dragOriginalAnnotationRect: CGRect = .zero
@@ -458,10 +464,8 @@ class ScreenshotEditorViewModel: ObservableObject {
         inspectorTool == .number
     }
 
-    var showsRedactionPresetControl: Bool {
-        if let index = selectedAnnotationIndex, annotations.indices.contains(index),
-           annotations[index].isOpaqueRedaction { return false }
-        return inspectorTool == .blur
+    var showsRedactionStrengthControl: Bool {
+        inspectorTool == .blur
     }
 
     var showsArrowStyleControl: Bool {
@@ -695,7 +699,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     var showsAnyStyleControls: Bool {
-        primaryStyleControlsVisible || showsLineWidthControl || showsArrowStyleControl || showsNumberSizeControl || showsRedactionPresetControl || showsTextStyleControls || showsEmojiPicker || showsRotationControl
+        primaryStyleControlsVisible || showsLineWidthControl || showsArrowStyleControl || showsNumberSizeControl || showsRedactionStrengthControl || showsTextStyleControls || showsEmojiPicker || showsRotationControl
     }
 
     var showsTextStyleControls: Bool {
@@ -1017,7 +1021,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                 lineWidth: lineWidth,
                 text: "",
                 points: (selectedTool == .arrow || selectedTool == .line) ? [start, current] : [],
-                redactionBlurPreset: redactionBlurPreset,
+                redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
+                isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
                 arrowStyle: selectedArrowStylePreset
             )
         }
@@ -1069,7 +1074,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                     lineWidth: lineWidth,
                     text: "",
                     points: (selectedTool == .arrow || selectedTool == .line) ? [start, end] : [],
-                    redactionBlurPreset: redactionBlurPreset,
+                    redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
+                    isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
                     arrowStyle: selectedArrowStylePreset
                 ))
                 markDirty()
@@ -1770,7 +1776,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             isItalic: textIsItalic,
             isUnderlined: textIsUnderlined,
             textBoxStyle: textBoxStyle,
-            redactionBlurPreset: redactionBlurPreset,
+            redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
             arrowStyle: selectedArrowStylePreset
         ))
         markDirty()
@@ -1805,16 +1811,16 @@ class ScreenshotEditorViewModel: ObservableObject {
             lineWidth: lineWidth,
             text: "\(nextNumberLabel)",
             points: [],
-            redactionBlurPreset: redactionBlurPreset,
+            redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
             arrowStyle: selectedArrowStylePreset
         ))
         markDirty()
         nextNumberLabel += 1
     }
 
-    func selectedRedactionBlurPreset() -> RedactionBlurPreset? {
+    func selectedRedactionStrength() -> RedactionStrength? {
         guard selectedAnnotationIsBlur, let index = selectedAnnotationIndex else { return nil }
-        return annotations[index].redactionBlurPreset
+        return annotations[index].redactionStrength
     }
 
     func selectedNumberBadgeColor() -> Color? {
@@ -1886,15 +1892,81 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     @discardableResult
-    func updateSelectedRedactionBlurPreset(_ preset: RedactionBlurPreset) -> Bool {
+    func updateSelectedRedactionStrength(_ strength: RedactionStrength) -> Bool {
         guard selectedAnnotationIsBlur, let index = selectedAnnotationIndex else {
             return false
         }
 
         recordHistory()
-        annotations[index].redactionBlurPreset = preset
+        annotations[index].redactionStrength = strength
         markDirty()
         return true
+    }
+
+    // MARK: - Redaction pixels
+
+    var previewAnnotationsInDrawOrder: [ScreenshotAnnotation] {
+        var preview = annotations
+        if let currentAnnotation {
+            preview.append(currentAnnotation)
+        }
+        return preview.drawOrderIndices.map { preview[$0] }
+    }
+
+    /// The blurred pixels for a redaction, shared by the preview and export. A nil result means
+    /// they could not be rendered, and callers must then cover the area with a solid fill.
+    func redactionPatch(for annotation: ScreenshotAnnotation) -> RedactionPatch? {
+        let key = RedactionPatchKey(annotation)
+        if let cached = redactionPatches[key] { return cached }
+
+        if redactionSourceImage == nil {
+            redactionSourceImage = originalImage?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        }
+        guard let source = redactionSourceImage,
+              let patch = ScreenshotRedactionRenderer.patch(
+                normalizedRect: annotation.rect,
+                source: source,
+                preset: annotation.redactionBlurPreset,
+                isPixelated: annotation.isPixelatedRedaction,
+                pixelDensity: sourcePixelScale
+              ) else {
+            return nil
+        }
+
+        let bytes = patch.image.bytesPerRow * patch.image.height
+        if redactionPatchBytes + bytes > Self.maximumRedactionPatchBytes {
+            redactionPatches.removeAll()
+            redactionPatchBytes = 0
+        }
+        redactionPatches[key] = patch
+        redactionPatchBytes += bytes
+        return patch
+    }
+
+    private func invalidateRedactionPatches() {
+        redactionSourceImage = nil
+        redactionPatches.removeAll()
+        redactionPatchBytes = 0
+    }
+
+    private static let maximumRedactionPatchBytes = 256 * 1024 * 1024
+
+    private struct RedactionPatchKey: Hashable {
+        let x: CGFloat
+        let y: CGFloat
+        let width: CGFloat
+        let height: CGFloat
+        let preset: String
+        let isPixelated: Bool
+
+        init(_ annotation: ScreenshotAnnotation) {
+            x = annotation.rect.minX
+            y = annotation.rect.minY
+            width = annotation.rect.width
+            height = annotation.rect.height
+            preset = annotation.redactionBlurPreset.rawValue
+            isPixelated = annotation.isPixelatedRedaction
+        }
     }
 
     func renderFinalImage(
@@ -2180,11 +2252,18 @@ class ScreenshotEditorViewModel: ObservableObject {
             }
 
         case .blur:
-            if annotation.isOpaqueRedaction {
+            if !annotation.isOpaqueRedaction, let patch = redactionPatch(for: annotation) {
+                let covered = patch.normalizedRect
+                let patchRect = CGRect(
+                    x: (covered.minX * fullSize.width) - cropOrigin.x + contentOffset.x,
+                    y: imageOutputHeight - ((covered.minY * fullSize.height) - cropOrigin.y + covered.height * fullSize.height) + contentOffset.y,
+                    width: covered.width * fullSize.width,
+                    height: covered.height * fullSize.height
+                )
+                ctx.draw(patch.image, in: patchRect.integral)
+            } else {
                 ctx.setFillColor(NSColor.black.cgColor)
                 ctx.fill(pixelRect.integral)
-            } else {
-                drawCheckerboardRedaction(in: ctx, rect: pixelRect, preset: annotation.redactionBlurPreset)
             }
 
         case .number:

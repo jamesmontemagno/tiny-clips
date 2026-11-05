@@ -166,7 +166,8 @@ enum AutomationAnnotations {
                 annotation.redactionBlurPreset = preset
             }
             switch style {
-            case nil, "blur", "pixelate": annotation.isOpaqueRedaction = false
+            case nil, "blur": break
+            case "pixelate": annotation.isPixelatedRedaction = true
             case "solid": annotation.isOpaqueRedaction = true
             default: throw fail("redactionStyle must be blur, pixelate, or solid.")
             }
