@@ -45,6 +45,7 @@ internal sealed partial class WindowChecks
         ("StudioSwatch_", StudioInspectorPanel.Background),
         ("StudioCameraCutout_", StudioInspectorPanel.Camera),
         ("StudioSpeedRate_", StudioInspectorPanel.Speed),
+        ("StudioAnnotationLayer_", StudioInspectorPanel.Annotate),
     ];
 
     private static Dictionary<string, (StudioInspectorPanel Panel, CropGroup Group)> BuildPlaces()
@@ -100,6 +101,14 @@ internal sealed partial class WindowChecks
             "StudioSpeedEmptyHint", "StudioSpeedHint", "StudioSpeedRateChoice", "StudioSpeedStartText", "StudioSpeedStartEarlierButton",
             "StudioSpeedStartLaterButton", "StudioSpeedStartAtPlayheadButton", "StudioSpeedEndText", "StudioSpeedEndEarlierButton",
             "StudioSpeedEndLaterButton", "StudioSpeedEndAtPlayheadButton", "StudioSpeedLengthText", "StudioSpeedSilentNote", "StudioDeleteSpeedButton");
+        Add(StudioInspectorPanel.Annotate, CropGroup.None,
+            "StudioPreviousAnnotationButton", "StudioAnnotationPositionText", "StudioAnnotationDetailText", "StudioNextAnnotationButton",
+            "StudioAnnotationEmptyHint", "StudioAnnotationHint", "StudioAnnotationLayerList", "StudioAnnotationNotDrawnNote", "StudioAnnotationTextBox",
+            "StudioAnnotationStyleChoice", "StudioAnnotationSizeChoice", "StudioAnnotationAttachChoice", "StudioAnnotationXSlider", "StudioAnnotationYSlider",
+            "StudioAnnotationOffsetXSlider", "StudioAnnotationOffsetYSlider", "StudioAnnotationStartText", "StudioAnnotationStartEarlierButton",
+            "StudioAnnotationStartLaterButton", "StudioAnnotationStartAtPlayheadButton", "StudioAnnotationEndText", "StudioAnnotationEndEarlierButton",
+            "StudioAnnotationEndLaterButton", "StudioAnnotationEndAtPlayheadButton", "StudioBringAnnotationForwardButton", "StudioSendAnnotationBackButton",
+            "StudioDeleteAnnotationButton");
         Add(StudioInspectorPanel.Audio, CropGroup.None,
             "StudioMuteCheckBox", "StudioVolumeSlider");
         Add(StudioInspectorPanel.Project, CropGroup.None,

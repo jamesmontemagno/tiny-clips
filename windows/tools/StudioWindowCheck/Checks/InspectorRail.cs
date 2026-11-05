@@ -32,6 +32,7 @@ internal sealed partial class WindowChecks
         (StudioInspectorPanel.Zoom, "StudioZoomSectionAddButton"),
         (StudioInspectorPanel.Cut, "StudioCutSectionAddButton"),
         (StudioInspectorPanel.Speed, "StudioSpeedSectionAddButton"),
+        (StudioInspectorPanel.Annotate, "StudioPreviousAnnotationButton"),
         (StudioInspectorPanel.Audio, "StudioMuteCheckBox"),
         (StudioInspectorPanel.Project, "StudioKeepProjectCheckBox"),
     ];
