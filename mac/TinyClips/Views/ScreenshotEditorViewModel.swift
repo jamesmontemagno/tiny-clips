@@ -1905,6 +1905,14 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     // MARK: - Redaction pixels
 
+    var previewAnnotationsInDrawOrder: [ScreenshotAnnotation] {
+        var preview = annotations
+        if let currentAnnotation {
+            preview.append(currentAnnotation)
+        }
+        return preview.drawOrderIndices.map { preview[$0] }
+    }
+
     /// The blurred pixels for a redaction, shared by the preview and export. A nil result means
     /// they could not be rendered, and callers must then cover the area with a solid fill.
     func redactionPatch(for annotation: ScreenshotAnnotation) -> RedactionPatch? {

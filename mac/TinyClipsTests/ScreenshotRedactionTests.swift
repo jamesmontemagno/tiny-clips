@@ -191,6 +191,81 @@ final class ScreenshotRedactionTests: XCTestCase {
     }
 
     @MainActor
+    func testOverlappingRedactionsKeepTheStrongerPixelsInEitherOrder() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        let light = ScreenshotAnnotation(
+            tool: .blur,
+            rect: CGRect(x: 0.375, y: 0.25, width: 0.5, height: 0.5),
+            color: .black, lineWidth: 0, text: "", points: [],
+            redactionBlurPreset: .light
+        )
+        editor.annotations = [light]
+        let lightOnly = try XCTUnwrap(editor.renderFinalImage(includesExportDecorations: false))
+
+        for preset in [RedactionBlurPreset.medium, .heavy] {
+            for isPixelated in [false, true] {
+                let stronger = ScreenshotAnnotation(
+                    tool: .blur,
+                    rect: CGRect(x: 0.125, y: 0.25, width: 0.5, height: 0.5),
+                    color: .black, lineWidth: 0, text: "", points: [],
+                    redactionBlurPreset: preset,
+                    isPixelatedRedaction: isPixelated
+                )
+                editor.annotations = [stronger]
+                let strongerOnly = try XCTUnwrap(editor.renderFinalImage(includesExportDecorations: false))
+
+                for annotations in [[stronger, light], [light, stronger]] {
+                    editor.annotations = annotations
+                    XCTAssertEqual(editor.previewAnnotationsInDrawOrder.last?.id, stronger.id)
+                    let output = try XCTUnwrap(editor.renderFinalImage(includesExportDecorations: false))
+                    for x in stride(from: 155, through: 245, by: 10) {
+                        XCTAssertEqual(
+                            try luminance(output, x: x, y: 100),
+                            try luminance(strongerOnly, x: x, y: 100),
+                            accuracy: 0.001,
+                            "Overlap must retain \(preset.rawValue) pixels in either annotation order"
+                        )
+                    }
+                    XCTAssertEqual(
+                        try luminance(output, x: 300, y: 100),
+                        try luminance(lightOnly, x: 300, y: 100),
+                        accuracy: 0.001,
+                        "Light-only areas must stay unchanged"
+                    )
+                    let selected = try XCTUnwrap(editor.annotationIndex(at: CGPoint(x: 0.5, y: 0.5)))
+                    XCTAssertEqual(editor.annotations[selected].id, stronger.id)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testInProgressLightRedactionCannotCoverAStrongerPreview() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        var stronger = ScreenshotAnnotation(
+            tool: .blur,
+            rect: CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5),
+            color: .black, lineWidth: 0, text: "", points: [],
+            redactionBlurPreset: .heavy
+        )
+        let light = ScreenshotAnnotation(
+            tool: .blur, rect: stronger.rect,
+            color: .black, lineWidth: 0, text: "", points: [],
+            redactionBlurPreset: .light
+        )
+        for strength in [RedactionStrength.medium, .heavy, .solid] {
+            stronger.redactionStrength = strength
+            for (committed, current) in [(stronger, light), (light, stronger)] {
+                editor.annotations = [committed]
+                editor.currentAnnotation = current
+                XCTAssertEqual(editor.previewAnnotationsInDrawOrder.map(\.id), [light.id, stronger.id])
+            }
+        }
+    }
+
+    @MainActor
     func testSolidLevelCoversInBlackAndCanBeUndone() throws {
         let (editor, cleanup) = try makeEditor()
         defer { cleanup() }

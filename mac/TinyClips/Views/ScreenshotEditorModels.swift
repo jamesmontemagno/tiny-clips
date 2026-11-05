@@ -253,10 +253,20 @@ struct ScreenshotAnnotation: Identifiable {
 }
 
 extension Array where Element == ScreenshotAnnotation {
-    /// Indices in back-to-front drawing order: opaque redactions always render above every
-    /// other annotation. Drawing, export, and hit-testing (reversed) must all use this order.
+    /// Stronger redactions occupy later redaction slots; other annotation slots stay unchanged.
+    /// Opaque redactions stay on top. Preview, export, and hit-testing share this order.
     var drawOrderIndices: [Int] {
-        indices.filter { !self[$0].isOpaqueRedaction } + indices.filter { self[$0].isOpaqueRedaction }
+        var order = indices.filter { !self[$0].isOpaqueRedaction }
+        let redactionSlots = order.indices.filter { self[order[$0]].tool == .blur }
+        let redactions = redactionSlots.map { order[$0] }.sorted {
+            let lhs = self[$0].redactionBlurPreset.drawingPriority
+            let rhs = self[$1].redactionBlurPreset.drawingPriority
+            return lhs == rhs ? $0 < $1 : lhs < rhs
+        }
+        for (slot, index) in zip(redactionSlots, redactions) {
+            order[slot] = index
+        }
+        return order + indices.filter { self[$0].isOpaqueRedaction }
     }
 }
 
@@ -415,6 +425,14 @@ enum RedactionBlurPreset: String, CaseIterable, Identifiable {
     case heavy
 
     var id: Self { self }
+
+    var drawingPriority: Int {
+        switch self {
+        case .light: return 0
+        case .medium: return 1
+        case .heavy: return 2
+        }
+    }
 
     var label: String {
         switch self {

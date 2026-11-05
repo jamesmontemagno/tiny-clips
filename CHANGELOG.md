@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- Overlapping macOS screenshot redactions preserve the stronger level in preview and export, including while drawing a new redaction.
 - Resolved macOS Swift concurrency warnings in webcam composition, recent-capture thumbnails, and automation contract tests.
 - macOS Studio window recordings now save cursor and click events for click-driven zoom suggestions, whether started normally or through Agent Control.
 - Imported Studio videos respect rotation metadata, retain edits when their source is archived or temporarily offline, and reopen linked projects rather than creating flattened duplicates. The trimmer protects pending edits during handoff; portable project saving is explicitly unavailable for external videos.
