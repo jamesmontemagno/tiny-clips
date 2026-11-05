@@ -59,6 +59,13 @@ internal sealed class TrayPopupWindow : Window
 
     public void Hide()
     {
+        // A hide already in progress waits for its flyouts to finish closing; a second request
+        // (e.g. deactivation after a menu item opens another window) must not skip that wait.
+        if (_hideRequested)
+        {
+            return;
+        }
+
         _hideRequested = true;
         if (!_appWindow.IsVisible)
         {
