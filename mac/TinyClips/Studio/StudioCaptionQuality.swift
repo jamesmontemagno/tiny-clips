@@ -311,8 +311,58 @@ enum StudioCaptionQuality {
 
 /// What the editor says about captions. The same, word for word, on Windows (`StudioCaptionText`).
 enum StudioCaptionText {
+    /// Said about where the sound goes.
+    static let privacyNote = "Your sound stays on this Mac. Only the model is downloaded."
+
+    /// Said before generating over captions that are there.
+    static let replaceNote = "This replaces the current captions. Undo brings them back."
+
+    /// Said when generating starts.
+    static let generatingMessage = "Generating captions."
+
+    /// Said from when stopping is asked for until it has stopped, which can take a while.
+    static let stoppingMessage = "Stopping captions\u{2026}"
+
+    /// Said when generating was stopped.
+    static let cancelledMessage = "Generating captions stopped. The captions are as they were."
+
+    /// What came of generating.
+    static func generatedMessage(_ count: Int) -> String {
+        count == 1 ? "Generated 1 caption." : "Generated \(count) captions."
+    }
+
+    /// How far generating is: `Recognizing speech: 40%`.
+    static func progressText(_ progress: StudioCaptionProgress) -> String {
+        let percent = Int((min(1, max(0, progress.fraction)) * 100).rounded())
+        switch progress.stage {
+        case .readingSound: return "Reading the sound: \(percent)%"
+        case .downloadingModel: return "Downloading the model: \(percent)%"
+        case .preparingModel: return "Getting the model ready\u{2026}"
+        case .recognizingSpeech: return "Recognizing speech: \(percent)%"
+        }
+    }
+
+    static func modelNote(_ model: StudioCaptionModel, isInstalled: Bool) -> String {
+        isInstalled
+            ? "\(model.guidance). Already on this Mac."
+            : "\(model.guidance). Downloads \(model.sizeText) the first time."
+    }
+
+    static func generateActionText(_ model: StudioCaptionModel, isInstalled: Bool) -> String {
+        isInstalled ? "Generate" : "Download \(model.sizeText) and Generate"
+    }
+
+    /// How much room the models take, in the words of Settings.
+    static func installedModelsText(count: Int, bytes: Int64) -> String {
+        if count == 0 {
+            return "No models downloaded."
+        }
+        let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        return count == 1 ? "1 model downloaded, using \(size)." : "\(count) models downloaded, using \(size)."
+    }
+
     /// What the panel says when a project has no captions.
-    static let emptyHint = "Import an SRT or WebVTT file to add captions."
+    static let emptyHint = "Generate captions from the recording's sound, or import an SRT or WebVTT file."
 
     /// What the panel says about what an export leaves out.
     static let exportNote = "Exports are timed to the edited video. Captions in cut or sped-up parts are left out."

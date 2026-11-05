@@ -15,6 +15,12 @@ struct StudioCaptionRow: Identifiable {
 /// playhead to it. Its text goes into the project when the box is left, so typing is one undo step.
 struct StudioCaptionsInspectorSection: View {
     @ObservedObject var viewModel: StudioViewModel
+    @AppStorage("studioCaptionModel") private var modelID = StudioCaptionModels.defaultModel.id
+    @State private var isChoosingModel = false
+
+    private var model: StudioCaptionModel {
+        StudioCaptionModels.find(modelID) ?? StudioCaptionModels.defaultModel
+    }
 
     var body: some View {
         let rows = viewModel.captionRows
@@ -25,6 +31,11 @@ struct StudioCaptionsInspectorSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if viewModel.isGeneratingCaptions {
+                generationProgress
+            } else {
+                generateButton
             }
             HStack(spacing: 8) {
                 importMenu
@@ -50,6 +61,70 @@ struct StudioCaptionsInspectorSection: View {
                 list(rows)
             }
             checks
+        }
+    }
+
+    private var generateButton: some View {
+        Button("Generate\u{2026}") {
+            isChoosingModel = true
+        }
+        .disabled(!viewModel.canGenerateCaptions)
+        .help("Make captions from the recording's sound, on this Mac")
+        .popover(isPresented: $isChoosingModel, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Generate Captions")
+                    .font(.headline)
+                Picker("Model", selection: $modelID) {
+                    ForEach(StudioCaptionModels.all) { model in
+                        Text("\(model.name) (\(model.sizeText))").tag(model.id)
+                    }
+                }
+                Text(StudioCaptionText.modelNote(model, isInstalled: viewModel.isCaptionModelInstalled(model)))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(StudioCaptionText.privacyNote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !(viewModel.project?.captions.cues.isEmpty ?? true) {
+                    Text(StudioCaptionText.replaceNote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack {
+                    Spacer()
+                    Button(StudioCaptionText.generateActionText(model, isInstalled: viewModel.isCaptionModelInstalled(model))) {
+                        isChoosingModel = false
+                        viewModel.generateCaptions(model: model)
+                    }
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding()
+            .frame(width: 280)
+        }
+    }
+
+    private var generationProgress: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(viewModel.captionProgressText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if viewModel.isStoppingCaptionGeneration || viewModel.captionGenerationProgress.stage == .preparingModel {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .accessibilityLabel("Generating captions")
+            } else {
+                ProgressView(value: min(1, max(0, viewModel.captionGenerationProgress.fraction)))
+                    .accessibilityLabel("Generating captions")
+            }
+            Button("Cancel") {
+                viewModel.cancelCaptionGeneration()
+            }
+            .disabled(!viewModel.canCancelCaptionGeneration)
+            .help("Stop generating. The captions stay as they were.")
         }
     }
 

@@ -54,6 +54,8 @@ struct StudioSettingsSection: View {
 
     @StateObject private var studioProjects = StudioSettingsProjects()
     @State private var isCleaningUp = false
+    @State private var captionModelsText = "Calculating\u{2026}"
+    @State private var canDeleteCaptionModels = false
     @State private var cleanUpResult: String?
     @State private var savingRecordingIDs: Set<String> = []
     @State private var savedRecordingNote: SavedRecordingNote?
@@ -165,6 +167,20 @@ struct StudioSettingsSection: View {
 
                 LabeledContent("Storage used:") {
                     Text(storageText)
+                }
+
+                LabeledContent("Speech models for captions:") {
+                    HStack {
+                        Text(captionModelsText)
+                        Button("Delete\u{2026}", role: .destructive) {
+                            confirmDeleteCaptionModels()
+                        }
+                        .disabled(!canDeleteCaptionModels)
+                        .help("Free the room the downloaded speech models use")
+                    }
+                }
+                .task {
+                    await refreshCaptionModels()
                 }
 
                 HStack {
@@ -333,6 +349,40 @@ struct StudioSettingsSection: View {
     }
 
     // MARK: - Actions
+
+    private func refreshCaptionModels() async {
+        let store = StudioCaptionModelStore()
+        let (count, bytes) = await Task.detached(priority: .utility) {
+            (store.installedModels().count, store.usedBytes())
+        }.value
+        captionModelsText = StudioCaptionText.installedModelsText(count: count, bytes: bytes)
+        canDeleteCaptionModels = bytes > 0
+    }
+
+    private func confirmDeleteCaptionModels() {
+        let alert = NSAlert()
+        alert.messageText = "Delete the downloaded speech models?"
+        alert.informativeText = "Captions you made stay in their projects. A model is downloaded again the next time you generate with it."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        Task {
+            let store = StudioCaptionModelStore()
+            let failure = await Task.detached(priority: .utility) { () -> String? in
+                do {
+                    try store.deleteAll()
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            await refreshCaptionModels()
+            if let failure {
+                captionModelsText = "Couldn't delete the speech models: \(failure)"
+            }
+        }
+    }
 
     private func cleanUpNow() {
         isCleaningUp = true

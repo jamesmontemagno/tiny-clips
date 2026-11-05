@@ -52,6 +52,16 @@ final class StudioViewModel: ObservableObject {
     /// from the timeline's selection: captions have no lane.
     @Published private(set) var selectedCaptionIndex: Int?
 
+    /// Whether captions are being made from the recording's sound. Editing goes on meanwhile,
+    /// because what comes of it is in source time.
+    @Published private(set) var isGeneratingCaptions = false
+
+    /// Whether generating was asked to stop and has not yet. Speech recognition stops between
+    /// stretches of work, so this can last for seconds.
+    @Published private(set) var isStoppingCaptionGeneration = false
+
+    @Published private(set) var captionGenerationProgress = StudioCaptionProgress(stage: .readingSound, fraction: 0)
+
     /// What the last import, fix, or export of captions came to, for the Captions panel.
     @Published private(set) var captionStatus = ""
 
@@ -146,9 +156,20 @@ final class StudioViewModel: ObservableObject {
     /// When the playhead was last moved by the playing player, on the system's clock.
     private var lastPlayheadMove: TimeInterval = 0
 
-    init(projectID: String, store: StudioProjectStore = .shared) {
+    private let captionGenerator: StudioCaptionGenerating
+    private var captionGenerationTask: Task<Void, Never>?
+
+    /// Which generation the progress that comes in belongs to. Some can arrive after the end.
+    private var captionGenerationNumber = 0
+
+    init(
+        projectID: String,
+        store: StudioProjectStore = .shared,
+        captionGenerator: StudioCaptionGenerating = StudioWhisperCaptionGenerator.shared
+    ) {
         self.projectID = projectID
         self.store = store
+        self.captionGenerator = captionGenerator
     }
 
     // MARK: - Derived State
@@ -183,7 +204,7 @@ final class StudioViewModel: ObservableObject {
     var isBusy: Bool { busyMessage != nil }
 
     /// Whether the project can be saved as a folder now.
-    var canSaveProjectFolder: Bool { isEditable && editor?.project.sources.screen.external == false }
+    var canSaveProjectFolder: Bool { isEditable && !isGeneratingCaptions && editor?.project.sources.screen.external == false }
     var projectFolderHelp: String {
         editor?.project.sources.screen.external == true
             ? "Imported video edits are saved automatically in Studio. Saving a portable project folder is unavailable because the source video is stored externally. Keep the original video."
@@ -195,7 +216,7 @@ final class StudioViewModel: ObservableObject {
     var canDeleteProject: Bool { state != .loading && !isBusy }
     var canUndo: Bool { isEditable && (editor?.canUndo ?? false) }
     var canRedo: Bool { isEditable && (editor?.canRedo ?? false) }
-    var canExport: Bool { isEditable && (editor?.outputDuration ?? 0) > 0 }
+    var canExport: Bool { isEditable && !isGeneratingCaptions && (editor?.outputDuration ?? 0) > 0 }
     var hasCamera: Bool { editor?.hasCamera ?? false }
 
     var clipName: String {
@@ -402,6 +423,95 @@ final class StudioViewModel: ObservableObject {
     var canExportCaptions: Bool {
         guard let project else { return false }
         return !StudioCaptionResolver.resolve(project: project).isEmpty
+    }
+
+    // MARK: - Generating Captions
+
+    var canGenerateCaptions: Bool { isEditable && !isGeneratingCaptions }
+
+    var canCancelCaptionGeneration: Bool { isGeneratingCaptions && !isStoppingCaptionGeneration }
+
+    func isCaptionModelInstalled(_ model: StudioCaptionModel) -> Bool {
+        captionGenerator.isModelInstalled(model)
+    }
+
+    var captionProgressText: String {
+        isStoppingCaptionGeneration
+            ? StudioCaptionText.stoppingMessage
+            : StudioCaptionText.progressText(captionGenerationProgress)
+    }
+
+    /// Makes captions from the recording's sound. They replace the ones there are when they are
+    /// ready, as one edit, so Undo brings those back.
+    func generateCaptions(model: StudioCaptionModel) {
+        guard canGenerateCaptions, let project, let paths else { return }
+        commitCaptionText()
+        captionStatus = ""
+        captionGenerationNumber += 1
+        let generation = captionGenerationNumber
+        isGeneratingCaptions = true
+        isStoppingCaptionGeneration = false
+        captionGenerationProgress = StudioCaptionProgress(stage: .readingSound, fraction: 0)
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+            .announcement: StudioCaptionText.generatingMessage,
+        ])
+
+        let generator = captionGenerator
+        captionGenerationTask = Task { [weak self] in
+            let outcome: Result<StudioGeneratedCaptions, Error>
+            do {
+                outcome = .success(try await generator.generate(project: project, paths: paths, model: model) { progress in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.captionGenerationNumber == generation, self.isGeneratingCaptions else { return }
+                        self.captionGenerationProgress = progress
+                    }
+                })
+            } catch {
+                outcome = .failure(error)
+            }
+            self?.finishGeneratingCaptions(outcome)
+        }
+    }
+
+    func cancelCaptionGeneration() {
+        guard canCancelCaptionGeneration else { return }
+        isStoppingCaptionGeneration = true
+        captionGenerationTask?.cancel()
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+            .announcement: StudioCaptionText.stoppingMessage,
+        ])
+    }
+
+    private func finishGeneratingCaptions(_ outcome: Result<StudioGeneratedCaptions, Error>) {
+        let wasStopped = isStoppingCaptionGeneration
+        isGeneratingCaptions = false
+        isStoppingCaptionGeneration = false
+        captionGenerationTask = nil
+        guard state == .ready else { return }
+
+        let message: String
+        switch outcome {
+        case .success(let heard) where wasStopped:
+            _ = heard
+            message = StudioCaptionText.cancelledMessage
+        case .success(let heard):
+            guard isEditable else {
+                message = "The captions could not be put in the project. Try again."
+                break
+            }
+            selectedCaptionIndex = nil
+            pendingCaptionText = nil
+            edit { $0.setGeneratedCaptions(language: heard.language, cues: heard.cues) }
+            message = StudioCaptionText.generatedMessage(heard.cues.count)
+        case .failure(let error) where error is CancellationError || wasStopped:
+            message = StudioCaptionText.cancelledMessage
+        case .failure(let error):
+            message = error.localizedDescription
+        }
+        captionStatus = message
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+            .announcement: message,
+        ])
     }
 
     /// Selects a cue and moves the playhead to where it starts, or lets go with nil. A selected
@@ -1820,6 +1930,7 @@ final class StudioViewModel: ObservableObject {
         saveTask?.cancel()
         previewTask?.cancel()
         exportTask?.cancel()
+        captionGenerationTask?.cancel()
         rateObservation?.invalidate()
         rateObservation = nil
         if let timeObserver, let player {

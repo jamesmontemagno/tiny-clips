@@ -78,6 +78,8 @@ final class AutomationPolicyTests: XCTestCase {
             "studio.captions.import": "edit",
             "studio.captions.fix": "edit",
             "studio.captions.export": "export",
+            "studio.captions.models": "read",
+            "studio.captions.generate": "edit",
             "editor.trim": "edit",
             "editor.saveFrame": "edit",
             "studio.export": "export"

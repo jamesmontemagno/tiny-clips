@@ -1,7 +1,7 @@
 # Tiny Clips Studio: captions
 
-**Status:** in progress, started 5 November 2026. Stages 2 to 5 below are in place; generating
-captions on the Mac is not built yet. The format is specified in section 15 of
+**Status:** in progress, started 5 November 2026. Stages 1 to 6 below are in place, except for
+SpeechAnalyzer on the Mac, which needs a real Mac to test. The format is specified in section 15 of
 [`docs/studio-project-format.md`](../docs/studio-project-format.md), which decides if this
 document and the code disagree.
 
@@ -14,8 +14,8 @@ into the picture of an exported video. They work on macOS and Windows from one s
   carries them to the other platform.
 - **"Embed" means burning into the picture**, plus SRT and VTT files. A subtitle track inside the
   MP4 that a player can turn on and off is left out.
-- **Speech engines.** Windows uses Whisper.net. macOS uses SpeechAnalyzer on macOS 26 and later,
-  and WhisperKit on macOS 15 or where SpeechAnalyzer does not support the machine or language.
+- **Speech engines.** Windows uses Whisper.net. macOS uses WhisperKit. SpeechAnalyzer on macOS 26
+  and later was the plan, and can still sit behind the same protocol once it can be tested.
 - **Audio never leaves the device.**
 - **No new Pro gate.** The Studio views have none today.
 - **Burn-in is off by default.**
@@ -41,7 +41,8 @@ is ported and the pipeline is not.
 
 Each stage is a pull request that updates the changelogs and validates the platforms it touches.
 
-1. **Mac spike.** Needs a Mac; see Open questions.
+1. **Mac spike (done, on a GitHub macOS 26 runner).** WhisperKit does what Studio needs; see
+   What the spike found. SpeechAnalyzer could not be tried: it is not available in a VM.
 2. **Foundation (done).** Format spec, models, `studio.project.edit` access, the cue resolver, the
    SRT and VTT reader and writer, and shared fixtures. No UI.
 3. **Files (done).** The Captions inspector panel (cue list where a click seeks and text is
@@ -56,20 +57,31 @@ Each stage is a pull request that updates the changelogs and validates the platf
 5. **Windows transcription (done).** Whisper.net, model management in Studio settings, and
    `studio.captions.models` and `studio.captions.generate`. Built ahead of stage 4, because making
    captions is more use than drawing them. It listens on the CPU, in the language it detects.
-6. **macOS transcription.** Both engines, `com.apple.security.network.client` in the Mac App Store
-   entitlements for WhisperKit downloads, and updated privacy text in the store listings.
+6. **macOS transcription (done, with WhisperKit).** `com.apple.security.network.client` in the Mac
+   App Store entitlements for its downloads. SpeechAnalyzer is left until a real Mac can test it.
+   The privacy answers in App Store Connect still need checking by whoever submits the build.
 
 Transcription is a cancellable background job behind one interface, applied as a single undoable
 edit. Models download only after the user agrees to the size. `studio.captions.generate` downloads
 one only when `allowModelDownload` is set.
 
+## What the spike found
+
+On a GitHub macOS 26 runner (a virtual M1 with 3 cores) with the Base model: 21 seconds of speech
+took 0.9 s, and 20 minutes took about a minute through the app's own code, with all 3,078 words
+there. It has word timings, detected Spanish from real speakers, and downloads 146 MB from Hugging
+Face. Version 1 of the package brings in only `swift-argument-parser`. Long segments need breaking
+into cues, which Whisper.net does itself. A synthetic Spanish voice from `say` came out as Latin
+and garbled, so detection is only as good as the speech.
+
 ## Open questions
 
-Stage 1 answers the first two, on a Mac:
+The first needs a real Mac, and the second needs a submission:
 
 - **SpeechAnalyzer:** long-file reliability, word timings, whether it needs Speech permission, and
-  a language picker, since it seems to need a chosen language rather than detecting one.
-- **WhisperKit:** word timings, and how the Mac App Store network entitlement fares in App Review.
+  a language picker, since it seems to need a chosen language rather than detecting one. On a
+  GitHub macOS 26 VM, `SpeechTranscriber.isAvailable` is false with no supported locales.
+- **App Review:** how the Mac App Store network entitlement fares.
 - **Project size:** test an hour-long project, because Windows compares undo state as serialized
   text (`StudioEditableState.ContentEquals`).
 - **Package size:** captions add about 2.8 MiB to the MSIX and 7 MiB once installed.

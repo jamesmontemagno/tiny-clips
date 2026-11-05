@@ -75,7 +75,7 @@ public static class StudioCaptionText
         _ => string.Create(CultureInfo.InvariantCulture, $"Made {applied} fixes."),
     };
 
-    // Generating. The Mac gets these words with its speech engines.
+    // Generating.
 
     /// <summary>Said about where the sound goes.</summary>
     public const string PrivacyNote = "Your sound stays on this computer. Only the model is downloaded.";

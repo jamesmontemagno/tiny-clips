@@ -436,6 +436,8 @@ class CaptureSettings: ObservableObject {
     /// The most disk space the Studio projects that cleanup may remove can use before the ones
     /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
     @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
+    /// The speech model captions are generated with: an id of `StudioCaptionModels`.
+    @AppStorage("studioCaptionModel") var studioCaptionModel: String = StudioCaptionModels.defaultModel.id
     var studioCleanupOptions: StudioCleanupOptions {
         StudioCleanupOptions(retentionDays: studioSourceRetentionDays, sizeCapGigabytes: studioStorageCapGigabytes)
     }
@@ -870,7 +872,7 @@ class CaptureSettings: ObservableObject {
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
-        "studioSourceRetentionDays", "studioStorageCapGigabytes",
+        "studioSourceRetentionDays", "studioStorageCapGigabytes", "studioCaptionModel",
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",

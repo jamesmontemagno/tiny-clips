@@ -1663,6 +1663,16 @@ struct StudioEditorModel: Equatable, Sendable {
         }
     }
 
+    /// Puts what speech recognition heard in place of the captions: section 15.7 of the project
+    /// format.
+    mutating func setGeneratedCaptions(language: String?, cues: [StudioCaptionCue]) {
+        let ordered = StudioCaptionQuality.inOrder(cues)
+        mutate {
+            $0.captions.language = language
+            $0.captions.cues = ordered
+        }
+    }
+
     /// Changes what a cue says. Its words go with the text they were of. Text that cleans to what
     /// the cue already says changes nothing.
     @discardableResult

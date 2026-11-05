@@ -17,6 +17,7 @@ final class AutomationCommandRouter {
         "library.delete", "library.upload", "studio.projects.list", "studio.project.get",
         "studio.project.edit", "studio.zoom.suggest", "studio.export",
         "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
+        "studio.captions.models", "studio.captions.generate",
     ]
 
     private unowned let controller: AutomationController
@@ -60,6 +61,8 @@ final class AutomationCommandRouter {
         case "studio.zoom.suggest": return try suggestStudioZooms(params)
         case "studio.export": return try await exportStudioProject(params)
         case "studio.captions.check": return try checkStudioCaptions(params)
+        case "studio.captions.models": return try listCaptionModels()
+        case "studio.captions.generate": return try await generateStudioCaptions(params)
         case "studio.captions.import": return try importStudioCaptions(params)
         case "studio.captions.fix": return try fixStudioCaptions(params)
         case "studio.captions.export": return try exportStudioCaptions(params)
@@ -720,6 +723,68 @@ final class AutomationCommandRouter {
             "revision": try studioProjectRevision(saved),
             "cueCount": contents.cues.count,
             "skipped": contents.skippedBlocks
+        ]
+    }
+
+    private func listCaptionModels() throws -> [String: Any] {
+        try requireStudioEnabled()
+        let generator = StudioWhisperCaptionGenerator.shared
+        return [
+            "models": StudioCaptionModels.all.map { model -> [String: Any] in
+                [
+                    "id": model.id,
+                    "name": model.name,
+                    "size": model.sizeText,
+                    "guidance": model.guidance,
+                    "installed": generator.isModelInstalled(model),
+                ]
+            },
+            "selected": CaptureSettings.shared.studioCaptionModel,
+        ]
+    }
+
+    private func generateStudioCaptions(_ params: [String: Any]) async throws -> [String: Any] {
+        try requireStudioEnabled()
+        let id = try Self.requiredString(params, "projectId")
+        let current = try checkedStudioProject(params, id: id)
+        let model: StudioCaptionModel
+        if let modelID = params["model"] as? String {
+            guard let found = StudioCaptionModels.find(modelID) else {
+                throw AutomationError(.invalidParams, "There is no speech model called \(modelID).")
+            }
+            model = found
+        } else {
+            model = StudioCaptionModels.find(CaptureSettings.shared.studioCaptionModel) ?? StudioCaptionModels.defaultModel
+        }
+        let generator = StudioWhisperCaptionGenerator.shared
+        guard generator.isModelInstalled(model) || params["allowModelDownload"] as? Bool == true else {
+            throw AutomationError(.invalidParams, "The \(model.name) model (\(model.sizeText)) is not on this Mac. Set allowModelDownload to true to download it.")
+        }
+
+        let heard: StudioGeneratedCaptions
+        do {
+            heard = try await generator.generate(
+                project: current,
+                paths: try StudioProjectStore.shared.paths(for: current),
+                model: model,
+                progress: { _ in }
+            )
+        } catch let error as StudioCaptionGenerationError {
+            throw AutomationError(.internal, error.message)
+        }
+
+        // It took a while. The cues are in source time, so an edit made meanwhile is kept.
+        let latest = try studioProject(id)
+        var updated = latest
+        updated.captions.language = heard.language
+        updated.captions.cues = StudioCaptionQuality.inOrder(heard.cues)
+        let saved = try saveStudioEdit(updated, replacing: latest)
+        return [
+            "project": try studioProjectObject(saved),
+            "revision": try studioProjectRevision(saved),
+            "cueCount": heard.cues.count,
+            "language": heard.language ?? NSNull(),
+            "model": model.id,
         ]
     }
 
