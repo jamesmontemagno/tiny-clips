@@ -67,6 +67,11 @@ public sealed partial class StudioViewModel
 
     public string CaptionExportNote => StudioCaptionText.ExportNote;
 
+    /// <summary>What the last import, fix or export came to, for those who do not hear it said.</summary>
+    public string CaptionStatus { get; private set; } = string.Empty;
+
+    public bool HasCaptionStatus => CaptionStatus.Length > 0;
+
     /// <summary>The selected cue's place in <see cref="CaptionRows"/>, or -1.</summary>
     public int SelectedCaptionRow
     {
@@ -160,7 +165,7 @@ public sealed partial class StudioViewModel
     public void FixCaptions()
     {
         CommitCaptionText();
-        Announce(StudioCaptionText.GetFixedMessage(_session.FixCaptions()), CaptionActivityId, StudioAnnouncementKind.Completed);
+        ReportCaptions(StudioCaptionText.GetFixedMessage(_session.FixCaptions()));
     }
 
     /// <summary>Asks for a caption file and puts its cues in place of the captions.</summary>
@@ -193,7 +198,7 @@ public sealed partial class StudioViewModel
                 return;
             }
 
-            Announce(StudioCaptionText.GetImportedMessage(result.Count, result.Skipped), CaptionActivityId, StudioAnnouncementKind.Completed);
+            ReportCaptions(StudioCaptionText.GetImportedMessage(result.Count, result.Skipped));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
@@ -230,7 +235,7 @@ public sealed partial class StudioViewModel
 
             var text = StudioCaptionFiles.Write(StudioCaptionFiles.GetFormat(path) ?? format, _session.GetResolvedCaptions());
             await Task.Run(() => StudioCaptionFiles.ReplaceFile(path, text));
-            Announce(StudioCaptionText.ExportedMessage, CaptionActivityId, StudioAnnouncementKind.Completed);
+            ReportCaptions(StudioCaptionText.ExportedMessage);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -240,6 +245,14 @@ public sealed partial class StudioViewModel
         {
             SetChoosingCaptionFile(false);
         }
+    }
+
+    private void ReportCaptions(string message)
+    {
+        CaptionStatus = message;
+        OnPropertyChanged(nameof(CaptionStatus));
+        OnPropertyChanged(nameof(HasCaptionStatus));
+        Announce(message, CaptionActivityId, StudioAnnouncementKind.Completed);
     }
 
     private void SetChoosingCaptionFile(bool isChoosing)

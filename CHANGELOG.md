@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
-- Studio projects can hold captions, shared with the Windows app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. There is no captions UI yet; agents can read and change them with `studio.project.get` and `studio.project.edit`.
+- Studio projects can hold captions, shared with the Windows app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. Agents can read and change them with `studio.project.get` and `studio.project.edit`.
+- Studio has a Captions panel: import an SRT or WebVTT file, timed to the recording or to the edited video; correct or delete a caption; check for readability problems and fix what is safe to fix; and export the video's captions as SRT or WebVTT. Agents can do the same with `studio.captions.import`, `studio.captions.check`, `studio.captions.fix`, and `studio.captions.export`. Captions cannot be drawn into the video yet.
 
 ### Fixed
 - Overlapping macOS screenshot redactions preserve the stronger level in preview and export, including while drawing a new redaction.

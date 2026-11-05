@@ -1,7 +1,7 @@
 # Tiny Clips Studio: captions
 
-**Status:** in progress, started 5 November 2026. Stage 2 below is in place; everything after it
-is not built yet. The format is specified in section 15 of
+**Status:** in progress, started 5 November 2026. Stages 2 and 3 below are in place; the rest is
+not built yet. The format is specified in section 15 of
 [`docs/studio-project-format.md`](../docs/studio-project-format.md), which decides if this
 document and the code disagree.
 
@@ -43,10 +43,11 @@ Each stage is a pull request that updates the changelogs and validates the platf
 1. **Mac spike.** Needs a Mac; see Open questions.
 2. **Foundation (done).** Format spec, models, `studio.project.edit` access, the cue resolver, the
    SRT and VTT reader and writer, and shared fixtures. No UI.
-3. **Files.** The Captions inspector panel (cue list where a click seeks and text is editable,
-   Import, Auto Fix), **Export Captions…**, and `studio.captions.export`. Useful by itself with an
-   SRT from OutroKit. Imports assume recording time, with an option for files timed to the edited
-   video.
+3. **Files (done).** The Captions inspector panel (cue list where a click seeks and text is
+   editable, Import, Auto Fix, Export), and `studio.captions.import`, `check`, `fix`, and `export`.
+   Useful by itself with an SRT from OutroKit. Imports assume recording time, with an option for
+   files timed to the edited video. Changing a cue's times by hand, and adding a cue, are not in
+   this stage.
 4. **Burn-in.** Both renderers, the preview, style controls, and a `StudioRenderCheck` group.
    - Windows draws in `StudioSceneRenderer` with DirectWrite, which needs the `Vortice.DirectWrite`
      package. `StudioPreviewStillness.SameLayout` must return false across a cue change.

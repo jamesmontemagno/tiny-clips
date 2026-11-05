@@ -1505,6 +1505,12 @@
                                 </DropDownButton>
                             </Grid>
                             <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.CaptionExportNote}" TextWrapping="Wrap" />
+                            <TextBlock
+                                AutomationProperties.AutomationId="StudioCaptionsStatus"
+                                Style="{StaticResource StudioCaptionStyle}"
+                                Text="{x:Bind ViewModel.CaptionStatus, Mode=OneWay}"
+                                TextWrapping="Wrap"
+                                Visibility="{x:Bind ViewModel.HasCaptionStatus, Mode=OneWay}" />
                         </StackPanel>
                         <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasSelectedCaption, Mode=OneWay}">
                             <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Selected caption" />

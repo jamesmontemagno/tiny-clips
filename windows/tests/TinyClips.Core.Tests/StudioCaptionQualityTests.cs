@@ -186,6 +186,23 @@ public sealed class StudioCaptionQualityTests
         }
     }
 
+    [Fact]
+    public void WhatTheEditorSaysAboutCaptions()
+    {
+        Assert.Equal("No captions yet", StudioCaptionText.GetCountText(0));
+        Assert.Equal("1 caption", StudioCaptionText.GetCountText(1));
+        Assert.Equal("12 captions", StudioCaptionText.GetCountText(12));
+        Assert.Equal("1.0 to 2.5 seconds", StudioCaptionText.GetRangeText(new StudioCaptionCue { Start = 1, End = 2.5 }));
+        Assert.Equal("One two", StudioCaptionText.GetRowText(new StudioCaptionCue { Text = " One\ntwo " }));
+        Assert.Equal("(Empty)", StudioCaptionText.GetRowText(new StudioCaptionCue { Text = " " }));
+        Assert.Equal("Imported 1 caption.", StudioCaptionText.GetImportedMessage(1, 0));
+        Assert.Equal("Imported 2 captions. 1 block could not be read.", StudioCaptionText.GetImportedMessage(2, 1));
+        Assert.Equal("Imported 2 captions. 3 blocks could not be read.", StudioCaptionText.GetImportedMessage(2, 3));
+        Assert.Equal("Nothing to fix.", StudioCaptionText.GetFixedMessage(0));
+        Assert.Equal("Made 1 fix.", StudioCaptionText.GetFixedMessage(1));
+        Assert.Equal("Made 3 fixes.", StudioCaptionText.GetFixedMessage(3));
+    }
+
     [Theory]
     [InlineData("a.srt", StudioCaptionFormat.Srt)]
     [InlineData("a.SRT", StudioCaptionFormat.Srt)]

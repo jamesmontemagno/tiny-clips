@@ -96,7 +96,7 @@ internal sealed partial class WindowChecks
         var (rail, items) = RailOf(editor);
         var title = editor.Root.FindAsItIs(InspectorTitleId);
         _report.Check(
-            "a recording with a camera opens on the Scene panel: its name is over the inspector as a text, and the rail is a list called Inspector panels with nine items in the order Scene, Background, Screen, Camera, Zoom, Cut, Speed, Audio, Project; each is a list item that can be selected and can take the keyboard focus, is called by its panel's name, says what the panel holds as its description, and has an automation id; Scene is the selected one and no other is",
+            "a recording with a camera opens on the Scene panel: its name is over the inspector as a text, and the rail is a list called Inspector panels with ten items in the order Scene, Background, Screen, Camera, Zoom, Cut, Speed, Captions, Audio, Project; each is a list item that can be selected and can take the keyboard focus, is called by its panel's name, says what the panel holds as its description, and has an automation id; Scene is the selected one and no other is",
             rail is { ControlType: ControlTypeNames.List, Name: "Inspector panels", IsEnabled: true } && rail.Patterns.Contains("Selection", StringComparison.Ordinal)
                 && title is { ControlType: ControlTypeNames.Text, Name: "Scene" }
                 && items.Select(item => item.Name).SequenceEqual(titles) && items.Select(item => item.HelpText).SequenceEqual(summaries)

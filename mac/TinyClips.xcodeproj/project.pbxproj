@@ -191,6 +191,8 @@
 		B40000000000000000000008 /* StudioTimeMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000008 /* StudioTimeMap.swift */; };
 		B400000000000000000000F2 /* StudioCaptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F2 /* StudioCaptions.swift */; };
 		B400000000000000000000F3 /* StudioCaptionQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F3 /* StudioCaptionQuality.swift */; };
+		B400000000000000000000F4 /* StudioCaptionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F4 /* StudioCaptionViews.swift */; };
+		B500000000000000000000F4 /* StudioCaptionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F4 /* StudioCaptionViews.swift */; };
 		B500000000000000000000F3 /* StudioCaptionQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F3 /* StudioCaptionQuality.swift */; };
 		B600000000000000000000F4 /* StudioCaptionQualityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A500000000000000000000F4 /* StudioCaptionQualityTests.swift */; };
 		B500000000000000000000F2 /* StudioCaptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F2 /* StudioCaptions.swift */; };
@@ -359,6 +361,7 @@
 		A40000000000000000000008 /* StudioTimeMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioTimeMap.swift; sourceTree = "<group>"; };
 		A400000000000000000000F2 /* StudioCaptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptions.swift; sourceTree = "<group>"; };
 		A400000000000000000000F3 /* StudioCaptionQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionQuality.swift; sourceTree = "<group>"; };
+		A400000000000000000000F4 /* StudioCaptionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionViews.swift; sourceTree = "<group>"; };
 		A500000000000000000000F4 /* StudioCaptionQualityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionQualityTests.swift; sourceTree = "<group>"; };
 		A500000000000000000000F3 /* StudioCaptionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionsTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000000C /* Info-MAS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-MAS.plist"; sourceTree = "<group>"; };
@@ -670,6 +673,7 @@
 				FCBC2EB4FCC1CA1F83321628 /* StudioZoomViews.swift */,
 				9DAE410B2D22DD4219DE97A4 /* StudioSceneViews.swift */,
 				709B80B15F8E0E76C52214CC /* StudioCutViews.swift */,
+				A400000000000000000000F4 /* StudioCaptionViews.swift */,
 				00B1E0691A691282CBB2BB28 /* StudioSpeedViews.swift */,
 			);
 			path = Studio;
@@ -893,6 +897,7 @@
 				B40000000000000000000008 /* StudioTimeMap.swift in Sources */,
 				B400000000000000000000F2 /* StudioCaptions.swift in Sources */,
 				B400000000000000000000F3 /* StudioCaptionQuality.swift in Sources */,
+				B400000000000000000000F4 /* StudioCaptionViews.swift in Sources */,
 				774667601CEB4B855CC1C93F /* StudioRenderGeometry.swift in Sources */,
 				919755A630E5FA97FA82A34C /* StudioCaptureEvents.swift in Sources */,
 				B8EDC14A56F0ECC682744CCA /* StudioRenderState.swift in Sources */,
@@ -1005,6 +1010,7 @@
 				B50000000000000000000008 /* StudioTimeMap.swift in Sources */,
 				B500000000000000000000F2 /* StudioCaptions.swift in Sources */,
 				B500000000000000000000F3 /* StudioCaptionQuality.swift in Sources */,
+				B500000000000000000000F4 /* StudioCaptionViews.swift in Sources */,
 				D0D2B1E6D380CFA891E26F03 /* StudioRenderGeometry.swift in Sources */,
 				BF95D6F237E260C603BB3B05 /* StudioCaptureEvents.swift in Sources */,
 				322CB3FB9F91146FB467C8DF /* StudioRenderState.swift in Sources */,

@@ -99,6 +99,21 @@ final class StudioCaptionQualityTests: XCTestCase {
         XCTAssertTrue(findings.isEmpty)
     }
 
+    func testWhatTheEditorSaysAboutCaptions() {
+        XCTAssertEqual(StudioCaptionText.countText(0), "No captions yet")
+        XCTAssertEqual(StudioCaptionText.countText(1), "1 caption")
+        XCTAssertEqual(StudioCaptionText.countText(12), "12 captions")
+        XCTAssertEqual(StudioCaptionText.rangeText(StudioCaptionCue(start: 1, end: 2.5)), "1.0 to 2.5 seconds")
+        XCTAssertEqual(StudioCaptionText.rowText(StudioCaptionCue(text: " One\ntwo ")), "One two")
+        XCTAssertEqual(StudioCaptionText.rowText(StudioCaptionCue(text: " ")), "(Empty)")
+        XCTAssertEqual(StudioCaptionText.importedMessage(count: 1, skipped: 0), "Imported 1 caption.")
+        XCTAssertEqual(StudioCaptionText.importedMessage(count: 2, skipped: 1), "Imported 2 captions. 1 block could not be read.")
+        XCTAssertEqual(StudioCaptionText.importedMessage(count: 2, skipped: 3), "Imported 2 captions. 3 blocks could not be read.")
+        XCTAssertEqual(StudioCaptionText.fixedMessage(0), "Nothing to fix.")
+        XCTAssertEqual(StudioCaptionText.fixedMessage(1), "Made 1 fix.")
+        XCTAssertEqual(StudioCaptionText.fixedMessage(3), "Made 3 fixes.")
+    }
+
     func testFormatsComeFromTheExtension() {
         XCTAssertEqual(StudioCaptionFormat(path: "a.srt"), .srt)
         XCTAssertEqual(StudioCaptionFormat(path: "a.SRT"), .srt)

@@ -308,3 +308,62 @@ enum StudioCaptionQuality {
         }
     }
 }
+
+/// What the editor says about captions. The same, word for word, on Windows (`StudioCaptionText`).
+enum StudioCaptionText {
+    /// What the panel says when a project has no captions.
+    static let emptyHint = "Import an SRT or WebVTT file to add captions."
+
+    /// What the panel says about what an export leaves out.
+    static let exportNote = "Exports are timed to the edited video. Captions in cut or sped-up parts are left out."
+
+    /// What the checks say when they find nothing.
+    static let noProblems = "No problems found."
+
+    /// Said when a file has no cues in it.
+    static let nothingToImport = "No captions could be read from that file."
+
+    /// Said when captions have been written to a file.
+    static let exportedMessage = "Captions exported."
+
+    /// How many cues there are: `No captions yet`, `1 caption`, `12 captions`.
+    static func countText(_ count: Int) -> String {
+        switch count {
+        case 0: return "No captions yet"
+        case 1: return "1 caption"
+        default: return "\(count) captions"
+        }
+    }
+
+    /// When a cue starts and ends, in source time: `12.0 to 16.5 seconds`.
+    static func rangeText(_ cue: StudioCaptionCue) -> String {
+        let start = String(format: "%.1f", cue.start.isFinite ? cue.start : 0)
+        let end = String(format: "%.1f", cue.end.isFinite ? cue.end : 0)
+        return "\(start) to \(end) seconds"
+    }
+
+    /// What a cue says, on one line. A cue with nothing to say says so.
+    static func rowText(_ cue: StudioCaptionCue) -> String {
+        let text = StudioCaptionResolver.cleanText(cue.text).replacingOccurrences(of: "\n", with: " ")
+        return text.isEmpty ? "(Empty)" : text
+    }
+
+    /// What came of an import: `Imported 12 captions. 1 block could not be read.`
+    static func importedMessage(count: Int, skipped: Int) -> String {
+        let imported = count == 1 ? "Imported 1 caption." : "Imported \(count) captions."
+        switch skipped {
+        case 0: return imported
+        case 1: return "\(imported) 1 block could not be read."
+        default: return "\(imported) \(skipped) blocks could not be read."
+        }
+    }
+
+    /// What came of Auto Fix: `Made 3 fixes.`
+    static func fixedMessage(_ applied: Int) -> String {
+        switch applied {
+        case 0: return "Nothing to fix."
+        case 1: return "Made 1 fix."
+        default: return "Made \(applied) fixes."
+        }
+    }
+}

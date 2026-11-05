@@ -6,7 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
-- Studio projects can hold captions, shared with the macOS app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. There is no captions UI yet; agents can read and change them with `studio.project.get` and `studio.project.edit`.
+- Studio projects can hold captions, shared with the macOS app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. Agents can read and change them with `studio.project.get` and `studio.project.edit`.
+- Studio has a Captions panel: import an SRT or WebVTT file, timed to the recording or to the edited video; correct or delete a caption; check for readability problems and fix what is safe to fix; and export the video's captions as SRT or WebVTT. Agents can do the same with `studio.captions.import`, `studio.captions.check`, `studio.captions.fix`, and `studio.captions.export`. Captions cannot be drawn into the video yet.
 
 ### Fixed
 - Agent Control now preserves Studio gestures and existing annotated captures, reports saved screenshot dimensions accurately, persists agent activity, and cancels pending approvals when an agent disconnects.
