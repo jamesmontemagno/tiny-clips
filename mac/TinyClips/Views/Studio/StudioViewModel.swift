@@ -457,20 +457,26 @@ final class StudioViewModel: ObservableObject {
         ])
 
         let generator = captionGenerator
+        let report: @Sendable (StudioCaptionProgress) -> Void = { [weak self] progress in
+            guard let self else { return }
+            Task { @MainActor in
+                self.reportCaptionProgress(progress, generation: generation)
+            }
+        }
         captionGenerationTask = Task { [weak self] in
             let outcome: Result<StudioGeneratedCaptions, Error>
             do {
-                outcome = .success(try await generator.generate(project: project, paths: paths, model: model) { progress in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.captionGenerationNumber == generation, self.isGeneratingCaptions else { return }
-                        self.captionGenerationProgress = progress
-                    }
-                })
+                outcome = .success(try await generator.generate(project: project, paths: paths, model: model, progress: report))
             } catch {
                 outcome = .failure(error)
             }
             self?.finishGeneratingCaptions(outcome)
         }
+    }
+
+    private func reportCaptionProgress(_ progress: StudioCaptionProgress, generation: Int) {
+        guard captionGenerationNumber == generation, isGeneratingCaptions else { return }
+        captionGenerationProgress = progress
     }
 
     func cancelCaptionGeneration() {
