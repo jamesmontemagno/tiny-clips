@@ -132,7 +132,10 @@ public enum StudioEditorChanges
     /// <summary>How far the save of the project as a folder is. That one starts or ends changes everything.</summary>
     ProjectFolder = 256,
 
-    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording | Inspector | ProjectFolder,
+    /// <summary>Whether captions are being generated, and how far that is.</summary>
+    Captions = 512,
+
+    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording | Inspector | ProjectFolder | Captions,
 }
 
 public sealed class StudioEditorChangedEventArgs(StudioEditorChanges changes) : EventArgs

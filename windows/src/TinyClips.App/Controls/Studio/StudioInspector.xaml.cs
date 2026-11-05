@@ -188,6 +188,12 @@ public sealed partial class StudioInspector : UserControl
     private void OnImportCaptionsTimedToRecording(object sender, RoutedEventArgs e) =>
         _ = ViewModel.ImportCaptionsAsync(StudioCaptionTiming.Recording);
 
+    private void OnGenerateCaptions(object sender, RoutedEventArgs e)
+    {
+        CaptionGenerateFlyout.Hide();
+        _ = ViewModel.GenerateCaptionsAsync();
+    }
+
     private void OnImportCaptionsTimedToVideo(object sender, RoutedEventArgs e) =>
         _ = ViewModel.ImportCaptionsAsync(StudioCaptionTiming.EditedVideo);
 

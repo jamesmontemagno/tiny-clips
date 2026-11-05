@@ -274,6 +274,7 @@ public class CliTests
         Assert.Equal(TimeSpan.FromSeconds(150), defaults.RequestTimeoutFor("app.status"));
         Assert.Equal(TimeSpan.FromHours(2), defaults.RequestTimeoutFor("studio.export"));
         Assert.Equal(TimeSpan.FromHours(2), defaults.RequestTimeoutFor("editor.trim"));
+        Assert.Equal(TimeSpan.FromHours(2), defaults.RequestTimeoutFor("studio.captions.generate"));
 
         var configured = new CliEnvironment
         {

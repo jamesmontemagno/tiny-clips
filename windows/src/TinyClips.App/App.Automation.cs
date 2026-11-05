@@ -15,6 +15,7 @@ using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App;
 
@@ -569,6 +570,64 @@ public partial class App : IAutomationAppActions
                 result["revision"] = ProjectRevision(saved);
                 result["applied"] = fixes.Applied;
                 return result;
+            }
+            case "studio.captions.models":
+            {
+                var models = Services.GetRequiredService<StudioCaptionModelStore>();
+                var items = new JsonArray();
+                foreach (var model in StudioCaptionModels.All)
+                {
+                    items.Add(new JsonObject
+                    {
+                        ["id"] = model.Id,
+                        ["name"] = model.Name,
+                        ["size"] = model.SizeText,
+                        ["guidance"] = model.Guidance,
+                        ["installed"] = models.IsInstalled(model),
+                    });
+                }
+
+                return new JsonObject { ["models"] = items, ["selected"] = settings.StudioCaptionModelId };
+            }
+            case "studio.captions.generate":
+            {
+                var projectId = RequiredStudioString(parameters, "projectId");
+                var current = ReadCheckedProject(parameters, projectId, store);
+                var model = parameters["model"]?.GetValue<string>() is { } modelId
+                    ? StudioCaptionModels.Find(modelId)
+                        ?? throw new AutomationException(AutomationErrorCodes.InvalidParams, $"There is no speech model called {modelId}.")
+                    : StudioCaptionModels.Find(settings.StudioCaptionModelId) ?? StudioCaptionModels.Default;
+                var generator = Services.GetRequiredService<IStudioCaptionGenerator>();
+                if (!generator.IsModelInstalled(model) && parameters["allowModelDownload"]?.GetValue<bool>() != true)
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                        $"The {model.Name} model ({model.SizeText}) is not on this computer. Set allowModelDownload to true to download it.");
+                }
+
+                StudioGeneratedCaptions heard;
+                try
+                {
+                    heard = await generator.GenerateAsync(current, store.GetPaths(current), model, progress: null, cancellationToken);
+                }
+                catch (StudioCaptionException ex)
+                {
+                    throw new AutomationException(AutomationErrorCodes.Internal, ex.Message);
+                }
+
+                // It took a while. The cues are in source time, so an edit made meanwhile is kept.
+                var latest = ReadAutomationProject(projectId, store);
+                var saved = ApplyAutomationEdit(projectId, latest, latest with
+                {
+                    Captions = latest.Captions with { Language = heard.Language, Cues = heard.Cues },
+                }, store);
+                return new JsonObject
+                {
+                    ["project"] = ProjectNode(saved),
+                    ["revision"] = ProjectRevision(saved),
+                    ["cueCount"] = heard.Cues.Length,
+                    ["language"] = heard.Language,
+                    ["model"] = model.Id,
+                };
             }
             case "studio.captions.export":
             {

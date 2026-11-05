@@ -1459,6 +1459,59 @@
                                 Style="{StaticResource StudioNoteStyle}"
                                 Text="{x:Bind ViewModel.CaptionEmptyHint}"
                                 Visibility="{x:Bind ViewModel.IsCaptionEmptyHintVisible, Mode=OneWay}" />
+                            <Button
+                                HorizontalAlignment="Stretch"
+                                AutomationProperties.AutomationId="StudioCaptionsGenerateButton"
+                                Content="Generate"
+                                IsEnabled="{x:Bind ViewModel.CanGenerateCaptions, Mode=OneWay}"
+                                ToolTipService.ToolTip="Make captions from the recording's sound, on this computer"
+                                Visibility="{x:Bind ViewModel.IsCaptionGenerateVisible, Mode=OneWay}">
+                                <Button.Flyout>
+                                    <Flyout x:Name="CaptionGenerateFlyout" Placement="Bottom">
+                                        <StackPanel Width="280" Spacing="12">
+                                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Generate captions" />
+                                            <ComboBox
+                                                HorizontalAlignment="Stretch"
+                                                AutomationProperties.AutomationId="StudioCaptionsModelComboBox"
+                                                Header="Model"
+                                                ItemsSource="{x:Bind ViewModel.CaptionModelOptions}"
+                                                SelectedIndex="{x:Bind ViewModel.SelectedCaptionModelIndex, Mode=TwoWay}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="models:StudioCaptionModelOption">
+                                                        <TextBlock Text="{x:Bind Text}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.CaptionModelNote, Mode=OneWay}" TextWrapping="Wrap" />
+                                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.CaptionPrivacyNote}" TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Style="{StaticResource StudioCaptionStyle}"
+                                                Text="{x:Bind ViewModel.CaptionReplaceNote}"
+                                                TextWrapping="Wrap"
+                                                Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}" />
+                                            <Button
+                                                HorizontalAlignment="Stretch"
+                                                AutomationProperties.AutomationId="StudioCaptionsGenerateStartButton"
+                                                Click="OnGenerateCaptions"
+                                                Content="{x:Bind ViewModel.CaptionGenerateActionText, Mode=OneWay}"
+                                                Style="{StaticResource AccentButtonStyle}" />
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+                            <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.IsGeneratingCaptions, Mode=OneWay}">
+                                <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.CaptionProgressText, Mode=OneWay}" />
+                                <ProgressBar
+                                    AutomationProperties.AutomationId="StudioCaptionsProgress"
+                                    AutomationProperties.Name="Generating captions"
+                                    Maximum="100"
+                                    Value="{x:Bind ViewModel.CaptionProgressPercent, Mode=OneWay}" />
+                                <Button
+                                    AutomationProperties.AutomationId="StudioCaptionsCancelButton"
+                                    Click="{x:Bind ViewModel.CancelCaptionGeneration}"
+                                    Content="Cancel"
+                                    ToolTipService.ToolTip="Stop generating. The captions stay as they were." />
+                            </StackPanel>
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />

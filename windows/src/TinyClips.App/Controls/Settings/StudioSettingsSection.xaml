@@ -161,6 +161,32 @@
                             SpinButtonPlacementMode="Inline"
                             Value="{x:Bind ViewModel.StudioStorageCapGigabytes, Mode=TwoWay}" />
                     </controls:SettingsCard>
+
+                    <controls:SettingsCard
+                        AutomationProperties.AutomationId="StudioCaptionModelsCard"
+                        Description="{x:Bind ViewModel.StudioCaptionModelsDisplay, Mode=OneWay}"
+                        Header="Speech models for captions"
+                        HeaderIcon="{ui:FontIcon Glyph=&#xE7F0;}">
+                        <Button
+                            AutomationProperties.AutomationId="StudioDeleteCaptionModelsButton"
+                            AutomationProperties.Name="Delete speech models"
+                            Content="Delete"
+                            IsEnabled="{x:Bind ViewModel.CanDeleteStudioCaptionModels, Mode=OneWay}"
+                            ToolTipService.ToolTip="Free the room the downloaded speech models use">
+                            <Button.Flyout>
+                                <Flyout x:Name="DeleteCaptionModelsFlyout">
+                                    <StackPanel Width="260" Spacing="12">
+                                        <TextBlock Text="Delete the downloaded speech models? Captions you made stay. A model is downloaded again the next time it is used." TextWrapping="Wrap" />
+                                        <Button
+                                            AutomationProperties.AutomationId="StudioDeleteCaptionModelsConfirmButton"
+                                            Click="OnDeleteCaptionModels"
+                                            Content="Delete models"
+                                            Style="{StaticResource AccentButtonStyle}" />
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </controls:SettingsCard>
                 </StackPanel>
 
                 <!--

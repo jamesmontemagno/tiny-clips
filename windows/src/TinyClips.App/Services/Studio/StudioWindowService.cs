@@ -8,6 +8,7 @@ using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
 using TinyClips.Core.Studio.Rendering;
+using TinyClips.Core.Studio.Transcription;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -71,6 +72,7 @@ public sealed class StudioWindowService : IStudioProjectHost
     private readonly IStudioProjectStore _store;
     private readonly IStudioPreviewFactory _previews;
     private readonly IStudioExportService _exporter;
+    private readonly IStudioCaptionGenerator _captionGenerator;
     private readonly IStudioPreviewViewFactory _previewViews;
     private readonly ICaptureSettings _settings;
     private readonly IClipStorageService _storage;
@@ -92,9 +94,11 @@ public sealed class StudioWindowService : IStudioProjectHost
         ICaptureSettings settings,
         IClipStorageService storage,
         StudioProjectTracker tracker,
-        StudioProjectCleanupService cleanup)
+        StudioProjectCleanupService cleanup,
+        IStudioCaptionGenerator captionGenerator)
     {
         _store = store;
+        _captionGenerator = captionGenerator;
         _previews = previews;
         _exporter = exporter;
         _previewViews = previewViews;
@@ -247,7 +251,8 @@ public sealed class StudioWindowService : IStudioProjectHost
                 _settings,
                 _storage,
                 DispatcherQueue.GetForCurrentThread(),
-                CanFindPeople());
+                CanFindPeople(),
+                _captionGenerator);
             viewModel.Exported += OnExported;
             viewModel.ScreenRecordingSaved += OnScreenRecordingSaved;
             viewModel.ErrorReported += OnErrorReported;

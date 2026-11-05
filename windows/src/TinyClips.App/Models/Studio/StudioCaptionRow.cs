@@ -1,4 +1,5 @@
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App.Models.Studio;
 
@@ -13,4 +14,13 @@ public sealed record StudioCaptionRow(int Index, string TimeText, string Text)
 
     public static StudioCaptionRow From(int index, StudioCaptionCue cue) =>
         new(index, StudioCaptionText.GetRangeText(cue), StudioCaptionText.GetRowText(cue));
+}
+
+/// <summary>A model as the list in the Generate flyout shows it.</summary>
+public sealed record StudioCaptionModelOption(StudioCaptionModel Model)
+{
+    public string Text => $"{Model.Name} ({Model.SizeText})";
+
+    /// <summary>What a screen reader says for the item. The list item takes it from here.</summary>
+    public override string ToString() => Text;
 }

@@ -253,12 +253,19 @@ With the switch on:
   recording is asked for again. If Studio is switched off before the recording starts, it is
   made as an ordinary recording. A Studio recording that cannot be saved as a project is kept
   as an ordinary video, which then opens the trimmer or is saved, as the trimmer switch says.
+- **Captions** can be generated from a recording's sound with **Generate** in the Captions
+  panel. It runs on this computer with [Whisper.net](https://github.com/sandrohanea/whisper.net),
+  on the CPU, in the language it detects; the sound does not leave it. The flyout chooses a
+  speech model and says its size. A model is downloaded the first time it is used, and
+  **Settings > Studio > Speech models for captions** says how much room they take and deletes
+  them. Generating replaces the captions as one step that Undo reverses; the editor stays usable
+  while it runs, except Export and saving a project copy.
 - **The editor** has a live preview, an inspector, a scene lane, a zoom lane, a cut lane, and a
   speed lane above a trim bar, a Project menu, undo and redo, and Export. A recording without a
   camera has no scenes.
   The inspector shows one panel at a time, chosen on the rail down its outer edge: **Scene**,
-  **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**, **Audio**, and
-  **Project** (no Scene and no Camera without a camera). The rail is one stop for `Tab`, and
+  **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**, **Audio**,
+  **Captions**, and **Project** (no Scene and no Camera without a camera). The rail is one stop for `Tab`, and
   `Up`/`Down`/`Home`/`End` choose a panel; `Space` plays and pauses from its chosen item as it
   does from a slider. Selecting or adding a zoom, a cut, or a speed change,
   splitting or going to a scene, and dragging the camera in the preview show that panel by

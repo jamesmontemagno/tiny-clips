@@ -1033,3 +1033,9 @@ A summary names the findings by count, in the order of the table, joined by `, `
 | `tooManyLines` | `1 with too many lines` | `2 with too many lines` |
 | `shortDuration` | `1 too short` | `2 too short` |
 | `readingSpeed` | `1 too fast to read` | `2 too fast to read` |
+
+### 15.7 Generating
+
+**Generating** replaces `captions.cues` with what speech recognition heard, and sets `captions.language` to the language it heard, or null if it does not say, as one undoable edit. Other properties of `captions` stay. A cue's times, and those of its `words`, are source time, so generating listens to the whole recording, including what is cut, muted, or trimmed away, and an edit made while it runs is kept. Recognition breaks its cues at word boundaries, at most 84 characters long, and then the safe fixes of section 15.6 are made. A recording in which nothing is heard is an error and leaves the captions as they were, and so does stopping.
+
+The speech recognition is the platform's own, so two platforms need not make the same cues from the same sound.

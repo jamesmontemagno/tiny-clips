@@ -89,6 +89,9 @@ The Store listing screenshots are separate from the package tile assets.
 - Tracking: No.
 - Screen, microphone, webcam, and system-audio content are captured only after the user starts a
   recording. Captures are saved locally unless the user configures their own Uploadcare account.
+- Studio captions are made on the device, and sound is not sent anywhere. The speech model is
+  downloaded from Hugging Face the first time someone chooses to generate with it. Nothing else is
+  sent or fetched for captions.
 
 Recheck these statements whenever analytics, account, cloud, or crash-reporting behavior changes.
 

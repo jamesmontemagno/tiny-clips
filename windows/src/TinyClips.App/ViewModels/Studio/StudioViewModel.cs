@@ -5,6 +5,7 @@ using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App.ViewModels.Studio;
 
@@ -90,7 +91,8 @@ public sealed partial class StudioViewModel : ObservableObject
         ICaptureSettings settings,
         IClipStorageService storage,
         DispatcherQueue dispatcher,
-        bool canFindPeople)
+        bool canFindPeople,
+        IStudioCaptionGenerator captionGenerator)
         : this(
             projectId,
             store,
@@ -99,7 +101,8 @@ public sealed partial class StudioViewModel : ObservableObject
             settings,
             storage,
             action => dispatcher.TryEnqueue(() => action()),
-            canFindPeople)
+            canFindPeople,
+            captionGenerator: captionGenerator)
     {
     }
 
@@ -116,7 +119,8 @@ public sealed partial class StudioViewModel : ObservableObject
         IClipStorageService storage,
         Action<Action> post,
         bool canFindPeople,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IStudioCaptionGenerator? captionGenerator = null)
     {
         _store = store;
         _settings = settings;
@@ -130,7 +134,8 @@ public sealed partial class StudioViewModel : ObservableObject
             exporter,
             settings,
             post,
-            timeProvider);
+            timeProvider,
+            captionGenerator);
         _session.Changed += OnSessionChanged;
         _session.Exported += OnSessionExported;
         _session.ScreenRecordingSaved += OnSessionScreenRecordingSaved;
@@ -639,6 +644,11 @@ public sealed partial class StudioViewModel : ObservableObject
             if (e.Includes(StudioEditorChanges.Inspector))
             {
                 Raise(InspectorPropertyNames);
+            }
+
+            if (e.Includes(StudioEditorChanges.Captions))
+            {
+                Raise(CaptionGenerationPropertyNames);
             }
 
             if (e.Includes(StudioEditorChanges.ProjectFolder))

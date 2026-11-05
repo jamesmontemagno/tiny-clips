@@ -1,4 +1,5 @@
 using System.Globalization;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.Core.Studio;
 
@@ -10,6 +11,9 @@ public static class StudioCaptionText
 {
     /// <summary>What the panel says when a project has no captions.</summary>
     public const string EmptyHint = "Import an SRT or WebVTT file to add captions.";
+
+    /// <summary>The same, where captions can also be generated.</summary>
+    public const string GenerateHint = "Generate captions from the recording's sound, or import an SRT or WebVTT file.";
 
     /// <summary>What the panel says about what an export leaves out.</summary>
     public const string ExportNote = "Exports are timed to the edited video. Captions in cut or sped-up parts are left out.";
@@ -67,4 +71,60 @@ public static class StudioCaptionText
         1 => "Made 1 fix.",
         _ => string.Create(CultureInfo.InvariantCulture, $"Made {applied} fixes."),
     };
+
+    // Generating. The Mac gets these words with its speech engines.
+
+    /// <summary>Said about where the sound goes.</summary>
+    public const string PrivacyNote = "Your sound stays on this computer. Only the model is downloaded.";
+
+    /// <summary>Said before generating over captions that are there.</summary>
+    public const string ReplaceNote = "This replaces the current captions. Undo brings them back.";
+
+    /// <summary>Said when generating starts.</summary>
+    public const string GeneratingMessage = "Generating captions.";
+
+    /// <summary>Said when generating was stopped.</summary>
+    public const string CancelledMessage = "Generating captions stopped. The captions are as they were.";
+
+    /// <summary>What came of generating: <c>Generated 12 captions.</c></summary>
+    public static string GetGeneratedMessage(int count) => count == 1
+        ? "Generated 1 caption."
+        : string.Create(CultureInfo.InvariantCulture, $"Generated {count} captions.");
+
+    /// <summary>How far generating is: <c>Recognizing speech: 40%</c>.</summary>
+    public static string GetProgressText(StudioCaptionProgress progress)
+    {
+        var percent = (int)Math.Round(Math.Clamp(progress.Fraction, 0, 1) * 100);
+        var stage = progress.Stage switch
+        {
+            StudioCaptionStage.DownloadingModel => "Downloading the model",
+            StudioCaptionStage.ReadingSound => "Reading the sound",
+            _ => "Recognizing speech",
+        };
+        return string.Create(CultureInfo.InvariantCulture, $"{stage}: {percent}%");
+    }
+
+    /// <summary>What a model is good for, and whether choosing it means a download.</summary>
+    public static string GetModelNote(StudioCaptionModel model, bool isInstalled) =>
+        isInstalled
+            ? $"{model.Guidance}. Already on this computer."
+            : $"{model.Guidance}. Downloads {model.SizeText} once, from Hugging Face.";
+
+    /// <summary>The words on the button that starts it.</summary>
+    public static string GetGenerateActionText(StudioCaptionModel model, bool isInstalled) =>
+        isInstalled ? "Generate" : $"Download {model.SizeText} and generate";
+
+    /// <summary>How much room the downloaded models take, for Settings.</summary>
+    public static string GetInstalledModelsText(int count, long bytes)
+    {
+        if (count == 0)
+        {
+            return "No models downloaded.";
+        }
+
+        var size = bytes >= 1024L * 1024 * 1024
+            ? string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024 * 1024):0.0} GB")
+            : string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024):0} MB");
+        return count == 1 ? $"1 model downloaded, using {size}." : $"{count} models downloaded, using {size}.";
+    }
 }

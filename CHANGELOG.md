@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- The agent contract has `studio.captions.models` and `studio.captions.generate`, which the Windows app implements. macOS answers `not_supported` until it has speech recognition of its own.
 - Studio projects can hold captions, shared with the Windows app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. Agents can read and change them with `studio.project.get` and `studio.project.edit`.
 - Studio has a Captions panel: import an SRT or WebVTT file, timed to the recording or to the edited video; correct or delete a caption; check for readability problems and fix what is safe to fix; and export the video's captions as SRT or WebVTT. Agents can do the same with `studio.captions.import`, `studio.captions.check`, `studio.captions.fix`, and `studio.captions.export`. Captions cannot be drawn into the video yet.
 

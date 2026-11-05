@@ -83,6 +83,8 @@ public class ContractTests
         Assert.Equal("edit", contract.Find("studio.captions.import")!.Scope);
         Assert.Equal("edit", contract.Find("studio.captions.fix")!.Scope);
         Assert.Equal("export", contract.Find("studio.captions.export")!.Scope);
+        Assert.Equal("read", contract.Find("studio.captions.models")!.Scope);
+        Assert.Equal("edit", contract.Find("studio.captions.generate")!.Scope);
 
         var edit = Contract.InputSchema(contract.Find("studio.project.edit")!);
         Assert.Contains("expectedModifiedAt", edit["required"]!.AsArray()

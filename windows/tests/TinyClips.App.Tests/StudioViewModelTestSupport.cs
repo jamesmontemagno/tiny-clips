@@ -84,6 +84,12 @@ public abstract class StudioViewModelTestBase : IDisposable
     /// are bound to it while it still says it is loading, and then the project is read. A test
     /// that opens a project which cannot be shown says so.
     /// </summary>
+    /// <summary>The settings of the view models a test opens.</summary>
+    protected CaptureSettings Settings { get; } = new(new StudioTestSettings());
+
+    /// <summary>What a view model a test opens generates captions with. Without it, it cannot.</summary>
+    protected TinyClips.Core.Studio.Transcription.IStudioCaptionGenerator? CaptionGenerator { get; set; }
+
     protected async Task<StudioViewModel> OpenAsync(string projectId, StudioBoundControls? controls = null, bool expectReady = true)
     {
         var viewModel = new StudioViewModel(
@@ -91,11 +97,12 @@ public abstract class StudioViewModelTestBase : IDisposable
             _store,
             _previews,
             new StudioTestExporter(),
-            new CaptureSettings(new StudioTestSettings()),
+            Settings,
             new StudioTestVideoNames(Path.Combine(_directory, "Videos")),
             Post,
             canFindPeople: true,
-            _time);
+            _time,
+            CaptionGenerator);
         viewModel.Announced += (_, e) => Announcements.Add(e.Message);
         controls?.Attach(viewModel);
 

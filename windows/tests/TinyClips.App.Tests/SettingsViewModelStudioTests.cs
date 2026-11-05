@@ -9,6 +9,7 @@ using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App.Tests;
 
@@ -799,6 +800,92 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Assert.Equal("Couldn't read Studio project storage.", vm.StudioStorageDisplay);
         Assert.Equal(string.Empty, vm.StudioKeptNote);
         Assert.Empty(vm.StudioDrafts);
+        vm.NotifyClosed();
+    }
+
+    // ---- The speech models
+
+    private StudioCaptionModelStore ModelsWith(params (string Id, int Bytes)[] models)
+    {
+        var store = new StudioCaptionModelStore(Path.Combine(_directory, "Models"), new HttpClient());
+        Directory.CreateDirectory(store.ModelsDirectory);
+        foreach (var (id, bytes) in models)
+        {
+            File.WriteAllBytes(store.GetPath(StudioCaptionModels.Find(id)!), new byte[bytes]);
+        }
+
+        return store;
+    }
+
+    private SettingsViewModel CreateViewModel(StudioCaptionModelStore models) => new(
+        _settings, new HotKeys(), new LaunchAtLogin(), new NoMicrophones(), new NoWebcams(), _names,
+        new NoAnalytics(), new NoCredentials(), _store, _cleanup, _tracker, dispatcherQueue: null)
+    {
+        StudioCaptionModelStore = models,
+    };
+
+    [Fact]
+    public async Task TheSpeechModels_SayHowMuchRoomTheyTake()
+    {
+        var vm = CreateViewModel(ModelsWith(("Base", 2 * 1024 * 1024), ("Tiny", 1024 * 1024)));
+
+        await vm.RefreshStudioCaptionModelsAsync();
+
+        Assert.Equal("2 models downloaded, using 3 MB.", vm.StudioCaptionModelsDisplay);
+        Assert.True(vm.CanDeleteStudioCaptionModels);
+        vm.NotifyClosed();
+    }
+
+    [Fact]
+    public async Task WithNoSpeechModels_ThereIsNothingToDelete()
+    {
+        var vm = CreateViewModel(ModelsWith());
+
+        await vm.RefreshStudioCaptionModelsAsync();
+
+        Assert.Equal("No models downloaded.", vm.StudioCaptionModelsDisplay);
+        Assert.False(vm.CanDeleteStudioCaptionModels);
+        vm.NotifyClosed();
+    }
+
+    [Fact]
+    public async Task DeletingTheSpeechModels_RemovesThemAndSaysSo()
+    {
+        var models = ModelsWith(("Base", 1024));
+        var vm = CreateViewModel(models);
+        await vm.RefreshStudioCaptionModelsAsync();
+
+        await vm.DeleteStudioCaptionModelsAsync();
+
+        Assert.Empty(models.GetInstalled());
+        Assert.Equal("No models downloaded.", vm.StudioCaptionModelsDisplay);
+        Assert.False(vm.CanDeleteStudioCaptionModels);
+        vm.NotifyClosed();
+    }
+
+    [Fact]
+    public async Task AModelThatCouldNotBeDeleted_IsSaidOutLoud()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to delete a file that is open.");
+        var models = ModelsWith(("Base", 1024));
+        var vm = CreateViewModel(models);
+        using var held = new FileStream(models.GetPath(StudioCaptionModels.Find("Base")!), FileMode.Open, FileAccess.Read, FileShare.None);
+
+        await vm.DeleteStudioCaptionModelsAsync();
+
+        Assert.StartsWith("Couldn't delete the speech models: ", vm.StudioCaptionModelsDisplay);
+        vm.NotifyClosed();
+    }
+
+    [Fact]
+    public async Task WithoutAPlaceForModels_SettingsSaysNothingAboutThem()
+    {
+        var vm = CreateViewModel();
+
+        await vm.RefreshStudioCaptionModelsAsync();
+        await vm.DeleteStudioCaptionModelsAsync();
+
+        Assert.False(vm.CanDeleteStudioCaptionModels);
         vm.NotifyClosed();
     }
 

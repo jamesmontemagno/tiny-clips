@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- Studio can generate captions from a recording's sound, on this computer: **Generate** in the Captions panel, with a choice of speech models that are downloaded the first time they are used. The sound stays on the computer, it can be stopped, and Undo brings back what was there. Settings shows how much room the models take and deletes them. Agents can use `studio.captions.models` and `studio.captions.generate`.
 - Studio projects can hold captions, shared with the macOS app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. Agents can read and change them with `studio.project.get` and `studio.project.edit`.
 - Studio has a Captions panel: import an SRT or WebVTT file, timed to the recording or to the edited video; correct or delete a caption; check for readability problems and fix what is safe to fix; and export the video's captions as SRT or WebVTT. Agents can do the same with `studio.captions.import`, `studio.captions.check`, `studio.captions.fix`, and `studio.captions.export`. Captions cannot be drawn into the video yet.
 

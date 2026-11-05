@@ -3,6 +3,7 @@ using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio.Preview;
 using TinyClips.Core.Studio.Rendering;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.Core.Studio.Editing;
 
@@ -86,7 +87,8 @@ public sealed partial class StudioEditorSession
         IStudioExportService exporter,
         ICaptureSettings settings,
         Action<Action> post,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IStudioCaptionGenerator? captionGenerator = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(projectId);
         ArgumentNullException.ThrowIfNull(store);
@@ -101,6 +103,7 @@ public sealed partial class StudioEditorSession
         _exporter = exporter;
         _settings = settings;
         _post = post;
+        _captionGenerator = captionGenerator;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -179,7 +182,9 @@ public sealed partial class StudioEditorSession
 
     public bool CanRedo => IsEditable && Model is { CanRedo: true };
 
-    public bool CanExport => IsEditable && Model is { OutputDuration: > 0 };
+    // Not while captions are being made: they are put in the project when they are done, and a
+    // running export would refuse the edit.
+    public bool CanExport => IsEditable && !IsGeneratingCaptions && Model is { OutputDuration: > 0 };
 
     /// <summary>
     /// Whether adding a zoom at the playhead has a zoom to answer with: one fits there, or one is
@@ -1539,6 +1544,8 @@ public sealed partial class StudioEditorSession
         _lifetime.Cancel();
         _exportCancellation?.Cancel();
         _projectFolderCancellation?.Cancel();
+        _captionCancellation?.Cancel();
+        var captionGeneration = _captionGeneration;
         var exportTask = _exportTask;
         var screenRecordingSave = _screenRecordingSave;
         var projectFolderSave = _projectFolderSave;
@@ -1577,6 +1584,7 @@ public sealed partial class StudioEditorSession
         {
             // An export reads the same files, so it has to have let go of them as well.
             await WaitQuietlyAsync(exportTask).ConfigureAwait(false);
+            await WaitQuietlyAsync(captionGeneration).ConfigureAwait(false);
             await DeleteProjectAsync().ConfigureAwait(false);
             return;
         }

@@ -63,7 +63,7 @@ public sealed partial class StudioViewModel
 
     public bool IsCaptionEmptyHintVisible => IsReady && (Project?.Captions.Cues.Length ?? 0) == 0;
 
-    public string CaptionEmptyHint => StudioCaptionText.EmptyHint;
+    public string CaptionEmptyHint => StudioCaptionText.GenerateHint;
 
     public string CaptionExportNote => StudioCaptionText.ExportNote;
 
@@ -247,6 +247,115 @@ public sealed partial class StudioViewModel
         {
             SetChoosingCaptionFile(false);
         }
+    }
+
+    // Generating
+
+    private static readonly IReadOnlyList<StudioCaptionModelOption> AllCaptionModelOptions =
+        StudioCaptionModels.All.Select(static model => new StudioCaptionModelOption(model)).ToArray();
+
+    // What changes as generating goes on, and the project stays as it is.
+    private static readonly string[] CaptionGenerationPropertyNames =
+    [
+        nameof(IsGeneratingCaptions),
+        nameof(IsCaptionGenerateVisible),
+        nameof(CaptionProgressPercent),
+        nameof(CaptionProgressText),
+    ];
+
+    public IReadOnlyList<StudioCaptionModelOption> CaptionModelOptions => AllCaptionModelOptions;
+
+    private StudioCaptionModel SelectedCaptionModel =>
+        StudioCaptionModels.Find(_settings.StudioCaptionModelId) ?? StudioCaptionModels.Default;
+
+    /// <summary>The chosen model's place in <see cref="CaptionModelOptions"/>. Kept in the settings.</summary>
+    public int SelectedCaptionModelIndex
+    {
+        get
+        {
+            var chosen = SelectedCaptionModel;
+            for (var index = 0; index < AllCaptionModelOptions.Count; index++)
+            {
+                if (ReferenceEquals(AllCaptionModelOptions[index].Model, chosen))
+                {
+                    return index;
+                }
+            }
+
+            return 0;
+        }
+        set
+        {
+            if (value >= 0 && value < AllCaptionModelOptions.Count && value != SelectedCaptionModelIndex)
+            {
+                _settings.StudioCaptionModelId = AllCaptionModelOptions[value].Model.Id;
+                OnPropertyChanged(nameof(SelectedCaptionModelIndex));
+                OnPropertyChanged(nameof(CaptionModelNote));
+                OnPropertyChanged(nameof(CaptionGenerateActionText));
+            }
+        }
+    }
+
+    public string CaptionModelNote =>
+        StudioCaptionText.GetModelNote(SelectedCaptionModel, _session.IsCaptionModelInstalled(SelectedCaptionModel));
+
+    public string CaptionGenerateActionText =>
+        StudioCaptionText.GetGenerateActionText(SelectedCaptionModel, _session.IsCaptionModelInstalled(SelectedCaptionModel));
+
+    public string CaptionPrivacyNote => StudioCaptionText.PrivacyNote;
+
+    public string CaptionReplaceNote => StudioCaptionText.ReplaceNote;
+
+    public bool CanGenerateCaptions => _session.CanGenerateCaptions;
+
+    public bool IsGeneratingCaptions => _session.IsGeneratingCaptions;
+
+    public bool IsCaptionGenerateVisible => !IsGeneratingCaptions;
+
+    public double CaptionProgressPercent => _session.CaptionGenerationProgress.Fraction * 100;
+
+    public string CaptionProgressText => StudioCaptionText.GetProgressText(_session.CaptionGenerationProgress);
+
+    public void CancelCaptionGeneration() => _session.CancelCaptionGeneration();
+
+    /// <summary>Hears the recording with the chosen model, and says what came of it.</summary>
+    public async Task GenerateCaptionsAsync()
+    {
+        if (!CanGenerateCaptions)
+        {
+            return;
+        }
+
+        CommitCaptionText();
+        ClearCaptionStatus();
+        var model = SelectedCaptionModel;
+        var generation = _session.GenerateCaptionsAsync(model);
+        Announce(StudioCaptionText.GeneratingMessage, CaptionActivityId, StudioAnnouncementKind.Information);
+        var result = await generation;
+
+        // A model it downloaded is on this computer now, whatever came of the rest.
+        OnPropertyChanged(nameof(CaptionModelNote));
+        OnPropertyChanged(nameof(CaptionGenerateActionText));
+        switch (result.Outcome)
+        {
+            case StudioCaptionGenerationOutcome.Generated:
+                _pendingCaptionText = null;
+                ReportCaptions(StudioCaptionText.GetGeneratedMessage(result.Count));
+                break;
+            case StudioCaptionGenerationOutcome.Failed:
+                ShowError(result.Message ?? "Captions could not be generated.");
+                break;
+            case StudioCaptionGenerationOutcome.Cancelled when !_session.IsClosed:
+                ReportCaptions(StudioCaptionText.CancelledMessage);
+                break;
+        }
+    }
+
+    private void ClearCaptionStatus()
+    {
+        CaptionStatus = string.Empty;
+        OnPropertyChanged(nameof(CaptionStatus));
+        OnPropertyChanged(nameof(HasCaptionStatus));
     }
 
     private void ReportCaptions(string message)

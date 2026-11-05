@@ -1,7 +1,7 @@
 # Tiny Clips Studio: captions
 
-**Status:** in progress, started 5 November 2026. Stages 2 and 3 below are in place; the rest is
-not built yet. The format is specified in section 15 of
+**Status:** in progress, started 5 November 2026. Stages 2, 3, and 5 below are in place; the rest
+is not built yet. The format is specified in section 15 of
 [`docs/studio-project-format.md`](../docs/studio-project-format.md), which decides if this
 document and the code disagree.
 
@@ -24,8 +24,9 @@ into the picture of an exported video. They work on macOS and Windows from one s
 
 [OutroKit](https://github.com/jamesmontemagno/outrokit) (MIT) has most of this built, but its
 burn-in and its audio extraction run ffmpeg, which neither app ships and the sandboxed Mac App
-Store build cannot launch. Its Core project also brings in the Copilot SDK. So the logic is ported
-and the pipeline is not.
+Store build cannot launch. Its Core project also brings in the Copilot SDK, which it uses for AI
+titles and descriptions and not for captions. So Tiny Clips does not depend on OutroKit: the logic
+is ported and the pipeline is not.
 
 | OutroKit | In Studio |
 |---|---|
@@ -52,8 +53,9 @@ Each stage is a pull request that updates the changelogs and validates the platf
    - Windows draws in `StudioSceneRenderer` with DirectWrite, which needs the `Vortice.DirectWrite`
      package. `StudioPreviewStillness.SameLayout` must return false across a cue change.
    - macOS draws cached Core Text images in `StudioCompositor`. `containsTweening` is already true.
-5. **Windows transcription.** Whisper.net, model management in Studio settings, and
-   `studio.captions.generate`.
+5. **Windows transcription (done).** Whisper.net, model management in Studio settings, and
+   `studio.captions.models` and `studio.captions.generate`. Built ahead of stage 4, because making
+   captions is more use than drawing them. It listens on the CPU, in the language it detects.
 6. **macOS transcription.** Both engines, `com.apple.security.network.client` in the Mac App Store
    entitlements for WhisperKit downloads, and updated privacy text in the store listings.
 
@@ -70,6 +72,12 @@ Stage 1 answers the first two, on a Mac:
 - **WhisperKit:** word timings, and how the Mac App Store network entitlement fares in App Review.
 - **Project size:** test an hour-long project, because Windows compares undo state as serialized
   text (`StudioEditableState.ContentEquals`).
-- **Package size:** `Whisper.net.Runtime` also pulls in a Metal package. Check the Windows MSIX.
+- **Package size:** `Whisper.net.Runtime` copies the libraries of every Windows architecture and
+  pulls in a small Metal package, about 5.5 MB more than one architecture needs. Trim it if it
+  matters.
+- **Language:** Windows detects the language, and a recording can be heard as the wrong one. A
+  language picker can use the same setting SpeechAnalyzer needs on macOS.
+- **GPU:** Whisper.net has Vulkan and CUDA runtimes. Both are large, and neither is in the package.
+- **Long recordings:** the sound is held in memory while it is heard, about 230 MB an hour.
 - **System sound in captions:** the Windows recorder writes one mixed track, so what the computer
   played can end up in the captions. macOS prefers the microphone track.

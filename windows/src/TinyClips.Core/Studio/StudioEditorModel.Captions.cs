@@ -21,6 +21,13 @@ public sealed partial class StudioEditorModel
         Mutate(project => project with { Captions = project.Captions with { Language = null, Cues = ordered } });
     }
 
+    /// <summary>Puts what was heard in a recording in place of the captions, with its language.</summary>
+    public void SetGeneratedCaptions(string? language, IEnumerable<StudioCaptionCue> cues)
+    {
+        var ordered = StudioCaptionQuality.InOrder(cues);
+        Mutate(project => project with { Captions = project.Captions with { Language = language, Cues = ordered } });
+    }
+
     /// <summary>
     /// Changes what a cue says. Its words go with the text they were of. Text that cleans to what
     /// the cue already says changes nothing.
