@@ -1,0 +1,104 @@
+{
+  "description": "A screen point lands inside the card, not the canvas",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0.1
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "arrow",
+          "start": 0,
+          "end": 20,
+          "x": 0.5,
+          "y": 0.5
+        },
+        {
+          "kind": "arrow",
+          "start": 0,
+          "end": 20,
+          "x": 0,
+          "y": 0
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 540.0
+          },
+          "stroke": 9.72,
+          "tail": {
+            "x": 830.4,
+            "y": 669.6
+          },
+          "headBase": {
+            "x": 938.006150678,
+            "y": 561.993849322
+          },
+          "halfWidth": 19.28448,
+          "hasShaft": true
+        },
+        {
+          "index": 1,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 192.0,
+            "y": 108.0
+          },
+          "stroke": 9.72,
+          "tail": {
+            "x": 62.4,
+            "y": 237.6
+          },
+          "headBase": {
+            "x": 170.006150678,
+            "y": 129.993849322
+          },
+          "halfWidth": 19.28448,
+          "hasShaft": true
+        }
+      ]
+    }
+  ]
+}

@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- Studio can draw arrows, callouts, and text over a video, in the preview and the export. A screen annotation follows zooms and crops; a frame annotation stays where it is. Agents add them through `overlays.annotations` in `studio.project.edit`. Editing them in the Studio window comes next.
+
 ### Fixed
 - Agent Control now preserves Studio gestures and existing annotated captures, reports saved screenshot dimensions accurately, persists agent activity, and cancels pending approvals when an agent disconnects.
 - Revoking an agent cancels its pending approvals, and the CLI verifies the named-pipe owner before sending its token.

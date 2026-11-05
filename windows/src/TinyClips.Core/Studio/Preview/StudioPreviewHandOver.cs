@@ -146,7 +146,8 @@ internal static class StudioPreviewStillness
     /// shown, their shapes, shadows and opacities; and nothing is drawn over the screen that
     /// changes from frame to frame. A zoom that moves, a scene that is being entered, a zoom
     /// that follows the pointer while the pointer moves, the frame at which the camera appears
-    /// or goes, and the ring of a click while it shows are not.
+    /// or goes, the ring of a click while it shows, and the frame at which an annotation starts
+    /// or ends are not.
     /// </summary>
     /// <param name="frameRate">Frames a second of the timeline the frame numbers count in.</param>
     public static bool SameLayout(StudioProject project, StudioEvents? events, double frameRate, long first, long last, double canvasWidth, double canvasHeight)
@@ -156,11 +157,18 @@ internal static class StudioPreviewStillness
             return false;
         }
 
+        var from = StudioPreviewTimeMath.FrameMiddle(first, frameRate);
+        var to = StudioPreviewTimeMath.FrameMiddle(last, frameRate);
+
+        // An annotation is on the picture from one frame and off it from another.
+        if (StudioAnnotationGeometry.ChangesBetween(project.Overlays.Annotations, from, to))
+        {
+            return false;
+        }
+
         // The ring of a click grows and fades from one frame to the next for as long as it shows.
         if (project.Overlays.Clicks is { Enabled: true, Duration: > 0, Opacity: > 0 } rings && events?.Clicks is { Length: > 0 } clicks)
         {
-            var from = StudioPreviewTimeMath.FrameMiddle(first, frameRate);
-            var to = StudioPreviewTimeMath.FrameMiddle(last, frameRate);
             foreach (var click in clicks)
             {
                 if (click.T <= to && click.T + rings.Duration >= from)

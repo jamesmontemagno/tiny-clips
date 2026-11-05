@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- Studio can draw arrows, callouts, and text over a video, in the preview and the export. A screen annotation follows zooms and crops; a frame annotation stays where it is. Agents add them through `overlays.annotations` in `studio.project.edit`. Editing them in the Studio window comes next.
+
 ### Fixed
 - Overlapping macOS screenshot redactions preserve the stronger level in preview and export, including while drawing a new redaction.
 - Resolved macOS Swift concurrency warnings in webcam composition, recent-capture thumbnails, and automation contract tests.

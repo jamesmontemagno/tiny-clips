@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreGraphics
 import CoreImage
+import CoreText
 import Foundation
 import ImageIO
 import Vision
@@ -65,6 +66,7 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
         case border
         case background
         case branding
+        case annotation
     }
 
     static let shared = StudioCompositorImageCache()
@@ -82,6 +84,7 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
         .border: Bucket(capacity: 6),
         .background: Bucket(capacity: 2),
         .branding: Bucket(capacity: 2),
+        .annotation: Bucket(capacity: 16),
     ]
 
     /// Returns the cached image for `key`, or makes, stores, and returns it. `make` runs outside the
@@ -351,6 +354,18 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             output = whole ? layer : faded(layer, opacity: camera.opacity).composited(over: output)
         }
 
+        output = drawAnnotations(
+            StudioAnnotationGeometry.resolveAll(
+                project: snapshot.project,
+                frame: frame,
+                time: sourceTime,
+                canvasWidth: Double(renderSize.width),
+                canvasHeight: Double(renderSize.height)
+            ),
+            over: output,
+            renderSize: renderSize
+        )
+
         if snapshot.project.overlays.branding {
             output = brandingLayer(renderSize: renderSize)
                 .composited(over: output)
@@ -596,6 +611,227 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         return border
             .transformed(by: CGAffineTransform(translationX: destination.minX, y: destination.minY))
             .composited(over: image)
+    }
+
+    // MARK: - Annotations
+
+    /// Section 6.10 of the project format: over the camera and under the badge, last on top.
+    private func drawAnnotations(
+        _ annotations: [StudioResolvedAnnotation],
+        over image: CIImage,
+        renderSize: CGSize
+    ) -> CIImage {
+        var output = image
+        for annotation in annotations {
+            let drawn = annotation.isArrow
+                ? arrowImage(annotation, renderSize: renderSize)
+                : annotationBoxImage(annotation, renderSize: renderSize)
+            guard let drawn else { continue }
+
+            // Put together whole first, so that its parts do not show through one another.
+            output = (annotation.opacity < 1 ? faded(drawn, opacity: annotation.opacity) : drawn).composited(over: output)
+        }
+        return output
+    }
+
+    /// A transparent bitmap for one annotation, with `minX`, `minY` of the canvas at its top left
+    /// corner, moved to whole pixels so that a still annotation is not resampled.
+    private struct AnnotationBitmap {
+        let originX: Double
+        let originY: Double
+        let width: Double
+        let height: Double
+
+        init?(minX: Double, minY: Double, maxX: Double, maxY: Double) {
+            originX = (minX - 2).rounded(.down)
+            originY = (minY - 2).rounded(.down)
+            width = (maxX + 2 - originX).rounded(.up)
+            height = (maxY + 2 - originY).rounded(.up)
+            guard width.isFinite, height.isFinite, width >= 1, height >= 1, width <= 16384, height <= 16384 else { return nil }
+        }
+
+        /// From the canvas, y down, to the bitmap, y up.
+        func point(_ x: Double, _ y: Double) -> CGPoint {
+            CGPoint(x: x - originX, y: height - (y - originY))
+        }
+
+        func point(_ point: StudioAnnotationPoint) -> CGPoint {
+            self.point(point.x, point.y)
+        }
+
+        func rect(_ rect: StudioRect) -> CGRect {
+            CGRect(x: rect.x - originX, y: height - (rect.y - originY) - rect.height, width: rect.width, height: rect.height)
+        }
+
+        func makeContext() -> CGContext? {
+            CGContext(
+                data: nil,
+                width: Int(width),
+                height: Int(height),
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+            )
+        }
+
+        func placed(_ image: CIImage, renderSize: CGSize) -> CIImage {
+            image.transformed(by: CGAffineTransform(
+                translationX: CGFloat(originX),
+                y: CGFloat(Double(renderSize.height) - originY - height)
+            ))
+        }
+
+        /// What is drawn depends on where it lies within its pixels, and not on which pixels.
+        func key(_ value: Double) -> String {
+            String(format: "%.2f", value)
+        }
+    }
+
+    private func arrowImage(_ arrow: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage? {
+        let reach = arrow.stroke + arrow.halfWidth
+        guard let bitmap = AnnotationBitmap(
+            minX: min(arrow.anchor.x, arrow.tail.x) - reach,
+            minY: min(arrow.anchor.y, arrow.tail.y) - reach,
+            maxX: max(arrow.anchor.x, arrow.tail.x) + reach,
+            maxY: max(arrow.anchor.y, arrow.tail.y) + reach
+        ) else {
+            return nil
+        }
+
+        let tip = bitmap.point(arrow.anchor)
+        let tail = bitmap.point(arrow.tail)
+        let headBase = bitmap.point(arrow.headBase)
+        let key = [
+            "arrow", arrow.fill, "\(Int(bitmap.width))x\(Int(bitmap.height))",
+            bitmap.key(Double(tip.x)), bitmap.key(Double(tip.y)), bitmap.key(Double(tail.x)), bitmap.key(Double(tail.y)),
+            bitmap.key(arrow.stroke), bitmap.key(arrow.halfWidth), bitmap.key(Double(headBase.x)), bitmap.key(Double(headBase.y)),
+            "\(arrow.hasShaft)",
+        ].joined(separator: "|")
+        let image = StudioCompositorImageCache.shared.image(for: key, in: .annotation) {
+            guard let context = bitmap.makeContext() else { return nil }
+            let color = cgColor(arrow.fill, alpha: 1)
+            let alongX = Double(headBase.x - tip.x)
+            let alongY = Double(headBase.y - tip.y)
+            let head = (alongX * alongX + alongY * alongY).squareRoot()
+            guard head > 0 else { return nil }
+
+            // Into the middle of the head, which hides the end of the line.
+            if arrow.hasShaft {
+                context.setStrokeColor(color)
+                context.setLineWidth(CGFloat(arrow.stroke))
+                context.setLineCap(.round)
+                context.move(to: tail)
+                context.addLine(to: CGPoint(x: (tip.x + headBase.x) / 2, y: (tip.y + headBase.y) / 2))
+                context.strokePath()
+            }
+
+            let acrossX = CGFloat(-alongY / head * arrow.halfWidth)
+            let acrossY = CGFloat(alongX / head * arrow.halfWidth)
+            context.setFillColor(color)
+            context.move(to: tip)
+            context.addLine(to: CGPoint(x: headBase.x + acrossX, y: headBase.y + acrossY))
+            context.addLine(to: CGPoint(x: headBase.x - acrossX, y: headBase.y - acrossY))
+            context.closePath()
+            context.fillPath()
+            return context.makeImage().map { CIImage(cgImage: $0) }
+        }
+        return image.map { bitmap.placed($0, renderSize: renderSize) }
+    }
+
+    private func annotationBoxImage(_ annotation: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage? {
+        let framesetter = annotationFramesetter(annotation)
+        let measured = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRange(location: 0, length: 0),
+            nil,
+            CGSize(width: annotation.maxTextWidth, height: .greatestFiniteMagnitude),
+            nil
+        )
+
+        // A pixel of room, so that the frame does not wrap what was measured to fit.
+        let placed = StudioAnnotationGeometry.layoutBox(
+            annotation,
+            textWidth: Double(measured.width).rounded(.up) + 1,
+            textHeight: Double(measured.height).rounded(.up) + 1,
+            canvasWidth: Double(renderSize.width),
+            canvasHeight: Double(renderSize.height)
+        )
+        let box = placed.box
+        let hasPointer = placed.pointer != nil
+        guard let bitmap = AnnotationBitmap(
+            minX: hasPointer ? min(box.x, annotation.anchor.x) : box.x,
+            minY: hasPointer ? min(box.y, annotation.anchor.y) : box.y,
+            maxX: hasPointer ? max(box.maxX, annotation.anchor.x) : box.maxX,
+            maxY: hasPointer ? max(box.maxY, annotation.anchor.y) : box.maxY
+        ) else {
+            return nil
+        }
+
+        let boxRect = bitmap.rect(box)
+        let textRect = bitmap.rect(placed.textRect)
+        var key = [
+            "box", annotation.fill, annotation.textColor, annotation.text, bitmap.key(annotation.font), bitmap.key(annotation.radius),
+            "\(Int(bitmap.width))x\(Int(bitmap.height))",
+            bitmap.key(Double(boxRect.minX)), bitmap.key(Double(boxRect.minY)),
+            bitmap.key(Double(boxRect.width)), bitmap.key(Double(boxRect.height)),
+        ]
+        var triangle: [CGPoint]?
+        if let pointer = placed.pointer {
+            let tip = bitmap.point(annotation.anchor)
+            let a = bitmap.point(pointer.a)
+            let b = bitmap.point(pointer.b)
+
+            // A pixel into the box, so that no seam shows between the two.
+            let middleX = Double(a.x + b.x) / 2 - Double(tip.x)
+            let middleY = Double(a.y + b.y) / 2 - Double(tip.y)
+            let length = max(1, (middleX * middleX + middleY * middleY).squareRoot())
+            let inX = CGFloat(middleX / length)
+            let inY = CGFloat(middleY / length)
+            triangle = [tip, CGPoint(x: a.x + inX, y: a.y + inY), CGPoint(x: b.x + inX, y: b.y + inY)]
+            key += [tip, a, b].flatMap { [bitmap.key(Double($0.x)), bitmap.key(Double($0.y))] }
+        }
+
+        let image = StudioCompositorImageCache.shared.image(for: key.joined(separator: "|"), in: .annotation) {
+            guard let context = bitmap.makeContext() else { return nil }
+            context.setFillColor(cgColor(annotation.fill, alpha: 1))
+            if let triangle, let first = triangle.first {
+                context.move(to: first)
+                triangle.dropFirst().forEach { context.addLine(to: $0) }
+                context.closePath()
+                context.fillPath()
+            }
+            context.addPath(cgPath(for: boxRect, radius: annotation.radius, shape: .roundedRectangle))
+            context.fillPath()
+
+            context.textMatrix = .identity
+            let frame = CTFramesetterCreateFrame(
+                framesetter,
+                CFRange(location: 0, length: 0),
+                CGPath(rect: textRect, transform: nil),
+                nil
+            )
+            CTFrameDraw(frame, context)
+            return context.makeImage().map { CIImage(cgImage: $0) }
+        }
+        return image.map { bitmap.placed($0, renderSize: renderSize) }
+    }
+
+    private func annotationFramesetter(_ annotation: StudioResolvedAnnotation) -> CTFramesetter {
+        let size = CGFloat(annotation.font)
+        let font = CTFontCreateUIFontForLanguage(.emphasizedSystem, size, nil)
+            ?? CTFontCreateWithName("Helvetica-Bold" as CFString, size, nil)
+        var alignment = CTTextAlignment.center
+        let paragraph = withUnsafeBytes(of: &alignment) { bytes -> CTParagraphStyle in
+            var setting = CTParagraphStyleSetting(spec: .alignment, valueSize: bytes.count, value: bytes.baseAddress!)
+            return CTParagraphStyleCreate(&setting, 1)
+        }
+        let attributes: [NSAttributedString.Key: Any] = [
+            kCTFontAttributeName as NSAttributedString.Key: font,
+            kCTForegroundColorAttributeName as NSAttributedString.Key: cgColor(annotation.textColor, alpha: 1),
+            kCTParagraphStyleAttributeName as NSAttributedString.Key: paragraph,
+        ]
+        return CTFramesetterCreateWithAttributedString(NSAttributedString(string: annotation.text, attributes: attributes))
     }
 
     // MARK: - Cached Images

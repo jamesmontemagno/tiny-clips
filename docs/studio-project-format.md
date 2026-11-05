@@ -170,9 +170,24 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `overlays.clicks.opacity` | number | 0.85 | |
 | `overlays.clicks.duration` | number | 0.45 | Seconds |
 | `overlays.branding` | bool | false | |
+| `overlays.annotations` | Annotation[] | `[]` | Arrows, callouts, and text over the picture. The last in the list is on top. See below and section 6.10 |
 | `exports[].path` | string | | Absolute path of a rendered video |
 | `exports[].exportedAt` | timestamp | | |
 | `exports[].bytes` | int or null | null | How large the video file was when it was exported, in bytes. Left out, or null, when that is not known; 0 or less is read the same way. Section 12 says what it is used for |
+
+### Annotation
+
+| Property | Type | Default | Clamp | Notes |
+|---|---|---|---|---|
+| `id` | string | `""` | | Names the annotation for an editor between edits. It has no effect on the picture |
+| `kind` | string | `arrow` | | `arrow`, `callout`, or `text`. **A kind the reader does not know is kept as it is and not drawn.** This is the one enumeration that does not read as its default: a later kind drawn and saved as an arrow would be lost |
+| `attach` | enum | `screen` | | `screen`: `x` and `y` are normalized in the screen frame, like a click. `frame`: they are normalized in the canvas |
+| `start`, `end` | number | 0 | | Source time. Shown while `start <= t < end`, so without an `end` it is never shown |
+| `x`, `y` | number | 0.5 | 0 to 1 | What an arrow or a callout points at, or the center of a text box |
+| `offsetX`, `offsetY` | number | -0.12, 0.12 | -1 to 1 | In canvas short sides, from `x`, `y`. Where an arrow's tail is, or the center of a callout's box. Text does not use them |
+| `text` | string | `""` | | What a callout or a text box says, with `\n` for a new line. With nothing but white space it is not drawn. An arrow does not use it |
+| `style` | enum | `red` | | `red`, `blue`, `yellow`, `white`, or `dark` (section 6.10) |
+| `size` | enum | `medium` | | `small`, `medium`, or `large` (section 6.10) |
 
 ## 4. events.json
 
@@ -522,6 +537,112 @@ A layer that only F has stays exactly as it is in F, with `opacity` `1 - k`. A l
 
 `sceneIndex` and `layout` are those of scene `i`, also while the layers move. So while the `camera` layout is being entered the frame still has a screen, fading out.
 
+### 6.10 Annotations
+
+Annotations are drawn over the camera and under the badge, in the order of the list, so the last is on top. They are not part of the resolved frame of section 6.6: they are worked out from it, for the same `t` and canvas.
+
+```
+W, H = the canvas
+m    = min(W, H)
+
+style     fill     text
+red       #FF453A  #FFFFFF
+blue      #0A84FF  #FFFFFF
+yellow    #FFD60A  #1C1C1E
+white     #FFFFFF  #1C1C1E
+dark      #1C1C1E  #FFFFFF
+
+size      font       stroke
+small     m * 0.028  m * 0.006
+medium    m * 0.036  m * 0.009
+large     m * 0.05   m * 0.013
+```
+
+**Which are drawn.** An annotation is drawn at `t` when all of these hold:
+
+- its `kind` is one this section describes;
+- `start <= t < end`;
+- for a `callout` or `text`, `text` has a character in it other than white space (below);
+- it has an anchor (below), and its opacity is above 0.
+
+White space here is exactly U+0009 to U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000 to U+200B, U+2028, U+2029, U+202F, U+205F, and U+3000. A reader goes by this list and not by its platform's own idea of white space, because those differ: one of them counts U+200B and the other does not.
+
+**Anchor and opacity.**
+
+```
+p = (clamp(x, 0, 1), clamp(y, 0, 1))
+
+attach frame:
+  anchor  = (p.x * W, p.y * H)
+  opacity = 1
+
+attach screen:
+  needs a resolved screen with source.width > 0 and source.height > 0,
+  and source.x <= p.x <= source.x + source.width, and the same for y
+  anchor  = screen.rect origin + ((p - source origin) / source size) * screen.rect size
+  opacity = screen.opacity
+```
+
+So a `screen` annotation follows a zoom, a crop, and a scene moving into place, and is not drawn while its point is out of view, or in the `camera` layout. Its size does not change with a zoom, because every size below comes from the canvas. It is not clipped to the screen card, and neither is a `frame` annotation clipped to anything but the canvas.
+
+```
+offset = (clamp(offsetX, -1, 1) * m, clamp(offsetY, -1, 1) * m)
+```
+
+**Arrow.**
+
+```
+tail      = anchor + offset
+length    = |tail - anchor|                     not drawn when this is 0
+direction = (tail - anchor) / length
+head      = min(stroke * 3.2, length)
+hasShaft  = head < length
+headBase  = anchor + direction * head
+halfWidth = head * 0.62
+```
+
+With `hasShaft`, a straight line of width `stroke` runs from `tail`, where it has a round cap, into the head. Without it the arrow is its head alone. The head is a filled triangle from `anchor` to `headBase ± halfWidth` at right angles to `direction`. Both are in the style's fill.
+
+**Callout and text box.** A box holds the text, centered line by line. Text is in the platform's system font, semibold or bold, at `font` pixels, and wraps at `maxTextWidth`. How wide and tall it comes out is the platform's, so a box is not the same size on two platforms to the pixel.
+
+```
+center       = anchor + offset for a callout, anchor for text
+padX         = font * 0.7
+padY         = font * 0.45
+radius       = font * 0.4
+maxTextWidth = max(font, W * 0.7 - 2 * padX)
+
+(tw, th)     = the measured size of the text
+box.width    = tw + 2 * padX
+box.height   = th + 2 * padY
+box.x        = max(0, min(center.x - box.width / 2,  W - box.width))
+box.y        = max(0, min(center.y - box.height / 2, H - box.height))
+textRect     = (box.x + padX, box.y + padY, tw, th)
+```
+
+The box is pushed back inside the canvas where it would stick out. The lower bound is applied last, so its top and left stay in view when it is larger than the canvas. It is filled with the style's fill, with corners of `radius`, and the text is in the style's text color.
+
+**A callout's pointer** is a filled triangle in the style's fill, from the box to `anchor`. It is left out when `anchor` is inside the box or on its edge.
+
+```
+dx = max(box.x - anchor.x, anchor.x - (box.x + box.width),  0)
+dy = max(box.y - anchor.y, anchor.y - (box.y + box.height), 0)
+
+dy >= dx: the top edge when anchor.y < box.y, otherwise the bottom edge
+  half = min(font * 0.45, max(0, box.width / 2 - radius))
+  cx   = max(box.x + radius + half, min(anchor.x, box.x + box.width - radius - half))
+  base = (cx - half, edge) and (cx + half, edge)
+
+otherwise: the left edge when anchor.x < box.x, otherwise the right edge
+  half = min(font * 0.45, max(0, box.height / 2 - radius))
+  cy   = max(box.y + radius + half, min(anchor.y, box.y + box.height - radius - half))
+  base = (edge, cy - half) and (edge, cy + half)
+```
+
+**Opacity and drawing.** An annotation below an opacity of 1 is put together by itself and laid on the frame that much see-through, so its parts do not show through one another (section 6.7). A renderer may let a pointer or a shaft run a pixel or more into the shape it joins, so no seam shows, and may move a box to whole pixels.
+
+Fixtures cover everything here but the measuring of text, which each case gives as `textSize`.
+
 ## 7. Time map
 
 The time map converts between source time and output time. It covers the trim, the cuts, and speed.
@@ -716,6 +837,31 @@ Zoom suggestion fixtures, in `autozoom/`:
 ```
 
 `expected.zooms` is the list of suggestions from section 8 for that project and those events, after the ones that overlap a manual zoom have been dropped. It does not include the project's other zooms.
+
+Annotation fixtures, in `annotations/`, cover section 6.10:
+
+```json
+{
+  "description": "what this case covers",
+  "project": { },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": { "width": 1920, "height": 1080 },
+      "textSize": { "width": 300, "height": 40 },
+      "expected": [
+        { "index": 0, "kind": "arrow", "opacity": 1, "fill": "#FF453A", "textColor": "#FFFFFF",
+          "anchor": { "x": 0, "y": 0 }, "stroke": 0, "tail": { "x": 0, "y": 0 }, "headBase": { "x": 0, "y": 0 }, "halfWidth": 0, "hasShaft": true },
+        { "index": 1, "kind": "callout", "opacity": 1, "fill": "#1C1C1E", "textColor": "#FFFFFF",
+          "anchor": { "x": 0, "y": 0 }, "font": 0, "maxTextWidth": 0, "radius": 0,
+          "box": { }, "textRect": { }, "pointer": [ { "x": 0, "y": 0 }, { "x": 0, "y": 0 } ] }
+      ]
+    }
+  ]
+}
+```
+
+`expected` lists what is drawn at that time, bottom first. `index` is the annotation's place in the list after `null` elements are dropped. `pointer` is the two base points, or null. `textSize` stands in for measuring the text.
 
 Time map fixtures, in `timemap/`:
 

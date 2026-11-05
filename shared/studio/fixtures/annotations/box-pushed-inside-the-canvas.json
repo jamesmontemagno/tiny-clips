@@ -1,0 +1,321 @@
+{
+  "description": "A box that would stick out is pushed back in, and the top left wins when it is larger than the canvas",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.02,
+          "offsetX": 0,
+          "offsetY": -0.2,
+          "text": "Billing lives here",
+          "style": "dark"
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.02,
+          "y": 0.5,
+          "offsetX": -0.4,
+          "offsetY": 0,
+          "text": "Billing lives here",
+          "style": "dark"
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.98,
+          "y": 0.98,
+          "offsetX": 0.3,
+          "offsetY": 0.3,
+          "text": "Billing lives here",
+          "style": "dark"
+        },
+        {
+          "kind": "text",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0,
+          "y": 0,
+          "text": "Corner",
+          "style": "white"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 21.6
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 782.784,
+            "y": 0,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 810.0,
+            "y": 17.496,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        },
+        {
+          "index": 1,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 38.4,
+            "y": 540.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 0,
+            "y": 502.504,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 27.216,
+            "y": 520.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        },
+        {
+          "index": 2,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 1881.6,
+            "y": 1058.4
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 1565.568,
+            "y": 1005.008,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 1592.784,
+            "y": 1022.504,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        },
+        {
+          "index": 3,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#FFFFFF",
+          "textColor": "#1C1C1E",
+          "anchor": {
+            "x": 0,
+            "y": 0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 27.216,
+            "y": 17.496,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        }
+      ]
+    },
+    {
+      "time": 1,
+      "canvas": {
+        "width": 300,
+        "height": 200
+      },
+      "textSize": {
+        "width": 600,
+        "height": 300
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 150.0,
+            "y": 4.0
+          },
+          "font": 7.2,
+          "maxTextWidth": 199.92,
+          "radius": 2.88,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 610.08,
+            "height": 306.48
+          },
+          "textRect": {
+            "x": 5.04,
+            "y": 3.24,
+            "width": 600,
+            "height": 300
+          },
+          "pointer": null
+        },
+        {
+          "index": 1,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 6.0,
+            "y": 100.0
+          },
+          "font": 7.2,
+          "maxTextWidth": 199.92,
+          "radius": 2.88,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 610.08,
+            "height": 306.48
+          },
+          "textRect": {
+            "x": 5.04,
+            "y": 3.24,
+            "width": 600,
+            "height": 300
+          },
+          "pointer": null
+        },
+        {
+          "index": 2,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 294.0,
+            "y": 196.0
+          },
+          "font": 7.2,
+          "maxTextWidth": 199.92,
+          "radius": 2.88,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 610.08,
+            "height": 306.48
+          },
+          "textRect": {
+            "x": 5.04,
+            "y": 3.24,
+            "width": 600,
+            "height": 300
+          },
+          "pointer": null
+        },
+        {
+          "index": 3,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#FFFFFF",
+          "textColor": "#1C1C1E",
+          "anchor": {
+            "x": 0,
+            "y": 0
+          },
+          "font": 7.2,
+          "maxTextWidth": 199.92,
+          "radius": 2.88,
+          "box": {
+            "x": 0,
+            "y": 0,
+            "width": 610.08,
+            "height": 306.48
+          },
+          "textRect": {
+            "x": 5.04,
+            "y": 3.24,
+            "width": 600,
+            "height": 300
+          },
+          "pointer": null
+        }
+      ]
+    }
+  ]
+}
