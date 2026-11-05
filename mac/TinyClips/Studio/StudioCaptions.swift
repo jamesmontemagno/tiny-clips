@@ -161,6 +161,29 @@ enum StudioCaptionResolver {
 
 // MARK: - Files
 
+/// A kind of caption file.
+enum StudioCaptionFormat: String, CaseIterable, Sendable {
+    case srt
+    case vtt
+
+    /// The extension of the kind of file, without its dot.
+    var fileExtension: String { rawValue }
+
+    /// The kind of file a path's extension names, or nil.
+    init?(path: String) {
+        self.init(rawValue: (path as NSString).pathExtension.lowercased())
+    }
+}
+
+/// What the times of a caption file count from: section 15.5 of the project format.
+enum StudioCaptionTiming: String, Sendable {
+    /// The recording, as the project keeps them.
+    case recording
+
+    /// The edited video, such as a file made from an exported video.
+    case editedVideo
+}
+
 /// Writes and reads SRT and WebVTT text: section 15.3 of the project format.
 enum StudioCaptionFiles {
     /// What `read` found in a file.
@@ -171,6 +194,65 @@ enum StudioCaptionFiles {
         /// How many blocks of the file could not be read as a cue.
         var skippedBlocks: Int
     }
+
+    enum FileError: LocalizedError {
+        case tooLarge
+        case notText
+
+        var errorDescription: String? {
+            switch self {
+            case .tooLarge: return "This file is too large to be a caption file."
+            case .notText: return "This file could not be read as text."
+            }
+        }
+    }
+
+    /// A caption file is text. Anything larger than this is not one.
+    static let largestFile = 64 * 1024 * 1024
+
+    /// The text of a file of that kind.
+    static func write(_ format: StudioCaptionFormat, _ captions: [StudioResolvedCaption]) -> String {
+        format == .vtt ? writeVTT(captions) : writeSRT(captions)
+    }
+
+    /// The cues of a file with the given timing, in source time. A file timed to the edited video
+    /// goes through `timeMap`, and a cue with no time left is counted as skipped.
+    static func read(_ text: String, timing: StudioCaptionTiming, timeMap: StudioTimeMap) -> Contents {
+        var contents = read(text)
+        guard timing == .editedVideo else { return contents }
+        let count = contents.cues.count
+        contents.cues = contents.cues.compactMap { cue in
+            var mapped = cue
+            mapped.start = timeMap.outputToSource(cue.start)
+            mapped.end = timeMap.outputToSource(cue.end)
+            return mapped.end > mapped.start ? mapped : nil
+        }
+        contents.skippedBlocks += count - contents.cues.count
+        return contents
+    }
+
+    /// The text of a caption file: UTF-8 unless a byte order mark says otherwise.
+    static func readFile(_ url: URL) throws -> String {
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        guard data.count <= largestFile else { throw FileError.tooLarge }
+        for (mark, encoding) in byteOrderMarks where data.starts(with: mark) {
+            guard let text = String(data: data, encoding: encoding) else { throw FileError.notText }
+            return text
+        }
+        guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .windowsCP1252) else {
+            throw FileError.notText
+        }
+        return text
+    }
+
+    // The longer marks first: UTF-16's little-endian mark is how UTF-32's starts.
+    private static let byteOrderMarks: [([UInt8], String.Encoding)] = [
+        ([0xFF, 0xFE, 0x00, 0x00], .utf32LittleEndian),
+        ([0x00, 0x00, 0xFE, 0xFF], .utf32BigEndian),
+        ([0xEF, 0xBB, 0xBF], .utf8),
+        ([0xFF, 0xFE], .utf16LittleEndian),
+        ([0xFE, 0xFF], .utf16BigEndian),
+    ]
 
     /// The text of an SRT file. Empty with no captions.
     static func writeSRT(_ captions: [StudioResolvedCaption]) -> String {

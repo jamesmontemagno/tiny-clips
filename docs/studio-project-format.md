@@ -949,3 +949,87 @@ With `overlays.captions.enabled`, a frame at output time `u` has the caption sho
 | `contrastPanel` | `#FFFFFF` | none | none | `#000000` at 60 percent behind the lines, reaching 4 past them |
 | `boldImpact` | `#FFD700`, bold | `#000000`, 2.4 wide | `#000000`, 1.2 down and right | none |
 | `cleanShadow` | `#F5F5F5` | `#000000` at 50 percent, 0.6 wide | `#000000` at 50 percent, 1.5 down and right | none |
+
+### 15.5 Importing and editing
+
+**Importing** replaces `captions.cues` with the cues of a file, in the order of section 15.2, and sets `captions.language` to null, as one undoable edit. Other properties of `captions` stay. A file has one of two timings, which the person importing it chooses:
+
+- **Timed to the recording:** its times are source time, as section 15.3 reads them. This is the default.
+- **Timed to the edited video:** its times are output time, such as a file made from an exported video or by section 15.3 itself. Each time `u` becomes `outputToSource(u)` (section 7). A cue whose end is then at or before its start is dropped and counted as skipped. What falls in a piece at another rate maps there, and section 15.2 then shows none of it.
+
+Reading back what section 15.3 wrote, timed to the edited video, gives the same captions to within the rounding of a millisecond.
+
+**Editing a cue's text** stores `clean(text)`. When that equals `clean` of what it held, nothing changes. Otherwise its `words` are emptied, because they no longer match. An edit that leaves no text keeps the cue, which then shows nothing and which a check reports as empty.
+
+### 15.6 Checks and safe fixes
+
+Checks look at cues in the order of section 15.2, in source time, against a recording of length `D`. A finding names a cue by its place in that order, from 0. They are limits for reading, not rules of the format: a project with findings is valid.
+
+```
+shortest = 0.7 seconds      longest line = 42 characters
+most lines = 2              fastest = 20 characters a second
+
+A character is a Unicode code point. count(text) leaves out white space.
+
+tidy(text): lines end at \r\n, \r, or \n. In every line each run of white space becomes
+            one space and the white space around it goes. Blank lines go. Joined by \n.
+
+wanted(cue, text): the seconds the cue should last. Its length, or 1 when that is under
+                   shortest, or count(text) / fastest when that is more than either.
+
+balance(words, n): n groups of neighbouring words.
+    n <= 1: all of them in one group. As many words as n or fewer: each in its own group.
+    Otherwise for each group g from 1 to n - 1, from the first word not yet in a group:
+        target = length of the remaining words joined by spaces / (n - g + 1)
+        for each candidate end, leaving at least n - g words for the groups after it:
+            score = |length of the group's words joined by spaces - target| - bonus
+            bonus = 6 when its last word ends in . ! ?, 3 when in , ; :, otherwise 0
+        take the lowest score, the earliest of equals.
+    The last group has what is left.
+
+wrap(text): null when tidy(text) has no words, or a word longer than the longest line.
+    The first of balance(words, 1), balance(words, 2) whose lines all fit the longest
+    line, joined by \n. Null when neither does.
+
+split(text): null with fewer than two words, or a word longer than the longest line.
+    From n = max(2, ceil(length of the words joined by spaces / (longest line * most lines)))
+    to min(64, number of words): the first balance(words, n) for which wrap of every group
+    is not null gives those wraps as the parts. Null when none does.
+
+timing(start, end, parts): each part lasts its share of end - start, by max(1, count(part)).
+    Parts follow each other from start. The last ends at end.
+```
+
+| Check, in this order for each cue | Found when | Can be fixed when |
+|---|---|---|
+| `invalidTiming` | `end <= start`, or either is not finite. No other check looks at this cue, and it is not "the cue before" the next one | Never |
+| `overlap` | It starts before the cue before it ends | It starts at least `shortest` after that cue starts |
+| `empty` | `tidy(text)` is empty. The checks below do not look at this cue | Always |
+| `whitespace` | `tidy(text)` is not `text` | Always |
+| `longLine` | A line of `tidy(text)` is longer than the longest line | `wrap` is not null, or `split` is not null and each of its parts would last at least `shortest` |
+| `tooManyLines` | `tidy(text)` has more than the most lines | The same |
+| `shortDuration` | It lasts less than `shortest` | `start + wanted` is at or before the next cue's start, and at or before `D` |
+| `readingSpeed` | `count(tidy(text)) / length` is more than `fastest` | The same |
+
+**The safe fixes** run in this order on all the cues, and each thing one changes counts as one fix:
+
+1. Remove every cue whose `tidy(text)` is empty.
+2. Set every cue's text to `tidy(text)`. Its `words` stay: the words are the same.
+3. From the second cue on, when a cue overlaps the one before it and starts at least `shortest` after it, end the one before where this one starts.
+4. For each cue with a line too long or too many lines: when `wrap` is not null, that is its text, and its `words` stay. Otherwise, when `split` is not null and each part would last at least `shortest`, it becomes those parts at their `timing`. The first keeps the cue's `id`, the others get new ones, and none has `words`.
+5. For each cue with a length above 0, when `wanted` is more than its length and `start + wanted` is at or before the next cue's start and at or before `D`, it ends at `start + wanted`.
+
+Fixes are one undoable edit. What they could not fix is what the checks find afterwards.
+
+A summary names the findings by count, in the order of the table, joined by `, `:
+
+| Check | One | More |
+|---|---|---|
+| `invalidTiming` | `1 invalid time` | `2 invalid times` |
+| `overlap` | `1 overlap` | `2 overlaps` |
+| `empty` | `1 empty caption` | `2 empty captions` |
+| `whitespace` | `1 with extra space` | `2 with extra space` |
+| `longLine` | `1 long line` | `2 long lines` |
+| `tooManyLines` | `1 with too many lines` | `2 with too many lines` |
+| `shortDuration` | `1 too short` | `2 too short` |
+| `readingSpeed` | `1 too fast to read` | `2 too fast to read` |

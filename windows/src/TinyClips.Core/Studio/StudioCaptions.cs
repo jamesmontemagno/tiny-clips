@@ -173,9 +173,108 @@ public static class StudioCaptionResolver
 /// <param name="SkippedBlocks">How many blocks of the file could not be read as a cue.</param>
 public sealed record StudioCaptionFileContents(StudioCaptionCue[] Cues, int SkippedBlocks);
 
+/// <summary>A kind of caption file.</summary>
+public enum StudioCaptionFormat
+{
+    Srt,
+    Vtt,
+}
+
+/// <summary>What the times of a caption file count from: section 15.5 of the project format.</summary>
+public enum StudioCaptionTiming
+{
+    /// <summary>The recording, as the project keeps them.</summary>
+    Recording,
+
+    /// <summary>The edited video, such as a file made from an exported video.</summary>
+    EditedVideo,
+}
+
 /// <summary>Writes and reads SRT and WebVTT text: section 15.3 of the project format.</summary>
 public static partial class StudioCaptionFiles
 {
+    /// <summary>A caption file is text. Anything larger than this is not one.</summary>
+    public const long LargestFile = 64 * 1024 * 1024;
+
+    /// <summary>The extension of a kind of file, with its dot.</summary>
+    public static string GetExtension(StudioCaptionFormat format) => format == StudioCaptionFormat.Vtt ? ".vtt" : ".srt";
+
+    /// <summary>The kind of file an extension names, or null.</summary>
+    public static StudioCaptionFormat? GetFormat(string? path) => Path.GetExtension(path)?.ToLowerInvariant() switch
+    {
+        ".srt" => StudioCaptionFormat.Srt,
+        ".vtt" => StudioCaptionFormat.Vtt,
+        _ => null,
+    };
+
+    /// <summary>The text of a file of that kind.</summary>
+    public static string Write(StudioCaptionFormat format, IReadOnlyList<StudioResolvedCaption> captions) =>
+        format == StudioCaptionFormat.Vtt ? WriteVtt(captions) : WriteSrt(captions);
+
+    /// <summary>
+    /// The cues of a file with the given timing, in source time. A file timed to the edited video
+    /// goes through <paramref name="map"/>, and a cue with no time left is counted as skipped.
+    /// </summary>
+    public static StudioCaptionFileContents Read(string text, StudioCaptionTiming timing, StudioTimeMap map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        var contents = Read(text);
+        if (timing == StudioCaptionTiming.Recording)
+        {
+            return contents;
+        }
+
+        var cues = new List<StudioCaptionCue>(contents.Cues.Length);
+        foreach (var cue in contents.Cues)
+        {
+            var start = map.OutputToSource(cue.Start);
+            var end = map.OutputToSource(cue.End);
+            if (end > start)
+            {
+                cues.Add(cue with { Start = start, End = end });
+            }
+        }
+
+        return new StudioCaptionFileContents([.. cues], contents.SkippedBlocks + contents.Cues.Length - cues.Count);
+    }
+
+    /// <summary>The text of a caption file: UTF-8 unless a byte order mark says otherwise.</summary>
+    /// <exception cref="InvalidDataException">The file is too large to be a caption file.</exception>
+    public static string ReadFile(string path)
+    {
+        if (new FileInfo(path).Length > LargestFile)
+        {
+            throw new InvalidDataException("This file is too large to be a caption file.");
+        }
+
+        return File.ReadAllText(path);
+    }
+
+    /// <summary>Writes a file that was approved to replace what is there, all at once.</summary>
+    public static void ReplaceFile(string path, string text)
+    {
+        var folder = Path.GetDirectoryName(Path.GetFullPath(path)) ?? throw new DirectoryNotFoundException(path);
+        var staged = Path.Combine(folder, $".{Guid.NewGuid():N}.tcexport");
+        try
+        {
+            File.WriteAllText(staged, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.Move(staged, path, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(staged);
+        }
+    }
+
+    /// <summary>Writes a file that must not be there yet.</summary>
+    /// <exception cref="IOException">A file has that name.</exception>
+    public static void WriteNewFile(string path, string text)
+    {
+        var bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text);
+        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        stream.Write(bytes);
+    }
+
     /// <summary>The text of an SRT file. Empty with no captions.</summary>
     public static string WriteSrt(IReadOnlyList<StudioResolvedCaption> captions)
     {

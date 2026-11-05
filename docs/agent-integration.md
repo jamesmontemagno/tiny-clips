@@ -188,6 +188,8 @@ Studio commands work on both platforms when Studio is enabled. `studio.projects.
 
 `studio.zoom.suggest` returns proposed automatic zooms without changing the project. To apply them, combine the suggestions with the project's manual zooms and send the resulting `zooms` array through `studio.project.edit`; suggested automatic zooms are replaced, not accumulated.
 
+`studio.captions.check` reports readability and timing problems without changing anything, naming each cue by its place in time order. `studio.captions.fix` makes the safe fixes as one edit and reports what is left. `studio.captions.import` replaces the cues with those of SRT or WebVTT `text`, which you pass in rather than a path; set `timing` to `editedVideo` when its times count from the edited video, such as a file made from an exported video. Both edits take `expectedModifiedAt` and `expectedRevision`, like `studio.project.edit`, and return the new `revision`. To correct a caption, use `studio.project.edit` to replace `captions.cues`, emptying the `words` of what you change. `studio.captions.export` writes the captions the video has, timed to the edited video, to a new `.srt` or `.vtt` directly inside the configured video-save folder, and the extension chooses the format. It never overwrites a file. Captions in cut or sped-up parts of the video are left out, because those parts have no sound.
+
 `studio.export` requires an explicit MP4 path directly inside the configured video-save folder. It never overwrites an existing file or writes inside the project/source folders. A successful export is added to the library and linked back to its Studio project.
 
 ### Policy order

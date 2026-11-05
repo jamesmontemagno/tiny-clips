@@ -1622,6 +1622,62 @@ struct StudioEditorModel: Equatable, Sendable {
         mutate { $0.overlays.branding = isEnabled }
     }
 
+    // MARK: - Captions
+    //
+    // An index is a cue's place in `project.captions.cues`. What this app writes there is in time
+    // order, and what an agent or another app wrote need not be. Each edit is one undo step.
+
+    /// What a list of the captions shows: the places of the cues in time order.
+    func captionIndexesInOrder() -> [Int] {
+        let cues = project.captions.cues
+        return cues.indices.sorted { first, second in
+            if cues[first].start != cues[second].start { return cues[first].start < cues[second].start }
+            if cues[first].end != cues[second].end { return cues[first].end < cues[second].end }
+            return first < second
+        }
+    }
+
+    /// Puts `cues` in place of the captions: section 15.5 of the project format.
+    mutating func replaceCaptions(_ cues: [StudioCaptionCue]) {
+        let ordered = StudioCaptionQuality.inOrder(cues)
+        mutate {
+            $0.captions.language = nil
+            $0.captions.cues = ordered
+        }
+    }
+
+    /// Changes what a cue says. Its words go with the text they were of. Text that cleans to what
+    /// the cue already says changes nothing.
+    @discardableResult
+    mutating func setCaptionText(at index: Int, to text: String) -> Bool {
+        guard project.captions.cues.indices.contains(index) else { return false }
+        let cleaned = StudioCaptionResolver.cleanText(text)
+        guard cleaned != StudioCaptionResolver.cleanText(project.captions.cues[index].text) else { return false }
+        mutate {
+            $0.captions.cues[index].text = cleaned
+            $0.captions.cues[index].words = []
+        }
+        return true
+    }
+
+    /// Takes a cue out. False when there is no such cue.
+    @discardableResult
+    mutating func removeCaption(at index: Int) -> Bool {
+        guard project.captions.cues.indices.contains(index) else { return false }
+        mutate { $0.captions.cues.remove(at: index) }
+        return true
+    }
+
+    /// Makes the safe fixes of section 15.6, and says how many things changed.
+    @discardableResult
+    mutating func fixCaptions() -> Int {
+        let result = StudioCaptionQuality.fix(project.captions.cues, sourceDuration: sourceDuration)
+        if result.applied > 0 {
+            mutate { $0.captions.cues = result.cues }
+        }
+        return result.applied
+    }
+
     // MARK: - Looks
 
     /// Applies a saved look. Crops belong to one recording, so the project's own crops stay.

@@ -38,6 +38,12 @@ public interface IStudioProjectHost
     Task<string?> ChooseSaveFolderAsync(Window owner);
     Task<string?> ChooseExportFileAsync(Window owner, string folder, string filename);
 
+    /// <summary>Asks for an SRT or WebVTT file to read. Null when none was chosen.</summary>
+    Task<string?> ChooseCaptionFileAsync(Window owner);
+
+    /// <summary>Asks where to write captions. Null when nowhere was chosen.</summary>
+    Task<string?> ChooseCaptionExportFileAsync(Window owner, string folder, string filename, StudioCaptionFormat format);
+
     /// <summary>Copies a saved project into the store as a new draft and opens the editor on the copy.</summary>
     Task<StudioProjectOpenResult> OpenProjectFileAsync(string path);
 
@@ -158,6 +164,38 @@ public sealed class StudioWindowService : IStudioProjectHost
 
     Task<string?> IStudioProjectHost.ChooseExportFileAsync(Window owner, string folder, string filename) =>
         ChooseExportFile(owner, folder, filename);
+
+    Task<string?> IStudioProjectHost.ChooseCaptionFileAsync(Window owner) => PickCaptionFileAsync(owner);
+
+    Task<string?> IStudioProjectHost.ChooseCaptionExportFileAsync(Window owner, string folder, string filename, StudioCaptionFormat format) =>
+        PickCaptionExportFileAsync(owner, folder, filename, format);
+
+    private static async Task<string?> PickCaptionFileAsync(Window owner)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            ViewMode = PickerViewMode.List,
+        };
+        picker.FileTypeFilter.Add(".srt");
+        picker.FileTypeFilter.Add(".vtt");
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(owner));
+        return (await picker.PickSingleFileAsync())?.Path;
+    }
+
+    private static async Task<string?> PickCaptionExportFileAsync(Window owner, string folder, string filename, StudioCaptionFormat format)
+    {
+        var extension = StudioCaptionFiles.GetExtension(format);
+        var picker = new Microsoft.Windows.Storage.Pickers.FileSavePicker(owner.AppWindow.Id)
+        {
+            SuggestedFolder = folder,
+            SuggestedFileName = filename,
+            DefaultFileExtension = extension,
+            CommitButtonText = "Export",
+        };
+        picker.FileTypeChoices.Add(format == StudioCaptionFormat.Vtt ? "WebVTT captions" : "SubRip captions", [extension]);
+        return (await picker.PickSaveFileAsync())?.Path;
+    }
 
     private static async Task<string?> PickExportFileAsync(Window owner, string folder, string filename)
     {

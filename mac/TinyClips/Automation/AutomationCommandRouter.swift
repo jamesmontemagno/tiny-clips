@@ -16,6 +16,7 @@ final class AutomationCommandRouter {
         "editor.open", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
         "library.delete", "library.upload", "studio.projects.list", "studio.project.get",
         "studio.project.edit", "studio.zoom.suggest", "studio.export",
+        "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
     ]
 
     private unowned let controller: AutomationController
@@ -58,6 +59,10 @@ final class AutomationCommandRouter {
         case "studio.project.edit": return try editStudioProject(params)
         case "studio.zoom.suggest": return try suggestStudioZooms(params)
         case "studio.export": return try await exportStudioProject(params)
+        case "studio.captions.check": return try checkStudioCaptions(params)
+        case "studio.captions.import": return try importStudioCaptions(params)
+        case "studio.captions.fix": return try fixStudioCaptions(params)
+        case "studio.captions.export": return try exportStudioCaptions(params)
         case "editor.annotate": return try annotate(params)
         case "editor.trim": return try await trim(params)
         case "editor.saveFrame": return try await saveFrame(params)
@@ -642,21 +647,129 @@ final class AutomationCommandRouter {
         } catch {
             throw AutomationError(.invalidParams, "The Studio patch is invalid: \(error.localizedDescription)")
         }
-        let saved: StudioProject
-        if let viewModel = StudioWindowRegistry.shared.automationViewModel(forProjectID: id) {
-            guard viewModel.applyAutomationProject(updated, expectedModifiedAt: current.modifiedAt),
-                  let latest = viewModel.automationProjectSnapshot()
-            else {
-                throw AutomationError(.conflict, "The Studio project changed or became unavailable while applying the edit.")
-            }
-            saved = latest
-        } else {
-            saved = try StudioProjectStore.shared.save(updated)
-        }
+        let saved = try saveStudioEdit(updated, replacing: current)
         return [
             "project": try studioProjectObject(saved),
             "revision": try studioProjectRevision(saved)
         ]
+    }
+
+    /// Saves an edit: through the undo history of an open editor, and directly otherwise.
+    private func saveStudioEdit(_ updated: StudioProject, replacing current: StudioProject) throws -> StudioProject {
+        guard let viewModel = StudioWindowRegistry.shared.automationViewModel(forProjectID: current.id) else {
+            return try StudioProjectStore.shared.save(updated)
+        }
+        guard viewModel.applyAutomationProject(updated, expectedModifiedAt: current.modifiedAt),
+              let latest = viewModel.automationProjectSnapshot()
+        else {
+            throw AutomationError(.conflict, "The Studio project changed or became unavailable while applying the edit.")
+        }
+        return latest
+    }
+
+    /// The project an edit is to change, when it is still the one the agent read.
+    private func checkedStudioProject(_ params: [String: Any], id: String) throws -> StudioProject {
+        let expectedModifiedAt = try Self.requiredString(params, "expectedModifiedAt")
+        let expectedRevision = try Self.requiredString(params, "expectedRevision")
+        let current = try currentStudioProject(id)
+        guard StudioJSON.timestampString(from: current.modifiedAt) == expectedModifiedAt,
+              try studioProjectRevision(current) == expectedRevision
+        else {
+            throw AutomationError(.conflict, "The Studio project changed since it was read. Get it again before editing.")
+        }
+        return current
+    }
+
+    private static func captionFindingsObject(_ findings: [StudioCaptionFinding]) -> [String: Any] {
+        [
+            "findings": findings.map { ["cue": $0.cue, "kind": $0.kind.rawValue, "canFix": $0.canFix] as [String: Any] },
+            "summary": StudioCaptionQuality.summary(findings)
+        ]
+    }
+
+    private func checkStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
+        try requireStudioEnabled()
+        let id = try Self.requiredString(params, "projectId")
+        let project = try currentStudioProject(id)
+        var result = Self.captionFindingsObject(
+            StudioCaptionQuality.check(project.captions.cues, sourceDuration: project.sources.screen.duration)
+        )
+        result["projectId"] = id
+        result["cueCount"] = project.captions.cues.count
+        return result
+    }
+
+    private func importStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
+        try requireStudioEnabled()
+        let id = try Self.requiredString(params, "projectId")
+        let current = try checkedStudioProject(params, id: id)
+        let contents = StudioCaptionFiles.read(
+            try Self.requiredString(params, "text"),
+            timing: params["timing"] as? String == "editedVideo" ? .editedVideo : .recording,
+            timeMap: StudioTimeMap(sourceDuration: current.sources.screen.duration, edits: current.edits)
+        )
+        guard !contents.cues.isEmpty else {
+            throw AutomationError(.invalidParams, "No captions could be read from that text.")
+        }
+        var updated = current
+        updated.captions.language = nil
+        updated.captions.cues = StudioCaptionQuality.inOrder(contents.cues)
+        let saved = try saveStudioEdit(updated, replacing: current)
+        return [
+            "project": try studioProjectObject(saved),
+            "revision": try studioProjectRevision(saved),
+            "cueCount": contents.cues.count,
+            "skipped": contents.skippedBlocks
+        ]
+    }
+
+    private func fixStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
+        try requireStudioEnabled()
+        let id = try Self.requiredString(params, "projectId")
+        let current = try checkedStudioProject(params, id: id)
+        let duration = current.sources.screen.duration
+        let fixes = StudioCaptionQuality.fix(current.captions.cues, sourceDuration: duration)
+        var saved = current
+        if fixes.applied > 0 {
+            var updated = current
+            updated.captions.cues = fixes.cues
+            saved = try saveStudioEdit(updated, replacing: current)
+        }
+        var result = Self.captionFindingsObject(StudioCaptionQuality.check(saved.captions.cues, sourceDuration: duration))
+        result["project"] = try studioProjectObject(saved)
+        result["revision"] = try studioProjectRevision(saved)
+        result["applied"] = fixes.applied
+        return result
+    }
+
+    private func exportStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
+        try requireStudioEnabled()
+        let id = try Self.requiredString(params, "projectId")
+        let rawPath = try Self.requiredString(params, "outputPath")
+        let outputURL = URL(fileURLWithPath: (rawPath as NSString).expandingTildeInPath).standardizedFileURL
+        let outputDirectory = SaveService.shared.outputDirectoryURL(for: .video).resolvingSymlinksInPath()
+        guard let format = StudioCaptionFormat(path: outputURL.path),
+              outputURL.deletingLastPathComponent().resolvingSymlinksInPath() == outputDirectory
+        else {
+            throw AutomationError(.invalidParams, "outputPath must be an .srt or .vtt file directly inside the configured video folder.")
+        }
+        guard FileManager.default.fileExists(atPath: outputDirectory.path) else {
+            throw AutomationError(.internal, "The configured video-save folder does not exist.")
+        }
+        guard !FileManager.default.fileExists(atPath: outputURL.path) else {
+            throw AutomationError(.invalidParams, "The export destination already exists; choose a new filename.")
+        }
+
+        let captions = StudioCaptionResolver.resolve(project: try currentStudioProject(id))
+        guard !captions.isEmpty else {
+            throw AutomationError(.invalidParams, "This video has no captions to export.")
+        }
+        do {
+            try Data(StudioCaptionFiles.write(format, captions).utf8).write(to: outputURL, options: .withoutOverwriting)
+        } catch {
+            throw AutomationError(.internal, "Captions could not be written: \(error.localizedDescription)")
+        }
+        return ["projectId": id, "path": outputURL.path, "captionCount": captions.count]
     }
 
     private func suggestStudioZooms(_ params: [String: Any]) throws -> [String: Any] {

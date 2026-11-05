@@ -517,6 +517,7 @@ public sealed partial class StudioViewModel : ObservableObject
     /// </summary>
     public async Task<StudioExportOutcome> ExportAsync()
     {
+        CommitCaptionText();
         if (_isChoosingExport || !_session.CanExport) return StudioExportOutcome.NotStarted;
         StudioExportTarget target;
         _isChoosingExport = true;
@@ -574,7 +575,11 @@ public sealed partial class StudioViewModel : ObservableObject
     // Closing
 
     /// <summary>What to ask before the window closes.</summary>
-    public StudioClosePrompt GetClosePrompt() => _session.GetClosePrompt();
+    public StudioClosePrompt GetClosePrompt()
+    {
+        CommitCaptionText();
+        return _session.GetClosePrompt();
+    }
 
     /// <summary>
     /// Ends the editor when its window is closing for good. The edits are saved by the time this

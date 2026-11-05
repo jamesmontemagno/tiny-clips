@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using TinyClips.App.ViewModels.Studio;
+using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.Views.Studio;
@@ -185,6 +186,38 @@ public sealed partial class StudioWindow
         }
 
         return null;
+    }
+
+    private async Task<string?> ChooseCaptionFileAsync()
+    {
+        if (_isClosed || _isPromptOpen) return null;
+        _isPromptOpen = true;
+        var focused = FocusManager.GetFocusedElement(RootGrid.XamlRoot) as Control;
+        try
+        {
+            return await _projects.ChooseCaptionFileAsync(this);
+        }
+        finally
+        {
+            _isPromptOpen = false;
+            if (!_isClosed && _isActive) focused?.Focus(FocusState.Programmatic);
+        }
+    }
+
+    private async Task<string?> ChooseCaptionExportFileAsync(string folder, string filename, StudioCaptionFormat format)
+    {
+        if (_isClosed || _isPromptOpen) return null;
+        _isPromptOpen = true;
+        var focused = FocusManager.GetFocusedElement(RootGrid.XamlRoot) as Control;
+        try
+        {
+            return await _projects.ChooseCaptionExportFileAsync(this, folder, filename, format);
+        }
+        finally
+        {
+            _isPromptOpen = false;
+            if (!_isClosed && _isActive) focused?.Focus(FocusState.Programmatic);
+        }
     }
 
     private async Task<string?> ChooseExportFileAsync(string folder, string filename)

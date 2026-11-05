@@ -1,0 +1,42 @@
+{
+  "description": "Extra space and blank lines are tidied, and the words stay.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 3,
+      "text": "  Too   many\r\n\r\n spaces ",
+      "words": [
+        {
+          "start": 1,
+          "end": 2,
+          "text": "Too"
+        },
+        {
+          "start": 2,
+          "end": 3,
+          "text": "many"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "whitespace",
+      "canFix": true
+    }
+  ],
+  "summary": "1 with extra space",
+  "fixed": [
+    {
+      "start": 1,
+      "end": 3,
+      "text": "Too many\nspaces",
+      "wordCount": 2
+    }
+  ],
+  "applied": 1,
+  "after": []
+}

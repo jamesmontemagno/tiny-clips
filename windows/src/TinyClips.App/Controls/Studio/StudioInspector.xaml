@@ -6,6 +6,7 @@
     xmlns:color="using:TinyClips.App"
     xmlns:editing="using:TinyClips.Core.Studio.Editing"
     xmlns:local="using:TinyClips.App.Controls.Studio"
+    xmlns:models="using:TinyClips.App.Models.Studio"
     IsTabStop="False">
 
     <UserControl.Resources>
@@ -1439,6 +1440,119 @@
                                 ToolTipService.ToolTip="Delete this speed change, so this part plays at normal speed again (Delete)">
                                 <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.Delete}" Text="Delete speed change" />
                             </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!--
+                        Captions: the words of the video. The list shows the cues in time order,
+                        and choosing one moves the playhead to it and puts its text in the box
+                        below. The text goes into the project when the box is left, so that
+                        typing is one undo step. There is no lane for captions yet.
+                    -->
+                    <StackPanel
+                        x:Name="CaptionsPanel"
+                        Spacing="16"
+                        Visibility="Collapsed">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="{x:Bind ViewModel.CaptionCountText, Mode=OneWay}" />
+                            <TextBlock
+                                Style="{StaticResource StudioNoteStyle}"
+                                Text="{x:Bind ViewModel.CaptionEmptyHint}"
+                                Visibility="{x:Bind ViewModel.IsCaptionEmptyHintVisible, Mode=OneWay}" />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <DropDownButton
+                                    HorizontalAlignment="Stretch"
+                                    AutomationProperties.AutomationId="StudioCaptionsImportButton"
+                                    Content="Import"
+                                    IsEnabled="{x:Bind ViewModel.CanImportCaptions, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Replace the captions with an SRT or WebVTT file">
+                                    <DropDownButton.Flyout>
+                                        <MenuFlyout Placement="Bottom">
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="StudioCaptionsImportRecordingItem"
+                                                Click="OnImportCaptionsTimedToRecording"
+                                                Text="Timed to the recording" />
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="StudioCaptionsImportVideoItem"
+                                                Click="OnImportCaptionsTimedToVideo"
+                                                Text="Timed to the edited video" />
+                                        </MenuFlyout>
+                                    </DropDownButton.Flyout>
+                                </DropDownButton>
+                                <DropDownButton
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Stretch"
+                                    AutomationProperties.AutomationId="StudioCaptionsExportButton"
+                                    Content="Export"
+                                    IsEnabled="{x:Bind ViewModel.CanExportCaptions, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Write the video's captions to a file">
+                                    <DropDownButton.Flyout>
+                                        <MenuFlyout Placement="Bottom">
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="StudioCaptionsExportSrtItem"
+                                                Click="OnExportCaptionsAsSrt"
+                                                Text="SubRip (.srt)" />
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="StudioCaptionsExportVttItem"
+                                                Click="OnExportCaptionsAsVtt"
+                                                Text="WebVTT (.vtt)" />
+                                        </MenuFlyout>
+                                    </DropDownButton.Flyout>
+                                </DropDownButton>
+                            </Grid>
+                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.CaptionExportNote}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasSelectedCaption, Mode=OneWay}">
+                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Selected caption" />
+                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.SelectedCaptionTimeText, Mode=OneWay}" />
+                            <TextBox
+                                x:Name="CaptionTextBox"
+                                AcceptsReturn="True"
+                                AutomationProperties.AutomationId="StudioCaptionTextBox"
+                                AutomationProperties.Name="Caption text"
+                                LostFocus="OnCaptionTextLostFocus"
+                                MaxHeight="160"
+                                Text="{x:Bind ViewModel.SelectedCaptionText, Mode=OneWay}"
+                                TextChanged="OnCaptionTextChanged"
+                                TextWrapping="Wrap" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioCaptionDeleteButton"
+                                Click="{x:Bind ViewModel.RemoveSelectedCaption}"
+                                Content="Delete caption"
+                                ToolTipService.ToolTip="Take this caption out of the project" />
+                        </StackPanel>
+                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
+                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="All captions" />
+                            <ListView
+                                x:Name="CaptionList"
+                                AutomationProperties.AutomationId="StudioCaptionList"
+                                AutomationProperties.Name="Captions"
+                                MaxHeight="320"
+                                SelectionChanged="OnCaptionListSelectionChanged"
+                                SelectionMode="Single">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="models:StudioCaptionRow">
+                                        <StackPanel Padding="0,6" Spacing="2">
+                                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind TimeText}" />
+                                            <TextBlock MaxLines="2" Text="{x:Bind Text}" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
+                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Checks" />
+                            <TextBlock Style="{StaticResource StudioNoteStyle}" Text="{x:Bind ViewModel.CaptionCheckText, Mode=OneWay}" />
+                            <Button
+                                AutomationProperties.AutomationId="StudioCaptionsFixButton"
+                                Click="{x:Bind ViewModel.FixCaptions}"
+                                Content="Auto fix"
+                                IsEnabled="{x:Bind ViewModel.CanFixCaptions, Mode=OneWay}"
+                                ToolTipService.ToolTip="Tidy text, wrap long lines, and give fast captions more time. Undo takes it back." />
                         </StackPanel>
                     </StackPanel>
 

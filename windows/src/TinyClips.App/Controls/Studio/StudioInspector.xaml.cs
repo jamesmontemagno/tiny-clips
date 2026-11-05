@@ -40,6 +40,7 @@ public sealed partial class StudioInspector : UserControl
     private bool? _railHasCamera;
     private StudioInspectorPanel? _shownPanel;
     private bool _isSyncingRail;
+    private bool _isSyncingCaptionList;
     private bool _isSyncingSwatches;
 
     public StudioInspector(StudioViewModel viewModel)
@@ -114,6 +115,11 @@ public sealed partial class StudioInspector : UserControl
             FocusPad.Update(ViewModel.ZoomPad);
         }
 
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(StudioViewModel.SelectedCaptionRow))
+        {
+            SyncCaptionList();
+        }
+
         if (string.IsNullOrEmpty(e.PropertyName))
         {
             SyncPanels();
@@ -129,6 +135,63 @@ public sealed partial class StudioInspector : UserControl
     }
 
     private void OnFocusPadRequested(object? sender, StudioFocusPadPoint e) => ViewModel.SetZoomFocusOnPad(e.X, e.Y);
+
+    // The Captions panel
+
+    // Setting a list's items lets go of its selection, and which of the two a binding does first
+    // is not promised, so the two are set here in that order. Nothing the user did is read back.
+    private void SyncCaptionList()
+    {
+        _isSyncingCaptionList = true;
+        try
+        {
+            var rows = ViewModel.CaptionRows;
+            if (!ReferenceEquals(CaptionList.ItemsSource, rows))
+            {
+                CaptionList.ItemsSource = rows;
+            }
+
+            var selected = ViewModel.SelectedCaptionRow;
+            if (CaptionList.SelectedIndex != selected)
+            {
+                CaptionList.SelectedIndex = selected;
+            }
+
+            if (selected >= 0)
+            {
+                CaptionList.ScrollIntoView(CaptionList.SelectedItem);
+            }
+        }
+        finally
+        {
+            _isSyncingCaptionList = false;
+        }
+    }
+
+    private void OnCaptionListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isSyncingCaptionList)
+        {
+            ViewModel.SelectCaptionRow(CaptionList.SelectedIndex);
+        }
+    }
+
+    private void OnCaptionTextChanged(object sender, TextChangedEventArgs e) =>
+        ViewModel.SetPendingCaptionText(CaptionTextBox.Text);
+
+    private void OnCaptionTextLostFocus(object sender, RoutedEventArgs e) => ViewModel.CommitCaptionText();
+
+    private void OnImportCaptionsTimedToRecording(object sender, RoutedEventArgs e) =>
+        _ = ViewModel.ImportCaptionsAsync(StudioCaptionTiming.Recording);
+
+    private void OnImportCaptionsTimedToVideo(object sender, RoutedEventArgs e) =>
+        _ = ViewModel.ImportCaptionsAsync(StudioCaptionTiming.EditedVideo);
+
+    private void OnExportCaptionsAsSrt(object sender, RoutedEventArgs e) =>
+        _ = ViewModel.ExportCaptionsAsync(StudioCaptionFormat.Srt);
+
+    private void OnExportCaptionsAsVtt(object sender, RoutedEventArgs e) =>
+        _ = ViewModel.ExportCaptionsAsync(StudioCaptionFormat.Vtt);
 
     // The rail and the panel on show
 
@@ -249,6 +312,7 @@ public sealed partial class StudioInspector : UserControl
         SetVisible(ZoomPanel, panel == StudioInspectorPanel.Zoom);
         SetVisible(CutPanel, panel == StudioInspectorPanel.Cut);
         SetVisible(SpeedPanel, panel == StudioInspectorPanel.Speed);
+        SetVisible(CaptionsPanel, panel == StudioInspectorPanel.Captions);
         SetVisible(AudioPanel, panel == StudioInspectorPanel.Audio);
         SetVisible(ProjectPanel, panel == StudioInspectorPanel.Project);
         PanelTitle.Text = StudioInspectorPanels.GetTitle(panel);

@@ -1,0 +1,61 @@
+{
+  "description": "A cue too fast to read lasts as long as its text needs, up to the next cue.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 2,
+      "text": "Thirty characters of plain text"
+    },
+    {
+      "id": "cue-10",
+      "start": 10,
+      "end": 11,
+      "text": "Thirty characters of plain text"
+    },
+    {
+      "id": "cue-11.25",
+      "start": 11.25,
+      "end": 12,
+      "text": "Close."
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "readingSpeed",
+      "canFix": true
+    },
+    {
+      "cue": 1,
+      "kind": "readingSpeed",
+      "canFix": false
+    }
+  ],
+  "summary": "2 too fast to read",
+  "fixed": [
+    {
+      "start": 1,
+      "end": 2.35,
+      "text": "Thirty characters of plain text",
+      "wordCount": 0
+    },
+    {
+      "start": 10,
+      "end": 11,
+      "text": "Thirty characters of plain text",
+      "wordCount": 0
+    },
+    {
+      "start": 11.25,
+      "end": 12,
+      "text": "Close.",
+      "wordCount": 0
+    }
+  ],
+  "applied": 1,
+  "after": [
+    "readingSpeed"
+  ]
+}

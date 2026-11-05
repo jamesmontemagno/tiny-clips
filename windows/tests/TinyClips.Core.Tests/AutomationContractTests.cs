@@ -84,6 +84,19 @@ public sealed class AutomationContractTests
         Assert.True(contract.TryGetCommand("studio.export", out var export));
         Assert.Equal("export", export.Scope);
         Assert.True(export.Parameters["outputPath"].Required);
+        Assert.True(contract.TryGetCommand("studio.captions.check", out var captionCheck));
+        Assert.Equal("read", captionCheck.Scope);
+        Assert.True(contract.TryGetCommand("studio.captions.import", out var captionImport));
+        Assert.Equal("edit", captionImport.Scope);
+        Assert.True(captionImport.Parameters["text"].Required);
+        Assert.True(captionImport.Parameters["expectedRevision"].Required);
+        Assert.False(captionImport.Parameters["timing"].Required);
+        Assert.True(contract.TryGetCommand("studio.captions.fix", out var captionFix));
+        Assert.Equal("edit", captionFix.Scope);
+        Assert.True(captionFix.Parameters["expectedModifiedAt"].Required);
+        Assert.True(contract.TryGetCommand("studio.captions.export", out var captionExport));
+        Assert.Equal("export", captionExport.Scope);
+        Assert.True(captionExport.Parameters["outputPath"].Required);
     }
 
     [Fact]

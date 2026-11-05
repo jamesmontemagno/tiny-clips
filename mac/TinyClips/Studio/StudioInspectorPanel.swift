@@ -10,6 +10,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
     case zoom
     case cut
     case speed
+    case captions
     case audio
     case project
 
@@ -24,6 +25,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "Zoom"
         case .cut: return "Cut"
         case .speed: return "Speed"
+        case .captions: return "Captions"
         case .audio: return "Audio"
         case .project: return "Project"
         }
@@ -39,6 +41,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "plus.magnifyingglass"
         case .cut: return "scissors"
         case .speed: return "gauge.with.needle"
+        case .captions: return "captions.bubble"
         case .audio: return "speaker.wave.2"
         case .project: return "folder"
         }
@@ -54,6 +57,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "Zooms"
         case .cut: return "Cuts"
         case .speed: return "Speed changes"
+        case .captions: return "Captions: import, edit, and export"
         case .audio: return "Audio: mute and volumes"
         case .project: return "Project: save, storage, and delete"
         }
@@ -66,7 +70,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         let look: [StudioInspectorPanel] = hasCamera
             ? [.scene, .background, .screen, .camera]
             : [.background, .screen]
-        return [look, [.zoom, .cut, .speed], [.audio, .project]]
+        return [look, [.zoom, .cut, .speed, .captions], [.audio, .project]]
     }
 
     static func available(hasCamera: Bool) -> [StudioInspectorPanel] {

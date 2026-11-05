@@ -507,27 +507,114 @@ public partial class App : IAutomationAppActions
                     throw new AutomationException(AutomationErrorCodes.InvalidParams,
                         $"The Studio patch is invalid: {ex.Message}");
                 }
-                var openEditor = StudioWindows().FindOpenViewModel(projectId);
-                StudioProject saved;
-                if (openEditor is not null)
-                {
-                    if (!openEditor.ApplyAutomationProject(updated, current.ModifiedAt))
-                    {
-                        throw new AutomationException(AutomationErrorCodes.Conflict,
-                            "The Studio project changed or became unavailable while applying the edit.");
-                    }
-
-                    saved = store.Load(projectId);
-                }
-                else
-                {
-                    saved = store.Save(updated);
-                }
+                StudioProject saved = ApplyAutomationEdit(projectId, current, updated, store);
 
                 return new JsonObject
                 {
                     ["project"] = ProjectNode(saved),
                     ["revision"] = ProjectRevision(saved),
+                };
+            }
+            case "studio.captions.check":
+            {
+                var projectId = RequiredStudioString(parameters, "projectId");
+                var project = ReadAutomationProject(projectId, store);
+                var findings = StudioCaptionQuality.Check(project.Captions.Cues, project.Sources.Screen.Duration);
+                var result = CaptionFindingsNode(findings);
+                result["projectId"] = projectId;
+                result["cueCount"] = project.Captions.Cues.Length;
+                return result;
+            }
+            case "studio.captions.import":
+            {
+                var projectId = RequiredStudioString(parameters, "projectId");
+                var current = ReadCheckedProject(parameters, projectId, store);
+                var timing = parameters["timing"]?.GetValue<string>() == "editedVideo"
+                    ? StudioCaptionTiming.EditedVideo
+                    : StudioCaptionTiming.Recording;
+                var contents = StudioCaptionFiles.Read(
+                    RequiredStudioString(parameters, "text"), timing, StudioTimeMap.FromProject(current));
+                if (contents.Cues.Length == 0)
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                        "No captions could be read from that text.");
+                }
+
+                var saved = ApplyAutomationEdit(projectId, current, current with
+                {
+                    Captions = current.Captions with { Language = null, Cues = StudioCaptionQuality.InOrder(contents.Cues) },
+                }, store);
+                return new JsonObject
+                {
+                    ["project"] = ProjectNode(saved),
+                    ["revision"] = ProjectRevision(saved),
+                    ["cueCount"] = contents.Cues.Length,
+                    ["skipped"] = contents.SkippedBlocks,
+                };
+            }
+            case "studio.captions.fix":
+            {
+                var projectId = RequiredStudioString(parameters, "projectId");
+                var current = ReadCheckedProject(parameters, projectId, store);
+                var duration = current.Sources.Screen.Duration;
+                var fixes = StudioCaptionQuality.Fix(current.Captions.Cues, duration);
+                var saved = fixes.Applied == 0
+                    ? current
+                    : ApplyAutomationEdit(projectId, current, current with
+                    {
+                        Captions = current.Captions with { Cues = fixes.Cues },
+                    }, store);
+                var result = CaptionFindingsNode(StudioCaptionQuality.Check(saved.Captions.Cues, duration));
+                result["project"] = ProjectNode(saved);
+                result["revision"] = ProjectRevision(saved);
+                result["applied"] = fixes.Applied;
+                return result;
+            }
+            case "studio.captions.export":
+            {
+                var projectId = RequiredStudioString(parameters, "projectId");
+                var outputPath = Path.GetFullPath(RequiredStudioString(parameters, "outputPath"));
+                var outputDirectory = Path.GetFullPath(
+                    Services.GetRequiredService<IClipStorageService>().OutputDirectory(CaptureType.Video));
+                if (StudioCaptionFiles.GetFormat(outputPath) is not { } format
+                    || !string.Equals(Path.GetDirectoryName(outputPath), outputDirectory, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                        "outputPath must be an .srt or .vtt file directly inside the configured video folder.");
+                }
+
+                if (!Directory.Exists(outputDirectory))
+                {
+                    throw new AutomationException(AutomationErrorCodes.Internal,
+                        "The configured video-save folder does not exist.");
+                }
+
+                var captions = StudioCaptionResolver.Resolve(ReadAutomationProject(projectId, store));
+                if (captions.Length == 0)
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                        "This video has no captions to export.");
+                }
+
+                try
+                {
+                    StudioCaptionFiles.WriteNewFile(outputPath, StudioCaptionFiles.Write(format, captions));
+                }
+                catch (IOException) when (File.Exists(outputPath))
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                        "The export destination already exists; choose a new filename.");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    throw new AutomationException(AutomationErrorCodes.Internal, $"Captions could not be written: {ex.Message}");
+                }
+
+                return new JsonObject
+                {
+                    ["projectId"] = projectId,
+                    ["path"] = outputPath,
+                    ["captionCount"] = captions.Length,
                 };
             }
             case "studio.zoom.suggest":
@@ -648,6 +735,56 @@ public partial class App : IAutomationAppActions
             default:
                 throw new AutomationException(AutomationErrorCodes.NotSupported, $"Studio command {commandName} is not supported.");
         }
+    }
+
+    // The project an edit is to change, when it is still the one the agent read.
+    private StudioProject ReadCheckedProject(JsonObject parameters, string projectId, IStudioProjectStore store)
+    {
+        var expectedModifiedAt = RequiredStudioString(parameters, "expectedModifiedAt");
+        var expectedRevision = RequiredStudioString(parameters, "expectedRevision");
+        var current = ReadAutomationProject(projectId, store);
+        var currentNode = ProjectNode(current).AsObject();
+        if (!string.Equals(currentNode["modifiedAt"]?.GetValue<string>(), expectedModifiedAt, StringComparison.Ordinal)
+            || !string.Equals(ProjectRevision(current), expectedRevision, StringComparison.Ordinal))
+        {
+            throw new AutomationException(AutomationErrorCodes.Conflict,
+                "The Studio project changed since it was read. Get it again before editing.");
+        }
+
+        return current;
+    }
+
+    // Saves an edit: through the undo history of an open editor, and directly otherwise.
+    private StudioProject ApplyAutomationEdit(string projectId, StudioProject current, StudioProject updated, IStudioProjectStore store)
+    {
+        if (StudioWindows().FindOpenViewModel(projectId) is not { } openEditor)
+        {
+            return store.Save(updated);
+        }
+
+        if (!openEditor.ApplyAutomationProject(updated, current.ModifiedAt))
+        {
+            throw new AutomationException(AutomationErrorCodes.Conflict,
+                "The Studio project changed or became unavailable while applying the edit.");
+        }
+
+        return store.Load(projectId);
+    }
+
+    private static JsonObject CaptionFindingsNode(StudioCaptionFinding[] findings)
+    {
+        var items = new JsonArray();
+        foreach (var finding in findings)
+        {
+            items.Add(new JsonObject
+            {
+                ["cue"] = finding.Cue,
+                ["kind"] = StudioCaptionQuality.GetKindName(finding.Kind),
+                ["canFix"] = finding.CanFix,
+            });
+        }
+
+        return new JsonObject { ["findings"] = items, ["summary"] = StudioCaptionQuality.GetSummary(findings) };
     }
 
     private StudioProject ReadAutomationProject(string projectId, IStudioProjectStore store)

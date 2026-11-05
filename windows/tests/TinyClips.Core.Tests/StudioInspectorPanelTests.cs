@@ -25,6 +25,7 @@ public sealed class StudioInspectorPanelTests
                 StudioInspectorPanel.Zoom,
                 StudioInspectorPanel.Cut,
                 StudioInspectorPanel.Speed,
+                StudioInspectorPanel.Captions,
                 StudioInspectorPanel.Audio,
                 StudioInspectorPanel.Project,
             },
@@ -44,6 +45,7 @@ public sealed class StudioInspectorPanelTests
                 StudioInspectorPanel.Zoom,
                 StudioInspectorPanel.Cut,
                 StudioInspectorPanel.Speed,
+                StudioInspectorPanel.Captions,
                 StudioInspectorPanel.Audio,
                 StudioInspectorPanel.Project,
             },
@@ -53,7 +55,7 @@ public sealed class StudioInspectorPanelTests
     [Fact]
     public void TheRailGroups_LookThenTimelineEditsThenTheRest()
     {
-        var timelineEdits = new[] { StudioInspectorPanel.Zoom, StudioInspectorPanel.Cut, StudioInspectorPanel.Speed };
+        var timelineEdits = new[] { StudioInspectorPanel.Zoom, StudioInspectorPanel.Cut, StudioInspectorPanel.Speed, StudioInspectorPanel.Captions };
         var rest = new[] { StudioInspectorPanel.Audio, StudioInspectorPanel.Project };
 
         var withCamera = StudioInspectorPanels.GetGroups(hasCamera: true);
@@ -171,7 +173,7 @@ public sealed class StudioInspectorPanelTests
             .Where(property => property.PropertyType == typeof(string))
             .ToDictionary(property => property.Name, property => (string)property.GetValue(null)!);
 
-        // Every glyph there is a name for is in the list of all of them, after the rail's nine.
+        // Every glyph there is a name for is in the list of all of them, after the rail's ten.
         Assert.Equal(17, named.Count);
         Assert.Equal(EveryPanel.Select(StudioInspectorPanels.GetGlyph), StudioGlyphs.All.Take(EveryPanel.Length));
         Assert.Equal(named.Values.Order(StringComparer.Ordinal), StudioGlyphs.All.Skip(EveryPanel.Length).Order(StringComparer.Ordinal));
@@ -203,6 +205,7 @@ public sealed class StudioInspectorPanelTests
     [InlineData(StudioInspectorPanel.Zoom, "Zoom", "Zooms")]
     [InlineData(StudioInspectorPanel.Cut, "Cut", "Cuts")]
     [InlineData(StudioInspectorPanel.Speed, "Speed", "Speed changes")]
+    [InlineData(StudioInspectorPanel.Captions, "Captions", "Captions: import, edit, and export")]
     [InlineData(StudioInspectorPanel.Audio, "Audio", "Audio: mute and volume")]
     [InlineData(StudioInspectorPanel.Project, "Project", "Project: badge, storage, and default look")]
     public void APanel_IsCalledWhatItsRailItemSays_AndItsHelpSaysWhatItHoldsOnWindows(

@@ -1,0 +1,49 @@
+{
+  "description": "Text that cannot fit on two lines becomes cues that share its time by their length, and only the first keeps its place. Their words are gone.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-0",
+      "start": 0,
+      "end": 16,
+      "text": "One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree",
+      "words": [
+        {
+          "start": 0,
+          "end": 16,
+          "text": "One"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "longLine",
+      "canFix": true
+    }
+  ],
+  "summary": "1 long line",
+  "fixed": [
+    {
+      "start": 0,
+      "end": 5.1063829787234045,
+      "text": "One two three four five six\nseven eight nine ten eleven",
+      "wordCount": 0
+    },
+    {
+      "start": 5.1063829787234045,
+      "end": 10.212765957446809,
+      "text": "twelve thirteen fourteen\nfifteen sixteen seventeen",
+      "wordCount": 0
+    },
+    {
+      "start": 10.212765957446809,
+      "end": 16,
+      "text": "eighteen nineteen twenty\ntwentyone twentytwo twentythree",
+      "wordCount": 0
+    }
+  ],
+  "applied": 1,
+  "after": []
+}

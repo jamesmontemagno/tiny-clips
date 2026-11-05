@@ -152,6 +152,7 @@ public sealed partial class StudioViewModel
     /// <summary>Asks for this project to be saved as a folder. The window asks where.</summary>
     public void RequestSaveProject()
     {
+        CommitCaptionText();
         if (CanSaveProject)
         {
             Pause();
@@ -161,6 +162,7 @@ public sealed partial class StudioViewModel
 
     public void RequestSaveProjectAs()
     {
+        CommitCaptionText();
         if (CanSaveProject)
         {
             Pause();
