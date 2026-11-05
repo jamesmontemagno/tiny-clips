@@ -120,6 +120,25 @@ final class StudioAnnotationTests: XCTestCase {
         }
     }
 
+    func testABitmapCoversOnlyWhatIsOnTheCanvas() throws {
+        func bounds(_ minX: Double, _ minY: Double, _ maxX: Double, _ maxY: Double) -> StudioRect? {
+            StudioAnnotationGeometry.bitmapBounds(minX: minX, minY: minY, maxX: maxX, maxY: maxY, canvasWidth: 1920, canvasHeight: 1080)
+        }
+
+        // Inside the canvas: whole pixels, with two to spare for the edges.
+        XCTAssertEqual(bounds(100.5, 200.25, 300.5, 400.75), StudioRect(x: 98, y: 198, width: 205, height: 205))
+
+        // A box far larger than any bitmap can be still shows the part on the canvas.
+        XCTAssertEqual(bounds(10, 20, 50_000, 90_000), StudioRect(x: 8, y: 18, width: 1912, height: 1062))
+        XCTAssertEqual(bounds(-500, -500, 30, 40), StudioRect(x: 0, y: 0, width: 32, height: 42))
+
+        // Nothing on the canvas, past each of its sides.
+        XCTAssertNil(bounds(2000, 10, 3000, 20))
+        XCTAssertNil(bounds(10, 1100, 20, 1200))
+        XCTAssertNil(bounds(-300, 10, -200, 20))
+        XCTAssertNil(bounds(10, -300, 20, -200))
+    }
+
     func testEditableStateSeesAChangedAnnotation() {
         var project = StudioProject(id: "p", sources: StudioSources(screen: StudioScreenSource(width: 1920, height: 1080, duration: 10)))
         project.overlays.annotations = [StudioAnnotation(kind: StudioAnnotationKind.text, end: 1, text: "One")]

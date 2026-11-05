@@ -177,6 +177,27 @@ enum StudioAnnotationGeometry {
     private static let radiusInFonts = 0.4
     private static let pointerHalfBaseInFonts = 0.45
     private static let maxBoxWidthInCanvases = 0.7
+    private static let bitmapMargin = 2.0
+
+    /// The whole pixels of the canvas a bitmap of an annotation with these bounds has to cover,
+    /// with room for its antialiased edges, or nil when none of it falls on the canvas. Only what
+    /// is on the canvas: a box of long text can be far larger than the canvas, and it has to show
+    /// the part that fits whatever the size of the canvas it is drawn on.
+    static func bitmapBounds(
+        minX: Double,
+        minY: Double,
+        maxX: Double,
+        maxY: Double,
+        canvasWidth: Double,
+        canvasHeight: Double
+    ) -> StudioRect? {
+        let left = max(0, (minX - bitmapMargin).rounded(.down))
+        let top = max(0, (minY - bitmapMargin).rounded(.down))
+        let right = min(canvasWidth, (maxX + bitmapMargin).rounded(.up))
+        let bottom = min(canvasHeight, (maxY + bitmapMargin).rounded(.up))
+        guard right - left >= 1, bottom - top >= 1 else { return nil }
+        return StudioRect(x: left, y: top, width: (right - left).rounded(.up), height: (bottom - top).rounded(.up))
+    }
 
     /// What the project's annotations draw at `time`, bottom first.
     static func resolveAll(

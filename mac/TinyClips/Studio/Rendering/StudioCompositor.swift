@@ -77,7 +77,10 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
         let capacity: Int
     }
 
+    private static let textSizeCapacity = 32
+
     private let lock = NSLock()
+    private var textSizes: [String: CGSize] = [:]
     private var buckets: [Kind: Bucket] = [
         .mask: Bucket(capacity: 6),
         .shadow: Bucket(capacity: 6),
@@ -86,6 +89,28 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
         .branding: Bucket(capacity: 2),
         .annotation: Bucket(capacity: 16),
     ]
+
+    /// The measured size of an annotation's text. Shaping text is far slower than drawing it, and
+    /// the size stays the same for as long as the annotation shows. `measure` runs outside the
+    /// lock, as `make` does below.
+    func textSize(for key: String, measure: () -> CGSize) -> CGSize {
+        lock.lock()
+        if let cached = textSizes[key] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let size = measure()
+
+        lock.lock()
+        if textSizes.count >= Self.textSizeCapacity {
+            textSizes.removeAll()
+        }
+        textSizes[key] = size
+        lock.unlock()
+        return size
+    }
 
     /// Returns the cached image for `key`, or makes, stores, and returns it. `make` runs outside the
     /// lock, so two threads may build the same image once; the result is the same either way.
@@ -634,20 +659,29 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         return output
     }
 
-    /// A transparent bitmap for one annotation, with `minX`, `minY` of the canvas at its top left
-    /// corner, moved to whole pixels so that a still annotation is not resampled.
+    /// A transparent bitmap for the part of one annotation on the canvas, on whole pixels so that
+    /// a still annotation is not resampled. What it draws may reach past its edges.
     private struct AnnotationBitmap {
         let originX: Double
         let originY: Double
         let width: Double
         let height: Double
 
-        init?(minX: Double, minY: Double, maxX: Double, maxY: Double) {
-            originX = (minX - 2).rounded(.down)
-            originY = (minY - 2).rounded(.down)
-            width = (maxX + 2 - originX).rounded(.up)
-            height = (maxY + 2 - originY).rounded(.up)
-            guard width.isFinite, height.isFinite, width >= 1, height >= 1, width <= 16384, height <= 16384 else { return nil }
+        init?(minX: Double, minY: Double, maxX: Double, maxY: Double, renderSize: CGSize) {
+            guard let bounds = StudioAnnotationGeometry.bitmapBounds(
+                minX: minX,
+                minY: minY,
+                maxX: maxX,
+                maxY: maxY,
+                canvasWidth: Double(renderSize.width),
+                canvasHeight: Double(renderSize.height)
+            ), bounds.width <= 16384, bounds.height <= 16384 else {
+                return nil
+            }
+            originX = bounds.x
+            originY = bounds.y
+            width = bounds.width
+            height = bounds.height
         }
 
         /// From the canvas, y down, to the bitmap, y up.
@@ -694,7 +728,8 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             minX: min(arrow.anchor.x, arrow.tail.x) - reach,
             minY: min(arrow.anchor.y, arrow.tail.y) - reach,
             maxX: max(arrow.anchor.x, arrow.tail.x) + reach,
-            maxY: max(arrow.anchor.y, arrow.tail.y) + reach
+            maxY: max(arrow.anchor.y, arrow.tail.y) + reach,
+            renderSize: renderSize
         ) else {
             return nil
         }
@@ -740,14 +775,17 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     }
 
     private func annotationBoxImage(_ annotation: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage? {
-        let framesetter = annotationFramesetter(annotation)
-        let measured = CTFramesetterSuggestFrameSizeWithConstraints(
-            framesetter,
-            CFRange(location: 0, length: 0),
-            nil,
-            CGSize(width: annotation.maxTextWidth, height: .greatestFiniteMagnitude),
-            nil
-        )
+        let measured = StudioCompositorImageCache.shared.textSize(
+            for: "\(annotation.font)|\(annotation.maxTextWidth)|\(annotation.text)"
+        ) {
+            CTFramesetterSuggestFrameSizeWithConstraints(
+                annotationFramesetter(annotation),
+                CFRange(location: 0, length: 0),
+                nil,
+                CGSize(width: annotation.maxTextWidth, height: .greatestFiniteMagnitude),
+                nil
+            )
+        }
 
         // A pixel of room, so that the frame does not wrap what was measured to fit.
         let placed = StudioAnnotationGeometry.layoutBox(
@@ -763,7 +801,8 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             minX: hasPointer ? min(box.x, annotation.anchor.x) : box.x,
             minY: hasPointer ? min(box.y, annotation.anchor.y) : box.y,
             maxX: hasPointer ? max(box.maxX, annotation.anchor.x) : box.maxX,
-            maxY: hasPointer ? max(box.maxY, annotation.anchor.y) : box.maxY
+            maxY: hasPointer ? max(box.maxY, annotation.anchor.y) : box.maxY,
+            renderSize: renderSize
         ) else {
             return nil
         }
@@ -806,7 +845,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
 
             context.textMatrix = .identity
             let frame = CTFramesetterCreateFrame(
-                framesetter,
+                annotationFramesetter(annotation),
                 CFRange(location: 0, length: 0),
                 CGPath(rect: textRect, transform: nil),
                 nil
