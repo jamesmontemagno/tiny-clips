@@ -358,7 +358,9 @@ struct StudioAnnotationInspectorSection: View {
     private var textField: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Text")
+            // A field of its own for each annotation: what one held can't be written into the next.
             TextField("", text: textBinding, axis: .vertical)
+                .id(viewModel.selectedAnnotationIndex)
                 .lineLimit(1...4)
                 .focused($isTextFocused)
                 .accessibilityLabel("Annotation text")
@@ -369,9 +371,14 @@ struct StudioAnnotationInspectorSection: View {
     }
 
     private var textBinding: Binding<String> {
-        Binding(
+        let index = viewModel.selectedAnnotationIndex
+        return Binding(
             get: { viewModel.selectedAnnotation?.text ?? "" },
-            set: { viewModel.setSelectedAnnotationText($0) }
+            set: { text in
+                if viewModel.selectedAnnotationIndex == index {
+                    viewModel.setSelectedAnnotationText(text)
+                }
+            }
         )
     }
 

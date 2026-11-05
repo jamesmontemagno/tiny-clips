@@ -486,7 +486,9 @@ public static class StudioEditorText
             return name;
         }
 
-        return $"{name}: {(words.Length > AnnotationLabelLength ? words[..AnnotationLabelLength].TrimEnd() + "\u2026" : words)}";
+        // Counted in what a reader sees, as on the Mac, so that an emoji is never cut in two.
+        var letters = new StringInfo(words);
+        return $"{name}: {(letters.LengthInTextElements > AnnotationLabelLength ? letters.SubstringByTextElements(0, AnnotationLabelLength).TrimEnd() + "\u2026" : words)}";
     }
 
     /// <summary>When an annotation starts and ends: <c>12.0 to 16.5 seconds</c>.</summary>

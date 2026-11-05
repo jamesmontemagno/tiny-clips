@@ -1509,7 +1509,8 @@
                                 AutomationProperties.AutomationId="StudioAnnotationLayerList"
                                 AutomationProperties.Name="Annotations, top first"
                                 SelectionChanged="OnAnnotationLayerSelectionChanged"
-                                SelectionMode="Single" />
+                                SelectionMode="Single"
+                                SingleSelectionFollowsFocus="False" />
                         </StackPanel>
 
                         <!--  The selected annotation.  -->

@@ -460,7 +460,7 @@ Someone may be working on the machine while the tool runs, so:
   handle on the camera, which is the current scene's; names, tab order, and undo and redo; and
   what is dragged while the preview plays (`Checks\SceneDragging.cs`): see "Something dragged
   while the preview plays".
-- `cut`: the empty lane; Cut by X and by both buttons, where a cut is already and where none
+- `cut`: no lane until there is a cut; Cut by X and by both buttons, where a cut is already and where none
   fits; the lane's keys and its blocks as list items; Previous and Next; the six buttons of
   Start and End; that a zoom or a cut is selected and never both; Delete and Delete cut; undo
   and redo; names and tab order; presses and drags on the lane; what a press on each row of the
@@ -675,7 +675,7 @@ tried.
 
 What the group checks, in `Checks\Speed.cs`, `SpeedLane.cs` and `SpeedPlaying.cs`:
 
-- **Adding.** The empty lane; R, Speed in the transport row and Add speed change in the
+- **Adding.** No lane until there is a speed change; R, Speed in the transport row and Add speed change in the
   Speed panel; where a speed change already is, and where the shortest does not fit; what is read
   out; the block's name; the panel for the selected one; and the time, which counts the video
   and so gets shorter for a faster stretch.
@@ -1358,7 +1358,7 @@ walked as it is.
 **New, 31 checks, all in `inspector`** (`Checks\InspectorRail.cs`):
 
 - *The rail of a recording with a camera* (7). It opens on Scene; the rail is a list called
-  Inspector panels with nine items in their order, each a list item with the panel's name,
+  Inspector panels with ten items in their order, each a list item with the panel's name,
   what the panel holds as its description and an automation id, one of them selected. The
   list is the framework's, with one selection that goes with the focus and one stop for the
   Tab key. Each item, selected through UI Automation, shows its panel: the name over the
@@ -1391,7 +1391,7 @@ walked as it is.
   and another scene, a press on an empty part of three lanes, an item taken out of the
   selection, the focus put on a lane, and the selected zoom deleted. The Project panel, which
   nothing in the table shows, has to stay through each.
-- *A recording without a camera* (3): it opens on Background with seven items; asked for
+- *A recording without a camera* (3): it opens on Background with eight items; asked for
   Camera it shows Screen and asked for Scene it shows Background, and so does what S runs;
   through all seven panels there is no control of the Scene or of the Camera panel.
 - *The crop groups by themselves* (7), in a project that comes with a cropped screen: the
@@ -1422,7 +1422,7 @@ person to hear. Nothing judges what the rail looks like: that the chosen item is
 light, in dark and in high contrast, the two lines between its groups, its labels at a
 larger text size (the rail is 88 wide and is meant to grow with its longest label, which
 is "Background", so that none is cut; the panel then has that much less), and the rail
-scrolling in a window too low for nine items. That the panel's
+scrolling in a window too low for ten items. That the panel's
 name is a heading is not read, because the tool does not read heading levels. A group that
 opens or closes moves for a third of a second, which nothing looks at.
 
@@ -1527,7 +1527,7 @@ nothing to do with what they are about, and each was the check's:
   bring up another panel either. The check says so if the export has ended before the
   reading has, and which item the rail has selected is read from the list itself. What a
   screen reader is told of the rail while an export runs is therefore: a disabled list of
-  nine items, none of them selected. That is the framework's doing for a disabled list.
+  ten items, none of them selected. That is the framework's doing for a disabled list.
 - *Play: the picture, the playhead and the time move on together* (`transport`). The
   playhead was 18 frames ahead of the picture, where 6 are allowed. The tool takes the
   picture and reads the playhead right after, and in that run its three looks were 16 and

@@ -107,6 +107,17 @@ internal sealed partial class WindowChecks
     private const string CutLane = "StudioCutLane";
     private const string SpeedLane = "StudioSpeedLane";
 
+    /// <summary>The lanes that show for what the editor holds, from the top down. A lane with nothing on it takes no room and no stop.</summary>
+    private string[] LanesShown(Editor editor)
+    {
+        var lanes = new List<string>();
+        if (ScenesOf(editor).Length > 1) { lanes.Add(SceneLane); }
+        if (ZoomsOf(editor).Length > 0) { lanes.Add(ZoomLane); }
+        if (CutsOf(editor).Length > 0) { lanes.Add(CutLane); }
+        if (SpeedsOf(editor).Length > 0) { lanes.Add(SpeedLane); }
+        return [.. lanes];
+    }
+
     /// <summary>A lane's items, as a screen reader finds them under the list. The zoom lane's, when no lane is named.</summary>
     private static List<UiaElement> LaneItems(Editor editor, string lane = ZoomLane) =>
         Find(editor, lane, 0.5)?.Children().Where(child => child.ControlType == ControlTypeNames.ListItem).ToList() ?? [];
@@ -266,7 +277,7 @@ internal sealed partial class WindowChecks
             "what Z runs adds a zoom at the playhead: three seconds long, at scale 2, looking at where the pointer is; the lane gets one item, named as the editor words the zoom, and it is the selected one",
             key == StudioShortcutAction.AddZoom && FrameOf(start) == At && isAsExpected && lane == "*" + FirstName
                 && FirstName == StudioEditorText.GetZoomDescription(zooms[0]) && list?.SelectedNames.SequenceEqual([FirstName]) == true
-                && Find(editor, "StudioZoom_0") is { ControlType: ControlTypeNames.ListItem, IsEnabled: true } && Gone(editor, "StudioZoomLaneEmptyText", 1),
+                && Find(editor, "StudioZoom_0") is { ControlType: ControlTypeNames.ListItem, IsEnabled: true },
             $"the key ran {key} with the playhead at {Seconds(start)} s; the editor holds {(zooms.Length == 0 ? "no zoom" : string.Join(", ", zooms.Select(Describe)))}; the lane: {lane}; the list's selection: {string.Join(", ", list?.SelectedNames ?? [])}");
         _report.Check("a screen reader is told \"Zoom added.\"", added.Said, $"sent: {added.Heard}");
 

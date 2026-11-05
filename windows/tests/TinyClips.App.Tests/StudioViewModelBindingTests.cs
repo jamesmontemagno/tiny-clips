@@ -101,6 +101,32 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     }
 
     [Fact]
+    public async Task AnAnnotationsTextWithOtherLineBreaks_IsNoEdit_UntilTheTextChanges()
+    {
+        var id = CreateProject(project => project with
+        {
+            Overlays = project.Overlays with
+            {
+                Annotations = [new StudioAnnotation { Id = "a", Kind = StudioAnnotationKinds.Text, Start = 1, End = 3, Text = "one\r\ntwo" }],
+            },
+        });
+        var viewModel = await OpenAsync(id, _controls);
+        viewModel.SelectAnnotation(0);
+        Pump();
+
+        // The text box holds a line break as \r, and hands back what it was given a moment later.
+        viewModel.AnnotationText = "one\rtwo";
+        viewModel.AnnotationText = "one\ntwo";
+        Pump();
+        AssertNothingWasEdited(viewModel, "the text box handing the text back");
+
+        viewModel.AnnotationText = "one\rthree";
+        Pump();
+        Assert.Single(Preview.Updates);
+        Assert.Equal("one\nthree", LastProject().Overlays.Annotations[0].Text);
+    }
+
+    [Fact]
     public async Task AProjectThatCannotBeShown_TakesWhatTheControlsHandBack()
     {
         // The screen recording is gone. The window opens all the same, with its controls
@@ -259,6 +285,14 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Pump();
         AssertNothingWasEdited(viewModel, "showing the second scene and selecting the zoom");
 
+        // An annotation holds what no slider of its can show, which the format allows.
+        viewModel.SelectAnnotation(0);
+        Pump();
+        Assert.Equal(0, viewModel.SelectedAnnotationIndex);
+        _controls.HandBackEverything();
+        Pump();
+        AssertNothingWasEdited(viewModel, "selecting the annotation");
+
         // The one slider that is moved writes its own value, and no other.
         _controls.Move(nameof(StudioViewModel.CanvasPadding), 0.3);
         Pump();
@@ -283,6 +317,10 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Assert.Equal(-0.3, stored.Zooms[0].Focus.Y, Precision);
         Assert.Equal(9, stored.Zooms[0].EaseIn, Precision);
         Assert.Equal(9, stored.Zooms[0].EaseOut, Precision);
+        Assert.Equal(-1, stored.Overlays.Annotations[0].X, Precision);
+        Assert.Equal(1.5, stored.Overlays.Annotations[0].Y, Precision);
+        Assert.Equal(5, stored.Overlays.Annotations[0].OffsetX, Precision);
+        Assert.Equal(-5, stored.Overlays.Annotations[0].OffsetY, Precision);
         Assert.Equal(3, stored.Audio.Volume, Precision);
     }
 
@@ -949,6 +987,10 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         [
             new StudioZoom { Start = 1, End = 3, Scale = 7, Focus = new StudioZoomFocus { X = 1.4, Y = -0.3 }, EaseIn = 9, EaseOut = 9 },
         ],
+        Overlays = project.Overlays with
+        {
+            Annotations = [new StudioAnnotation { Id = "a", Kind = StudioAnnotationKinds.Arrow, Start = 1, End = 3, X = -1, Y = 1.5, OffsetX = 5, OffsetY = -5 }],
+        },
         Audio = project.Audio with { Volume = 3 },
     });
 }

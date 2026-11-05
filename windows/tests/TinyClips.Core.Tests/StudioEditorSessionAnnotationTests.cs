@@ -164,6 +164,9 @@ public sealed class StudioEditorSessionAnnotationTests : StudioEditorSessionTest
         Assert.Equal("Arrow", StudioEditorText.GetAnnotationLabel(new StudioAnnotation()));
         Assert.Equal("Callout: Billing lives here", StudioEditorText.GetAnnotationLabel(callout));
         Assert.Equal("Text: a very long title that g…", StudioEditorText.GetAnnotationLabel(new StudioAnnotation { Kind = StudioAnnotationKinds.Text, Text = "a very long title that goes on and on" }));
+        Assert.Equal(
+            "Text: " + string.Concat(Enumerable.Repeat("\U0001F600", 24)) + "\u2026",
+            StudioEditorText.GetAnnotationLabel(new StudioAnnotation { Kind = StudioAnnotationKinds.Text, Text = string.Concat(Enumerable.Repeat("\U0001F600", 30)) }));
         Assert.Equal("Annotation: later", StudioEditorText.GetAnnotationLabel(new StudioAnnotation { Kind = "highlight", Text = "later" }));
         Assert.Equal("Callout: Billing lives here, 12.0 to 16.5 seconds", StudioEditorText.GetAnnotationDescription(callout));
         Assert.Equal("Annotation 2 of 3, Callout: Billing lives here, 12.0 to 16.5 seconds", StudioEditorText.GetAnnotationStepText(1, 3, callout));

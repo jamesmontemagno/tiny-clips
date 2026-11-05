@@ -98,6 +98,8 @@ public sealed partial class StudioInspector : UserControl
         SyncSwatches();
         FocusPad.Update(ViewModel.ZoomPad);
         SyncPanels();
+        SyncAnnotationLayers();
+        SyncAnnotationText();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e) =>
@@ -689,11 +691,11 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
-    // The box writes a line break its own way, so what it holds is compared by what it means.
+    // The box writes a line break its own way, and a project can hold another, so both are compared by what they mean.
     private void SyncAnnotationText()
     {
         var text = ViewModel.AnnotationText;
-        if (AnnotationTextBox.Text.ReplaceLineEndings("\n") != text)
+        if (AnnotationTextBox.Text.ReplaceLineEndings("\n") != text.ReplaceLineEndings("\n"))
         {
             _isSyncingAnnotations = true;
             try
@@ -761,14 +763,19 @@ public sealed partial class StudioInspector : UserControl
     {
         var focus = StudioFocus.StateOf(sender);
         ViewModel.RemoveSelectedAnnotation();
-        if (!ViewModel.HasSelectedAnnotation)
+        if (ViewModel.HasSelectedAnnotation || focus == FocusState.Unfocused)
         {
-            StudioFocus.Move(focus, AnnotationLayerList, NextAnnotationButton, PreviousAnnotationButton);
+            return;
         }
 
-        if (XamlRoot is { } root && FocusManager.GetFocusedElement(root) is DependencyObject focused && !IsInside(focused, this))
+        // The last one takes the list and both of these buttons with it, which leaves the rail.
+        if (ViewModel.Annotations.Count > 0)
         {
-            FocusOnRail(ViewModel.InspectorPanel, focus == FocusState.Unfocused ? FocusState.Programmatic : focus);
+            StudioFocus.Move(focus, NextAnnotationButton, PreviousAnnotationButton);
+        }
+        else
+        {
+            FocusOnRail(ViewModel.InspectorPanel, focus);
         }
     }
 

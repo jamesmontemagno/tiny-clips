@@ -168,7 +168,7 @@ internal sealed partial class WindowChecks
             "what R runs makes the two seconds from the playhead play twice as fast; the lane gets one item, named as the editor words the speed change, and it is the selected one; the playhead stays where the speed change starts",
             key == StudioShortcutAction.AddSpeed && added is null && SpeedName(one[0]) == "Speed 2×, 2.0 to 4.0 seconds" && SpeedName(one[0]) == StudioEditorText.GetSpeedDescription(one[0])
                 && list?.SelectedNames.SequenceEqual([SpeedName(one[0])]) == true
-                && Find(editor, "StudioSpeed_0") is { ControlType: ControlTypeNames.ListItem, IsEnabled: true } && Absent(editor, "StudioSpeedLaneEmptyText") && list.HelpText.Length == 0 && head == 2,
+                && Find(editor, "StudioSpeed_0") is { ControlType: ControlTypeNames.ListItem, IsEnabled: true } && list.HelpText.Length == 0 && head == 2,
             added ?? $"the key ran {key}; the editor holds {Describe(SpeedsOf(editor))}; the lane: {LaneText(editor, SpeedLane)}; playhead {Seconds(head)} s");
         _report.Check("a screen reader is told \"Speed change added.\"", said.Said && StudioEditorText.SpeedAddedMessage == "Speed change added.", $"sent: {said.Heard}");
         _report.Check(
@@ -765,7 +765,7 @@ internal sealed partial class WindowChecks
         string[] timeline =
         [
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
-            ZoomLane, CutLane, SpeedLane, "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
+            .. LanesShown(editor), "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
         var at = order.IndexOf(section[0]);
         var sectionTogether = at >= 0 && order.Skip(at).Take(section.Length).SequenceEqual(section);

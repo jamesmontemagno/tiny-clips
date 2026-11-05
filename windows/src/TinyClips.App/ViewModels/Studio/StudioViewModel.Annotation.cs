@@ -127,9 +127,11 @@ public sealed partial class StudioViewModel
         get => SelectedAnnotation?.Text ?? string.Empty;
         set
         {
-            if (SelectedAnnotationIndex is { } index)
+            // The box hands back what it was given, with line breaks of its own: that is no edit.
+            var text = value.ReplaceLineEndings("\n");
+            if (SelectedAnnotationIndex is { } index && text != AnnotationText.ReplaceLineEndings("\n"))
             {
-                _session.SetAnnotationText(index, value.ReplaceLineEndings("\n"));
+                _session.SetAnnotationText(index, text);
             }
         }
     }
@@ -181,10 +183,10 @@ public sealed partial class StudioViewModel
 
     public double AnnotationX
     {
-        get => SelectedAnnotation?.X ?? 0;
+        get => Math.Clamp(SelectedAnnotation?.X ?? 0, 0, 1);
         set
         {
-            if (SelectedAnnotationIndex is { } index)
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationX))
             {
                 _session.SetAnnotationPoint(index, value, AnnotationY);
             }
@@ -195,10 +197,10 @@ public sealed partial class StudioViewModel
 
     public double AnnotationY
     {
-        get => SelectedAnnotation?.Y ?? 0;
+        get => Math.Clamp(SelectedAnnotation?.Y ?? 0, 0, 1);
         set
         {
-            if (SelectedAnnotationIndex is { } index)
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationY))
             {
                 _session.SetAnnotationPoint(index, AnnotationX, value);
             }
@@ -209,10 +211,10 @@ public sealed partial class StudioViewModel
 
     public double AnnotationOffsetX
     {
-        get => SelectedAnnotation?.OffsetX ?? 0;
+        get => Math.Clamp(SelectedAnnotation?.OffsetX ?? 0, -1, 1);
         set
         {
-            if (SelectedAnnotationIndex is { } index)
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationOffsetX))
             {
                 _session.SetAnnotationOffset(index, value, AnnotationOffsetY);
             }
@@ -223,10 +225,10 @@ public sealed partial class StudioViewModel
 
     public double AnnotationOffsetY
     {
-        get => SelectedAnnotation?.OffsetY ?? 0;
+        get => Math.Clamp(SelectedAnnotation?.OffsetY ?? 0, -1, 1);
         set
         {
-            if (SelectedAnnotationIndex is { } index)
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationOffsetY))
             {
                 _session.SetAnnotationOffset(index, AnnotationOffsetX, value);
             }
