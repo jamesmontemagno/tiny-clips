@@ -1148,6 +1148,7 @@ final class StudioViewModel: ObservableObject {
     /// Selects an annotation, or none with nil. The playhead stays. What else was selected is let
     /// go, and the inspector shows the Annotate panel.
     func selectAnnotation(_ index: Int?) {
+        if index != selectedAnnotationIndex { endAnnotationColorChoice() }
         setSelectedAnnotationIndex(index)
         if selectedAnnotationIndex != nil {
             setSelectedZoomIndex(nil)
@@ -1281,9 +1282,9 @@ final class StudioViewModel: ObservableObject {
         editAnnotation(at: index) { $0.setAnnotationStyle(at: index, to: style) }
     }
 
-    func setSelectedAnnotationSize(_ size: StudioAnnotationSize) {
-        guard let index = selectedAnnotationIndex else { return }
-        editAnnotation(at: index) { $0.setAnnotationSize(at: index, to: size) }
+    /// A color has been chosen: the next one is another undo step.
+    func endAnnotationColorChoice() {
+        editor?.endAnnotationColorChoice()
     }
 
     func setSelectedAnnotationFill(_ color: Color) {
@@ -1328,13 +1329,14 @@ final class StudioViewModel: ObservableObject {
         part: StudioAnnotationPart,
         byX: Double,
         byY: Double,
+        drawnBoxCenter: StudioAnnotationPoint?,
         canvasSize: CGSize
     ) -> StudioAnnotationMove? {
         guard let project else { return nil }
         let width = Double(canvasSize.width)
         let height = Double(canvasSize.height)
         let frame = StudioLayoutResolver.resolve(project: project, time: playhead, canvasWidth: width, canvasHeight: height, events: events)
-        guard let move = StudioAnnotationGeometry.moved(start, part: part, byX: byX, byY: byY, frame: frame, canvasWidth: width, canvasHeight: height) else {
+        guard let move = StudioAnnotationGeometry.moved(start, part: part, byX: byX, byY: byY, drawnBoxCenter: drawnBoxCenter, frame: frame, canvasWidth: width, canvasHeight: height) else {
             return nil
         }
         editAnnotation(at: index) { $0.moveAnnotation(at: index, to: move) }
@@ -2441,7 +2443,7 @@ final class StudioViewModel: ObservableObject {
         return CGSize(width: max(2, size.width), height: max(2, size.height))
     }
 
-    private static func hexString(for color: Color) -> String {
+    static func hexString(for color: Color) -> String {
         let nsColor = NSColor(color)
         guard let resolved = nsColor.usingColorSpace(.sRGB) ?? nsColor.usingColorSpace(.deviceRGB) else {
             return "#000000"

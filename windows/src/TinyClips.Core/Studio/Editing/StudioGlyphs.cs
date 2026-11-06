@@ -26,13 +26,13 @@ public static class StudioGlyphs
     /// <summary>Speed and Add speed change: the Speed panel's glyph.</summary>
     public static string AddSpeed => StudioInspectorPanels.GetGlyph(StudioInspectorPanel.Speed);
 
-    /// <summary>Arrow, in the header and in the Annotate panel: an arrow (Forward).</summary>
+    /// <summary>Arrow, in the Annotate panel: an arrow (Forward).</summary>
     public static string AddArrow => "\uE72A";
 
-    /// <summary>Callout, in the header and in the Annotate panel: a speech bubble (Message).</summary>
+    /// <summary>Callout, in the Annotate panel: a speech bubble (Message).</summary>
     public static string AddCallout => "\uE8BD";
 
-    /// <summary>Text, in the header and in the Annotate panel: a letter (Font).</summary>
+    /// <summary>Text, in the Annotate panel: a letter (Font).</summary>
     public static string AddText => "\uE8D2";
 
     /// <summary>Bring forward: an arrow up (Up).</summary>

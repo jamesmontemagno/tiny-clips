@@ -30,7 +30,7 @@ public sealed partial class StudioPreviewOverlay
     private bool _isDraggingAnnotation;
 
     /// <summary>What a pointer has taken hold of. The layer is filled again as the project changes, so it holds on to this and not to the element.</summary>
-    private sealed record AnnotationGrip(int Index, StudioAnnotationPart Part);
+    private sealed record AnnotationGrip(int Index, StudioAnnotationPart Part, StudioPoint? DrawnBoxCenter = null);
 
     private void UpdateAnnotations()
     {
@@ -80,7 +80,8 @@ public sealed partial class StudioPreviewOverlay
         area = new Rectangle { Width = box.Width / pixelsPerDip, Height = box.Height / pixelsPerDip, Fill = _hitBrush };
         Canvas.SetLeft(area, box.X / pixelsPerDip);
         Canvas.SetTop(area, box.Y / pixelsPerDip);
-        return Grip(area, new AnnotationGrip(handle.Index, StudioAnnotationPart.Box));
+        var center = new StudioPoint(box.X + (box.Width / 2), box.Y + (box.Height / 2));
+        return Grip(area, new AnnotationGrip(handle.Index, StudioAnnotationPart.Box, center));
     }
 
     private void AddSelection(StudioAnnotationHandle handle, double pixelsPerDip)
@@ -190,7 +191,7 @@ public sealed partial class StudioPreviewOverlay
         }
 
         var pixelsPerDip = CanvasPixelsPerDip;
-        if (_viewModel.DragAnnotation(grip.Index, start, grip.Part, deltaX * pixelsPerDip, deltaY * pixelsPerDip) is { } move)
+        if (_viewModel.DragAnnotation(grip.Index, start, grip.Part, deltaX * pixelsPerDip, deltaY * pixelsPerDip, grip.DrawnBoxCenter) is { } move)
         {
             ShowAnnotationGuides(move.IsOnVerticalCenter, move.IsOnHorizontalCenter);
         }

@@ -321,6 +321,23 @@ final class StudioAnnotationTests: XCTestCase {
         XCTAssertEqual(editor.project.overlays.annotations[0].fill, "#111111")
     }
 
+    func testAColorItAlreadyHasIsNoEditAndDoesNotLeaveItsStyle() {
+        var editor = model([StudioAnnotation(id: "a", start: 0, end: 5, style: .blue)])
+        XCTAssertFalse(editor.setAnnotationFill(at: 0, to: "#0a84ff").changed)
+        XCTAssertFalse(editor.setAnnotationTextColor(at: 0, to: "#FFFFFF").changed)
+        XCTAssertEqual(editor.project.overlays.annotations[0].fill, "")
+        XCTAssertEqual(editor.project.overlays.annotations[0].textColor, "")
+    }
+
+    func testAChoiceThatHasEndedIsItsOwnUndoStep() {
+        var editor = model([StudioAnnotation(id: "a", start: 0, end: 5)])
+        _ = editor.setAnnotationFill(at: 0, to: "#111111")
+        editor.endAnnotationColorChoice()
+        _ = editor.setAnnotationFill(at: 0, to: "#222222")
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations[0].fill, "#111111")
+    }
+
     func testChoosingAStyleTakesBackTheColorsChosenByHand() {
         var editor = model([StudioAnnotation(id: "a", start: 0, end: 5, fill: "#111111", textColor: "#222222")])
         XCTAssertTrue(editor.setAnnotationStyle(at: 0, to: .blue).changed)
@@ -388,6 +405,18 @@ final class StudioAnnotationTests: XCTestCase {
         XCTAssertEqual(whole.x, 0.3, accuracy: 1e-9)
         XCTAssertEqual(whole.y, 0.3, accuracy: 1e-9)
         XCTAssertEqual(whole.offsetX, -0.12, accuracy: 1e-9)
+    }
+
+    func testABoxPushedInsideTheCanvasMovesFromWhereItIsDrawn() throws {
+        let text = StudioAnnotation(kind: StudioAnnotationKind.text, attach: .frame, x: 1, y: 0.25)
+        let drawn = StudioAnnotationPoint(x: 800, y: 125)
+        let whole = try XCTUnwrap(StudioAnnotationGeometry.moved(text, part: .box, byX: -100, byY: 0, drawnBoxCenter: drawn, frame: wholeCanvas(), canvasWidth: 1000, canvasHeight: 500))
+        XCTAssertEqual(whole.x, 0.7, accuracy: 1e-9, "It follows the pointer at once")
+
+        let callout = StudioAnnotation(kind: StudioAnnotationKind.callout, attach: .frame, x: 0.9, y: 0.25, offsetX: 0.5, offsetY: 0)
+        let box = try XCTUnwrap(StudioAnnotationGeometry.moved(callout, part: .box, byX: -100, byY: 0, drawnBoxCenter: drawn, frame: wholeCanvas(), canvasWidth: 1000, canvasHeight: 500))
+        XCTAssertEqual(box.x, 0.9, accuracy: 1e-9, "What it points at stays")
+        XCTAssertEqual(box.offsetX, -0.4, accuracy: 1e-9, "From 900 to 700, in short sides of 500")
     }
 
     func testADragSettlesOnTheCenterLinesAndSaysSo() throws {
@@ -556,6 +585,16 @@ final class StudioAnnotationDrawingTests: XCTestCase {
             to: StudioAnnotationPoint(x: 900, y: 100),
             headBase: StudioAnnotationPoint(x: 840, y: 100)
         )
+    }
+
+    func testEveryPresetIsItselfOnceSavedAndAColorKeepsItsHex() {
+        for preset in annotationColorPresets {
+            let saved = StudioAnnotationInspectorSection.color(StudioViewModel.hexString(for: preset.color))
+            XCTAssertTrue(annotationColorsEqual(preset.color, saved), preset.name)
+        }
+        for hex in ["#FF453A", "#0A84FF", "#FFD60A", "#FFFFFF", "#1C1C1E", "#12AB9F", "#010203", "#FEFDFC"] {
+            XCTAssertEqual(StudioViewModel.hexString(for: StudioAnnotationInspectorSection.color(hex)), hex)
+        }
     }
 
     func testAnArrowIsDrawnWhereItsPointsAre() {

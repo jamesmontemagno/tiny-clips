@@ -1719,7 +1719,8 @@
                                         AutomationProperties.AutomationId="StudioAnnotationFillColorPicker"
                                         AutomationProperties.Name="{x:Bind ViewModel.AnnotationFillTitle, Mode=OneWay}"
                                         Color="{x:Bind ViewModel.AnnotationFillColor, Mode=OneWay}"
-                                        ColorChanged="OnAnnotationFillColorChanged" />
+                                        ColorChanged="OnAnnotationFillColorChanged"
+                                        ColorChoiceEnded="OnAnnotationColorChoiceEnded" />
                                 </StackPanel>
                                 <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationTextColor, Mode=OneWay}">
                                     <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Text color" />
@@ -1728,7 +1729,8 @@
                                         AutomationProperties.AutomationId="StudioAnnotationTextColorPicker"
                                         AutomationProperties.Name="Text color"
                                         Color="{x:Bind ViewModel.AnnotationTextColor, Mode=OneWay}"
-                                        ColorChanged="OnAnnotationTextColorChanged" />
+                                        ColorChanged="OnAnnotationTextColorChanged"
+                                        ColorChoiceEnded="OnAnnotationColorChoiceEnded" />
                                 </StackPanel>
                                 <local:StudioSliderRow
                                     Title="Size"

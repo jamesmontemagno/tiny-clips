@@ -27,6 +27,11 @@ public sealed partial class StudioEditorSession
     /// </summary>
     public void SelectAnnotation(int? index)
     {
+        if (index != _selectedAnnotationIndex)
+        {
+            EndAnnotationColorChoice();
+        }
+
         var before = Selection;
         _selectedAnnotationIndex = index;
         _selectedAnnotationIndex = SelectedAnnotationIndex;
@@ -131,6 +136,9 @@ public sealed partial class StudioEditorSession
     public StudioAnnotationEditResult SetAnnotationTextColor(int index, string color) =>
         EditAnnotation(index, model => model.SetAnnotationTextColor(index, color));
 
+    /// <summary>A color has been chosen: the next one is another undo step.</summary>
+    public void EndAnnotationColorChoice() => Model?.EndAnnotationColorChoice();
+
     public StudioAnnotationEditResult SetAnnotationScale(int index, double scale) =>
         EditAnnotation(index, model => model.SetAnnotationScale(index, scale));
 
@@ -167,7 +175,7 @@ public sealed partial class StudioEditorSession
     /// Where a drag on the preview leaves an annotation that was <paramref name="start"/> when it
     /// began. What the move did is handed back so that the preview can show a center line it settled on.
     /// </summary>
-    public StudioAnnotationMove? DragAnnotation(int index, StudioAnnotation start, StudioAnnotationPart part, double byX, double byY, double canvasWidth, double canvasHeight)
+    public StudioAnnotationMove? DragAnnotation(int index, StudioAnnotation start, StudioAnnotationPart part, double byX, double byY, StudioPoint? drawnBoxCenter, double canvasWidth, double canvasHeight)
     {
         if (!IsEditable || Model is not { } model)
         {
@@ -175,7 +183,7 @@ public sealed partial class StudioEditorSession
         }
 
         var frame = StudioLayoutResolver.Resolve(model.Project, _events, Playhead, canvasWidth, canvasHeight);
-        if (StudioAnnotationGeometry.GetMoved(start, part, byX, byY, frame, canvasWidth, canvasHeight) is not { } move)
+        if (StudioAnnotationGeometry.GetMoved(start, part, byX, byY, frame, canvasWidth, canvasHeight, drawnBoxCenter) is not { } move)
         {
             return null;
         }
@@ -192,9 +200,6 @@ public sealed partial class StudioEditorSession
 
     public StudioAnnotationEditResult SetAnnotationStyle(int index, StudioAnnotationStyle style) =>
         EditAnnotation(index, model => model.SetAnnotationStyle(index, style));
-
-    public StudioAnnotationEditResult SetAnnotationSize(int index, StudioAnnotationSize size) =>
-        EditAnnotation(index, model => model.SetAnnotationSize(index, size));
 
     /// <summary>What an annotation is fixed to. It stays where it is in the picture at the playhead where it can.</summary>
     public StudioAnnotationEditResult SetAnnotationAttach(int index, StudioAnnotationAttach attach)

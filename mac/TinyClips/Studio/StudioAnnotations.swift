@@ -292,7 +292,7 @@ enum StudioAnnotationGeometry {
     }
 
     /// The numbers `annotation` has once `part` of it is dragged by `byX`, `byY` canvas pixels from
-    /// where it was at the start of the drag. What is not dragged stays where it is in the picture:
+    /// where it was at the start of the drag, with where its box was drawn then, if it has one. What is not dragged stays where it is in the picture:
     /// the tail of an arrow whose tip moves, the box of a callout whose point moves. Whatever is
     /// dragged settles on the middle of the canvas when it comes close. Nil when it isn't in the
     /// picture, or when it would make an arrow too short to see or to take hold of again.
@@ -301,6 +301,7 @@ enum StudioAnnotationGeometry {
         part: StudioAnnotationPart,
         byX: Double,
         byY: Double,
+        drawnBoxCenter: StudioAnnotationPoint? = nil,
         frame: StudioResolvedFrame,
         canvasWidth: Double,
         canvasHeight: Double
@@ -314,7 +315,8 @@ enum StudioAnnotationGeometry {
         let offsetY = StudioCanvasMath.clamped(annotation.offsetY, -1, 1) * shortSide
         let far = StudioAnnotationPoint(x: anchor.x + offsetX, y: anchor.y + offsetY)
         let isFarEnd = part == .tail || (part == .box && annotation.kind == StudioAnnotationKind.callout)
-        let from = isFarEnd ? far : anchor
+        // A box pushed inside the canvas is not where its numbers say, and it is what was taken hold of.
+        let from = part == .box ? (drawnBoxCenter ?? (isFarEnd ? far : anchor)) : (isFarEnd ? far : anchor)
 
         var x = from.x + byX
         var y = from.y + byY
@@ -703,9 +705,11 @@ extension StudioEditorModel {
     ) -> StudioAnnotationEditResult {
         guard hasAnnotation(index), let color = StudioAnnotationGeometry.customColor(color) else { return annotationUnchanged(index) }
         let before = project.overlays.annotations[index]
+        // The color it already has: a picker that says what it shows must not turn a style into a custom color.
+        let effective = StudioAnnotationGeometry.effectiveColors(before)
+        guard color != (part == 0 ? effective.fill : effective.text) else { return annotationUnchanged(index) }
         var after = before
         apply(&after, color)
-        guard after != before else { return annotationUnchanged(index) }
         let marker = index * 2 + part
         if choosingColorInAnnotation == marker {
             applyWithoutUndoStep { $0.overlays.annotations[index] = after }
@@ -714,6 +718,11 @@ extension StudioEditorModel {
         }
         choosingColorInAnnotation = marker
         return StudioAnnotationEditResult(changed: true, index: index)
+    }
+
+    /// A color has been chosen: the next one is another undo step.
+    mutating func endAnnotationColorChoice() {
+        choosingColorInAnnotation = nil
     }
 
     /// What the size of an annotation is multiplied by.
@@ -732,10 +741,6 @@ extension StudioEditorModel {
             $0.offsetX = move.offsetX
             $0.offsetY = move.offsetY
         }
-    }
-
-    mutating func setAnnotationSize(at index: Int, to size: StudioAnnotationSize) -> StudioAnnotationEditResult {
-        editAnnotation(at: index) { $0.size = size }
     }
 
     /// What an annotation is fixed to. It stays where it is in the picture at `sourceTime` where it

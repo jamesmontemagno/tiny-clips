@@ -286,6 +286,27 @@ public sealed class StudioEditorModelAnnotationTests
     }
 
     [Fact]
+    public void AColorItAlreadyHas_IsNoEdit_AndDoesNotLeaveItsStyle()
+    {
+        var editor = Model([new StudioAnnotation { Id = "a", Start = 0, End = 5, Style = StudioAnnotationStyle.Blue }]);
+        Assert.False(editor.SetAnnotationFill(0, "#0a84ff").Changed);
+        Assert.False(editor.SetAnnotationTextColor(0, "#FFFFFF").Changed);
+        Assert.Equal(string.Empty, editor.Project.Overlays.Annotations[0].Fill);
+        Assert.Equal(string.Empty, editor.Project.Overlays.Annotations[0].TextColor);
+    }
+
+    [Fact]
+    public void AChoiceThatHasEnded_IsItsOwnUndoStep()
+    {
+        var editor = Model([new StudioAnnotation { Id = "a", Start = 0, End = 5 }]);
+        editor.SetAnnotationFill(0, "#111111");
+        editor.EndAnnotationColorChoice();
+        editor.SetAnnotationFill(0, "#222222");
+        editor.Undo();
+        Assert.Equal("#111111", editor.Project.Overlays.Annotations[0].Fill);
+    }
+
+    [Fact]
     public void ChoosingAStyle_TakesBackTheColorsChosenByHand()
     {
         var editor = Model([new StudioAnnotation { Id = "a", Start = 0, End = 5, Fill = "#111111", TextColor = "#222222" }]);
@@ -363,6 +384,20 @@ public sealed class StudioEditorModelAnnotationTests
         Assert.Equal(0.3, whole.X, 9);
         Assert.Equal(0.3, whole.Y, 9);
         Assert.Equal(-0.12, whole.OffsetX, 9);
+    }
+
+    [Fact]
+    public void ABoxPushedInsideTheCanvas_MovesFromWhereItIsDrawn()
+    {
+        var drawn = new StudioPoint(800, 125);
+        var text = new StudioAnnotation { Kind = StudioAnnotationKinds.Text, Attach = StudioAnnotationAttach.Frame, X = 1, Y = 0.25 };
+        var whole = StudioAnnotationGeometry.GetMoved(text, StudioAnnotationPart.Box, -100, 0, WholeCanvas(), 1000, 500, drawn)!.Value;
+        Assert.Equal(0.7, whole.X, 9);
+
+        var callout = new StudioAnnotation { Kind = StudioAnnotationKinds.Callout, Attach = StudioAnnotationAttach.Frame, X = 0.9, Y = 0.25, OffsetX = 0.5, OffsetY = 0 };
+        var box = StudioAnnotationGeometry.GetMoved(callout, StudioAnnotationPart.Box, -100, 0, WholeCanvas(), 1000, 500, drawn)!.Value;
+        Assert.Equal(0.9, box.X, 9);
+        Assert.Equal(-0.4, box.OffsetX, 9);
     }
 
     [Fact]

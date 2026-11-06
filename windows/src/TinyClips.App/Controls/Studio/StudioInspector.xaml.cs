@@ -735,6 +735,8 @@ public sealed partial class StudioInspector : UserControl
 
     private void OnAnnotationTextLostFocus(object sender, RoutedEventArgs e) => ViewModel.EndAnnotationTyping();
 
+    private void OnAnnotationColorChoiceEnded(object? sender, EventArgs e) => ViewModel.EndAnnotationColorChoice();
+
     private void OnAnnotationFillColorChanged(object? sender, Color color) => ViewModel.SetAnnotationFillColor(color);
 
     private void OnAnnotationTextColorChanged(object? sender, Color color) => ViewModel.SetAnnotationTextColor(color);

@@ -173,12 +173,14 @@ public sealed partial class StudioEditorModel
             return AnnotationUnchanged(index);
         }
 
-        var after = apply(Project.Overlays.Annotations[index], value);
-        if (after == Project.Overlays.Annotations[index])
+        // The color it already has: a picker that says what it shows must not turn a style into a custom color.
+        var effective = StudioAnnotationGeometry.GetEffectiveColors(Project.Overlays.Annotations[index]);
+        if (value == (part == 0 ? effective.Fill : effective.Text))
         {
             return AnnotationUnchanged(index);
         }
 
+        var after = apply(Project.Overlays.Annotations[index], value);
         var marker = (index * 2) + part;
         StudioProject Changed(StudioProject project)
         {
@@ -200,6 +202,9 @@ public sealed partial class StudioEditorModel
         return new StudioAnnotationEditResult(true, index);
     }
 
+    /// <summary>A color has been chosen: the next one is another undo step.</summary>
+    public void EndAnnotationColorChoice() => _choosingColorInAnnotation = null;
+
     /// <summary>What the size of an annotation is multiplied by.</summary>
     public StudioAnnotationEditResult SetAnnotationScale(int index, double scale) =>
         !double.IsFinite(scale) ? AnnotationUnchanged(index) : EditAnnotation(index, annotation => annotation with
@@ -210,9 +215,6 @@ public sealed partial class StudioEditorModel
     /// <summary>Where a drag on the preview leaves an annotation.</summary>
     public StudioAnnotationEditResult MoveAnnotation(int index, StudioAnnotationMove move) =>
         EditAnnotation(index, annotation => annotation with { X = move.X, Y = move.Y, OffsetX = move.OffsetX, OffsetY = move.OffsetY });
-
-    public StudioAnnotationEditResult SetAnnotationSize(int index, StudioAnnotationSize size) =>
-        EditAnnotation(index, annotation => annotation with { Size = size });
 
     /// <summary>
     /// What an annotation is fixed to. It stays where it is in the picture at <paramref name="sourceTime"/>

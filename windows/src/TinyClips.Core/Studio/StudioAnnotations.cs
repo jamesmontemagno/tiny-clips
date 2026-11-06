@@ -244,7 +244,7 @@ public static class StudioAnnotationGeometry
 
     /// <summary>
     /// The numbers an annotation has once a part of it is dragged by some canvas pixels from where
-    /// it was at the start of the drag. What is not dragged stays where it is in the picture: the
+    /// it was at the start of the drag, with where its box was drawn then, if it has one. What is not dragged stays where it is in the picture: the
     /// tail of an arrow whose tip moves, the box of a callout whose point moves. Whatever is dragged
     /// settles on the middle of the canvas when it comes close. Null when it isn't in the picture,
     /// or when it would make an arrow too short to see or to take hold of again.
@@ -256,7 +256,8 @@ public static class StudioAnnotationGeometry
         double byY,
         in StudioResolvedFrame frame,
         double canvasWidth,
-        double canvasHeight)
+        double canvasHeight,
+        StudioPoint? drawnBoxCenter = null)
     {
         ArgumentNullException.ThrowIfNull(annotation);
         if (!double.IsFinite(byX) || !double.IsFinite(byY) || !(canvasWidth > 0) || !(canvasHeight > 0)
@@ -270,7 +271,9 @@ public static class StudioAnnotationGeometry
         var offsetY = Math.Clamp(annotation.OffsetY, -1, 1);
         var far = new StudioPoint(anchor.X + (offsetX * shortSide), anchor.Y + (offsetY * shortSide));
         var isFarEnd = part == StudioAnnotationPart.Tail || (part == StudioAnnotationPart.Box && annotation.Kind == StudioAnnotationKinds.Callout);
-        var from = isFarEnd ? far : anchor;
+
+        // A box pushed inside the canvas is not where its numbers say, and it is what was taken hold of.
+        var from = part == StudioAnnotationPart.Box && drawnBoxCenter is { } center ? center : isFarEnd ? far : anchor;
 
         var x = from.X + byX;
         var y = from.Y + byY;

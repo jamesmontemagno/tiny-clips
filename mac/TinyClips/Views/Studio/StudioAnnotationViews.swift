@@ -422,14 +422,16 @@ struct StudioAnnotationInspectorSection: View {
                 label: annotation.kind == StudioAnnotationKind.arrow ? "Color" : "Fill",
                 color: Binding(get: { Self.color(colors.fill) }, set: { viewModel.setSelectedAnnotationFill($0) }),
                 supportsOpacity: false,
-                colorName: Self.styleName(colors.fill)
+                colorName: Self.styleName(colors.fill),
+                onClosed: { viewModel.endAnnotationColorChoice() }
             )
             if annotation.kind != StudioAnnotationKind.arrow {
                 SwatchColorPicker(
                     label: "Text color",
                     color: Binding(get: { Self.color(colors.text) }, set: { viewModel.setSelectedAnnotationTextColor($0) }),
                     supportsOpacity: false,
-                    colorName: Self.styleName(colors.text)
+                    colorName: Self.styleName(colors.text),
+                    onClosed: { viewModel.endAnnotationColorChoice() }
                 )
             }
             slider("Size", annotation.scale, StudioAnnotationGeometry.minimumScale...StudioAnnotationGeometry.maximumScale, step: 0.05) {
@@ -673,6 +675,7 @@ struct StudioAnnotationPreviewLayer: View {
     private struct Drag {
         var index: Int
         var start: StudioAnnotation
+        var drawnBoxCenter: StudioAnnotationPoint?
         var isMoving = false
     }
 
@@ -697,6 +700,20 @@ struct StudioAnnotationPreviewLayer: View {
         }
         .frame(width: geometry.viewSize.width, height: geometry.viewSize.height, alignment: .topLeading)
         .accessibilityHidden(true)
+        // A handle can go during a drag: Space and the arrow keys still move the playhead. A gesture
+        // whose view has gone never ends, so what it opened is closed here.
+        .onChange(of: handles.map(\.index)) { _, indices in
+            if let drag, !indices.contains(drag.index) { endDrag() }
+        }
+        .onDisappear { endDrag() }
+    }
+
+    private func endDrag() {
+        if drag?.isMoving == true {
+            viewModel.endGesture()
+        }
+        drag = nil
+        guides = Guides()
     }
 
     private func view(_ point: StudioAnnotationPoint) -> CGPoint {
@@ -793,7 +810,11 @@ struct StudioAnnotationPreviewLayer: View {
             .onChanged { value in
                 if drag == nil, viewModel.annotations.indices.contains(handle.index) {
                     viewModel.selectAnnotation(handle.index)
-                    drag = Drag(index: handle.index, start: viewModel.annotations[handle.index])
+                    drag = Drag(
+                        index: handle.index,
+                        start: viewModel.annotations[handle.index],
+                        drawnBoxCenter: handle.box.map { StudioAnnotationPoint(x: $0.x + $0.width / 2, y: $0.y + $0.height / 2) }
+                    )
                 }
                 guard var current = drag else { return }
                 if !current.isMoving {
@@ -809,17 +830,12 @@ struct StudioAnnotationPreviewLayer: View {
                     part: part,
                     byX: Double(value.translation.width) * scale,
                     byY: Double(value.translation.height) * scale,
+                    drawnBoxCenter: current.drawnBoxCenter,
                     canvasSize: canvasSize
                 ) {
                     guides = Guides(vertical: move.isOnVerticalCenter, horizontal: move.isOnHorizontalCenter)
                 }
             }
-            .onEnded { _ in
-                if drag?.isMoving == true {
-                    viewModel.endGesture()
-                }
-                drag = nil
-                guides = Guides()
-            }
+            .onEnded { _ in endDrag() }
     }
 }

@@ -288,6 +288,8 @@ struct SwatchColorPicker: View {
     var allowsTransparent: Bool = false
     /// What to call the color when the caller knows better than the presets do.
     var colorName: String? = nil
+    /// Called when the options close, which is when one choice of a color has been made.
+    var onClosed: (() -> Void)? = nil
 
     @State private var isPresented = false
 
@@ -338,6 +340,9 @@ struct SwatchColorPicker: View {
             .accessibilityHint("Opens color options")
             .popover(isPresented: $isPresented, arrowEdge: .bottom) {
                 popoverContent
+            }
+            .onChange(of: isPresented) { _, isShowing in
+                if !isShowing { onClosed?() }
             }
         }
     }

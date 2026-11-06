@@ -5,8 +5,8 @@ using Windows.UI;
 
 namespace TinyClips.App.ViewModels.Studio;
 
-// The values behind the annotation lane, the Annotate panel of the inspector and the tools in the
-// header. An annotation is selected in place of a zoom, a cut or a speed change, never with one. What
+// The values behind the annotation lane, the Annotate panel of the inspector and the annotations on
+// the preview. An annotation is selected in place of a zoom, a cut or a speed change, never with one. What
 // an edit does is decided in the session, and what is said about it in StudioEditorText.
 public sealed partial class StudioViewModel
 {
@@ -161,8 +161,11 @@ public sealed partial class StudioViewModel
     }
 
     /// <summary>Where a drag on the preview leaves an annotation. See <see cref="StudioEditorSession.DragAnnotation"/>.</summary>
-    public StudioAnnotationMove? DragAnnotation(int index, StudioAnnotation start, StudioAnnotationPart part, double byX, double byY) =>
-        _session.DragAnnotation(index, start, part, byX, byY, CanvasWidth, CanvasHeight);
+    public StudioAnnotationMove? DragAnnotation(int index, StudioAnnotation start, StudioAnnotationPart part, double byX, double byY, StudioPoint? drawnBoxCenter = null) =>
+        _session.DragAnnotation(index, start, part, byX, byY, drawnBoxCenter, CanvasWidth, CanvasHeight);
+
+    /// <summary>A color has been chosen: the next one is another undo step.</summary>
+    public void EndAnnotationColorChoice() => _session.EndAnnotationColorChoice();
 
     /// <summary>The look to start from. Choosing one takes back the colors chosen by hand.</summary>
     public void SetAnnotationStyle(StudioAnnotationStyle style)
