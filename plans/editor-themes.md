@@ -89,7 +89,7 @@ Mac editor sizes are reference units: strokes scale by `max(1, width / 900)`. Wi
 
 ## Risks
 
-- **Windows shadow preview:** the canvas preview's `ThemeShadow` has no blur or color settings, so shape shadows use a composition `DropShadow` for the preview and a Win2D shadow for export. A blur radius of three standard deviations matched the export on a Windows runner: the preview measured 9.8 for a standard deviation of 10, and 19.7 for 20.
+- **Windows shadow preview:** the canvas preview's `ThemeShadow` has no blur or color settings, so shape shadows use a composition `DropShadow` for the preview and a Win2D shadow for export. A blur radius of three standard deviations came close to the export on a Windows runner at 94% zoom. For target standard deviations of 10 and 20, the preview measured 9.5 and 19.6, and the export 10.1 and 19.9. The preview's shadow edge sat about 1.5 px closer to a shape with a 2 px stroke, partly because XAML draws strokes inside a shape's bounds.
 - **Canvas shadow differences:** Mac draws 25% black with no offset, and Windows exports about 47% black shifted down. A theme's canvas shadow will look different on each platform until this is fixed separately, because a fix changes existing output.
 - **Undo:** Mac history leaves out the canvas. Windows only undoes style edits and the last added annotation, and has no redo. PR 3 has to make a theme switch one undo step on both.
 - **Save immediately:** the raw capture is already saved when the editor opens, so a theme background that applies on open must not make an untouched editor prompt unexpectedly.
