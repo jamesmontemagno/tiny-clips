@@ -20,6 +20,7 @@ public static class AutomationAnnotationParser
     public const int MaximumPoints = 10_000;
     public const double MaximumLineWidth = 200;
     public const double MaximumFontSize = 1000;
+    public const double MaximumShadowBlur = 500;
 
     public const double DefaultLineWidth = 6;
     public const double DefaultFontSize = 28;
@@ -30,6 +31,7 @@ public static class AutomationAnnotationParser
     {
         "type", "bounds", "points", "text", "color", "textColor", "fillColor", "lineWidth",
         "fontSize", "redactionLevel", "redactionStyle", "emoji",
+        "fillEndColor", "fillDirection", "shadowBlur", "shadowColor",
     };
 
     private static readonly string[] RectKeys = ["x", "y", "width", "height"];
@@ -166,6 +168,7 @@ public static class AutomationAnnotationParser
             Bounds = bounds,
             Color = color,
             Thickness = lineWidth,
+            ShapeEffects = ParseShapeEffects(obj, tool, fillColor, path),
         };
 
         switch (tool)
@@ -283,6 +286,61 @@ public static class AutomationAnnotationParser
         }
 
         return annotation;
+    }
+
+    private static ShapeEffects ParseShapeEffects(JsonObject obj, EditTool tool, Color? fillColor, string path)
+    {
+        var effects = ShapeEffects.Default;
+        string[] keys = ["fillEndColor", "fillDirection", "shadowBlur", "shadowColor"];
+        if (!tool.SupportsShapeEffects())
+        {
+            foreach (var key in keys)
+            {
+                if (obj[key] is not null)
+                {
+                    throw Invalid($"{path}.{key} is only used by rectangle and ellipse.");
+                }
+            }
+
+            return effects;
+        }
+
+        if (OptionalColor(obj, "fillEndColor", path) is { } endColor)
+        {
+            if (fillColor is not { A: > 0 })
+            {
+                throw Invalid($"{path}.fillEndColor needs a visible fillColor to start from.");
+            }
+
+            effects = effects with { IsGradientFill = true, GradientEndColor = endColor };
+        }
+
+        if (OptionalNumber(obj, "fillDirection", path, 0, 360) is { } direction)
+        {
+            if (!effects.IsGradientFill)
+            {
+                throw Invalid($"{path}.fillDirection needs fillEndColor.");
+            }
+
+            effects = effects with { GradientDirectionDegrees = direction };
+        }
+
+        var shadowColor = OptionalColor(obj, "shadowColor", path);
+        if (OptionalNumber(obj, "shadowBlur", path, 0, MaximumShadowBlur) is { } blur)
+        {
+            effects = effects with
+            {
+                HasShadow = blur > 0,
+                ShadowBlur = blur,
+                ShadowColor = shadowColor ?? effects.ShadowColor,
+            };
+        }
+        else if (shadowColor is not null)
+        {
+            throw Invalid($"{path}.shadowColor needs shadowBlur.");
+        }
+
+        return effects;
     }
 
     private static void RequireArea(Rect bounds, string path)
