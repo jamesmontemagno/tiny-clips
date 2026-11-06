@@ -42,6 +42,7 @@ jobs:
               - 'windows/packaging/Assert-DirectPackage.ps1'
               - 'shared/studio/fixtures/**'
               - 'shared/automation/**'
+              - 'shared/editor-themes/**'
               - 'global.json'
               - '[Nn]u[Gg]et.[Cc]onfig'
               - 'Directory.Build.props'
