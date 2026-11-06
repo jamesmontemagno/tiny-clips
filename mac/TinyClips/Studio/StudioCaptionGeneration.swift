@@ -65,21 +65,59 @@ enum StudioCaptionModels {
         id == appleSpeech.id ? appleSpeech : all.first { $0.id == id }
     }
 
+    /// Whether this is an Intel build, which is how an Intel Mac runs the app.
+    static var isIntel: Bool {
+        #if arch(x86_64)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// The Whisper models to offer, from running them on real speech on GitHub's runners (see
+    /// plans/studio-captions.md). WhisperKit crashes on Intel, on macOS 15 and 26. On
+    /// macOS 15 on Apple silicon these three give a word or two of nonsense, in every compute mode,
+    /// with any toolchain, and with nothing of this app involved.
+    static func whisperModels(macOSMajor: Int, isIntel: Bool) -> [StudioCaptionModel] {
+        if isIntel {
+            return []
+        }
+        return macOSMajor < 26 ? all.filter { !["Base", "BaseEn", "Small"].contains($0.id) } : all
+    }
+
+    static var whisperModelsHere: [StudioCaptionModel] {
+        whisperModels(macOSMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion, isIntel: isIntel)
+    }
+
+    /// Whether anything on this Mac can make captions. Without it, they can still be imported.
+    static var canGenerate: Bool {
+        StudioAppleSpeech.isAvailable || !whisperModelsHere.isEmpty
+    }
+
     /// What can be chosen on this Mac, best first.
-    static func options(appleSpeechIsAvailable: Bool) -> [StudioCaptionModel] {
-        appleSpeechIsAvailable ? [appleSpeech] + all : all
+    static func options(appleSpeechIsAvailable: Bool, whisper: [StudioCaptionModel] = whisperModelsHere) -> [StudioCaptionModel] {
+        appleSpeechIsAvailable ? [appleSpeech] + whisper : whisper
     }
 
     /// The model to use for a stored choice. Without one, Apple Speech where it can hear the
     /// system's language, and otherwise a Whisper model, which detects the language by itself.
-    static func resolve(id: String?, appleSpeechIsAvailable: Bool, canHearSystemLanguage: Bool = true) -> StudioCaptionModel {
+    static func resolve(
+        id: String?,
+        appleSpeechIsAvailable: Bool,
+        canHearSystemLanguage: Bool = true,
+        whisper: [StudioCaptionModel] = whisperModelsHere
+    ) -> StudioCaptionModel {
+        let bestWhisper = whisper.contains(defaultModel) ? defaultModel : (whisper.first ?? defaultModel)
         if id == appleSpeech.id {
-            return appleSpeechIsAvailable ? appleSpeech : defaultModel
+            return appleSpeechIsAvailable ? appleSpeech : bestWhisper
         }
-        if let found = find(id) {
+        if let found = find(id), whisper.contains(found) {
             return found
         }
-        return appleSpeechIsAvailable && canHearSystemLanguage ? appleSpeech : defaultModel
+        if appleSpeechIsAvailable, canHearSystemLanguage || whisper.isEmpty {
+            return appleSpeech
+        }
+        return bestWhisper
     }
 }
 

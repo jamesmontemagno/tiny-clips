@@ -311,6 +311,9 @@ enum StudioCaptionQuality {
 
 /// What the editor says about captions. The same, word for word, on Windows (`StudioCaptionText`).
 enum StudioCaptionText {
+    /// Said on a Mac that cannot make captions.
+    static let needsAppleSilicon = "Generating captions needs a Mac with Apple silicon. You can still import an SRT or WebVTT file."
+
     /// Said about where the sound goes.
     static let privacyNote = "Your sound stays on this Mac. Only the model is downloaded."
 

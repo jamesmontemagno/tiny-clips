@@ -75,10 +75,26 @@ Face. Version 1 of the package brings in only `swift-argument-parser`. Long segm
 into cues, which Whisper.net does itself. A synthetic Spanish voice from `say` came out as Latin
 and garbled, so detection is only as good as the speech.
 
+## What the runners found
+
+Each Whisper model on real speech, through a small program with none of this app in it, built with
+Xcode 16.4 and 26 and WhisperKit 0.18 and 1.1.1, which made no difference:
+
+| | Right text | A word or two of nonsense |
+|---|---|---|
+| macOS 26, Apple silicon | Tiny, Base (the only ones run there) | |
+| macOS 15, Apple silicon | Tiny, Tiny English, Small English, Medium, Large v3 Turbo, Large v3. Medium English was not run | Base, Base English, Small |
+
+On Intel, on macOS 15 and 26, WhisperKit crashes with a segmentation fault. These are VMs, so a real
+Mac may differ, but the app leaves out what has been seen to fail. An app built on macOS 26 starts
+on macOS 15, so nothing of Apple Speech stops it there.
+
 ## Open questions
 
 The first needs a real Mac, and the second needs a submission:
 
+- **Whisper on a real macOS 15 Mac or Intel Mac:** see What the runners found. If a real Mac does
+  not behave like the runners, `StudioCaptionModels.whisperModels` should offer more.
 - **Apple Speech on a real Mac:** `SpeechTranscriber.isAvailable` is false on GitHub's macOS 26 VMs,
   arm64 and Intel, so it has never run. Its steps have: `StudioSpeechAnalysis` is the same code
   with `DictationTranscriber`, which does run there, on real speech. What is left to see is how

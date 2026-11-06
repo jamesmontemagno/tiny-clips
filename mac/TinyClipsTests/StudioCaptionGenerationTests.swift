@@ -173,9 +173,10 @@ final class StudioCaptionGenerationTests: XCTestCase {
     // MARK: - Apple Speech
 
     func testAppleSpeech_IsOfferedFirst_OnlyWhereItIsAvailable() {
-        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: false), StudioCaptionModels.all)
-        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true).first, StudioCaptionModels.appleSpeech)
-        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true).count, StudioCaptionModels.all.count + 1)
+        let all = StudioCaptionModels.all
+        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: false, whisper: all), all)
+        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true, whisper: all).first, StudioCaptionModels.appleSpeech)
+        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true, whisper: all).count, all.count + 1)
         XCTAssertEqual(StudioCaptionModels.find("AppleSpeech"), StudioCaptionModels.appleSpeech)
         XCTAssertTrue(StudioCaptionModels.appleSpeech.isAppleSpeech)
         XCTAssertFalse(StudioCaptionModels.defaultModel.isAppleSpeech)
@@ -185,17 +186,63 @@ final class StudioCaptionGenerationTests: XCTestCase {
     func testWithoutAChoice_AppleSpeechIsUsedWhereItCanHearTheSystemsLanguage() {
         let apple = StudioCaptionModels.appleSpeech
         let base = StudioCaptionModels.defaultModel
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true), apple)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: nil, appleSpeechIsAvailable: true), apple)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: false), base)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true, canHearSystemLanguage: false), base)
+        let all = StudioCaptionModels.all
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true, whisper: all), apple)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: nil, appleSpeechIsAvailable: true, whisper: all), apple)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: false, whisper: all), base)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true, canHearSystemLanguage: false, whisper: all), base)
     }
 
     func testAChoiceIsKept_UnlessThisMacCannotDoIt() {
         let small = StudioCaptionModels.find("Small")
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "Small", appleSpeechIsAvailable: true), small)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "AppleSpeech", appleSpeechIsAvailable: true, canHearSystemLanguage: false), StudioCaptionModels.appleSpeech)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "AppleSpeech", appleSpeechIsAvailable: false), StudioCaptionModels.defaultModel)
+        let all = StudioCaptionModels.all
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "Small", appleSpeechIsAvailable: true, whisper: all), small)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "AppleSpeech", appleSpeechIsAvailable: true, canHearSystemLanguage: false, whisper: all), StudioCaptionModels.appleSpeech)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "AppleSpeech", appleSpeechIsAvailable: false, whisper: all), StudioCaptionModels.defaultModel)
+    }
+
+    func testOnMacOS15_TheModelsSeenToGiveNonsenseAreLeftOut() {
+        let models = StudioCaptionModels.whisperModels(macOSMajor: 15, isIntel: false)
+        XCTAssertEqual(models.map(\.id), ["Tiny", "TinyEn", "SmallEn", "Medium", "MediumEn", "LargeV3Turbo", "LargeV3"])
+        XCTAssertEqual(StudioCaptionModels.whisperModels(macOSMajor: 26, isIntel: false), StudioCaptionModels.all)
+
+        // A choice from before, or from a newer macOS, becomes the best one there is.
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: false, whisper: models).id, "Tiny")
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "Base", appleSpeechIsAvailable: false, whisper: models).id, "Tiny")
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "SmallEn", appleSpeechIsAvailable: false, whisper: models).id, "SmallEn")
+    }
+
+    func testOnIntel_ThereAreNoWhisperModels_ForWhisperCrashesThere() {
+        XCTAssertEqual(StudioCaptionModels.whisperModels(macOSMajor: 26, isIntel: true), [])
+        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: false, whisper: []), [])
+        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true, whisper: []), [StudioCaptionModels.appleSpeech])
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "Base", appleSpeechIsAvailable: true, whisper: []), StudioCaptionModels.appleSpeech)
+        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true, canHearSystemLanguage: false, whisper: []), StudioCaptionModels.appleSpeech)
+    }
+
+    func testAskingForAModelThisMacCannotUse_SaysSo_InsteadOfRunningIt() async throws {
+        let unusable = StudioCaptionModels.all.first { !StudioCaptionModels.whisperModelsHere.contains($0) }
+        guard let unusable else { throw XCTSkip("every model can be used here") }
+        let project = StudioProject(
+            id: "3f0013cf-ba10-4453-af91-792b7882dae6",
+            sources: StudioSources(screen: StudioScreenSource(width: 320, height: 180, frameRate: 15, duration: 1))
+        )
+        let folder = FileManager.default.temporaryDirectory
+        let paths = StudioProjectPaths(
+            id: project.id,
+            projectDirectory: folder,
+            projectJSONURL: folder,
+            screenURL: folder.appendingPathComponent("nothing.mp4"),
+            cameraURL: nil,
+            eventsURL: folder,
+            posterURL: folder
+        )
+        do {
+            _ = try await StudioWhisperCaptionGenerator().generate(project: project, paths: paths, model: unusable, language: nil) { _ in }
+            XCTFail("it ran")
+        } catch let error as StudioCaptionGenerationError {
+            XCTAssertNotEqual(error, .missingRecording)
+        }
     }
 
     func testTheLanguage_IsTheStoredOne_ThenTheSystems_ThenTheFirst() {

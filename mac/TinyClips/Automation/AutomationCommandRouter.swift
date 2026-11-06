@@ -7,7 +7,7 @@ import Foundation
 @MainActor
 final class AutomationCommandRouter {
     /// Contract commands this build implements. Everything else returns `not_supported`.
-    static let supportedCommands: Set<String> = [
+    static let supportedCommands = Set<String>([
         "app.status", "app.open", "recording.status", "library.list", "settings.get",
         "capture.targets", "capture.screenshot", "capture.ocr",
         "capture.scrolling.start", "capture.scrolling.stop", "capture.scrolling.status", "capture.scrolling.cancel",
@@ -17,8 +17,7 @@ final class AutomationCommandRouter {
         "library.delete", "library.upload", "studio.projects.list", "studio.project.get",
         "studio.project.edit", "studio.zoom.suggest", "studio.export",
         "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
-        "studio.captions.models", "studio.captions.generate",
-    ]
+    ]).union(StudioCaptionModels.canGenerate ? ["studio.captions.models", "studio.captions.generate"] : [])
 
     private unowned let controller: AutomationController
 
@@ -728,6 +727,9 @@ final class AutomationCommandRouter {
 
     private func listCaptionModels() async throws -> [String: Any] {
         try requireStudioEnabled()
+        guard StudioCaptionModels.canGenerate else {
+            throw AutomationError(.notSupported, StudioCaptionText.needsAppleSilicon)
+        }
         let generator = StudioCaptionEngines.shared
         let languages = await StudioAppleSpeech.languages()
         let systemLanguage = await StudioAppleSpeech.language(equivalentTo: nil)
@@ -759,6 +761,9 @@ final class AutomationCommandRouter {
 
     private func generateStudioCaptions(_ params: [String: Any]) async throws -> [String: Any] {
         try requireStudioEnabled()
+        guard StudioCaptionModels.canGenerate else {
+            throw AutomationError(.notSupported, StudioCaptionText.needsAppleSilicon)
+        }
         let id = try Self.requiredString(params, "projectId")
         let current = try checkedStudioProject(params, id: id)
         let model: StudioCaptionModel
@@ -790,6 +795,8 @@ final class AutomationCommandRouter {
             guard isInstalled || params["allowModelDownload"] as? Bool == true else {
                 throw AutomationError(.invalidParams, "Apple Speech does not have \(found) on this Mac yet. Set allowModelDownload to true to have macOS download it.")
             }
+        } else if !StudioCaptionModels.whisperModelsHere.contains(model) {
+            throw AutomationError(.invalidParams, "The \(model.name) model does not work on this Mac. Use studio.captions.models to see what does.")
         } else if !generator.isModelInstalled(model), params["allowModelDownload"] as? Bool != true {
             throw AutomationError(.invalidParams, "The \(model.name) model (\(model.sizeText)) is not on this Mac. Set allowModelDownload to true to download it.")
         }

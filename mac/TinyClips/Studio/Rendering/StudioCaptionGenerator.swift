@@ -140,6 +140,12 @@ struct StudioWhisperCaptionGenerator: StudioCaptionGenerating {
         language: String?,
         progress: @escaping @Sendable (StudioCaptionProgress) -> Void
     ) async throws -> StudioGeneratedCaptions {
+        guard StudioCaptionModels.whisperModelsHere.contains(model) else {
+            throw StudioCaptionGenerationError(message: StudioCaptionModels.isIntel
+                ? StudioCaptionText.needsAppleSilicon
+                : "The \(model.name) model does not work on this version of macOS. Choose another.")
+        }
+
         // The sound first: a recording without any should not cost a download.
         let reading = StudioCaptionPercentReports(stage: .readingSound, progress)
         let samples = try await StudioCaptionSound.read(url: paths.screenURL, project: project) { fraction in

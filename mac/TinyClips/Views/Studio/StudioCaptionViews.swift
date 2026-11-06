@@ -49,14 +49,14 @@ struct StudioCaptionsInspectorSection: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(StudioCaptionText.countText(rows.count))
             if rows.isEmpty {
-                Text(StudioCaptionText.emptyHint)
+                Text(StudioCaptionModels.canGenerate ? StudioCaptionText.emptyHint : StudioCaptionText.needsAppleSilicon)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if viewModel.isGeneratingCaptions {
                 generationProgress
-            } else {
+            } else if StudioCaptionModels.canGenerate {
                 generateButton
             }
             HStack(spacing: 8) {
