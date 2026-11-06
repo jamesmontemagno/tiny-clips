@@ -42,9 +42,6 @@ public sealed class StudioButtonIconTests
 
         // The inspector's panels.
         ("StudioInspector.xaml", "StudioSceneSectionSplitButton", nameof(StudioGlyphs.SplitScene), "Split scene", "Split scene"),
-        ("StudioWindow.xaml", "StudioAddArrowButton", nameof(StudioGlyphs.AddArrow), "Arrow", "Add arrow"),
-        ("StudioWindow.xaml", "StudioAddCalloutButton", nameof(StudioGlyphs.AddCallout), "Callout", "Add callout"),
-        ("StudioWindow.xaml", "StudioAddTextButton", nameof(StudioGlyphs.AddText), "Text", "Add text"),
         ("StudioInspector.xaml", "StudioBringAnnotationForwardButton", nameof(StudioGlyphs.BringForward), "Bring forward", "Bring forward"),
         ("StudioInspector.xaml", "StudioSendAnnotationBackButton", nameof(StudioGlyphs.SendBack), "Send back", "Send back"),
         ("StudioInspector.xaml", "StudioDeleteAnnotationButton", nameof(StudioGlyphs.Delete), "Delete annotation", "Delete annotation"),

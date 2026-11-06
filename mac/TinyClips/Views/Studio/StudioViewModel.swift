@@ -1286,6 +1286,61 @@ final class StudioViewModel: ObservableObject {
         editAnnotation(at: index) { $0.setAnnotationSize(at: index, to: size) }
     }
 
+    func setSelectedAnnotationFill(_ color: Color) {
+        guard let index = selectedAnnotationIndex else { return }
+        let hex = Self.hexString(for: color)
+        editAnnotation(at: index) { $0.setAnnotationFill(at: index, to: hex) }
+    }
+
+    func setSelectedAnnotationTextColor(_ color: Color) {
+        guard let index = selectedAnnotationIndex else { return }
+        let hex = Self.hexString(for: color)
+        editAnnotation(at: index) { $0.setAnnotationTextColor(at: index, to: hex) }
+    }
+
+    func setSelectedAnnotationScale(_ scale: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationScale(at: index, to: scale) }
+    }
+
+    /// What is drawn at the playhead on a canvas of `canvasSize`, bottom first, for the preview to
+    /// let a pointer take hold of. Nothing while the video plays, when there is nothing to hold still.
+    func annotationHandles(canvasSize: CGSize) -> [StudioAnnotationHandle] {
+        guard isEditable, !isPlaying, let project, canvasSize.width > 0, canvasSize.height > 0 else { return [] }
+        let width = Double(canvasSize.width)
+        let height = Double(canvasSize.height)
+        let frame = StudioLayoutResolver.resolve(project: project, time: playhead, canvasWidth: width, canvasHeight: height, events: events)
+        return StudioAnnotationGeometry.resolveAll(project: project, frame: frame, time: playhead, canvasWidth: width, canvasHeight: height).map { resolved in
+            if resolved.isArrow {
+                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, tail: resolved.tail, stroke: resolved.stroke)
+            }
+            let layout = StudioCompositor.annotationBoxLayout(resolved, canvasWidth: width, canvasHeight: height)
+            return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, box: layout.box, radius: resolved.radius)
+        }
+    }
+
+    /// Where a drag on the preview leaves an annotation that was `start` when it began. What the
+    /// move did is handed back so that the preview can show a center line it settled on.
+    @discardableResult
+    func moveAnnotation(
+        at index: Int,
+        from start: StudioAnnotation,
+        part: StudioAnnotationPart,
+        byX: Double,
+        byY: Double,
+        canvasSize: CGSize
+    ) -> StudioAnnotationMove? {
+        guard let project else { return nil }
+        let width = Double(canvasSize.width)
+        let height = Double(canvasSize.height)
+        let frame = StudioLayoutResolver.resolve(project: project, time: playhead, canvasWidth: width, canvasHeight: height, events: events)
+        guard let move = StudioAnnotationGeometry.moved(start, part: part, byX: byX, byY: byY, frame: frame, canvasWidth: width, canvasHeight: height) else {
+            return nil
+        }
+        editAnnotation(at: index) { $0.moveAnnotation(at: index, to: move) }
+        return move
+    }
+
     /// What the selected annotation is fixed to. It stays where it is in the picture where it can.
     func setSelectedAnnotationAttach(_ attach: StudioAnnotationAttach) {
         guard let index = selectedAnnotationIndex else { return }

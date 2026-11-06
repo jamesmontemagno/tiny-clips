@@ -205,7 +205,8 @@ Arrows, callouts, and text boxes are in `overlays.annotations`, bottom first, on
 - `x`, `y` are what an arrow or a callout points at, or the center of a text box. `offsetX`, `offsetY` are in canvas short sides and place an arrow's tail or a callout's box. Text ignores them.
 - `style` is `red`, `blue`, `yellow`, `white`, or `dark`. `size` is `small`, `medium`, or `large`.
 - Keep any entry you do not understand as it is: a `kind` this version does not draw is stored and left out of the picture.
-- The Annotate panel edits this same list, so anything a person can do there an agent can do through the patch: text, style, size, what it is attached to, position, timing, drawing order (the order of the list), and deleting (leaving it out). Give an annotation a stable `id`: an open editor keeps its selection on an annotation by its `id` through an edit.
+- `fill` and `textColor` are `#RRGGBB` and stand in for the colors of `style`, and `scale`, 0.5 to 3, multiplies `size`. Leave them out for the style's look.
+- The Annotate panel and the preview edit this same list, so anything a person can do there an agent can do through the patch: text, style, colors, size, what it is attached to, position, timing, drawing order (the order of the list), and deleting (leaving it out). Give an annotation a stable `id`: an open editor keeps its selection on an annotation by its `id` through an edit.
 
 The full rules are in section 6.10 of [`studio-project-format.md`](studio-project-format.md).
 

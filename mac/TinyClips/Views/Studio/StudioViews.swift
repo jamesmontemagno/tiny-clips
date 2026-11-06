@@ -132,8 +132,6 @@ private struct StudioHeaderView: View {
 
             Spacer(minLength: 12)
 
-            annotationTools
-
             projectMenu
 
             Button {
@@ -181,30 +179,6 @@ private struct StudioHeaderView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-    }
-
-    /// What goes over the picture. These are up here, and not with the buttons that edit along the
-    /// timeline, because they are about a place in the picture.
-    private var annotationTools: some View {
-        HStack(spacing: 4) {
-            Button("Arrow", systemImage: StudioSymbol.addArrow) {
-                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.arrow)
-            }
-            .accessibilityLabel("Add arrow")
-            .help("Add an arrow at the playhead (A)")
-            Button("Callout", systemImage: StudioSymbol.addCallout) {
-                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.callout)
-            }
-            .accessibilityLabel("Add callout")
-            .help("Add a callout at the playhead (C)")
-            Button("Text", systemImage: StudioSymbol.addText) {
-                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.text)
-            }
-            .accessibilityLabel("Add text")
-            .help("Add text at the playhead (T)")
-        }
-        .disabled(!viewModel.canAddAnnotation)
-        .fixedSize()
     }
 
     /// Opening another project, saving this one as a folder, and deleting it.
@@ -306,6 +280,8 @@ private struct StudioPreviewView: View {
                 if let bubble = viewModel.bubbleRect(canvasSize: canvasSize) {
                     bubbleHandle(bubble: bubble, geometry: geometry, canvasSize: canvasSize)
                 }
+
+                StudioAnnotationPreviewLayer(viewModel: viewModel, geometry: geometry, canvasSize: canvasSize, space: Self.space)
             }
             .coordinateSpace(.named(Self.space))
         }

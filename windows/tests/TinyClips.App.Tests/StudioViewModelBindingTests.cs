@@ -321,6 +321,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         Assert.Equal(1.5, stored.Overlays.Annotations[0].Y, Precision);
         Assert.Equal(5, stored.Overlays.Annotations[0].OffsetX, Precision);
         Assert.Equal(-5, stored.Overlays.Annotations[0].OffsetY, Precision);
+        Assert.Equal(9, stored.Overlays.Annotations[0].Scale, Precision);
         Assert.Equal(3, stored.Audio.Volume, Precision);
     }
 
@@ -774,7 +775,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
         var groups = _controls.Bindings.Where(binding => binding.Control == "RadioButtons").ToArray();
-        Assert.Equal(8, groups.Length);
+        Assert.Equal(6, groups.Length);
 
         foreach (var group in groups)
         {
@@ -989,7 +990,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         ],
         Overlays = project.Overlays with
         {
-            Annotations = [new StudioAnnotation { Id = "a", Kind = StudioAnnotationKinds.Arrow, Start = 1, End = 3, X = -1, Y = 1.5, OffsetX = 5, OffsetY = -5 }],
+            Annotations = [new StudioAnnotation { Id = "a", Kind = StudioAnnotationKinds.Arrow, Start = 1, End = 3, X = -1, Y = 1.5, OffsetX = 5, OffsetY = -5, Scale = 9 }],
         },
         Audio = project.Audio with { Volume = 3 },
     });

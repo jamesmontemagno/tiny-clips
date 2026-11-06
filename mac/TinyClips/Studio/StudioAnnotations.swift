@@ -50,6 +50,11 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
     var text: String
     var style: StudioAnnotationStyle
     var size: StudioAnnotationSize
+    /// `#RRGGBB` in place of the style's colors. Anything else leaves the style's.
+    var fill: String
+    var textColor: String
+    /// What `size` is multiplied by.
+    var scale: Double
     var extra: [String: StudioJSONValue]
 
     init(
@@ -65,6 +70,9 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
         text: String = "",
         style: StudioAnnotationStyle = .red,
         size: StudioAnnotationSize = .medium,
+        fill: String = "",
+        textColor: String = "",
+        scale: Double = 1,
         extra: [String: StudioJSONValue] = [:]
     ) {
         self.id = id
@@ -79,6 +87,9 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
         self.text = text
         self.style = style
         self.size = size
+        self.fill = fill
+        self.textColor = textColor
+        self.scale = scale
         self.extra = extra
     }
 
@@ -96,8 +107,11 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
         text = try container.decodeString("text", default: "")
         style = try container.decodeEnum("style", default: .red)
         size = try container.decodeEnum("size", default: .medium)
+        fill = try container.decodeString("fill", default: "")
+        textColor = try container.decodeString("textColor", default: "")
+        scale = try container.decodeDouble("scale", default: 1)
         extra = try StudioJSON.decodeExtra(from: container, excluding: [
-            "id", "kind", "attach", "start", "end", "x", "y", "offsetX", "offsetY", "text", "style", "size",
+            "id", "kind", "attach", "start", "end", "x", "y", "offsetX", "offsetY", "text", "style", "size", "fill", "textColor", "scale",
         ])
     }
 
@@ -116,6 +130,9 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
         try container.encode(text, forKey: StudioJSONKey("text"))
         try container.encode(style, forKey: StudioJSONKey("style"))
         try container.encode(size, forKey: StudioJSONKey("size"))
+        try container.encode(fill, forKey: StudioJSONKey("fill"))
+        try container.encode(textColor, forKey: StudioJSONKey("textColor"))
+        try container.encode(scale, forKey: StudioJSONKey("scale"))
     }
 }
 
@@ -151,6 +168,29 @@ struct StudioResolvedAnnotation: Equatable, Sendable {
     var text: String = ""
 
     var isArrow: Bool { kind == StudioAnnotationKind.arrow }
+}
+
+/// What a pointer can take hold of on an annotation in the preview.
+enum StudioAnnotationPart: Equatable, Sendable {
+    /// What an arrow or a callout points at.
+    case tip
+    /// The far end of an arrow.
+    case tail
+    /// A whole arrow, by its shaft.
+    case body
+    /// The box of a callout or a text.
+    case box
+}
+
+/// Where a drag leaves an annotation, in the numbers of the project, and whether it has settled on
+/// a center line of the canvas.
+struct StudioAnnotationMove: Equatable, Sendable {
+    var x: Double
+    var y: Double
+    var offsetX: Double
+    var offsetY: Double
+    var isOnVerticalCenter: Bool
+    var isOnHorizontalCenter: Bool
 }
 
 /// Where a box goes once its text has been measured.
@@ -230,6 +270,98 @@ enum StudioAnnotationGeometry {
         return StudioAnnotationPoint(x: screen.source.x + acrossX * screen.source.width, y: screen.source.y + acrossY * screen.source.height)
     }
 
+    /// The numbers of `point` on the canvas: in the canvas, or in the recording where the frame
+    /// shows it. A point beside the screen goes to the screen's edge. Nil with no screen to fix it to.
+    private static func point(
+        at point: StudioAnnotationPoint,
+        attach: StudioAnnotationAttach,
+        frame: StudioResolvedFrame,
+        canvasWidth: Double,
+        canvasHeight: Double
+    ) -> StudioAnnotationPoint? {
+        if attach == .frame {
+            return StudioAnnotationPoint(
+                x: StudioCanvasMath.clamped(point.x / canvasWidth, 0, 1),
+                y: StudioCanvasMath.clamped(point.y / canvasHeight, 0, 1)
+            )
+        }
+        guard let screen = frame.screen, screen.rect.width > 0, screen.rect.height > 0 else { return nil }
+        let acrossX = StudioCanvasMath.clamped((point.x - screen.rect.x) / screen.rect.width, 0, 1)
+        let acrossY = StudioCanvasMath.clamped((point.y - screen.rect.y) / screen.rect.height, 0, 1)
+        return StudioAnnotationPoint(x: screen.source.x + acrossX * screen.source.width, y: screen.source.y + acrossY * screen.source.height)
+    }
+
+    /// The numbers `annotation` has once `part` of it is dragged by `byX`, `byY` canvas pixels from
+    /// where it was at the start of the drag. What is not dragged stays where it is in the picture:
+    /// the tail of an arrow whose tip moves, the box of a callout whose point moves. Whatever is
+    /// dragged settles on the middle of the canvas when it comes close. Nil when it isn't in the
+    /// picture, or when it would make an arrow too short to see or to take hold of again.
+    static func moved(
+        _ annotation: StudioAnnotation,
+        part: StudioAnnotationPart,
+        byX: Double,
+        byY: Double,
+        frame: StudioResolvedFrame,
+        canvasWidth: Double,
+        canvasHeight: Double
+    ) -> StudioAnnotationMove? {
+        guard byX.isFinite, byY.isFinite, canvasWidth > 0, canvasHeight > 0,
+              let (anchor, _) = anchorAndOpacity(annotation, frame: frame, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else {
+            return nil
+        }
+        let shortSide = min(canvasWidth, canvasHeight)
+        let offsetX = StudioCanvasMath.clamped(annotation.offsetX, -1, 1) * shortSide
+        let offsetY = StudioCanvasMath.clamped(annotation.offsetY, -1, 1) * shortSide
+        let far = StudioAnnotationPoint(x: anchor.x + offsetX, y: anchor.y + offsetY)
+        let isFarEnd = part == .tail || (part == .box && annotation.kind == StudioAnnotationKind.callout)
+        let from = isFarEnd ? far : anchor
+
+        var x = from.x + byX
+        var y = from.y + byY
+        let reach = shortSide * snapShareOfShortSide
+        let isOnVerticalCenter = abs(x - canvasWidth / 2) <= reach
+        let isOnHorizontalCenter = abs(y - canvasHeight / 2) <= reach
+        if isOnVerticalCenter { x = canvasWidth / 2 }
+        if isOnHorizontalCenter { y = canvasHeight / 2 }
+        let target = StudioAnnotationPoint(x: x, y: y)
+
+        var move = StudioAnnotationMove(
+            x: StudioCanvasMath.clamped(annotation.x, 0, 1),
+            y: StudioCanvasMath.clamped(annotation.y, 0, 1),
+            offsetX: StudioCanvasMath.clamped(annotation.offsetX, -1, 1),
+            offsetY: StudioCanvasMath.clamped(annotation.offsetY, -1, 1),
+            isOnVerticalCenter: isOnVerticalCenter,
+            isOnHorizontalCenter: isOnHorizontalCenter
+        )
+        if isFarEnd {
+            move.offsetX = StudioCanvasMath.clamped((target.x - anchor.x) / shortSide, -1, 1)
+            move.offsetY = StudioCanvasMath.clamped((target.y - anchor.y) / shortSide, -1, 1)
+        } else {
+            guard let moved = point(at: target, attach: annotation.attach, frame: frame, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else { return nil }
+            move.x = moved.x
+            move.y = moved.y
+            if part == .tip {
+                var placed = annotation
+                placed.x = moved.x
+                placed.y = moved.y
+                guard let (newAnchor, _) = anchorAndOpacity(placed, frame: frame, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else { return nil }
+                move.offsetX = StudioCanvasMath.clamped((far.x - newAnchor.x) / shortSide, -1, 1)
+                move.offsetY = StudioCanvasMath.clamped((far.y - newAnchor.y) / shortSide, -1, 1)
+            }
+        }
+        if annotation.kind == StudioAnnotationKind.arrow, part != .body,
+           (move.offsetX * move.offsetX + move.offsetY * move.offsetY).squareRoot() < shortestArrowInShortSides {
+            return nil
+        }
+        return move
+    }
+
+    /// How near the middle of the canvas something dragged has to come to settle on it.
+    private static let snapShareOfShortSide = 0.008
+
+    /// The shortest arrow a drag leaves behind, in short sides of the canvas.
+    private static let shortestArrowInShortSides = 0.02
+
     /// What the project's annotations draw at `time`, bottom first.
     static func resolveAll(
         project: StudioProject,
@@ -263,9 +395,12 @@ enum StudioAnnotationGeometry {
         }
 
         let shortSide = min(canvasWidth, canvasHeight)
-        let (fill, textColor) = colors(annotation.style)
+        let styleColors = colors(annotation.style)
+        let fill = customColor(annotation.fill) ?? styleColors.fill
+        let textColor = customColor(annotation.textColor) ?? styleColors.text
         let (fontShare, strokeShare) = sizes(annotation.size)
-        let font = shortSide * fontShare
+        let scale = StudioCanvasMath.clamped(annotation.scale, minimumScale, maximumScale)
+        let font = shortSide * fontShare * scale
         let offsetX = StudioCanvasMath.clamped(annotation.offsetX, -1, 1) * shortSide
         let offsetY = StudioCanvasMath.clamped(annotation.offsetY, -1, 1) * shortSide
         var resolved = StudioResolvedAnnotation(index: index, kind: kind, opacity: opacity, fill: fill, textColor: textColor, anchor: anchor)
@@ -273,7 +408,7 @@ enum StudioAnnotationGeometry {
         if isArrow {
             let length = (offsetX * offsetX + offsetY * offsetY).squareRoot()
             guard length > 0 else { return nil }
-            let stroke = shortSide * strokeShare
+            let stroke = shortSide * strokeShare * scale
             let head = min(stroke * headLengthInStrokes, length)
             resolved.stroke = stroke
             resolved.tail = StudioAnnotationPoint(x: anchor.x + offsetX, y: anchor.y + offsetY)
@@ -380,7 +515,27 @@ enum StudioAnnotationGeometry {
         )
     }
 
-    private static func colors(_ style: StudioAnnotationStyle) -> (fill: String, text: String) {
+    static let minimumScale = 0.5
+    static let maximumScale = 3.0
+
+    /// The colors `annotation` is drawn in: its own where it has them, and otherwise its style's.
+    static func effectiveColors(_ annotation: StudioAnnotation) -> (fill: String, text: String) {
+        let style = colors(annotation.style)
+        return (customColor(annotation.fill) ?? style.fill, customColor(annotation.textColor) ?? style.text)
+    }
+
+    /// `text` in capitals when it is `#RRGGBB`. Nil for anything else, which leaves the style's color.
+    static func customColor(_ text: String) -> String? {
+        let characters = Array(text.utf8)
+        guard characters.count == 7, characters[0] == UInt8(ascii: "#"),
+              characters.dropFirst().allSatisfy({ $0 < 128 && Character(UnicodeScalar($0)).isHexDigit }) else {
+            return nil
+        }
+        return text.uppercased()
+    }
+
+    /// The colors a style gives, which the pickers show until they are changed.
+    static func colors(_ style: StudioAnnotationStyle) -> (fill: String, text: String) {
         switch style {
         case .red: return ("#FF453A", "#FFFFFF")
         case .blue: return ("#0A84FF", "#FFFFFF")
@@ -520,8 +675,63 @@ extension StudioEditorModel {
         typingInAnnotation = nil
     }
 
+    /// A style is a set of colors, so choosing one takes back the colors chosen by hand.
     mutating func setAnnotationStyle(at index: Int, to style: StudioAnnotationStyle) -> StudioAnnotationEditResult {
-        editAnnotation(at: index) { $0.style = style }
+        editAnnotation(at: index) {
+            $0.style = style
+            $0.fill = ""
+            $0.textColor = ""
+        }
+    }
+
+    /// The color of an arrow or a box, as `#RRGGBB`. A color picker hands over many on its way to
+    /// the one that is meant, which are one undo step, as text being typed is.
+    mutating func setAnnotationFill(at index: Int, to color: String) -> StudioAnnotationEditResult {
+        setAnnotationColor(at: index, part: 0, to: color) { $0.fill = $1 }
+    }
+
+    /// The color of the text of a box, as `#RRGGBB`, in the same way.
+    mutating func setAnnotationTextColor(at index: Int, to color: String) -> StudioAnnotationEditResult {
+        setAnnotationColor(at: index, part: 1, to: color) { $0.textColor = $1 }
+    }
+
+    private mutating func setAnnotationColor(
+        at index: Int,
+        part: Int,
+        to color: String,
+        apply: (inout StudioAnnotation, String) -> Void
+    ) -> StudioAnnotationEditResult {
+        guard hasAnnotation(index), let color = StudioAnnotationGeometry.customColor(color) else { return annotationUnchanged(index) }
+        let before = project.overlays.annotations[index]
+        var after = before
+        apply(&after, color)
+        guard after != before else { return annotationUnchanged(index) }
+        let marker = index * 2 + part
+        if choosingColorInAnnotation == marker {
+            applyWithoutUndoStep { $0.overlays.annotations[index] = after }
+        } else {
+            mutate { $0.overlays.annotations[index] = after }
+        }
+        choosingColorInAnnotation = marker
+        return StudioAnnotationEditResult(changed: true, index: index)
+    }
+
+    /// What the size of an annotation is multiplied by.
+    mutating func setAnnotationScale(at index: Int, to scale: Double) -> StudioAnnotationEditResult {
+        guard scale.isFinite else { return annotationUnchanged(index) }
+        return editAnnotation(at: index) {
+            $0.scale = StudioCanvasMath.clamped(scale, StudioAnnotationGeometry.minimumScale, StudioAnnotationGeometry.maximumScale)
+        }
+    }
+
+    /// Where a drag on the preview leaves an annotation.
+    mutating func moveAnnotation(at index: Int, to move: StudioAnnotationMove) -> StudioAnnotationEditResult {
+        editAnnotation(at: index) {
+            $0.x = move.x
+            $0.y = move.y
+            $0.offsetX = move.offsetX
+            $0.offsetY = move.offsetY
+        }
     }
 
     mutating func setAnnotationSize(at index: Int, to size: StudioAnnotationSize) -> StudioAnnotationEditResult {
@@ -609,7 +819,7 @@ extension StudioEditorModel {
 // MARK: - Words
 
 extension StudioEditorModel {
-    static let annotationEmptyHint = "Press A, C, or T, or use the tools at the top of the window, to add an arrow, a callout, or text at the playhead."
+    static let annotationEmptyHint = "Press A, C, or T, or use the tools above, to add an arrow, a callout, or text at the playhead."
     static let selectAnnotationHint = "Select an annotation on the timeline or in the list, or step to one with the arrows above."
     static let annotationNotDrawnNote = "This annotation comes from a newer version of Tiny Clips, so it is not drawn here. You can still change when it shows, or delete it."
     static let annotationDeletedMessage = "Annotation deleted."

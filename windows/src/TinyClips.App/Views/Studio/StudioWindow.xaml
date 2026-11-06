@@ -177,7 +177,6 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel
@@ -200,45 +199,8 @@
                             Text="{x:Bind ViewModel.ExportSizeText, Mode=OneWay}" />
                     </StackPanel>
 
-                    <!--
-                        What goes over the picture. These are up here, and not with the buttons that
-                        edit along the timeline, because they are about a place in the picture.
-                    -->
                     <StackPanel
                         Grid.Column="1"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="StudioAnnotationTools"
-                        AutomationProperties.Name="Add annotation"
-                        Orientation="Horizontal"
-                        Spacing="4">
-                        <Button
-                            AutomationProperties.AutomationId="StudioAddArrowButton"
-                            AutomationProperties.Name="Add arrow"
-                            Click="{x:Bind ViewModel.AddArrowAtPlayhead}"
-                            IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
-                            ToolTipService.ToolTip="Add an arrow at the playhead (A)">
-                            <studio:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddArrow}" Text="Arrow" />
-                        </Button>
-                        <Button
-                            AutomationProperties.AutomationId="StudioAddCalloutButton"
-                            AutomationProperties.Name="Add callout"
-                            Click="{x:Bind ViewModel.AddCalloutAtPlayhead}"
-                            IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
-                            ToolTipService.ToolTip="Add a callout at the playhead (C)">
-                            <studio:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddCallout}" Text="Callout" />
-                        </Button>
-                        <Button
-                            AutomationProperties.AutomationId="StudioAddTextButton"
-                            AutomationProperties.Name="Add text"
-                            Click="{x:Bind ViewModel.AddTextAtPlayhead}"
-                            IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
-                            ToolTipService.ToolTip="Add text at the playhead (T)">
-                            <studio:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.AddText}" Text="Text" />
-                        </Button>
-                    </StackPanel>
-
-                    <StackPanel
-                        Grid.Column="2"
                         Orientation="Horizontal"
                         Spacing="4">
                         <!--
@@ -339,13 +301,13 @@
                     </StackPanel>
 
                     <TextBlock
-                        Grid.Column="3"
+                        Grid.Column="2"
                         VerticalAlignment="Center"
                         AutomationProperties.AccessibilityView="Raw"
                         Text="Canvas" />
                     <ComboBox
                         x:Name="CanvasChoice"
-                        Grid.Column="4"
+                        Grid.Column="3"
                         MinWidth="104"
                         AutomationProperties.AutomationId="StudioCanvasComboBox"
                         AutomationProperties.Name="Canvas"
@@ -354,7 +316,7 @@
 
                     <Button
                         x:Name="ExportButton"
-                        Grid.Column="5"
+                        Grid.Column="4"
                         AutomationProperties.AcceleratorKey="Ctrl+E"
                         AutomationProperties.AutomationId="StudioExportButton"
                         AutomationProperties.Name="Export"

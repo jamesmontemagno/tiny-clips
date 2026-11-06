@@ -394,6 +394,15 @@ public sealed record StudioAnnotation
     public StudioAnnotationStyle Style { get; init; } = StudioAnnotationStyle.Red;
     public StudioAnnotationSize Size { get; init; } = StudioAnnotationSize.Medium;
 
+    /// <summary><c>#RRGGBB</c> in place of the style's fill. Anything else leaves the style's.</summary>
+    public string Fill { get; init; } = string.Empty;
+
+    /// <summary><c>#RRGGBB</c> in place of the style's text color. Anything else leaves the style's.</summary>
+    public string TextColor { get; init; } = string.Empty;
+
+    /// <summary>What <see cref="Size"/> is multiplied by.</summary>
+    public double Scale { get; init; } = 1;
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
 }

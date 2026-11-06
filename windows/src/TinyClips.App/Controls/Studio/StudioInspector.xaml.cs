@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
@@ -90,6 +91,9 @@ public sealed partial class StudioInspector : UserControl
         Unloaded += OnUnloaded;
     }
 
+    private static bool s_isAnnotationAdvancedExpanded;
+    private readonly List<ToggleButton> _annotationStyleChips = [];
+
     public StudioViewModel ViewModel { get; }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -98,8 +102,11 @@ public sealed partial class StudioInspector : UserControl
         SyncSwatches();
         FocusPad.Update(ViewModel.ZoomPad);
         SyncPanels();
+        BuildAnnotationStyleChips();
         SyncAnnotationLayers();
         SyncAnnotationText();
+        SyncAnnotationStyleChips();
+        AnnotationAdvancedGroup.IsExpanded = s_isAnnotationAdvancedExpanded;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e) =>
@@ -115,6 +122,12 @@ public sealed partial class StudioInspector : UserControl
         if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(StudioViewModel.ZoomPad))
         {
             FocusPad.Update(ViewModel.ZoomPad);
+        }
+
+        if (string.IsNullOrEmpty(e.PropertyName)
+            || e.PropertyName is nameof(StudioViewModel.AnnotationStyleIndex) or nameof(StudioViewModel.HasCustomAnnotationColors) or nameof(StudioViewModel.HasAnnotationTextColor))
+        {
+            SyncAnnotationStyleChips();
         }
 
         if (string.IsNullOrEmpty(e.PropertyName))
@@ -718,6 +731,78 @@ public sealed partial class StudioInspector : UserControl
     }
 
     private void OnAnnotationTextLostFocus(object sender, RoutedEventArgs e) => ViewModel.EndAnnotationTyping();
+
+    private void OnAnnotationFillColorChanged(object? sender, Color color) => ViewModel.SetAnnotationFillColor(color);
+
+    private void OnAnnotationTextColorChanged(object? sender, Color color) => ViewModel.SetAnnotationTextColor(color);
+
+    // Advanced stays as it was left, for as long as the app runs.
+    private void OnAnnotationAdvancedExpanding(Expander sender, ExpanderExpandingEventArgs args) => s_isAnnotationAdvancedExpanded = true;
+
+    private void OnAnnotationAdvancedCollapsed(Expander sender, ExpanderCollapsedEventArgs args) => s_isAnnotationAdvancedExpanded = false;
+
+    /// <summary>The styles to start from, one chip each, showing the colors each gives.</summary>
+    private void BuildAnnotationStyleChips()
+    {
+        if (_annotationStyleChips.Count > 0)
+        {
+            return;
+        }
+
+        foreach (var style in Enum.GetValues<StudioAnnotationStyle>())
+        {
+            var (fill, text) = StudioAnnotationGeometry.GetStyleColors(style);
+            var chip = new ToggleButton
+            {
+                Style = (Style)Resources["StudioAnnotationStyleChipStyle"],
+                Background = new SolidColorBrush(ParseHex(fill)),
+                Foreground = new SolidColorBrush(ParseHex(text)),
+                Tag = style,
+            };
+            var name = $"{style} style";
+            AutomationProperties.SetAutomationId(chip, $"StudioAnnotationStyle_{style}");
+            AutomationProperties.SetName(chip, name);
+            ToolTipService.SetToolTip(chip, name);
+            chip.Click += OnAnnotationStyleChipClick;
+            Grid.SetColumn(chip, _annotationStyleChips.Count);
+            AnnotationStyleChips.ColumnDefinitions.Add(new ColumnDefinition());
+            AnnotationStyleChips.Children.Add(chip);
+            _annotationStyleChips.Add(chip);
+        }
+    }
+
+    private void OnAnnotationStyleChipClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is ToggleButton { Tag: StudioAnnotationStyle style })
+        {
+            ViewModel.SetAnnotationStyle(style);
+        }
+
+        // Choosing the one in use is no change, and a chip does not turn itself off.
+        SyncAnnotationStyleChips();
+    }
+
+    private void SyncAnnotationStyleChips()
+    {
+        var chosen = ViewModel.HasCustomAnnotationColors ? -1 : ViewModel.AnnotationStyleIndex;
+        var isArrow = !ViewModel.HasAnnotationTextColor;
+        foreach (var chip in _annotationStyleChips)
+        {
+            chip.IsChecked = chip.Tag is StudioAnnotationStyle style && (int)style == chosen;
+            if (chip.Content is not (FontIcon or TextBlock) || chip.Content is FontIcon != isArrow)
+            {
+                chip.Content = isArrow
+                    ? new FontIcon { FontSize = 14, Glyph = StudioGlyphs.AddArrow, Foreground = chip.Foreground }
+                    : new TextBlock { FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Text = "Aa", Foreground = chip.Foreground };
+            }
+        }
+    }
+
+    private static Color ParseHex(string hex) => Color.FromArgb(
+        255,
+        byte.Parse(hex.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture),
+        byte.Parse(hex.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture),
+        byte.Parse(hex.AsSpan(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
 
     private void OnPreviousAnnotationClick(object sender, RoutedEventArgs e)
     {

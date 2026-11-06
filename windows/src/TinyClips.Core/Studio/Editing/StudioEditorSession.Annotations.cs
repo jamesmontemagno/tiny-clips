@@ -1,3 +1,4 @@
+using TinyClips.Core.Studio.Rendering;
 namespace TinyClips.Core.Studio.Editing;
 
 // Annotations. An index is an annotation's place in Project.Overlays.Annotations, which is the order
@@ -123,6 +124,65 @@ public sealed partial class StudioEditorSession
     /// <summary>Moves a whole annotation so it starts at a source time. The playhead stays.</summary>
     public StudioAnnotationEditResult MoveAnnotation(int index, double sourceTime) =>
         EditAnnotation(index, model => model.MoveAnnotation(index, sourceTime));
+
+    public StudioAnnotationEditResult SetAnnotationFill(int index, string color) =>
+        EditAnnotation(index, model => model.SetAnnotationFill(index, color));
+
+    public StudioAnnotationEditResult SetAnnotationTextColor(int index, string color) =>
+        EditAnnotation(index, model => model.SetAnnotationTextColor(index, color));
+
+    public StudioAnnotationEditResult SetAnnotationScale(int index, double scale) =>
+        EditAnnotation(index, model => model.SetAnnotationScale(index, scale));
+
+    /// <summary>
+    /// What is drawn at the playhead, bottom first, for the preview to let a pointer take hold of.
+    /// Nothing while the video plays, when there is nothing to hold still.
+    /// </summary>
+    public IReadOnlyList<StudioAnnotationHandle> GetAnnotationHandles(double canvasWidth, double canvasHeight)
+    {
+        if (!IsEditable || IsPlaying || Model is not { } model || !(canvasWidth > 0) || !(canvasHeight > 0))
+        {
+            return [];
+        }
+
+        var project = model.Project;
+        var frame = StudioLayoutResolver.Resolve(project, _events, Playhead, canvasWidth, canvasHeight);
+        var handles = new List<StudioAnnotationHandle>();
+        for (var index = 0; index < project.Overlays.Annotations.Length; index++)
+        {
+            if (!StudioAnnotationGeometry.TryResolve(project.Overlays.Annotations[index], index, frame, Playhead, canvasWidth, canvasHeight, out var resolved))
+            {
+                continue;
+            }
+
+            handles.Add(resolved.IsArrow
+                ? new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, resolved.Tail, resolved.Stroke, null, 0)
+                : new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, null, 0, StudioAnnotationTextMeasure.LayoutBox(resolved, canvasWidth, canvasHeight).Box, resolved.Radius));
+        }
+
+        return handles;
+    }
+
+    /// <summary>
+    /// Where a drag on the preview leaves an annotation that was <paramref name="start"/> when it
+    /// began. What the move did is handed back so that the preview can show a center line it settled on.
+    /// </summary>
+    public StudioAnnotationMove? DragAnnotation(int index, StudioAnnotation start, StudioAnnotationPart part, double byX, double byY, double canvasWidth, double canvasHeight)
+    {
+        if (!IsEditable || Model is not { } model)
+        {
+            return null;
+        }
+
+        var frame = StudioLayoutResolver.Resolve(model.Project, _events, Playhead, canvasWidth, canvasHeight);
+        if (StudioAnnotationGeometry.GetMoved(start, part, byX, byY, frame, canvasWidth, canvasHeight) is not { } move)
+        {
+            return null;
+        }
+
+        EditAnnotation(index, editor => editor.MoveAnnotation(index, move));
+        return move;
+    }
 
     public StudioAnnotationEditResult SetAnnotationText(int index, string text) =>
         EditAnnotation(index, model => model.SetAnnotationText(index, text));

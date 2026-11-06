@@ -358,6 +358,8 @@ struct StudioEditorModel: Equatable, Sendable {
     /// The annotation whose text was last typed in, for as long as nothing else has been edited:
     /// what is typed next is part of the same undo step.
     var typingInAnnotation: Int?
+    /// The color of an annotation that is being chosen, in the same way.
+    var choosingColorInAnnotation: Int?
     private var exportedState: StudioEditableState?
 
     init(project: StudioProject) {
@@ -492,6 +494,7 @@ struct StudioEditorModel: Equatable, Sendable {
     /// again, and not a step for every move of the pointer.
     mutating func undo() {
         typingInAnnotation = nil
+        choosingColorInAnnotation = nil
         let wasGrouping = isGroupingEdits
         commitEditingGroup()
         if let previous = undoStack.popLast() {
@@ -507,6 +510,7 @@ struct StudioEditorModel: Equatable, Sendable {
     /// after `undo()`.
     mutating func redo() {
         typingInAnnotation = nil
+        choosingColorInAnnotation = nil
         let wasGrouping = isGroupingEdits
         commitEditingGroup()
         if let next = redoStack.popLast() {
@@ -1975,6 +1979,7 @@ struct StudioEditorModel: Equatable, Sendable {
 
     mutating func mutate(_ body: (inout StudioProject) -> Void) {
         typingInAnnotation = nil
+        choosingColorInAnnotation = nil
         let before = editableState
         body(&project)
         guard before != editableState else { return }

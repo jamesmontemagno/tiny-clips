@@ -1,6 +1,7 @@
 using System.Globalization;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
+using Windows.UI;
 
 namespace TinyClips.App.ViewModels.Studio;
 
@@ -29,8 +30,15 @@ public sealed partial class StudioViewModel
         nameof(IsAnnotationNotDrawn),
         nameof(AnnotationOffsetXTitle),
         nameof(AnnotationOffsetYTitle),
+        nameof(AnnotationHandles),
+        nameof(AnnotationFillTitle),
+        nameof(AnnotationFillColor),
+        nameof(AnnotationTextColor),
+        nameof(HasAnnotationTextColor),
         nameof(AnnotationStyleIndex),
-        nameof(AnnotationSizeIndex),
+        nameof(HasCustomAnnotationColors),
+        nameof(AnnotationScale),
+        nameof(AnnotationScaleText),
         nameof(AnnotationAttachIndex),
         nameof(AnnotationX),
         nameof(AnnotationXText),
@@ -139,33 +147,76 @@ public sealed partial class StudioViewModel
     /// <summary>The text box has lost the focus: what is typed from now on is another undo step.</summary>
     public void EndAnnotationTyping() => _session.EndAnnotationTyping();
 
-    public int AnnotationStyleIndex
-    {
-        get => SelectedAnnotation is { } annotation ? (int)annotation.Style : -1;
-        set
-        {
-            if (value >= 0 && value != AnnotationStyleIndex && SelectedAnnotationIndex is { } index && Enum.IsDefined((StudioAnnotationStyle)value))
-            {
-                _session.SetAnnotationStyle(index, (StudioAnnotationStyle)value);
-            }
+    /// <summary>The selected annotation's style, or -1 with none selected.</summary>
+    public int AnnotationStyleIndex => SelectedAnnotation is { } annotation ? (int)annotation.Style : -1;
 
-            ResyncIfDifferent(value, AnnotationStyleIndex);
+    /// <summary>What is on the picture at the playhead, for the preview to let a pointer take hold of.</summary>
+    public IReadOnlyList<StudioAnnotationHandle> AnnotationHandles => _session.GetAnnotationHandles(CanvasWidth, CanvasHeight);
+
+    /// <summary>Selects an annotation pressed on the preview, and hands back what it is before it is dragged.</summary>
+    public StudioAnnotation? BeginAnnotationDrag(int index)
+    {
+        SelectAnnotation(index);
+        return SelectedAnnotation;
+    }
+
+    /// <summary>Where a drag on the preview leaves an annotation. See <see cref="StudioEditorSession.DragAnnotation"/>.</summary>
+    public StudioAnnotationMove? DragAnnotation(int index, StudioAnnotation start, StudioAnnotationPart part, double byX, double byY) =>
+        _session.DragAnnotation(index, start, part, byX, byY, CanvasWidth, CanvasHeight);
+
+    /// <summary>The look to start from. Choosing one takes back the colors chosen by hand.</summary>
+    public void SetAnnotationStyle(StudioAnnotationStyle style)
+    {
+        if (SelectedAnnotationIndex is { } index)
+        {
+            _session.SetAnnotationStyle(index, style);
         }
     }
 
-    public int AnnotationSizeIndex
-    {
-        get => SelectedAnnotation is { } annotation ? (int)annotation.Size : -1;
-        set
-        {
-            if (value >= 0 && value != AnnotationSizeIndex && SelectedAnnotationIndex is { } index && Enum.IsDefined((StudioAnnotationSize)value))
-            {
-                _session.SetAnnotationSize(index, (StudioAnnotationSize)value);
-            }
+    public string AnnotationFillTitle => SelectedAnnotation?.Kind == StudioAnnotationKinds.Arrow ? "Color" : "Fill";
 
-            ResyncIfDifferent(value, AnnotationSizeIndex);
+    public bool HasAnnotationTextColor => SelectedAnnotation?.Kind is StudioAnnotationKinds.Callout or StudioAnnotationKinds.Text;
+
+    /// <summary>Whether the selected annotation has a color chosen by hand, so that no style is what it looks like.</summary>
+    public bool HasCustomAnnotationColors =>
+        SelectedAnnotation is { } annotation
+        && (StudioAnnotationGeometry.GetCustomColor(annotation.Fill) is not null || StudioAnnotationGeometry.GetCustomColor(annotation.TextColor) is not null);
+
+    public Color AnnotationFillColor =>
+        ParseBackgroundColor(SelectedAnnotation is { } annotation ? StudioAnnotationGeometry.GetEffectiveColors(annotation).Fill : "#FFFFFF");
+
+    public Color AnnotationTextColor =>
+        ParseBackgroundColor(SelectedAnnotation is { } annotation ? StudioAnnotationGeometry.GetEffectiveColors(annotation).Text : "#FFFFFF");
+
+    public void SetAnnotationFillColor(Color color)
+    {
+        if (SelectedAnnotationIndex is { } index)
+        {
+            _session.SetAnnotationFill(index, ToHex(color));
         }
     }
+
+    public void SetAnnotationTextColor(Color color)
+    {
+        if (SelectedAnnotationIndex is { } index)
+        {
+            _session.SetAnnotationTextColor(index, ToHex(color));
+        }
+    }
+
+    public double AnnotationScale
+    {
+        get => Math.Clamp(SelectedAnnotation?.Scale ?? 1, StudioAnnotationGeometry.MinimumScale, StudioAnnotationGeometry.MaximumScale);
+        set
+        {
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationScale))
+            {
+                _session.SetAnnotationScale(index, value);
+            }
+        }
+    }
+
+    public string AnnotationScaleText => PercentText(AnnotationScale);
 
     public int AnnotationAttachIndex
     {

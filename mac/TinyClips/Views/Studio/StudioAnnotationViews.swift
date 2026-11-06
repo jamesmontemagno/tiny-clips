@@ -223,51 +223,78 @@ struct StudioAnnotationLane: View {
 
 // MARK: - Annotation Inspector
 
-/// The Annotate panel of the inspector: stepping through the annotations, the list they are drawn
-/// in, and everything about the selected one without a pointer.
+/// The Annotate panel of the inspector: the tools that add an annotation, the list they are drawn
+/// in, and the selected one's look. What is rarely changed is under Advanced.
 struct StudioAnnotationInspectorSection: View {
     @ObservedObject var viewModel: StudioViewModel
     @FocusState private var isTextFocused: Bool
+    @AppStorage("studioAnnotationAdvancedExpanded") private var isAdvancedExpanded = false
 
     var body: some View {
+        toolGrid
         VStack(alignment: .leading, spacing: 8) {
-            navigationRow
+            listHeader
             hint
             layerList
         }
         selectedControls
     }
 
-    private var navigationRow: some View {
-        HStack(spacing: 8) {
-            Button {
-                viewModel.showPreviousAnnotation()
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(!viewModel.canSelectPreviousAnnotation)
-            .accessibilityLabel("Previous annotation")
-            .help("Previous annotation")
+    // MARK: Tools
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(selectionTitle)
-                if let annotation = viewModel.selectedAnnotation {
-                    Text(StudioEditorModel.annotationDescription(annotation))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+    private var toolGrid: some View {
+        HStack(spacing: 6) {
+            StudioAnnotationToolTile(title: "Arrow", name: "Add arrow", help: "Add an arrow at the playhead (A)", symbol: StudioSymbol.addArrow) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.arrow)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                viewModel.showNextAnnotation()
-            } label: {
-                Image(systemName: "chevron.right")
+            StudioAnnotationToolTile(title: "Callout", name: "Add callout", help: "Add a callout at the playhead (C)", symbol: StudioSymbol.addCallout) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.callout)
             }
-            .disabled(!viewModel.canSelectNextAnnotation)
-            .accessibilityLabel("Next annotation")
-            .help("Next annotation")
+            StudioAnnotationToolTile(title: "Text", name: "Add text", help: "Add text at the playhead (T)", symbol: StudioSymbol.addText) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.text)
+            }
         }
+        .disabled(!viewModel.canAddAnnotation)
+    }
+
+    // MARK: List
+
+    private var listHeader: some View {
+        HStack(spacing: 2) {
+            Text(selectionTitle)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 8)
+            if let index = viewModel.selectedAnnotationIndex, viewModel.selectedAnnotation != nil {
+                headerButton("Bring forward", symbol: StudioSymbol.bringForward, help: "Draw this annotation over the one above it in the list", isEnabled: index + 1 < viewModel.annotations.count) {
+                    viewModel.bringSelectedAnnotationForward()
+                }
+                headerButton("Send back", symbol: StudioSymbol.sendBack, help: "Draw this annotation under the one below it in the list", isEnabled: index > 0) {
+                    viewModel.sendSelectedAnnotationBack()
+                }
+                Divider().frame(height: 14).padding(.horizontal, 2)
+            }
+            headerButton("Previous annotation", symbol: "chevron.left", help: "Previous annotation", isEnabled: viewModel.canSelectPreviousAnnotation) {
+                viewModel.showPreviousAnnotation()
+            }
+            headerButton("Next annotation", symbol: "chevron.right", help: "Next annotation", isEnabled: viewModel.canSelectNextAnnotation) {
+                viewModel.showNextAnnotation()
+            }
+        }
+    }
+
+    private func headerButton(_ name: String, symbol: String, help: String, isEnabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .medium))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(!isEnabled)
+        .accessibilityLabel(name)
+        .help(help)
     }
 
     @ViewBuilder
@@ -296,34 +323,49 @@ struct StudioAnnotationInspectorSection: View {
                         layerRow(index: index, annotation: annotation)
                     }
                 }
+                .padding(3)
             }
-            .frame(maxHeight: 120)
+            .frame(maxHeight: 132)
             .fixedSize(horizontal: false, vertical: viewModel.annotations.count <= 4)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
             .accessibilityLabel("Annotations, top first")
         }
     }
 
     private func layerRow(index: Int, annotation: StudioAnnotation) -> some View {
         let isSelected = viewModel.selectedAnnotationIndex == index
+        let colors = StudioAnnotationGeometry.effectiveColors(annotation)
         return Button {
             viewModel.selectAnnotationInView(index)
         } label: {
-            Label(StudioEditorModel.annotationLabel(annotation), systemImage: StudioAnnotationLane.symbol(for: annotation.kind))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(isSelected ? Color.accentColor.opacity(0.25) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
-                .contentShape(Rectangle())
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Self.color(colors.fill))
+                    .overlay(Circle().strokeBorder(Color.primary.opacity(0.25), lineWidth: 0.5))
+                    .frame(width: 10, height: 10)
+                Image(systemName: StudioAnnotationLane.symbol(for: annotation.kind))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14)
+                Text(StudioEditorModel.annotationLabel(annotation))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
+            .background(isSelected ? Color.accentColor.opacity(0.22) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(StudioEditorModel.annotationDescription(annotation))
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 
+    // MARK: Selected annotation
+
     @ViewBuilder
     private var selectedControls: some View {
-        if let index = viewModel.selectedAnnotationIndex, let annotation = viewModel.selectedAnnotation {
+        if viewModel.selectedAnnotationIndex != nil, let annotation = viewModel.selectedAnnotation {
             let isKnown = [StudioAnnotationKind.arrow, StudioAnnotationKind.callout, StudioAnnotationKind.text].contains(annotation.kind)
             if !isKnown {
                 note(StudioEditorModel.annotationNotDrawnNote)
@@ -333,21 +375,8 @@ struct StudioAnnotationInspectorSection: View {
             }
             if isKnown {
                 appearance(annotation)
-                position(annotation)
             }
-            timing(annotation)
-            HStack(spacing: 8) {
-                Button("Bring Forward", systemImage: StudioSymbol.bringForward) {
-                    viewModel.bringSelectedAnnotationForward()
-                }
-                .disabled(index + 1 >= viewModel.annotations.count)
-                .help("Draw this annotation over the one above it in the list")
-                Button("Send Back", systemImage: StudioSymbol.sendBack) {
-                    viewModel.sendSelectedAnnotationBack()
-                }
-                .disabled(index == 0)
-                .help("Draw this annotation under the one below it in the list")
-            }
+            advanced(annotation, isKnown: isKnown)
             Button("Delete Annotation", systemImage: StudioSymbol.delete, role: .destructive) {
                 viewModel.removeSelectedAnnotation()
             }
@@ -358,9 +387,12 @@ struct StudioAnnotationInspectorSection: View {
     private var textField: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Text")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
             // A field of its own for each annotation: what one held can't be written into the next.
             TextField("", text: textBinding, axis: .vertical)
                 .id(viewModel.selectedAnnotationIndex)
+                .textFieldStyle(.roundedBorder)
                 .lineLimit(1...4)
                 .focused($isTextFocused)
                 .accessibilityLabel("Annotation text")
@@ -383,27 +415,102 @@ struct StudioAnnotationInspectorSection: View {
     }
 
     private func appearance(_ annotation: StudioAnnotation) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Style", selection: Binding(get: { annotation.style }, set: { viewModel.setSelectedAnnotationStyle($0) })) {
-                Text("Red").tag(StudioAnnotationStyle.red)
-                Text("Blue").tag(StudioAnnotationStyle.blue)
-                Text("Yellow").tag(StudioAnnotationStyle.yellow)
-                Text("White").tag(StudioAnnotationStyle.white)
-                Text("Dark").tag(StudioAnnotationStyle.dark)
+        VStack(alignment: .leading, spacing: 10) {
+            styleChips(annotation)
+            let colors = StudioAnnotationGeometry.effectiveColors(annotation)
+            SwatchColorPicker(
+                label: annotation.kind == StudioAnnotationKind.arrow ? "Color" : "Fill",
+                color: Binding(get: { Self.color(colors.fill) }, set: { viewModel.setSelectedAnnotationFill($0) }),
+                supportsOpacity: false
+            )
+            if annotation.kind != StudioAnnotationKind.arrow {
+                SwatchColorPicker(
+                    label: "Text",
+                    color: Binding(get: { Self.color(colors.text) }, set: { viewModel.setSelectedAnnotationTextColor($0) }),
+                    supportsOpacity: false
+                )
             }
-            .help("The color of this annotation")
-            Picker("Size", selection: Binding(get: { annotation.size }, set: { viewModel.setSelectedAnnotationSize($0) })) {
-                Text("Small").tag(StudioAnnotationSize.small)
-                Text("Medium").tag(StudioAnnotationSize.medium)
-                Text("Large").tag(StudioAnnotationSize.large)
+            slider("Size", annotation.scale, StudioAnnotationGeometry.minimumScale...StudioAnnotationGeometry.maximumScale, step: 0.05) {
+                viewModel.setSelectedAnnotationScale($0)
             }
-            .pickerStyle(.segmented)
-            Picker("Attach to", selection: Binding(get: { annotation.attach }, set: { viewModel.setSelectedAnnotationAttach($0) })) {
-                Text("Screen").tag(StudioAnnotationAttach.screen)
-                Text("Frame").tag(StudioAnnotationAttach.frame)
+        }
+    }
+
+    /// The looks to start from, each showing what it gives. Choosing one takes back chosen colors.
+    private func styleChips(_ annotation: StudioAnnotation) -> some View {
+        let isCustom = StudioAnnotationGeometry.customColor(annotation.fill) != nil
+            || StudioAnnotationGeometry.customColor(annotation.textColor) != nil
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Style")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if isCustom {
+                    Text("Custom")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .pickerStyle(.segmented)
-            .help("Screen follows zooms and crops. Frame stays in one place in the video.")
+            HStack(spacing: 6) {
+                ForEach(Self.styles, id: \.style) { entry in
+                    styleChip(entry.style, name: entry.name, kind: annotation.kind, isSelected: !isCustom && annotation.style == entry.style)
+                }
+            }
+        }
+    }
+
+    private static let styles: [(style: StudioAnnotationStyle, name: String)] = [
+        (.red, "Red"), (.blue, "Blue"), (.yellow, "Yellow"), (.white, "White"), (.dark, "Dark"),
+    ]
+
+    private func styleChip(_ style: StudioAnnotationStyle, name: String, kind: String, isSelected: Bool) -> some View {
+        let colors = StudioAnnotationGeometry.colors(style)
+        return Button {
+            viewModel.setSelectedAnnotationStyle(style)
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6).fill(Self.color(colors.fill))
+                if kind == StudioAnnotationKind.arrow {
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Self.color(colors.text))
+                } else {
+                    Text("Aa")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Self.color(colors.text))
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.18), lineWidth: isSelected ? 2 : 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help("\(name) style")
+        .accessibilityLabel("\(name) style")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    /// What most annotations never need: dragging on the preview does the same as Position, and the
+    /// lane the same as Timing. These are also how the keyboard does both.
+    private func advanced(_ annotation: StudioAnnotation, isKnown: Bool) -> some View {
+        DisclosureGroup("Advanced", isExpanded: $isAdvancedExpanded) {
+            VStack(alignment: .leading, spacing: 12) {
+                if isKnown {
+                    Picker("Attach to", selection: Binding(get: { annotation.attach }, set: { viewModel.setSelectedAnnotationAttach($0) })) {
+                        Text("Screen").tag(StudioAnnotationAttach.screen)
+                        Text("Frame").tag(StudioAnnotationAttach.frame)
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Screen follows zooms and crops. Frame stays in one place in the video.")
+                    position(annotation)
+                }
+                timing(annotation)
+            }
+            .padding(.top, 8)
         }
     }
 
@@ -419,12 +526,12 @@ struct StudioAnnotationInspectorSection: View {
         }
     }
 
-    private func slider(_ title: String, _ value: Double, _ range: ClosedRange<Double>, _ onChange: @escaping (Double) -> Void) -> some View {
+    private func slider(_ title: String, _ value: Double, _ range: ClosedRange<Double>, step: Double = 0.01, _ onChange: @escaping (Double) -> Void) -> some View {
         StudioSliderRow(
             title: title,
             value: value,
             range: range,
-            step: 0.01,
+            step: step,
             valueText: "\(Int((value * 100).rounded()))%",
             onChange: onChange,
             onEditingChanged: { isEditing in
@@ -481,5 +588,231 @@ struct StudioAnnotationInspectorSection: View {
         case 1: return "1 annotation"
         default: return "\(viewModel.annotations.count) annotations"
         }
+    }
+
+    /// `#RRGGBB` as sRGB, which is what the format says it is, so a picker shows what is drawn.
+    static func color(_ hex: String) -> Color {
+        guard let value = Int(hex.dropFirst(), radix: 16) else { return .clear }
+        return Color(
+            .sRGB,
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255,
+            opacity: 1
+        )
+    }
+}
+
+/// One of the tools at the top of the Annotate panel, in the look of the screenshot editor's.
+private struct StudioAnnotationToolTile: View {
+    let title: String
+    let name: String
+    let help: String
+    let symbol: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .medium))
+                Text(title)
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .background(isHovering && isEnabled ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.08)))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(name)
+        .help(help)
+    }
+}
+
+// MARK: - Annotations on the preview
+
+/// One annotation on the picture, in canvas pixels, for a pointer to take hold of.
+struct StudioAnnotationHandle: Equatable, Identifiable {
+    var index: Int
+    var kind: String
+    /// What an arrow or a callout points at, or the center of a text box.
+    var tip: StudioAnnotationPoint
+    var tail: StudioAnnotationPoint?
+    var stroke: Double = 0
+    var box: StudioRect?
+    var radius: Double = 0
+
+    var id: Int { index }
+}
+
+/// Over the preview: pressing an annotation selects it and dragging moves it. The selected one
+/// shows its handles. The sliders under Advanced do the same without a pointer, so VoiceOver is not
+/// shown any of this, as it isn't shown the handle over the camera.
+struct StudioAnnotationPreviewLayer: View {
+    @ObservedObject var viewModel: StudioViewModel
+    let geometry: StudioEditorCanvasGeometry
+    let canvasSize: CGSize
+    let space: String
+
+    @State private var drag: Drag?
+    @State private var guides = Guides()
+
+    private struct Drag {
+        var index: Int
+        var start: StudioAnnotation
+        var isMoving = false
+    }
+
+    private struct Guides {
+        var vertical = false
+        var horizontal = false
+    }
+
+    private static let handleSize: CGFloat = 12
+    private static let shortestHitWidth: CGFloat = 14
+
+    var body: some View {
+        let handles = viewModel.annotationHandles(canvasSize: canvasSize)
+        ZStack(alignment: .topLeading) {
+            ForEach(handles) { handle in
+                hitArea(handle)
+            }
+            if let selected = handles.first(where: { $0.index == viewModel.selectedAnnotationIndex }) {
+                selection(selected)
+            }
+            guideLines
+        }
+        .frame(width: geometry.viewSize.width, height: geometry.viewSize.height, alignment: .topLeading)
+        .accessibilityHidden(true)
+    }
+
+    private func view(_ point: StudioAnnotationPoint) -> CGPoint {
+        geometry.viewPoint(fromCanvasPoint: CGPoint(x: point.x, y: point.y))
+    }
+
+    private func viewRect(_ rect: StudioRect) -> CGRect {
+        let origin = geometry.viewPoint(fromCanvasPoint: CGPoint(x: rect.x, y: rect.y))
+        let scale = max(geometry.canvasPixelsPerViewPoint, 0.0001)
+        return CGRect(x: origin.x, y: origin.y, width: CGFloat(rect.width / scale), height: CGFloat(rect.height / scale))
+    }
+
+    /// Everything but the handles of the selected one: the shaft of an arrow or a whole box.
+    @ViewBuilder
+    private func hitArea(_ handle: StudioAnnotationHandle) -> some View {
+        if let tail = handle.tail {
+            let scale = max(geometry.canvasPixelsPerViewPoint, 0.0001)
+            let width = max(Self.shortestHitWidth, CGFloat(handle.stroke * 3 / scale))
+            let line = Path { path in
+                path.move(to: view(tail))
+                path.addLine(to: view(handle.tip))
+            }.strokedPath(StrokeStyle(lineWidth: width, lineCap: .round))
+            Color.clear
+                .contentShape(line)
+                .pointerStyle(.grabIdle)
+                .gesture(dragGesture(handle, part: .body))
+        } else if let box = handle.box {
+            let rect = viewRect(box)
+            Color.clear
+                .contentShape(Rectangle())
+                .frame(width: rect.width, height: rect.height)
+                .offset(x: rect.minX, y: rect.minY)
+                .pointerStyle(.grabIdle)
+                .gesture(dragGesture(handle, part: .box))
+        }
+    }
+
+    @ViewBuilder
+    private func selection(_ handle: StudioAnnotationHandle) -> some View {
+        if let box = handle.box {
+            let rect = viewRect(box)
+            RoundedRectangle(cornerRadius: max(2, CGFloat(handle.radius / max(geometry.canvasPixelsPerViewPoint, 0.0001))) + 2)
+                .strokeBorder(Color.accentColor, lineWidth: 1.5)
+                .frame(width: rect.width + 4, height: rect.height + 4)
+                .offset(x: rect.minX - 2, y: rect.minY - 2)
+                .allowsHitTesting(false)
+        }
+        if handle.kind != StudioAnnotationKind.text {
+            dot(handle, part: .tip, at: handle.tip)
+        }
+        if let tail = handle.tail {
+            dot(handle, part: .tail, at: tail)
+        }
+    }
+
+    private func dot(_ handle: StudioAnnotationHandle, part: StudioAnnotationPart, at point: StudioAnnotationPoint) -> some View {
+        let center = view(point)
+        let target = Self.handleSize + 10
+        return Circle()
+            .fill(Color.white)
+            .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 2))
+            .frame(width: Self.handleSize, height: Self.handleSize)
+            .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+            .frame(width: target, height: target)
+            .contentShape(Circle())
+            .offset(x: center.x - target / 2, y: center.y - target / 2)
+            .pointerStyle(.grabIdle)
+            .gesture(dragGesture(handle, part: part))
+    }
+
+    /// The center lines of the canvas, while what is dragged has settled on one.
+    @ViewBuilder
+    private var guideLines: some View {
+        let canvas = geometry.canvasRectInView
+        if guides.vertical {
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(width: 1, height: CGFloat(canvas.height))
+                .offset(x: CGFloat(canvas.x + canvas.width / 2), y: CGFloat(canvas.y))
+                .allowsHitTesting(false)
+        }
+        if guides.horizontal {
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(width: CGFloat(canvas.width), height: 1)
+                .offset(x: CGFloat(canvas.x), y: CGFloat(canvas.y + canvas.height / 2))
+                .allowsHitTesting(false)
+        }
+    }
+
+    /// A press selects. Moving a little further starts a drag, which is one undo step.
+    private func dragGesture(_ handle: StudioAnnotationHandle, part: StudioAnnotationPart) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(space))
+            .onChanged { value in
+                if drag == nil, viewModel.annotations.indices.contains(handle.index) {
+                    viewModel.selectAnnotation(handle.index)
+                    drag = Drag(index: handle.index, start: viewModel.annotations[handle.index])
+                }
+                guard var current = drag else { return }
+                if !current.isMoving {
+                    guard hypot(value.translation.width, value.translation.height) >= 2 else { return }
+                    current.isMoving = true
+                    drag = current
+                    viewModel.beginGesture()
+                }
+                let scale = geometry.canvasPixelsPerViewPoint
+                if let move = viewModel.moveAnnotation(
+                    at: current.index,
+                    from: current.start,
+                    part: part,
+                    byX: Double(value.translation.width) * scale,
+                    byY: Double(value.translation.height) * scale,
+                    canvasSize: canvasSize
+                ) {
+                    guides = Guides(vertical: move.isOnVerticalCenter, horizontal: move.isOnHorizontalCenter)
+                }
+            }
+            .onEnded { _ in
+                if drag?.isMoving == true {
+                    viewModel.endGesture()
+                }
+                drag = nil
+                guides = Guides()
+            }
     }
 }

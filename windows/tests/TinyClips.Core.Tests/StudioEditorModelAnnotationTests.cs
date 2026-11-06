@@ -249,4 +249,165 @@ public sealed class StudioEditorModelAnnotationTests
         Assert.Null(StudioEditorModel.FindAnnotationFollowing(before, 2, [new StudioAnnotation()]));
         Assert.Null(StudioEditorModel.FindAnnotationFollowing(before, 9, before));
     }
+
+    // Colors and size
+
+    [Fact]
+    public void AColorIsSixHexDigits_AndAnythingElseLeavesTheStyle()
+    {
+        Assert.Equal("#12AB9F", StudioAnnotationGeometry.GetCustomColor("#12ab9F"));
+        foreach (var text in new[] { "", "red", "#12345", "#1234567", "#12345678", "#GGGGGG", "12345678", "#\uFF11\uFF12\uFF13\uFF14\uFF15\uFF16" })
+        {
+            Assert.Null(StudioAnnotationGeometry.GetCustomColor(text));
+        }
+
+        var (fill, textColor) = StudioAnnotationGeometry.GetEffectiveColors(new StudioAnnotation { Style = StudioAnnotationStyle.Blue, Fill = "#102030" });
+        Assert.Equal("#102030", fill);
+        Assert.Equal("#FFFFFF", textColor);
+    }
+
+    [Fact]
+    public void ChoosingAColor_IsOneUndoStep_UntilSomethingElseIsEdited()
+    {
+        var editor = Model([new StudioAnnotation { Id = "a", Start = 0, End = 5 }]);
+        Assert.True(editor.SetAnnotationFill(0, "#111111").Changed);
+        Assert.True(editor.SetAnnotationFill(0, "#222222").Changed);
+        Assert.False(editor.SetAnnotationFill(0, "#222222").Changed);
+        Assert.False(editor.SetAnnotationFill(0, "nope").Changed);
+        Assert.Equal("#222222", editor.Project.Overlays.Annotations[0].Fill);
+        editor.Undo();
+        Assert.Equal(string.Empty, editor.Project.Overlays.Annotations[0].Fill);
+
+        Assert.True(editor.SetAnnotationFill(0, "#111111").Changed);
+        Assert.True(editor.SetAnnotationTextColor(0, "#333333").Changed);
+        editor.Undo();
+        Assert.Equal(string.Empty, editor.Project.Overlays.Annotations[0].TextColor);
+        Assert.Equal("#111111", editor.Project.Overlays.Annotations[0].Fill);
+    }
+
+    [Fact]
+    public void ChoosingAStyle_TakesBackTheColorsChosenByHand()
+    {
+        var editor = Model([new StudioAnnotation { Id = "a", Start = 0, End = 5, Fill = "#111111", TextColor = "#222222" }]);
+        Assert.True(editor.SetAnnotationStyle(0, StudioAnnotationStyle.Blue).Changed);
+        var annotation = editor.Project.Overlays.Annotations[0];
+        Assert.Equal(StudioAnnotationStyle.Blue, annotation.Style);
+        Assert.Equal(string.Empty, annotation.Fill);
+        Assert.Equal(string.Empty, annotation.TextColor);
+    }
+
+    [Fact]
+    public void TheScale_StaysBetweenItsEnds()
+    {
+        var editor = Model([new StudioAnnotation { Id = "a", Start = 0, End = 5 }]);
+        Assert.True(editor.SetAnnotationScale(0, 9).Changed);
+        Assert.Equal(3, editor.Project.Overlays.Annotations[0].Scale);
+        Assert.True(editor.SetAnnotationScale(0, 0).Changed);
+        Assert.Equal(0.5, editor.Project.Overlays.Annotations[0].Scale);
+        Assert.False(editor.SetAnnotationScale(0, double.NaN).Changed);
+    }
+
+    // Dragging, on a canvas of 1000 by 500 that the screen fills
+
+    private static StudioResolvedFrame WholeCanvas(double x = 0, double y = 0, double size = 1)
+    {
+        var frame = StudioLayoutResolver.Resolve(Model([]).Project, null, 0, 1000, 500);
+        return frame with
+        {
+            Screen = frame.Screen!.Value with
+            {
+                Rect = new StudioFrameRect(0, 0, 1000, 500),
+                Source = new StudioFrameRect(x, y, size, size),
+            },
+        };
+    }
+
+    private static StudioAnnotationMove? Moved(StudioAnnotation annotation, StudioAnnotationPart part, double x, double y, StudioResolvedFrame? frame = null) =>
+        StudioAnnotationGeometry.GetMoved(annotation, part, x, y, frame ?? WholeCanvas(), 1000, 500);
+
+    private static readonly StudioAnnotation FrameArrow = new() { Attach = StudioAnnotationAttach.Frame, X = 0.2, Y = 0.2, OffsetX = 0.2, OffsetY = 0.2 };
+
+    [Fact]
+    public void DraggingAnArrowsTip_LeavesItsTailWhereItIs()
+    {
+        var move = Moved(FrameArrow, StudioAnnotationPart.Tip, 100, 50)!.Value;
+        Assert.Equal(0.3, move.X, 9);
+        Assert.Equal(0.3, move.Y, 9);
+        Assert.Equal(0, move.OffsetX, 9);
+        Assert.Equal(0.1, move.OffsetY, 9);
+    }
+
+    [Fact]
+    public void DraggingAnArrowsTailOrShaft()
+    {
+        var tail = Moved(FrameArrow, StudioAnnotationPart.Tail, 50, -25)!.Value;
+        Assert.Equal(0.2, tail.X, 9);
+        Assert.Equal(0.3, tail.OffsetX, 9);
+        Assert.Equal(0.15, tail.OffsetY, 9);
+        var body = Moved(FrameArrow, StudioAnnotationPart.Body, 100, 50)!.Value;
+        Assert.Equal(0.3, body.X, 9);
+        Assert.Equal(0.3, body.Y, 9);
+        Assert.Equal(0.2, body.OffsetX, 9);
+    }
+
+    [Fact]
+    public void DraggingABox_MovesACalloutsBoxAndAWholeText()
+    {
+        var callout = new StudioAnnotation { Kind = StudioAnnotationKinds.Callout, Attach = StudioAnnotationAttach.Frame, X = 0.2, Y = 0.2, OffsetX = 0.1, OffsetY = 0.1 };
+        var box = Moved(callout, StudioAnnotationPart.Box, 50, 25)!.Value;
+        Assert.Equal(0.2, box.X, 9);
+        Assert.Equal(0.2, box.OffsetX, 9);
+        Assert.Equal(0.15, box.OffsetY, 9);
+        var text = new StudioAnnotation { Kind = StudioAnnotationKinds.Text, Attach = StudioAnnotationAttach.Frame, X = 0.2, Y = 0.2 };
+        var whole = Moved(text, StudioAnnotationPart.Box, 100, 50)!.Value;
+        Assert.Equal(0.3, whole.X, 9);
+        Assert.Equal(0.3, whole.Y, 9);
+        Assert.Equal(-0.12, whole.OffsetX, 9);
+    }
+
+    [Fact]
+    public void ADrag_SettlesOnTheCenterLines_AndSaysSo()
+    {
+        var text = new StudioAnnotation { Kind = StudioAnnotationKinds.Text, Attach = StudioAnnotationAttach.Frame, X = 0.2, Y = 0.2 };
+        var near = Moved(text, StudioAnnotationPart.Box, 298, 148)!.Value;
+        Assert.Equal(0.5, near.X, 9);
+        Assert.Equal(0.5, near.Y, 9);
+        Assert.True(near.IsOnVerticalCenter);
+        Assert.True(near.IsOnHorizontalCenter);
+        var far = Moved(text, StudioAnnotationPart.Box, 290, 100)!.Value;
+        Assert.Equal(0.49, far.X, 9);
+        Assert.False(far.IsOnVerticalCenter);
+        Assert.False(far.IsOnHorizontalCenter);
+    }
+
+    [Fact]
+    public void AScreenPoint_StaysOnWhatTheFrameShows()
+    {
+        var frame = WholeCanvas(0.25, 0.25, 0.5);
+        var arrow = new StudioAnnotation { X = 0.3, Y = 0.3, OffsetX = 0.1, OffsetY = 0.1 };
+        var inside = Moved(arrow, StudioAnnotationPart.Body, 200, 100, frame)!.Value;
+        Assert.Equal(0.4, inside.X, 9);
+        Assert.Equal(0.4, inside.Y, 9);
+        var beyond = Moved(arrow, StudioAnnotationPart.Body, 5000, 5000, frame)!.Value;
+        Assert.Equal(0.75, beyond.X, 9);
+        Assert.Equal(0.75, beyond.Y, 9);
+        Assert.Null(Moved(new StudioAnnotation { X = 0.1, Y = 0.1 }, StudioAnnotationPart.Body, 10, 10, frame));
+    }
+
+    [Fact]
+    public void AnArrow_DoesNotCollapseUnderADrag()
+    {
+        var arrow = new StudioAnnotation { Attach = StudioAnnotationAttach.Frame, X = 0.2, Y = 0.2, OffsetX = 0.1, OffsetY = 0 };
+        Assert.Null(Moved(arrow, StudioAnnotationPart.Tail, -50, 0));
+        Assert.Null(Moved(arrow, StudioAnnotationPart.Tip, 50, 0));
+    }
+
+    [Fact]
+    public void Moving_WritesEveryNumberAtOnce()
+    {
+        var editor = Model([new StudioAnnotation { Id = "a", Start = 0, End = 5 }]);
+        Assert.True(editor.MoveAnnotation(0, new StudioAnnotationMove(0.1, 0.2, 0.3, 0.4, false, false)).Changed);
+        var annotation = editor.Project.Overlays.Annotations[0];
+        Assert.Equal([0.1, 0.2, 0.3, 0.4], [annotation.X, annotation.Y, annotation.OffsetX, annotation.OffsetY]);
+    }
 }

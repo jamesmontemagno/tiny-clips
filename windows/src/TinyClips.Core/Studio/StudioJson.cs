@@ -446,6 +446,9 @@ public static class StudioProjectJson
                 Text = HasNonNull(element, "text") ? annotation.Text : defaults.Text,
                 Style = HasNonNull(element, "style") ? annotation.Style : defaults.Style,
                 Size = HasNonNull(element, "size") ? annotation.Size : defaults.Size,
+                Fill = HasNonNull(element, "fill") ? annotation.Fill : defaults.Fill,
+                TextColor = HasNonNull(element, "textColor") ? annotation.TextColor : defaults.TextColor,
+                Scale = HasNonNull(element, "scale") ? annotation.Scale : defaults.Scale,
             };
         }
 

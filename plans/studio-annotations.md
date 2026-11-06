@@ -1,6 +1,6 @@
 # Tiny Clips Studio: annotations
 
-**Status:** planned with the owner on 5 November 2026. The code of phases 1 and 2 is written, and
+**Status:** planned with the owner on 5 November 2026. The code of phases 1, 2 and 3 is written, and
 compiled and unit tested in CI. On Windows, `StudioRenderCheck`'s annotation checks and
 `StudioWindowCheck`'s `annotation` group have run on a CI runner, which cannot capture a window, so
 their pictures and the preview in the real window have not been seen. On the Mac the drawing is read
@@ -25,7 +25,7 @@ what order, and why.
 
 | Part | Where | Why |
 |---|---|---|
-| Arrow, Callout, Text tools | A small group in the editor's header, with keys `A`, `C`, `T` | The transport row already holds six edit buttons. Adding three more there is what the owner wants to avoid |
+| Arrow, Callout, Text tools | Tiles at the top of the Annotate panel, in the look of the screenshot editor's, with keys `A`, `C`, `T`. They started in the header; the owner moved them on 6 November 2026 after trying it on the Mac. The reason in this row was for the first placement: | The transport row already holds six edit buttons. Adding three more there is what the owner wants to avoid |
 | One **Annotate** lane | Under Speed, over the trim bar, hidden until the first annotation exists | One lane however many annotations there are |
 | **Annotate** panel | A new rail item in the inspector's timeline group, after Speed | Holds the layer list, style, size, attach, timing, text, and delete, so none of it needs room at the bottom |
 | Handles | On the preview, on the selected annotation | Direct manipulation, in the same place the camera bubble is already dragged |
@@ -167,7 +167,7 @@ Built in this order. Where the build differs from what was first written here, i
 3. The Annotate rail item and panel, with an inline text field.
 4. The Annotate lane, built on the existing range lane: drag to move, handles to resize, and
    previous/next, as Zoom, Cut, and Speed have.
-5. Header tools and `A`, `C`, `T`. `Delete` removes the selected annotation.
+5. Tools (now in the Annotate panel) and `A`, `C`, `T`. `Delete` removes the selected annotation.
 6. Accessibility: every control named, lane and rail reachable by keyboard, and every action
    available without dragging. New rows in the Windows gate; VoiceOver and Full Keyboard Access on
    the Mac.
@@ -184,6 +184,8 @@ annotation at the center of the zoom window, lasting three seconds from the play
 
 ### Phase 3: handles on the preview
 
+Done on 6 November 2026, with custom colors (`fill`, `textColor`) and a size slider (`scale`), both of which had been in phase 4, after the owner tried phase 2 on the Mac. What hasn't been done is using them on a real machine. Inline text editing and drag-to-draw are still phase 4.
+
 Drag an arrow by its tip or tail, a callout by its point or bubble, and text by its box. On Windows
 this is `StudioPreviewOverlay`, which already does this for the bubble; on the Mac, the preview's
 existing drag handling. A drag is one undo step, and it snaps to the canvas's center lines. The
@@ -193,7 +195,7 @@ preview selects it and shows the panel.
 ### Phase 4: later, each decided when it comes up
 
 Drag-to-draw on the preview, inline text editing on the canvas, fade or pop animations, highlight
-boxes and blur for sensitive areas, free colors, curved arrows, reusing the screenshot editor's
+boxes and blur for sensitive areas, curved arrows, reusing the screenshot editor's
 presets, and copying and pasting annotations.
 
 ## Risks and limits

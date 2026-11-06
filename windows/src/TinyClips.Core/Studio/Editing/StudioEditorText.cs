@@ -447,7 +447,7 @@ public static class StudioEditorText
     // Annotations
 
     /// <summary>What the Annotate panel says without annotations.</summary>
-    public const string AnnotationEmptyHint = "Press A, C, or T, or use the tools at the top of the window, to add an arrow, a callout, or text at the playhead.";
+    public const string AnnotationEmptyHint = "Press A, C, or T, or use the tools above, to add an arrow, a callout, or text at the playhead.";
 
     /// <summary>What the Annotate panel says while there are annotations and none is selected.</summary>
     public const string SelectAnnotationHint = "Select an annotation on the timeline or in the list, or step to one with the arrows above.";

@@ -292,6 +292,143 @@ final class StudioAnnotationTests: XCTestCase {
         XCTAssertNil(StudioEditorModel.annotationIndex(following: 2, from: before, to: [StudioAnnotation()]))
     }
 
+    // MARK: Colors and size
+
+    func testAColorIsSixHexDigitsAndAnythingElseLeavesTheStyle() {
+        XCTAssertEqual(StudioAnnotationGeometry.customColor("#12ab9F"), "#12AB9F")
+        for text in ["", "red", "#12345", "#1234567", "#12345678", "#GGGGGG", "12345678", "#１２３４５６"] {
+            XCTAssertNil(StudioAnnotationGeometry.customColor(text), text)
+        }
+        let colors = StudioAnnotationGeometry.effectiveColors(StudioAnnotation(style: .blue, fill: "#102030"))
+        XCTAssertEqual(colors.fill, "#102030")
+        XCTAssertEqual(colors.text, "#FFFFFF")
+    }
+
+    func testChoosingAColorIsOneUndoStepUntilSomethingElseIsEdited() {
+        var editor = model([StudioAnnotation(id: "a", start: 0, end: 5)])
+        XCTAssertTrue(editor.setAnnotationFill(at: 0, to: "#111111").changed)
+        XCTAssertTrue(editor.setAnnotationFill(at: 0, to: "#222222").changed)
+        XCTAssertFalse(editor.setAnnotationFill(at: 0, to: "#222222").changed)
+        XCTAssertFalse(editor.setAnnotationFill(at: 0, to: "nope").changed)
+        XCTAssertEqual(editor.project.overlays.annotations[0].fill, "#222222")
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations[0].fill, "")
+
+        XCTAssertTrue(editor.setAnnotationFill(at: 0, to: "#111111").changed)
+        XCTAssertTrue(editor.setAnnotationTextColor(at: 0, to: "#333333").changed)
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations[0].textColor, "")
+        XCTAssertEqual(editor.project.overlays.annotations[0].fill, "#111111")
+    }
+
+    func testChoosingAStyleTakesBackTheColorsChosenByHand() {
+        var editor = model([StudioAnnotation(id: "a", start: 0, end: 5, fill: "#111111", textColor: "#222222")])
+        XCTAssertTrue(editor.setAnnotationStyle(at: 0, to: .blue).changed)
+        let annotation = editor.project.overlays.annotations[0]
+        XCTAssertEqual(annotation.style, .blue)
+        XCTAssertEqual(annotation.fill, "")
+        XCTAssertEqual(annotation.textColor, "")
+    }
+
+    func testTheScaleStaysBetweenItsEnds() {
+        var editor = model([StudioAnnotation(id: "a", start: 0, end: 5)])
+        XCTAssertTrue(editor.setAnnotationScale(at: 0, to: 9).changed)
+        XCTAssertEqual(editor.project.overlays.annotations[0].scale, 3)
+        XCTAssertTrue(editor.setAnnotationScale(at: 0, to: 0).changed)
+        XCTAssertEqual(editor.project.overlays.annotations[0].scale, 0.5)
+        XCTAssertFalse(editor.setAnnotationScale(at: 0, to: .nan).changed)
+    }
+
+    // MARK: Dragging
+
+    private func wholeCanvas(source: StudioRect = StudioRect(x: 0, y: 0, width: 1, height: 1)) -> StudioResolvedFrame {
+        var frame = StudioLayoutResolver.resolve(project: model([]).project, time: 0, canvasWidth: 1000, canvasHeight: 500, events: nil)
+        frame.screen = frame.screen.map { screen in
+            var screen = screen
+            screen.rect = StudioRect(x: 0, y: 0, width: 1000, height: 500)
+            screen.source = source
+            return screen
+        }
+        return frame
+    }
+
+    private func moved(_ annotation: StudioAnnotation, _ part: StudioAnnotationPart, _ x: Double, _ y: Double, frame: StudioResolvedFrame? = nil) -> StudioAnnotationMove? {
+        StudioAnnotationGeometry.moved(annotation, part: part, byX: x, byY: y, frame: frame ?? wholeCanvas(), canvasWidth: 1000, canvasHeight: 500)
+    }
+
+    func testDraggingAnArrowsTipLeavesItsTailWhereItIs() throws {
+        let arrow = StudioAnnotation(attach: .frame, x: 0.2, y: 0.2, offsetX: 0.2, offsetY: 0.2)
+        let move = try XCTUnwrap(moved(arrow, .tip, 100, 50))
+        XCTAssertEqual(move.x, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(move.y, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(move.offsetX, 0, accuracy: 1e-9)
+        XCTAssertEqual(move.offsetY, 0.1, accuracy: 1e-9)
+    }
+
+    func testDraggingAnArrowsTailOrShaft() throws {
+        let arrow = StudioAnnotation(attach: .frame, x: 0.2, y: 0.2, offsetX: 0.2, offsetY: 0.2)
+        let tail = try XCTUnwrap(moved(arrow, .tail, 50, -25))
+        XCTAssertEqual(tail.x, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(tail.offsetX, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(tail.offsetY, 0.15, accuracy: 1e-9)
+        let body = try XCTUnwrap(moved(arrow, .body, 100, 50))
+        XCTAssertEqual(body.x, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(body.y, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(body.offsetX, 0.2, accuracy: 1e-9)
+    }
+
+    func testDraggingABoxMovesACalloutsBoxAndAWholeText() throws {
+        let callout = StudioAnnotation(kind: StudioAnnotationKind.callout, attach: .frame, x: 0.2, y: 0.2, offsetX: 0.1, offsetY: 0.1)
+        let box = try XCTUnwrap(moved(callout, .box, 50, 25))
+        XCTAssertEqual(box.x, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(box.offsetX, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(box.offsetY, 0.15, accuracy: 1e-9)
+        let text = StudioAnnotation(kind: StudioAnnotationKind.text, attach: .frame, x: 0.2, y: 0.2)
+        let whole = try XCTUnwrap(moved(text, .box, 100, 50))
+        XCTAssertEqual(whole.x, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(whole.y, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(whole.offsetX, -0.12, accuracy: 1e-9)
+    }
+
+    func testADragSettlesOnTheCenterLinesAndSaysSo() throws {
+        let text = StudioAnnotation(kind: StudioAnnotationKind.text, attach: .frame, x: 0.2, y: 0.2)
+        let near = try XCTUnwrap(moved(text, .box, 298, 148))
+        XCTAssertEqual(near.x, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(near.y, 0.5, accuracy: 1e-9)
+        XCTAssertTrue(near.isOnVerticalCenter)
+        XCTAssertTrue(near.isOnHorizontalCenter)
+        let far = try XCTUnwrap(moved(text, .box, 290, 100))
+        XCTAssertEqual(far.x, 0.49, accuracy: 1e-9)
+        XCTAssertFalse(far.isOnVerticalCenter)
+        XCTAssertFalse(far.isOnHorizontalCenter)
+    }
+
+    func testAScreenPointStaysOnWhatTheFrameShows() throws {
+        let frame = wholeCanvas(source: StudioRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))
+        let arrow = StudioAnnotation(x: 0.3, y: 0.3, offsetX: 0.1, offsetY: 0.1)
+        let inside = try XCTUnwrap(moved(arrow, .body, 200, 100, frame: frame))
+        XCTAssertEqual(inside.x, 0.4, accuracy: 1e-9)
+        XCTAssertEqual(inside.y, 0.4, accuracy: 1e-9)
+        let beyond = try XCTUnwrap(moved(arrow, .body, 5000, 5000, frame: frame))
+        XCTAssertEqual(beyond.x, 0.75, accuracy: 1e-9)
+        XCTAssertEqual(beyond.y, 0.75, accuracy: 1e-9)
+        XCTAssertNil(moved(StudioAnnotation(x: 0.1, y: 0.1), .body, 10, 10, frame: frame), "It isn't in the picture")
+    }
+
+    func testAnArrowDoesNotCollapseUnderADrag() {
+        let arrow = StudioAnnotation(attach: .frame, x: 0.2, y: 0.2, offsetX: 0.1, offsetY: 0)
+        XCTAssertNil(moved(arrow, .tail, -50, 0), "The tail on the tip")
+        XCTAssertNil(moved(arrow, .tip, 50, 0), "The tip on the tail")
+    }
+
+    func testMovingWritesEveryNumberAtOnce() {
+        var editor = model([StudioAnnotation(id: "a", start: 0, end: 5)])
+        let move = StudioAnnotationMove(x: 0.1, y: 0.2, offsetX: 0.3, offsetY: 0.4, isOnVerticalCenter: false, isOnHorizontalCenter: false)
+        XCTAssertTrue(editor.moveAnnotation(at: 0, to: move).changed)
+        let annotation = editor.project.overlays.annotations[0]
+        XCTAssertEqual([annotation.x, annotation.y, annotation.offsetX, annotation.offsetY], [0.1, 0.2, 0.3, 0.4])
+    }
+
     func testTheWordsNameAnAnnotationInOneLine() {
         let callout = StudioAnnotation(kind: StudioAnnotationKind.callout, start: 12, end: 16.5, text: "Billing lives\nhere")
         XCTAssertEqual(StudioEditorModel.annotationLabel(StudioAnnotation()), "Arrow")

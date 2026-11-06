@@ -39,6 +39,44 @@ public readonly record struct StudioResolvedAnnotation(
     public bool IsArrow => Kind == StudioAnnotationKinds.Arrow;
 }
 
+/// <summary>What a pointer can take hold of on an annotation in the preview.</summary>
+public enum StudioAnnotationPart
+{
+    /// <summary>What an arrow or a callout points at.</summary>
+    Tip,
+
+    /// <summary>The far end of an arrow.</summary>
+    Tail,
+
+    /// <summary>A whole arrow, by its shaft.</summary>
+    Body,
+
+    /// <summary>The box of a callout or a text.</summary>
+    Box,
+}
+
+/// <summary>Where a drag leaves an annotation, in the numbers of the project, and whether it has settled on a center line of the canvas.</summary>
+public readonly record struct StudioAnnotationMove(
+    double X,
+    double Y,
+    double OffsetX,
+    double OffsetY,
+    bool IsOnVerticalCenter,
+    bool IsOnHorizontalCenter);
+
+/// <summary>One annotation on the picture, in canvas pixels, for a pointer to take hold of.</summary>
+/// <param name="Tip">What an arrow or a callout points at, or the center of a text box.</param>
+/// <param name="Tail">The far end of an arrow, which has no <paramref name="Box"/>.</param>
+/// <param name="Box">The box of a callout or a text, which has no <paramref name="Tail"/>.</param>
+public readonly record struct StudioAnnotationHandle(
+    int Index,
+    string Kind,
+    StudioPoint Tip,
+    StudioPoint? Tail,
+    double Stroke,
+    StudioFrameRect? Box,
+    double Radius);
+
 /// <summary>Where a box goes once its text has been measured. The pointer is the two points of its base, when it has one.</summary>
 public readonly record struct StudioAnnotationBox(
     StudioFrameRect Box,
@@ -61,6 +99,11 @@ public static class StudioAnnotationGeometry
     private const double RadiusInFonts = 0.4;
     private const double PointerHalfBaseInFonts = 0.45;
     private const double MaxBoxWidthInCanvases = 0.7;
+    private const double SnapShareOfShortSide = 0.008;
+    private const double ShortestArrowInShortSides = 0.02;
+
+    public const double MinimumScale = 0.5;
+    public const double MaximumScale = 3;
 
     /// <summary>What <paramref name="annotation"/> draws at <paramref name="time"/>. False when it draws nothing then.</summary>
     public static bool TryResolve(
@@ -90,9 +133,10 @@ public static class StudioAnnotationGeometry
         }
 
         var shortSide = Math.Min(canvasWidth, canvasHeight);
-        var (fill, textColor) = Colors(annotation.Style);
+        var (fill, textColor) = GetEffectiveColors(annotation);
         var (fontShare, strokeShare) = Sizes(annotation.Size);
-        var font = shortSide * fontShare;
+        var scale = Math.Clamp(annotation.Scale, MinimumScale, MaximumScale);
+        var font = shortSide * fontShare * scale;
         var offset = new StudioPoint(
             Math.Clamp(annotation.OffsetX, -1, 1) * shortSide,
             Math.Clamp(annotation.OffsetY, -1, 1) * shortSide);
@@ -106,7 +150,7 @@ public static class StudioAnnotationGeometry
                 return false;
             }
 
-            var stroke = shortSide * strokeShare;
+            var stroke = shortSide * strokeShare * scale;
             var head = Math.Min(stroke * HeadLengthInStrokes, length);
             var headBase = new StudioPoint(anchor.X + (offset.X / length * head), anchor.Y + (offset.Y / length * head));
             resolved = new StudioResolvedAnnotation(
@@ -199,6 +243,99 @@ public static class StudioAnnotationGeometry
     }
 
     /// <summary>
+    /// The numbers an annotation has once a part of it is dragged by some canvas pixels from where
+    /// it was at the start of the drag. What is not dragged stays where it is in the picture: the
+    /// tail of an arrow whose tip moves, the box of a callout whose point moves. Whatever is dragged
+    /// settles on the middle of the canvas when it comes close. Null when it isn't in the picture,
+    /// or when it would make an arrow too short to see or to take hold of again.
+    /// </summary>
+    public static StudioAnnotationMove? GetMoved(
+        StudioAnnotation annotation,
+        StudioAnnotationPart part,
+        double byX,
+        double byY,
+        in StudioResolvedFrame frame,
+        double canvasWidth,
+        double canvasHeight)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        if (!double.IsFinite(byX) || !double.IsFinite(byY) || !(canvasWidth > 0) || !(canvasHeight > 0)
+            || !TryAnchor(annotation, frame, canvasWidth, canvasHeight, out var anchor, out _))
+        {
+            return null;
+        }
+
+        var shortSide = Math.Min(canvasWidth, canvasHeight);
+        var offsetX = Math.Clamp(annotation.OffsetX, -1, 1);
+        var offsetY = Math.Clamp(annotation.OffsetY, -1, 1);
+        var far = new StudioPoint(anchor.X + (offsetX * shortSide), anchor.Y + (offsetY * shortSide));
+        var isFarEnd = part == StudioAnnotationPart.Tail || (part == StudioAnnotationPart.Box && annotation.Kind == StudioAnnotationKinds.Callout);
+        var from = isFarEnd ? far : anchor;
+
+        var x = from.X + byX;
+        var y = from.Y + byY;
+        var reach = shortSide * SnapShareOfShortSide;
+        var isOnVerticalCenter = Math.Abs(x - (canvasWidth / 2)) <= reach;
+        var isOnHorizontalCenter = Math.Abs(y - (canvasHeight / 2)) <= reach;
+        var target = new StudioPoint(isOnVerticalCenter ? canvasWidth / 2 : x, isOnHorizontalCenter ? canvasHeight / 2 : y);
+
+        var move = new StudioAnnotationMove(
+            Math.Clamp(annotation.X, 0, 1), Math.Clamp(annotation.Y, 0, 1), offsetX, offsetY, isOnVerticalCenter, isOnHorizontalCenter);
+        if (isFarEnd)
+        {
+            move = move with
+            {
+                OffsetX = Math.Clamp((target.X - anchor.X) / shortSide, -1, 1),
+                OffsetY = Math.Clamp((target.Y - anchor.Y) / shortSide, -1, 1),
+            };
+        }
+        else
+        {
+            if (TryGetPointAt(target, annotation.Attach, frame, canvasWidth, canvasHeight) is not { } moved)
+            {
+                return null;
+            }
+
+            move = move with { X = moved.X, Y = moved.Y };
+            if (part == StudioAnnotationPart.Tip)
+            {
+                if (!TryAnchor(annotation with { X = moved.X, Y = moved.Y }, frame, canvasWidth, canvasHeight, out var newAnchor, out _))
+                {
+                    return null;
+                }
+
+                move = move with
+                {
+                    OffsetX = Math.Clamp((far.X - newAnchor.X) / shortSide, -1, 1),
+                    OffsetY = Math.Clamp((far.Y - newAnchor.Y) / shortSide, -1, 1),
+                };
+            }
+        }
+
+        var isTooShort = annotation.Kind == StudioAnnotationKinds.Arrow && part != StudioAnnotationPart.Body
+            && Math.Sqrt((move.OffsetX * move.OffsetX) + (move.OffsetY * move.OffsetY)) < ShortestArrowInShortSides;
+        return isTooShort ? null : move;
+    }
+
+    /// <summary>The numbers of a point on the canvas: in the canvas, or in the recording where the frame shows it. A point beside the screen goes to the screen's edge.</summary>
+    private static StudioPoint? TryGetPointAt(StudioPoint point, StudioAnnotationAttach attach, in StudioResolvedFrame frame, double canvasWidth, double canvasHeight)
+    {
+        if (attach == StudioAnnotationAttach.Frame)
+        {
+            return new StudioPoint(Math.Clamp(point.X / canvasWidth, 0, 1), Math.Clamp(point.Y / canvasHeight, 0, 1));
+        }
+
+        if (frame.Screen is not { } screen || !(screen.Rect.Width > 0) || !(screen.Rect.Height > 0))
+        {
+            return null;
+        }
+
+        var acrossX = Math.Clamp((point.X - screen.Rect.X) / screen.Rect.Width, 0, 1);
+        var acrossY = Math.Clamp((point.Y - screen.Rect.Y) / screen.Rect.Height, 0, 1);
+        return new StudioPoint(screen.Source.X + (acrossX * screen.Source.Width), screen.Source.Y + (acrossY * screen.Source.Height));
+    }
+
+    /// <summary>
     /// True when any annotation comes or goes after <paramref name="from"/>, up to and including
     /// <paramref name="to"/>, so that a picture drawn for one of those times is not right for the other.
     /// </summary>
@@ -275,7 +412,23 @@ public static class StudioAnnotationGeometry
     private static bool Contains(in StudioFrameRect box, StudioPoint point) =>
         point.X >= box.X && point.X <= box.X + box.Width && point.Y >= box.Y && point.Y <= box.Y + box.Height;
 
-    private static (string Fill, string Text) Colors(StudioAnnotationStyle style) => style switch
+    /// <summary>The colors an annotation is drawn in: its own where it has them, and otherwise its style's.</summary>
+    public static (string Fill, string Text) GetEffectiveColors(StudioAnnotation annotation)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        var style = GetStyleColors(annotation.Style);
+        return (GetCustomColor(annotation.Fill) ?? style.Fill, GetCustomColor(annotation.TextColor) ?? style.Text);
+    }
+
+    /// <summary>A text in capitals when it is <c>#RRGGBB</c>. Null for anything else, which leaves the style's color.</summary>
+    public static string? GetCustomColor(string? text) =>
+        text is { Length: 7 } && text[0] == '#' && text.AsSpan(1).IndexOfAnyExcept(HexDigits) < 0 ? text.ToUpperInvariant() : null;
+
+    private static readonly System.Buffers.SearchValues<char> HexDigits =
+        System.Buffers.SearchValues.Create("0123456789abcdefABCDEF");
+
+    /// <summary>The colors a style gives, which the pickers show until they are changed.</summary>
+    public static (string Fill, string Text) GetStyleColors(StudioAnnotationStyle style) => style switch
     {
         StudioAnnotationStyle.Blue => ("#0A84FF", "#FFFFFF"),
         StudioAnnotationStyle.Yellow => ("#FFD60A", "#1C1C1E"),

@@ -188,6 +188,9 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `text` | string | `""` | | What a callout or a text box says, with `\n` for a new line. With nothing but white space it is not drawn. An arrow does not use it |
 | `style` | enum | `red` | | `red`, `blue`, `yellow`, `white`, or `dark` (section 6.10) |
 | `size` | enum | `medium` | | `small`, `medium`, or `large` (section 6.10) |
+| `fill` | string | `""` | | `#RRGGBB` in place of the style's fill, in either case. Anything else, an empty text included, leaves the style's |
+| `textColor` | string | `""` | | `#RRGGBB` in place of the style's text color, in the same way. An arrow does not use it |
+| `scale` | number | 1 | 0.5 to 3 | What `size` is multiplied by |
 
 ## 4. events.json
 
@@ -556,7 +559,14 @@ size      font       stroke
 small     m * 0.028  m * 0.006
 medium    m * 0.036  m * 0.009
 large     m * 0.05   m * 0.013
+
+font   = size's font * clamp(scale, 0.5, 3)
+stroke = size's stroke * clamp(scale, 0.5, 3)
+fill   = the annotation's fill when it is #RRGGBB, otherwise the style's
+text   = the annotation's textColor when it is #RRGGBB, otherwise the style's
 ```
+
+A color with an alpha is not one of these and leaves the style's, so a box and its pointer never show through one another.
 
 **Which are drawn.** An annotation is drawn at `t` when all of these hold:
 

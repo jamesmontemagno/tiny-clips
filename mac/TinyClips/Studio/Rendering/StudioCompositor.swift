@@ -746,7 +746,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         ].joined(separator: "|")
         let image = StudioCompositorImageCache.shared.image(for: key, in: .annotation) {
             guard let context = bitmap.makeContext() else { return nil }
-            let color = annotationColor(arrow.fill)
+            let color = Self.annotationColor(arrow.fill)
             let alongX = Double(headBase.x - tip.x)
             let alongY = Double(headBase.y - tip.y)
             let head = (alongX * alongX + alongY * alongY).squareRoot()
@@ -775,7 +775,9 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         return image.map { bitmap.placed($0, renderSize: renderSize) }
     }
 
-    private func annotationBoxImage(_ annotation: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage? {
+    /// Where the box of a callout or a text goes on the canvas, measured as it is drawn. The preview
+    /// asks too, so that what can be taken hold of is what is on the picture.
+    static func annotationBoxLayout(_ annotation: StudioResolvedAnnotation, canvasWidth: Double, canvasHeight: Double) -> StudioAnnotationBox {
         let measured = StudioCompositorImageCache.shared.textSize(
             for: "\(annotation.font)|\(annotation.maxTextWidth)|\(annotation.text)"
         ) {
@@ -789,13 +791,17 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         }
 
         // A pixel of room, so that the frame does not wrap what was measured to fit.
-        let placed = StudioAnnotationGeometry.layoutBox(
+        return StudioAnnotationGeometry.layoutBox(
             annotation,
             textWidth: Double(measured.width).rounded(.up) + 1,
             textHeight: Double(measured.height).rounded(.up) + 1,
-            canvasWidth: Double(renderSize.width),
-            canvasHeight: Double(renderSize.height)
+            canvasWidth: canvasWidth,
+            canvasHeight: canvasHeight
         )
+    }
+
+    private func annotationBoxImage(_ annotation: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage? {
+        let placed = Self.annotationBoxLayout(annotation, canvasWidth: Double(renderSize.width), canvasHeight: Double(renderSize.height))
         let box = placed.box
         let hasPointer = placed.pointer != nil
         guard let bitmap = AnnotationBitmap(
@@ -834,7 +840,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
 
         let image = StudioCompositorImageCache.shared.image(for: key.joined(separator: "|"), in: .annotation) {
             guard let context = bitmap.makeContext() else { return nil }
-            context.setFillColor(annotationColor(annotation.fill))
+            context.setFillColor(Self.annotationColor(annotation.fill))
             if let triangle, let first = triangle.first {
                 context.move(to: first)
                 triangle.dropFirst().forEach { context.addLine(to: $0) }
@@ -846,7 +852,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
 
             context.textMatrix = .identity
             let frame = CTFramesetterCreateFrame(
-                annotationFramesetter(annotation),
+                Self.annotationFramesetter(annotation),
                 CFRange(location: 0, length: 0),
                 CGPath(rect: textRect, transform: nil),
                 nil
@@ -857,7 +863,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         return image.map { bitmap.placed($0, renderSize: renderSize) }
     }
 
-    private func annotationFramesetter(_ annotation: StudioResolvedAnnotation) -> CTFramesetter {
+    private static func annotationFramesetter(_ annotation: StudioResolvedAnnotation) -> CTFramesetter {
         let size = CGFloat(annotation.font)
         let font = CTFontCreateUIFontForLanguage(.emphasizedSystem, size, nil)
             ?? CTFontCreateWithName("Helvetica-Bold" as CFString, size, nil)
@@ -1101,14 +1107,14 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     // MARK: - Colors and Sizes
 
     private func ciColor(_ hex: String, fallback: CIColor) -> CIColor {
-        guard let components = colorComponents(hex) else { return fallback }
+        guard let components = Self.colorComponents(hex) else { return fallback }
         return CIColor(red: components.r, green: components.g, blue: components.b, alpha: components.a)
     }
 
     /// A color of an annotation, which the format says is sRGB. `cgColor(_:alpha:)` makes Generic RGB
     /// colors, which come out shifted: #FF0000 draws as #FF2600.
-    private func annotationColor(_ hex: String) -> CGColor {
-        let components = colorComponents(hex)
+    private static func annotationColor(_ hex: String) -> CGColor {
+        let components = Self.colorComponents(hex)
         return CGColor(
             srgbRed: components?.r ?? 1,
             green: components?.g ?? 1,
@@ -1118,7 +1124,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     }
 
     private func cgColor(_ hex: String, alpha: CGFloat) -> CGColor {
-        let components = colorComponents(hex)
+        let components = Self.colorComponents(hex)
         return CGColor(
             red: components?.r ?? 1,
             green: components?.g ?? 1,
@@ -1128,7 +1134,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     }
 
     /// Parses `#RRGGBB` or `#RRGGBBAA`.
-    private func colorComponents(_ hex: String) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat)? {
+    private static func colorComponents(_ hex: String) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat)? {
         var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.hasPrefix("#") {
             value.removeFirst()

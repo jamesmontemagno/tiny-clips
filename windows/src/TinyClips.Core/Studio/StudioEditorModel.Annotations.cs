@@ -25,6 +25,9 @@ public sealed partial class StudioEditorModel
     // what is typed next is part of the same undo step.
     private int? _typingInAnnotation;
 
+    /// <summary>The color of an annotation that is being chosen, in the same way.</summary>
+    private int? _choosingColorInAnnotation;
+
     /// <summary>Whether the recording has room for an annotation.</summary>
     public bool CanAddAnnotation => SourceDuration >= MinimumAnnotationDuration;
 
@@ -148,8 +151,65 @@ public sealed partial class StudioEditorModel
     /// <summary>Typing has stopped: what is typed from now on is another undo step.</summary>
     public void EndAnnotationTyping() => _typingInAnnotation = null;
 
+    /// <summary>A style is a set of colors, so choosing one takes back the colors chosen by hand.</summary>
     public StudioAnnotationEditResult SetAnnotationStyle(int index, StudioAnnotationStyle style) =>
-        EditAnnotation(index, annotation => annotation with { Style = style });
+        EditAnnotation(index, annotation => annotation with { Style = style, Fill = string.Empty, TextColor = string.Empty });
+
+    /// <summary>
+    /// The color of an arrow or a box, as <c>#RRGGBB</c>. A color picker hands over many on its way
+    /// to the one that is meant, which are one undo step, as text being typed is.
+    /// </summary>
+    public StudioAnnotationEditResult SetAnnotationFill(int index, string color) =>
+        SetAnnotationColor(index, 0, color, static (annotation, value) => annotation with { Fill = value });
+
+    /// <summary>The color of the text of a box, as <c>#RRGGBB</c>, in the same way.</summary>
+    public StudioAnnotationEditResult SetAnnotationTextColor(int index, string color) =>
+        SetAnnotationColor(index, 1, color, static (annotation, value) => annotation with { TextColor = value });
+
+    private StudioAnnotationEditResult SetAnnotationColor(int index, int part, string color, Func<StudioAnnotation, string, StudioAnnotation> apply)
+    {
+        if (!HasAnnotation(index) || StudioAnnotationGeometry.GetCustomColor(color) is not { } value)
+        {
+            return AnnotationUnchanged(index);
+        }
+
+        var after = apply(Project.Overlays.Annotations[index], value);
+        if (after == Project.Overlays.Annotations[index])
+        {
+            return AnnotationUnchanged(index);
+        }
+
+        var marker = (index * 2) + part;
+        StudioProject Changed(StudioProject project)
+        {
+            var list = (StudioAnnotation[])project.Overlays.Annotations.Clone();
+            list[index] = after;
+            return WithAnnotations(project, list);
+        }
+
+        if (_choosingColorInAnnotation == marker)
+        {
+            Project = Changed(Project);
+        }
+        else
+        {
+            Mutate(Changed);
+        }
+
+        _choosingColorInAnnotation = marker;
+        return new StudioAnnotationEditResult(true, index);
+    }
+
+    /// <summary>What the size of an annotation is multiplied by.</summary>
+    public StudioAnnotationEditResult SetAnnotationScale(int index, double scale) =>
+        !double.IsFinite(scale) ? AnnotationUnchanged(index) : EditAnnotation(index, annotation => annotation with
+        {
+            Scale = Math.Clamp(scale, StudioAnnotationGeometry.MinimumScale, StudioAnnotationGeometry.MaximumScale),
+        });
+
+    /// <summary>Where a drag on the preview leaves an annotation.</summary>
+    public StudioAnnotationEditResult MoveAnnotation(int index, StudioAnnotationMove move) =>
+        EditAnnotation(index, annotation => annotation with { X = move.X, Y = move.Y, OffsetX = move.OffsetX, OffsetY = move.OffsetY });
 
     public StudioAnnotationEditResult SetAnnotationSize(int index, StudioAnnotationSize size) =>
         EditAnnotation(index, annotation => annotation with { Size = size });

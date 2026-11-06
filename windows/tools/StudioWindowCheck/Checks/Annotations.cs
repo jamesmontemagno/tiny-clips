@@ -112,12 +112,41 @@ internal sealed partial class WindowChecks
 
         // The real controls, which hand back what they are told to show.
         Timeline.Mark("16: style and place");
+        var chose = Invoke(editor, "StudioAnnotationStyle_Blue");
+        var style = Until(() => AnnotationsOf(editor)[2].Style, value => value == StudioAnnotationStyle.Blue, 1.5);
+        var chipOn = OnUi(() => Descendant<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>(editor.Window.Content, "StudioAnnotationStyle_Blue")?.IsChecked);
+        var scaled = SetSlider(editor, "StudioAnnotationScaleSlider", 2);
+        var scale = Until(() => AnnotationsOf(editor)[2].Scale, value => Same(value, 2, 1e-3), 1.5);
+        _report.Check(
+            "a style chip chooses the look and shows it is in use, and the Size slider changes the selected annotation",
+            chose && style == StudioAnnotationStyle.Blue && chipOn == true && scaled && Same(scale, 2, 1e-3),
+            $"chose {style}, the chip is on: {chipOn}; the slider was set: {scaled}; scale {scale}");
+
+        // Colors chosen by hand are one undo step, and a style takes them back.
         OnUi(() =>
         {
-            Find(editor, "StudioAnnotationStyleChoice");
-            Descendant<RadioButtons>(editor.Window.Content, "StudioAnnotationStyleChoice")!.SelectedIndex = 1;
+            editor.Window.ViewModel.SetAnnotationFillColor(Windows.UI.Color.FromArgb(255, 1, 2, 3));
+            editor.Window.ViewModel.SetAnnotationFillColor(Windows.UI.Color.FromArgb(255, 18, 171, 159));
         });
-        var style = Until(() => AnnotationsOf(editor)[2].Style, value => (int)value == 1, 1.5);
+        var fill = Until(() => AnnotationsOf(editor)[2].Fill, value => value == "#12AB9F", 1.5);
+        var chipOff = OnUi(() => Descendant<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>(editor.Window.Content, "StudioAnnotationStyle_Blue")?.IsChecked);
+        var note = NameOf(editor, "StudioAnnotationCustomNote", 1);
+        Invoke(editor, "StudioUndoButton");
+        var noFill = Until(() => AnnotationsOf(editor)[2].Fill, value => value.Length == 0, 1.5);
+        Invoke(editor, "StudioRedoButton");
+        Until(() => AnnotationsOf(editor)[2].Fill, value => value == "#12AB9F", 1.5);
+        Invoke(editor, "StudioAnnotationStyle_Blue");
+        var backToStyle = Until(() => AnnotationsOf(editor)[2].Fill, value => value.Length == 0, 1.5);
+        _report.Check(
+            "a color chosen by hand turns the chips off and says Custom; choosing colors is one undo step; a chip takes them back",
+            fill == "#12AB9F" && chipOff == false && note == "Custom" && noFill.Length == 0 && backToStyle.Length == 0,
+            $"fill {fill}; the chip is on: {chipOff}; the note: \"{note}\"; after Undo \"{noFill}\"; after the chip \"{backToStyle}\"");
+
+        // Advanced is closed until it is asked for, and holds the rest.
+        var closed = Absent(editor, "StudioAnnotationXSlider", 0.3);
+        OnUi(() => Descendant<Expander>(editor.Window.Content, "StudioAnnotationAdvancedGroup")!.IsExpanded = true);
+        var opened = Until(() => Find(editor, "StudioAnnotationXSlider", 0.3) is not null, found => found, 1.5);
+        _report.Check("Advanced starts closed, and opening it shows the position's sliders", closed && opened, $"closed: {closed}; opened: {opened}");
         var moved = SetSlider(editor, "StudioAnnotationXSlider", 0.25);
         var x = Until(() => AnnotationsOf(editor)[2].X, value => Same(value, 0.25, 1e-3), 1.5);
         _report.Check(
@@ -139,6 +168,33 @@ internal sealed partial class WindowChecks
             topIsOff && back && backIds.SequenceEqual([ids[0], ids[2], ids[1]]) && rowsBack == "Callout: Your text | *Text: Hello again | Arrow"
                 && undoneBack && restored.SequenceEqual(ids) && SelectedAnnotationOf(editor) == 2,
             $"top is off: {topIsOff}; rows after Send back: {rowsBack}; after Undo selected {SelectedAnnotationOf(editor)}");
+
+        // A drag on the preview, by what the overlay's pointer handlers call: one undo step.
+        Timeline.Mark("16: dragging");
+        var head0 = Playhead(editor);
+        var handles = OnUi(() => editor.Window.ViewModel.AnnotationHandles.ToArray());
+        var before = AnnotationsOf(editor);
+        var dragged = OnUi(() =>
+        {
+            var viewModel = editor.Window.ViewModel;
+            var start = viewModel.BeginAnnotationDrag(0)!;
+            viewModel.BeginGesture();
+            viewModel.DragAnnotation(0, start, TinyClips.Core.Studio.StudioAnnotationPart.Body, 100, 0);
+            var move = viewModel.DragAnnotation(0, start, TinyClips.Core.Studio.StudioAnnotationPart.Body, 200, 0);
+            viewModel.EndGesture();
+            return move;
+        });
+        var after = AnnotationsOf(editor);
+        var selectedThen = SelectedAnnotationOf(editor);
+        Invoke(editor, "StudioUndoButton");
+        var undoneDrag = Until(() => AnnotationsOf(editor)[0].X, value => Same(value, before[0].X), 1.5);
+        _report.Check(
+            "at the playhead the preview can take hold of all three; a drag by the shaft moves an arrow by what it was dragged, selects it, and is one undo step",
+            handles.Length == 3 && handles[0].Tail is not null && handles[1].Box is not null && handles[2].Box is not null && dragged is not null
+                && after[0].X > before[0].X && Same(after[0].OffsetX, before[0].OffsetX) && selectedThen == 0 && Same(undoneDrag, before[0].X) && Same(Playhead(editor), head0),
+            $"{handles.Length} handles; x {before[0].X} to {after[0].X}; selected {selectedThen}; after Undo {undoneDrag}");
+        OnUi(() => editor.Window.ViewModel.SelectAnnotation(2));
+        Until(() => SelectedAnnotationOf(editor), index => index == 2, 1);
 
         // The list: reaching it changes nothing, and choosing a row selects that annotation.
         Timeline.Mark("16: the list");
@@ -240,7 +296,7 @@ internal sealed partial class WindowChecks
         var arrow = SliderValue(editor, "StudioAnnotationXSlider");
         _report.Check(
             "selecting them edits nothing: what no slider can show stays in the project, as does the line break, and there is nothing to undo",
-            canUndo == false && Same(held[0].X, -1) && Same(held[0].Y, 1.5) && Same(held[0].OffsetX, 5) && Same(held[0].OffsetY, -5) && held[1].Text == "one\r\ntwo" && Same(arrow, 0),
+            canUndo == false && Same(held[0].X, -1) && Same(held[0].Y, 1.5) && Same(held[0].OffsetX, 5) && Same(held[0].OffsetY, -5) && held[1].Text == "one\r\ntwo" && Same(arrow, 0) && Same(OnUi(() => editor.Window.ViewModel.AnnotationScale), 1),
             $"Undo is on: {canUndo}; the arrow: {held[0].X}, {held[0].Y}, {held[0].OffsetX}, {held[0].OffsetY}; its slider shows {arrow}; the text has \\r\\n: {held[1].Text.Contains("\r\n", StringComparison.Ordinal)}");
 
         // Moving the slider is the edit that clamps what was held.
