@@ -92,6 +92,7 @@ public sealed partial class StudioInspector : UserControl
     }
 
     private static bool s_isAnnotationAdvancedExpanded;
+    private bool _isSyncingAnnotationChips;
     private readonly List<ToggleButton> _annotationStyleChips = [];
 
     public StudioViewModel ViewModel { get; }
@@ -103,6 +104,8 @@ public sealed partial class StudioInspector : UserControl
         FocusPad.Update(ViewModel.ZoomPad);
         SyncPanels();
         BuildAnnotationStyleChips();
+        AnnotationFillColorPicker.ColorNamer = NameAnnotationColor;
+        AnnotationTextColorPicker.ColorNamer = NameAnnotationColor;
         SyncAnnotationLayers();
         SyncAnnotationText();
         SyncAnnotationStyleChips();
@@ -763,7 +766,8 @@ public sealed partial class StudioInspector : UserControl
             AutomationProperties.SetAutomationId(chip, $"StudioAnnotationStyle_{style}");
             AutomationProperties.SetName(chip, name);
             ToolTipService.SetToolTip(chip, name);
-            chip.Click += OnAnnotationStyleChipClick;
+            chip.Checked += OnAnnotationStyleChipToggled;
+            chip.Unchecked += OnAnnotationStyleChipToggled;
             Grid.SetColumn(chip, _annotationStyleChips.Count);
             AnnotationStyleChips.ColumnDefinitions.Add(new ColumnDefinition());
             AnnotationStyleChips.Children.Add(chip);
@@ -771,9 +775,15 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
-    private void OnAnnotationStyleChipClick(object sender, RoutedEventArgs e)
+    // Toggled and not clicked, because a screen reader toggles a chip and raises no click.
+    private void OnAnnotationStyleChipToggled(object sender, RoutedEventArgs e)
     {
-        if (sender is ToggleButton { Tag: StudioAnnotationStyle style })
+        if (_isSyncingAnnotationChips)
+        {
+            return;
+        }
+
+        if (sender is ToggleButton { Tag: StudioAnnotationStyle style, IsChecked: true })
         {
             ViewModel.SetAnnotationStyle(style);
         }
@@ -786,6 +796,7 @@ public sealed partial class StudioInspector : UserControl
     {
         var chosen = ViewModel.HasCustomAnnotationColors ? -1 : ViewModel.AnnotationStyleIndex;
         var isArrow = !ViewModel.HasAnnotationTextColor;
+        _isSyncingAnnotationChips = true;
         foreach (var chip in _annotationStyleChips)
         {
             chip.IsChecked = chip.Tag is StudioAnnotationStyle style && (int)style == chosen;
@@ -796,6 +807,22 @@ public sealed partial class StudioInspector : UserControl
                     : new TextBlock { FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Text = "Aa", Foreground = chip.Foreground };
             }
         }
+
+        _isSyncingAnnotationChips = false;
+    }
+
+    /// <summary>The style a color comes from, as the pickers call it. Null for one chosen by hand.</summary>
+    private static string? NameAnnotationColor(Color color)
+    {
+        foreach (var style in Enum.GetValues<StudioAnnotationStyle>())
+        {
+            if (ParseHex(StudioAnnotationGeometry.GetStyleColors(style).Fill) == color)
+            {
+                return style.ToString();
+            }
+        }
+
+        return null;
     }
 
     private static Color ParseHex(string hex) => Color.FromArgb(

@@ -112,7 +112,7 @@ internal sealed partial class WindowChecks
 
         // The real controls, which hand back what they are told to show.
         Timeline.Mark("16: style and place");
-        var chose = Invoke(editor, "StudioAnnotationStyle_Blue");
+        var chose = Find(editor, "StudioAnnotationStyle_Blue")?.Toggle() == true;
         var style = Until(() => AnnotationsOf(editor)[2].Style, value => value == StudioAnnotationStyle.Blue, 1.5);
         var chipOn = OnUi(() => Descendant<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>(editor.Window.Content, "StudioAnnotationStyle_Blue")?.IsChecked);
         var scaled = SetSlider(editor, "StudioAnnotationScaleSlider", 2);
@@ -135,7 +135,7 @@ internal sealed partial class WindowChecks
         var noFill = Until(() => AnnotationsOf(editor)[2].Fill, value => value.Length == 0, 1.5);
         Invoke(editor, "StudioRedoButton");
         Until(() => AnnotationsOf(editor)[2].Fill, value => value == "#12AB9F", 1.5);
-        Invoke(editor, "StudioAnnotationStyle_Blue");
+        Find(editor, "StudioAnnotationStyle_Blue")?.Toggle();
         var backToStyle = Until(() => AnnotationsOf(editor)[2].Fill, value => value.Length == 0, 1.5);
         _report.Check(
             "a color chosen by hand turns the chips off and says Custom; choosing colors is one undo step; a chip takes them back",

@@ -1715,6 +1715,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.AnnotationFillTitle, Mode=OneWay}" />
                                     <color:SwatchColorPicker
+                                        x:Name="AnnotationFillColorPicker"
                                         AutomationProperties.AutomationId="StudioAnnotationFillColorPicker"
                                         AutomationProperties.Name="{x:Bind ViewModel.AnnotationFillTitle, Mode=OneWay}"
                                         Color="{x:Bind ViewModel.AnnotationFillColor, Mode=OneWay}"
@@ -1723,6 +1724,7 @@
                                 <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationTextColor, Mode=OneWay}">
                                     <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Text color" />
                                     <color:SwatchColorPicker
+                                        x:Name="AnnotationTextColorPicker"
                                         AutomationProperties.AutomationId="StudioAnnotationTextColorPicker"
                                         AutomationProperties.Name="Text color"
                                         Color="{x:Bind ViewModel.AnnotationTextColor, Mode=OneWay}"

@@ -286,6 +286,8 @@ struct SwatchColorPicker: View {
     @Binding var color: Color
     var supportsOpacity: Bool = true
     var allowsTransparent: Bool = false
+    /// What to call the color when the caller knows better than the presets do.
+    var colorName: String? = nil
 
     @State private var isPresented = false
 
@@ -296,6 +298,9 @@ struct SwatchColorPicker: View {
     }
 
     private var currentColorName: String {
+        if let colorName {
+            return colorName
+        }
         if isClear {
             return "None"
         }

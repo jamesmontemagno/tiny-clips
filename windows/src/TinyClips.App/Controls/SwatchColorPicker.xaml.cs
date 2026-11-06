@@ -231,8 +231,16 @@ public sealed partial class SwatchColorPicker : UserControl
         _syncing = false;
     }
 
+    /// <summary>What to call a color when the caller knows better than the presets do. Null leaves it to them.</summary>
+    public Func<Color, string?>? ColorNamer { get; set; }
+
     private string DescribeColor(Color color, bool transparent)
     {
+        if (ColorNamer?.Invoke(color) is { } known)
+        {
+            return known;
+        }
+
         if (transparent && AllowTransparent)
         {
             return "None";

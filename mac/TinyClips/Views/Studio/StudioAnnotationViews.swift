@@ -421,13 +421,15 @@ struct StudioAnnotationInspectorSection: View {
             SwatchColorPicker(
                 label: annotation.kind == StudioAnnotationKind.arrow ? "Color" : "Fill",
                 color: Binding(get: { Self.color(colors.fill) }, set: { viewModel.setSelectedAnnotationFill($0) }),
-                supportsOpacity: false
+                supportsOpacity: false,
+                colorName: Self.styleName(colors.fill)
             )
             if annotation.kind != StudioAnnotationKind.arrow {
                 SwatchColorPicker(
-                    label: "Text",
+                    label: "Text color",
                     color: Binding(get: { Self.color(colors.text) }, set: { viewModel.setSelectedAnnotationTextColor($0) }),
-                    supportsOpacity: false
+                    supportsOpacity: false,
+                    colorName: Self.styleName(colors.text)
                 )
             }
             slider("Size", annotation.scale, StudioAnnotationGeometry.minimumScale...StudioAnnotationGeometry.maximumScale, step: 0.05) {
@@ -588,6 +590,11 @@ struct StudioAnnotationInspectorSection: View {
         case 1: return "1 annotation"
         default: return "\(viewModel.annotations.count) annotations"
         }
+    }
+
+    /// The style a color comes from, as the pickers call it. Nil for one chosen by hand.
+    private static func styleName(_ hex: String) -> String? {
+        styles.first { StudioAnnotationGeometry.colors($0.style).fill == hex }?.name
     }
 
     /// `#RRGGBB` as sRGB, which is what the format says it is, so a picker shows what is drawn.
