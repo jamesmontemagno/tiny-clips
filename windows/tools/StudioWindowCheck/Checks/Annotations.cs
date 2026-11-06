@@ -205,12 +205,12 @@ internal sealed partial class WindowChecks
         Thread.Sleep(200);
         var followsFocus = OnUi(() => Descendant<ListView>(editor.Window.Content, AnnotationList)?.SingleSelectionFollowsFocus);
         var stillNone = SelectedAnnotationOf(editor) is null && Same(Playhead(editor), head);
-        var chose = Find(editor, "StudioAnnotationLayer_2")?.Select() == true;
+        var choseRow = Find(editor, "StudioAnnotationLayer_2")?.Select() == true;
         var chosen = Until(() => SelectedAnnotationOf(editor), index => index == 0, 1.5);
         _report.Check(
             "the keyboard focus reaching the list selects nothing and leaves the playhead; choosing its bottom row selects the bottom annotation",
-            followsFocus == false && stillNone && chose && chosen == 0,
-            $"the focus went to \"{focused}\"; selection follows the focus: {followsFocus}; nothing selected and the playhead still: {stillNone}; chose: {chose}, selected {chosen}");
+            followsFocus == false && stillNone && choseRow && chosen == 0,
+            $"the focus went to \"{focused}\"; selection follows the focus: {followsFocus}; nothing selected and the playhead still: {stillNone}; chose: {choseRow}, selected {chosen}");
     }
 
     private void DeletingAnnotations(Editor editor, UiaEvents heard)

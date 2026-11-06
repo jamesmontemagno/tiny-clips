@@ -519,7 +519,12 @@ final class StudioAnnotationDrawingTests: XCTestCase {
             format: .RGBA8,
             colorSpace: nil
         )
-        return (0..<width).map { [Int(bytes[$0 * 4]), Int(bytes[$0 * 4 + 1]), Int(bytes[$0 * 4 + 2])] }
+        var colors: [[Int]] = []
+        for column in 0..<width {
+            let at = column * 4
+            colors.append([Int(bytes[at]), Int(bytes[at + 1]), Int(bytes[at + 2])])
+        }
+        return colors
     }
 
     private func assertColor(_ image: CIImage, _ x: Int, _ y: Int, _ expected: [Int], _ what: String, line: UInt = #line) {
