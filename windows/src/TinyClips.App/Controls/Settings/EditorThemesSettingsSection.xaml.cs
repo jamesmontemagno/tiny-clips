@@ -60,6 +60,7 @@ public sealed partial class EditorThemesSettingsSection : UserControl, ISettings
         };
         InitializeComponent();
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        PreviewBackground.SizeChanged += OnPreviewBackgroundSizeChanged;
         UpdatePreview();
     }
 
@@ -71,6 +72,15 @@ public sealed partial class EditorThemesSettingsSection : UserControl, ISettings
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e) => UpdatePreview();
+
+    // A gradient's angle depends on the shape it fills, which isn't known until layout.
+    private void OnPreviewBackgroundSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (ViewModel.Theme is { } theme)
+        {
+            PreviewBackground.Background = BackgroundBrush(theme.Canvas);
+        }
+    }
 
     private void OnNewClick(object sender, RoutedEventArgs e) => ViewModel.New();
 

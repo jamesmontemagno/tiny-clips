@@ -162,7 +162,7 @@
                         x:Name="PreviewCard"
                         Width="420"
                         Height="170"
-                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                        Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1">
                         <Canvas>
