@@ -149,6 +149,8 @@ public sealed partial class EditorInspector : UserControl
         NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(_controller.NumberScale * 100)}%";
         FontSizeSlider.Header = $"Font size — {(int)_controller.TextFontSize} px";
         RotationSlider.Header = $"Rotation — {(int)Math.Round(RotationSlider.Value)}°";
+        ShapeGradientDirectionSlider.Header = $"Direction — {(int)Math.Round(ShapeGradientDirectionSlider.Value)}°";
+        ShapeShadowBlurSlider.Header = $"Blur — {(int)Math.Round(ShapeShadowBlurSlider.Value)} px";
     }
 
     private void InitializeEmojiControls()
@@ -280,6 +282,12 @@ public sealed partial class EditorInspector : UserControl
             FontSizeSlider.Value = _controller.TextFontSize;
             SelectFontInCombo(_controller.TextFontFamily);
             SyncTextBoxStyle(_controller.TextBoxStyleDefault);
+        }
+        if (showsFill)
+        {
+            FillCheck.IsChecked = _controller.FillEnabled;
+            FillColorPicker.Color = _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
+            SyncShapeEffects(_controller.ShapeEffectsDefault, _controller.FillEnabled);
         }
 
         InspectorTitle.Text = tool switch
@@ -527,6 +535,7 @@ public sealed partial class EditorInspector : UserControl
         if (!_inspectorInitializing)
         {
             _controller.UpdateShapeEffects(effects => effects with { GradientDirectionDegrees = e.NewValue });
+            UpdateInspectorHeaders();
         }
     }
 
@@ -553,6 +562,7 @@ public sealed partial class EditorInspector : UserControl
         if (!_inspectorInitializing)
         {
             _controller.UpdateShapeEffects(effects => effects with { ShadowBlur = e.NewValue });
+            UpdateInspectorHeaders();
         }
     }
 

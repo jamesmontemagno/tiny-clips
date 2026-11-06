@@ -333,17 +333,22 @@ final class ScreenshotShapeEffectsTests: XCTestCase {
         return (editor, { try? FileManager.default.removeItem(at: url) })
     }
 
+    /// The stored components. `colorAt` would shift them: it reads a rendered SwiftUI image as
+    /// Generic RGB, though both pictures hold sRGB values.
+    private func components(_ bitmap: NSBitmapImageRep, x: Int, y: Int) -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
+        var pixel = [Int](repeating: 0, count: max(4, bitmap.samplesPerPixel))
+        bitmap.getPixel(&pixel, atX: x, y: y)
+        return (CGFloat(pixel[0]) / 255, CGFloat(pixel[1]) / 255, CGFloat(pixel[2]) / 255)
+    }
+
     private func luminance(_ bitmap: NSBitmapImageRep, x: Int, y: Int) throws -> CGFloat {
-        let color = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
-        return 0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent
+        let color = components(bitmap, x: x, y: y)
+        return 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
     }
 
     private func assertColor(_ bitmap: NSBitmapImageRep, x: Int, y: Int, red: CGFloat, blue: CGFloat, file: StaticString = #filePath, line: UInt = #line) {
-        guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else {
-            XCTFail("No pixel at \(x), \(y)", file: file, line: line)
-            return
-        }
-        XCTAssertEqual(color.redComponent, red, accuracy: 0.1, file: file, line: line)
-        XCTAssertEqual(color.blueComponent, blue, accuracy: 0.1, file: file, line: line)
+        let color = components(bitmap, x: x, y: y)
+        XCTAssertEqual(color.red, red, accuracy: 0.1, file: file, line: line)
+        XCTAssertEqual(color.blue, blue, accuracy: 0.1, file: file, line: line)
     }
 }
