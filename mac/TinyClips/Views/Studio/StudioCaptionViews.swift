@@ -1020,8 +1020,8 @@ private struct StudioCaptionEditorCard: View {
                     Label("Split", systemImage: StudioSymbol.splitCaption)
                 }
                 .disabled(!viewModel.canSplitSelectedCaption)
-                .help("Split this caption in two at the playhead")
-                .accessibilityLabel("Split caption at playhead")
+                .help("Split this caption in two at the playhead, or in the middle when the playhead isn't inside it")
+                .accessibilityLabel("Split caption")
                 Button {
                     viewModel.mergeSelectedCaptionWithNext()
                 } label: {

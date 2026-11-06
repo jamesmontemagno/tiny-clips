@@ -124,8 +124,8 @@ public sealed partial class StudioEditorSession
         }
     }
 
-    /// <summary>Whether the selected cue can be split at the playhead.</summary>
-    public bool CanSplitSelectedCaption => IsEditable && SelectedCaption is { } cue && StudioCaptionEditing.CanSplit(cue, Playhead);
+    /// <summary>Whether the selected cue can be split: at the playhead, or in its middle when the playhead is not inside it.</summary>
+    public bool CanSplitSelectedCaption => IsEditable && SelectedCaption is { } cue && StudioCaptionEditing.GetSplitTime(cue, Playhead) is not null;
 
     /// <summary>Whether the selected cue has one after it to be put together with.</summary>
     public bool CanMergeSelectedCaption =>
@@ -134,11 +134,18 @@ public sealed partial class StudioEditorSession
         && Model is { } model
         && StudioCaptionEditing.CanMergeWithNext(model.Project.Captions.Cues, index);
 
-    /// <summary>Splits the selected cue at the playhead, and selects the second part, which starts there.</summary>
-    /// <returns>False when it could not be split there.</returns>
+    /// <summary>
+    /// Splits the selected cue at the playhead, or in its middle when the playhead is not inside
+    /// it, and selects the second part.
+    /// </summary>
+    /// <returns>False when it could not be split.</returns>
     public bool SplitSelectedCaptionAtPlayhead()
     {
-        var time = Playhead;
+        if (!IsEditable || SelectedCaption is not { } cue || StudioCaptionEditing.GetSplitTime(cue, Playhead) is not { } time)
+        {
+            return false;
+        }
+
         return EditSelectedCaption((model, index) => model.SplitCaption(index, time));
     }
 

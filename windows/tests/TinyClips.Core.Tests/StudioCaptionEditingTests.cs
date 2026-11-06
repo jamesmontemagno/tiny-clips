@@ -59,6 +59,18 @@ public sealed class StudioCaptionEditingTests
     }
 
     [Fact]
+    public void TheSplitTime_IsThePlayheadInsideTheCaption_OrElseTheWordGapNearestItsMiddle()
+    {
+        var cue = Cue("a", 1, 3, "Hello there,\nworld", [Word(1, 1.4, "Hello"), Word(1.5, 1.9, "there,"), Word(2.5, 3, "world")]);
+
+        Assert.Equal(1.7, StudioCaptionEditing.GetSplitTime(cue, 1.7));
+        Assert.Equal(2.2, StudioCaptionEditing.GetSplitTime(cue, 1)!.Value, 6);
+        Assert.Equal(2.2, StudioCaptionEditing.GetSplitTime(cue, 10)!.Value, 6);
+        Assert.Equal(2, StudioCaptionEditing.GetSplitTime(Cue("b", 0, 4, "aaaa bbbb"), 0));
+        Assert.Null(StudioCaptionEditing.GetSplitTime(Cue("c", 0, 4, "Hello"), 0));
+    }
+
+    [Fact]
     public void SplittingACaptionWithoutWords_GoesByHowFarThroughItIs()
     {
         var cue = Cue("a", 0, 4, "aaaa bbbb\ncccc  dddd");

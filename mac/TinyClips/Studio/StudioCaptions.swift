@@ -322,6 +322,20 @@ enum StudioCaptionEditing {
         isInside(cue, time) && splitText(of: cue, at: time) != nil
     }
 
+    /// Where Split cuts `cue`: at `playhead` when it can be split there, and otherwise in its
+    /// middle, between the words nearest it. Nil when it cannot be split at all.
+    static func splitTime(of cue: StudioCaptionCue, playhead: Double) -> Double? {
+        if canSplit(cue, at: playhead) {
+            return playhead
+        }
+        guard cue.start.isFinite, cue.end.isFinite else { return nil }
+        let middle = (cue.start + cue.end) / 2
+        if let gap = middleWordGap(of: cue, near: middle), canSplit(cue, at: gap) {
+            return gap
+        }
+        return canSplit(cue, at: middle) ? middle : nil
+    }
+
     /// Splits the cue at `index` in two at `time`. The words said before it go in the first part
     /// and the rest in the second, by the cue's word times when it has them, and otherwise by how
     /// far through the cue `time` is. The first part keeps the cue's id, and the second has a new one.
@@ -421,6 +435,16 @@ enum StudioCaptionEditing {
         let shortest = StudioCaptionResolver.shortestPart
         return time.isFinite && cue.start.isFinite && cue.end.isFinite
             && time - cue.start >= shortest && cue.end - time >= shortest
+    }
+
+    // The time between two words that is nearest the middle, when the words spell out the text.
+    private static func middleWordGap(of cue: StudioCaptionCue, near middle: Double) -> Double? {
+        let words = cue.words
+        guard words.count >= 2,
+              StudioCaptionTranscript.spells(words, StudioCaptionResolver.cleanText(cue.text)) else { return nil }
+        return (1..<words.count)
+            .map { (words[$0 - 1].end + words[$0].start) / 2 }
+            .min { abs($0 - middle) < abs($1 - middle) }
     }
 
     private static func splitText(of cue: StudioCaptionCue, at time: Double) -> SplitText? {

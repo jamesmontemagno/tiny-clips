@@ -25,7 +25,9 @@ public sealed class StudioCaptionRow : ObservableObject
         _spokenTime = StudioCaptionText.GetRangeText(cue);
         TimeText = StudioCaptionPanelText.GetClockRangeText(cue);
         Text = StudioCaptionText.GetRowText(cue);
-        ProblemText = StudioCaptionPanelText.GetProblemsText(problems);
+        var kinds = problems.ToArray();
+        ProblemText = StudioCaptionPanelText.GetProblemsText(kinds);
+        ProblemBadgeText = kinds.Length > 1 ? kinds.Length.ToString(System.Globalization.CultureInfo.CurrentCulture) : string.Empty;
     }
 
     /// <summary>The cue's place in the project's list.</summary>
@@ -43,6 +45,9 @@ public sealed class StudioCaptionRow : ObservableObject
     public string ProblemText { get; }
 
     public bool HasProblems => ProblemText.Length > 0;
+
+    /// <summary>How many problems the warning mark counts, shown only when there is more than one.</summary>
+    public string ProblemBadgeText { get; }
 
     /// <summary>Where what is searched for is in <see cref="Text"/>.</summary>
     public IReadOnlyList<StudioTextRange> Highlights

@@ -681,10 +681,11 @@ final class StudioViewModel: ObservableObject {
         announce(StudioCaptionPanelText.deletedMessage)
     }
 
-    /// Whether the selected cue can be split at the playhead.
+    /// Whether the selected cue can be split: at the playhead, or in its middle when the playhead
+    /// is not inside it.
     var canSplitSelectedCaption: Bool {
         guard isEditable, let cue = selectedCaption else { return false }
-        return StudioCaptionEditing.canSplit(cue, at: playhead)
+        return StudioCaptionEditing.splitTime(of: cue, playhead: playhead) != nil
     }
 
     /// Whether the selected cue has one after it to be put together with.
@@ -693,11 +694,12 @@ final class StudioViewModel: ObservableObject {
         return StudioCaptionEditing.canMergeWithNext(cues, at: index)
     }
 
-    /// Splits the selected cue at the playhead, and selects the second part, which starts there.
+    /// Splits the selected cue at the playhead, or in its middle when the playhead is not inside
+    /// it, and selects the second part.
     func splitSelectedCaptionAtPlayhead() {
         commitCaptionText()
-        guard isEditable, let index = selectedCaptionIndex else { return }
-        let time = playhead
+        guard isEditable, let index = selectedCaptionIndex, let cue = selectedCaption,
+              let time = StudioCaptionEditing.splitTime(of: cue, playhead: playhead) else { return }
         var second: Int?
         edit { second = $0.splitCaption(at: index, sourceTime: time) }
         guard let second else { return }

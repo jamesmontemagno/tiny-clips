@@ -106,6 +106,33 @@ public static class StudioCaptionEditing
     }
 
     /// <summary>
+    /// Where Split cuts <paramref name="cue"/>: at <paramref name="playhead"/> when it can be split
+    /// there, and otherwise in its middle, between the words nearest it. Null when it cannot be
+    /// split at all.
+    /// </summary>
+    public static double? GetSplitTime(StudioCaptionCue cue, double playhead)
+    {
+        ArgumentNullException.ThrowIfNull(cue);
+        if (CanSplit(cue, playhead))
+        {
+            return playhead;
+        }
+
+        if (!IsTimed(cue))
+        {
+            return null;
+        }
+
+        var middle = (cue.Start + cue.End) / 2;
+        if (GetMiddleWordGap(cue, middle) is { } gap && CanSplit(cue, gap))
+        {
+            return gap;
+        }
+
+        return CanSplit(cue, middle) ? middle : null;
+    }
+
+    /// <summary>
     /// Splits the cue at <paramref name="index"/> in two at <paramref name="time"/>. The words said
     /// before it go in the first part and the rest in the second, by the cue's word times when it
     /// has them, and otherwise by how far through the cue the time is. The first part keeps the
@@ -262,6 +289,28 @@ public static class StudioCaptionEditing
         var order = GetIndexesInTimeOrder(cues);
         var position = Array.IndexOf(order, index);
         return position >= 0 && position + 1 < order.Length ? order[position + 1] : null;
+    }
+
+    // The time between two words that is nearest the middle, when the words spell out the text.
+    private static double? GetMiddleWordGap(StudioCaptionCue cue, double middle)
+    {
+        var words = cue.Words;
+        if (words.Length < 2 || !StudioCaptionTranscript.Spells(words, StudioCaptionResolver.CleanText(cue.Text)))
+        {
+            return null;
+        }
+
+        double? best = null;
+        for (var count = 1; count < words.Length; count++)
+        {
+            var gap = (words[count - 1].End + words[count].Start) / 2;
+            if (best is not { } nearest || Math.Abs(gap - middle) < Math.Abs(nearest - middle))
+            {
+                best = gap;
+            }
+        }
+
+        return best;
     }
 
     private static SplitText? GetSplitText(StudioCaptionCue cue, double time)

@@ -180,6 +180,23 @@ public sealed class StudioEditorSessionCaptionTests : StudioEditorSessionTestBas
     }
 
     [Fact]
+    public async Task SplittingRightAfterSelecting_SplitsTheCaptionInItsMiddle()
+    {
+        var session = await OpenAsync(CreateProject());
+        session.ImportCaptions("1\n00:00:01,000 --> 00:00:03,000\nOne two\n", StudioCaptionTiming.Recording);
+        session.SelectCaption(0);
+        Assert.Equal(1, session.Playhead, Precision);
+
+        Assert.True(session.CanSplitSelectedCaption);
+        Assert.True(session.SplitSelectedCaptionAtPlayhead());
+
+        var cues = session.Model!.Project.Captions.Cues;
+        Assert.Equal(["One", "two"], cues.Select(static cue => cue.Text));
+        Assert.Equal(2, cues[0].End, Precision);
+        Assert.Equal(2, cues[1].Start, Precision);
+    }
+
+    [Fact]
     public async Task TheCaptionsAreSaved_AndRead_WithTheProject()
     {
         var session = await OpenAsync(CreateProject());

@@ -57,6 +57,9 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260528001" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.2.251219" />
+    <!-- As in the app: the toolkit's 1.6 metapackage dependency, without its legacy SDK assets. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250108002" ExcludeAssets="all" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
     <!-- The UI Automation client interfaces (UIAutomationCore's type library), to read the tree as a screen reader does. -->
     <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
@@ -84,6 +87,7 @@
     <Compile Include="$(AppSource)\Controls\SwatchColorPicker.xaml.cs" Link="Controls\SwatchColorPicker.xaml.cs" />
     <Compile Include="$(AppSource)\Infrastructure\WindowChromeController.cs" Link="Infrastructure\WindowChromeController.cs" />
     <Compile Include="$(AppSource)\Infrastructure\AppWindowPlacement.cs" Link="Infrastructure\AppWindowPlacement.cs" />
+    <Compile Include="$(AppSource)\Infrastructure\AppVersionInfo.cs" Link="Infrastructure\AppVersionInfo.cs" />
     <!-- The question the other editors ask before Esc closes them. The Studio window asks it too. -->
     <Compile Include="$(AppSource)\Views\EditorEscapeConfirmation.cs" Link="Views\EditorEscapeConfirmation.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorController.cs" Link="Controls\ScreenshotEditor\EditorController.cs" />

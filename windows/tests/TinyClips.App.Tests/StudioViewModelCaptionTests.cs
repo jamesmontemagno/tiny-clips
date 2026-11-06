@@ -232,6 +232,32 @@ public sealed class StudioViewModelCaptionTests : StudioViewModelTestBase
     }
 
     [Fact]
+    public async Task Rows_MarkTheirProblems_AndTheHeaderCountsTheCaptionsWithThem()
+    {
+        var viewModel = await OpenAsync(CreateProject(project => project with
+        {
+            Captions = new StudioCaptions
+            {
+                Cues =
+                [
+                    new StudioCaptionCue { Start = 1, End = 1.2, Text = "  Hi  " },
+                    new StudioCaptionCue { Start = 3, End = 5, Text = "Fine" },
+                    new StudioCaptionCue { Start = 6, End = 8, Text = "Extra  space" },
+                ],
+            },
+        }));
+
+        var rows = viewModel.CaptionRows;
+        Assert.True(rows[0].HasProblems);
+        Assert.Equal("2", rows[0].ProblemBadgeText);
+        Assert.False(rows[1].HasProblems);
+        Assert.Equal(string.Empty, rows[2].ProblemBadgeText);
+        Assert.True(rows[2].HasProblems);
+        Assert.Equal("2", viewModel.CaptionProblemCountText);
+        Assert.StartsWith(viewModel.CaptionCheckText, viewModel.CaptionProblemsToolTip, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AutoFix_ChangesTheCues_AndSaysWhatItDid()
     {
         var viewModel = await OpenAsync(CreateProject(project => project with

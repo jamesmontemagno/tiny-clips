@@ -299,7 +299,30 @@ public sealed partial class StudioViewModel
         }
     }
 
-    public bool AreCaptionsClean => HasCaptions && !HasCaptionProblems;
+    /// <summary>How many captions the checks found a problem in, for the warning button over the list.</summary>
+    public string CaptionProblemCountText
+    {
+        get
+        {
+            RefreshCaptionState();
+            return _captionFindings.Select(static finding => finding.Cue).Distinct().Count()
+                .ToString(System.Globalization.CultureInfo.CurrentCulture);
+        }
+    }
+
+    /// <summary>The warning button's tip: what the checks find, and what it does.</summary>
+    public string CaptionProblemsToolTip => $"{CaptionCheckText}. Open the next caption with a problem.";
+
+    /// <summary>Auto fix's tip: what it does, and what it leaves to be fixed by hand.</summary>
+    public string CaptionFixToolTip
+    {
+        get
+        {
+            const string Does = "Tidy text, wrap long lines, and give fast captions more time, from the gaps around them or by joining them to a neighbor. Undo takes it back.";
+            var note = CaptionManualFixNote;
+            return note.Length == 0 ? Does : $"{Does}\n\n{note}";
+        }
+    }
 
     /// <summary>What the checks find, such as "2 long lines, 1 too short".</summary>
     public string CaptionCheckText

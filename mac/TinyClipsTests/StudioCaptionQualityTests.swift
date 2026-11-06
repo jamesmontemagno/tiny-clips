@@ -263,6 +263,20 @@ final class StudioCaptionQualityTests: XCTestCase {
         XCTAssertEqual(StudioCaptionEditing.split([unspaced], at: 0, time: 1)?.cues.map(\.text), ["こんにちは", "世界"])
     }
 
+    func testTheSplitTimeIsThePlayheadInsideTheCaptionOrElseTheWordGapNearestItsMiddle() throws {
+        let cue = StudioCaptionCue(id: "a", start: 1, end: 3, text: "Hello there,\nworld", words: [
+            StudioCaptionWord(start: 1, end: 1.4, text: "Hello"),
+            StudioCaptionWord(start: 1.5, end: 1.9, text: "there,"),
+            StudioCaptionWord(start: 2.5, end: 3, text: "world"),
+        ])
+
+        XCTAssertEqual(StudioCaptionEditing.splitTime(of: cue, playhead: 1.7), 1.7)
+        XCTAssertEqual(try XCTUnwrap(StudioCaptionEditing.splitTime(of: cue, playhead: 1)), 2.2, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(StudioCaptionEditing.splitTime(of: cue, playhead: 10)), 2.2, accuracy: 1e-6)
+        XCTAssertEqual(StudioCaptionEditing.splitTime(of: StudioCaptionCue(start: 0, end: 4, text: "aaaa bbbb"), playhead: 0), 2)
+        XCTAssertNil(StudioCaptionEditing.splitTime(of: StudioCaptionCue(start: 0, end: 4, text: "Hello"), playhead: 0))
+    }
+
     func testSplittingACaptionWithoutWordsGoesByHowFarThroughItIs() throws {
         let cue = StudioCaptionCue(id: "a", start: 0, end: 4, text: "aaaa bbbb\ncccc  dddd")
 

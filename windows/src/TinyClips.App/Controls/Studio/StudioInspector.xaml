@@ -1735,70 +1735,62 @@
                             <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.CaptionExportNote}" TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <!--
-                            Whether the captions are drawn into the picture, and how: a tile for
-                            each look, drawn as the video draws it (StudioCaptionLookTile, added in
-                            code), and the size and the place as segments.
-                        -->
                         <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
-                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="In the video" />
-                            <CheckBox
-                                AutomationProperties.AutomationId="StudioCaptionsDrawnCheckBox"
-                                Content="Draw captions on the video"
-                                IsChecked="{x:Bind ViewModel.AreCaptionsDrawn, Mode=TwoWay}"
-                                ToolTipService.ToolTip="Shows them in the preview, and puts them into the picture of what you export" />
-                            <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.AreCaptionsDrawn, Mode=OneWay}">
-                                <GridView
-                                    x:Name="CaptionLooks"
-                                    AutomationProperties.AutomationId="StudioCaptionsLooks"
-                                    AutomationProperties.Name="Caption look"
-                                    SelectedIndex="{x:Bind ViewModel.CaptionAppearanceIndex, Mode=TwoWay}"
-                                    Style="{StaticResource StudioSwatchGridStyle}" />
-                                <Grid ColumnSpacing="12" RowSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="Size" />
-                                    <controls:Segmented
-                                        Grid.Column="1"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.AutomationId="StudioCaptionsSizeChoice"
-                                        AutomationProperties.Name="Caption size"
-                                        SelectedIndex="{x:Bind ViewModel.CaptionSizeIndex, Mode=TwoWay}">
-                                        <controls:SegmentedItem Content="Small" />
-                                        <controls:SegmentedItem Content="Medium" />
-                                        <controls:SegmentedItem Content="Large" />
-                                    </controls:Segmented>
-                                    <TextBlock
-                                        Grid.Row="1"
-                                        VerticalAlignment="Center"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="Position" />
-                                    <controls:Segmented
-                                        Grid.Row="1"
-                                        Grid.Column="1"
-                                        HorizontalAlignment="Stretch"
-                                        AutomationProperties.AutomationId="StudioCaptionsPositionChoice"
-                                        AutomationProperties.Name="Caption position"
-                                        SelectedIndex="{x:Bind ViewModel.CaptionPositionIndex, Mode=TwoWay}">
-                                        <controls:SegmentedItem Content="Bottom" />
-                                        <controls:SegmentedItem Content="Top" />
-                                    </controls:Segmented>
-                                </Grid>
-                            </StackPanel>
-                            <TextBlock Style="{StaticResource StudioNoteStyle}" Text="{x:Bind ViewModel.CaptionDrawnNote}" />
-                        </StackPanel>
-
-                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
-                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="All captions" />
+                            <!--
+                                What the checks find is a warning mark on each row it is in. Next
+                                problem opens the next of them, and Auto fix makes the safe fixes;
+                                both are here only while there is something to fix.
+                            -->
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource StudioSectionHeadingStyle}"
+                                    Text="All captions" />
+                                <Button
+                                    Grid.Column="1"
+                                    Padding="8,4"
+                                    AutomationProperties.AutomationId="StudioCaptionsNextProblemButton"
+                                    AutomationProperties.HelpText="{x:Bind ViewModel.CaptionCheckText, Mode=OneWay}"
+                                    AutomationProperties.Name="Next problem"
+                                    Click="{x:Bind ViewModel.SelectNextCaptionProblem}"
+                                    IsEnabled="{x:Bind ViewModel.CanSelectNextCaptionProblem, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.CaptionProblemsToolTip, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.HasCaptionProblems, Mode=OneWay}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            FontSize="14"
+                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                            Glyph="&#xE7BA;" />
+                                        <TextBlock
+                                            AutomationProperties.AutomationId="StudioCaptionsProblemCount"
+                                            Text="{x:Bind ViewModel.CaptionProblemCountText, Mode=OneWay}" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    Grid.Column="2"
+                                    Padding="8,4"
+                                    AutomationProperties.AutomationId="StudioCaptionsFixButton"
+                                    AutomationProperties.HelpText="{x:Bind ViewModel.CaptionManualFixNote, Mode=OneWay}"
+                                    AutomationProperties.Name="Auto fix"
+                                    Click="{x:Bind ViewModel.FixCaptions}"
+                                    IsEnabled="{x:Bind ViewModel.CanFixCaptions, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.CaptionFixToolTip, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.HasCaptionProblems, Mode=OneWay}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            FontSize="14"
+                                            Glyph="&#xE90F;" />
+                                        <TextBlock Text="Auto fix" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
                             <!--  Esc empties the search, as the Mac's search field does.  -->
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
@@ -1852,7 +1844,15 @@
                                     SelectionMode="Single">
                                     <ListView.ItemTemplate>
                                         <DataTemplate x:DataType="models:StudioCaptionRow">
-                                            <StackPanel Padding="0,6" Spacing="2">
+                                            <Grid Padding="0,6" ColumnSpacing="8" RowSpacing="2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <FontIcon
                                                         VerticalAlignment="Center"
@@ -1863,29 +1863,37 @@
                                                         Visibility="{x:Bind IsCurrent, Mode=OneWay}" />
                                                     <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind TimeText}" />
                                                 </StackPanel>
+                                                <!--  The warning mark, with the count when there is more than one; the row's name says the problems.  -->
+                                                <StackPanel
+                                                    Grid.Column="1"
+                                                    VerticalAlignment="Center"
+                                                    AutomationProperties.AccessibilityView="Raw"
+                                                    Background="Transparent"
+                                                    Orientation="Horizontal"
+                                                    Spacing="2"
+                                                    ToolTipService.ToolTip="{x:Bind ProblemText}"
+                                                    Visibility="{x:Bind HasProblems}">
+                                                    <FontIcon
+                                                        VerticalAlignment="Center"
+                                                        FontSize="14"
+                                                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                                        Glyph="&#xE7BA;" />
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                                        Style="{StaticResource StudioCaptionStyle}"
+                                                        Text="{x:Bind ProblemBadgeText}" />
+                                                </StackPanel>
                                                 <TextBlock
+                                                    Grid.Row="1"
+                                                    Grid.ColumnSpan="2"
                                                     local:StudioTextHighlight.Ranges="{x:Bind Highlights, Mode=OneWay}"
                                                     Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                                     MaxLines="3"
                                                     Text="{x:Bind Text}"
                                                     TextTrimming="CharacterEllipsis"
                                                     TextWrapping="Wrap" />
-                                                <StackPanel
-                                                    Orientation="Horizontal"
-                                                    Spacing="4"
-                                                    Visibility="{x:Bind HasProblems}">
-                                                    <FontIcon
-                                                        VerticalAlignment="Center"
-                                                        AutomationProperties.AccessibilityView="Raw"
-                                                        FontSize="12"
-                                                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                                                        Glyph="&#xE7BA;" />
-                                                    <TextBlock
-                                                        Style="{StaticResource StudioCaptionStyle}"
-                                                        Text="{x:Bind ProblemText}"
-                                                        TextWrapping="Wrap" />
-                                                </StackPanel>
-                                            </StackPanel>
+                                            </Grid>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
                                 </ListView>
@@ -2034,10 +2042,10 @@
                                         <Button
                                             HorizontalAlignment="Stretch"
                                             AutomationProperties.AutomationId="StudioCaptionSplitButton"
-                                            AutomationProperties.Name="Split caption at playhead"
+                                            AutomationProperties.Name="Split caption"
                                             Click="{x:Bind ViewModel.SplitSelectedCaption}"
                                             IsEnabled="{x:Bind ViewModel.CanSplitSelectedCaption, Mode=OneWay}"
-                                            ToolTipService.ToolTip="Split this caption in two at the playhead">
+                                            ToolTipService.ToolTip="Split this caption in two at the playhead, or in the middle when the playhead isn't inside it">
                                             <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SplitScene}" Text="Split" />
                                         </Button>
                                         <Button
@@ -2065,70 +2073,73 @@
                             </Border>
                         </StackPanel>
 
-                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
-                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Checks" />
-                            <Border
-                                Padding="12"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="{StaticResource OverlayCornerRadius}">
-                                <StackPanel Spacing="8">
-                                    <Grid ColumnSpacing="8">
+                        <!--
+                            Whether the captions are drawn into the picture, and how, folded away under
+                            the list: a tile for each look, drawn as the video draws it
+                            (StudioCaptionLookTile, added in code), and the size and the place as segments.
+                        -->
+                        <Expander
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="StudioCaptionsInVideoExpander"
+                            Header="In the video"
+                            Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
+                            <StackPanel Spacing="8">
+                                <CheckBox
+                                    AutomationProperties.AutomationId="StudioCaptionsDrawnCheckBox"
+                                    Content="Draw captions on the video"
+                                    IsChecked="{x:Bind ViewModel.AreCaptionsDrawn, Mode=TwoWay}"
+                                    ToolTipService.ToolTip="Shows them in the preview, and puts them into the picture of what you export" />
+                                <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.AreCaptionsDrawn, Mode=OneWay}">
+                                    <GridView
+                                        x:Name="CaptionLooks"
+                                        AutomationProperties.AutomationId="StudioCaptionsLooks"
+                                        AutomationProperties.Name="Caption look"
+                                        SelectedIndex="{x:Bind ViewModel.CaptionAppearanceIndex, Mode=TwoWay}"
+                                        Style="{StaticResource StudioSwatchGridStyle}" />
+                                    <Grid ColumnSpacing="12" RowSpacing="8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <FontIcon
-                                            Margin="0,2,0,0"
-                                            VerticalAlignment="Top"
-                                            AutomationProperties.AccessibilityView="Raw"
-                                            FontSize="14"
-                                            Foreground="{ThemeResource SystemFillColorSuccessBrush}"
-                                            Glyph="&#xE930;"
-                                            Visibility="{x:Bind ViewModel.AreCaptionsClean, Mode=OneWay}" />
-                                        <FontIcon
-                                            Margin="0,2,0,0"
-                                            VerticalAlignment="Top"
-                                            AutomationProperties.AccessibilityView="Raw"
-                                            FontSize="14"
-                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                                            Glyph="&#xE7BA;"
-                                            Visibility="{x:Bind ViewModel.HasCaptionProblems, Mode=OneWay}" />
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
                                         <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Size" />
+                                        <controls:Segmented
                                             Grid.Column="1"
-                                            AutomationProperties.AutomationId="StudioCaptionsChecks"
-                                            Text="{x:Bind ViewModel.CaptionCheckText, Mode=OneWay}"
-                                            TextWrapping="Wrap" />
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="StudioCaptionsSizeChoice"
+                                            AutomationProperties.Name="Caption size"
+                                            SelectedIndex="{x:Bind ViewModel.CaptionSizeIndex, Mode=TwoWay}">
+                                            <controls:SegmentedItem Content="Small" />
+                                            <controls:SegmentedItem Content="Medium" />
+                                            <controls:SegmentedItem Content="Large" />
+                                        </controls:Segmented>
+                                        <TextBlock
+                                            Grid.Row="1"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="Position" />
+                                        <controls:Segmented
+                                            Grid.Row="1"
+                                            Grid.Column="1"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="StudioCaptionsPositionChoice"
+                                            AutomationProperties.Name="Caption position"
+                                            SelectedIndex="{x:Bind ViewModel.CaptionPositionIndex, Mode=TwoWay}">
+                                            <controls:SegmentedItem Content="Bottom" />
+                                            <controls:SegmentedItem Content="Top" />
+                                        </controls:Segmented>
                                     </Grid>
-                                    <TextBlock
-                                        AutomationProperties.AutomationId="StudioCaptionsManualFixNote"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Style="{ThemeResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind ViewModel.CaptionManualFixNote, Mode=OneWay}"
-                                        TextWrapping="Wrap"
-                                        Visibility="{x:Bind ViewModel.HasCaptionManualFixNote, Mode=OneWay}" />
-                                    <StackPanel
-                                        Orientation="Horizontal"
-                                        Spacing="8"
-                                        Visibility="{x:Bind ViewModel.HasCaptionProblems, Mode=OneWay}">
-                                        <Button
-                                            AutomationProperties.AutomationId="StudioCaptionsFixButton"
-                                            Click="{x:Bind ViewModel.FixCaptions}"
-                                            Content="Auto fix"
-                                            IsEnabled="{x:Bind ViewModel.CanFixCaptions, Mode=OneWay}"
-                                            ToolTipService.ToolTip="Tidy text, wrap long lines, and give fast captions more time, from the gaps around them or by joining them to a neighbor. Undo takes it back." />
-                                        <Button
-                                            AutomationProperties.AutomationId="StudioCaptionsNextProblemButton"
-                                            AutomationProperties.HelpText="Opens the next caption the checks found a problem in"
-                                            Click="{x:Bind ViewModel.SelectNextCaptionProblem}"
-                                            Content="Next problem"
-                                            IsEnabled="{x:Bind ViewModel.CanSelectNextCaptionProblem, Mode=OneWay}"
-                                            ToolTipService.ToolTip="Open the next caption with a problem, to edit it" />
-                                    </StackPanel>
                                 </StackPanel>
-                            </Border>
-                        </StackPanel>
+                                <TextBlock Style="{StaticResource StudioNoteStyle}" Text="{x:Bind ViewModel.CaptionDrawnNote}" />
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
 
                     <!--

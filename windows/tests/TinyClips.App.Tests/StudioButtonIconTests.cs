@@ -54,7 +54,7 @@ public sealed class StudioButtonIconTests
         ("StudioInspector.xaml", "StudioDeleteCutButton", nameof(StudioGlyphs.Delete), "Delete cut", "Delete cut"),
         ("StudioInspector.xaml", "StudioSpeedSectionAddButton", nameof(StudioGlyphs.AddSpeed), "Add speed change", "Add speed change"),
         ("StudioInspector.xaml", "StudioDeleteSpeedButton", nameof(StudioGlyphs.Delete), "Delete speed change", "Delete speed change"),
-        ("StudioInspector.xaml", "StudioCaptionSplitButton", nameof(StudioGlyphs.SplitScene), "Split", "Split caption at playhead"),
+        ("StudioInspector.xaml", "StudioCaptionSplitButton", nameof(StudioGlyphs.SplitScene), "Split", "Split caption"),
         ("StudioInspector.xaml", "StudioCaptionMergeButton", nameof(StudioGlyphs.MergeCaptions), "Merge", "Merge with next caption"),
         ("StudioInspector.xaml", "StudioCaptionDeleteButton", nameof(StudioGlyphs.Delete), "Delete", "Delete caption"),
         ("StudioInspector.xaml", "StudioSaveDefaultLookButton", nameof(StudioGlyphs.SaveDefaultLook), "Save as default look", "Save as default look"),
