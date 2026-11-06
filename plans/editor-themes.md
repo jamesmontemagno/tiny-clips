@@ -123,7 +123,7 @@ Agent values use the theme JSON. `editor.themes.get` is export and `editor.theme
 | PR | App work | Agent Control | Status |
 | --- | --- | --- | --- |
 | 1 | Shape effects: inspector controls and all four renderers | New fields on `editor.annotate` | #580 |
-| 2 | Theme format, storage, shared fixtures, editor picker, switching, one-step undo, Settings page, import and export | `editor.themes.*`; `themeId` on `editor.open` and `editor.annotate` | This PR |
+| 2 | Theme format, storage, shared fixtures, editor picker, switching, one-step undo, Settings page, import and export | `editor.themes.*`; `themeId` on `editor.open` and `editor.annotate` | #580 |
 | Later | Rounded shape corners, effects on arrows and text, image backgrounds | New style fields | |
 
 ## Risks
