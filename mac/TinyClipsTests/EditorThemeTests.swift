@@ -472,6 +472,26 @@ final class EditorThemeTests: XCTestCase {
         XCTAssertFalse(editor.isThemeModified)
     }
 
+    func testSaveAsNewWithNoneStartsFromTheDocument() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        let (directory, cleanupDirectory) = try makeDirectory()
+        defer { cleanupDirectory() }
+        let store = EditorThemeStore(directory: directory)
+
+        var arrow = annotation(.arrow)
+        arrow.lineWidth = 9
+        editor.annotations = [arrow]
+        editor.canvasPadding = 24
+
+        let saved = try XCTUnwrap(try editor.saveAsNewTheme(name: "First", in: store))
+        XCTAssertEqual(saved.line.width, 9)
+        XCTAssertEqual(saved.canvas.padding, 24)
+        XCTAssertEqual(store.activeThemeID, saved.id)
+        XCTAssertEqual(editor.activeThemeID, saved.id)
+        XCTAssertFalse(editor.isThemeModified)
+    }
+
     // MARK: - Undo
 
     func testSwitchingIsOneUndoStepAndRedoRestoresIt() throws {

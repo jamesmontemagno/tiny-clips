@@ -86,7 +86,7 @@ The format, units, ranges, and storage are in [`shared/editor-themes/README.md`]
 - **None** stops theming and changes nothing: annotations, canvas, and current defaults stay as they are. It is not an undo step.
 - Choosing a theme restyles every annotation it covers, applies its canvas, and sets the defaults for new annotations as one undo step. It always applies the canvas, whatever `canvas.applyOnOpen` says.
 - An image background stays when a theme applies, because themes leave out images. The theme's padding, corners, shadow, frame, and alignment still apply.
-- Restyling never moves an annotation. Text keeps its position, and a number keeps its center.
+- Restyling never moves an annotation. A number keeps its center. Text keeps its anchor, which is the center on Mac and the top left on Windows.
 - The picker choice is saved as the active theme for new windows. Open windows don't follow changes made elsewhere.
 - Opening an editor with an active theme sets its defaults, and applies its canvas only if `canvas.applyOnOpen` is set. That rebaselines the document, so an untouched editor doesn't prompt on close. Save still exports the background.
 
@@ -98,7 +98,7 @@ The look to save is computed from the document, not from hooks on each control. 
 2. Otherwise use the defaults for new annotations, when they differ.
 3. Otherwise keep the theme's values.
 
-The canvas is compared with its state when the theme became active, because a theme that doesn't apply on open must not read as Modified. **Modified** means this result differs from the saved theme, after rounding sizes to two decimals. **Update** saves it over the theme. **Save as New** saves it under a new name and makes it active.
+The canvas is compared with its state when the theme became active, because a theme that doesn't apply on open must not read as Modified. **Modified** means this result differs from the saved theme, after rounding sizes to two decimals. **Update** saves it over the theme. **Save as New** saves it under a new name and makes it active. With None selected, the look starts from the default theme. After either one, older annotations keep their looks, and those looks stop counting as edits.
 
 Tools share one color and one width in the inspector. While a theme is active, each group keeps its own, stored when a tool is left and loaded when a tool of that group is chosen. With None, tools share them as they do today.
 

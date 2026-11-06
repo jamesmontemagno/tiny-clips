@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using TinyClips.App.ScreenshotEditor;
 using TinyClips.App.ViewModels;
@@ -23,6 +25,9 @@ public sealed partial class EditorThemesSettingsSection : UserControl, ISettings
     // The sample stands in for an 840 px wide image shown at half size.
     private const double PreviewImageWidth = 840;
     private const double PreviewScale = 0.5;
+    private static readonly Vector2 PreviewArrowStart = new(180, 100);
+    private static readonly Vector2 PreviewArrowEnd = new(290, 40);
+    private DropShadow? _previewShadow;
 
     private readonly nint _windowHandle;
     private bool _closed;
@@ -158,12 +163,13 @@ public sealed partial class EditorThemesSettingsSection : UserControl, ISettings
         PreviewRectangle.Stroke = new SolidColorBrush(EditorTheme.ColorOf(theme.Shape.StrokeColor));
         PreviewRectangle.StrokeThickness = EditorThemeUnits.StrokePixels(theme.Shape.StrokeWidth, PreviewImageWidth) * PreviewScale;
         PreviewRectangle.Fill = ShapeFillBrush(theme.Shape);
+        UpdatePreviewShadow(theme.Shape);
 
         var lineColor = new SolidColorBrush(EditorTheme.ColorOf(theme.Line.Color));
         var lineWidth = EditorThemeUnits.StrokePixels(theme.Line.Width, PreviewImageWidth) * PreviewScale;
         PreviewLine.Stroke = lineColor;
         PreviewLine.StrokeThickness = lineWidth;
-        UpdateArrowHead(lineColor, lineWidth);
+        UpdateArrow(EditorThemeStyling.ArrowStyleOf(theme.Line.ArrowStyle), lineColor, lineWidth);
 
         PreviewText.Foreground = new SolidColorBrush(EditorTheme.ColorOf(theme.Text.Color));
         PreviewText.FontFamily = new FontFamily(EditorThemeStyling.FontFamilyOf(theme.Text));
@@ -187,21 +193,49 @@ public sealed partial class EditorThemesSettingsSection : UserControl, ISettings
         PreviewBadgeText.FontSize = Math.Max(1, diameter * 0.55);
     }
 
-    private void UpdateArrowHead(Brush brush, double lineWidth)
+    private void UpdateArrow(ArrowStyle style, Brush brush, double lineWidth)
     {
-        var tip = new Vector2((float)PreviewLine.X2, (float)PreviewLine.Y2);
-        var direction = Vector2.Normalize(tip - new Vector2((float)PreviewLine.X1, (float)PreviewLine.Y1));
-        var normal = new Vector2(-direction.Y, direction.X);
-        var length = (float)Math.Max(8, lineWidth * 3.5);
-        var left = tip - direction * length + normal * length * 0.5f;
-        var right = tip - direction * length - normal * length * 0.5f;
+        var arrow = EditorController.BuildArrow(PreviewArrowStart, PreviewArrowEnd, lineWidth, style);
+        var figure = new PathFigure { StartPoint = ToPoint(arrow.ShaftStart), IsFilled = false };
+        figure.Segments.Add(arrow.Curved
+            ? new QuadraticBezierSegment { Point1 = ToPoint(arrow.ShaftControl), Point2 = ToPoint(arrow.ShaftEnd) }
+            : new LineSegment { Point = ToPoint(arrow.ShaftEnd) });
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        PreviewLine.Data = geometry;
+
         PreviewArrowHead.Fill = brush;
         PreviewArrowHead.Points = new PointCollection
         {
-            new Point(tip.X, tip.Y),
-            new Point(left.X, left.Y),
-            new Point(right.X, right.Y),
+            ToPoint(arrow.Tip),
+            ToPoint(arrow.Head1),
+            ToPoint(arrow.Head2),
         };
+    }
+
+    private static Point ToPoint(Vector2 point) => new(point.X, point.Y);
+
+    private void UpdatePreviewShadow(EditorThemeShape shape)
+    {
+        _previewShadow ??= CreatePreviewShadow();
+        var blur = EditorThemeUnits.StrokePixels(shape.ShadowBlur, PreviewImageWidth) * PreviewScale;
+        var color = EditorTheme.ColorOf(shape.ShadowColor);
+        _previewShadow.Color = Color.FromArgb(255, color.R, color.G, color.B);
+        _previewShadow.Opacity = shape.ShadowBlur > 0 ? color.A / 255f : 0;
+        _previewShadow.BlurRadius = (float)(blur / 2 * EditorCanvas.PreviewBlurRadiusPerDeviation);
+        _previewShadow.Offset = new Vector3(0, (float)(blur * ShapeEffects.ShadowOffsetRatio), 0);
+    }
+
+    private DropShadow CreatePreviewShadow()
+    {
+        var compositor = ElementCompositionPreview.GetElementVisual(PreviewRectangle).Compositor;
+        var shadow = compositor.CreateDropShadow();
+        shadow.Mask = PreviewRectangle.GetAlphaMask();
+        var sprite = compositor.CreateSpriteVisual();
+        sprite.Size = new Vector2((float)PreviewRectangle.Width, (float)PreviewRectangle.Height);
+        sprite.Shadow = shadow;
+        ElementCompositionPreview.SetElementChildVisual(PreviewShadowHost, sprite);
+        return shadow;
     }
 
     private static Brush ShapeFillBrush(EditorThemeShape shape)

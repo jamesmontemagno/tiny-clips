@@ -1094,10 +1094,9 @@ struct ScreenshotEditorView: View {
                 Button("Update Theme", action: updateActiveTheme)
                     .disabled(!isModified)
                 Button("Save as New…") {
-                    newThemeName = viewModel.baselineTheme.map { themeStore.uniqueName(for: $0.name) } ?? ""
+                    newThemeName = themeStore.uniqueName(for: viewModel.baselineTheme?.name ?? "New Theme")
                     isSavingNewTheme = true
                 }
-                .disabled(viewModel.baselineTheme == nil)
 
                 Divider()
 
