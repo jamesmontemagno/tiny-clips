@@ -1110,7 +1110,7 @@ Known limits to state up front:
 
 - A separately rendered cursor: smoothing, size, hide when idle; motion blur on zooms
 - Device frames around the screen card (browser, phone)
-- Annotations over time ranges, reusing the screenshot editor's arrows, text, emoji, and redaction
+- Annotations over time ranges. Arrows, callouts, and text are now planned in [`studio-annotations.md`](studio-annotations.md); emoji and redaction remain here
 - Captions from speech, silence removal, background music, intro and outro cards, keystroke display
 - Editing the sound apart from the picture: silencing or turning down a range, and later an added sound file. Proposed in [`studio-audio-editing.md`](studio-audio-editing.md), not decided
 - Blurred-screen and wallpaper backgrounds, named look presets

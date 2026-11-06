@@ -1,3 +1,4 @@
+using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.Core.Tests;
@@ -25,6 +26,7 @@ public sealed class StudioInspectorPanelTests
                 StudioInspectorPanel.Zoom,
                 StudioInspectorPanel.Cut,
                 StudioInspectorPanel.Speed,
+                StudioInspectorPanel.Annotate,
                 StudioInspectorPanel.Audio,
                 StudioInspectorPanel.Project,
             },
@@ -44,6 +46,7 @@ public sealed class StudioInspectorPanelTests
                 StudioInspectorPanel.Zoom,
                 StudioInspectorPanel.Cut,
                 StudioInspectorPanel.Speed,
+                StudioInspectorPanel.Annotate,
                 StudioInspectorPanel.Audio,
                 StudioInspectorPanel.Project,
             },
@@ -53,7 +56,7 @@ public sealed class StudioInspectorPanelTests
     [Fact]
     public void TheRailGroups_LookThenTimelineEditsThenTheRest()
     {
-        var timelineEdits = new[] { StudioInspectorPanel.Zoom, StudioInspectorPanel.Cut, StudioInspectorPanel.Speed };
+        var timelineEdits = new[] { StudioInspectorPanel.Zoom, StudioInspectorPanel.Cut, StudioInspectorPanel.Speed, StudioInspectorPanel.Annotate };
         var rest = new[] { StudioInspectorPanel.Audio, StudioInspectorPanel.Project };
 
         var withCamera = StudioInspectorPanels.GetGroups(hasCamera: true);
@@ -148,6 +151,11 @@ public sealed class StudioInspectorPanelTests
     [InlineData(nameof(StudioGlyphs.TrimStart), '\uEA52')]
     [InlineData(nameof(StudioGlyphs.TrimEnd), '\uE8B5')]
     [InlineData(nameof(StudioGlyphs.ResetCrop), '\uE777')]
+    [InlineData(nameof(StudioGlyphs.AddArrow), '\uE72A')]
+    [InlineData(nameof(StudioGlyphs.AddCallout), '\uE8BD')]
+    [InlineData(nameof(StudioGlyphs.AddText), '\uE8D2')]
+    [InlineData(nameof(StudioGlyphs.BringForward), '\uE74A')]
+    [InlineData(nameof(StudioGlyphs.SendBack), '\uE74B')]
     [InlineData(nameof(StudioGlyphs.ShowScene), '\uE8B2')]
     [InlineData(nameof(StudioGlyphs.SaveDefaultLook), '\uE790')]
     [InlineData(nameof(StudioGlyphs.SaveRecording), '\uE74E')]
@@ -172,7 +180,7 @@ public sealed class StudioInspectorPanelTests
             .ToDictionary(property => property.Name, property => (string)property.GetValue(null)!);
 
         // Every glyph there is a name for is in the list of all of them, after the rail's nine.
-        Assert.Equal(17, named.Count);
+        Assert.Equal(22, named.Count);
         Assert.Equal(EveryPanel.Select(StudioInspectorPanels.GetGlyph), StudioGlyphs.All.Take(EveryPanel.Length));
         Assert.Equal(named.Values.Order(StringComparer.Ordinal), StudioGlyphs.All.Skip(EveryPanel.Length).Order(StringComparer.Ordinal));
 
@@ -203,6 +211,7 @@ public sealed class StudioInspectorPanelTests
     [InlineData(StudioInspectorPanel.Zoom, "Zoom", "Zooms")]
     [InlineData(StudioInspectorPanel.Cut, "Cut", "Cuts")]
     [InlineData(StudioInspectorPanel.Speed, "Speed", "Speed changes")]
+    [InlineData(StudioInspectorPanel.Annotate, "Annotate", "Annotations: arrows, callouts, and text")]
     [InlineData(StudioInspectorPanel.Audio, "Audio", "Audio: mute and volume")]
     [InlineData(StudioInspectorPanel.Project, "Project", "Project: badge, storage, and default look")]
     public void APanel_IsCalledWhatItsRailItemSays_AndItsHelpSaysWhatItHoldsOnWindows(
@@ -214,5 +223,57 @@ public sealed class StudioInspectorPanelTests
         // and its help does not promise any. Everything else is as on the Mac.
         Assert.Equal(title, StudioInspectorPanels.GetTitle(panel));
         Assert.Equal(summary, StudioInspectorPanels.GetSummary(panel));
+    }
+
+    private static StudioProject LaneProject(bool camera = true, int scenes = 1) => new()
+    {
+        Id = "p",
+        Sources = new StudioSources
+        {
+            Screen = new StudioScreenSource { Width = 1920, Height = 1080, Duration = 60 },
+            Camera = camera ? new StudioCameraSource { Width = 1280, Height = 720, Duration = 60 } : null,
+        },
+        Scenes = [.. Enumerable.Range(0, scenes).Select(index => new StudioScene { Start = index * 10 })],
+    };
+
+    [Fact]
+    public void ANewProject_ShowsNoLanes()
+    {
+        Assert.Empty(StudioTimelineLanes.GetShown(LaneProject()));
+        Assert.Empty(StudioTimelineLanes.GetShown(LaneProject(camera: false)));
+    }
+
+    [Fact]
+    public void TheSceneLane_NeedsACameraAndMoreThanOneScene()
+    {
+        Assert.True(StudioTimelineLanes.IsShown(StudioTimelineLane.Scene, LaneProject(scenes: 2)));
+        Assert.False(StudioTimelineLanes.IsShown(StudioTimelineLane.Scene, LaneProject(scenes: 1)));
+        Assert.False(StudioTimelineLanes.IsShown(StudioTimelineLane.Scene, LaneProject(camera: false, scenes: 2)));
+
+        // Two scenes at one time are one scene, as the format reads them.
+        var same = LaneProject() with { Scenes = [new StudioScene { Start = 3 }, new StudioScene { Start = 3 }] };
+        Assert.False(StudioTimelineLanes.IsShown(StudioTimelineLane.Scene, same));
+    }
+
+    [Fact]
+    public void ALane_ShowsWithSomethingOnIt_InTheOrderOfTheTimeline()
+    {
+        var project = LaneProject(scenes: 2) with
+        {
+            Zooms = [new StudioZoom { Start = 1, End = 2 }],
+            Edits = new StudioEdits
+            {
+                Cuts = [new StudioTimeRange { Start = 3, End = 4 }],
+                Speed = [new StudioSpeedRange { Start = 5, End = 6, Rate = 2 }],
+            },
+            Overlays = new StudioOverlays { Annotations = [new StudioAnnotation { End = 1 }] },
+        };
+
+        Assert.Equal(
+            [StudioTimelineLane.Scene, StudioTimelineLane.Zoom, StudioTimelineLane.Cut, StudioTimelineLane.Speed, StudioTimelineLane.Annotate],
+            StudioTimelineLanes.GetShown(project));
+        Assert.Equal(
+            [StudioTimelineLane.Cut],
+            StudioTimelineLanes.GetShown(LaneProject() with { Edits = new StudioEdits { Cuts = [new StudioTimeRange { Start = 3, End = 4 }] } }));
     }
 }

@@ -26,6 +26,21 @@ public static class StudioGlyphs
     /// <summary>Speed and Add speed change: the Speed panel's glyph.</summary>
     public static string AddSpeed => StudioInspectorPanels.GetGlyph(StudioInspectorPanel.Speed);
 
+    /// <summary>Arrow, in the Annotate panel: an arrow (Forward).</summary>
+    public static string AddArrow => "\uE72A";
+
+    /// <summary>Callout, in the Annotate panel: a speech bubble (Message).</summary>
+    public static string AddCallout => "\uE8BD";
+
+    /// <summary>Text, in the Annotate panel: a letter (Font).</summary>
+    public static string AddText => "\uE8D2";
+
+    /// <summary>Bring forward: an arrow up (Up).</summary>
+    public static string BringForward => "\uE74A";
+
+    /// <summary>Send back: an arrow down (Down).</summary>
+    public static string SendBack => "\uE74B";
+
     /// <summary>Suggest zooms: the mark a suggested zoom has on its block (Effects).</summary>
     public static string SuggestZooms => "\uE794";
 
@@ -69,7 +84,7 @@ public static class StudioGlyphs
     public static IReadOnlyList<string> All =>
     [
         .. StudioInspectorPanels.All.Select(StudioInspectorPanels.GetGlyph),
-        SplitScene, AddZoom, AddCut, AddSpeed, SuggestZooms, RemoveSuggestions, Delete,
+        SplitScene, AddZoom, AddCut, AddSpeed, AddArrow, AddCallout, AddText, BringForward, SendBack, SuggestZooms, RemoveSuggestions, Delete,
         TrimStart, TrimEnd, ResetCrop, ShowScene, SaveDefaultLook, SaveRecording,
         OpenProject, OpenRecentProject, SaveProject, DeleteProject,
     ];

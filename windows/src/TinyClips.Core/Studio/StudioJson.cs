@@ -279,6 +279,7 @@ public static class StudioProjectJson
                 Opacity = HasNonNull(root, "overlays", "clicks", "opacity") ? clicks.Opacity : defaultProject.Overlays.Clicks.Opacity,
                 Duration = HasNonNull(root, "overlays", "clicks", "duration") ? clicks.Duration : defaultProject.Overlays.Clicks.Duration,
             },
+            Annotations = NormalizeAnnotations(overlays.Annotations, root),
         };
 
         return project with
@@ -408,6 +409,46 @@ public static class StudioProjectJson
                 EaseIn = HasNonNull(element, "easeIn") ? zoom.EaseIn : 0.5,
                 EaseOut = HasNonNull(element, "easeOut") ? zoom.EaseOut : 0.5,
                 Origin = HasNonNull(element, "origin") ? zoom.Origin : StudioZoomOrigin.Manual,
+            };
+        }
+
+        return result;
+    }
+
+    private static StudioAnnotation[] NormalizeAnnotations(StudioAnnotation[]? annotations, JsonElement root)
+    {
+        if (annotations is null || annotations.Length == 0
+            || !root.TryGetProperty("overlays", out var overlaysElement) || overlaysElement.ValueKind != JsonValueKind.Object
+            || !overlaysElement.TryGetProperty("annotations", out var annotationsElement) || annotationsElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var elements = NonNullArrayElements(annotationsElement);
+        var values = NonNullItems(annotations);
+        var defaults = new StudioAnnotation();
+        var result = new StudioAnnotation[values.Length];
+        for (var i = 0; i < values.Length; i++)
+        {
+            var annotation = values[i];
+            var element = i < elements.Length ? elements[i] : default;
+            result[i] = annotation with
+            {
+                Id = HasNonNull(element, "id") ? annotation.Id : defaults.Id,
+                Kind = HasNonNull(element, "kind") ? annotation.Kind : defaults.Kind,
+                Attach = HasNonNull(element, "attach") ? annotation.Attach : defaults.Attach,
+                Start = HasNonNull(element, "start") ? annotation.Start : defaults.Start,
+                End = HasNonNull(element, "end") ? annotation.End : defaults.End,
+                X = HasNonNull(element, "x") ? annotation.X : defaults.X,
+                Y = HasNonNull(element, "y") ? annotation.Y : defaults.Y,
+                OffsetX = HasNonNull(element, "offsetX") ? annotation.OffsetX : defaults.OffsetX,
+                OffsetY = HasNonNull(element, "offsetY") ? annotation.OffsetY : defaults.OffsetY,
+                Text = HasNonNull(element, "text") ? annotation.Text : defaults.Text,
+                Style = HasNonNull(element, "style") ? annotation.Style : defaults.Style,
+                Size = HasNonNull(element, "size") ? annotation.Size : defaults.Size,
+                Fill = HasNonNull(element, "fill") ? annotation.Fill : defaults.Fill,
+                TextColor = HasNonNull(element, "textColor") ? annotation.TextColor : defaults.TextColor,
+                Scale = HasNonNull(element, "scale") ? annotation.Scale : defaults.Scale,
             };
         }
 
@@ -924,5 +965,57 @@ internal sealed class StudioCaptureKindJsonConverter : StudioEnumJsonConverter<S
         StudioCaptureKind.Region => "region",
         StudioCaptureKind.Window => "window",
         _ => "display",
+    };
+}
+
+internal sealed class StudioAnnotationAttachJsonConverter : StudioEnumJsonConverter<StudioAnnotationAttach>
+{
+    protected override StudioAnnotationAttach DefaultValue => StudioAnnotationAttach.Screen;
+    protected override StudioAnnotationAttach? ReadValue(string value) => value switch
+    {
+        "screen" => StudioAnnotationAttach.Screen,
+        "frame" => StudioAnnotationAttach.Frame,
+        _ => null,
+    };
+    protected override string Write(StudioAnnotationAttach value) => value == StudioAnnotationAttach.Frame ? "frame" : "screen";
+}
+
+internal sealed class StudioAnnotationStyleJsonConverter : StudioEnumJsonConverter<StudioAnnotationStyle>
+{
+    protected override StudioAnnotationStyle DefaultValue => StudioAnnotationStyle.Red;
+    protected override StudioAnnotationStyle? ReadValue(string value) => value switch
+    {
+        "red" => StudioAnnotationStyle.Red,
+        "blue" => StudioAnnotationStyle.Blue,
+        "yellow" => StudioAnnotationStyle.Yellow,
+        "white" => StudioAnnotationStyle.White,
+        "dark" => StudioAnnotationStyle.Dark,
+        _ => null,
+    };
+    protected override string Write(StudioAnnotationStyle value) => value switch
+    {
+        StudioAnnotationStyle.Blue => "blue",
+        StudioAnnotationStyle.Yellow => "yellow",
+        StudioAnnotationStyle.White => "white",
+        StudioAnnotationStyle.Dark => "dark",
+        _ => "red",
+    };
+}
+
+internal sealed class StudioAnnotationSizeJsonConverter : StudioEnumJsonConverter<StudioAnnotationSize>
+{
+    protected override StudioAnnotationSize DefaultValue => StudioAnnotationSize.Medium;
+    protected override StudioAnnotationSize? ReadValue(string value) => value switch
+    {
+        "small" => StudioAnnotationSize.Small,
+        "medium" => StudioAnnotationSize.Medium,
+        "large" => StudioAnnotationSize.Large,
+        _ => null,
+    };
+    protected override string Write(StudioAnnotationSize value) => value switch
+    {
+        StudioAnnotationSize.Small => "small",
+        StudioAnnotationSize.Large => "large",
+        _ => "medium",
     };
 }

@@ -280,6 +280,8 @@ private struct StudioPreviewView: View {
                 if let bubble = viewModel.bubbleRect(canvasSize: canvasSize) {
                     bubbleHandle(bubble: bubble, geometry: geometry, canvasSize: canvasSize)
                 }
+
+                StudioAnnotationPreviewLayer(viewModel: viewModel, geometry: geometry, canvasSize: canvasSize, space: Self.space)
             }
             .coordinateSpace(.named(Self.space))
         }
@@ -457,6 +459,8 @@ private struct StudioInspectorView: View {
             StudioCutInspectorSection(viewModel: viewModel)
         case .speed:
             StudioSpeedInspectorSection(viewModel: viewModel)
+        case .annotate:
+            StudioAnnotationInspectorSection(viewModel: viewModel)
         case .audio:
             audioPanel
         case .project:
@@ -1367,25 +1371,43 @@ private struct StudioTimelineView: View {
                 .help("End the video at the playhead (O)")
             }
 
-            if viewModel.hasCamera {
-                StudioSceneLane(viewModel: viewModel)
-                    .frame(height: 24)
+            // A lane shows only with something on it, so the timeline stays low until then.
+            VStack(spacing: 4) {
+                if isLaneShown(.scene) {
+                    StudioSceneLane(viewModel: viewModel)
+                        .frame(height: 24)
+                }
+
+                if isLaneShown(.zoom) {
+                    StudioZoomLane(viewModel: viewModel)
+                        .frame(height: 26)
+                }
+
+                if isLaneShown(.cut) {
+                    StudioCutLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                if isLaneShown(.speed) {
+                    StudioSpeedLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                if isLaneShown(.annotate) {
+                    StudioAnnotationLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                StudioTrimBar(viewModel: viewModel)
+                    .frame(height: 36)
             }
-
-            StudioZoomLane(viewModel: viewModel)
-                .frame(height: 26)
-
-            StudioCutLane(viewModel: viewModel)
-                .frame(height: 22)
-
-            StudioSpeedLane(viewModel: viewModel)
-                .frame(height: 22)
-
-            StudioTrimBar(viewModel: viewModel)
-                .frame(height: 36)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    private func isLaneShown(_ lane: StudioTimelineLane) -> Bool {
+        viewModel.project.map(lane.isShown(in:)) ?? false
     }
 }
 

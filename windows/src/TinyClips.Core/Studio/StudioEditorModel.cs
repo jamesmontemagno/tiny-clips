@@ -417,6 +417,8 @@ public sealed partial class StudioEditorModel
     /// </summary>
     public void Undo()
     {
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
         var wasGrouping = IsGroupingEdits;
         CommitEditingGroup();
         if (_undoStack.Count > 0)
@@ -439,6 +441,8 @@ public sealed partial class StudioEditorModel
     /// </summary>
     public void Redo()
     {
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
         var wasGrouping = IsGroupingEdits;
         CommitEditingGroup();
         if (_redoStack.Count > 0)
@@ -1362,6 +1366,8 @@ public sealed partial class StudioEditorModel
 
     private void Mutate(Func<StudioProject, StudioProject> change)
     {
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
         var before = EditableState;
         var candidate = change(Project);
         if (before.ContentEquals(StudioEditableState.From(candidate)))

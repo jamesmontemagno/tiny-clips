@@ -58,6 +58,10 @@ internal static partial class RendererChecks
                 await Check("background: none, solid, gradient", context => Background(context, bench)).ConfigureAwait(false);
                 await Check("background: image", context => BackgroundImage(context, bench)).ConfigureAwait(false);
                 await Check("branding badge", context => Badge(context, bench)).ConfigureAwait(false);
+                await Check("annotation: arrow", context => AnnotationArrow(context, bench)).ConfigureAwait(false);
+                await Check("annotation: follows a zoom", context => AnnotationFollowsZoom(context, bench)).ConfigureAwait(false);
+                await Check("annotation: callout and text boxes", context => AnnotationBoxes(context, bench)).ConfigureAwait(false);
+                await Check("annotation: fades with the screen", context => AnnotationFades(context, bench)).ConfigureAwait(false);
                 await Check("targets and sources: formats, padding, caches", context => TargetsAndSources(context, bench)).ConfigureAwait(false);
                 await Check("scaling quality: linear and high-quality", context => ScalingQuality(context, bench)).ConfigureAwait(false);
                 await Check("time to draw a frame", context => DrawTime(context, bench)).ConfigureAwait(false);

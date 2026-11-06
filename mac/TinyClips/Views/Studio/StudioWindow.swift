@@ -336,6 +336,15 @@ enum StudioMenuCommands {
         menu.addItem(menuItem("Previous Speed Change", action: "studioPreviousSpeed:"))
         menu.addItem(menuItem("Next Speed Change", action: "studioNextSpeed:"))
         menu.addItem(.separator())
+        menu.addItem(menuItem("Add Arrow", action: "studioAddArrow:"))
+        menu.addItem(menuItem("Add Callout", action: "studioAddCallout:"))
+        menu.addItem(menuItem("Add Text", action: "studioAddText:"))
+        menu.addItem(menuItem("Delete Annotation", action: "studioDeleteAnnotation:"))
+        menu.addItem(menuItem("Previous Annotation", action: "studioPreviousAnnotation:"))
+        menu.addItem(menuItem("Next Annotation", action: "studioNextAnnotation:"))
+        menu.addItem(menuItem("Bring Forward", action: "studioBringAnnotationForward:"))
+        menu.addItem(menuItem("Send Back", action: "studioSendAnnotationBack:"))
+        menu.addItem(.separator())
         menu.addItem(menuItem("Screen Only", action: "studioLayoutScreen:"))
         menu.addItem(menuItem("Screen with Camera Bubble", action: "studioLayoutBubble:"))
         menu.addItem(menuItem("Side by Side", action: "studioLayoutSideBySide:"))
@@ -486,6 +495,14 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioDeleteSpeed(_ sender: Any?) { viewModel.removeSelectedSpeed() }
     @objc func studioPreviousSpeed(_ sender: Any?) { viewModel.showPreviousSpeed() }
     @objc func studioNextSpeed(_ sender: Any?) { viewModel.showNextSpeed() }
+    @objc func studioAddArrow(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.arrow) }
+    @objc func studioAddCallout(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.callout) }
+    @objc func studioAddText(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.text) }
+    @objc func studioDeleteAnnotation(_ sender: Any?) { viewModel.removeSelectedAnnotation() }
+    @objc func studioPreviousAnnotation(_ sender: Any?) { viewModel.showPreviousAnnotation() }
+    @objc func studioNextAnnotation(_ sender: Any?) { viewModel.showNextAnnotation() }
+    @objc func studioBringAnnotationForward(_ sender: Any?) { viewModel.bringSelectedAnnotationForward() }
+    @objc func studioSendAnnotationBack(_ sender: Any?) { viewModel.sendSelectedAnnotationBack() }
     @objc func studioLayoutScreen(_ sender: Any?) { viewModel.setLayout(.screen) }
     @objc func studioLayoutBubble(_ sender: Any?) { viewModel.setLayout(.bubble) }
     @objc func studioLayoutSideBySide(_ sender: Any?) { viewModel.setLayout(.sideBySide) }
@@ -552,6 +569,20 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         case #selector(studioPreviousSpeed(_:)),
             #selector(studioNextSpeed(_:)):
             return viewModel.isEditable && !viewModel.speedChanges.isEmpty
+        case #selector(studioAddArrow(_:)),
+            #selector(studioAddCallout(_:)),
+            #selector(studioAddText(_:)):
+            return viewModel.canAddAnnotation
+        case #selector(studioDeleteAnnotation(_:)):
+            return viewModel.isEditable && viewModel.selectedAnnotationIndex != nil
+        case #selector(studioPreviousAnnotation(_:)):
+            return viewModel.canSelectPreviousAnnotation
+        case #selector(studioNextAnnotation(_:)):
+            return viewModel.canSelectNextAnnotation
+        case #selector(studioBringAnnotationForward(_:)):
+            return viewModel.isEditable && viewModel.selectedAnnotationIndex.map { $0 + 1 < viewModel.annotations.count } == true
+        case #selector(studioSendAnnotationBack(_:)):
+            return viewModel.isEditable && (viewModel.selectedAnnotationIndex ?? 0) > 0
         default:
             return super.validateMenuItem(menuItem)
         }
@@ -676,6 +707,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
                 if changesProject { viewModel.removeSelectedSpeed() }
                 return true
             }
+            if viewModel.selectedAnnotationIndex != nil {
+                if changesProject { viewModel.removeSelectedAnnotation() }
+                return true
+            }
         }
 
         switch keyCode {
@@ -707,6 +742,15 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
 
         // Letters are matched by what they type, so they follow the keyboard layout.
         switch event.charactersIgnoringModifiers?.lowercased() {
+        case "a":
+            if changesProject { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.arrow) }
+            return true
+        case "c":
+            if changesProject { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.callout) }
+            return true
+        case "t":
+            if changesProject { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.text) }
+            return true
         case "i":
             if changesProject { viewModel.setTrimStartAtPlayhead() }
             return true

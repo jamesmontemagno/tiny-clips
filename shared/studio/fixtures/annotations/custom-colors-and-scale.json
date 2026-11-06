@@ -1,0 +1,246 @@
+{
+  "description": "fill and textColor stand in for the colors of the style when they are #RRGGBB, in either case, and anything else leaves the style; scale multiplies the size and is clamped",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "arrow",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.5,
+          "offsetX": -0.2,
+          "offsetY": 0.1,
+          "fill": "#12ab9f",
+          "scale": 2
+        },
+        {
+          "kind": "arrow",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.25,
+          "y": 0.25,
+          "offsetX": 0.1,
+          "offsetY": 0.2,
+          "style": "blue",
+          "fill": "red",
+          "size": "large",
+          "scale": 0.1
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.1,
+          "offsetX": 0,
+          "offsetY": 0.2,
+          "text": "Hello",
+          "style": "yellow",
+          "fill": "#102030",
+          "textColor": "#F0E0D0",
+          "scale": 1.5
+        },
+        {
+          "kind": "text",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.8,
+          "text": "Hello",
+          "fill": "#12345",
+          "textColor": "#GGGGGG",
+          "size": "small",
+          "scale": 9
+        },
+        {
+          "kind": "text",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.2,
+          "y": 0.8,
+          "text": "Hello",
+          "style": "dark",
+          "fill": "#102030FF",
+          "textColor": ""
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#12AB9F",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 540.0
+          },
+          "stroke": 19.44,
+          "tail": {
+            "x": 744.0,
+            "y": 648.0
+          },
+          "headBase": {
+            "x": 904.359473302,
+            "y": 567.820263349
+          },
+          "halfWidth": 38.56896,
+          "hasShaft": true
+        },
+        {
+          "index": 1,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#0A84FF",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 480.0,
+            "y": 270.0
+          },
+          "stroke": 7.02,
+          "tail": {
+            "x": 588.0,
+            "y": 486.0
+          },
+          "headBase": {
+            "x": 490.046206209,
+            "y": 290.092412419
+          },
+          "halfWidth": 13.92768,
+          "hasShaft": true
+        },
+        {
+          "index": 2,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#102030",
+          "textColor": "#F0E0D0",
+          "anchor": {
+            "x": 960.0,
+            "y": 108.0
+          },
+          "font": 58.32,
+          "maxTextWidth": 1262.352,
+          "radius": 23.328,
+          "box": {
+            "x": 769.176,
+            "y": 277.756,
+            "width": 381.648,
+            "height": 92.488
+          },
+          "textRect": {
+            "x": 810.0,
+            "y": 304.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": [
+            {
+              "x": 933.756,
+              "y": 277.756
+            },
+            {
+              "x": 986.244,
+              "y": 277.756
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 864.0
+          },
+          "font": 90.72,
+          "maxTextWidth": 1216.992,
+          "radius": 36.288,
+          "box": {
+            "x": 746.496,
+            "y": 803.176,
+            "width": 427.008,
+            "height": 121.648
+          },
+          "textRect": {
+            "x": 810.0,
+            "y": 844.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        },
+        {
+          "index": 4,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 384.0,
+            "y": 864.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 206.784,
+            "y": 826.504,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 234.0,
+            "y": 844.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        }
+      ]
+    }
+  ]
+}

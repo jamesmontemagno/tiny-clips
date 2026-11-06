@@ -567,8 +567,8 @@ public sealed partial class StudioEditorSession
     // edit, and undo and redo, the selection follows its zoom as StudioEditorModel.FindZoomFollowing
     // finds it, or lets go when the zoom is gone.
 
-    // What is selected. At most one of the three is not null.
-    private (int? Zoom, int? Cut, int? Speed) Selection => (SelectedZoomIndex, SelectedCutIndex, SelectedSpeedIndex);
+    // What is selected. At most one of the four is not null.
+    private (int? Zoom, int? Cut, int? Speed, int? Annotation) Selection => (SelectedZoomIndex, SelectedCutIndex, SelectedSpeedIndex, SelectedAnnotationIndex);
 
     /// <summary>The zoom that contains a source time, or null.</summary>
     public int? GetZoomIndexAt(double sourceTime) => Model?.GetZoomIndexAt(sourceTime);
@@ -588,6 +588,7 @@ public sealed partial class StudioEditorSession
         {
             _selectedCutIndex = null;
             _selectedSpeedIndex = null;
+            _selectedAnnotationIndex = null;
             ShowInspectorPanel(StudioInspectorPanel.Zoom);
         }
 
@@ -598,7 +599,7 @@ public sealed partial class StudioEditorSession
     }
 
     /// <summary>
-    /// Lets go of whatever is selected: a zoom, a cut, or a speed change. The playhead stays. A
+    /// Lets go of whatever is selected: a zoom, a cut, a speed change, or an annotation. The playhead stays. A
     /// press on an empty part of a lane does this: selecting no zoom alone would leave a selected
     /// cut as it is.
     /// </summary>
@@ -608,6 +609,7 @@ public sealed partial class StudioEditorSession
         _selectedZoomIndex = null;
         _selectedCutIndex = null;
         _selectedSpeedIndex = null;
+        _selectedAnnotationIndex = null;
         if (Selection != before)
         {
             RaiseChanged(StudioEditorChanges.Selection);
@@ -830,6 +832,7 @@ public sealed partial class StudioEditorSession
         var zoomsBefore = model.Project.Zooms;
         var cutsBefore = model.Project.Edits.Cuts;
         var speedBefore = model.Project.Edits.Speed;
+        var annotationsBefore = model.Project.Overlays.Annotations;
         var selected = Selection;
         var selection = change(model);
         var isChanged = !model.EditableState.ContentEquals(before);
@@ -861,6 +864,15 @@ public sealed partial class StudioEditorSession
             _selectedSpeedIndex = StudioEditorModel.FindSpeedFollowing(speedBefore, speedIndex, model.Project.Edits.Speed);
         }
 
+        if (selection is { Kind: EditSelectionKind.Annotation } annotationChosen)
+        {
+            _selectedAnnotationIndex = annotationChosen.Index;
+        }
+        else if (isChanged && selected.Annotation is { } annotationIndex)
+        {
+            _selectedAnnotationIndex = StudioEditorModel.FindAnnotationFollowing(annotationsBefore, annotationIndex, model.Project.Overlays.Annotations);
+        }
+
         // One selection: an edit that says where a zoom is lets go of a cut and a speed change,
         // and so on. An edit to the selected zoom finds nothing else selected, so only adding one
         // does.
@@ -880,11 +892,17 @@ public sealed partial class StudioEditorSession
             {
                 _selectedSpeedIndex = null;
             }
+
+            if (chosen.Kind != EditSelectionKind.Annotation)
+            {
+                _selectedAnnotationIndex = null;
+            }
         }
 
         _selectedZoomIndex = SelectedZoomIndex;
         _selectedCutIndex = SelectedCutIndex;
         _selectedSpeedIndex = SelectedSpeedIndex;
+        _selectedAnnotationIndex = SelectedAnnotationIndex;
         var selectionChange = Selection != selected
             ? StudioEditorChanges.Selection
             : StudioEditorChanges.None;
@@ -957,6 +975,7 @@ public sealed partial class StudioEditorSession
         Zoom,
         Cut,
         Speed,
+        Annotation,
     }
 
     // Where the selection goes after an edit that knows: to a zoom, a cut or a speed change, or
@@ -968,6 +987,8 @@ public sealed partial class StudioEditorSession
         public static EditSelection Cut(int? index) => new(EditSelectionKind.Cut, index);
 
         public static EditSelection Speed(int? index) => new(EditSelectionKind.Speed, index);
+
+        public static EditSelection Annotation(int? index) => new(EditSelectionKind.Annotation, index);
     }
 
     // Transport

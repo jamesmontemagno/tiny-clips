@@ -203,6 +203,9 @@
 		B600000000000000000000F1 /* StudioInspectorPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A500000000000000000000F1 /* StudioInspectorPanelTests.swift */; };
 		B600000000000000000000F2 /* StudioProjectFolderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A500000000000000000000F2 /* StudioProjectFolderTests.swift */; };
 		B60000000000000000000003 /* StudioFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000003 /* StudioFixtureTests.swift */; };
+		A1D0A0000000000000000002 /* StudioAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0A0000000000000000001 /* StudioAnnotations.swift */; };
+		A1D0A0000000000000000003 /* StudioAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0A0000000000000000001 /* StudioAnnotations.swift */; };
+		A1D0A0000000000000000005 /* StudioAnnotationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0A0000000000000000004 /* StudioAnnotationTests.swift */; };
 		B400000000000000000000F7 /* StudioExportPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F7 /* StudioExportPresets.swift */; };
 		B500000000000000000000F7 /* StudioExportPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F7 /* StudioExportPresets.swift */; };
 		B400000000000000000000F8 /* StudioExportWriteJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F8 /* StudioExportWriteJob.swift */; };
@@ -245,6 +248,8 @@
 		7FAC35F6E54C48937C1F2BD1 /* StudioSceneViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DAE410B2D22DD4219DE97A4 /* StudioSceneViews.swift */; };
 		6935A55B2C10383D92BB418D /* StudioCutViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 709B80B15F8E0E76C52214CC /* StudioCutViews.swift */; };
 		A398AE4593EA073D1B892585 /* StudioCutViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 709B80B15F8E0E76C52214CC /* StudioCutViews.swift */; };
+		A1D0A0000000000000000007 /* StudioAnnotationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0A0000000000000000006 /* StudioAnnotationViews.swift */; };
+		A1D0A0000000000000000008 /* StudioAnnotationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0A0000000000000000006 /* StudioAnnotationViews.swift */; };
 		B498BE861B086F56A256FE42 /* StudioSpeedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B1E0691A691282CBB2BB28 /* StudioSpeedViews.swift */; };
 		A8E91A2021FEB4B9749B5459 /* StudioSpeedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B1E0691A691282CBB2BB28 /* StudioSpeedViews.swift */; };
 		02B5EC1033DC7E2DD7C22A90 /* StudioSound.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F1D43C6895A623165EE4D54 /* StudioSound.swift */; };
@@ -376,6 +381,8 @@
 		A500000000000000000000F1 /* StudioInspectorPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioInspectorPanelTests.swift; sourceTree = "<group>"; };
 		A500000000000000000000F2 /* StudioProjectFolderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProjectFolderTests.swift; sourceTree = "<group>"; };
 		A50000000000000000000003 /* StudioFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioFixtureTests.swift; sourceTree = "<group>"; };
+		A1D0A0000000000000000001 /* StudioAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioAnnotations.swift; sourceTree = "<group>"; };
+		A1D0A0000000000000000004 /* StudioAnnotationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioAnnotationTests.swift; sourceTree = "<group>"; };
 		A400000000000000000000F7 /* StudioExportPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioExportPresets.swift; sourceTree = "<group>"; };
 		A400000000000000000000F8 /* StudioExportWriteJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioExportWriteJob.swift; sourceTree = "<group>"; };
 		A500000000000000000000F7 /* StudioExportPresetsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioExportPresetsTests.swift; sourceTree = "<group>"; };
@@ -399,6 +406,7 @@
 		FCBC2EB4FCC1CA1F83321628 /* StudioZoomViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioZoomViews.swift; sourceTree = "<group>"; };
 		9DAE410B2D22DD4219DE97A4 /* StudioSceneViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioSceneViews.swift; sourceTree = "<group>"; };
 		709B80B15F8E0E76C52214CC /* StudioCutViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCutViews.swift; sourceTree = "<group>"; };
+		A1D0A0000000000000000006 /* StudioAnnotationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioAnnotationViews.swift; sourceTree = "<group>"; };
 		00B1E0691A691282CBB2BB28 /* StudioSpeedViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioSpeedViews.swift; sourceTree = "<group>"; };
 		6F1D43C6895A623165EE4D54 /* StudioSound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioSound.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -594,6 +602,7 @@
 				A400000000000000000000F7 /* StudioExportPresets.swift */,
 				A40000000000000000000007 /* StudioLayoutResolver.swift */,
 				A40000000000000000000008 /* StudioTimeMap.swift */,
+				A1D0A0000000000000000001 /* StudioAnnotations.swift */,
 				F9B9E83F5026820434A754FA /* StudioRenderGeometry.swift */,
 				D1C92E15965D592980D7254C /* StudioCaptureEvents.swift */,
 				536FC4823D4E273D9E5841E6 /* Rendering */,
@@ -636,6 +645,7 @@
 				A50000000000000000000002 /* StudioLayoutTests.swift */,
 				A500000000000000000000F1 /* StudioInspectorPanelTests.swift */,
 				A500000000000000000000F2 /* StudioProjectFolderTests.swift */,
+				A1D0A0000000000000000004 /* StudioAnnotationTests.swift */,
 				A50000000000000000000003 /* StudioFixtureTests.swift */,
 				A500000000000000000000F7 /* StudioExportPresetsTests.swift */,
 				F3F398D2F36A0A31E3BB060B /* StudioRenderGeometryTests.swift */,
@@ -667,6 +677,7 @@
 				FCBC2EB4FCC1CA1F83321628 /* StudioZoomViews.swift */,
 				9DAE410B2D22DD4219DE97A4 /* StudioSceneViews.swift */,
 				709B80B15F8E0E76C52214CC /* StudioCutViews.swift */,
+				A1D0A0000000000000000006 /* StudioAnnotationViews.swift */,
 				00B1E0691A691282CBB2BB28 /* StudioSpeedViews.swift */,
 			);
 			path = Studio;
@@ -890,6 +901,7 @@
 				B400000000000000000000F8 /* StudioExportWriteJob.swift in Sources */,
 				B40000000000000000000007 /* StudioLayoutResolver.swift in Sources */,
 				B40000000000000000000008 /* StudioTimeMap.swift in Sources */,
+				A1D0A0000000000000000002 /* StudioAnnotations.swift in Sources */,
 				774667601CEB4B855CC1C93F /* StudioRenderGeometry.swift in Sources */,
 				919755A630E5FA97FA82A34C /* StudioCaptureEvents.swift in Sources */,
 				B8EDC14A56F0ECC682744CCA /* StudioRenderState.swift in Sources */,
@@ -907,6 +919,7 @@
 				588E5106C515877D432C5028 /* StudioZoomViews.swift in Sources */,
 				377D679ED809740738A2EA8C /* StudioSceneViews.swift in Sources */,
 				6935A55B2C10383D92BB418D /* StudioCutViews.swift in Sources */,
+				A1D0A0000000000000000007 /* StudioAnnotationViews.swift in Sources */,
 				B498BE861B086F56A256FE42 /* StudioSpeedViews.swift in Sources */,
 				02B5EC1033DC7E2DD7C22A90 /* StudioSound.swift in Sources */,
 			);
@@ -1002,6 +1015,7 @@
 				B500000000000000000000F8 /* StudioExportWriteJob.swift in Sources */,
 				B50000000000000000000007 /* StudioLayoutResolver.swift in Sources */,
 				B50000000000000000000008 /* StudioTimeMap.swift in Sources */,
+				A1D0A0000000000000000003 /* StudioAnnotations.swift in Sources */,
 				D0D2B1E6D380CFA891E26F03 /* StudioRenderGeometry.swift in Sources */,
 				BF95D6F237E260C603BB3B05 /* StudioCaptureEvents.swift in Sources */,
 				322CB3FB9F91146FB467C8DF /* StudioRenderState.swift in Sources */,
@@ -1019,6 +1033,7 @@
 				B5ADC0138CB4DF6942EA3611 /* StudioZoomViews.swift in Sources */,
 				7FAC35F6E54C48937C1F2BD1 /* StudioSceneViews.swift in Sources */,
 				A398AE4593EA073D1B892585 /* StudioCutViews.swift in Sources */,
+				A1D0A0000000000000000008 /* StudioAnnotationViews.swift in Sources */,
 				A8E91A2021FEB4B9749B5459 /* StudioSpeedViews.swift in Sources */,
 				8C20216D11F60EF4FC95141B /* StudioSound.swift in Sources */,
 			);
@@ -1048,6 +1063,7 @@
 				B60000000000000000000002 /* StudioLayoutTests.swift in Sources */,
 				B600000000000000000000F1 /* StudioInspectorPanelTests.swift in Sources */,
 				B600000000000000000000F2 /* StudioProjectFolderTests.swift in Sources */,
+				A1D0A0000000000000000005 /* StudioAnnotationTests.swift in Sources */,
 				B60000000000000000000003 /* StudioFixtureTests.swift in Sources */,
 				B600000000000000000000F7 /* StudioExportPresetsTests.swift in Sources */,
 				FA0BE82E7B443BF2C65E796B /* StudioRenderGeometryTests.swift in Sources */,

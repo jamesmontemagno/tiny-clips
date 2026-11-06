@@ -103,6 +103,31 @@ public enum StudioCaptureKind
     Window,
 }
 
+[JsonConverter(typeof(StudioAnnotationAttachJsonConverter))]
+public enum StudioAnnotationAttach
+{
+    Screen,
+    Frame,
+}
+
+[JsonConverter(typeof(StudioAnnotationStyleJsonConverter))]
+public enum StudioAnnotationStyle
+{
+    Red,
+    Blue,
+    Yellow,
+    White,
+    Dark,
+}
+
+[JsonConverter(typeof(StudioAnnotationSizeJsonConverter))]
+public enum StudioAnnotationSize
+{
+    Small,
+    Medium,
+    Large,
+}
+
 public sealed record StudioProject
 {
     public const int CurrentSchemaVersion = 1;
@@ -339,6 +364,44 @@ public sealed record StudioOverlays
 {
     public StudioClickOverlay Clicks { get; init; } = new();
     public bool Branding { get; init; }
+
+    /// <summary>What is drawn over the picture, bottom first (section 6.10 of the project format).</summary>
+    public StudioAnnotation[] Annotations { get; init; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+/// <summary>An arrow, a callout, or a text box over the picture for a stretch of the recording.</summary>
+public sealed record StudioAnnotation
+{
+    public string Id { get; init; } = string.Empty;
+
+    /// <summary>
+    /// One of <see cref="StudioAnnotationKinds"/>. It is text and not an enumeration so that a
+    /// kind from a later version stays what it is through a save, and is not drawn as another.
+    /// </summary>
+    public string Kind { get; init; } = StudioAnnotationKinds.Arrow;
+
+    public StudioAnnotationAttach Attach { get; init; } = StudioAnnotationAttach.Screen;
+    public double Start { get; init; }
+    public double End { get; init; }
+    public double X { get; init; } = 0.5;
+    public double Y { get; init; } = 0.5;
+    public double OffsetX { get; init; } = -0.12;
+    public double OffsetY { get; init; } = 0.12;
+    public string Text { get; init; } = string.Empty;
+    public StudioAnnotationStyle Style { get; init; } = StudioAnnotationStyle.Red;
+    public StudioAnnotationSize Size { get; init; } = StudioAnnotationSize.Medium;
+
+    /// <summary><c>#RRGGBB</c> in place of the style's fill. Anything else leaves the style's.</summary>
+    public string Fill { get; init; } = string.Empty;
+
+    /// <summary><c>#RRGGBB</c> in place of the style's text color. Anything else leaves the style's.</summary>
+    public string TextColor { get; init; } = string.Empty;
+
+    /// <summary>What <see cref="Size"/> is multiplied by.</summary>
+    public double Scale { get; init; } = 1;
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];

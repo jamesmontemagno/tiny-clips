@@ -8,8 +8,8 @@ namespace TinyClips.App.Controls.Studio;
 /// <summary>
 /// The bottom of the Studio window: play and pause, the two frame steps, the time, the buttons
 /// that split the scene, add a zoom, start a cut and change the speed, and the two that trim at
-/// the playhead; and under them the scene lane, the zoom lane, the cut lane, the speed lane and
-/// the trim bar.
+/// the playhead; and under them the scene lane, the zoom lane, the cut lane, the speed lane, the
+/// annotation lane and the trim bar.
 /// </summary>
 public sealed partial class StudioTimeline : UserControl
 {
@@ -21,6 +21,7 @@ public sealed partial class StudioTimeline : UserControl
         ZoomLaneHost.Child = new StudioZoomLane(viewModel);
         CutLaneHost.Child = new StudioCutLane(viewModel);
         SpeedLaneHost.Child = new StudioSpeedLane(viewModel);
+        AnnotationLaneHost.Child = new StudioAnnotationLane(viewModel);
         StudioGlyphRow.Attach(TransportRow);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -30,6 +31,19 @@ public sealed partial class StudioTimeline : UserControl
 
     /// <summary>Puts keyboard focus on Play, where Space and the arrow keys are closest to hand.</summary>
     public bool FocusPlayButton() => PlayPauseButton.Focus(FocusState.Programmatic);
+
+    /// <summary>
+    /// What a key did may have emptied the lane that had the keyboard focus: Delete on its last
+    /// block, or Undo of the first one. The lane is then gone, and the focus goes to Play and not to
+    /// whatever comes next in the window, so the keyboard stays with the timeline.
+    /// </summary>
+    internal void KeepFocusAfterKey(StudioLane? held)
+    {
+        if (held?.Parent is UIElement { Visibility: Visibility.Collapsed })
+        {
+            PlayPauseButton.Focus(FocusState.Keyboard);
+        }
+    }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {

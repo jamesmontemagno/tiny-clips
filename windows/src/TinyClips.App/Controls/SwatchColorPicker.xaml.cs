@@ -93,6 +93,11 @@ public sealed partial class SwatchColorPicker : UserControl
     /// <summary>Raised only when the user selects a preset swatch or changes the custom picker.</summary>
     public event EventHandler<Color>? ColorChanged;
 
+    /// <summary>The options have closed, which is when one choice of a color has been made.</summary>
+    public event EventHandler? ColorChoiceEnded;
+
+    private void OnOptionsClosed(object? sender, object e) => ColorChoiceEnded?.Invoke(this, EventArgs.Empty);
+
     private static void OnAutomationNameChanged(DependencyObject sender, DependencyProperty property) =>
         ((SwatchColorPicker)sender).SyncAutomationName();
 
@@ -231,8 +236,16 @@ public sealed partial class SwatchColorPicker : UserControl
         _syncing = false;
     }
 
+    /// <summary>What to call a color when the caller knows better than the presets do. Null leaves it to them.</summary>
+    public Func<Color, string?>? ColorNamer { get; set; }
+
     private string DescribeColor(Color color, bool transparent)
     {
+        if (ColorNamer?.Invoke(color) is { } known)
+        {
+            return known;
+        }
+
         if (transparent && AllowTransparent)
         {
             return "None";
