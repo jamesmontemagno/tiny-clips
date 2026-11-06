@@ -330,6 +330,27 @@ public partial class App : Application
     private void OnTrayStudioPreviewChanged(object? sender, EventArgs args) =>
         _dispatcher?.TryEnqueue(() => _trayStudioInvalidation?.Request());
 
+    private void OnIncludeTinyClipsInCaptureChanged(object? sender, EventArgs args) =>
+        _dispatcher?.TryEnqueue(() =>
+        {
+            if (!_isExiting)
+            {
+                SyncCaptureVisibility(Services.GetRequiredService<ICaptureSettings>().IncludeTinyClipsInCapture);
+            }
+        });
+
+    private void SyncCaptureVisibility(bool includeTinyClips)
+    {
+        try
+        {
+            WindowCaptureVisibility.Policy.BeginCapture(includeTinyClips, IsAnyRecordingActive());
+        }
+        catch (CaptureVisibilityException ex)
+        {
+            CrashDiagnostics.Log("SyncCaptureVisibility", ex, handled: true);
+        }
+    }
+
     private void OnTrayTextScaleChanged(Windows.UI.ViewManagement.UISettings sender, object args) =>
         _dispatcher?.TryEnqueue(() => _trayWidthInvalidation?.Request());
 
@@ -627,7 +648,13 @@ public partial class App : Application
             callback => _dispatcher!.TryEnqueue(DispatcherQueuePriority.Low, () => callback()),
             UpdateTrayPopupWidth);
         _trayLayout = BuildTrayPopupContent(hotKeys);
-        _trayPopup = new TrayPopupWindow(_trayLayout);
+
+        // Apply the saved setting before the tray exists, and keep it applied as it changes, so a
+        // capture never flips display affinity on the just-hidden tray (that leaves a white box).
+        var captureSettings = Services.GetRequiredService<ICaptureSettings>();
+        SyncCaptureVisibility(captureSettings.IncludeTinyClipsInCapture);
+        captureSettings.IncludeTinyClipsInCaptureChanged += OnIncludeTinyClipsInCaptureChanged;
+
         RefreshTrayTiles();
 
         _taskbarIcon = new TaskbarIcon
@@ -768,13 +795,14 @@ public partial class App : Application
 
     private void ShowTrayPopup()
     {
-        if (_trayPopup is null)
+        if (_isExiting || _trayLayout is null)
         {
             return;
         }
 
-        // All content, state and dimensions are maintained ahead of time. In particular,
-        // opening this window never touches storage, starts thumbnails or resolves services.
+        // Prepare the content ahead of time, but create no window until it is requested.
+        // A hidden acrylic window can otherwise leave an empty surface at startup.
+        _trayPopup ??= new TrayPopupWindow(_trayLayout);
         _trayPopup.ShowNearCursor(_trayPopupWidth, TrayPopupHeight);
         ResumeTrayRefresh();
     }
@@ -4214,6 +4242,7 @@ public partial class App : Application
         }
 
         Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabledChanged -= OnTrayStudioPreviewChanged;
+        Services.GetRequiredService<ICaptureSettings>().IncludeTinyClipsInCaptureChanged -= OnIncludeTinyClipsInCaptureChanged;
 
         await StopAgentControlForExitAsync();
         CancelCaptureFlow();

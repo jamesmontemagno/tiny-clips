@@ -64,8 +64,9 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
 - **Pre-capture countdown** and **save toast notifications** (both opt-in via Settings).
 - **Include Tiny Clips in captures** (Settings → General → Capture behavior) lets app windows
   and capture controls appear in screenshots and recordings for demos, and makes eligible
-  app windows available in window selection. Off by default. Changes apply on the next capture
-  after any active recording ends; captures taken during that recording share its setting.
+  app windows available in window selection. Off by default. The saved setting applies at startup,
+  and changes apply immediately unless a recording is active. During a recording, captures share
+  its setting; pending changes apply on the next capture after that recording ends.
   The teleprompter and live webcam preview always stay excluded, while the separately recorded
   camera is unchanged. This is independent of the branding watermark. Windows window-level
   exclusion also affects capture by other apps.
