@@ -29,14 +29,30 @@ enum StudioCaptionLanguages {
 
 /// How far generating captions is.
 struct StudioCaptionProgress: Equatable, Sendable {
-    enum Stage: Sendable {
+    enum Stage: Int, Sendable {
         case readingSound
         case downloadingLanguage
+        case preparingSpeech
         case recognizingSpeech
+        case creatingCaptions
     }
 
-    var stage: Stage
-    var fraction: Double
+    let stage: Stage
+    /// Nil while a stage has no measured progress.
+    let fraction: Double?
+
+    init(stage: Stage, fraction: Double? = nil) {
+        self.stage = stage
+        self.fraction = fraction.flatMap { $0.isFinite ? min(1, max(0, $0)) : nil }
+    }
+
+    /// Callbacks cross to the main actor independently, so an older update can arrive last.
+    func advanced(to next: Self) -> Self {
+        guard next.stage.rawValue >= stage.rawValue else { return self }
+        guard next.stage == stage else { return next }
+        guard let fraction = next.fraction, fraction >= (self.fraction ?? 0) else { return self }
+        return next
+    }
 }
 
 /// What speech recognition heard, ready to go in a project.

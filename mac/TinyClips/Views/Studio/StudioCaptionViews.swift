@@ -430,10 +430,10 @@ struct StudioCaptionsInspectorSection: View {
                 .help("Stop generating. The captions stay as they were.")
             }
             Group {
-                if viewModel.isStoppingCaptionGeneration {
-                    ProgressView()
+                if !viewModel.isStoppingCaptionGeneration, let fraction = viewModel.captionGenerationProgress.fraction {
+                    ProgressView(value: fraction)
                 } else {
-                    ProgressView(value: min(1, max(0, viewModel.captionGenerationProgress.fraction)))
+                    ProgressView()
                 }
             }
             .progressViewStyle(.linear)

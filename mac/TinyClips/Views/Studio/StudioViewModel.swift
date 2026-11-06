@@ -61,7 +61,7 @@ final class StudioViewModel: ObservableObject {
     /// stretches of work, so this can last for seconds.
     @Published private(set) var isStoppingCaptionGeneration = false
 
-    @Published private(set) var captionGenerationProgress = StudioCaptionProgress(stage: .readingSound, fraction: 0)
+    @Published private(set) var captionGenerationProgress = StudioCaptionProgress(stage: .readingSound)
 
     /// What the Captions panel says about the last thing done to the captions, or nil.
     @Published private(set) var captionNotice: StudioCaptionNotice?
@@ -532,7 +532,7 @@ final class StudioViewModel: ObservableObject {
         let generation = captionGenerationNumber
         isGeneratingCaptions = true
         isStoppingCaptionGeneration = false
-        captionGenerationProgress = StudioCaptionProgress(stage: .readingSound, fraction: 0)
+        captionGenerationProgress = StudioCaptionProgress(stage: .readingSound)
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
             .announcement: StudioCaptionText.generatingMessage,
         ])
@@ -557,7 +557,10 @@ final class StudioViewModel: ObservableObject {
 
     private func reportCaptionProgress(_ progress: StudioCaptionProgress, generation: Int) {
         guard captionGenerationNumber == generation, isGeneratingCaptions else { return }
-        captionGenerationProgress = progress
+        let next = captionGenerationProgress.advanced(to: progress)
+        if next != captionGenerationProgress {
+            captionGenerationProgress = next
+        }
     }
 
     func cancelCaptionGeneration() {
@@ -607,7 +610,8 @@ final class StudioViewModel: ObservableObject {
             SaveService.shared.showNotice(
                 StudioCaptionPanelText.notificationMessage(for: notice, clipName: clipName),
                 title: StudioCaptionPanelText.notificationTitle(for: notice),
-                studioProjectID: projectID
+                studioProjectID: projectID,
+                allowsInAppFallback: false
             )
         } else {
             announce(notice.spokenText)

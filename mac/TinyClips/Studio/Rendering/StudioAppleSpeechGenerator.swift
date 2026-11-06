@@ -134,6 +134,7 @@ final class StudioCaptionPercentReports: @unchecked Sendable {
     }
 
     func report(_ fraction: Double) {
+        guard fraction.isFinite else { return }
         let percent = Int(min(1, max(0, fraction)) * 100)
         lock.lock()
         let isNews = percent > lastPercent
@@ -144,6 +145,11 @@ final class StudioCaptionPercentReports: @unchecked Sendable {
         if isNews {
             progress(StudioCaptionProgress(stage: stage, fraction: Double(percent) / 100))
         }
+    }
+
+    func report(finalizedThrough time: CMTime, duration: Double) {
+        guard time.isNumeric, duration.isFinite, duration > 0 else { return }
+        report(time.seconds / duration)
     }
 }
 
@@ -270,21 +276,16 @@ enum StudioSpeechAnalysis {
         text: @escaping @Sendable (Results.Element) -> AttributedString,
         locale: Locale,
         sound: URL,
-        duration: Double,
         progress: @escaping @Sendable (StudioCaptionProgress) -> Void
     ) async throws -> [StudioTranscriptSegment] where Results.Element: SpeechModuleResult {
         try await install(module, locale: locale, progress: progress)
         try Task.checkCancellation()
 
-        progress(StudioCaptionProgress(stage: .recognizingSpeech, fraction: 0))
         let reports = StudioCaptionPercentReports(stage: .recognizingSpeech, progress)
         let analyzer = SpeechAnalyzer(modules: [module])
         let collecting = Task { () -> [StudioTranscriptSegment] in
             var segments: [StudioTranscriptSegment] = []
             for try await result in results {
-                if duration > 0 {
-                    reports.report(result.range.end.seconds / duration)
-                }
                 if result.isFinal, let segment = StudioAppleSpeechResults.segment(text: text(result), range: result.range) {
                     segments.append(segment)
                 }
@@ -297,6 +298,18 @@ enum StudioSpeechAnalysis {
                 // SpeechAnalyzer converts what it reads from a file, but not what it is handed
                 // as buffers, and the helper for those needs macOS 27.
                 let file = try AVAudioFile(forReading: sound)
+                let soundDuration = Double(file.length) / file.processingFormat.sampleRate
+                await analyzer.setVolatileRangeChangedHandler { range, changedStart, _ in
+                    // The end is queued input, not completed work. The start advances as audio
+                    // is finalized, including silence that produces no transcript results.
+                    if changedStart {
+                        reports.report(finalizedThrough: range.start, duration: soundDuration)
+                    }
+                }
+                progress(StudioCaptionProgress(stage: .preparingSpeech))
+                try await analyzer.prepareToAnalyze(in: file.processingFormat)
+                try Task.checkCancellation()
+                progress(StudioCaptionProgress(stage: .recognizingSpeech))
                 if let last = try await analyzer.analyzeSequence(from: file) {
                     try Task.checkCancellation()
                     try await analyzer.finalizeAndFinish(through: last)
@@ -398,11 +411,10 @@ struct StudioAppleSpeechCaptionGenerator: StudioCaptionGenerating {
 
         let duration = project.sources.screen.duration
 
-        // Results that are not final yet only move the progress bar along.
         let transcriber = SpeechTranscriber(
             locale: locale,
             transcriptionOptions: [],
-            reportingOptions: [.volatileResults],
+            reportingOptions: [],
             attributeOptions: [.audioTimeRange]
         )
         let segments: [StudioTranscriptSegment]
@@ -413,7 +425,6 @@ struct StudioAppleSpeechCaptionGenerator: StudioCaptionGenerating {
                 text: { $0.text },
                 locale: locale,
                 sound: sound,
-                duration: duration,
                 progress: progress
             )
         } catch is CancellationError {
@@ -424,6 +435,8 @@ struct StudioAppleSpeechCaptionGenerator: StudioCaptionGenerating {
             throw StudioCaptionGenerationError(message: "The speech could not be recognized: \(error.localizedDescription)")
         }
 
+        try Task.checkCancellation()
+        progress(StudioCaptionProgress(stage: .creatingCaptions))
         let cues = StudioCaptionTranscript.cues(from: segments, sourceDuration: duration)
         guard !cues.isEmpty else {
             throw StudioCaptionGenerationError.noSpeech

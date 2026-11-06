@@ -464,12 +464,16 @@ enum StudioCaptionText {
 
     /// How far generating is: `Recognizing speech: 40%`.
     static func progressText(_ progress: StudioCaptionProgress) -> String {
-        let percent = Int((min(1, max(0, progress.fraction)) * 100).rounded())
+        let title: String
         switch progress.stage {
-        case .readingSound: return "Reading the sound: \(percent)%"
-        case .downloadingLanguage: return "Downloading the language: \(percent)%"
-        case .recognizingSpeech: return "Recognizing speech: \(percent)%"
+        case .readingSound: title = "Reading the sound"
+        case .downloadingLanguage: title = "Downloading the language"
+        case .preparingSpeech: title = "Preparing speech recognition"
+        case .recognizingSpeech: title = "Recognizing speech"
+        case .creatingCaptions: title = "Creating captions"
         }
+        guard let fraction = progress.fraction else { return "\(title)\u{2026}" }
+        return "\(title): \(Int((fraction * 100).rounded()))%"
     }
 
     static func languageNote(isInstalled: Bool) -> String {

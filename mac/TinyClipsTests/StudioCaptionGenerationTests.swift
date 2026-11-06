@@ -150,6 +150,78 @@ final class StudioCaptionGenerationTests: XCTestCase {
         XCTAssertTrue(StudioCaptionText.languageNote(isInstalled: true).contains("already on this Mac"))
     }
 
+    func testUnmeasuredStages_ShowActivityInsteadOfAStuckPercentage() {
+        XCTAssertEqual(StudioCaptionText.progressText(StudioCaptionProgress(stage: .readingSound)), "Reading the sound\u{2026}")
+        XCTAssertEqual(StudioCaptionText.progressText(StudioCaptionProgress(stage: .preparingSpeech)), "Preparing speech recognition\u{2026}")
+        XCTAssertEqual(StudioCaptionText.progressText(StudioCaptionProgress(stage: .recognizingSpeech)), "Recognizing speech\u{2026}")
+        XCTAssertEqual(StudioCaptionText.progressText(StudioCaptionProgress(stage: .creatingCaptions)), "Creating captions\u{2026}")
+        let invalid = StudioCaptionProgress(stage: .recognizingSpeech, fraction: .nan)
+        XCTAssertNil(invalid.fraction)
+        XCTAssertEqual(StudioCaptionText.progressText(invalid), "Recognizing speech\u{2026}")
+    }
+
+    func testLateProgress_CannotMoveBackwardOrReturnToAnEarlierStage() {
+        var progress = StudioCaptionProgress(stage: .readingSound, fraction: 1)
+        progress = progress.advanced(to: StudioCaptionProgress(stage: .preparingSpeech))
+        XCTAssertEqual(progress.stage, .preparingSpeech)
+        XCTAssertNil(progress.fraction)
+
+        progress = progress.advanced(to: StudioCaptionProgress(stage: .recognizingSpeech, fraction: 0.6))
+        let recognizing = progress
+        for late in [
+            StudioCaptionProgress(stage: .readingSound, fraction: 1),
+            StudioCaptionProgress(stage: .downloadingLanguage, fraction: 0.9),
+            StudioCaptionProgress(stage: .preparingSpeech),
+            StudioCaptionProgress(stage: .recognizingSpeech),
+            StudioCaptionProgress(stage: .recognizingSpeech, fraction: 0.4),
+        ] {
+            progress = progress.advanced(to: late)
+            XCTAssertEqual(progress, recognizing)
+        }
+
+        progress = progress.advanced(to: StudioCaptionProgress(stage: .recognizingSpeech, fraction: 1))
+        XCTAssertEqual(progress.fraction, 1)
+        progress = progress.advanced(to: StudioCaptionProgress(stage: .creatingCaptions))
+        XCTAssertEqual(progress.stage, .creatingCaptions)
+        XCTAssertNil(progress.fraction)
+        XCTAssertEqual(progress.advanced(to: recognizing), progress)
+    }
+
+    func testPercentReports_IgnoreInvalidAndDuplicateMeasurements() async {
+        let (updates, continuation) = AsyncStream<StudioCaptionProgress>.makeStream()
+        let reports = StudioCaptionPercentReports(stage: .recognizingSpeech) { continuation.yield($0) }
+        for fraction in [0, 0.601, 0.609, 0.4, .nan, .infinity, -.infinity, 1.2] {
+            reports.report(fraction)
+        }
+        continuation.finish()
+
+        var fractions: [Double?] = []
+        for await update in updates {
+            fractions.append(update.fraction)
+        }
+        XCTAssertEqual(fractions, [0.6, 1])
+    }
+
+    func testSpeechProgress_FollowsFinalizedAudioIncludingSilence_NotQueuedInput() async {
+        let (updates, continuation) = AsyncStream<StudioCaptionProgress>.makeStream()
+        let reports = StudioCaptionPercentReports(stage: .recognizingSpeech) { continuation.yield($0) }
+        // All 20 seconds can be queued before any speech has been processed.
+        let queued = CMTimeRange(start: .zero, end: CMTime(seconds: 20, preferredTimescale: 600))
+        reports.report(finalizedThrough: queued.start, duration: 20)
+        reports.report(finalizedThrough: .invalid, duration: 20)
+        reports.report(finalizedThrough: queued.end, duration: 0)
+        reports.report(finalizedThrough: CMTime(seconds: 12, preferredTimescale: 600), duration: 20)
+        // The last eight seconds contain no speech, but their finalization still advances progress.
+        reports.report(finalizedThrough: queued.end, duration: 20)
+        continuation.finish()
+
+        var fractions: [Double?] = []
+        for await update in updates {
+            fractions.append(update.fraction)
+        }
+        XCTAssertEqual(fractions, [0.6, 1])
+    }
+
     @MainActor
     func testAMacWithoutAppleSpeech_SaysSo_AndAgentsAreNotOfferedIt() async throws {
         guard !StudioAppleSpeech.isAvailable else { throw XCTSkip("this Mac has Apple Speech") }
