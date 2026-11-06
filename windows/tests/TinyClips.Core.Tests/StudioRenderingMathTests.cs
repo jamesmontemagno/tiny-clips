@@ -1,4 +1,3 @@
-using TinyClips.Core.Models;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Rendering;
 
@@ -283,17 +282,6 @@ public sealed class StudioRenderingMathTests
         AssertClose(expectedHeight, size.Height);
         Assert.Equal(0, (int)size.Width % 2);
         Assert.Equal(0, (int)size.Height % 2);
-    }
-
-    [Theory]
-    [InlineData(1920, 1080, 30, VideoCodec.H264, 6_220_800u)]
-    [InlineData(2560, 1440, 30, VideoCodec.H264, 11_059_200u)]
-    [InlineData(3840, 2160, 60, VideoCodec.H264, 24_000_000u)]
-    [InlineData(640, 360, 30, VideoCodec.H264, 2_000_000u)]
-    [InlineData(1920, 1080, 30, VideoCodec.Hevc, 3_732_480u)]
-    public void VideoBitrate_FollowsTheRecordersRule(int width, int height, double fps, VideoCodec codec, uint expected)
-    {
-        Assert.Equal(expected, StudioRenderingMath.VideoBitrate(width, height, fps, codec));
     }
 
     [Theory]

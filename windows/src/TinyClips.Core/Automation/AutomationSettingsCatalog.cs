@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
+using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Automation;
 
@@ -29,6 +30,12 @@ public sealed class AutomationSettingsCatalog
         entries.AddRange(
         [
             Text("fileNameTemplate", () => s.FileNameTemplate, v => s.FileNameTemplate = v),
+            Text("studioExportResolution", () => StudioExportPresets.Id(s.StudioExportResolution),
+                v => s.StudioExportResolution = StudioExportPresets.TryParseResolution(v, out var resolution) ? resolution : s.StudioExportResolution,
+                allowed: [.. StudioExportPresets.ResolutionIds]),
+            Text("studioExportQuality", () => StudioExportPresets.Id(s.StudioExportQuality),
+                v => s.StudioExportQuality = StudioExportPresets.TryParseQuality(v, out var quality) ? quality : s.StudioExportQuality,
+                allowed: [.. StudioExportPresets.QualityIds]),
             Text("screenshotFormat", () => s.ScreenshotFormat, v => s.ScreenshotFormat = v, allowed: ["jpg", "png", "webp"]),
             Int("screenshotScale", () => s.ScreenshotScale, v => s.ScreenshotScale = v, 25, 100),
             Double("jpegQuality", () => s.JpegQuality, v => s.JpegQuality = v, 0.1, 1),

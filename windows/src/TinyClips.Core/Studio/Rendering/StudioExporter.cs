@@ -36,12 +36,16 @@ public enum StudioRenderDevicePreference
 /// hardware, and linear sampling in software (WARP), where high-quality sampling makes an export
 /// slower than the video plays. A value given here is used on either.
 /// </param>
+/// <param name="Resolution">The size to export at, in place of <paramref name="LongSideLimit"/>. Null means the limit decides.</param>
+/// <param name="Quality">How many bits the video spends on each frame.</param>
 public sealed record StudioExportOptions(
     double LongSideLimit = StudioExportLimits.LongSide,
     VideoCodec Codec = VideoCodec.H264,
     StudioEncoderPreference EncoderPreference = StudioEncoderPreference.HardwareWithSoftwareFallback,
     StudioRenderDevicePreference DevicePreference = StudioRenderDevicePreference.HardwareWithWarpFallback,
-    StudioRenderQuality? RenderQuality = null);
+    StudioRenderQuality? RenderQuality = null,
+    StudioExportResolution? Resolution = null,
+    StudioExportQuality Quality = StudioExportQuality.Standard);
 
 /// <summary>What a completed export wrote.</summary>
 /// <param name="EncoderDescription">The codec and the encoder Media Foundation used, as read back from the writer.</param>
@@ -241,6 +245,7 @@ internal sealed class StudioExportJob
     private readonly CancellationToken _cancellationToken;
     private int _width;
     private int _height;
+    private long _trialFrames;
     private StudioRenderQuality _quality;
     private double _reported = -1;
 
@@ -286,7 +291,10 @@ internal sealed class StudioExportJob
             StudioSourceFiles.Require(cameraPath, "camera recording");
         }
 
-        var size = StudioCanvasMath.ExportSize(StudioCanvasMath.NaturalSize(_project), _options.LongSideLimit);
+        var natural = StudioCanvasMath.NaturalSize(_project);
+        var size = _options.Resolution is { } resolution
+            ? StudioExportPresets.GetSize(natural, resolution)
+            : StudioCanvasMath.ExportSize(natural, _options.LongSideLimit);
         var width = _width = (int)size.Width;
         var height = _height = (int)size.Height;
         var rate = StudioRenderingMath.FrameRate(_project.Sources.Screen.FrameRate);
@@ -333,7 +341,7 @@ internal sealed class StudioExportJob
         IReadOnlyList<StudioExportFrame> plan)
     {
         var attempts = Attempts(graphics);
-        var trialFrames = (long)Math.Ceiling(EncoderTrialSeconds * rate.FramesPerSecond);
+        var trialFrames = _trialFrames = (long)Math.Ceiling(EncoderTrialSeconds * rate.FramesPerSecond);
         for (var index = 0; ; index++)
         {
             try
@@ -410,7 +418,7 @@ internal sealed class StudioExportJob
                 width,
                 height,
                 rate,
-                StudioRenderingMath.VideoBitrate(width, height, rate.FramesPerSecond, _options.Codec),
+                StudioExportPresets.GetVideoBitrate(width, height, rate.FramesPerSecond, _options.Codec, _options.Quality),
                 _options.Codec,
                 attempt.AllowHardware,
                 attempt.GpuFrames);
@@ -676,6 +684,9 @@ internal sealed class StudioExportJob
             StudioGraphicsDeviceUnavailableException => new StudioExportException("Tiny Clips could not start a graphics device to draw the video with.", exception),
             StudioEncoderFailedException when _options.Codec == VideoCodec.Hevc && StudioMediaFoundation.FindEncoder(VideoFormatGuids.Hevc, hardware: true) is null && StudioMediaFoundation.FindEncoder(VideoFormatGuids.Hevc, hardware: false) is null
                 => new StudioExportException("This PC has no HEVC encoder. Choose H.264 and export again.", exception),
+            // Past the 4K frame, an encoder that gives up at the start most likely cannot make the size.
+            StudioEncoderFailedException { FramesWritten: var written } when written <= _trialFrames && !StudioExportPresets.FitsFourK(_width, _height)
+                => new StudioExportException($"This PC can't encode a {_width}×{_height} {CodecName(_options.Codec)} video. Choose 4K or a smaller resolution and export again.", exception),
             StudioEncoderFailedException => new StudioExportException($"The video could not be encoded as {CodecName(_options.Codec)} at {_width}×{_height} on this PC: {exception.Message}.", exception),
             _ when StudioMediaFoundation.IsDeviceLost(exception) => new StudioExportException("The graphics device stopped working during the export. Export again.", exception),
             IOException or UnauthorizedAccessException => new StudioExportException($"The video could not be saved to {outputPath}. {exception.Message}", exception),

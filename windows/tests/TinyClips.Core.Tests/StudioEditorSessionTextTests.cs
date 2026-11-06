@@ -35,23 +35,22 @@ public sealed class StudioEditorSessionTextTests : StudioEditorSessionTestBase
         var session = CreateSession(CreateProject());
 
         Assert.Equal("0:00.0 / 0:00.0", session.TimeText);
-        Assert.Equal("Exports at 1920 × 1080", session.ExportSizeText);
+        Assert.Equal(new StudioSize(1920, 1080), session.CanvasSize);
         Assert.Equal("Untitled recording", session.ClipName);
     }
 
     [Fact]
-    public async Task ExportSize_FollowsTheCanvasShape_AndIsLimitedOnItsLongSide()
+    public async Task CanvasSize_FollowsTheCanvasShape_AndIsLimitedOnItsLongSide()
     {
         var session = await OpenAsync(CreateProject());
-        Assert.Equal("Exports at 1920 × 1080", session.ExportSizeText);
-        Assert.Equal(new StudioSize(1920, 1080), session.ExportSize);
+        Assert.Equal(new StudioSize(1920, 1080), session.CanvasSize);
 
         session.SetCanvasAspect(StudioCanvasAspect.Square);
-        Assert.Equal("Exports at 1920 × 1920", session.ExportSizeText);
+        Assert.Equal(new StudioSize(1920, 1920), session.CanvasSize);
 
         session.SetCanvasAspect(StudioCanvasAspect.Portrait9X16);
-        Assert.Equal(new StudioSize(1920, 3414), session.ExportSize);
-        Assert.Equal(StudioExportLimits.GetExportSize(session.Project!), session.ExportSize);
+        Assert.Equal(new StudioSize(1920, 3414), session.CanvasSize);
+        Assert.Equal(StudioExportLimits.GetExportSize(session.Project!), session.CanvasSize);
     }
 
     [Theory]

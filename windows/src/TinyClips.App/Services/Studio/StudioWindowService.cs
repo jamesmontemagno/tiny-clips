@@ -46,6 +46,9 @@ public interface IStudioProjectHost
     /// <summary>Asks where to write captions. Null when nowhere was chosen.</summary>
     Task<string?> ChooseCaptionExportFileAsync(Window owner, string folder, string filename, StudioCaptionFormat format);
 
+    /// <summary>Whether Export asks for a resolution and quality, or uses the saved ones.</summary>
+    bool AsksForExportOptions { get; }
+
     /// <summary>Copies a saved project into the store as a new draft and opens the editor on the copy.</summary>
     Task<StudioProjectOpenResult> OpenProjectFileAsync(string path);
 
@@ -160,6 +163,9 @@ public sealed class StudioWindowService : IStudioProjectHost
     /// </summary>
     public Func<Window, Task<string?>> ChooseSaveFolder { get; set; } = PickFolderAsync;
     public Func<Window, string, string, Task<string?>> ChooseExportFile { get; set; } = PickExportFileAsync;
+
+    /// <summary>Whether Export asks for a resolution and quality, or uses the saved ones.</summary>
+    public bool AsksForExportOptions { get; set; } = true;
 
     public bool SaveAsForForegroundWindow()
     {

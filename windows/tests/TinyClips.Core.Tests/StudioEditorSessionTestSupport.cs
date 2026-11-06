@@ -402,7 +402,8 @@ internal sealed record ExportRequest(
     StudioEvents Events,
     StudioProjectPaths Paths,
     string OutputPath,
-    VideoCodec Codec);
+    VideoCodec Codec,
+    StudioExportChoice Choice);
 
 /// <summary>
 /// An exporter that finishes, fails or is cancelled when a test says so. One that finishes leaves
@@ -435,11 +436,12 @@ internal sealed class FakeExporter(List<string> log) : IStudioExportService
         StudioProjectPaths paths,
         string outputPath,
         VideoCodec codec,
+        StudioExportChoice choice,
         IProgress<double>? progress,
         CancellationToken cancellationToken)
     {
         log.Add("exporter.export");
-        Exports.Add(new ExportRequest(project, events, paths, outputPath, codec));
+        Exports.Add(new ExportRequest(project, events, paths, outputPath, codec, choice));
         Progress = progress;
         ExportCancellationToken = cancellationToken;
         ExportStarted?.Invoke();

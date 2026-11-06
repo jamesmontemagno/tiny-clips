@@ -1,7 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using TinyClips.App.Controls.Studio;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
@@ -15,6 +17,10 @@ public sealed partial class StudioWindow
 {
     // Where the keyboard focus was when Save project was asked for, to put it back there.
     private Control? _saveAskedFrom;
+
+    // The flyout on Export while it is open, and what is waiting for its answer.
+    private Flyout? _exportOptionsFlyout;
+    private TaskCompletionSource<bool>? _exportOptionsAnswer;
 
     // Opening
 
@@ -217,6 +223,51 @@ public sealed partial class StudioWindow
         {
             _isPromptOpen = false;
             if (!_isClosed && _isActive) focused?.Focus(FocusState.Programmatic);
+        }
+    }
+
+    /// <summary>
+    /// Shows the resolution and quality in a flyout on Export, whatever asked for the export: the
+    /// button, Ctrl+E, or the question when a draft is closed. It counts as a question while it is
+    /// open, so no key of the editor acts under it. The answer is given once the flyout has gone.
+    /// </summary>
+    private async Task<bool> ChooseExportOptionsAsync(StudioExportOptionsModel options)
+    {
+        if (!_projects.AsksForExportOptions)
+        {
+            return true;
+        }
+
+        if (_isClosed || _isPromptOpen)
+        {
+            return false;
+        }
+
+        var answer = new TaskCompletionSource<bool>();
+        var confirmed = false;
+        var panel = new StudioExportOptionsPanel(options) { RequestedTheme = RootGrid.RequestedTheme };
+        var flyout = new Flyout { Content = panel, Placement = FlyoutPlacementMode.BottomEdgeAlignedRight };
+        panel.Answered += (_, goesOn) =>
+        {
+            confirmed = goesOn;
+            flyout.Hide();
+        };
+        flyout.Opened += (_, _) => panel.FocusConfirm();
+        flyout.Closed += (_, _) => answer.TrySetResult(confirmed);
+
+        _isPromptOpen = true;
+        _exportOptionsFlyout = flyout;
+        _exportOptionsAnswer = answer;
+        try
+        {
+            flyout.ShowAt(ExportButton);
+            return await answer.Task;
+        }
+        finally
+        {
+            _exportOptionsFlyout = null;
+            _exportOptionsAnswer = null;
+            OnPromptClosed();
         }
     }
 

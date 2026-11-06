@@ -234,7 +234,7 @@ internal sealed partial class WindowChecks
         // second is still moving, and 6.5 to 7.5 s with the camera alone.
         int[] kept = [.. Enumerable.Range(90, 15), .. Enumerable.Range(135, 30), .. Enumerable.Range(195, 30)];
         var project = editor.Expected;
-        var size = StudioExportLimits.GetExportSize(project);
+        var size = ExportedSize(project);
         var (width, height) = ((int)size.Width, (int)size.Height);
         var time = TimeText(editor);
         var cuts = LaneText(editor, CutLane);

@@ -14,8 +14,14 @@ own `CHANGELOG.md` at the repository root.
 - Studio projects can hold captions, shared with the macOS app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. Agents can read and change them with `studio.project.get` and `studio.project.edit`.
 - Studio has a Captions panel: import an SRT or WebVTT file, timed to the recording or to the edited video; correct or delete a caption; check for readability problems and fix what is safe to fix; and export the video's captions as SRT or WebVTT. Agents can do the same with `studio.captions.import`, `studio.captions.check`, `studio.captions.fix`, and `studio.captions.export`. Captions cannot be drawn into the video yet.
 
+### Changed
+- Studio **Export** now opens a flyout to choose the resolution (Source, 4K, 1440p, 1080p, 720p or 480p) and quality (Best, High, Standard or Small file), and shows the pixel size and estimated file size they come to. It starts at 1080p and High, and offers your last choice next time. A video keeps its canvas's shape and is never scaled up. Source exports the canvas at its own size, even past 4K; a size the PC's encoders cannot make fails with a message to choose 4K or smaller. Above 4K the bitrate grows with the pixel count instead of stopping at the 4K ceiling. Agents can pass `resolution` and `quality` to `studio.export`, list what is on offer with `studio.export.options`, and read or set the remembered choice as settings; omitted values now use that choice rather than the largest size, and the result reports the video `codec` written.
+
 ### Fixed
 - Studio captions: a caption being typed is kept when generating captions or an agent's edit lands, and Undo and Redo no longer bring back stale text in the caption box. Agent `studio.captions.import` refuses an unknown `timing` instead of treating it as `recording`.
+- Tiny Clips no longer runs in Windows Efficiency Mode. The tray library was putting the whole app at idle priority with EcoQoS, which delayed the tray popup, capture shortcuts, overlays, editors, and recordings, and could stop them responding at all while other apps were busy.
+- The capture picker appears right away: it no longer captures every monitor before showing, for frames that were almost never used.
+- Choosing an item from the tray popup's **Open folders** or **Recent** menu no longer leaves an empty white window on screen.
 - Agent Control now preserves Studio gestures and existing annotated captures, reports saved screenshot dimensions accurately, persists agent activity, and cancels pending approvals when an agent disconnects.
 - Revoking an agent cancels its pending approvals, and the CLI verifies the named-pipe owner before sending its token.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.

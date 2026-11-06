@@ -30,13 +30,10 @@ internal sealed class WindowPickerController
 
     /// <summary>
     /// Shows the picker on every monitor and resolves with the chosen window handle, or null on
-    /// cancel. When <paramref name="backdrops"/> matches <paramref name="monitors"/> it is reused;
-    /// otherwise fresh monitor frames are captured. Windows are enumerated before any overlay
-    /// appears so the picker never lists itself.
+    /// cancel. Windows are enumerated before any overlay appears so the picker never lists itself.
     /// </summary>
     public static async Task<nint?> RunAsync(
         IReadOnlyList<MonitorInfo> monitors,
-        IReadOnlyList<Task<CapturedFrame?>>? backdrops,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -48,10 +45,7 @@ internal sealed class WindowPickerController
         var candidates = WindowEnumerator.GetWindows();
         CaptureFlowTrace.Mark($"window: {candidates.Count(c => c.IsSelectable)} selectable windows");
 
-        if (backdrops is null || backdrops.Count != monitors.Count)
-        {
-            backdrops = RegionSelectController.CaptureBackdropsAsync(monitors);
-        }
+        var backdrops = RegionSelectController.CaptureBackdropsAsync(monitors);
 
         var controller = new WindowPickerController(monitors, candidates);
         try
