@@ -1,0 +1,35 @@
+{
+  "description": "The start of the video is the start of the trim.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 2,
+    "trimEnd": 10,
+    "cuts": [],
+    "speed": []
+  },
+  "cues": [
+    {
+      "start": 0,
+      "end": 1,
+      "text": "At 0"
+    },
+    {
+      "start": 7,
+      "end": 9,
+      "text": "At 7"
+    }
+  ],
+  "expected": [
+    {
+      "start": 2,
+      "end": 3,
+      "text": "At 0"
+    },
+    {
+      "start": 9,
+      "end": 10,
+      "text": "At 7"
+    }
+  ],
+  "dropped": 0
+}

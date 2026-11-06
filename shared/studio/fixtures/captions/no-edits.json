@@ -1,0 +1,75 @@
+{
+  "description": "With no edits a caption is where its cue is, and only one shows at a time.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-1",
+        "start": 1,
+        "end": 3,
+        "text": "Hello there."
+      },
+      {
+        "id": "cue-3.5",
+        "start": 3.5,
+        "end": 5.25,
+        "text": "Second line\nof text."
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 1,
+      "end": 3,
+      "text": "Hello there."
+    },
+    {
+      "start": 3.5,
+      "end": 5.25,
+      "text": "Second line\nof text."
+    }
+  ],
+  "at": [
+    {
+      "output": 0,
+      "index": null
+    },
+    {
+      "output": 1,
+      "index": 0
+    },
+    {
+      "output": 2.999,
+      "index": 0
+    },
+    {
+      "output": 3,
+      "index": null
+    },
+    {
+      "output": 3.25,
+      "index": null
+    },
+    {
+      "output": 3.5,
+      "index": 1
+    },
+    {
+      "output": 5.25,
+      "index": null
+    },
+    {
+      "output": 6,
+      "index": null
+    }
+  ],
+  "srt": "1\n00:00:01,000 --> 00:00:03,000\nHello there.\n\n2\n00:00:03,500 --> 00:00:05,250\nSecond line\nof text.\n",
+  "vtt": "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHello there.\n\n00:00:03.500 --> 00:00:05.250\nSecond line\nof text.\n"
+}

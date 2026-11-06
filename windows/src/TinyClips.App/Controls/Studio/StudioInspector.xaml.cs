@@ -12,6 +12,7 @@ using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using Windows.Foundation;
+using Windows.System;
 using Windows.UI;
 
 namespace TinyClips.App.Controls.Studio;
@@ -40,6 +41,8 @@ public sealed partial class StudioInspector : UserControl
     private bool? _railHasCamera;
     private StudioInspectorPanel? _shownPanel;
     private bool _isSyncingRail;
+    private bool _isSyncingCaptionList;
+    private IReadOnlyList<StudioCaptionRow>? _captionListRows;
     private bool _isSyncingSwatches;
 
     public StudioInspector(StudioViewModel viewModel)
@@ -84,6 +87,10 @@ public sealed partial class StudioInspector : UserControl
 
         AddSwatches(SolidSwatches, StudioSwatch.Solid);
         AddSwatches(GradientSwatches, StudioSwatch.Gradient);
+        AddCaptionLooks();
+        CaptionsHeaderIcon.Glyph = StudioInspectorPanels.GetGlyph(StudioInspectorPanel.Captions);
+        CaptionRetryButton.Content = StudioCaptionPanelText.TryAnotherModel;
+        StudioGlyphRow.Attach(CaptionEditRow);
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -96,6 +103,9 @@ public sealed partial class StudioInspector : UserControl
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         SyncSwatches();
         FocusPad.Update(ViewModel.ZoomPad);
+        // The project may have loaded before this subscribed, so the list is filled here too.
+        SyncCaptionList();
+        SyncCaptionStates();
         SyncPanels();
     }
 
@@ -114,6 +124,21 @@ public sealed partial class StudioInspector : UserControl
             FocusPad.Update(ViewModel.ZoomPad);
         }
 
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName is nameof(StudioViewModel.SelectedCaptionRow) or nameof(StudioViewModel.CaptionRows))
+        {
+            SyncCaptionList();
+        }
+
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName is nameof(StudioViewModel.CaptionNoticeKind) or nameof(StudioViewModel.HasCaptions))
+        {
+            SyncCaptionStates();
+        }
+
+        if (e.PropertyName == nameof(StudioViewModel.CurrentCaptionRow))
+        {
+            KeepCurrentCaptionInView();
+        }
+
         if (string.IsNullOrEmpty(e.PropertyName))
         {
             SyncPanels();
@@ -129,6 +154,160 @@ public sealed partial class StudioInspector : UserControl
     }
 
     private void OnFocusPadRequested(object? sender, StudioFocusPadPoint e) => ViewModel.SetZoomFocusOnPad(e.X, e.Y);
+
+    // The Captions panel
+
+    // Setting a list's items lets go of its selection, and which of the two a binding does first
+    // is not promised, so the two are set here in that order. Nothing the user did is read back.
+    private void SyncCaptionList()
+    {
+        _isSyncingCaptionList = true;
+        try
+        {
+            var rows = ViewModel.CaptionRows;
+            if (!ReferenceEquals(_captionListRows, rows))
+            {
+                _captionListRows = rows;
+                CaptionList.ItemsSource = rows;
+            }
+
+            var selected = ViewModel.SelectedCaptionRow;
+            if (CaptionList.SelectedIndex != selected)
+            {
+                CaptionList.SelectedIndex = selected;
+            }
+
+            if (selected >= 0)
+            {
+                CaptionList.ScrollIntoView(CaptionList.SelectedItem);
+            }
+        }
+        finally
+        {
+            _isSyncingCaptionList = false;
+        }
+    }
+
+    // New items let go of the selection, perhaps after the sync above is over, so only a row being
+    // chosen counts. A list in single selection is not emptied by the user.
+    private void OnCaptionListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isSyncingCaptionList && e.AddedItems.Count > 0 && CaptionList.SelectedIndex != ViewModel.SelectedCaptionRow)
+        {
+            ViewModel.SelectCaptionRow(CaptionList.SelectedIndex);
+        }
+    }
+
+    // While nothing is selected, the list follows the playhead, as the Mac's does.
+    private void KeepCurrentCaptionInView()
+    {
+        if (ViewModel.SelectedCaptionRow < 0 && ViewModel.CurrentCaptionRow is { } row)
+        {
+            CaptionList.ScrollIntoView(row);
+        }
+    }
+
+    // The banner's colors and glyph follow what it says, and Generate is the accent button until
+    // there are captions.
+    private void SyncCaptionStates()
+    {
+        VisualStateManager.GoToState(this, $"CaptionNotice{ViewModel.CaptionNoticeKind}", false);
+        VisualStateManager.GoToState(this, ViewModel.HasCaptions ? "CaptionGenerateAgain" : "CaptionGenerateFirst", false);
+    }
+
+    // Each look is drawn as the video draws it. The item carries the look's name for a screen reader.
+    private void AddCaptionLooks()
+    {
+        var itemStyle = (Style)Resources["StudioCaptionLookItemStyle"];
+        foreach (var appearance in Enum.GetValues<StudioCaptionAppearance>())
+        {
+            var name = StudioCaptionPanelText.GetLookName(appearance);
+            var item = new GridViewItem
+            {
+                Style = itemStyle,
+                Content = new StudioCaptionLookTile(appearance),
+            };
+            AutomationProperties.SetName(item, name);
+            AutomationProperties.SetAutomationId(item, $"StudioCaptionLook_{appearance}");
+            ToolTipService.SetToolTip(item, name);
+            CaptionLooks.Items.Add(item);
+        }
+
+        // Two looks to a row whatever the panel's width: each tile takes half of what the list has.
+        CaptionLooks.SizeChanged += (_, e) => FitCaptionLooks(e.NewSize.Width);
+    }
+
+    private void FitCaptionLooks(double width)
+    {
+        const double ItemMargin = 2;
+        var itemWidth = Math.Floor((width / 2) - (ItemMargin * 2));
+        if (itemWidth <= 0)
+        {
+            return;
+        }
+
+        foreach (var item in CaptionLooks.Items.OfType<GridViewItem>())
+        {
+            item.Width = itemWidth;
+        }
+    }
+
+    private void OnTryAnotherCaptionModel(object sender, RoutedEventArgs e) =>
+        CaptionGenerateFlyout.ShowAt(CaptionGenerateButton);
+
+    private void OnCaptionSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) =>
+        ViewModel.SetCaptionSearchText(sender.Text);
+
+    private void OnCaptionSearchKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Escape && CaptionSearchBox.Text.Length > 0)
+        {
+            CaptionSearchBox.Text = string.Empty;
+            e.Handled = true;
+        }
+    }
+
+    private void OnCaptionDone(object sender, RoutedEventArgs e) => CloseSelectedCaption();
+
+    // Esc closes the caption, keeping what was typed, as Done does. Enter makes a new line.
+    private void OnCaptionTextKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            CloseSelectedCaption();
+        }
+    }
+
+    // The box and its buttons go once the caption is let go of, so the list takes the focus.
+    private void CloseSelectedCaption()
+    {
+        ViewModel.DeselectCaption();
+        CaptionList.Focus(FocusState.Programmatic);
+    }
+
+    private void OnCaptionTextChanged(object sender, TextChangedEventArgs e) =>
+        ViewModel.SetPendingCaptionText(CaptionTextBox.Text);
+
+    private void OnCaptionTextLostFocus(object sender, RoutedEventArgs e) => ViewModel.CommitCaptionText();
+
+    private void OnImportCaptionsTimedToRecording(object sender, RoutedEventArgs e) =>
+        _ = ViewModel.ImportCaptionsAsync(StudioCaptionTiming.Recording);
+
+    private void OnGenerateCaptions(object sender, RoutedEventArgs e)
+    {
+        CaptionGenerateFlyout.Hide();
+        _ = ViewModel.GenerateCaptionsAsync();
+    }
+
+    private void OnImportCaptionsTimedToVideo(object sender, RoutedEventArgs e) =>
+        _ = ViewModel.ImportCaptionsAsync(StudioCaptionTiming.EditedVideo);
+
+    private void OnExportCaptionsAsSrt(object sender, RoutedEventArgs e) =>
+        _ = ViewModel.ExportCaptionsAsync(StudioCaptionFormat.Srt);
+
+    private void OnExportCaptionsAsVtt(object sender, RoutedEventArgs e) =>
+        _ = ViewModel.ExportCaptionsAsync(StudioCaptionFormat.Vtt);
 
     // The rail and the panel on show
 
@@ -249,6 +428,7 @@ public sealed partial class StudioInspector : UserControl
         SetVisible(ZoomPanel, panel == StudioInspectorPanel.Zoom);
         SetVisible(CutPanel, panel == StudioInspectorPanel.Cut);
         SetVisible(SpeedPanel, panel == StudioInspectorPanel.Speed);
+        SetVisible(CaptionsPanel, panel == StudioInspectorPanel.Captions);
         SetVisible(AudioPanel, panel == StudioInspectorPanel.Audio);
         SetVisible(ProjectPanel, panel == StudioInspectorPanel.Project);
         PanelTitle.Text = StudioInspectorPanels.GetTitle(panel);

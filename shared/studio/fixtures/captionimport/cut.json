@@ -1,0 +1,50 @@
+{
+  "description": "A time at the end of a piece is the start of the next, so a cue that ends at a cut reaches over it, and section 15.2 clips it.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [
+      {
+        "start": 4,
+        "end": 6
+      }
+    ],
+    "speed": []
+  },
+  "cues": [
+    {
+      "start": 3,
+      "end": 4,
+      "text": "At 3"
+    },
+    {
+      "start": 4,
+      "end": 5,
+      "text": "At 4"
+    },
+    {
+      "start": 3,
+      "end": 5,
+      "text": "At 3"
+    }
+  ],
+  "expected": [
+    {
+      "start": 3,
+      "end": 6,
+      "text": "At 3"
+    },
+    {
+      "start": 6,
+      "end": 7,
+      "text": "At 4"
+    },
+    {
+      "start": 3,
+      "end": 7,
+      "text": "At 3"
+    }
+  ],
+  "dropped": 0
+}

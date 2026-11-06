@@ -46,6 +46,12 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         "studio.zoom.suggest",
         "studio.export.options",
         "studio.export",
+        "studio.captions.check",
+        "studio.captions.import",
+        "studio.captions.fix",
+        "studio.captions.export",
+        "studio.captions.models",
+        "studio.captions.generate",
         "editor.annotate",
         "editor.trim",
         "editor.saveFrame",
@@ -100,6 +106,8 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             "editor.open" => await OpenEditorAsync(context),
             "studio.projects.list" or "studio.project.get" or "studio.project.edit"
                 or "studio.zoom.suggest" or "studio.export.options" or "studio.export"
+                or "studio.captions.check" or "studio.captions.import" or "studio.captions.fix" or "studio.captions.export"
+                or "studio.captions.models" or "studio.captions.generate"
                 => await OnUiAsync(() => _app.ExecuteStudioAutomationCommandAsync(context.Command.Name, context.Params, cancellationToken)),
             "editor.annotate" => await AnnotateAsync(context, cancellationToken),
             "editor.trim" => await TrimAsync(context, cancellationToken),

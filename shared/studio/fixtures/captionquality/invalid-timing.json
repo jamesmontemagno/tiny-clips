@@ -1,0 +1,62 @@
+{
+  "description": "A cue with no time is only reported, and is not the cue before the next one.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-4",
+      "start": 4,
+      "end": 4,
+      "text": "No time."
+    },
+    {
+      "id": "cue-5",
+      "start": 5,
+      "end": 3,
+      "text": "Backwards."
+    },
+    {
+      "id": "cue-6",
+      "start": 6,
+      "end": 8,
+      "text": "Fine."
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "invalidTiming",
+      "canFix": false
+    },
+    {
+      "cue": 1,
+      "kind": "invalidTiming",
+      "canFix": false
+    }
+  ],
+  "summary": "2 invalid times",
+  "fixed": [
+    {
+      "start": 4,
+      "end": 4,
+      "text": "No time.",
+      "wordCount": 0
+    },
+    {
+      "start": 5,
+      "end": 3,
+      "text": "Backwards.",
+      "wordCount": 0
+    },
+    {
+      "start": 6,
+      "end": 8,
+      "text": "Fine.",
+      "wordCount": 0
+    }
+  ],
+  "applied": 0,
+  "after": [
+    "invalidTiming",
+    "invalidTiming"
+  ]
+}

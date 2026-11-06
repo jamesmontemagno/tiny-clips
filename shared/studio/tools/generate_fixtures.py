@@ -3,7 +3,7 @@
 
 This is a stdlib-only reference implementation of docs/studio-project-format.md
 sections 5 to 8, including scene transitions (section 6.9) and speed in the time map (section 7),
-and of the scenes a new project gets from its recording (section 9.1).
+of the scenes a new project gets from its recording (section 9.1), and of captions (section 15).
 It intentionally does not import platform code.
 """
 
@@ -13,6 +13,7 @@ import argparse
 import copy
 import json
 import math
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -25,7 +26,11 @@ LAYOUT_DIR = FIXTURES / "layout"
 TIMEMAP_DIR = FIXTURES / "timemap"
 AUTOZOOM_DIR = FIXTURES / "autozoom"
 RECORDING_DIR = FIXTURES / "recording"
-FIXTURE_DIRS = [CANVAS_DIR, LAYOUT_DIR, TIMEMAP_DIR, AUTOZOOM_DIR, RECORDING_DIR]
+CAPTIONS_DIR = FIXTURES / "captions"
+CAPTION_FILES_DIR = FIXTURES / "captionfiles"
+CAPTION_QUALITY_DIR = FIXTURES / "captionquality"
+CAPTION_IMPORT_DIR = FIXTURES / "captionimport"
+FIXTURE_DIRS = [CANVAS_DIR, LAYOUT_DIR, TIMEMAP_DIR, AUTOZOOM_DIR, RECORDING_DIR, CAPTIONS_DIR, CAPTION_FILES_DIR, CAPTION_QUALITY_DIR, CAPTION_IMPORT_DIR]
 STAMP = "2026-10-02T22:41:00Z"
 EPS = 1e-9
 CLAIMS = {}
@@ -55,6 +60,20 @@ SPEED_FASTEST = 8
 # Section 9.1: scenes from the recording.
 RECORDED_SCENE_SHORTEST = 0.3
 RECORDED_MOVE = {"kind": "morph", "duration": 0.35}
+
+# Section 15 of the format.
+CAPTION_SHORTEST_PART = 0.1
+CAPTION_SHORTEST = 0.7
+CAPTION_LONGEST_LINE = 42
+CAPTION_MOST_LINES = 2
+CAPTION_FASTEST = 20
+CAPTION_MOST_MOVED = 0.5
+CAPTION_ROOM = 0.001
+CAPTION_TIMING = re.compile(
+    r"^\s*(?:([0-9]+):)?([0-9]{1,2}):([0-9]{2})[.,]([0-9]{1,3})\s*-->\s*(?:([0-9]+):)?([0-9]{1,2}):([0-9]{2})[.,]([0-9]{1,3})"
+)
+CAPTION_SRT_MARKUP = re.compile(r"</?(?:[bBiIuUsS]|[fF][oO][nN][tT])(?:\s[^<>]*)?>|\{\\[^{}]*\}")
+CAPTION_VTT_MARKUP = re.compile(r"</?[A-Za-z][^<>]*>|<[0-9][0-9:.]*>")
 
 
 class BoundaryLog:
@@ -2673,6 +2692,785 @@ def generate_canvases():
     return fixtures
 
 
+def clean_caption_text(text):
+    """Section 15.2: every line without the space around it, and no blank lines."""
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    return "\n".join(line.strip() for line in lines if line.strip())
+
+
+def caption_words(cue):
+    words = []
+    for word in cue.get("words") or []:
+        if word is None:
+            continue
+        s, e = word.get("start") or 0, word.get("end") or 0
+        text = (word.get("text") or "").strip()
+        if text and math.isfinite(s) and math.isfinite(e) and e >= s:
+            words.append({"start": s, "end": e, "text": text})
+    return sorted(words, key=lambda item: (item["start"], item["end"]))
+
+
+def resolve_captions(duration, edits, captions):
+    """Section 15.2: the captions a video has, in output time and clear of each other."""
+    _, _, pieces, _ = time_map(duration, edits)
+    cues = []
+    for cue in captions.get("cues") or []:
+        if cue is None:
+            continue
+        s, e = cue.get("start") or 0, cue.get("end") or 0
+        text = clean_caption_text(cue.get("text") or "")
+        if text and math.isfinite(s) and math.isfinite(e) and e > s:
+            cues.append({"start": s, "end": e, "text": text, "words": caption_words(cue)})
+    cues = sorted(cues, key=lambda item: (item["start"], item["end"]))
+
+    parts = []
+    for cue in cues:
+        elapsed = 0
+        for piece in pieces:
+            a, b, rate = piece["start"], piece["end"], piece["rate"]
+            if rate == 1:
+                s = max(cue["start"], a)
+                e = min(cue["end"], b)
+                text = cue["text"]
+                keep = e > s
+                if keep and cue["words"]:
+                    kept = [w for w in cue["words"] if a <= (w["start"] + w["end"]) / 2 < b]
+                    keep = len(kept) > 0
+                    if keep and len(kept) < len(cue["words"]):
+                        text = " ".join(w["text"] for w in kept)
+                        s = max(a, kept[0]["start"])
+                        e = min(b, kept[-1]["end"])
+                if keep and e - s >= CAPTION_SHORTEST_PART:
+                    parts.append({"start": elapsed + (s - a), "end": elapsed + (e - a), "text": text})
+            elapsed = elapsed + at_rate(b - a, rate)
+    parts = sorted(parts, key=lambda item: (item["start"], item["end"]))
+
+    result = []
+    for part in parts:
+        if result and result[-1]["end"] > part["start"]:
+            result[-1]["end"] = part["start"]
+            if result[-1]["end"] - result[-1]["start"] < CAPTION_SHORTEST_PART:
+                result.pop()
+        result.append(part)
+    return result
+
+
+def caption_index_at(captions, output_time):
+    for index, caption in enumerate(captions):
+        if caption["start"] <= output_time < caption["end"]:
+            return index
+    return None
+
+
+def caption_timestamp(seconds, separator):
+    ms = math.floor(seconds * 1000 + 0.5)
+    return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d}{separator}{ms % 1000:03d}"
+
+
+def write_srt(captions):
+    blocks = []
+    for number, caption in enumerate(captions, start=1):
+        timing = f"{caption_timestamp(caption['start'], ',')} --> {caption_timestamp(caption['end'], ',')}"
+        blocks.append(f"{number}\n{timing}\n{caption['text']}\n")
+    return "\n".join(blocks)
+
+
+def write_vtt(captions):
+    text = "WEBVTT\n"
+    for caption in captions:
+        escaped = caption["text"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        timing = f"{caption_timestamp(caption['start'], '.')} --> {caption_timestamp(caption['end'], '.')}"
+        text += f"\n{timing}\n{escaped}\n"
+    return text
+
+
+def read_caption_file(text):
+    """Section 15.3: the cues of an SRT or WebVTT file, and how many blocks could not be read."""
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    blocks = []
+    current = []
+    for line in lines:
+        if line.strip():
+            current.append(line)
+        elif current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+
+    is_vtt = bool(blocks) and re.match(r"WEBVTT(?:[ \t]|$)", blocks[0][0]) is not None
+    if is_vtt:
+        blocks = blocks[1:]
+    cues = []
+    skipped = 0
+    for block in blocks:
+        if is_vtt and re.match(r"(?:NOTE|STYLE|REGION)(?:[ \t]|$)", block[0]):
+            continue
+        timing_index = next((i for i in range(min(2, len(block))) if CAPTION_TIMING.match(block[i])), None)
+        if timing_index is None:
+            skipped += 1
+            continue
+        match = CAPTION_TIMING.match(block[timing_index])
+        start = caption_file_seconds(match.group(1, 2, 3, 4))
+        end = caption_file_seconds(match.group(5, 6, 7, 8))
+        markup = CAPTION_VTT_MARKUP if is_vtt else CAPTION_SRT_MARKUP
+        body = markup.sub("", "\n".join(block[timing_index + 1:]))
+        if is_vtt:
+            for entity, value in (("&lt;", "<"), ("&gt;", ">"), ("&nbsp;", "\u00a0"), ("&lrm;", "\u200e"), ("&rlm;", "\u200f"), ("&amp;", "&")):
+                body = body.replace(entity, value)
+        body = clean_caption_text(body)
+        if end <= start or not body:
+            skipped += 1
+            continue
+        cues.append({"start": start, "end": end, "text": body})
+    return cues, skipped
+
+
+def caption_file_seconds(groups):
+    hours, minutes, seconds, fraction = groups
+    ms = int(hours or 0) * 3600000 + int(minutes) * 60000 + int(seconds) * 1000 + int(fraction.ljust(3, "0"))
+    return ms / 1000
+
+
+def caption_edits(trim_start=0, trim_end=None, cuts=(), speeds=()):
+    return {
+        "trimStart": trim_start,
+        "trimEnd": trim_end,
+        "cuts": [{"start": s, "end": e} for s, e in cuts],
+        "speed": [speed(s, e, rate) for s, e, rate in speeds],
+    }
+
+
+def caption_cue(start, end, text, words=None):
+    cue = {"id": f"cue-{start}", "start": start, "end": end, "text": text}
+    if words is not None:
+        cue["words"] = [{"start": s, "end": e, "text": t} for s, e, t in words]
+    return cue
+
+
+def caption_fixture(description, duration, edits, cues, expected, at=()):
+    """`expected` is worked out by hand, which is what checks the code above."""
+    captions = {"language": "en", "cues": cues}
+    resolved = resolve_captions(duration, edits, captions)
+    assert_equal(len(resolved), len(expected), f"{description}: how many captions")
+    for actual, (start, end, text) in zip(resolved, expected):
+        assert_close(actual["start"], start, f"{description}: start")
+        assert_close(actual["end"], end, f"{description}: end")
+        assert_equal(actual["text"], text, f"{description}: text")
+    return {
+        "description": description,
+        "sourceDuration": duration,
+        "edits": edits,
+        "captions": captions,
+        "expected": resolved,
+        "at": [{"output": u, "index": caption_index_at(resolved, u)} for u in at],
+        "srt": write_srt(resolved),
+        "vtt": write_vtt(resolved),
+    }
+
+
+def caption_file_fixture(description, text, expected, skipped):
+    cues, actual_skipped = read_caption_file(text)
+    assert_equal(actual_skipped, skipped, f"{description}: skipped")
+    assert_equal(len(cues), len(expected), f"{description}: how many cues")
+    for actual, (start, end, body) in zip(cues, expected):
+        assert_close(actual["start"], start, f"{description}: start")
+        assert_close(actual["end"], end, f"{description}: end")
+        assert_equal(actual["text"], body, f"{description}: text")
+    return {"description": description, "text": text, "expected": cues, "skipped": skipped}
+
+
+def generate_captions():
+    fixtures = {}
+
+    def add(filename, *args, **kwargs):
+        fixtures[filename] = caption_fixture(*args, **kwargs)
+
+    add("no-edits.json", "With no edits a caption is where its cue is, and only one shows at a time.", 20, caption_edits(),
+        [caption_cue(1, 3, "Hello there."), caption_cue(3.5, 5.25, "Second line\nof text.")],
+        [(1, 3, "Hello there."), (3.5, 5.25, "Second line\nof text.")],
+        at=[0, 1, 2.999, 3, 3.25, 3.5, 5.25, 6])
+    add("trim.json", "The trim clips a cue and moves what is left to the start of the video.", 20, caption_edits(2, 10),
+        [caption_cue(0, 1, "Before the trim."), caption_cue(1, 4, "Starts before."), caption_cue(5, 6, "Inside."),
+         caption_cue(9, 12, "Ends after."), caption_cue(11, 13, "After the trim.")],
+        [(0, 2, "Starts before."), (3, 4, "Inside."), (7, 8, "Ends after.")])
+    add("cut-splits-a-cue-without-words.json", "A cue without words cannot be divided, so each side of a cut shows all of its text.", 20,
+        caption_edits(cuts=[(4, 6)]),
+        [caption_cue(3, 8, "All of it, twice."), caption_cue(9, 10, "Moved earlier.")],
+        [(3, 4, "All of it, twice."), (4, 6, "All of it, twice."), (7, 8, "Moved earlier.")])
+    add("cut-takes-words.json", "Words in a cut are gone, and each side covers only the words it keeps.", 20, caption_edits(cuts=[(4, 6)]),
+        [caption_cue(2, 8, "One two three four five six.", [(2, 3, "One"), (3, 3.9, "two"), (4, 4.9, "three"), (5, 5.9, "four"), (6, 7, "five"), (7, 8, "six.")])],
+        [(2, 3.9, "One two"), (4, 6, "five six.")])
+    add("word-goes-by-its-middle.json", "A word a cut reaches into stays or goes by where its middle is.", 20, caption_edits(cuts=[(5, 7)]),
+        [caption_cue(3, 8, "before stays goes after", [(3, 4, "before"), (4, 5.4, "stays"), (5.4, 6, "goes"), (6.8, 8, "after")])],
+        [(3, 5, "before stays"), (5, 6, "after")])
+    add("all-words-kept-keeps-the-text.json", "A part with all the words keeps the cue's own text, with its punctuation and lines.", 20, caption_edits(1),
+        [caption_cue(0.5, 4, "Hi,\nthere!", [(1, 2, "Hi"), (2, 3.5, "there")])],
+        [(0, 3, "Hi,\nthere!")])
+    add("speed-has-no-captions.json", "Pieces at another rate have no sound, so they have no captions, faster or slower.", 20,
+        caption_edits(speeds=[(5, 10, 2), (15, 18, 0.5)]),
+        [caption_cue(1, 3, "Before."), caption_cue(4, 6, "Runs into the fast part."), caption_cue(6, 9, "In the fast part."),
+         caption_cue(9, 11, "Comes out of it."), caption_cue(16, 17, "In the slow part."), caption_cue(18.5, 19, "After.")],
+        [(1, 3, "Before."), (4, 5, "Runs into the fast part."), (7.5, 8.5, "Comes out of it."), (19, 19.5, "After.")])
+    add("overlapping-cues.json", "A caption ends where the next starts, and one left too short to read is dropped.", 20, caption_edits(),
+        [caption_cue(1, 4, "First."), caption_cue(3, 5, "Second."), caption_cue(6, 8, "Long one."), caption_cue(6, 7, "Same start."),
+         caption_cue(9, 12, "Early."), caption_cue(9.05, 10, "Late.")],
+        [(1, 3, "First."), (3, 5, "Second."), (6, 8, "Long one."), (9.05, 10, "Late.")],
+        at=[2.5, 3, 6.5, 9, 9.05])
+    add("unsorted-and-invalid-cues.json", "Cues are put in time order. One with no time or no text is not shown.", 20, caption_edits(),
+        [caption_cue(5, 6, "Later."), caption_cue(1, 2, "Earlier."), caption_cue(3, 3, "No time."), caption_cue(4, 3.5, "Backwards."), caption_cue(7, 8, "   \n ")],
+        [(1, 2, "Earlier."), (5, 6, "Later.")])
+    add("too-short-to-read.json", "What a cut leaves of a cue is dropped when it is under a tenth of a second.", 20, caption_edits(cuts=[(2.05, 8)]),
+        [caption_cue(2, 8.5, "Only the end is left."), caption_cue(9, 9.05, "Blink.")],
+        [(2.05, 2.55, "Only the end is left.")])
+    add("text-is-cleaned.json", "Space around lines and blank lines go, whatever ends the lines.", 10, caption_edits(),
+        [caption_cue(1, 2, "  Line one  \r\n\r\n  Line two\rLine three \n")],
+        [(1, 2, "Line one\nLine two\nLine three")])
+    add("nulls-and-missing.json", "Section 2 applies: null and missing values take their defaults and null elements are dropped.", 20, caption_edits(),
+        [None, {"id": "a", "start": 1, "end": 2, "text": "No words."}, {"start": 3, "end": 4, "text": "No id.", "words": None},
+         {"start": None, "end": 0.5, "text": "Start counts as 0."}, {"start": 7, "end": 8, "text": None},
+         {"start": 9, "end": 10, "text": "A null word.", "words": [None, {"start": 9, "end": 10, "text": "A"}]}],
+        [(0, 0.5, "Start counts as 0."), (1, 2, "No words."), (3, 4, "No id."), (9, 10, "A null word.")])
+    add("everything-cut.json", "Nothing is kept, so there are no captions.", 10, caption_edits(cuts=[(0, 10)]), [caption_cue(1, 2, "Gone.")], [])
+    add("no-cues.json", "No cues: an SRT is empty and a VTT is only its header.", 10, caption_edits(), [], [])
+    add("file-text.json", "Times round to the nearest millisecond, half up. A VTT escapes its text and an SRT does not.", 7200, caption_edits(),
+        [caption_cue(3661.5, 3662.0625, "Fish & chips <now> -> later"), caption_cue(0.0625, 1, "Half a millisecond rounds up.")],
+        [(0.0625, 1, "Half a millisecond rounds up."), (3661.5, 3662.0625, "Fish & chips <now> -> later")])
+    assert_equal(fixtures["file-text.json"]["srt"], "1\n00:00:00,063 --> 00:00:01,000\nHalf a millisecond rounds up.\n\n2\n01:01:01,500 --> 01:01:02,063\nFish & chips <now> -> later\n", "srt")
+    assert_equal(fixtures["file-text.json"]["vtt"], "WEBVTT\n\n00:00:00.063 --> 00:00:01.000\nHalf a millisecond rounds up.\n\n01:01:01.500 --> 01:01:02.063\nFish &amp; chips &lt;now&gt; -&gt; later\n", "vtt")
+    assert_equal(fixtures["no-cues.json"]["srt"], "", "empty srt")
+    assert_equal(fixtures["no-cues.json"]["vtt"], "WEBVTT\n", "empty vtt")
+
+    # Section 15.5: what section 15.3 wrote, read back timed to the edited video, is the same captions.
+    for filename, fixture in fixtures.items():
+        for name in ("srt", "vtt"):
+            cues, skipped = read_caption_file(fixture[name])
+            assert_equal(skipped, 0, f"{filename}: {name} skipped")
+            mapped, _ = map_caption_times(cues, fixture["sourceDuration"], fixture["edits"])
+            again = resolve_captions(fixture["sourceDuration"], fixture["edits"], {"cues": mapped})
+            assert_equal(len(again), len(fixture["expected"]), f"{filename}: {name} read back")
+            for actual, expected in zip(again, fixture["expected"]):
+                assert_equal(actual["text"], expected["text"], f"{filename}: {name} text read back")
+                if abs(actual["start"] - expected["start"]) > 0.0011 or abs(actual["end"] - expected["end"]) > 0.0011:
+                    raise AssertionError(f"{filename}: {name} times read back: {actual} against {expected}")
+    return fixtures
+
+
+def generate_caption_files():
+    def fixture(*args):
+        return caption_file_fixture(*args)
+
+    return {
+        "srt.json": fixture("A byte order mark and Windows line ends. Text keeps its lines, and hours go past the first.",
+            "\ufeff1\r\n00:00:01,000 --> 00:00:02,500\r\nFirst line\r\nSecond line\r\n\r\n2\r\n00:00:03,000 --> 01:00:04,250\r\nThird\r\n",
+            [(1, 2.5, "First line\nSecond line"), (3, 3604.25, "Third")], 0),
+        "srt-markup.json": fixture("The tags and overrides of an SRT go, and what only looks like them stays. An SRT has no entities.",
+            "1\n00:00:01,000 --> 00:00:02,000\n<i>Slanted</i> and <FONT color=\"#fff\">white</FONT>\n\n2\n00:00:03,000 --> 00:00:04,000\n{\\an8}On top\n\n3\n00:00:05,000 --> 00:00:06,000\n3 < 4 & 5 > 2 &amp; <now>\n",
+            [(1, 2, "Slanted and white"), (3, 4, "On top"), (5, 6, "3 < 4 & 5 > 2 &amp; <now>")], 0),
+        "srt-loose.json": fixture("No number, a dot, a short fraction, no spaces around the arrow, and extra blank lines.",
+            "\n\n00:00:01.5 --> 00:00:02.25\nNo number\n\n\n\n7\n0:00:03,000-->0:00:04,000\nNo spaces\n",
+            [(1.5, 2.25, "No number"), (3, 4, "No spaces")], 0),
+        "srt-bad-blocks.json": fixture("Blocks with no timing, a backwards timing, no text, or only markup are skipped and counted.",
+            "1\nnot a time\nHello\n\n2\n00:00:05,000 --> 00:00:04,000\nBackwards\n\n3\n00:00:06,000 --> 00:00:07,000\n\n4\n00:00:08,000 --> 00:00:09,000\n<i></i>\n\n5\n00:00:10,000 --> 00:00:11,000\nGood\n",
+            [(10, 11, "Good")], 4),
+        "vtt.json": fixture("A title, a comment, a style, a cue name, cue settings, short times, voices, inline times, and entities.",
+            "WEBVTT - a title\n\nNOTE a comment\nover two lines\n\nSTYLE\n::cue { color: red }\n\nintro\n00:01.000 --> 00:02.500 align:start position:10%\n<v Sam>Fish &amp; chips</v>\n\n00:00:03.000 --> 00:00:04.000\n<00:00:03.500><c.yellow>1 &lt; 2</c> &gt; 0\n\n01:00:05.000 --> 01:00:06.000\nAn &amp;lt; stays\n",
+            [(1, 2.5, "Fish & chips"), (3, 4, "1 < 2 > 0"), (3605, 3606, "An &lt; stays")], 0),
+        "vtt-only-a-header.json": fixture("A VTT with no cues has nothing to skip.", "WEBVTT\n", [], 0),
+        "not-captions.json": fixture("Text with no times has no cues.", "Just some words.\nNothing here has a time.\n\nAnother paragraph.\n", [], 2),
+        "empty.json": fixture("An empty file has no cues.", "", [], 0),
+    }
+
+
+def caption_tidy(text):
+    """Section 15.6: runs of white space become one space, and blank lines go."""
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    tidied = [" ".join(line.split()) for line in lines]
+    return "\n".join(line for line in tidied if line)
+
+
+def caption_count(text):
+    return sum(1 for character in text if not character.isspace())
+
+
+def caption_wanted(length, text):
+    target = length
+    if length < CAPTION_SHORTEST:
+        target = 1
+    reading = caption_count(text) / CAPTION_FASTEST
+    return reading if reading > target else target
+
+
+def caption_balance(words, n):
+    if n <= 1:
+        return [words]
+    if len(words) <= n:
+        return [[word] for word in words]
+    groups = []
+    cursor = 0
+    for group in range(1, n):
+        target = len(" ".join(words[cursor:])) / (n - group + 1)
+        best = cursor + 1
+        best_score = math.inf
+        length = -1
+        for index in range(cursor, len(words) - (n - group)):
+            length += len(words[index]) + 1
+            last = words[index][-1]
+            bonus = 6 if last in ".!?" else 3 if last in ",;:" else 0
+            score = abs(length - target) - bonus
+            if score < best_score:
+                best_score = score
+                best = index + 1
+        groups.append(words[cursor:best])
+        cursor = best
+    groups.append(words[cursor:])
+    return groups
+
+
+def caption_wrap(text):
+    words = caption_tidy(text).split()
+    if not words or any(len(word) > CAPTION_LONGEST_LINE for word in words):
+        return None
+    for n in range(1, CAPTION_MOST_LINES + 1):
+        lines = [" ".join(group) for group in caption_balance(words, n)]
+        if all(len(line) <= CAPTION_LONGEST_LINE for line in lines):
+            return "\n".join(lines)
+    return None
+
+
+def caption_split(text):
+    words = caption_tidy(text).split()
+    if len(words) < 2 or any(len(word) > CAPTION_LONGEST_LINE for word in words):
+        return None
+    first = max(2, math.ceil(len(" ".join(words)) / (CAPTION_LONGEST_LINE * CAPTION_MOST_LINES)))
+    for n in range(first, min(64, len(words)) + 1):
+        parts = [caption_wrap(" ".join(group)) for group in caption_balance(words, n)]
+        if all(part is not None for part in parts):
+            return parts
+    return None
+
+
+def caption_split_timing(start, end, parts):
+    weights = [max(1, caption_count(part)) for part in parts]
+    total = sum(weights)
+    length = max(0, end - start)
+    timings = []
+    cursor = start
+    for index, weight in enumerate(weights):
+        following = end if index == len(parts) - 1 else cursor + length * (weight / total)
+        timings.append((cursor, following))
+        cursor = following
+    return timings
+
+
+def caption_can_split(cue, parts):
+    return parts is not None and all(
+        e - s >= CAPTION_SHORTEST for s, e in caption_split_timing(cue["start"], cue["end"], parts)
+    )
+
+
+def caption_in_order(cues):
+    return sorted(
+        ({**cue, "text": cue.get("text") or "", "words": cue.get("words") or []} for cue in cues),
+        key=lambda cue: (cue["start"], cue["end"]),
+    )
+
+
+def caption_enough(text):
+    """The least time that reads, and a millisecond so rounding cannot leave a cue just short."""
+    return max(CAPTION_SHORTEST, caption_count(text) / CAPTION_FASTEST) + CAPTION_ROOM
+
+
+def caption_present(cue):
+    s, e = cue["start"], cue["end"]
+    return math.isfinite(s) and math.isfinite(e) and e > s and bool(cue["text"])
+
+
+def caption_hard(cue):
+    length = cue["end"] - cue["start"]
+    return length < CAPTION_SHORTEST or caption_count(cue["text"]) / length > CAPTION_FASTEST
+
+
+def caption_spare(cue):
+    if not caption_present(cue):
+        return 0
+    return min(CAPTION_MOST_MOVED, max(0, cue["end"] - cue["start"] - caption_enough(cue["text"])))
+
+
+def caption_room(cues, index, duration):
+    """The seconds the cue at index can take after its end and before its start."""
+    cue = cues[index]
+    if index + 1 == len(cues):
+        after = duration - cue["end"]
+    else:
+        following = cues[index + 1]
+        if not caption_present(following) or following["start"] < cue["end"]:
+            after = 0
+        else:
+            after = min(duration, following["start"] + caption_spare(following)) - cue["end"]
+    if index == 0:
+        before = min(CAPTION_MOST_MOVED, cue["start"])
+    else:
+        previous = cues[index - 1]
+        if not caption_present(previous) or previous["end"] > cue["start"]:
+            before = 0
+        else:
+            before = min(CAPTION_MOST_MOVED, cue["start"] - (previous["end"] - caption_spare(previous)))
+    return max(0, after), max(0, before)
+
+
+def caption_spells(words, text):
+    return "".join("".join(word["text"].split()) for word in words) == "".join(text.split())
+
+
+def caption_join(first, second):
+    if not caption_present(first) or not caption_present(second):
+        return None
+    if not 0 <= second["start"] - first["end"] <= CAPTION_MOST_MOVED:
+        return None
+    text = caption_wrap(first["text"] + " " + second["text"])
+    if text is None or second["end"] - first["start"] < caption_enough(text):
+        return None
+    both = all(cue["words"] and caption_spells(cue["words"], cue["text"]) for cue in (first, second))
+    return {**first, "end": second["end"], "text": text, "words": first["words"] + second["words"] if both else []}
+
+
+def caption_join_order(cues, index):
+    """Where a cue too hard to read looks for one to join: the one before it first, unless that ends a sentence."""
+    if index > 0 and cues[index - 1]["text"][-1:] not in (".", "!", "?"):
+        return [index - 1, index]
+    return [index, index - 1]
+
+
+def caption_can_join(cues, index):
+    return any(
+        0 <= first and first + 1 < len(cues) and caption_join(cues[first], cues[first + 1]) is not None
+        for first in caption_join_order(cues, index)
+    )
+
+
+def check_captions(cues, duration):
+    ordered = caption_in_order(cues)
+    tidied_cues = [{**cue, "text": caption_tidy(cue["text"])} for cue in ordered]
+    findings = []
+    previous = None
+
+    def found(index, kind, can_fix):
+        findings.append({"cue": index, "kind": kind, "canFix": can_fix})
+
+    for index, cue in enumerate(ordered):
+        s, e = cue["start"], cue["end"]
+        if not math.isfinite(s) or not math.isfinite(e) or e <= s:
+            found(index, "invalidTiming", False)
+            continue
+        if previous is not None and s < previous["end"]:
+            found(index, "overlap", s - previous["start"] >= CAPTION_SHORTEST)
+        tidied = caption_tidy(cue["text"])
+        if tidied:
+            if tidied != cue["text"]:
+                found(index, "whitespace", True)
+            lines = tidied.split("\n")
+            wrapped = caption_wrap(tidied)
+            fixes_layout = wrapped is not None or caption_can_split(cue, caption_split(tidied))
+            if max(len(line) for line in lines) > CAPTION_LONGEST_LINE:
+                found(index, "longLine", fixes_layout)
+            if len(lines) > CAPTION_MOST_LINES:
+                found(index, "tooManyLines", fixes_layout)
+            length = e - s
+            limit = duration if index + 1 == len(ordered) else min(ordered[index + 1]["start"], duration)
+            can_fix_time = False
+            if caption_hard(tidied_cues[index]):
+                more = caption_enough(tidied) - length
+                can_fix_time = (
+                    s + caption_wanted(length, tidied) <= limit
+                    or sum(caption_room(tidied_cues, index, duration)) >= more
+                    or caption_can_join(tidied_cues, index)
+                )
+            if length < CAPTION_SHORTEST:
+                found(index, "shortDuration", can_fix_time)
+            if caption_count(tidied) / length > CAPTION_FASTEST:
+                found(index, "readingSpeed", can_fix_time)
+        else:
+            found(index, "empty", True)
+        previous = cue
+    return findings
+
+
+def fix_captions(cues, duration):
+    ordered = [cue for cue in caption_in_order(cues)]
+    kept = [cue for cue in ordered if caption_tidy(cue["text"])]
+    applied = len(ordered) - len(kept)
+    for cue in kept:
+        tidied = caption_tidy(cue["text"])
+        if tidied != cue["text"]:
+            cue["text"] = tidied
+            applied += 1
+    for previous, cue in zip(kept, kept[1:]):
+        if cue["start"] < previous["end"] and cue["start"] - previous["start"] >= CAPTION_SHORTEST:
+            previous["end"] = cue["start"]
+            applied += 1
+    laid_out = []
+    for cue in kept:
+        lines = cue["text"].split("\n")
+        if len(lines) <= CAPTION_MOST_LINES and all(len(line) <= CAPTION_LONGEST_LINE for line in lines):
+            laid_out.append(cue)
+            continue
+        wrapped = caption_wrap(cue["text"])
+        if wrapped is not None:
+            cue["text"] = wrapped
+            applied += 1
+            laid_out.append(cue)
+            continue
+        parts = caption_split(cue["text"])
+        if not caption_can_split(cue, parts):
+            laid_out.append(cue)
+            continue
+        for part, (s, e) in zip(parts, caption_split_timing(cue["start"], cue["end"], parts)):
+            laid_out.append({**cue, "start": s, "end": e, "text": part, "words": []})
+        applied += 1
+    for index, cue in enumerate(laid_out):
+        length = cue["end"] - cue["start"]
+        if length <= 0:
+            continue
+        wanted = caption_wanted(length, cue["text"])
+        if wanted <= length:
+            continue
+        limit = duration if index + 1 == len(laid_out) else min(laid_out[index + 1]["start"], duration)
+        if cue["start"] + wanted <= limit:
+            cue["end"] = cue["start"] + wanted
+            applied += 1
+    for index, cue in enumerate(laid_out):
+        if not caption_present(cue) or not caption_hard(cue):
+            continue
+        more = caption_enough(cue["text"]) - (cue["end"] - cue["start"])
+        after, before = caption_room(laid_out, index, duration)
+        if after + before < more:
+            continue
+        later = min(more, after)
+        earlier = more - later
+        if later > 0:
+            cue["end"] += later
+            if index + 1 < len(laid_out):
+                laid_out[index + 1]["start"] = max(laid_out[index + 1]["start"], cue["end"])
+        if earlier > 0:
+            cue["start"] -= earlier
+            if index > 0:
+                laid_out[index - 1]["end"] = min(laid_out[index - 1]["end"], cue["start"])
+        applied += 1
+    index = 0
+    while index < len(laid_out):
+        if caption_present(laid_out[index]) and caption_hard(laid_out[index]):
+            for first in caption_join_order(laid_out, index):
+                joined = None
+                if 0 <= first and first + 1 < len(laid_out):
+                    joined = caption_join(laid_out[first], laid_out[first + 1])
+                if joined is not None:
+                    laid_out[first:first + 2] = [joined]
+                    applied += 1
+                    index = first
+                    break
+        index += 1
+    return laid_out, applied
+
+
+def caption_summary(findings):
+    names = [
+        ("invalidTiming", "invalid time", "invalid times"),
+        ("overlap", "overlap", "overlaps"),
+        ("empty", "empty caption", "empty captions"),
+        ("whitespace", "with extra space", "with extra space"),
+        ("longLine", "long line", "long lines"),
+        ("tooManyLines", "with too many lines", "with too many lines"),
+        ("shortDuration", "too short", "too short"),
+        ("readingSpeed", "too fast to read", "too fast to read"),
+    ]
+    parts = []
+    for kind, one, more in names:
+        count = sum(1 for finding in findings if finding["kind"] == kind)
+        if count:
+            parts.append(f"{count} {one if count == 1 else more}")
+    return ", ".join(parts)
+
+
+def map_caption_times(cues, duration, edits):
+    """Section 15.5: the cues of a file timed to the edited video, in source time."""
+    start, _, pieces, output_duration = time_map(duration, edits)
+    mapped = []
+    dropped = 0
+    for cue in cues:
+        s = output_to_source(cue["start"], start, pieces, output_duration)
+        e = output_to_source(cue["end"], start, pieces, output_duration)
+        if e > s:
+            mapped.append({"start": s, "end": e, "text": cue["text"]})
+        else:
+            dropped += 1
+    return mapped, dropped
+
+
+def quality_cue(start, end, text, words=None):
+    cue = {"id": f"cue-{start}", "start": start, "end": end, "text": text}
+    if words is not None:
+        cue["words"] = [{"start": s, "end": e, "text": t} for s, e, t in words]
+    return cue
+
+
+def quality_fixture(description, duration, cues, findings, summary, fixed, applied, after):
+    """Findings and fixes are worked out by hand, which is what checks the code above."""
+    actual = [(f["cue"], f["kind"], f["canFix"]) for f in check_captions(cues, duration)]
+    assert_equal(actual, findings, f"{description}: findings")
+    assert_equal(caption_summary(check_captions(cues, duration)), summary, f"{description}: summary")
+    result, actual_applied = fix_captions(copy.deepcopy(cues), duration)
+    assert_equal(actual_applied, applied, f"{description}: applied")
+    assert_equal(len(result), len(fixed), f"{description}: fixed count")
+    for cue, (start, end, text, words) in zip(result, fixed):
+        assert_close(cue["start"], start, f"{description}: start")
+        assert_close(cue["end"], end, f"{description}: end")
+        assert_equal(cue["text"], text, f"{description}: text")
+        assert_equal(len(cue["words"]), words, f"{description}: words")
+    remaining = [f["kind"] for f in check_captions(result, duration)]
+    assert_equal(remaining, after, f"{description}: after")
+    return {
+        "description": description,
+        "sourceDuration": duration,
+        "cues": cues,
+        "findings": [{"cue": c, "kind": k, "canFix": f} for c, k, f in findings],
+        "summary": summary,
+        "fixed": [
+            {"start": cue["start"], "end": cue["end"], "text": cue["text"], "wordCount": len(cue["words"])}
+            for cue in result
+        ],
+        "applied": applied,
+        "after": after,
+    }
+
+
+LONG_LINE = "This line of a caption is much too long to fit on one line"  # 58 characters
+LONG_CUE = (
+    "One two three four five six seven eight nine ten eleven twelve thirteen fourteen "
+    "fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree"
+)  # 163 characters, so more than two full lines
+A_WORD_TOO_LONG = "x" * 43
+
+
+def generate_caption_quality():
+    return {
+        "clean.json": quality_fixture("Nothing to find and nothing to fix.", 60,
+            [quality_cue(1, 3, "A short caption."), quality_cue(3, 5, "Two lines\nof text.")],
+            [], "", [(1, 3, "A short caption.", 0), (3, 5, "Two lines\nof text.", 0)], 0, []),
+        "invalid-timing.json": quality_fixture("A cue with no time is only reported, and is not the cue before the next one.", 60,
+            [quality_cue(4, 4, "No time."), quality_cue(5, 3, "Backwards."), quality_cue(6, 8, "Fine.")],
+            [(0, "invalidTiming", False), (1, "invalidTiming", False)], "2 invalid times",
+            [(4, 4, "No time.", 0), (5, 3, "Backwards.", 0), (6, 8, "Fine.", 0)], 0,
+            ["invalidTiming", "invalidTiming"]),
+        "overlap.json": quality_fixture("An overlap is fixed when the later cue starts at least 0.7 after the earlier one, and not otherwise.", 60,
+            [quality_cue(1, 4, "Long overlap."), quality_cue(2, 5, "Fixed."), quality_cue(10, 13, "Too close."), quality_cue(10.5, 14, "Not fixed.")],
+            [(1, "overlap", True), (3, "overlap", False)], "2 overlaps",
+            [(1, 2, "Long overlap.", 0), (2, 5, "Fixed.", 0), (10, 13, "Too close.", 0), (10.5, 14, "Not fixed.", 0)], 1,
+            ["overlap"]),
+        "empty.json": quality_fixture("An empty cue is removed, and the one after it is compared with it first.", 60,
+            [quality_cue(1, 2, "Kept."), quality_cue(3, 4, " \n "), quality_cue(5, 6, "")],
+            [(1, "empty", True), (2, "empty", True)], "2 empty captions",
+            [(1, 2, "Kept.", 0)], 2, []),
+        "whitespace.json": quality_fixture("Extra space and blank lines are tidied, and the words stay.", 60,
+            [quality_cue(1, 3, "  Too   many\r\n\r\n spaces ", [(1, 2, "Too"), (2, 3, "many")])],
+            [(0, "whitespace", True)], "1 with extra space",
+            [(1, 3, "Too many\nspaces", 2)], 1, []),
+        "long-line-wraps.json": quality_fixture("A line that is too long becomes two balanced lines, and the words stay.", 60,
+            [quality_cue(1, 6, LONG_LINE, [(1, 6, "This")])],
+            [(0, "longLine", True)], "1 long line",
+            [(1, 6, "This line of a caption is much\ntoo long to fit on one line", 1)], 1, []),
+        "too-many-lines-wrap.json": quality_fixture("Three short lines fit on two.", 60,
+            [quality_cue(1, 6, "One\nTwo\nThree")],
+            [(0, "tooManyLines", True)], "1 with too many lines",
+            [(1, 6, "One Two Three", 0)], 1, []),
+        "too-long-splits.json": quality_fixture("Text that cannot fit on two lines becomes cues that share its time by their length, and only the first keeps its place. Their words are gone.", 60,
+            [quality_cue(0, 16, LONG_CUE, [(0, 16, "One")])],
+            [(0, "longLine", True)], "1 long line",
+            [
+                (0, 16 * 45 / 141, "One two three four five six\nseven eight nine ten eleven", 0),
+                (16 * 45 / 141, 16 * 90 / 141, "twelve thirteen fourteen\nfifteen sixteen seventeen", 0),
+                (16 * 90 / 141, 16, "eighteen nineteen twenty\ntwentyone twentytwo twentythree", 0),
+            ], 1, []),
+        "too-long-too-short-to-split.json": quality_fixture("Parts that would last under 0.7 seconds are not made: reading speed is all that is left, and there is no room to extend.", 8,
+            [quality_cue(7, 8, LONG_CUE)],
+            [(0, "longLine", False), (0, "readingSpeed", False)], "1 long line, 1 too fast to read",
+            [(7, 8, LONG_CUE, 0)], 0, ["longLine", "readingSpeed"]),
+        "a-word-too-long.json": quality_fixture("A word longer than a line cannot be wrapped or split.", 60,
+            [quality_cue(1, 6, A_WORD_TOO_LONG + " tail")],
+            [(0, "longLine", False)], "1 long line",
+            [(1, 6, A_WORD_TOO_LONG + " tail", 0)], 0, ["longLine"]),
+        "short-extends.json": quality_fixture("A short cue lasts a second when there is room, and only as long as it needs when there is less.", 60,
+            [quality_cue(1, 1.5, "Hi."), quality_cue(5, 5.5, "Tight."), quality_cue(5.75, 8, "Next.")],
+            [(0, "shortDuration", True), (1, "shortDuration", True)], "2 too short",
+            [(1, 2, "Hi.", 0), (5, 5.701, "Tight.", 0), (5.75, 8, "Next.", 0)], 2, []),
+        "fast-extends.json": quality_fixture("A cue too fast to read lasts as long as its text needs, up to the next cue, or borrows what the cues around it can spare.", 60,
+            [quality_cue(1, 2, "Thirty characters of plain text"), quality_cue(10, 11, "Thirty characters of plain text"), quality_cue(11.25, 12, "Close.")],
+            [(0, "readingSpeed", True), (1, "readingSpeed", True)], "2 too fast to read",
+            [(1, 2.35, "Thirty characters of plain text", 0), (9.948, 11.299, "Thirty characters of plain text", 0), (11.299, 12, "Close.", 0)], 2,
+            []),
+        "end-of-recording.json": quality_fixture("A cue is not extended past the end of the recording, so it starts a little earlier instead.", 2,
+            [quality_cue(1.5, 1.75, "Hi.")],
+            [(0, "shortDuration", True)], "1 too short",
+            [(1.299, 2, "Hi.", 0)], 1, []),
+        "borrow.json": quality_fixture("A cue too fast to read takes what the next cue can spare after it, and up to half a second before it, and those cues move over.", 60,
+            [quality_cue(0, 3, "A calm first caption."), quality_cue(3, 4, "This caption has rather a lot to say."), quality_cue(4, 5, "Then a pause.")],
+            [(1, "readingSpeed", True)], "1 too fast to read",
+            [(0, 2.798, "A calm first caption.", 0), (2.798, 4.299, "This caption has rather a lot to say.", 0), (4.299, 5, "Then a pause.", 0)], 1,
+            []),
+        "join-previous.json": quality_fixture("A cue too short to read that cannot borrow joins the cue before it, when that does not end a sentence, and keeps both cues' words.", 60,
+            [
+                quality_cue(0, 1.7, "multiple sessions, like, that's your",
+                    [(0, 0.4, "multiple"), (0.4, 0.8, "sessions,"), (0.8, 1.1, "like,"), (1.1, 1.4, "that's"), (1.4, 1.7, "your")]),
+                quality_cue(1.7, 2.1, "go-to.", [(1.7, 2.1, "go-to.")]),
+                quality_cue(2.1, 2.85, "Next one."),
+            ],
+            [(1, "shortDuration", True)], "1 too short",
+            [(0, 2.1, "multiple sessions, like,\nthat's your go-to.", 6), (2.1, 2.85, "Next one.", 0)], 1,
+            []),
+        "join-next.json": quality_fixture("A cue too short to read after one that ends a sentence joins the cue after it, and its words go when one of them has none.", 60,
+            [quality_cue(1.3, 2.2, "That is all."), quality_cue(2.2, 2.5, "So"), quality_cue(2.5, 3.3, "here we go.", [(2.5, 3.3, "here")])],
+            [(1, "shortDuration", True)], "1 too short",
+            [(1.3, 2.2, "That is all.", 0), (2.2, 3.3, "So here we go.", 0)], 1,
+            []),
+        "back-to-back.json": quality_fixture("Fast speech in cues back to back leaves nothing to borrow and is too much to join, so it is only reported.", 2,
+            [quality_cue(0, 1, "Every word here comes out fast."), quality_cue(1, 2, "and the next one is just as quick.")],
+            [(0, "readingSpeed", False), (1, "readingSpeed", False)], "2 too fast to read",
+            [(0, 1, "Every word here comes out fast.", 0), (1, 2, "and the next one is just as quick.", 0)], 0,
+            ["readingSpeed", "readingSpeed"]),
+        "unsorted.json": quality_fixture("Findings name a cue by its place in time order, and fixes come back in that order.", 60,
+            [quality_cue(5, 6, " Later"), quality_cue(1, 2, "Earlier.")],
+            [(1, "whitespace", True)], "1 with extra space",
+            [(1, 2, "Earlier.", 0), (5, 6, "Later", 0)], 1, []),
+    }
+
+
+def generate_caption_imports():
+    def fixture(description, duration, edits, cues, expected, dropped):
+        mapped, actual_dropped = map_caption_times(cues, duration, edits)
+        assert_equal(actual_dropped, dropped, f"{description}: dropped")
+        assert_equal(len(mapped), len(expected), f"{description}: how many cues")
+        for cue, (start, end) in zip(mapped, expected):
+            assert_close(cue["start"], start, f"{description}: start")
+            assert_close(cue["end"], end, f"{description}: end")
+        return {"description": description, "sourceDuration": duration, "edits": edits, "cues": cues, "expected": mapped, "dropped": dropped}
+
+    def cue(start, end):
+        return {"start": start, "end": end, "text": f"At {start}"}
+
+    return {
+        "no-edits.json": fixture("With no edits the times are the same, and a cue past the end has no time left.", 20, caption_edits(),
+            [cue(1, 2), cue(19, 25), cue(21, 22)], [(1, 2), (19, 20)], 1),
+        "trim.json": fixture("The start of the video is the start of the trim.", 20, caption_edits(2, 10),
+            [cue(0, 1), cue(7, 9)], [(2, 3), (9, 10)], 0),
+        "cut.json": fixture("A time at the end of a piece is the start of the next, so a cue that ends at a cut reaches over it, and section 15.2 clips it.", 20, caption_edits(cuts=[(4, 6)]),
+            [cue(3, 4), cue(4, 5), cue(3, 5)], [(3, 6), (6, 7), (3, 7)], 0),
+        "speed.json": fixture("Output time in a faster piece takes in more of the recording.", 20, caption_edits(speeds=[(5, 10, 2)]),
+            [cue(4, 6), cue(6, 8)], [(4, 7), (7, 10.5)], 0),
+    }
+
+
 def parse_path(path):
     parts = []
     for piece in path.split("."):
@@ -2738,6 +3536,14 @@ def generated_files():
         files[Path("autozoom") / filename] = fixture
     for filename, fixture in generate_recordings().items():
         files[Path("recording") / filename] = fixture
+    for filename, fixture in generate_captions().items():
+        files[Path("captions") / filename] = fixture
+    for filename, fixture in generate_caption_files().items():
+        files[Path("captionfiles") / filename] = fixture
+    for filename, fixture in generate_caption_quality().items():
+        files[Path("captionquality") / filename] = fixture
+    for filename, fixture in generate_caption_imports().items():
+        files[Path("captionimport") / filename] = fixture
     verify_claims(files)
     return files
 

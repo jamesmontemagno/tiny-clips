@@ -251,6 +251,12 @@ public sealed partial class StudioSceneRenderer : IDisposable
             var cameraFramed = cameraCutout != StudioCameraCutout.Remove;
             var cameraShadow = cameraBrush is null || !cameraFramed ? null : EnsureShadow(_cameraShadow, cameraRect.Width, cameraRect.Height, camera.CornerRadius, camera.Shape, camera.Shadow);
 
+            var caption = StudioCaptionTrack.DrawnTextAt(project, request.SourceTimeSeconds);
+            if (caption is not null)
+            {
+                PrepareCaption(caption, project, width, height);
+            }
+
             _context.Target = target;
             var began = false;
             try
@@ -308,6 +314,11 @@ public sealed partial class StudioSceneRenderer : IDisposable
                 if (project.Overlays.Branding)
                 {
                     DrawBranding(width, height);
+                }
+
+                if (caption is not null)
+                {
+                    DrawCaption();
                 }
 
                 _context.EndDraw().CheckError();
@@ -381,6 +392,7 @@ public sealed partial class StudioSceneRenderer : IDisposable
         _screenShadow.Dispose();
         _cameraShadow.Dispose();
         DisposePeople();
+        DisposeCaption();
         _badge?.Dispose();
         _underlay?.Dispose();
         _backgroundImage?.Dispose();

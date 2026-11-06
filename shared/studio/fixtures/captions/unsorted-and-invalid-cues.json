@@ -1,0 +1,60 @@
+{
+  "description": "Cues are put in time order. One with no time or no text is not shown.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-5",
+        "start": 5,
+        "end": 6,
+        "text": "Later."
+      },
+      {
+        "id": "cue-1",
+        "start": 1,
+        "end": 2,
+        "text": "Earlier."
+      },
+      {
+        "id": "cue-3",
+        "start": 3,
+        "end": 3,
+        "text": "No time."
+      },
+      {
+        "id": "cue-4",
+        "start": 4,
+        "end": 3.5,
+        "text": "Backwards."
+      },
+      {
+        "id": "cue-7",
+        "start": 7,
+        "end": 8,
+        "text": "   \n "
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 1,
+      "end": 2,
+      "text": "Earlier."
+    },
+    {
+      "start": 5,
+      "end": 6,
+      "text": "Later."
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:01,000 --> 00:00:02,000\nEarlier.\n\n2\n00:00:05,000 --> 00:00:06,000\nLater.\n",
+  "vtt": "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nEarlier.\n\n00:00:05.000 --> 00:00:06.000\nLater.\n"
+}

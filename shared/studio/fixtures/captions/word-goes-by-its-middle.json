@@ -1,0 +1,63 @@
+{
+  "description": "A word a cut reaches into stays or goes by where its middle is.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [
+      {
+        "start": 5,
+        "end": 7
+      }
+    ],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-3",
+        "start": 3,
+        "end": 8,
+        "text": "before stays goes after",
+        "words": [
+          {
+            "start": 3,
+            "end": 4,
+            "text": "before"
+          },
+          {
+            "start": 4,
+            "end": 5.4,
+            "text": "stays"
+          },
+          {
+            "start": 5.4,
+            "end": 6,
+            "text": "goes"
+          },
+          {
+            "start": 6.8,
+            "end": 8,
+            "text": "after"
+          }
+        ]
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 3,
+      "end": 5,
+      "text": "before stays"
+    },
+    {
+      "start": 5,
+      "end": 6,
+      "text": "after"
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:03,000 --> 00:00:05,000\nbefore stays\n\n2\n00:00:05,000 --> 00:00:06,000\nafter\n",
+  "vtt": "WEBVTT\n\n00:00:03.000 --> 00:00:05.000\nbefore stays\n\n00:00:05.000 --> 00:00:06.000\nafter\n"
+}

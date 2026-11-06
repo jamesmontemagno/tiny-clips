@@ -75,13 +75,22 @@ final class AutomationPolicyTests: XCTestCase {
             "studio.project.edit": "edit",
             "studio.zoom.suggest": "read",
             "studio.export.options": "read",
+            "studio.captions.check": "read",
+            "studio.captions.import": "edit",
+            "studio.captions.fix": "edit",
+            "studio.captions.export": "export",
+            "studio.captions.models": "read",
+            "studio.captions.generate": "edit",
             "editor.trim": "edit",
             "editor.saveFrame": "edit",
             "studio.export": "export"
         ]
         for (name, scope) in expected {
             XCTAssertEqual(contract.commands.first(where: { $0.name == name })?.scope, scope)
-            XCTAssertTrue(AutomationCommandRouter.supportedCommands.contains(name))
+            // These two are only advertised on a Mac that can generate captions.
+            if !["studio.captions.models", "studio.captions.generate"].contains(name) {
+                XCTAssertTrue(AutomationCommandRouter.supportedCommands.contains(name))
+            }
         }
     }
 

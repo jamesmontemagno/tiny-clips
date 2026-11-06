@@ -1,0 +1,6 @@
+{
+  "description": "Text with no times has no cues.",
+  "text": "Just some words.\nNothing here has a time.\n\nAnother paragraph.\n",
+  "expected": [],
+  "skipped": 2
+}

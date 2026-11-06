@@ -10,6 +10,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
     case zoom
     case cut
     case speed
+    case captions
     case audio
     case project
 
@@ -24,6 +25,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "Zoom"
         case .cut: return "Cut"
         case .speed: return "Speed"
+        case .captions: return "Captions"
         case .audio: return "Audio"
         case .project: return "Project"
         }
@@ -39,6 +41,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "plus.magnifyingglass"
         case .cut: return "scissors"
         case .speed: return "gauge.with.needle"
+        case .captions: return "captions.bubble"
         case .audio: return "speaker.wave.2"
         case .project: return "folder"
         }
@@ -54,6 +57,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "Zooms"
         case .cut: return "Cuts"
         case .speed: return "Speed changes"
+        case .captions: return "Captions: import, edit, and export"
         case .audio: return "Audio: mute and volumes"
         case .project: return "Project: save, storage, and delete"
         }
@@ -66,7 +70,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         let look: [StudioInspectorPanel] = hasCamera
             ? [.scene, .background, .screen, .camera]
             : [.background, .screen]
-        return [look, [.zoom, .cut, .speed], [.audio, .project]]
+        return [look, [.zoom, .cut, .speed, .captions], [.audio, .project]]
     }
 
     static func available(hasCamera: Bool) -> [StudioInspectorPanel] {
@@ -109,12 +113,24 @@ enum StudioSymbol {
     static let showScene = StudioInspectorPanel.scene.symbolName
     static let saveDefaultLook = "paintpalette"
     static let saveRecording = "square.and.arrow.down"
+    static let generateCaptions = "waveform"
+    static let noSpeech = "waveform.slash"
+    static let importCaptions = "square.and.arrow.down"
+    static let exportCaptions = "square.and.arrow.up"
+    static let splitCaption = "scissors"
+    static let mergeCaption = "arrow.triangle.merge"
+    static let captionProblem = "exclamationmark.triangle.fill"
+    static let autoFixCaptions = "wand.and.stars"
+    static let nextCaptionProblem = "arrow.down.circle"
+    static let searchCaptions = "magnifyingglass"
 
     /// Every symbol the editor names, the rail's included.
     static var all: [String] {
         StudioInspectorPanel.allCases.map(\.symbolName) + [
             splitScene, addZoom, addCut, addSpeed, suggestZooms, removeSuggestions, delete,
             trimStart, trimEnd, resetCrop, showScene, saveDefaultLook, saveRecording,
+            generateCaptions, noSpeech, importCaptions, exportCaptions, splitCaption, mergeCaption,
+            captionProblem, autoFixCaptions, nextCaptionProblem, searchCaptions,
         ]
     }
 }

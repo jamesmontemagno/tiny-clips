@@ -4,8 +4,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:color="using:TinyClips.App"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:editing="using:TinyClips.Core.Studio.Editing"
     xmlns:local="using:TinyClips.App.Controls.Studio"
+    xmlns:models="using:TinyClips.App.Models.Studio"
     IsTabStop="False">
 
     <UserControl.Resources>
@@ -77,9 +79,59 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
         </Style>
+        <!--  A look of the captions, in the swatch grid's way: two to a row of the panel.  -->
+        <Style x:Key="StudioCaptionLookItemStyle" BasedOn="{StaticResource DefaultGridViewItemStyle}" TargetType="GridViewItem">
+            <Setter Property="Width" Value="140" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
     </UserControl.Resources>
 
     <Grid>
+        <!--
+            The Captions panel's banner takes the colors and the glyph of what it says, and its
+            Generate button is an accent button until there are captions. The code behind goes to
+            these states; the banner's own colors are those of Info.
+        -->
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="CaptionNoticeStates">
+                <VisualState x:Name="CaptionNoticeInfo" />
+                <VisualState x:Name="CaptionNoticeDone">
+                    <VisualState.Setters>
+                        <Setter Target="CaptionNoticeBanner.Background" Value="{ThemeResource SystemFillColorSuccessBackgroundBrush}" />
+                        <Setter Target="CaptionNoticeIcon.Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+                        <Setter Target="CaptionNoticeIcon.Glyph" Value="&#xE930;" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="CaptionNoticeNoSpeech">
+                    <VisualState.Setters>
+                        <Setter Target="CaptionNoticeBanner.Background" Value="{ThemeResource SystemFillColorCautionBackgroundBrush}" />
+                        <Setter Target="CaptionNoticeIcon.Foreground" Value="{ThemeResource SystemFillColorCautionBrush}" />
+                        <Setter Target="CaptionNoticeIcon.Glyph" Value="&#xE7BA;" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="CaptionNoticeProblem">
+                    <VisualState.Setters>
+                        <Setter Target="CaptionNoticeBanner.Background" Value="{ThemeResource SystemFillColorCriticalBackgroundBrush}" />
+                        <Setter Target="CaptionNoticeIcon.Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+                        <Setter Target="CaptionNoticeIcon.Glyph" Value="&#xE783;" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+            <VisualStateGroup x:Name="CaptionGenerateStates">
+                <VisualState x:Name="CaptionGenerateFirst">
+                    <VisualState.Setters>
+                        <Setter Target="CaptionGenerateButton.Style" Value="{StaticResource AccentButtonStyle}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="CaptionGenerateAgain" />
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+
         <!--
             The rail is 88 wide, and wider only when its longest label needs more, as it does at
             a large text size: a label is never cut. The panel has the rest.
@@ -1440,6 +1492,638 @@
                                 <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.Delete}" Text="Delete speed change" />
                             </Button>
                         </StackPanel>
+                    </StackPanel>
+
+                    <!--
+                        Captions: the words of the video. A header says how many there are, and a
+                        banner what the last import, fix, export or generating came to. Under them
+                        the cues in time order, which a search narrows and which mark the cue at
+                        the playhead; choosing one moves the playhead to it and opens it in the
+                        card below the list, to edit its text and its timing, split it, merge it
+                        with the next or delete it. The text goes into the project when the box is
+                        left, so that typing is one undo step. There is no lane for captions yet.
+                    -->
+                    <StackPanel
+                        x:Name="CaptionsPanel"
+                        Spacing="16"
+                        Visibility="Collapsed">
+                        <StackPanel Spacing="12">
+                            <!--  The rail's glyph on an accent tile, set in code (StudioInspectorPanels.GetGlyph), and the count.  -->
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border
+                                    Width="36"
+                                    Height="36"
+                                    VerticalAlignment="Top"
+                                    CornerRadius="{StaticResource OverlayCornerRadius}">
+                                    <Border.Background>
+                                        <SolidColorBrush Opacity="0.14" Color="{ThemeResource SystemAccentColor}" />
+                                    </Border.Background>
+                                    <FontIcon
+                                        x:Name="CaptionsHeaderIcon"
+                                        AutomationProperties.AccessibilityView="Raw"
+                                        FontSize="18"
+                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                </Border>
+                                <StackPanel
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="StudioCaptionsCount"
+                                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.CaptionCountText, Mode=OneWay}"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Style="{StaticResource StudioCaptionStyle}"
+                                        Text="{x:Bind ViewModel.CaptionEmptyHint}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{x:Bind ViewModel.IsCaptionEmptyHintVisible, Mode=OneWay}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!--
+                                What the last import, fix, export or generating came to. The editor
+                                says it to a screen reader as it comes, so the banner is no live
+                                region of its own. Its colors and glyph follow its kind
+                                (CaptionNoticeStates). After no speech was heard it offers to open
+                                the choice of model again.
+                            -->
+                            <Border
+                                x:Name="CaptionNoticeBanner"
+                                Padding="12,10,6,10"
+                                AutomationProperties.AutomationId="StudioCaptionsNotice"
+                                Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource OverlayCornerRadius}"
+                                Visibility="{x:Bind ViewModel.IsCaptionNoticeOpen, Mode=OneWay}">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon
+                                        x:Name="CaptionNoticeIcon"
+                                        Margin="0,2,0,0"
+                                        VerticalAlignment="Top"
+                                        AutomationProperties.AccessibilityView="Raw"
+                                        FontSize="16"
+                                        Foreground="{ThemeResource SystemFillColorAttentionBrush}"
+                                        Glyph="&#xE946;" />
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock
+                                            AutomationProperties.AutomationId="StudioCaptionsNoticeTitle"
+                                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                                            Text="{x:Bind ViewModel.CaptionNoticeTitle, Mode=OneWay}"
+                                            TextWrapping="Wrap"
+                                            Visibility="{x:Bind ViewModel.HasCaptionNoticeTitle, Mode=OneWay}" />
+                                        <TextBlock
+                                            AutomationProperties.AutomationId="StudioCaptionsNoticeMessage"
+                                            Text="{x:Bind ViewModel.CaptionNoticeMessage, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                        <Button
+                                            x:Name="CaptionRetryButton"
+                                            Margin="0,4,0,0"
+                                            AutomationProperties.AutomationId="StudioCaptionsTryAnotherModelButton"
+                                            Click="OnTryAnotherCaptionModel"
+                                            ToolTipService.ToolTip="Choose another speech model and generate again"
+                                            Visibility="{x:Bind ViewModel.IsCaptionNoticeRetryVisible, Mode=OneWay}" />
+                                    </StackPanel>
+                                    <Button
+                                        Grid.Column="2"
+                                        Padding="8"
+                                        VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="StudioCaptionsNoticeCloseButton"
+                                        AutomationProperties.Name="Dismiss message"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Click="{x:Bind ViewModel.DismissCaptionNotice}"
+                                        ToolTipService.ToolTip="Dismiss">
+                                        <FontIcon FontSize="12" Glyph="&#xE711;" />
+                                    </Button>
+                                </Grid>
+                            </Border>
+
+                            <!--  An accent button until there are captions (CaptionGenerateStates), as on the Mac.  -->
+                            <Button
+                                x:Name="CaptionGenerateButton"
+                                HorizontalAlignment="Stretch"
+                                AutomationProperties.AutomationId="StudioCaptionsGenerateButton"
+                                Content="{x:Bind ViewModel.CaptionGenerateButtonText, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CanGenerateCaptions, Mode=OneWay}"
+                                ToolTipService.ToolTip="Make captions from the recording's sound, on this computer"
+                                Visibility="{x:Bind ViewModel.IsCaptionGenerateVisible, Mode=OneWay}">
+                                <Button.Flyout>
+                                    <Flyout x:Name="CaptionGenerateFlyout" Placement="Bottom">
+                                        <StackPanel Width="280" Spacing="12">
+                                            <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Generate captions" />
+                                            <ComboBox
+                                                x:Name="CaptionModelChoice"
+                                                HorizontalAlignment="Stretch"
+                                                AutomationProperties.AutomationId="StudioCaptionsModelComboBox"
+                                                Header="Model"
+                                                ItemsSource="{x:Bind ViewModel.CaptionModelOptions}"
+                                                SelectedIndex="{x:Bind ViewModel.SelectedCaptionModelIndex, Mode=TwoWay}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="models:StudioCaptionModelOption">
+                                                        <TextBlock Text="{x:Bind Text}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.CaptionModelNote, Mode=OneWay}" TextWrapping="Wrap" />
+                                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.CaptionPrivacyNote}" TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Style="{StaticResource StudioCaptionStyle}"
+                                                Text="{x:Bind ViewModel.CaptionReplaceNote}"
+                                                TextWrapping="Wrap"
+                                                Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}" />
+                                            <Button
+                                                HorizontalAlignment="Stretch"
+                                                AutomationProperties.AutomationId="StudioCaptionsGenerateStartButton"
+                                                Click="OnGenerateCaptions"
+                                                Content="{x:Bind ViewModel.CaptionGenerateActionText, Mode=OneWay}"
+                                                Style="{StaticResource AccentButtonStyle}" />
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+
+                            <Border
+                                Padding="12"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource OverlayCornerRadius}"
+                                Visibility="{x:Bind ViewModel.IsGeneratingCaptions, Mode=OneWay}">
+                                <StackPanel Spacing="8">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Text="{x:Bind ViewModel.CaptionProgressText, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                        <Button
+                                            Grid.Column="1"
+                                            AutomationProperties.AutomationId="StudioCaptionsCancelButton"
+                                            Click="{x:Bind ViewModel.CancelCaptionGeneration}"
+                                            Content="Cancel"
+                                            IsEnabled="{x:Bind ViewModel.CanCancelCaptionGeneration, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Stop generating. The captions stay as they were." />
+                                    </Grid>
+                                    <ProgressBar
+                                        AutomationProperties.AutomationId="StudioCaptionsProgress"
+                                        AutomationProperties.Name="Generating captions"
+                                        IsIndeterminate="{x:Bind ViewModel.IsStoppingCaptionGeneration, Mode=OneWay}"
+                                        Maximum="100"
+                                        Value="{x:Bind ViewModel.CaptionProgressPercent, Mode=OneWay}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <DropDownButton
+                                    HorizontalAlignment="Stretch"
+                                    AutomationProperties.AutomationId="StudioCaptionsImportButton"
+                                    Content="Import"
+                                    IsEnabled="{x:Bind ViewModel.CanImportCaptions, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Replace the captions with an SRT or WebVTT file">
+                                    <DropDownButton.Flyout>
+                                        <MenuFlyout Placement="Bottom">
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="StudioCaptionsImportRecordingItem"
+                                                Click="OnImportCaptionsTimedToRecording"
+                                                Text="Timed to the recording" />
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="StudioCaptionsImportVideoItem"
+                                                Click="OnImportCaptionsTimedToVideo"
+                                                Text="Timed to the edited video" />
+                                        </MenuFlyout>
+                                    </DropDownButton.Flyout>
+                                </DropDownButton>
+                                <DropDownButton
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Stretch"
+                                    AutomationProperties.AutomationId="StudioCaptionsExportButton"
+                                    Content="Export"
+                                    IsEnabled="{x:Bind ViewModel.CanExportCaptions, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Write the video's captions to a file">
+                                    <DropDownButton.Flyout>
+                                        <MenuFlyout Placement="Bottom">
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="StudioCaptionsExportSrtItem"
+                                                Click="OnExportCaptionsAsSrt"
+                                                Text="SubRip (.srt)" />
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="StudioCaptionsExportVttItem"
+                                                Click="OnExportCaptionsAsVtt"
+                                                Text="WebVTT (.vtt)" />
+                                        </MenuFlyout>
+                                    </DropDownButton.Flyout>
+                                </DropDownButton>
+                            </Grid>
+                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.CaptionExportNote}" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
+                            <!--
+                                What the checks find is a warning mark on each row it is in. Next
+                                problem opens the next of them, and Auto fix makes the safe fixes;
+                                both are here only while there is something to fix.
+                            -->
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource StudioSectionHeadingStyle}"
+                                    Text="All captions" />
+                                <Button
+                                    Grid.Column="1"
+                                    Padding="8,4"
+                                    AutomationProperties.AutomationId="StudioCaptionsNextProblemButton"
+                                    AutomationProperties.HelpText="{x:Bind ViewModel.CaptionCheckText, Mode=OneWay}"
+                                    AutomationProperties.Name="Next problem"
+                                    Click="{x:Bind ViewModel.SelectNextCaptionProblem}"
+                                    IsEnabled="{x:Bind ViewModel.CanSelectNextCaptionProblem, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.CaptionProblemsToolTip, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.HasCaptionProblems, Mode=OneWay}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            FontSize="14"
+                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                            Glyph="&#xE7BA;" />
+                                        <TextBlock
+                                            AutomationProperties.AutomationId="StudioCaptionsProblemCount"
+                                            Text="{x:Bind ViewModel.CaptionProblemCountText, Mode=OneWay}" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    Grid.Column="2"
+                                    Padding="8,4"
+                                    AutomationProperties.AutomationId="StudioCaptionsFixButton"
+                                    AutomationProperties.HelpText="{x:Bind ViewModel.CaptionManualFixNote, Mode=OneWay}"
+                                    AutomationProperties.Name="Auto fix"
+                                    Click="{x:Bind ViewModel.FixCaptions}"
+                                    IsEnabled="{x:Bind ViewModel.CanFixCaptions, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.CaptionFixToolTip, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.HasCaptionProblems, Mode=OneWay}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            FontSize="14"
+                                            Glyph="&#xE90F;" />
+                                        <TextBlock Text="Auto fix" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                            <!--  Esc empties the search, as the Mac's search field does.  -->
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <AutoSuggestBox
+                                    x:Name="CaptionSearchBox"
+                                    AutomationProperties.AutomationId="StudioCaptionsSearchBox"
+                                    AutomationProperties.Name="Search captions"
+                                    PlaceholderText="Search captions"
+                                    PreviewKeyDown="OnCaptionSearchKeyDown"
+                                    QueryIcon="Find"
+                                    TextChanged="OnCaptionSearchTextChanged" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.AutomationId="StudioCaptionsSearchCount"
+                                    Style="{StaticResource StudioCaptionStyle}"
+                                    Text="{x:Bind ViewModel.CaptionSearchCountText, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.IsSearchingCaptions, Mode=OneWay}" />
+                            </Grid>
+                            <TextBlock
+                                Margin="0,12"
+                                HorizontalAlignment="Center"
+                                AutomationProperties.AutomationId="StudioCaptionsNoMatches"
+                                Style="{StaticResource StudioCaptionStyle}"
+                                Text="{x:Bind ViewModel.CaptionNoMatchesText, Mode=OneWay}"
+                                TextAlignment="Center"
+                                TextWrapping="Wrap"
+                                Visibility="{x:Bind ViewModel.IsCaptionNoMatchesVisible, Mode=OneWay}" />
+                            <!--
+                                A row says when its cue is, what it says with the words searched for
+                                marked, and what the checks found in it. A play glyph marks the cue
+                                at the playhead, and the list keeps it in view while nothing is
+                                selected.
+                            -->
+                            <Border
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource OverlayCornerRadius}"
+                                Visibility="{x:Bind ViewModel.IsCaptionListVisible, Mode=OneWay}">
+                                <ListView
+                                    x:Name="CaptionList"
+                                    Padding="0,4"
+                                    AutomationProperties.AutomationId="StudioCaptionList"
+                                    AutomationProperties.Name="Captions"
+                                    MaxHeight="360"
+                                    SelectionChanged="OnCaptionListSelectionChanged"
+                                    SelectionMode="Single">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="models:StudioCaptionRow">
+                                            <Grid Padding="0,6" ColumnSpacing="8" RowSpacing="2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon
+                                                        VerticalAlignment="Center"
+                                                        AutomationProperties.AccessibilityView="Raw"
+                                                        FontSize="10"
+                                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                        Glyph="&#xE768;"
+                                                        Visibility="{x:Bind IsCurrent, Mode=OneWay}" />
+                                                    <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind TimeText}" />
+                                                </StackPanel>
+                                                <!--  The warning mark, with the count when there is more than one; the row's name says the problems.  -->
+                                                <StackPanel
+                                                    Grid.Column="1"
+                                                    VerticalAlignment="Center"
+                                                    AutomationProperties.AccessibilityView="Raw"
+                                                    Background="Transparent"
+                                                    Orientation="Horizontal"
+                                                    Spacing="2"
+                                                    ToolTipService.ToolTip="{x:Bind ProblemText}"
+                                                    Visibility="{x:Bind HasProblems}">
+                                                    <FontIcon
+                                                        VerticalAlignment="Center"
+                                                        FontSize="14"
+                                                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                                        Glyph="&#xE7BA;" />
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                                        Style="{StaticResource StudioCaptionStyle}"
+                                                        Text="{x:Bind ProblemBadgeText}" />
+                                                </StackPanel>
+                                                <TextBlock
+                                                    Grid.Row="1"
+                                                    Grid.ColumnSpan="2"
+                                                    local:StudioTextHighlight.Ranges="{x:Bind Highlights, Mode=OneWay}"
+                                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                    MaxLines="3"
+                                                    Text="{x:Bind Text}"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    TextWrapping="Wrap" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Border>
+
+                            <!--
+                                The selected cue: its text, which goes into the project when the box
+                                is left; its start and end, a tenth of a second at a time or at the
+                                playhead; and splitting, merging and deleting it. Esc or Done closes
+                                it and gives the list the focus.
+                            -->
+                            <Border
+                                Padding="12"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource OverlayCornerRadius}"
+                                Visibility="{x:Bind ViewModel.HasSelectedCaption, Mode=OneWay}">
+                                <StackPanel Spacing="10">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource StudioSectionHeadingStyle}"
+                                            Text="Selected caption" />
+                                        <Button
+                                            Grid.Column="1"
+                                            AutomationProperties.AutomationId="StudioCaptionDoneButton"
+                                            Click="OnCaptionDone"
+                                            Content="Done"
+                                            ToolTipService.ToolTip="Close this caption (Esc)" />
+                                    </Grid>
+                                    <TextBox
+                                        x:Name="CaptionTextBox"
+                                        AcceptsReturn="True"
+                                        AutomationProperties.AutomationId="StudioCaptionTextBox"
+                                        AutomationProperties.HelpText="{x:Bind ViewModel.SelectedCaptionTimeText, Mode=OneWay}"
+                                        AutomationProperties.Name="Caption text"
+                                        LostFocus="OnCaptionTextLostFocus"
+                                        MaxHeight="160"
+                                        PreviewKeyDown="OnCaptionTextKeyDown"
+                                        Text="{x:Bind ViewModel.SelectedCaptionText, Mode=OneWay}"
+                                        TextChanged="OnCaptionTextChanged"
+                                        TextWrapping="Wrap" />
+                                    <StackPanel
+                                        Orientation="Horizontal"
+                                        Spacing="6"
+                                        Visibility="{x:Bind ViewModel.HasSelectedCaptionProblems, Mode=OneWay}">
+                                        <FontIcon
+                                            VerticalAlignment="Center"
+                                            AutomationProperties.AccessibilityView="Raw"
+                                            FontSize="12"
+                                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                            Glyph="&#xE7BA;" />
+                                        <TextBlock
+                                            AutomationProperties.AutomationId="StudioSelectedCaptionProblems"
+                                            Style="{StaticResource StudioCaptionStyle}"
+                                            Text="{x:Bind ViewModel.SelectedCaptionProblemText, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <!--  A tenth of a second at a time (StudioViewModel.CaptionNudgeStep).  -->
+                                    <Grid ColumnSpacing="6" RowSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Start" />
+                                            <TextBlock AutomationProperties.AutomationId="StudioSelectedCaptionStart" Text="{x:Bind ViewModel.SelectedCaptionStartText, Mode=OneWay}" />
+                                        </StackPanel>
+                                        <Button
+                                            Grid.Column="1"
+                                            AutomationProperties.AutomationId="StudioCaptionStartEarlierButton"
+                                            AutomationProperties.Name="Start earlier"
+                                            Click="{x:Bind ViewModel.NudgeCaptionStartEarlier}"
+                                            IsEnabled="{x:Bind ViewModel.CanEditSelectedCaption, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Start a tenth of a second earlier">
+                                            <FontIcon FontSize="12" Glyph="&#xE738;" />
+                                        </Button>
+                                        <Button
+                                            Grid.Column="2"
+                                            AutomationProperties.AutomationId="StudioCaptionStartLaterButton"
+                                            AutomationProperties.Name="Start later"
+                                            Click="{x:Bind ViewModel.NudgeCaptionStartLater}"
+                                            IsEnabled="{x:Bind ViewModel.CanEditSelectedCaption, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Start a tenth of a second later">
+                                            <FontIcon FontSize="12" Glyph="&#xE710;" />
+                                        </Button>
+                                        <Button
+                                            Grid.Column="3"
+                                            AutomationProperties.AutomationId="StudioCaptionStartAtPlayheadButton"
+                                            AutomationProperties.Name="Start at playhead"
+                                            Click="{x:Bind ViewModel.MoveCaptionStartToPlayhead}"
+                                            Content="At playhead"
+                                            IsEnabled="{x:Bind ViewModel.CanEditSelectedCaption, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Start this caption at the playhead" />
+                                        <StackPanel Grid.Row="1" VerticalAlignment="Center">
+                                            <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="End" />
+                                            <TextBlock AutomationProperties.AutomationId="StudioSelectedCaptionEnd" Text="{x:Bind ViewModel.SelectedCaptionEndText, Mode=OneWay}" />
+                                        </StackPanel>
+                                        <Button
+                                            Grid.Row="1"
+                                            Grid.Column="1"
+                                            AutomationProperties.AutomationId="StudioCaptionEndEarlierButton"
+                                            AutomationProperties.Name="End earlier"
+                                            Click="{x:Bind ViewModel.NudgeCaptionEndEarlier}"
+                                            IsEnabled="{x:Bind ViewModel.CanEditSelectedCaption, Mode=OneWay}"
+                                            ToolTipService.ToolTip="End a tenth of a second earlier">
+                                            <FontIcon FontSize="12" Glyph="&#xE738;" />
+                                        </Button>
+                                        <Button
+                                            Grid.Row="1"
+                                            Grid.Column="2"
+                                            AutomationProperties.AutomationId="StudioCaptionEndLaterButton"
+                                            AutomationProperties.Name="End later"
+                                            Click="{x:Bind ViewModel.NudgeCaptionEndLater}"
+                                            IsEnabled="{x:Bind ViewModel.CanEditSelectedCaption, Mode=OneWay}"
+                                            ToolTipService.ToolTip="End a tenth of a second later">
+                                            <FontIcon FontSize="12" Glyph="&#xE710;" />
+                                        </Button>
+                                        <Button
+                                            Grid.Row="1"
+                                            Grid.Column="3"
+                                            AutomationProperties.AutomationId="StudioCaptionEndAtPlayheadButton"
+                                            AutomationProperties.Name="End at playhead"
+                                            Click="{x:Bind ViewModel.MoveCaptionEndToPlayhead}"
+                                            Content="At playhead"
+                                            IsEnabled="{x:Bind ViewModel.CanEditSelectedCaption, Mode=OneWay}"
+                                            ToolTipService.ToolTip="End this caption at the playhead" />
+                                    </Grid>
+                                    <Grid x:Name="CaptionEditRow" ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="StudioCaptionSplitButton"
+                                            AutomationProperties.Name="Split caption"
+                                            Click="{x:Bind ViewModel.SplitSelectedCaption}"
+                                            IsEnabled="{x:Bind ViewModel.CanSplitSelectedCaption, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Split this caption in two at the playhead, or in the middle when the playhead isn't inside it">
+                                            <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SplitScene}" Text="Split" />
+                                        </Button>
+                                        <Button
+                                            Grid.Column="1"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="StudioCaptionMergeButton"
+                                            AutomationProperties.Name="Merge with next caption"
+                                            Click="{x:Bind ViewModel.MergeSelectedCaption}"
+                                            IsEnabled="{x:Bind ViewModel.CanMergeSelectedCaption, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Put this caption together with the one after it">
+                                            <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.MergeCaptions}" Text="Merge" />
+                                        </Button>
+                                        <Button
+                                            Grid.Column="2"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="StudioCaptionDeleteButton"
+                                            AutomationProperties.Name="Delete caption"
+                                            Click="{x:Bind ViewModel.RemoveSelectedCaption}"
+                                            IsEnabled="{x:Bind ViewModel.CanEditSelectedCaption, Mode=OneWay}"
+                                            ToolTipService.ToolTip="Take this caption out of the project (Delete)">
+                                            <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.Delete}" Text="Delete" />
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!--
+                            Whether the captions are drawn into the picture, and how, folded away under
+                            the list: a tile for each look, drawn as the video draws it
+                            (StudioCaptionLookTile, added in code), and the size and the place as segments.
+                        -->
+                        <Expander
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="StudioCaptionsInVideoExpander"
+                            Header="In the video"
+                            Visibility="{x:Bind ViewModel.HasCaptions, Mode=OneWay}">
+                            <StackPanel Spacing="8">
+                                <CheckBox
+                                    AutomationProperties.AutomationId="StudioCaptionsDrawnCheckBox"
+                                    Content="Draw captions on the video"
+                                    IsChecked="{x:Bind ViewModel.AreCaptionsDrawn, Mode=TwoWay}"
+                                    ToolTipService.ToolTip="Shows them in the preview, and puts them into the picture of what you export" />
+                                <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.AreCaptionsDrawn, Mode=OneWay}">
+                                    <GridView
+                                        x:Name="CaptionLooks"
+                                        AutomationProperties.AutomationId="StudioCaptionsLooks"
+                                        AutomationProperties.Name="Caption look"
+                                        SelectedIndex="{x:Bind ViewModel.CaptionAppearanceIndex, Mode=TwoWay}"
+                                        Style="{StaticResource StudioSwatchGridStyle}" />
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Size" />
+                                        <controls:Segmented
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="StudioCaptionsSizeChoice"
+                                            AutomationProperties.Name="Caption size"
+                                            SelectedIndex="{x:Bind ViewModel.CaptionSizeIndex, Mode=TwoWay}">
+                                            <controls:SegmentedItem Content="Small" />
+                                            <controls:SegmentedItem Content="Medium" />
+                                            <controls:SegmentedItem Content="Large" />
+                                        </controls:Segmented>
+                                    </StackPanel>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Position" />
+                                        <controls:Segmented
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.AutomationId="StudioCaptionsPositionChoice"
+                                            AutomationProperties.Name="Caption position"
+                                            SelectedIndex="{x:Bind ViewModel.CaptionPositionIndex, Mode=TwoWay}">
+                                            <controls:SegmentedItem Content="Bottom" />
+                                            <controls:SegmentedItem Content="Top" />
+                                        </controls:Segmented>
+                                    </StackPanel>
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource StudioNoteStyle}" Text="{x:Bind ViewModel.CaptionDrawnNote}" />
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
 
                     <!--

@@ -35,6 +35,9 @@ public abstract class StudioViewModelTestBase : IDisposable
         ((CountingStore)_store).Inner = Projects;
     }
 
+    /// <summary>The clock of the view models a test opens, which moves only when the test moves it.</summary>
+    private protected ManualTimeProvider Time => _time;
+
     /// <summary>The store itself, for writing the project a test opens and for reading it afterwards.</summary>
     protected StudioProjectStore Projects { get; }
 
@@ -79,6 +82,12 @@ public abstract class StudioViewModelTestBase : IDisposable
         return paths.ProjectId;
     }
 
+    /// <summary>The settings of the view models a test opens.</summary>
+    protected CaptureSettings Settings { get; } = new(new StudioTestSettings());
+
+    /// <summary>What a view model a test opens generates captions with. Without it, it cannot.</summary>
+    protected TinyClips.Core.Studio.Transcription.IStudioCaptionGenerator? CaptionGenerator { get; set; }
+
     /// <summary>
     /// Opens a project as the Studio window does: the view model is made, the window's controls
     /// are bound to it while it still says it is loading, and then the project is read. A test
@@ -91,11 +100,12 @@ public abstract class StudioViewModelTestBase : IDisposable
             _store,
             _previews,
             new StudioTestExporter(),
-            settings ?? CreateSettings(),
+            settings ?? Settings,
             new StudioTestVideoNames(Path.Combine(_directory, "Videos")),
             Post,
             canFindPeople: true,
-            _time);
+            _time,
+            CaptionGenerator);
         viewModel.Announced += (_, e) => Announcements.Add(e.Message);
         controls?.Attach(viewModel);
 

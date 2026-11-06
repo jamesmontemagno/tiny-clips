@@ -1,0 +1,76 @@
+{
+  "description": "Section 2 applies: null and missing values take their defaults and null elements are dropped.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      null,
+      {
+        "id": "a",
+        "start": 1,
+        "end": 2,
+        "text": "No words."
+      },
+      {
+        "start": 3,
+        "end": 4,
+        "text": "No id.",
+        "words": null
+      },
+      {
+        "start": null,
+        "end": 0.5,
+        "text": "Start counts as 0."
+      },
+      {
+        "start": 7,
+        "end": 8,
+        "text": null
+      },
+      {
+        "start": 9,
+        "end": 10,
+        "text": "A null word.",
+        "words": [
+          null,
+          {
+            "start": 9,
+            "end": 10,
+            "text": "A"
+          }
+        ]
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 0,
+      "end": 0.5,
+      "text": "Start counts as 0."
+    },
+    {
+      "start": 1,
+      "end": 2,
+      "text": "No words."
+    },
+    {
+      "start": 3,
+      "end": 4,
+      "text": "No id."
+    },
+    {
+      "start": 9,
+      "end": 10,
+      "text": "A null word."
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:00,000 --> 00:00:00,500\nStart counts as 0.\n\n2\n00:00:01,000 --> 00:00:02,000\nNo words.\n\n3\n00:00:03,000 --> 00:00:04,000\nNo id.\n\n4\n00:00:09,000 --> 00:00:10,000\nA null word.\n",
+  "vtt": "WEBVTT\n\n00:00:00.000 --> 00:00:00.500\nStart counts as 0.\n\n00:00:01.000 --> 00:00:02.000\nNo words.\n\n00:00:03.000 --> 00:00:04.000\nNo id.\n\n00:00:09.000 --> 00:00:10.000\nA null word.\n"
+}

@@ -1,0 +1,22 @@
+{
+  "description": "A title, a comment, a style, a cue name, cue settings, short times, voices, inline times, and entities.",
+  "text": "WEBVTT - a title\n\nNOTE a comment\nover two lines\n\nSTYLE\n::cue { color: red }\n\nintro\n00:01.000 --> 00:02.500 align:start position:10%\n<v Sam>Fish &amp; chips</v>\n\n00:00:03.000 --> 00:00:04.000\n<00:00:03.500><c.yellow>1 &lt; 2</c> &gt; 0\n\n01:00:05.000 --> 01:00:06.000\nAn &amp;lt; stays\n",
+  "expected": [
+    {
+      "start": 1.0,
+      "end": 2.5,
+      "text": "Fish & chips"
+    },
+    {
+      "start": 3.0,
+      "end": 4.0,
+      "text": "1 < 2 > 0"
+    },
+    {
+      "start": 3605.0,
+      "end": 3606.0,
+      "text": "An &lt; stays"
+    }
+  ],
+  "skipped": 0
+}

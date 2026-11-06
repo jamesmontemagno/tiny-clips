@@ -16,6 +16,7 @@ using TinyClips.Core.Studio;
 using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App;
 
@@ -63,7 +64,10 @@ public sealed partial class SettingsWindow : Window
                 App.Services.GetRequiredService<IUploadcareCredentialStore>(),
                 App.Services.GetRequiredService<IStudioProjectStore>(),
                 App.Services.GetRequiredService<StudioProjectCleanupService>(),
-                App.Services.GetRequiredService<StudioProjectTracker>());
+                App.Services.GetRequiredService<StudioProjectTracker>())
+            {
+                StudioCaptionModelStore = App.Services.GetRequiredService<StudioCaptionModelStore>(),
+            };
         }
 
         using (_openTrace?.Measure(WindowOpenPhase.Xaml))

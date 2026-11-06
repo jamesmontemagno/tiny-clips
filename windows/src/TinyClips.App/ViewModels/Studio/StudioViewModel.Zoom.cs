@@ -573,12 +573,14 @@ public sealed partial class StudioViewModel
     // of another: what follows each of the three selections is refreshed.
     private void RaiseSelectionChanged()
     {
+        Raise(CaptionSelectionPropertyNames);
         Raise(ZoomSelectionPropertyNames);
         Raise(CutSelectionPropertyNames);
         Raise(SpeedSelectionPropertyNames);
         RaiseZoomStateAtPlayhead();
         RaiseCutStateAtPlayhead();
         RaiseSpeedStateAtPlayhead();
+        _couldSplitSelectedCaption = CanSplitSelectedCaption;
     }
 
     /// <summary>

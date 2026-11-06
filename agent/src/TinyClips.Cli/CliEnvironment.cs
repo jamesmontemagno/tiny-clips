@@ -29,7 +29,7 @@ internal sealed class CliEnvironment
             return seconds == 0 ? Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(seconds);
         }
 
-        return command is "studio.export" or "editor.trim" ? MediaRequestTimeout : RequestTimeout;
+        return command is "studio.export" or "editor.trim" or "studio.captions.generate" ? MediaRequestTimeout : RequestTimeout;
     }
 
     public string Home =>

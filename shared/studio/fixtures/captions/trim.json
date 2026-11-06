@@ -1,0 +1,65 @@
+{
+  "description": "The trim clips a cue and moves what is left to the start of the video.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 2,
+    "trimEnd": 10,
+    "cuts": [],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-0",
+        "start": 0,
+        "end": 1,
+        "text": "Before the trim."
+      },
+      {
+        "id": "cue-1",
+        "start": 1,
+        "end": 4,
+        "text": "Starts before."
+      },
+      {
+        "id": "cue-5",
+        "start": 5,
+        "end": 6,
+        "text": "Inside."
+      },
+      {
+        "id": "cue-9",
+        "start": 9,
+        "end": 12,
+        "text": "Ends after."
+      },
+      {
+        "id": "cue-11",
+        "start": 11,
+        "end": 13,
+        "text": "After the trim."
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 0,
+      "end": 2,
+      "text": "Starts before."
+    },
+    {
+      "start": 3,
+      "end": 4,
+      "text": "Inside."
+    },
+    {
+      "start": 7,
+      "end": 8,
+      "text": "Ends after."
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:00,000 --> 00:00:02,000\nStarts before.\n\n2\n00:00:03,000 --> 00:00:04,000\nInside.\n\n3\n00:00:07,000 --> 00:00:08,000\nEnds after.\n",
+  "vtt": "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nStarts before.\n\n00:00:03.000 --> 00:00:04.000\nInside.\n\n00:00:07.000 --> 00:00:08.000\nEnds after.\n"
+}

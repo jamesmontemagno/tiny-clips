@@ -5,7 +5,7 @@ final class StudioInspectorPanelTests: XCTestCase {
     func testARecordingWithACameraHasEveryPanelInRailOrder() {
         XCTAssertEqual(
             StudioInspectorPanel.available(hasCamera: true),
-            [.scene, .background, .screen, .camera, .zoom, .cut, .speed, .audio, .project]
+            [.scene, .background, .screen, .camera, .zoom, .cut, .speed, .captions, .audio, .project]
         )
         XCTAssertEqual(Set(StudioInspectorPanel.available(hasCamera: true)), Set(StudioInspectorPanel.allCases))
     }
@@ -13,18 +13,18 @@ final class StudioInspectorPanelTests: XCTestCase {
     func testARecordingWithoutACameraHasNoSceneOrCameraPanel() {
         XCTAssertEqual(
             StudioInspectorPanel.available(hasCamera: false),
-            [.background, .screen, .zoom, .cut, .speed, .audio, .project]
+            [.background, .screen, .zoom, .cut, .speed, .captions, .audio, .project]
         )
     }
 
     func testTheRailGroupsLookThenTimelineEditsThenTheRest() {
         XCTAssertEqual(
             StudioInspectorPanel.groups(hasCamera: true),
-            [[.scene, .background, .screen, .camera], [.zoom, .cut, .speed], [.audio, .project]]
+            [[.scene, .background, .screen, .camera], [.zoom, .cut, .speed, .captions], [.audio, .project]]
         )
         XCTAssertEqual(
             StudioInspectorPanel.groups(hasCamera: false),
-            [[.background, .screen], [.zoom, .cut, .speed], [.audio, .project]]
+            [[.background, .screen], [.zoom, .cut, .speed, .captions], [.audio, .project]]
         )
     }
 

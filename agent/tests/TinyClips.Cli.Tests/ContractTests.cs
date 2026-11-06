@@ -80,6 +80,15 @@ public class ContractTests
         Assert.Equal("read", contract.Find("studio.zoom.suggest")!.Scope);
         Assert.Equal("read", contract.Find("studio.export.options")!.Scope);
         Assert.Equal("export", contract.Find("studio.export")!.Scope);
+        Assert.Equal("read", contract.Find("studio.captions.check")!.Scope);
+        Assert.Equal("edit", contract.Find("studio.captions.import")!.Scope);
+        Assert.Equal("edit", contract.Find("studio.captions.fix")!.Scope);
+        Assert.Equal("export", contract.Find("studio.captions.export")!.Scope);
+        Assert.Equal("read", contract.Find("studio.captions.models")!.Scope);
+        Assert.Equal("edit", contract.Find("studio.captions.generate")!.Scope);
+        var generate = Contract.InputSchema(contract.Find("studio.captions.generate")!);
+        Assert.Equal("string", generate["properties"]!["language"]!["type"]!.GetValue<string>());
+        Assert.Contains("AppleSpeech", generate["properties"]!["model"]!["enum"]!.AsArray().Select(static value => value!.GetValue<string>()));
 
         var edit = Contract.InputSchema(contract.Find("studio.project.edit")!);
         Assert.Contains("expectedModifiedAt", edit["required"]!.AsArray()
@@ -89,6 +98,7 @@ public class ContractTests
         Assert.Contains("patch", edit["required"]!.AsArray()
             .Select(parameter => parameter!.GetValue<string>()));
         Assert.False(edit["properties"]!["patch"]!["additionalProperties"]!.GetValue<bool>());
+        Assert.Equal("object", edit["properties"]!["patch"]!["properties"]!["captions"]!["type"]!.GetValue<string>());
     }
 
     [Theory]

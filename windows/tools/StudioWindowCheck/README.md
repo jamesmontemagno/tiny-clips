@@ -2184,3 +2184,16 @@ tree, and it follows Mute in the lists of tab stops.
 Not checked here, because it cannot be without sound: that the preview is quieter. The
 recordings of this tool have no sound, and its players are at volume zero whatever the
 project says. `StudioRenderCheck` measures an export at 100%, 50% and 0%.
+
+## Caption warnings
+
+The group `captions` opens a project with two saved captions, one of them too short and with
+extra spaces, and checks the Captions panel: the list shows both, with the warning mark only on
+the row with problems; there is no separate Checks section; the list's header has **Next
+problem**, with the count of captions that need attention, and **Auto fix**; Next problem opens
+the caption with the warning; and after Auto fix no row is marked and both header buttons are
+gone. Run alone (`--only captions`) on 6 November 2026: 13 of 13 passed.
+
+The tool needs `CommunityToolkit.WinUI.Controls.Segmented`, which the inspector's caption size
+and position use, with the 1.6 Windows App SDK metapackage referenced without assets, as in the
+app.

@@ -334,6 +334,13 @@ public sealed class CaptureSettings : ICaptureSettings
 
     public event EventHandler? StudioPreviewEnabledChanged;
 
+    public string StudioCaptionModelId
+    {
+        get => (TinyClips.Core.Studio.Transcription.StudioCaptionModels.Find(_settings.Get("studioCaptionModel", string.Empty))
+            ?? TinyClips.Core.Studio.Transcription.StudioCaptionModels.Default).Id;
+        set => _settings.Set("studioCaptionModel", value);
+    }
+
     public const int DefaultStudioSourceRetentionDays = 30;
     public const int MinStudioSourceRetentionDays = 0;
     public const int MaxStudioSourceRetentionDays = 365;
@@ -941,6 +948,7 @@ public sealed class CaptureSettings : ICaptureSettings
         ShowTrimmer = true;
         StudioPreviewEnabled = true;
         StudioSourceRetentionDays = DefaultStudioSourceRetentionDays;
+        StudioCaptionModelId = TinyClips.Core.Studio.Transcription.StudioCaptionModels.Default.Id;
         StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;
         StudioDefaultLook = null;
         StudioProjectSaveFolder = string.Empty;
