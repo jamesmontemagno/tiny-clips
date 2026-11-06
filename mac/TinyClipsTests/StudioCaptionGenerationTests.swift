@@ -130,6 +130,7 @@ final class StudioCaptionGenerationTests: XCTestCase {
         XCTAssertTrue(StudioCaptionText.languageNote(isInstalled: true).contains("already on this Mac"))
     }
 
+    @MainActor
     func testAMacWithoutAppleSpeech_SaysSo_AndAgentsAreNotOfferedIt() async throws {
         guard !StudioAppleSpeech.isAvailable else { throw XCTSkip("this Mac has Apple Speech") }
         let languages = await StudioAppleSpeech.languages()
