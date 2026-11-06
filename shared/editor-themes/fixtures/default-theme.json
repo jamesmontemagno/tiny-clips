@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "default",
+  "name": "Default",
+  "shape": { "strokeColor": "#FFFF3B30", "strokeWidth": 4, "fillColor": "#00000000", "gradientEndColor": null, "gradientDirection": 45, "shadowBlur": 0, "shadowColor": "#59000000" },
+  "line": { "color": "#FFFF3B30", "width": 4, "arrowStyle": "straight" },
+  "text": {
+    "color": "#FFFF3B30", "fontFamily": null, "fontSize": 16, "bold": false, "italic": false, "underline": false,
+    "box": { "backgroundColor": "#00000000", "borderColor": "#00000000", "borderWidth": 0, "padding": 0, "cornerRadius": 0 }
+  },
+  "number": { "badgeColor": "#FFFF3B30", "textColor": "#FFFFFFFF", "size": 1 },
+  "canvas": {
+    "applyOnOpen": false, "background": "transparent", "color": "#FFF5F5FA", "secondaryColor": "#FFD6E6FC", "gradientDirection": 45,
+    "padding": 0, "cornerRadius": 0, "shadow": 0, "frame": "original", "horizontalAlignment": "center", "verticalAlignment": "center"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "description": "Themes both apps must reject. field is named in the error message.",
+  "cases": [
+    { "name": "newer version", "field": "version", "theme": { "version": 2, "id": "a", "name": "A" } },
+    { "name": "blank name", "field": "name", "theme": { "id": "a", "name": "   " } },
+    { "name": "long name", "field": "name", "theme": { "id": "a", "name": "1234567890123456789012345678901234567890123456789012345678901" } },
+    { "name": "bad id", "field": "id", "theme": { "id": "a/b", "name": "A" } },
+    { "name": "bad color", "field": "shape.strokeColor", "theme": { "id": "a", "name": "A", "shape": { "strokeColor": "red" } } },
+    { "name": "stroke too wide", "field": "shape.strokeWidth", "theme": { "id": "a", "name": "A", "shape": { "strokeWidth": 101 } } },
+    { "name": "gradient with no fill", "field": "shape.gradientEndColor", "theme": { "id": "a", "name": "A", "shape": { "gradientEndColor": "#FF000000" } } },
+    { "name": "blur too large", "field": "shape.shadowBlur", "theme": { "id": "a", "name": "A", "shape": { "shadowBlur": 101 } } },
+    { "name": "unknown arrow", "field": "line.arrowStyle", "theme": { "id": "a", "name": "A", "line": { "arrowStyle": "zigzag" } } },
+    { "name": "text too small", "field": "text.fontSize", "theme": { "id": "a", "name": "A", "text": { "fontSize": 3 } } },
+    { "name": "padding too large", "field": "text.box.padding", "theme": { "id": "a", "name": "A", "text": { "box": { "padding": 49 } } } },
+    { "name": "number too small", "field": "number.size", "theme": { "id": "a", "name": "A", "number": { "size": 0.1 } } },
+    { "name": "image background", "field": "canvas.background", "theme": { "id": "a", "name": "A", "canvas": { "background": "wallpaper" } } },
+    { "name": "unknown frame", "field": "canvas.frame", "theme": { "id": "a", "name": "A", "canvas": { "frame": "2:1" } } },
+    { "name": "unknown alignment", "field": "canvas.horizontalAlignment", "theme": { "id": "a", "name": "A", "canvas": { "horizontalAlignment": "leading" } } },
+    { "name": "group is null", "field": "shape", "theme": { "id": "a", "name": "A", "shape": null } }
+  ]
+}

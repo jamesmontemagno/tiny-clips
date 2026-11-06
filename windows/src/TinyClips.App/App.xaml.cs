@@ -21,6 +21,7 @@ using TinyClips.App.Settings;
 using TinyClips.App.Views.ClipsLibrary;
 using TinyClips.Core.Automation;
 using TinyClips.Core.Capture;
+using TinyClips.Core.Editing.Themes;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
@@ -167,6 +168,7 @@ public partial class App : Application
             .AddSingleton<IStudioPreviewViewFactory, StudioPreviewViewFactory>()
             .AddSingleton<StudioWindowService>()
             .AddSingleton<StudioRecentDrafts>()
+            .AddSingleton(_ => new EditorThemeStore(EditorThemeStore.DefaultFilePath(ClipsLibraryPaths.LocalDataDirectory())))
             .AddSingleton<AgentControlService>(CreateAgentControlService)
             .BuildServiceProvider();
 
@@ -4042,8 +4044,8 @@ public partial class App : Application
         ActivateWindowToForeground(_quickBugReportWindow);
     }
 
-    private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false)
-        => OpenScreenshotEditorCore(() => new ScreenshotEditorWindow(path), path, reopenPickerAfterClose);
+    private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false, EditorTheme? theme = null)
+        => OpenScreenshotEditorCore(() => new ScreenshotEditorWindow(path, theme), path, reopenPickerAfterClose);
 
     /// <summary>
     /// Opens the editor directly from the captured pixels while <paramref name="saveTask"/>

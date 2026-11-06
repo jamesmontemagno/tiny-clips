@@ -13,6 +13,8 @@
     <Compile Include="..\..\src\TinyClips.App\ViewModels\SettingsViewModel.cs" Link="SettingsViewModel.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\WhatsNewViewModel.cs" Link="WhatsNewViewModel.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\OnboardingViewModel.cs" Link="OnboardingViewModel.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\EditorThemesSettingsViewModel.cs" Link="EditorThemesSettingsViewModel.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\EditorThemesSettingsViewModel.Values.cs" Link="EditorThemesSettingsViewModel.Values.cs" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\Views\OnboardingWindow.xaml" Link="Settings\Markup\OnboardingWindow.xaml" LogicalName="SettingsMarkup.OnboardingWindow.xaml" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\Views\WhatsNewWindow.xaml" Link="Settings\Markup\WhatsNewWindow.xaml" LogicalName="SettingsMarkup.WhatsNewWindow.xaml" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioDraftItem.cs" Link="Studio\StudioDraftItem.cs" />

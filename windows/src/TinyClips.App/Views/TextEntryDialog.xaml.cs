@@ -20,6 +20,8 @@ public sealed partial class TextEntryDialog : ContentDialog
 {
     private bool _initializing = true;
     private TextBoxStyle _textBoxStyle;
+    private readonly double _initialFontSize;
+    private bool _sizeEdited;
 
     public TextEntryDialog(
         IEnumerable<string> fonts,
@@ -45,6 +47,7 @@ public sealed partial class TextEntryDialog : ContentDialog
         SelectFont(fontFamily);
 
         EntryBox.Text = text;
+        _initialFontSize = fontSize;
         SizeBox.Value = fontSize;
         BoldToggle.IsChecked = bold;
         ItalicToggle.IsChecked = italic;
@@ -68,7 +71,8 @@ public sealed partial class TextEntryDialog : ContentDialog
     public string ResultFont =>
         FontCombo.SelectedItem is ComboBoxItem { Tag: string f } ? f : "Segoe UI";
 
-    public double ResultSize => SizeBox.Value;
+    // The box's range can be narrower than a theme's size, which stays until someone changes it.
+    public double ResultSize => _sizeEdited ? SizeBox.Value : _initialFontSize;
 
     public Color ResultColor { get; private set; }
 
@@ -100,7 +104,14 @@ public sealed partial class TextEntryDialog : ContentDialog
 
     private void OnFontChanged(object sender, SelectionChangedEventArgs e) => UpdatePreview();
 
-    private void OnSizeChanged(NumberBox sender, NumberBoxValueChangedEventArgs args) => UpdatePreview();
+    private void OnSizeChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (!_initializing)
+        {
+            _sizeEdited = true;
+        }
+        UpdatePreview();
+    }
 
     private void OnTextChanged(object sender, TextChangedEventArgs e) => UpdatePreview();
 
@@ -149,7 +160,7 @@ public sealed partial class TextEntryDialog : ContentDialog
         {
             return;
         }
-        _textBoxStyle = (_textBoxStyle with { BackgroundColor = args.NewColor }).AsCustom();
+        _textBoxStyle = _textBoxStyle with { BackgroundColor = args.NewColor, Preset = TextBoxPreset.Custom };
         SyncPresetButtons();
         UpdatePreview();
     }
@@ -160,7 +171,7 @@ public sealed partial class TextEntryDialog : ContentDialog
         {
             return;
         }
-        _textBoxStyle = (_textBoxStyle with { BorderColor = args.NewColor }).AsCustom();
+        _textBoxStyle = _textBoxStyle with { BorderColor = args.NewColor, Preset = TextBoxPreset.Custom };
         SyncPresetButtons();
         UpdatePreview();
     }
@@ -171,12 +182,20 @@ public sealed partial class TextEntryDialog : ContentDialog
         {
             return;
         }
-        _textBoxStyle = (_textBoxStyle with
+        // Only the box that changed: the others may be showing a limit below a theme's value.
+        _textBoxStyle = _textBoxStyle with { Preset = TextBoxPreset.Custom };
+        if (ReferenceEquals(sender, BorderWidthBox))
         {
-            BorderWidth = BorderWidthBox.Value,
-            Padding = PaddingBox.Value,
-            CornerRadius = CornerRadiusBox.Value,
-        }).AsCustom();
+            _textBoxStyle = _textBoxStyle with { BorderWidth = sender.Value };
+        }
+        else if (ReferenceEquals(sender, PaddingBox))
+        {
+            _textBoxStyle = _textBoxStyle with { Padding = sender.Value };
+        }
+        else if (ReferenceEquals(sender, CornerRadiusBox))
+        {
+            _textBoxStyle = _textBoxStyle with { CornerRadius = sender.Value };
+        }
         SyncPresetButtons();
         UpdatePreview();
     }

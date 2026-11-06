@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using TinyClips.Core.Editing;
+using TinyClips.Core.Editing.Themes;
 using Windows.Foundation;
 using Windows.UI;
 
@@ -38,17 +39,20 @@ public static class AutomationAnnotationParser
     private static readonly string[] PointKeys = ["x", "y"];
 
     /// <summary>Checks shape only (types, enums, colors, counts) before the image is decoded.</summary>
-    public static void ValidateStructure(JsonNode? annotations) => ParseCore(annotations, null);
+    public static void ValidateStructure(JsonNode? annotations) => ParseCore(annotations, null, null);
 
-    /// <summary>Parses and validates annotations against the source image size.</summary>
-    public static IReadOnlyList<ScreenshotAnnotation> Parse(JsonNode? annotations, int imageWidth, int imageHeight)
+    /// <summary>
+    /// Parses and validates annotations against the source image size. With a theme, values an
+    /// annotation leaves out come from the theme; values it sets win.
+    /// </summary>
+    public static IReadOnlyList<ScreenshotAnnotation> Parse(JsonNode? annotations, int imageWidth, int imageHeight, EditorTheme? theme = null)
     {
         if (imageWidth <= 0 || imageHeight <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(imageWidth), "Image size must be positive.");
         }
 
-        return ParseCore(annotations, (imageWidth, imageHeight));
+        return ParseCore(annotations, (imageWidth, imageHeight), theme);
     }
 
     public static bool TryParseColor(string? value, out Color color)
@@ -76,7 +80,7 @@ public static class AutomationAnnotationParser
         return true;
     }
 
-    private static IReadOnlyList<ScreenshotAnnotation> ParseCore(JsonNode? node, (int Width, int Height)? image)
+    private static IReadOnlyList<ScreenshotAnnotation> ParseCore(JsonNode? node, (int Width, int Height)? image, EditorTheme? theme)
     {
         if (node is not JsonArray array)
         {
@@ -97,10 +101,73 @@ public static class AutomationAnnotationParser
         var nextNumber = 1;
         for (var i = 0; i < array.Count; i++)
         {
-            result.Add(ParseOne(array[i], $"annotations[{i}]", image, ref nextNumber));
+            var item = ParseOne(array[i], $"annotations[{i}]", image, ref nextNumber);
+            if (theme is not null && image is { } size)
+            {
+                ApplyTheme(item, (JsonObject)array[i]!, theme, size.Width);
+            }
+
+            result.Add(item);
         }
 
         return result;
+    }
+
+    /// <summary>Styles an annotation from the theme, then puts back what its JSON set.</summary>
+    private static void ApplyTheme(ScreenshotAnnotation annotation, JsonObject obj, EditorTheme theme, int imageWidth)
+    {
+        var color = annotation.Color;
+        var thickness = annotation.Thickness;
+        var fill = annotation.FillColor;
+        var fontSize = annotation.FontSize;
+        var textColor = annotation.TextColor;
+        var textBox = annotation.TextBoxStyle;
+        var effects = annotation.ShapeEffects;
+        EditorThemeStyling.Apply(annotation, theme, imageWidth);
+
+        bool Has(string key) => obj[key] is not null;
+        switch (EditorThemeStyling.GroupOf(annotation.Tool))
+        {
+            case EditorThemeGroup.Shape:
+                if (Has("color")) annotation.Color = color;
+                if (Has("lineWidth")) annotation.Thickness = thickness;
+                if (Has("fillColor")) annotation.FillColor = fill;
+                var themed = annotation.ShapeEffects;
+                if (Has("fillEndColor"))
+                {
+                    themed = themed with { IsGradientFill = true, GradientEndColor = effects.GradientEndColor };
+                }
+
+                if (Has("fillDirection")) themed = themed with { GradientDirectionDegrees = effects.GradientDirectionDegrees };
+                if (Has("shadowBlur"))
+                {
+                    themed = themed with
+                    {
+                        HasShadow = effects.HasShadow,
+                        ShadowBlur = effects.ShadowBlur,
+                        ShadowColor = Has("shadowColor") ? effects.ShadowColor : themed.ShadowColor,
+                    };
+                }
+
+                annotation.ShapeEffects = themed;
+                break;
+
+            case EditorThemeGroup.Line:
+                if (Has("color")) annotation.Color = color;
+                if (Has("lineWidth")) annotation.Thickness = thickness;
+                break;
+
+            case EditorThemeGroup.Text:
+                if (Has("textColor") || Has("color")) annotation.Color = color;
+                if (Has("fontSize")) annotation.FontSize = fontSize;
+                if (Has("fillColor")) annotation.TextBoxStyle = textBox;
+                break;
+
+            case EditorThemeGroup.Number:
+                if (Has("color")) annotation.Color = color;
+                if (Has("textColor")) annotation.TextColor = textColor;
+                break;
+        }
     }
 
     private static ScreenshotAnnotation ParseOne(JsonNode? node, string path, (int Width, int Height)? image, ref int nextNumber)

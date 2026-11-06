@@ -261,6 +261,22 @@ public sealed partial class EditorInspector : UserControl
         EmojiSection.Visibility = showsEmoji ? Visibility.Visible : Visibility.Collapsed;
         RotationSection.Visibility = Visibility.Collapsed;
 
+        // These write nothing back: _inspectorInitializing is set, so a slider that clamps a theme's
+        // larger pixel value only shows its limit while the controller keeps the real one.
+        if (showsColor)
+        {
+            AnnotationColorPicker.Color = _controller.StrokeColor;
+        }
+        if (showsStroke)
+        {
+            StrokeSlider.Value = _controller.StrokeThickness;
+        }
+        if (showsNumber)
+        {
+            NumberSizeSlider.Value = _controller.NumberScale;
+            NumberColorPicker.Color = _controller.NumberTextColor;
+        }
+
         if (showsEmoji)
         {
             SyncEmojiSelection(_controller.EmojiDefault);
@@ -399,6 +415,10 @@ public sealed partial class EditorInspector : UserControl
                 return;
             }
         }
+
+        // A theme can name a family outside the common list.
+        FontFamilyCombo.Items.Add(new ComboBoxItem { Content = font, Tag = font });
+        FontFamilyCombo.SelectedIndex = FontFamilyCombo.Items.Count - 1;
     }
 
     private void SyncTextBoxStyle(TextBoxStyle style)
@@ -884,6 +904,14 @@ public sealed partial class EditorInspector : UserControl
             ChooseBackgroundImageButton.Content = _controller.HasBackgroundImage ? "Replace image..." : "Choose image...";
             RemoveBackgroundImageButton.IsEnabled = !_backgroundSelectionBusy && _controller.HasBackgroundImage;
             BackgroundImageName.Text = _backgroundSelectionBusy ? "Choosing image..." : _controller.BackgroundFileName ?? "No image selected";
+            GradientDirectionSlider.Value = _controller.GradientDirectionDegrees;
+            // _bgInitializing stays set, so sliders that clamp a theme's larger value write nothing back.
+            PaddingSlider.Value = _controller.CanvasPadding;
+            CornerSlider.Value = _controller.CanvasCornerRadius;
+            ShadowSlider.Value = _controller.CanvasShadow;
+            ExportFrameCombo.SelectedIndex = (int)_controller.FramePreset;
+            SyncAlignmentGrid();
+            UpdateSliderHeaders();
             UpdateBackgroundStyleUi();
         }
         finally

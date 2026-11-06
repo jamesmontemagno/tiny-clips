@@ -13,6 +13,7 @@ public enum SettingsSectionKind
     AgentControl,
     Analytics,
     Screenshot,
+    EditorThemes,
     Video,
     Studio,
     Gif,
