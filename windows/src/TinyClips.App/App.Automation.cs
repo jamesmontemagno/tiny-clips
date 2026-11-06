@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Dispatching;
@@ -543,9 +544,55 @@ public partial class App : IAutomationAppActions
                     ["count"] = suggestions.Length,
                 };
             }
+            case "studio.export.options":
+            {
+                var projectId = RequiredStudioString(parameters, "projectId");
+                var project = StudioWindows().FindOpenViewModel(projectId)?.Project ?? ReadAutomationProject(projectId, store);
+                var choice = ReadStudioExportChoice(parameters, settings);
+                var natural = StudioCanvasMath.NaturalSize(project);
+                var options = StudioExportPresets.CreateOptions(project, settings.VideoCodec, choice);
+                var resolutions = new JsonArray();
+                foreach (var option in options.Resolutions)
+                {
+                    resolutions.Add(new JsonObject
+                    {
+                        ["id"] = option.Id,
+                        ["label"] = option.Label,
+                        ["width"] = (int)option.Size.Width,
+                        ["height"] = (int)option.Size.Height,
+                    });
+                }
+
+                var qualities = new JsonArray();
+                foreach (var option in options.Qualities)
+                {
+                    qualities.Add(new JsonObject
+                    {
+                        ["id"] = option.Id,
+                        ["label"] = option.Label,
+                        ["videoBitrate"] = option.VideoBitrate,
+                        ["estimatedBytes"] = option.EstimatedBytes,
+                    });
+                }
+
+                return new JsonObject
+                {
+                    ["projectId"] = projectId,
+                    ["resolution"] = StudioExportPresets.Id(options.Choice.Resolution),
+                    ["quality"] = StudioExportPresets.Id(options.Choice.Quality),
+                    ["width"] = (int)options.Size.Width,
+                    ["height"] = (int)options.Size.Height,
+                    ["canvasWidth"] = (int)natural.Width,
+                    ["canvasHeight"] = (int)natural.Height,
+                    ["codec"] = settings.VideoCodec == VideoCodec.Hevc ? "hevc" : "h264",
+                    ["resolutions"] = resolutions,
+                    ["qualities"] = qualities,
+                };
+            }
             case "studio.export":
             {
                 var projectId = RequiredStudioString(parameters, "projectId");
+                var choice = ReadStudioExportChoice(parameters, settings);
                 var outputPath = Path.GetFullPath(RequiredStudioString(parameters, "outputPath"));
                 var outputDirectory = Path.GetFullPath(
                     Services.GetRequiredService<IClipStorageService>().OutputDirectory(CaptureType.Video));
@@ -593,6 +640,7 @@ public partial class App : IAutomationAppActions
 
                 var temporaryPath = Path.Combine(outputDirectory,
                     $".{Path.GetFileNameWithoutExtension(outputPath)}.{Guid.NewGuid():N}.export.mp4");
+                var codec = settings.VideoCodec;
                 try
                 {
                     await Services.GetRequiredService<IStudioExportService>().ExportAsync(
@@ -600,7 +648,8 @@ public partial class App : IAutomationAppActions
                         store.LoadEvents(projectId),
                         paths,
                         temporaryPath,
-                        settings.VideoCodec,
+                        codec,
+                        choice,
                         progress: null,
                         cancellationToken: cancellationToken);
                     try
@@ -616,7 +665,18 @@ public partial class App : IAutomationAppActions
                     _ = store.RecordExport(projectId, outputPath);
                     Services.GetRequiredService<IRecentCaptureService>().Record(outputPath, CaptureType.Video);
                     ShowSaveToast(outputPath);
-                    return new JsonObject { ["projectId"] = projectId, ["path"] = outputPath };
+                    var natural = StudioCanvasMath.NaturalSize(project);
+                    var exported = StudioExportPresets.GetSize(natural, choice.Resolution);
+                    return new JsonObject
+                    {
+                        ["projectId"] = projectId,
+                        ["path"] = outputPath,
+                        ["resolution"] = StudioExportPresets.Id(StudioExportPresets.Effective(natural, choice.Resolution)),
+                        ["quality"] = StudioExportPresets.Id(choice.Quality),
+                        ["width"] = (int)exported.Width,
+                        ["height"] = (int)exported.Height,
+                        ["codec"] = codec == VideoCodec.Hevc ? "hevc" : "h264",
+                    };
                 }
                 catch (OperationCanceledException)
                 {
@@ -680,6 +740,28 @@ public partial class App : IAutomationAppActions
     private static string ProjectRevision(StudioProject project) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(StudioProjectJson.WriteProject(project))))
             .ToLowerInvariant();
+
+    // What was asked for, and for what was not (left out or null), the choice last made in Export's flyout.
+    private static StudioExportChoice ReadStudioExportChoice(JsonObject parameters, ICaptureSettings settings)
+    {
+        var resolution = settings.StudioExportResolution;
+        if (parameters["resolution"] is { } askedResolution
+            && !(askedResolution.GetValueKind() == JsonValueKind.String && StudioExportPresets.TryParseResolution(askedResolution.GetValue<string>(), out resolution)))
+        {
+            throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                $"resolution must be one of: {string.Join(", ", StudioExportPresets.ResolutionIds)}.");
+        }
+
+        var quality = settings.StudioExportQuality;
+        if (parameters["quality"] is { } askedQuality
+            && !(askedQuality.GetValueKind() == JsonValueKind.String && StudioExportPresets.TryParseQuality(askedQuality.GetValue<string>(), out quality)))
+        {
+            throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                $"quality must be one of: {string.Join(", ", StudioExportPresets.QualityIds)}.");
+        }
+
+        return new StudioExportChoice(resolution, quality);
+    }
 
     private static string RequiredStudioString(JsonObject parameters, string key) =>
         parameters[key]?.GetValue<string>() is { Length: > 0 } value

@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- Studio **Export** now opens a flyout to choose the resolution (Source, 4K, 1440p, 1080p, 720p or 480p) and quality (Best, High, Standard or Small file), and shows the pixel size and estimated file size they come to. It starts at 1080p and High, and offers your last choice next time. A video keeps its canvas's shape and is never scaled up. Source exports the canvas at its own size, even past 4K; a size the PC's encoders cannot make fails with a message to choose 4K or smaller. Above 4K the bitrate grows with the pixel count instead of stopping at the 4K ceiling. Agents can pass `resolution` and `quality` to `studio.export`, list what is on offer with `studio.export.options`, and read or set the remembered choice as settings; omitted values now use that choice rather than the largest size, and the result reports the video `codec` written.
+
 ### Fixed
 - Tiny Clips no longer runs in Windows Efficiency Mode. The tray library was putting the whole app at idle priority with EcoQoS, which delayed the tray popup, capture shortcuts, overlays, editors, and recordings, and could stop them responding at all while other apps were busy.
 - The capture picker appears right away: it no longer captures every monitor before showing, for frames that were almost never used.

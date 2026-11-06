@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using TinyClips.App.Services.Studio;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
+using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
 using TinyClips.Core.Studio.Rendering;
@@ -39,7 +40,7 @@ internal sealed class ToolServices
 
         // The app opens a Studio window only while the preview switch is on, and the cleanup that
         // follows a closed window runs only then.
-        Settings = new CaptureSettings(RawSettings) { StudioPreviewEnabled = true };
+        Settings = new CaptureSettings(RawSettings) { StudioPreviewEnabled = true, StudioExportResolution = StudioExportResolution.Source };
         Store = new GuardedStore(root);
         Storage = new TempClipStorage(ExportDirectory);
         Tracker = new StudioProjectTracker();
@@ -74,6 +75,10 @@ internal sealed class ToolServices
             ChooseProjectFile = _ => Task.FromResult(Answer(ref _projectFileAnswer, _projectFilesAsked)),
             ChooseSaveFolder = _ => Task.FromResult(Answer(ref _saveFolderAnswer, _saveFoldersAsked)),
             ChooseExportFile = (_, _, _) => Task.FromResult<string?>(Storage.GenerateFilePath(CaptureType.Video)),
+
+            // These checks are about what an export does, and press Export to start one. They
+            // export at the canvas's own size, which is what the header is compared with.
+            AsksForExportOptions = false,
             RevealFile = path => Revealed.Enqueue(path),
             Notify = message => Notices.Enqueue(message),
         };

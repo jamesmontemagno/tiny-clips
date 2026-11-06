@@ -188,6 +188,10 @@ internal sealed partial class WindowChecks
     /// <summary>How often the process asked for the keyboard focus or for activation since a moment, and was refused.</summary>
     private static int FocusRequestsSince(double moment) => ForegroundGuard.Events().Count(e => e.At >= moment);
 
+    /// <summary>The size an export of the project comes to at the resolution the tool's settings save, which the header names.</summary>
+    private StudioSize ExportedSize(StudioProject project) =>
+        StudioExportPresets.GetSize(StudioCanvasMath.NaturalSize(project), _services.Settings.StudioExportResolution);
+
     // ---------------------------------------------------------------------------------------
     // The window's own elements, read on the UI thread
     // ---------------------------------------------------------------------------------------

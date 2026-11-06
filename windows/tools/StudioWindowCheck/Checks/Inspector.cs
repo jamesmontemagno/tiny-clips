@@ -881,7 +881,7 @@ internal sealed partial class WindowChecks
 
         string? SizeShown(string name)
         {
-            var wanted = StudioEditorText.GetExportSizeText(StudioExportLimits.GetExportSize(editor.Expected));
+            var wanted = StudioEditorText.GetExportSizeText(ExportedSize(editor.Expected));
             var text = Until(() => NameOf(editor, "StudioExportSizeText", 0.5), shown => shown == wanted, 1);
             return text == wanted ? ComboShows(editor, "StudioCanvasComboBox", name) : $"the header says \"{text}\" and should say \"{wanted}\"";
         }

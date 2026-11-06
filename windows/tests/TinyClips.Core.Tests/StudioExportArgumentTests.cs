@@ -146,7 +146,7 @@ public sealed class StudioExportArgumentTests : IDisposable
     {
         IStudioExportService service = new StudioExportService();
 
-        await Assert.ThrowsAsync<FileNotFoundException>(() => service.ExportAsync(Project(), _events, Paths(), Path.Combine(_folder, "out.mp4"), VideoCodec.H264, null, Token));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => service.ExportAsync(Project(), _events, Paths(), Path.Combine(_folder, "out.mp4"), VideoCodec.H264, StudioExportChoice.Default, null, Token));
         await Assert.ThrowsAsync<FileNotFoundException>(() => service.WritePosterAsync(Project(), _events, Paths(), Token));
     }
 

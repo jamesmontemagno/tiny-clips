@@ -289,7 +289,7 @@ internal sealed partial class WindowChecks
         Expect(editor, p => WithScene(p with { Edits = p.Edits with { TrimStart = 2.0, TrimEnd = 3.5 } }, s => s with { Bubble = s.Bubble with { Size = 0.3 } }));
         SetSlider(editor, "StudioPlayhead", MiddleOf(Rest));
         var preview = LookFor(editor, s => s.Shown == Both(editor, Rest), 5);
-        var size = StudioExportLimits.GetExportSize(editor.Expected);
+        var size = ExportedSize(editor.Expected);
         var (width, height) = ((int)size.Width, (int)size.Height);
         var sizeText = NameOf(editor, "StudioExportSizeText");
         var time = TimeText(editor);

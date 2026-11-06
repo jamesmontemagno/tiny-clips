@@ -99,6 +99,8 @@ struct AutomationSetting {
         .readOnly("videoFolder") { SaveService.shared.outputDirectoryURL(for: .video).path },
         .readOnly("gifFolder") { SaveService.shared.outputDirectoryURL(for: .gif).path },
         .string("fileNameTemplate", \.fileNameTemplate),
+        .string("studioExportResolution", \.studioExportResolution, allowed: StudioExportResolution.allCases.map(\.rawValue)),
+        .string("studioExportQuality", \.studioExportQuality, allowed: StudioExportQuality.allCases.map(\.rawValue)),
         .string("screenshotFormat", \.screenshotFormat, allowed: ImageFormat.allCases.map(\.rawValue)),
         .int("screenshotScale", \.screenshotScale, 25...100, allowed: [25, 50, 75, 100]),
         .double("jpegQuality", \.jpegQuality, 0.1...1),

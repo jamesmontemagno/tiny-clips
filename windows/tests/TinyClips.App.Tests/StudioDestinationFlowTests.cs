@@ -7,6 +7,97 @@ namespace TinyClips.App.Tests;
 public sealed class StudioDestinationFlowTests : StudioViewModelTestBase
 {
     [Fact]
+    public async Task ExportOptionsAreAskedBeforeTheFileAndCancellingThemAsksNothingElse()
+    {
+        var model = await OpenAsync(CreateProject());
+        StudioExportOptionsModel? offered = null;
+        var filesAsked = 0;
+        model.ChooseExportOptions = options =>
+        {
+            offered = options;
+            return Task.FromResult(false);
+        };
+        model.ChooseExportFile = (_, _) =>
+        {
+            filesAsked++;
+            return Task.FromResult<string?>(null);
+        };
+
+        Assert.Equal(StudioExportOutcome.Cancelled, await model.ExportAsync());
+
+        Assert.Equal(StudioExportChoice.Default.Quality, offered?.Choice.Quality);
+        Assert.Equal(0, filesAsked);
+        Assert.False(model.IsExporting);
+    }
+
+    [Fact]
+    public async Task ExportUsesTheOptionsChosenAndOffersThemNextTime()
+    {
+        var model = await OpenAsync(CreateProject());
+        var chosen = new StudioExportChoice(StudioExportResolution.P480, StudioExportQuality.Small);
+        var folder = Path.Combine(Path.GetTempPath(), "tinyclips-export-options-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        StudioExportChoice? offeredNext = null;
+        model.ChooseExportOptions = options =>
+        {
+            options.Choice = chosen;
+            return Task.FromResult(true);
+        };
+        model.ChooseExportFile = (_, name) => Task.FromResult<string?>(Path.Combine(folder, name));
+        try
+        {
+            var outcome = model.ExportAsync();
+            for (var turns = 0; turns < 200 && !outcome.IsCompleted; turns++)
+            {
+                Pump();
+                await Task.Delay(5, TestContext.Current.CancellationToken);
+            }
+
+            Assert.Equal(StudioExportOutcome.Exported, await outcome);
+            Assert.Equal("Exports at 854 × 480", model.ExportSizeText);
+
+            model.ChooseExportOptions = options =>
+            {
+                offeredNext = options.Choice;
+                return Task.FromResult(false);
+            };
+            Assert.Equal(StudioExportOutcome.Cancelled, await model.ExportAsync());
+            Assert.Equal(chosen, offeredNext);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task EveryOpenEditorsHeaderFollowsAResolutionChosenElsewhereUntilItCloses()
+    {
+        var settings = CreateSettings();
+        var first = await OpenAsync(CreateProject(), settings: settings);
+        var second = await OpenAsync(CreateProject(), settings: settings);
+        var raised = new List<string?>();
+        second.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        Assert.Equal("Exports at 1920 × 1080", second.ExportSizeText);
+
+        settings.StudioExportResolution = StudioExportResolution.P720;
+
+        // It comes on the UI thread, wherever the setting was changed from.
+        Assert.DoesNotContain(nameof(StudioViewModel.ExportSizeText), raised);
+        Pump();
+        Assert.Contains(nameof(StudioViewModel.ExportSizeText), raised);
+        Assert.Equal("Exports at 1280 × 720", second.ExportSizeText);
+
+        await CloseAsync(second);
+        raised.Clear();
+        settings.StudioExportResolution = StudioExportResolution.P480;
+        Pump();
+
+        Assert.DoesNotContain(nameof(StudioViewModel.ExportSizeText), raised);
+        Assert.Equal("Exports at 854 × 480", first.ExportSizeText);
+    }
+
+    [Fact]
     public async Task CancelledExportAsksWithConfiguredDefaultsAndStartsNothing()
     {
         var model = await OpenAsync(CreateProject());

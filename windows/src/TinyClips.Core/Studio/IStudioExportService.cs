@@ -2,16 +2,19 @@ using TinyClips.Core.Models;
 
 namespace TinyClips.Core.Studio;
 
-/// <summary>The sizes Studio renders at. The editor shows the export size, so both use these.</summary>
+/// <summary>
+/// The sizes Studio renders at when no export resolution is chosen: the editor's canvas, posters,
+/// and an export that names none. The resolutions an export can be given are in <see cref="StudioExportPresets"/>.
+/// </summary>
 public static class StudioExportLimits
 {
-    /// <summary>The longest side of an exported video, in pixels. Larger canvases are scaled down.</summary>
+    /// <summary>The longest side of the editor's canvas, and of an export that names no resolution, in pixels. Larger canvases are scaled down.</summary>
     public const double LongSide = 3840;
 
     /// <summary>The longest side of a project's poster image, in pixels.</summary>
     public const double PosterLongSide = 640;
 
-    /// <summary>The pixel size <paramref name="project"/> exports at.</summary>
+    /// <summary>The pixel size <paramref name="project"/> is laid out at in the editor, and exports at when no resolution is named.</summary>
     public static StudioSize GetExportSize(StudioProject project) =>
         StudioCanvasMath.ExportSize(StudioCanvasMath.NaturalSize(project), LongSide);
 }
@@ -22,7 +25,8 @@ public interface IStudioExportService
     /// <summary>
     /// Renders the project to an MP4 at <paramref name="outputPath"/>, replacing a file that is
     /// already there once the new one is complete. <paramref name="progress"/> receives values
-    /// from 0 to 1, and reaches 1 only when the file is in place.
+    /// from 0 to 1, and reaches 1 only when the file is in place. <paramref name="choice"/> is the
+    /// size and quality to make it at.
     /// </summary>
     /// <exception cref="OperationCanceledException">
     /// The export was cancelled. A cancelled or failed export leaves nothing new at
@@ -34,6 +38,7 @@ public interface IStudioExportService
         StudioProjectPaths paths,
         string outputPath,
         VideoCodec codec,
+        StudioExportChoice choice,
         IProgress<double>? progress,
         CancellationToken cancellationToken);
 

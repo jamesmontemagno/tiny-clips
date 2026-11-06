@@ -301,7 +301,11 @@ With the switch on:
   **Open project…**, or a `.tinyclips` file opened from File Explorer, copies
   the project into Studio as a new draft and opens that; opening and internal autosave only read the original folder, while explicit Save updates it. **Delete
   project…** asks first, and leaves exported videos and saved folders alone.
-  **Export** (Ctrl+E), including Export when closing, always asks for an MP4 filename and folder.
+  **Export** (Ctrl+E), including Export when closing, first opens a flyout for the resolution
+  (Source, 4K, 1440p, 1080p, 720p or 480p, starting at 1080p) and quality (Best, High, Standard or
+  Small file, starting at High), and shows the size and estimated file size they come to. Source is
+  the canvas at its own size, even past 4K; a size the PC's encoders cannot make fails with a
+  message to choose 4K or smaller. The last choice is offered next time. It then always asks for an MP4 filename and folder.
   The picker starts inside the saved project folder, or the configured video-save folder before a project is saved.
   Existing videos require overwrite confirmation and stay intact if rendering fails or is cancelled.
   Saving the project again preserves exported videos and unrelated content beside it.

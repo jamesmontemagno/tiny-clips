@@ -109,6 +109,11 @@ private struct StudioEditorView: View {
 private struct StudioHeaderView: View {
     @ObservedObject var viewModel: StudioViewModel
 
+    /// The resolution Export offers first. The view holds it so that a choice made in another
+    /// window, or by an agent, reaches the header, which otherwise follows only its view model.
+    @AppStorage(CaptureSettings.studioExportResolutionKey)
+    private var exportResolution = StudioExportChoice.default.resolution.rawValue
+
     private static let aspects: [StudioCanvasAspect] = [
         .auto, .square, .landscape4x3, .landscape16x9, .portrait3x4, .portrait9x16
     ]
@@ -163,7 +168,14 @@ private struct StudioHeaderView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!viewModel.canExport)
-            .help("Export the video (Command-E)")
+            .help("Choose a resolution and quality, and export the video (Command-E)")
+            .popover(isPresented: exportOptionsBinding, arrowEdge: .bottom) {
+                if let options = viewModel.makeExportOptions() {
+                    StudioExportOptionsView(options: options, onCancel: viewModel.cancelExportOptions) { answered in
+                        viewModel.confirmExportOptions(answered)
+                    }
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -218,8 +230,18 @@ private struct StudioHeaderView: View {
     }
 
     private var exportSizeText: String {
-        let size = viewModel.exportRenderSize
+        let size = viewModel.exportRenderSize(for: StudioExportResolution(stored: exportResolution))
         return "Exports at \(Int(size.width)) × \(Int(size.height))"
+    }
+
+    private var exportOptionsBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.isChoosingExportOptions },
+            set: { isShowing in
+                // A click elsewhere or Esc takes the popover away.
+                if !isShowing, viewModel.isChoosingExportOptions { viewModel.cancelExportOptions() }
+            }
+        )
     }
 
     private var aspectBinding: Binding<StudioCanvasAspect> {
@@ -1530,6 +1552,76 @@ private struct StudioBusyOverlay: View {
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .combine)
         }
+    }
+}
+
+// MARK: - Export Options
+
+/// What the Export button's popover holds: the resolution and the quality of the video, and what
+/// they come to. Return exports with what is showing, so Command-E and Return export as last time.
+private struct StudioExportOptionsView: View {
+    @State private var options: StudioExportOptionsModel
+    let onCancel: () -> Void
+    let onConfirm: (StudioExportOptionsModel) -> Void
+
+    init(
+        options: StudioExportOptionsModel,
+        onCancel: @escaping () -> Void,
+        onConfirm: @escaping (StudioExportOptionsModel) -> Void
+    ) {
+        _options = State(initialValue: options)
+        self.onCancel = onCancel
+        self.onConfirm = onConfirm
+    }
+
+    private var estimateText: String {
+        let bytes = ByteCountFormatter.string(fromByteCount: options.estimatedBytes, countStyle: .file)
+        return "About \(bytes)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Export Video")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+
+            Picker("Resolution", selection: $options.choice.resolution) {
+                ForEach(options.resolutions, id: \.resolution) { option in
+                    Text("\(option.resolution.label) – \(Int(option.width)) × \(Int(option.height))")
+                        .tag(option.resolution)
+                }
+            }
+            .help("A video keeps the shape of its canvas and is never made larger than it")
+
+            Picker("Quality", selection: $options.choice.quality) {
+                ForEach(StudioExportQuality.allCases, id: \.self) { quality in
+                    Text(quality.label).tag(quality)
+                }
+            }
+            .help("Higher quality keeps text sharper and makes the file larger")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(estimateText)
+                    .font(.body.weight(.semibold))
+                Text(options.detailsText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement(children: .combine)
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Export…") { onConfirm(options) }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
     }
 }
 

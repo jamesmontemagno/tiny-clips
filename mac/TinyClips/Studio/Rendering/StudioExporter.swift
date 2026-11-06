@@ -9,25 +9,44 @@ import UniformTypeIdentifiers
 enum StudioExporter {
     enum Error: LocalizedError {
         case nothingToExport
-        case exportSessionCreationFailed
+        case readerSetupFailed
+        case writerSetupFailed
+        case incompleteOutput
         case posterDestinationCreationFailed
         case posterWriteFailed
         case outputNameTaken(String)
+        case sizeNotEncodable(width: Int, height: Int)
+        case sizeNeedsHEVC(width: Int, height: Int)
 
         var errorDescription: String? {
             switch self {
             case .nothingToExport:
                 return "There is nothing to export. The trimmed video is empty."
-            case .exportSessionCreationFailed:
-                return "Could not create the Studio export session."
+            case .readerSetupFailed:
+                return "Could not read the Studio project's video to export it."
+            case .writerSetupFailed:
+                return "Could not create the exported video at this size and quality."
+            case .incompleteOutput:
+                return "The exported video could not be finished."
             case .posterDestinationCreationFailed:
                 return "Could not create the Studio poster image destination."
             case .posterWriteFailed:
                 return "Could not write the Studio poster image."
             case .outputNameTaken(let name):
                 return "Another file was saved as \(name) in the meantime. Export again to give the video another name."
+            case .sizeNotEncodable(let width, let height):
+                return "This Mac can't encode a \(width) × \(height) video. Choose 4K or a smaller resolution and export again."
+            case .sizeNeedsHEVC(let width, let height):
+                return "This Mac can't encode a \(width) × \(height) video as H.264. Choose 4K or a smaller resolution, or set the video codec to H.265 / HEVC in Settings, and export again."
             }
         }
+    }
+
+    /// A finished export: where it was saved, and the codec its video was written in. That is
+    /// H.264 where HEVC was asked for but this Mac could not write it at that size.
+    struct Output {
+        let url: URL
+        let codec: VideoCodec
     }
 
     @discardableResult
@@ -38,9 +57,10 @@ enum StudioExporter {
         outputURL: URL,
         renderSize: CGSize,
         codec: VideoCodec,
-        onProgress: ((Double) -> Void)? = nil,
+        quality: StudioExportQuality,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
         destination: StudioExportDestination? = nil
-    ) async throws -> URL {
+    ) async throws -> Output {
         let replacementDirectory: URL?
         if destination != nil {
             replacementDirectory = try FileManager.default.url(
@@ -71,48 +91,37 @@ enum StudioExporter {
             throw Error.outputNameTaken(outputURL.lastPathComponent)
         }
 
-        guard let exportSession = AVAssetExportSession(
-            asset: build.composition,
-            presetName: RecordingVideoCodecResolver.exportPreset(for: codec)
-        ) else {
-            throw Error.exportSessionCreationFailed
-        }
-        exportSession.outputURL = renderURL
-        exportSession.outputFileType = .mp4
-        exportSession.videoComposition = build.videoComposition
-        exportSession.audioMix = build.exportAudioMix(for: project)
-        exportSession.shouldOptimizeForNetworkUse = true
+        let codec = try await StudioExportWriteJob.codec(
+            renderSize: renderSize,
+            framesPerSecond: project.sources.screen.frameRate,
+            preferred: codec,
+            quality: quality
+        )
 
-        // An export may be cancelled, and asked how far it is, from any thread; the session is
-        // only not marked `Sendable`.
-        nonisolated(unsafe) let cancellableSession = exportSession
-
-        // How far the export is, asked ten times a second. Not read from the session's
-        // `states(updateInterval:)`: when an export fails while that sequence is being read,
-        // AVFoundation's own code stops the app (a trap in `ProgressStates.Iterator`, seen on
-        // macOS 26.6 in each of three runs, within five exports that failed). `progress` is the
-        // older way to ask; with it, five failed and five cancelled exports ended as they should.
-        let progressTask = Task {
-            while !Task.isCancelled {
-                onProgress?(Double(cancellableSession.progress))
-                try? await Task.sleep(nanoseconds: 100_000_000)
-            }
-        }
+        // An export session has no setting for its bitrate, so the frames and the sound are read
+        // and written here. The one sound track an export gets comes from the mix output either
+        // way, as `exportAudioMix` describes.
+        let job = try StudioExportWriteJob(
+            build: build,
+            audioMix: build.exportAudioMix(for: project),
+            outputURL: renderURL,
+            renderSize: renderSize,
+            framesPerSecond: project.sources.screen.frameRate,
+            codec: codec,
+            quality: quality,
+            onProgress: onProgress
+        )
         do {
             try await withTaskCancellationHandler {
-                try await exportSession.export(to: renderURL, as: .mp4)
+                try await job.run()
                 try Task.checkCancellation()
                 if let destination { try destination.commit(staged: renderURL) }
             } onCancel: {
-                cancellableSession.cancelExport()
+                job.cancel()
             }
-            progressTask.cancel()
             onProgress?(1)
-            return outputURL
+            return Output(url: outputURL, codec: job.codec)
         } catch {
-            progressTask.cancel()
-            // The session has ended: it failed, or the cancellation handler above stopped it.
-
             // What this export wrote so far is removed. Not when it never began because a
             // file had taken the name in the last moment: that file is not this export's.
             if !isBecauseTheFileExists(error) {
@@ -120,6 +129,12 @@ enum StudioExporter {
             }
             if Task.isCancelled {
                 throw CancellationError()
+            }
+            // An encoder that gives up past the 4K frame says only that something went wrong.
+            let nsError = error as NSError
+            if !StudioExportPresets.fitsFourK(width: renderSize.width, height: renderSize.height),
+               nsError.domain == AVFoundationErrorDomain, nsError.code == AVError.Code.unknown.rawValue {
+                throw Error.sizeNotEncodable(width: Int(renderSize.width), height: Int(renderSize.height))
             }
             throw error
         }
