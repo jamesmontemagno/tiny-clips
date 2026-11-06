@@ -46,6 +46,7 @@ internal sealed partial class WindowChecks
         ("StudioCameraCutout_", StudioInspectorPanel.Camera),
         ("StudioSpeedRate_", StudioInspectorPanel.Speed),
         ("StudioAnnotationLayer_", StudioInspectorPanel.Annotate),
+        ("StudioAnnotationStyle_", StudioInspectorPanel.Annotate),
     ];
 
     private static Dictionary<string, (StudioInspectorPanel Panel, CropGroup Group)> BuildPlaces()
@@ -102,9 +103,11 @@ internal sealed partial class WindowChecks
             "StudioSpeedStartLaterButton", "StudioSpeedStartAtPlayheadButton", "StudioSpeedEndText", "StudioSpeedEndEarlierButton",
             "StudioSpeedEndLaterButton", "StudioSpeedEndAtPlayheadButton", "StudioSpeedLengthText", "StudioSpeedSilentNote", "StudioDeleteSpeedButton");
         Add(StudioInspectorPanel.Annotate, CropGroup.None,
+            "StudioAnnotationTools", "StudioAddArrowButton", "StudioAddCalloutButton", "StudioAddTextButton",
             "StudioPreviousAnnotationButton", "StudioAnnotationPositionText", "StudioAnnotationDetailText", "StudioNextAnnotationButton",
             "StudioAnnotationEmptyHint", "StudioAnnotationHint", "StudioAnnotationLayerList", "StudioAnnotationNotDrawnNote", "StudioAnnotationTextBox",
-            "StudioAnnotationStyleChoice", "StudioAnnotationSizeChoice", "StudioAnnotationAttachChoice", "StudioAnnotationXSlider", "StudioAnnotationYSlider",
+            "StudioAnnotationStyleChoice", "StudioAnnotationCustomNote", "StudioAnnotationFillColorPicker", "StudioAnnotationTextColorPicker", "StudioAnnotationScaleSlider",
+            "StudioAnnotationAdvancedGroup", "StudioAnnotationAttachChoice", "StudioAnnotationXSlider", "StudioAnnotationYSlider",
             "StudioAnnotationOffsetXSlider", "StudioAnnotationOffsetYSlider", "StudioAnnotationStartText", "StudioAnnotationStartEarlierButton",
             "StudioAnnotationStartLaterButton", "StudioAnnotationStartAtPlayheadButton", "StudioAnnotationEndText", "StudioAnnotationEndEarlierButton",
             "StudioAnnotationEndLaterButton", "StudioAnnotationEndAtPlayheadButton", "StudioBringAnnotationForwardButton", "StudioSendAnnotationBackButton",
