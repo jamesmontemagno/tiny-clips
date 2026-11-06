@@ -232,6 +232,24 @@ public sealed partial class StudioInspector : UserControl
             ToolTipService.SetToolTip(item, name);
             CaptionLooks.Items.Add(item);
         }
+
+        // Two looks to a row whatever the panel's width: each tile takes half of what the list has.
+        CaptionLooks.SizeChanged += (_, e) => FitCaptionLooks(e.NewSize.Width);
+    }
+
+    private void FitCaptionLooks(double width)
+    {
+        const double ItemMargin = 2;
+        var itemWidth = Math.Floor((width / 2) - (ItemMargin * 2));
+        if (itemWidth <= 0)
+        {
+            return;
+        }
+
+        foreach (var item in CaptionLooks.Items.OfType<GridViewItem>())
+        {
+            item.Width = itemWidth;
+        }
     }
 
     private void OnTryAnotherCaptionModel(object sender, RoutedEventArgs e) =>

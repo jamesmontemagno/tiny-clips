@@ -2192,7 +2192,7 @@ extra spaces, and checks the Captions panel: the list shows both, with the warni
 the row with problems; there is no separate Checks section; the list's header has **Next
 problem**, with the count of captions that need attention, and **Auto fix**; Next problem opens
 the caption with the warning; and after Auto fix no row is marked and both header buttons are
-gone. Run alone (`--only captions`) on 6 November 2026: 11 of 11 passed.
+gone. Run alone (`--only captions`) on 6 November 2026: 13 of 13 passed.
 
 The tool needs `CommunityToolkit.WinUI.Controls.Segmented`, which the inspector's caption size
 and position use, with the 1.6 Windows App SDK metapackage referenced without assets, as in the

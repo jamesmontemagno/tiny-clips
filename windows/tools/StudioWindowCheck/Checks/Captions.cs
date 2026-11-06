@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using TinyClips.App.Models.Studio;
 using TinyClips.Core.Studio;
@@ -86,6 +87,35 @@ internal sealed partial class WindowChecks
             layout is { Below: true, Collapsed: true, Opens: true },
             layout.ToString());
 
+        OnUi(() => editor.Window.ViewModel.AreCaptionsDrawn = true);
+        WhenTheUiThreadHasNothingWaiting();
+        var looks = OnUi(() =>
+        {
+            var inspector = InspectorIn(editor.Window.Content)!;
+            var grid = (GridView)inspector.FindName("CaptionLooks");
+            grid.UpdateLayout();
+            var tops = grid.Items.OfType<GridViewItem>()
+                .Select(item => Math.Round(item.TransformToVisual(grid).TransformPoint(default).Y))
+                .ToArray();
+            var size = DescendantIn<FrameworkElement>(inspector, "StudioCaptionsSizeChoice")!;
+            var clipped = AllOf<TextBlock>(size)
+                .Where(static text => text.Text.Length > 0)
+                .Where(text =>
+                {
+                    var item = AncestorOf<SelectorItem>(text) ?? (FrameworkElement)size;
+                    var left = text.TransformToVisual(item).TransformPoint(default).X;
+                    return left < -0.5 || left + text.ActualWidth > item.ActualWidth + 0.5;
+                })
+                .Select(static text => text.Text)
+                .ToArray();
+            return (Tops: string.Join("/", tops), Clipped: string.Join(",", clipped));
+        });
+        _report.Check(
+            "the four caption looks sit two to a row",
+            looks.Tops.Split('/') is [var a, var b, var c, var d] && a == b && c == d && a != c,
+            looks.Tops);
+        _report.Check("the Size choices are shown in full", looks.Clipped.Length == 0, looks.Clipped);
+
         OnUi(() => editor.Window.ViewModel.SelectNextCaptionProblem());
         var selected = OnUi(() => editor.Window.ViewModel.SelectedCaptionText);
         _report.Check("Next problem opens the caption with the warning", selected == "  Hi  ", selected);
@@ -103,6 +133,39 @@ internal sealed partial class WindowChecks
         });
         _report.Check("after Auto fix no row is marked and the header actions go away", after is { anyMark: false, NextShown: false }, after.ToString());
         CloseQuietly(editor);
+    }
+
+    private static IEnumerable<T> AllOf<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T found)
+            {
+                yield return found;
+            }
+
+            foreach (var inner in AllOf<T>(child))
+            {
+                yield return inner;
+            }
+        }
+    }
+
+    private static T? AncestorOf<T>(DependencyObject element)
+        where T : DependencyObject
+    {
+        for (var parent = VisualTreeHelper.GetParent(element); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        {
+            if (parent is T found)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     // Whether a warning glyph is on show inside an element, skipping what is collapsed.

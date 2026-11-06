@@ -2097,21 +2097,9 @@
                                         AutomationProperties.Name="Caption look"
                                         SelectedIndex="{x:Bind ViewModel.CaptionAppearanceIndex, Mode=TwoWay}"
                                         Style="{StaticResource StudioSwatchGridStyle}" />
-                                    <Grid ColumnSpacing="12" RowSpacing="8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <TextBlock
-                                            VerticalAlignment="Center"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="Size" />
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Size" />
                                         <controls:Segmented
-                                            Grid.Column="1"
                                             HorizontalAlignment="Stretch"
                                             AutomationProperties.AutomationId="StudioCaptionsSizeChoice"
                                             AutomationProperties.Name="Caption size"
@@ -2120,14 +2108,10 @@
                                             <controls:SegmentedItem Content="Medium" />
                                             <controls:SegmentedItem Content="Large" />
                                         </controls:Segmented>
-                                        <TextBlock
-                                            Grid.Row="1"
-                                            VerticalAlignment="Center"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="Position" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Position" />
                                         <controls:Segmented
-                                            Grid.Row="1"
-                                            Grid.Column="1"
                                             HorizontalAlignment="Stretch"
                                             AutomationProperties.AutomationId="StudioCaptionsPositionChoice"
                                             AutomationProperties.Name="Caption position"
@@ -2135,7 +2119,7 @@
                                             <controls:SegmentedItem Content="Bottom" />
                                             <controls:SegmentedItem Content="Top" />
                                         </controls:Segmented>
-                                    </Grid>
+                                    </StackPanel>
                                 </StackPanel>
                                 <TextBlock Style="{StaticResource StudioNoteStyle}" Text="{x:Bind ViewModel.CaptionDrawnNote}" />
                             </StackPanel>
