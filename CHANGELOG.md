@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
 
 ### Added
+- Editor Themes: save a named look for screenshot annotations and the export canvas, then switch from the **Theme** menu in the macOS screenshot editor in one undoable step. Redactions and emoji are never restyled. Manage, import, and export themes in Settings → Editor Themes. Agents can use `editor.themes.list`, `get`, `save`, `setActive`, and `delete`, plus `themeId` on `editor.open` and `editor.annotate`.
 - Screenshot editor rectangles and ellipses can have a gradient fill and a soft shadow, on selected shapes and new ones, and Agent Control's `editor.annotate` accepts them too. The Fill control now also edits a selected shape.
 - Agent Control settings now show both plugin install paths and a separate CLI-only setup with `dnx` and global tool commands on macOS and Windows.
 - Agent permissions are now yours to choose: the pairing prompt lists every scope with the agent's request pre-checked, so you can remove or add permissions before approving, and each paired agent has a **Permissions** control in Settings → Agent Control that applies changes immediately without re-pairing. Sensitive scopes still ask every time.

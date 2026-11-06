@@ -249,9 +249,13 @@ final class AutomationController: ObservableObject {
         let description = contract.command(named: command)?.description ?? command
         var details = ["Command: \(command)"]
         if let path = params["path"] as? String { details.append(path) }
+        let themeID = command == "editor.themes.delete" ? params["id"] as? String : nil
+        if let themeID {
+            details.append("Theme: \(EditorThemeStore.shared.theme(id: themeID)?.name ?? themeID)")
+        }
         let allowTitle: String
         switch contract.command(named: command)?.scope {
-        case "delete": allowTitle = "Move to Trash"
+        case "delete": allowTitle = themeID != nil ? "Delete Theme" : "Move to Trash"
         case "upload": allowTitle = "Upload"
         case "discard": allowTitle = "Discard"
         default: allowTitle = "Allow"
@@ -337,6 +341,7 @@ final class AutomationController: ObservableObject {
         if let key = params["key"] as? String { return key }
         if let mode = params["mode"] as? String { return mode }
         if let window = params["window"] as? String { return window }
+        if let id = params["id"] as? String { return id }
         return nil
     }
 
