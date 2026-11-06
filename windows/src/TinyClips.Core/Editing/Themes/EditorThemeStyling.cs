@@ -225,17 +225,21 @@ public static class EditorThemeStyling
         return text.FontFamily ?? PlatformFontFamily;
     }
 
+    /// <summary>
+    /// Curved1 bows along (-dy, dx), to the right of the arrow's travel on screen, and Curved2 to its
+    /// left. The names match macOS, so a theme curves to the same side on both.
+    /// </summary>
     public static ArrowStyle ArrowStyleOf(string name) => name switch
     {
-        "curvedLeft" => ArrowStyle.Curved1,
-        "curvedRight" => ArrowStyle.Curved2,
+        "curvedLeft" => ArrowStyle.Curved2,
+        "curvedRight" => ArrowStyle.Curved1,
         _ => ArrowStyle.Straight,
     };
 
     public static string NameOf(ArrowStyle style) => style switch
     {
-        ArrowStyle.Curved1 => "curvedLeft",
-        ArrowStyle.Curved2 => "curvedRight",
+        ArrowStyle.Curved1 => "curvedRight",
+        ArrowStyle.Curved2 => "curvedLeft",
         _ => "straight",
     };
 

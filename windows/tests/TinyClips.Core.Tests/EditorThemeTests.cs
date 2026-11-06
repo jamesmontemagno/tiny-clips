@@ -457,7 +457,7 @@ public sealed class EditorThemeStylingTests
         Assert.Equal(new EditorThemeStrokeDefaults(EditorTheme.ColorOf("#FFA0B0C0"), 14), defaults.Arrow);
         Assert.Equal(new EditorThemeStrokeDefaults(EditorTheme.ColorOf("#FFB0C0D0"), 12), defaults.Line);
         Assert.Equal(new EditorThemeStrokeDefaults(EditorTheme.ColorOf("#FFC0D0E0"), 5), defaults.Pen);
-        Assert.Equal(ArrowStyle.Curved2, defaults.ArrowStyle);
+        Assert.Equal(ArrowStyle.Curved1, defaults.ArrowStyle);
     }
 
     [Fact]
@@ -469,9 +469,18 @@ public sealed class EditorThemeStylingTests
         EditorThemeStyling.Apply(arrow, Brand(), Width);
         EditorThemeStyling.Apply(line, Brand(), Width);
 
-        Assert.Equal(ArrowStyle.Curved2, arrow.ArrowStyle);
+        Assert.Equal(ArrowStyle.Curved1, arrow.ArrowStyle);
         Assert.Equal(ArrowStyle.Straight, line.ArrowStyle);
-        Assert.Equal(ArrowStyle.Curved1, EditorThemeStyling.ArrowStyleOf("curvedLeft"));
+    }
+
+    [Fact]
+    public void ArrowStyleNamesCurveToTheSameSideAsMacOS()
+    {
+        // BuildArrow bows Curved1 along (-dy, dx), which is where macOS bows curvedRight.
+        Assert.Equal(ArrowStyle.Curved1, EditorThemeStyling.ArrowStyleOf("curvedRight"));
+        Assert.Equal(ArrowStyle.Curved2, EditorThemeStyling.ArrowStyleOf("curvedLeft"));
+        Assert.Equal("curvedRight", EditorThemeStyling.NameOf(ArrowStyle.Curved1));
+        Assert.Equal("curvedLeft", EditorThemeStyling.NameOf(ArrowStyle.Curved2));
     }
 
     [Fact]
@@ -889,7 +898,7 @@ public sealed class EditorThemeParserTests
         Assert.Equal(EditorTheme.ColorOf("#FF203040"), ellipse.Color);
         Assert.False(ellipse.ShapeEffects.IsGradientFill);
         Assert.Equal(EditorTheme.ColorOf("#FFA0B0C0"), arrow.Color);
-        Assert.Equal(ArrowStyle.Curved2, arrow.ArrowStyle);
+        Assert.Equal(ArrowStyle.Curved1, arrow.ArrowStyle);
         Assert.Equal(14, arrow.Thickness, 6);
         Assert.Equal(EditorTheme.ColorOf("#FFB0C0D0"), line.Color);
         Assert.Equal(12, line.Thickness, 6);
