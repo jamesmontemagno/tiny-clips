@@ -724,7 +724,7 @@ struct ScreenshotEditorView: View {
 
     /// A gradient needs a fill to start from, so it is only offered once the shape has one.
     @ViewBuilder
-    private var shapeEffectControls: some View {
+    private var shapeGradientControls: some View {
         let effects = viewModel.shapeEffectsForInspector()
 
         if viewModel.shapeFillColorForInspector() != .clear {
@@ -750,6 +750,11 @@ struct ScreenshotEditorView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var shapeShadowControls: some View {
+        let effects = viewModel.shapeEffectsForInspector()
 
         Toggle("Shadow", isOn: shapeEffectBinding(\.hasShadow))
             .accessibilityHint("Casts a soft shadow below the shape.")
@@ -1193,7 +1198,7 @@ struct ScreenshotEditorView: View {
 
             if showsFillColorPicker {
                 SwatchColorPicker(label: "Fill", color: shapeFillColorBinding, supportsOpacity: true, allowsTransparent: true)
-                shapeEffectControls
+                shapeGradientControls
             }
 
             if showsNumberTextColorPicker {
@@ -1335,6 +1340,10 @@ struct ScreenshotEditorView: View {
                     Text("8 px").tag(CGFloat(8))
                     Text("10 px").tag(CGFloat(10))
                 }
+            }
+
+            if showsFillColorPicker {
+                shapeShadowControls
             }
 
             if viewModel.showsArrowStyleControl {
