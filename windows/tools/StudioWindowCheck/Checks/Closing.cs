@@ -195,7 +195,7 @@ internal sealed partial class WindowChecks
         {
             try
             {
-                var size = StudioExportLimits.GetExportSize(editor.Expected);
+                var size = ExportedSize(editor.Expected);
                 var (width, height) = ((int)size.Width, (int)size.Height);
                 var view = SceneView.Resolve(editor.Expected, editor.Folder.Screen, editor.Folder.Camera, width, height);
                 foreach (var frame in DecodedFrames(finished.Path, width, height, "format=bgra"))

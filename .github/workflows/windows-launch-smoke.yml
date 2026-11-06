@@ -322,6 +322,13 @@ jobs:
           } else {
             "TinyClips.App.exe still running after $env:WAIT_SECONDS s (PID $($proc.Id)) -> PASS"
             Get-Process -Id $proc.Id | Select-Object Id, ProcessName, WorkingSet64, StartTime
+            # A background priority makes every tray click and hotkey lag (H.NotifyIcon's ForceCreate default).
+            $priority = (Get-Process -Id $proc.Id).PriorityClass
+            if ($priority -ne 'Normal') {
+              "::error::TinyClips.App.exe runs at $priority priority; expected Normal."
+              Stop-Process -Id $proc.Id -Force
+              exit 1
+            }
             Stop-Process -Id $proc.Id -Force
             "crashed=false" | Out-File $env:GITHUB_OUTPUT -Append
           }

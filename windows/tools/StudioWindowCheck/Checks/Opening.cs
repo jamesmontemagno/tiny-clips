@@ -53,7 +53,7 @@ internal sealed partial class WindowChecks
         var sizeText = NameOf(editor, "StudioExportSizeText");
         _report.Check(
             "the header names the recording and says what size it exports at",
-            name == "Camera and screen" && sizeText == StudioEditorText.GetExportSizeText(StudioExportLimits.GetExportSize(editor.Expected)),
+            name == "Camera and screen" && sizeText == StudioEditorText.GetExportSizeText(ExportedSize(editor.Expected)),
             $"\"{name}\", \"{sizeText}\"");
 
         CanvasIsWhereItShouldBe(editor, sight);

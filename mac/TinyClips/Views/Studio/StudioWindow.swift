@@ -622,6 +622,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     /// export here, and the Esc that answered "Close Studio?" with Cancel would ask it again.
     override func cancelOperation(_ sender: Any?) {
         guard attachedSheet == nil else { return }
+        if viewModel.isChoosingExportOptions {
+            viewModel.cancelExportOptions()
+            return
+        }
         if let event = NSApp.currentEvent, event.type == .keyDown, event.isARepeat {
             return
         }
@@ -682,7 +686,7 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     private func handleKey(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         guard modifiers.isEmpty, attachedSheet == nil else { return false }
-        guard viewModel.isReady, !viewModel.isExporting else { return false }
+        guard viewModel.isReady, !viewModel.isExporting, !viewModel.isChoosingExportOptions else { return false }
         let keyCode = Int(event.keyCode)
 
         // Holding an arrow key keeps stepping through frames. The other keys act once per press.

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="TinyClips.App.Controls.Studio.StudioExportOptionsPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <StackPanel Width="296" Spacing="12">
+        <TextBlock
+            AutomationProperties.AutomationId="StudioExportOptionsHeading"
+            AutomationProperties.HeadingLevel="Level1"
+            Style="{StaticResource BodyStrongTextBlockStyle}"
+            Text="Export video" />
+
+        <ComboBox
+            x:Name="ResolutionChoice"
+            HorizontalAlignment="Stretch"
+            AutomationProperties.AutomationId="StudioExportResolutionComboBox"
+            AutomationProperties.Name="Resolution"
+            Header="Resolution"
+            SelectionChanged="OnResolutionChanged" />
+
+        <ComboBox
+            x:Name="QualityChoice"
+            HorizontalAlignment="Stretch"
+            AutomationProperties.AutomationId="StudioExportQualityComboBox"
+            AutomationProperties.Name="Quality"
+            Header="Quality"
+            SelectionChanged="OnQualityChanged" />
+
+        <!--  What the two choices come to. It reads itself out when a choice changes it.  -->
+        <Border
+            Padding="12,8"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource ControlCornerRadius}">
+            <StackPanel Spacing="2">
+                <TextBlock
+                    x:Name="EstimateText"
+                    AutomationProperties.AutomationId="StudioExportEstimateText"
+                    AutomationProperties.LiveSetting="Polite"
+                    Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock
+                    x:Name="DetailsText"
+                    AutomationProperties.AutomationId="StudioExportDetailsText"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel
+            HorizontalAlignment="Right"
+            Orientation="Horizontal"
+            Spacing="8">
+            <Button
+                AutomationProperties.AutomationId="StudioExportOptionsCancelButton"
+                Click="OnCancelClick"
+                Content="Cancel" />
+            <Button
+                x:Name="ConfirmButton"
+                AutomationProperties.AutomationId="StudioExportOptionsConfirmButton"
+                Click="OnConfirmClick"
+                Content="Export&#x2026;"
+                Style="{StaticResource AccentButtonStyle}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

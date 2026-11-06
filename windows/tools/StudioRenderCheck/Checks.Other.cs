@@ -560,7 +560,7 @@ internal static class OtherChecks
             IStudioExportService service = new StudioExportService();
 
             var progress = new ThresholdProgress(2);
-            await service.ExportAsync(project, Projects.Events(clips.Screen), paths, output, VideoCodec.H264, progress, CancellationToken.None).ConfigureAwait(false);
+            await service.ExportAsync(project, Projects.Events(clips.Screen), paths, output, VideoCodec.H264, new StudioExportChoice(StudioExportResolution.Source, StudioExportQuality.Standard), progress, CancellationToken.None).ConfigureAwait(false);
             var reading = ExportVerifier.Verify(context, output, new ExportExpectation(project, clips.Screen, clips.Camera, 1920, 1080, 30, 1, ExpectAudio: true));
             ExportChecks.ExpectNumbers(context, reading, 60, index => 30 + index, index => 24 + index);
             context.Expect(progress.Count > 0 && progress.Last == 1, $"progress ended at {progress.Last} after {progress.Count} reports");

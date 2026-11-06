@@ -135,6 +135,7 @@ public sealed partial class StudioViewModel : ObservableObject
         _session.Exported += OnSessionExported;
         _session.ScreenRecordingSaved += OnSessionScreenRecordingSaved;
         _session.ErrorReported += OnSessionErrorReported;
+        _settings.StudioExportResolutionChanged += OnExportResolutionChanged;
     }
 
     /// <summary>Raised when the editor goes from loading to ready or unavailable, or stops being ready.</summary>
@@ -302,7 +303,10 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public string ClipName => _session.ClipName;
 
-    public string ExportSizeText => _session.ExportSizeText;
+    /// <summary>The size the next export comes to with the resolution Export offers first.</summary>
+    public string ExportSizeText => _session.Project is { } project
+        ? StudioEditorText.GetExportSizeText(StudioExportPresets.GetSize(StudioCanvasMath.NaturalSize(project), _settings.StudioExportResolution))
+        : StudioEditorText.GetExportSizeText(_session.CanvasSize);
 
     public bool CanUndo => _session.CanUndo;
 
@@ -329,10 +333,10 @@ public sealed partial class StudioViewModel : ObservableObject
     /// <summary>The live preview, once the project is open.</summary>
     public IStudioPreview? Preview => _session.Preview;
 
-    /// <summary>The size of the exported video, which is the canvas everything is laid out on.</summary>
-    public double CanvasWidth => _session.ExportSize.Width;
+    /// <summary>The size of the canvas everything is laid out on in the editor.</summary>
+    public double CanvasWidth => _session.CanvasSize.Width;
 
-    public double CanvasHeight => _session.ExportSize.Height;
+    public double CanvasHeight => _session.CanvasSize.Height;
 
     /// <summary>Canvas width over height. 16:9 until a project is open.</summary>
     public double CanvasAspectRatio =>
@@ -522,19 +526,32 @@ public sealed partial class StudioViewModel : ObservableObject
     // Export
 
     public Func<string, string, Task<string?>>? ChooseExportFile { get; set; }
+
+    /// <summary>
+    /// Asks for the resolution and quality, and answers whether to go on. The choices are read
+    /// from the options it is given. Without one, the saved choice is used without asking.
+    /// </summary>
+    public Func<StudioExportOptionsModel, Task<bool>>? ChooseExportOptions { get; set; }
+
     private bool _isChoosingExport;
 
     /// <summary>
-    /// Asks for the video filename and folder, then renders using the codec chosen in settings.
+    /// Asks for the resolution and quality, then for the video filename and folder, and renders
+    /// using the codec chosen in settings.
     /// </summary>
     public async Task<StudioExportOutcome> ExportAsync()
     {
         if (_isChoosingExport || !_session.CanExport) return StudioExportOutcome.NotStarted;
         StudioExportTarget target;
+        StudioExportChoice choice;
         _isChoosingExport = true;
         try
         {
             Pause();
+            var chosen = await ChooseExportChoiceAsync();
+            if (!_session.CanExport) return StudioExportOutcome.NotStarted;
+            if (chosen is not { } answered) return StudioExportOutcome.Cancelled;
+            choice = answered;
             var saved = SavedProjectFile;
             var folder = saved is not null ? Path.GetDirectoryName(saved)! : _storage.OutputDirectory(CaptureType.Video);
             if (saved is not null && !Directory.Exists(folder))
@@ -564,7 +581,7 @@ public sealed partial class StudioViewModel : ObservableObject
         }
 
         var wasExporting = _session.IsExporting;
-        var export = _session.ExportAsync(() => target.Path, _settings.VideoCodec, target);
+        var export = _session.ExportAsync(() => target.Path, _settings.VideoCodec, target, choice);
         if (!wasExporting && _session.IsExporting)
         {
             Announce("Export started.", "StudioExportStarted", StudioAnnouncementKind.Information);
@@ -583,6 +600,27 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public void CancelExport() => _session.CancelExport();
 
+    // The saved choice is what Export offers first. Null when the user decided against exporting.
+    private async Task<StudioExportChoice?> ChooseExportChoiceAsync()
+    {
+        var saved = new StudioExportChoice(_settings.StudioExportResolution, _settings.StudioExportQuality);
+        if (ChooseExportOptions is not { } ask || _session.Project is not { } project)
+        {
+            return saved;
+        }
+
+        var options = StudioExportPresets.CreateOptions(project, _settings.VideoCodec, saved);
+        if (!await ask(options))
+        {
+            return null;
+        }
+
+        var remembered = options.ChoiceToRemember;
+        _settings.StudioExportResolution = remembered.Resolution;
+        _settings.StudioExportQuality = remembered.Quality;
+        return options.Choice;
+    }
+
     // Closing
 
     /// <summary>What to ask before the window closes.</summary>
@@ -595,7 +633,23 @@ public sealed partial class StudioViewModel : ObservableObject
     /// saved at that moment (<see cref="SaveScreenRecordingAsync"/>) is waited for as well, so
     /// that the editor has not closed before it has been said what came of that save.
     /// </summary>
-    public Task CloseAsync(bool deleteProject) => _session.CloseAsync(deleteProject);
+    public Task CloseAsync(bool deleteProject)
+    {
+        // The settings outlive every editor, and would keep this one in memory.
+        _settings.StudioExportResolutionChanged -= OnExportResolutionChanged;
+        return _session.CloseAsync(deleteProject);
+    }
+
+    // The header says what the next export comes to, and the resolution can be chosen in another
+    // editor or by an agent.
+    private void OnExportResolutionChanged(object? sender, EventArgs e) =>
+        _post(() =>
+        {
+            if (!_session.IsClosed)
+            {
+                OnPropertyChanged(nameof(ExportSizeText));
+            }
+        });
 
     // Session events
 

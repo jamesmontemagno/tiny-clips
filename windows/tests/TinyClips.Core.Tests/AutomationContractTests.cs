@@ -81,6 +81,8 @@ public sealed class AutomationContractTests
         Assert.True(edit.Parameters["patch"].Required);
         Assert.True(contract.TryGetCommand("studio.zoom.suggest", out var suggest));
         Assert.Equal("read", suggest.Scope);
+        Assert.True(contract.TryGetCommand("studio.export.options", out var exportOptions));
+        Assert.Equal("read", exportOptions.Scope);
         Assert.True(contract.TryGetCommand("studio.export", out var export));
         Assert.Equal("export", export.Scope);
         Assert.True(export.Parameters["outputPath"].Required);

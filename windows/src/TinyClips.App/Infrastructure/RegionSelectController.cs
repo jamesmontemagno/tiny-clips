@@ -13,11 +13,11 @@ public readonly record struct RegionSelectResult(nint HMonitor, PixelRect Region
 public static class RegionSelectController
 {
     /// <summary>
-    /// Starts capturing a frozen frame of each monitor. Kick this off as early as possible (e.g.
-    /// while the capture picker is still showing) so the overlay can appear without waiting.
-    /// One task per monitor is returned (never aggregated) so each overlay can reveal as soon as
-    /// its own frame arrives rather than waiting for the slowest monitor. Failures resolve to
-    /// null rather than faulting.
+    /// Starts capturing a frozen frame of each monitor. One task per monitor is returned (never
+    /// aggregated) so each overlay can reveal as soon as its own frame arrives rather than waiting
+    /// for the slowest monitor. Failures resolve to null rather than faulting.
+    /// Capture must start before overlay windows are created: on a static screen, Windows Graphics
+    /// Capture delivers no frame until something composites, and that is what those windows do.
     /// </summary>
     public static IReadOnlyList<Task<CapturedFrame?>> CaptureBackdropsAsync(IReadOnlyList<MonitorInfo> monitors)
     {
@@ -36,20 +36,12 @@ public static class RegionSelectController
         }).ToArray();
     }
 
-    public static Task<RegionSelectResult?> RunAsync(
-        IReadOnlyList<MonitorInfo> monitors,
-        CancellationToken cancellationToken = default) =>
-        RunAsync(monitors, backdrops: null, cancellationToken);
-
     /// <summary>
-    /// Shows the region overlay on every monitor. When <paramref name="backdrops"/> is supplied
-    /// (from <see cref="CaptureBackdropsAsync"/> for the same monitor list) the overlay windows
-    /// are created immediately and paint the backdrop when it arrives; otherwise the capture is
-    /// started here.
+    /// Shows the region overlay on every monitor. The overlay windows are created immediately after
+    /// capture starts and paint the backdrop when it arrives.
     /// </summary>
     public static async Task<RegionSelectResult?> RunAsync(
         IReadOnlyList<MonitorInfo> monitors,
-        IReadOnlyList<Task<CapturedFrame?>>? backdrops,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -59,10 +51,7 @@ public static class RegionSelectController
             return null;
         }
 
-        if (backdrops is null || backdrops.Count != monitors.Count)
-        {
-            backdrops = CaptureBackdropsAsync(monitors);
-        }
+        var backdrops = CaptureBackdropsAsync(monitors);
 
         CaptureFlowTrace.Mark("region: overlay windows creating");
 

@@ -125,6 +125,7 @@ public sealed partial class StudioWindow : Window
         ViewModel.SaveProjectRequested += OnSaveProjectRequested;
         ViewModel.SaveProjectAsRequested += OnSaveProjectAsRequested;
         ViewModel.ChooseExportFile = ChooseExportFileAsync;
+        ViewModel.ChooseExportOptions = ChooseExportOptionsAsync;
         ViewModel.DeleteProjectRequested += OnDeleteProjectRequested;
         ViewModel.ProjectSaved += OnProjectSaved;
         Activated += OnActivated;
@@ -642,6 +643,8 @@ public sealed partial class StudioWindow : Window
         // No window closes from under a question. While one is open the close button waits for
         // its answer, also where closing by now asks nothing: Esc's question is asked there,
         // and an export can end behind the question about it.
+        // The flyout on Export gives way, as it does to a click anywhere else.
+        _exportOptionsFlyout?.Hide();
         var question = QuestionBeforeClosing(StudioCloseRequest.CloseButton);
         if (question == StudioCloseQuestion.None && !_isPromptOpen)
         {
@@ -835,6 +838,9 @@ public sealed partial class StudioWindow : Window
         ViewModel.SaveProjectRequested -= OnSaveProjectRequested;
         ViewModel.SaveProjectAsRequested -= OnSaveProjectAsRequested;
         ViewModel.ChooseExportFile = null;
+        ViewModel.ChooseExportOptions = null;
+        _exportOptionsFlyout?.Hide();
+        _exportOptionsAnswer?.TrySetResult(false);
         ViewModel.DeleteProjectRequested -= OnDeleteProjectRequested;
         ViewModel.ProjectSaved -= OnProjectSaved;
 
