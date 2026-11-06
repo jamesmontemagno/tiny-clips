@@ -587,6 +587,7 @@ final class StudioAnnotationDrawingTests: XCTestCase {
         )
     }
 
+    @MainActor
     func testEveryPresetIsItselfOnceSavedAndAColorKeepsItsHex() {
         for preset in annotationColorPresets {
             let saved = StudioAnnotationInspectorSection.color(StudioViewModel.hexString(for: preset.color))
