@@ -1,5 +1,5 @@
 {
-  "description": "A short cue lasts a second when there is room, and is left alone when there is not.",
+  "description": "A short cue lasts a second when there is room, and only as long as it needs when there is less.",
   "sourceDuration": 60,
   "cues": [
     {
@@ -30,7 +30,7 @@
     {
       "cue": 1,
       "kind": "shortDuration",
-      "canFix": false
+      "canFix": true
     }
   ],
   "summary": "2 too short",
@@ -43,7 +43,7 @@
     },
     {
       "start": 5,
-      "end": 5.5,
+      "end": 5.701,
       "text": "Tight.",
       "wordCount": 0
     },
@@ -54,8 +54,6 @@
       "wordCount": 0
     }
   ],
-  "applied": 1,
-  "after": [
-    "shortDuration"
-  ]
+  "applied": 2,
+  "after": []
 }

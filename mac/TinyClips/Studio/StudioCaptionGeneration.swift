@@ -96,18 +96,22 @@ enum StudioCaptionTranscript {
         guard !text.isEmpty, end > segment.start else { return [] }
 
         let words = spelledWords(of: segment, text: text, sourceDuration: sourceDuration)
-        guard text.count > longestCue, !words.isEmpty else {
+        // Counted in Unicode scalars, as the checks count them, so a part made here is not split
+        // again by the safe fixes, which would lose its words.
+        guard text.unicodeScalars.count > longestCue, !words.isEmpty else {
             return [cue(start: segment.start, end: end, text: text, words: words)]
         }
 
         // Too long for one cue. It is broken between words, so each part keeps the words it says.
         // Each part's text comes out of the text itself: not every language puts spaces between
         // its words, and a word can have one inside it, as Apple Speech's `out of` does.
-        let places = self.places(of: words, in: text)
+        guard let places = self.places(of: words, in: text) else {
+            return [cue(start: segment.start, end: end, text: text, words: [])]
+        }
         var parts: [Range<Int>] = []
         var first = 0
         for index in words.indices where index > first {
-            if text[places[first].lowerBound..<places[index].upperBound].count > longestCue {
+            if text[places[first].lowerBound..<places[index].upperBound].unicodeScalars.count > longestCue {
                 parts.append(first..<index)
                 first = index
             }
@@ -126,24 +130,33 @@ enum StudioCaptionTranscript {
         }
     }
 
-    /// Where each word is in `text`, which `spelledWords` has found them to spell out.
-    private static func places(of words: [StudioCaptionWord], in text: String) -> [Range<String.Index>] {
+    /// Where each word is in `text`, or nil when the words do not spell it out from its start.
+    static func places(of words: [StudioCaptionWord], in text: String) -> [Range<String.Index>]? {
         var index = text.startIndex
-        return words.map { word in
+        var places: [Range<String.Index>] = []
+        places.reserveCapacity(words.count)
+        for word in words {
             var start: String.Index?
             for character in word.text where !character.isWhitespace {
-                while text[index].isWhitespace {
+                while index < text.endIndex, text[index].isWhitespace {
                     index = text.index(after: index)
                 }
+                guard index < text.endIndex, text[index] == character else { return nil }
                 start = start ?? index
                 index = text.index(after: index)
             }
-            return (start ?? index)..<index
+            places.append((start ?? index)..<index)
         }
+        return places
+    }
+
+    /// Whether `words` spell out `text`, leaving out the space between and around them.
+    static func spells(_ words: [StudioCaptionWord], _ text: String) -> Bool {
+        words.map(\.text).joined().filter { !$0.isWhitespace } == text.filter { !$0.isWhitespace }
     }
 
     private static func cue(start: Double, end: Double, text: String, words: [StudioCaptionWord]) -> StudioCaptionCue {
-        StudioCaptionCue(id: UUID().uuidString, start: start, end: end, text: text, words: words)
+        StudioCaptionCue(id: UUID().uuidString.lowercased(), start: start, end: end, text: text, words: words)
     }
 
     /// The segment's words, when they spell out its text. A cue without words is only clipped by
@@ -154,8 +167,6 @@ enum StudioCaptionTranscript {
             guard !cleaned.isEmpty else { return nil }
             return StudioCaptionWord(start: min(word.start, sourceDuration), end: min(word.end, sourceDuration), text: cleaned)
         }
-        let spelled = words.map(\.text).joined().filter { !$0.isWhitespace }
-        let expected = text.filter { !$0.isWhitespace }
-        return spelled == expected ? words : []
+        return spells(words, text) ? words : []
     }
 }

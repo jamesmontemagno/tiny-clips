@@ -701,13 +701,22 @@ final class AutomationCommandRouter {
         return result
     }
 
+    /// What the times of imported captions count from: `recording` unless the agent says otherwise.
+    nonisolated static func captionTiming(_ params: [String: Any]) throws -> StudioCaptionTiming {
+        guard let value = params["timing"] else { return .recording }
+        guard let name = value as? String, let timing = StudioCaptionTiming(rawValue: name) else {
+            throw AutomationError(.invalidParams, "timing must be recording or editedVideo.")
+        }
+        return timing
+    }
+
     private func importStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
         try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let current = try checkedStudioProject(params, id: id)
         let contents = StudioCaptionFiles.read(
             try Self.requiredString(params, "text"),
-            timing: params["timing"] as? String == "editedVideo" ? .editedVideo : .recording,
+            timing: try Self.captionTiming(params),
             timeMap: StudioTimeMap(sourceDuration: current.sources.screen.duration, edits: current.edits)
         )
         guard !contents.cues.isEmpty else {
@@ -715,7 +724,7 @@ final class AutomationCommandRouter {
         }
         var updated = current
         updated.captions.language = nil
-        updated.captions.cues = StudioCaptionQuality.inOrder(contents.cues)
+        updated.captions.cues = contents.cues.inTimeOrder()
         let saved = try saveStudioEdit(updated, replacing: current)
         return [
             "project": try studioProjectObject(saved),
@@ -777,12 +786,18 @@ final class AutomationCommandRouter {
         } catch let error as StudioCaptionGenerationError {
             throw AutomationError(.internal, error.message)
         }
+        // Nothing heard leaves the captions as they were, as in the editor.
+        guard !heard.cues.isEmpty else {
+            throw AutomationError(.internal, StudioCaptionGenerationError.noSpeech.message)
+        }
 
-        // It took a while. The cues are in source time, so an edit made meanwhile is kept.
-        let latest = try studioProject(id)
+        // It took a while. The cues are in source time, so an edit made meanwhile is kept: the
+        // open editor's, with what is being typed in it, or else the saved project.
+        StudioWindowRegistry.shared.automationViewModel(forProjectID: id)?.commitCaptionText()
+        let latest = try currentStudioProject(id)
         var updated = latest
         updated.captions.language = heard.language
-        updated.captions.cues = StudioCaptionQuality.inOrder(heard.cues)
+        updated.captions.cues = heard.cues.inTimeOrder()
         let saved = try saveStudioEdit(updated, replacing: latest)
         return [
             "project": try studioProjectObject(saved),

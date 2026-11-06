@@ -20,7 +20,9 @@ final class StudioCaptionGenerationTests: XCTestCase {
 
         XCTAssertEqual(cues.map(\.text), ["I believe that"])
         XCTAssertEqual(cues[0].words.map(\.text), ["I", "believe", "that"])
-        XCTAssertFalse(cues[0].id.isEmpty)
+        // Section 15 of the project format: a lowercase UUID.
+        XCTAssertNotNil(UUID(uuidString: cues[0].id))
+        XCTAssertEqual(cues[0].id, cues[0].id.lowercased())
     }
 
     func testAStretchWithoutSpeech_IsNoCue() {
@@ -62,7 +64,7 @@ final class StudioCaptionGenerationTests: XCTestCase {
         XCTAssertGreaterThan(cues.count, 1)
         XCTAssertEqual(cues.map(\.text).joined(separator: " "), text)
         for cue in cues {
-            XCTAssertLessThanOrEqual(cue.text.count, StudioCaptionTranscript.longestCue)
+            XCTAssertLessThanOrEqual(cue.text.unicodeScalars.count, StudioCaptionTranscript.longestCue)
             XCTAssertEqual(cue.words.map(\.text).joined(separator: " "), cue.text)
         }
         XCTAssertEqual(cues[0].start, 12)
@@ -70,6 +72,24 @@ final class StudioCaptionGenerationTests: XCTestCase {
         for (cue, next) in zip(cues, cues.dropFirst()) {
             XCTAssertEqual(cue.end, next.start)
         }
+    }
+
+    /// Letters with their accents as marks of their own are one letter to a reader and two code
+    /// points to the checks. A part is as long as the checks count it, so Auto Fix only wraps it
+    /// and its words stay.
+    func testALongSegment_IsBrokenAsTheChecksCount_SoTheSafeFixesKeepItsWords() {
+        let text = Array(repeating: "e\u{301}te\u{301}", count: 16).joined(separator: " ")
+        let cues = StudioCaptionTranscript.cues(from: [
+            StudioTranscriptSegment(start: 0, end: 16, text: text, words: words(text)),
+        ], sourceDuration: 20)
+
+        XCTAssertGreaterThan(cues.count, 1)
+        for cue in cues {
+            XCTAssertLessThanOrEqual(cue.text.unicodeScalars.count, StudioCaptionTranscript.longestCue)
+        }
+        let fixed = StudioCaptionQuality.fix(cues, sourceDuration: 20).cues
+        XCTAssertEqual(fixed.count, cues.count)
+        XCTAssertFalse(fixed.contains { $0.words.isEmpty })
     }
 
     func testATooLongSegmentWithoutWords_StaysOneCue_ForTheSafeFixesToWrap() {
@@ -201,7 +221,7 @@ final class StudioCaptionGenerationTests: XCTestCase {
         XCTAssertGreaterThan(cues.count, 1)
         XCTAssertEqual(cues.map(\.text).joined(separator: " "), spoken)
         for cue in cues {
-            XCTAssertLessThanOrEqual(cue.text.count, StudioCaptionTranscript.longestCue)
+            XCTAssertLessThanOrEqual(cue.text.unicodeScalars.count, StudioCaptionTranscript.longestCue)
             XCTAssertFalse(cue.words.isEmpty)
             XCTAssertEqual(cue.words.map(\.text).joined(separator: " "), cue.text)
         }
@@ -247,20 +267,57 @@ final class StudioCaptionGenerationTests: XCTestCase {
         XCTAssertNil(StudioAppleSpeechResults.segment(text: AttributedString("  \n"), range: .zero))
     }
 
-    func testTheSamples_GoToATemporaryFile_ThatReadsBackTheSame() throws {
-        let samples = (0..<200_000).map { Float(sin(Double($0) * 0.05)) * 0.5 }
-        let url = try StudioCaptionSound.writeTemporaryFile(samples)
+    func testTheSound_GoesToATemporaryFile_AsSpeechRecognitionWantsIt() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        // Two seconds of a tone at 48 kHz, as a recording's sound might be.
+        let recording = folder.appendingPathComponent("recording.wav")
+        let recordingFormat = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let frames = AVAudioFrameCount(96_000)
+        let tone = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: recordingFormat, frameCapacity: frames))
+        tone.frameLength = frames
+        let toneSamples = try XCTUnwrap(tone.floatChannelData?[0])
+        for frame in 0..<Int(frames) {
+            toneSamples[frame] = Float(sin(Double(frame) * 2 * .pi * 440 / 48_000)) * 0.5
+        }
+        let recordingFile = try AVAudioFile(forWriting: recording, settings: recordingFormat.settings)
+        try recordingFile.write(from: tone)
+        recordingFile.close()
+
+        let project = StudioProject(
+            id: "3f0013cf-ba10-4453-af91-792b7882dae6",
+            sources: StudioSources(screen: StudioScreenSource(width: 320, height: 180, frameRate: 30, duration: 2))
+        )
+        let url = try await StudioCaptionSound.writeTemporaryFile(from: recording, project: project) { _ in }
         defer { try? FileManager.default.removeItem(at: url) }
 
         let file = try AVAudioFile(forReading: url)
-        XCTAssertEqual(file.length, AVAudioFramePosition(samples.count))
         XCTAssertEqual(file.processingFormat.sampleRate, 16_000)
         XCTAssertEqual(file.processingFormat.channelCount, 1)
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(samples.count)))
+        XCTAssertEqual(Double(file.length), 32_000, accuracy: 320)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
         try file.read(into: buffer)
         let channel = try XCTUnwrap(buffer.floatChannelData?[0])
-        for index in stride(from: 0, to: samples.count, by: 9973) {
-            XCTAssertEqual(channel[index], samples[index], accuracy: 0.0001)
+        let middle = Int(buffer.frameLength) / 4..<Int(buffer.frameLength) * 3 / 4
+        let loudness = (middle.reduce(0.0) { $0 + Double(channel[$1] * channel[$1]) } / Double(middle.count)).squareRoot()
+        XCTAssertEqual(loudness, 0.5 / 2.0.squareRoot(), accuracy: 0.05)
+    }
+
+    func testAMissingRecording_LeavesNoFileBehind() async throws {
+        let project = StudioProject(
+            id: "3f0013cf-ba10-4453-af91-792b7882dae6",
+            sources: StudioSources(screen: StudioScreenSource(width: 320, height: 180, frameRate: 30, duration: 2))
+        )
+        do {
+            _ = try await StudioCaptionSound.writeTemporaryFile(
+                from: FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).mp4"),
+                project: project
+            ) { _ in }
+            XCTFail("it wrote a file")
+        } catch let error as StudioCaptionGenerationError {
+            XCTAssertEqual(error, .missingRecording)
         }
     }
 

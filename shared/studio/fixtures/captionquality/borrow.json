@@ -1,0 +1,54 @@
+{
+  "description": "A cue too fast to read takes what the next cue can spare after it, and up to half a second before it, and those cues move over.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-0",
+      "start": 0,
+      "end": 3,
+      "text": "A calm first caption."
+    },
+    {
+      "id": "cue-3",
+      "start": 3,
+      "end": 4,
+      "text": "This caption has rather a lot to say."
+    },
+    {
+      "id": "cue-4",
+      "start": 4,
+      "end": 5,
+      "text": "Then a pause."
+    }
+  ],
+  "findings": [
+    {
+      "cue": 1,
+      "kind": "readingSpeed",
+      "canFix": true
+    }
+  ],
+  "summary": "1 too fast to read",
+  "fixed": [
+    {
+      "start": 0,
+      "end": 2.7980000000000005,
+      "text": "A calm first caption.",
+      "wordCount": 0
+    },
+    {
+      "start": 2.7980000000000005,
+      "end": 4.299,
+      "text": "This caption has rather a lot to say.",
+      "wordCount": 0
+    },
+    {
+      "start": 4.299,
+      "end": 5,
+      "text": "Then a pause.",
+      "wordCount": 0
+    }
+  ],
+  "applied": 1,
+  "after": []
+}

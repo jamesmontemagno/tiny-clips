@@ -962,6 +962,12 @@ Reading back what section 15.3 wrote, timed to the edited video, gives the same 
 
 **Editing a cue's text** stores `clean(text)`. When that equals `clean` of what it held, nothing changes. Otherwise its `words` are emptied, because they no longer match. An edit that leaves no text keeps the cue, which then shows nothing and which a check reports as empty.
 
+An editor may also offer these, each as one undoable edit that keeps the cues in the order of section 15.2. They are optional: a reader only sees the cues they leave.
+
+- **Moving a start or an end** keeps the cue at least 0.1 seconds long, its start at or after 0, and its end at or before the recording's end. Its `words` are emptied when one of them no longer falls inside it.
+- **Splitting a cue at a time** needs each part to be at least 0.1 seconds long. When the cue's `words` spell its text, the text is split before the first word whose middle is at or after the time; otherwise it is split between the words that leave the share of the text before the time closest to the share of the cue's time. The first part keeps the cue's `id`, the second gets a new one, and each keeps the `words` that fall inside it.
+- **Merging a cue with the next one in time** makes one cue from the start of the earlier to the end of the later, with the `id` of the first and their texts joined by a space. It keeps both cues' `words` only when each cue's `words` spell its text.
+
 ### 15.6 Checks and safe fixes
 
 Checks look at cues in the order of section 15.2, in source time, against a recording of length `D`. A finding names a cue by its place in that order, from 0. They are limits for reading, not rules of the format: a project with findings is valid.
@@ -969,6 +975,7 @@ Checks look at cues in the order of section 15.2, in source time, against a reco
 ```
 shortest = 0.7 seconds      longest line = 42 characters
 most lines = 2              fastest = 20 characters a second
+most moved = 0.5 seconds
 
 A character is a Unicode code point. count(text) leaves out white space.
 
@@ -999,6 +1006,34 @@ split(text): null with fewer than two words, or a word longer than the longest l
 
 timing(start, end, parts): each part lasts its share of end - start, by max(1, count(part)).
     Parts follow each other from start. The last ends at end.
+
+hard(cue): it lasts less than shortest, or count(text) / its length is more than fastest.
+
+enough(text): max(shortest, count(text) / fastest) + 0.001. The least time that reads, and
+              a millisecond so rounding cannot leave a cue just short.
+
+A neighbour is the cue just before or just after in order. One whose end is not after its
+start, either not finite, or whose text is empty gives nothing.
+
+spare(cue): min(most moved, max(0, its length - enough(text))), or 0 for a neighbour that
+            gives nothing.
+
+room(cue): the seconds it can take after its end and before its start.
+    after:  for the last cue D - end. Otherwise 0 when the next cue gives nothing or starts
+            before this one ends, else min(D, next start + spare(next)) - end.
+    before: for the first cue min(most moved, start). Otherwise 0 when the cue before gives
+            nothing or ends after this one starts, else
+            min(most moved, start - (that cue's end - spare(that cue))).
+    Each is at least 0.
+
+join(a, b): null unless neither gives nothing, b starts 0 to most moved after a ends,
+    wrap(a's text + " " + b's text) is not null, and b's end - a's start is at least
+    enough of that wrap. Otherwise a cue with a's id, from a's start to b's end, with that
+    wrap as its text. Its words are a's and then b's when each has words that spell its
+    text, as merging does in section 15.5, and none otherwise.
+
+join order: the cue before and this one, then this one and the cue after. The other way
+    round when the cue before's text ends in . ! or ?, or there is no cue before.
 ```
 
 | Check, in this order for each cue | Found when | Can be fixed when |
@@ -1009,7 +1044,7 @@ timing(start, end, parts): each part lasts its share of end - start, by max(1, c
 | `whitespace` | `tidy(text)` is not `text` | Always |
 | `longLine` | A line of `tidy(text)` is longer than the longest line | `wrap` is not null, or `split` is not null and each of its parts would last at least `shortest` |
 | `tooManyLines` | `tidy(text)` has more than the most lines | The same |
-| `shortDuration` | It lasts less than `shortest` | `start + wanted` is at or before the next cue's start, and at or before `D` |
+| `shortDuration` | It lasts less than `shortest` | `start + wanted` is at or before the next cue's start and at or before `D`; or `after + before` of its `room` is at least `enough - length`; or a pair in its `join order` has a `join`. Each looks at the cues as they are, with `tidy(text)` |
 | `readingSpeed` | `count(tidy(text)) / length` is more than `fastest` | The same |
 
 **The safe fixes** run in this order on all the cues, and each thing one changes counts as one fix:
@@ -1019,6 +1054,10 @@ timing(start, end, parts): each part lasts its share of end - start, by max(1, c
 3. From the second cue on, when a cue overlaps the one before it and starts at least `shortest` after it, end the one before where this one starts.
 4. For each cue with a line too long or too many lines: when `wrap` is not null, that is its text, and its `words` stay. Otherwise, when `split` is not null and each part would last at least `shortest`, it becomes those parts at their `timing`. The first keeps the cue's `id`, the others get new ones, and none has `words`.
 5. For each cue with a length above 0, when `wanted` is more than its length and `start + wanted` is at or before the next cue's start and at or before `D`, it ends at `start + wanted`.
+6. **Borrow.** For each cue, in order, that gives something and is still `hard`: let `more = enough(text) - length`. When `after + before` of its `room` is at least `more`, it ends `min(more, after)` later and starts what is left of `more` earlier. A next cue it now ends after starts where it ends, and a cue before it now starts before ends where it starts.
+7. **Join.** For each cue, in order, that gives something and is still `hard`: the first pair in its `join order` that has a `join` becomes that one cue. This step then carries on from the cue after it.
+
+Borrowing never moves a cue's start more than `most moved` earlier, and takes from a neighbour only what it can spare and still read. Joining puts a fragment such as the end of a sentence with the words it belongs to.
 
 Fixes are one undoable edit. What they could not fix is what the checks find afterwards.
 

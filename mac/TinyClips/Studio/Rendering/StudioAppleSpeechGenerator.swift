@@ -2,15 +2,18 @@ import AVFoundation
 import Foundation
 import Speech
 
-/// Reads a recording's sound as speech recognition wants it: one channel of floats at 16 kHz.
+/// A recording's sound as speech recognition wants it: one channel of floats at 16 kHz.
 enum StudioCaptionSound {
     static let sampleRate = 16_000.0
 
-    static func read(
-        url: URL,
+    /// Writes the sound of the recording at `url` to a file in the temporary folder, for
+    /// SpeechAnalyzer to read. Each piece goes to the file as it is read, so a long recording is
+    /// never held in memory. The caller deletes the file.
+    static func writeTemporaryFile(
+        from url: URL,
         project: StudioProject,
         progress: @Sendable (Double) -> Void
-    ) async throws -> [Float] {
+    ) async throws -> URL {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw StudioCaptionGenerationError.missingRecording
         }
@@ -25,7 +28,12 @@ enum StudioCaptionSound {
         guard !tracks.isEmpty else {
             throw StudioCaptionGenerationError.noSound
         }
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false) else {
+            throw StudioCaptionGenerationError.unreadableSound
+        }
 
+        let sound = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tinyclips-captions-\(UUID().uuidString).wav")
         let chosen = StudioSound.speechTrackIndexes(project: project, trackCount: tracks.count).map { tracks[$0] }
         do {
             let reader = try AVAssetReader(asset: asset)
@@ -44,78 +52,71 @@ enum StudioCaptionSound {
                 throw StudioCaptionGenerationError.unreadableSound
             }
 
+            let file: AVAudioFile
+            do {
+                file = try AVAudioFile(forWriting: sound, settings: format.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            } catch {
+                throw unsaved(error)
+            }
+
             let duration = project.sources.screen.duration
             let expected = duration > 0 ? Int(duration * sampleRate) : 0
-            var samples = [Float]()
-            samples.reserveCapacity(expected)
-            while let buffer = output.copyNextSampleBuffer() {
+            var buffer: AVAudioPCMBuffer?
+            var written = 0
+            while let sample = output.copyNextSampleBuffer() {
                 try Task.checkCancellation()
-                guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-                let bytes = CMBlockBufferGetDataLength(block)
-                let start = samples.count
-                let count = bytes / MemoryLayout<Float>.size
-                samples.append(contentsOf: repeatElement(0, count: count))
-                let status = samples.withUnsafeMutableBytes { target in
-                    CMBlockBufferCopyDataBytes(
-                        block,
-                        atOffset: 0,
-                        dataLength: count * MemoryLayout<Float>.size,
-                        destination: target.baseAddress!.advanced(by: start * MemoryLayout<Float>.size)
-                    )
+                guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
+                let count = CMBlockBufferGetDataLength(block) / MemoryLayout<Float>.size
+                guard count > 0 else { continue }
+                if (buffer?.frameCapacity ?? 0) < AVAudioFrameCount(count) {
+                    buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count))
                 }
+                guard let pcm = buffer, let channel = pcm.floatChannelData?[0] else {
+                    throw StudioCaptionGenerationError.unreadableSound
+                }
+                let status = CMBlockBufferCopyDataBytes(
+                    block,
+                    atOffset: 0,
+                    dataLength: count * MemoryLayout<Float>.size,
+                    destination: channel
+                )
                 guard status == kCMBlockBufferNoErr else {
                     throw StudioCaptionGenerationError.unreadableSound
                 }
+                pcm.frameLength = AVAudioFrameCount(count)
+                do {
+                    try file.write(from: pcm)
+                } catch {
+                    throw unsaved(error)
+                }
+                written += count
                 if expected > 0 {
-                    progress(min(1, Double(samples.count) / Double(expected)))
+                    progress(min(1, Double(written) / Double(expected)))
                 }
             }
             guard reader.status != .failed else {
                 throw StudioCaptionGenerationError.unreadableSound
             }
-            return samples
-        } catch let error as StudioCaptionGenerationError {
-            throw error
-        } catch is CancellationError {
-            throw CancellationError()
+            guard written > 0 else {
+                throw StudioCaptionGenerationError.noSound
+            }
+            file.close()
+            return sound
         } catch {
-            throw StudioCaptionGenerationError.unreadableSound
-        }
-    }
-}
-
-extension StudioCaptionSound {
-    /// The samples as a file in the temporary folder, for SpeechAnalyzer to read. The caller
-    /// deletes it.
-    static func writeTemporaryFile(_ samples: [Float]) throws -> URL {
-        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false) else {
-            throw StudioCaptionGenerationError.unreadableSound
-        }
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tinyclips-captions-\(UUID().uuidString).wav")
-        do {
-            let file = try AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
-            let framesAtOnce = 65_536
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(framesAtOnce)),
-                  let channel = buffer.floatChannelData?[0] else {
+            try? FileManager.default.removeItem(at: sound)
+            switch error {
+            case let error as StudioCaptionGenerationError:
+                throw error
+            case is CancellationError:
+                throw CancellationError()
+            default:
                 throw StudioCaptionGenerationError.unreadableSound
             }
-            var written = 0
-            while written < samples.count {
-                try Task.checkCancellation()
-                let count = min(framesAtOnce, samples.count - written)
-                samples.withUnsafeBufferPointer { source in
-                    channel.update(from: source.baseAddress!.advanced(by: written), count: count)
-                }
-                buffer.frameLength = AVAudioFrameCount(count)
-                try file.write(from: buffer)
-                written += count
-            }
-            return url
-        } catch {
-            try? FileManager.default.removeItem(at: url)
-            throw error
         }
+    }
+
+    private static func unsaved(_ error: Error) -> StudioCaptionGenerationError {
+        StudioCaptionGenerationError(message: "The sound could not be saved for speech recognition: \(error.localizedDescription)")
     }
 }
 
@@ -147,12 +148,12 @@ final class StudioCaptionPercentReports: @unchecked Sendable {
 }
 
 /// Ends a wait for a download with whichever comes first: the download, or being cancelled.
-final class StudioCaptionWait<Value: Sendable>: @unchecked Sendable {
+final class StudioCaptionWait: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<Value, Error>?
-    private var outcome: Result<Value, Error>?
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var outcome: Result<Void, Error>?
 
-    func begin(_ continuation: CheckedContinuation<Value, Error>) {
+    func begin(_ continuation: CheckedContinuation<Void, Error>) {
         lock.lock()
         if let outcome {
             lock.unlock()
@@ -163,7 +164,7 @@ final class StudioCaptionWait<Value: Sendable>: @unchecked Sendable {
         lock.unlock()
     }
 
-    func finish(_ result: Result<Value, Error>) {
+    func finish(_ result: Result<Void, Error>) {
         lock.lock()
         guard outcome == nil else {
             lock.unlock()
@@ -262,20 +263,18 @@ enum StudioAppleSpeechResults {
 /// steps can be run with another one on a machine where `SpeechTranscriber` is not available.
 @available(macOS 26.0, *)
 enum StudioSpeechAnalysis {
+    /// - Parameter sound: A file as `StudioCaptionSound.writeTemporaryFile` writes it.
     static func segments<Results: AsyncSequence & Sendable>(
         module: any SpeechModule,
         results: Results,
         text: @escaping @Sendable (Results.Element) -> AttributedString,
         locale: Locale,
-        samples: [Float],
+        sound: URL,
         duration: Double,
         progress: @escaping @Sendable (StudioCaptionProgress) -> Void
     ) async throws -> [StudioTranscriptSegment] where Results.Element: SpeechModuleResult {
         try await install(module, locale: locale, progress: progress)
         try Task.checkCancellation()
-
-        let sound = try StudioCaptionSound.writeTemporaryFile(samples)
-        defer { try? FileManager.default.removeItem(at: sound) }
 
         progress(StudioCaptionProgress(stage: .recognizingSpeech, fraction: 0))
         let reports = StudioCaptionPercentReports(stage: .recognizingSpeech, progress)
@@ -345,7 +344,7 @@ enum StudioSpeechAnalysis {
         }
         defer { watching.invalidate() }
 
-        let wait = StudioCaptionWait<Void>()
+        let wait = StudioCaptionWait()
         let installing = StudioInstallRequest(request: request)
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -391,12 +390,10 @@ struct StudioAppleSpeechCaptionGenerator: StudioCaptionGenerating {
 
         // The sound first: a recording without any should not cost a download.
         let reading = StudioCaptionPercentReports(stage: .readingSound, progress)
-        let samples = try await StudioCaptionSound.read(url: paths.screenURL, project: project) { fraction in
+        let sound = try await StudioCaptionSound.writeTemporaryFile(from: paths.screenURL, project: project) { fraction in
             reading.report(fraction)
         }
-        guard !samples.isEmpty else {
-            throw StudioCaptionGenerationError.noSound
-        }
+        defer { try? FileManager.default.removeItem(at: sound) }
         try Task.checkCancellation()
 
         let duration = project.sources.screen.duration
@@ -415,7 +412,7 @@ struct StudioAppleSpeechCaptionGenerator: StudioCaptionGenerating {
                 results: transcriber.results,
                 text: { $0.text },
                 locale: locale,
-                samples: samples,
+                sound: sound,
                 duration: duration,
                 progress: progress
             )

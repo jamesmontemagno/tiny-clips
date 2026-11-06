@@ -61,6 +61,17 @@ final class StudioCaptionQualityTests: XCTestCase {
         }
     }
 
+    func testAnAgentsImportIsTimedToTheRecording_UnlessItSaysEditedVideo_AndOtherTimingIsRefused() throws {
+        XCTAssertEqual(try AutomationCommandRouter.captionTiming([:]), .recording)
+        XCTAssertEqual(try AutomationCommandRouter.captionTiming(["timing": "recording"]), .recording)
+        XCTAssertEqual(try AutomationCommandRouter.captionTiming(["timing": "editedVideo"]), .editedVideo)
+        for timing: Any in ["edited", "", 1] {
+            XCTAssertThrowsError(try AutomationCommandRouter.captionTiming(["timing": timing])) { error in
+                XCTAssertEqual((error as? AutomationError)?.code, .invalidParams)
+            }
+        }
+    }
+
     func testWhatIsWrittenReadsBackTimedToTheEditedVideoAsTheSameCaptions() throws {
         for file in try fixtureFiles(in: "captions") {
             let name = file.lastPathComponent
@@ -112,6 +123,13 @@ final class StudioCaptionQualityTests: XCTestCase {
         XCTAssertEqual(StudioCaptionText.fixedMessage(0), "Nothing to fix.")
         XCTAssertEqual(StudioCaptionText.fixedMessage(1), "Made 1 fix.")
         XCTAssertEqual(StudioCaptionText.fixedMessage(3), "Made 3 fixes.")
+        XCTAssertEqual(StudioCaptionText.fixedMessage(2, left: 1), "Made 2 fixes. 1 problem needs a manual edit.")
+        XCTAssertEqual(StudioCaptionText.fixedMessage(0, left: 3), "Nothing could be fixed automatically. 3 problems need a manual edit.")
+        XCTAssertNil(StudioCaptionText.manualFixNote(fixable: 2, total: 2))
+        XCTAssertEqual(StudioCaptionText.manualFixNote(fixable: 0, total: 1), "Auto Fix can't fix this one. Edit the caption's text or timing.")
+        XCTAssertEqual(StudioCaptionText.manualFixNote(fixable: 0, total: 2), "Auto Fix can't fix these. Edit the captions' text or timing.")
+        XCTAssertEqual(StudioCaptionText.manualFixNote(fixable: 2, total: 3), "Auto Fix can fix 2 of 3. The other needs a manual edit.")
+        XCTAssertEqual(StudioCaptionText.manualFixNote(fixable: 1, total: 3), "Auto Fix can fix 1 of 3. The others need a manual edit.")
     }
 
     func testFormatsComeFromTheExtension() {
@@ -171,7 +189,7 @@ final class StudioCaptionQualityTests: XCTestCase {
             return project
         }())
 
-        XCTAssertEqual(model.captionIndexesInOrder(), [1, 0])
+        XCTAssertEqual(model.project.captions.cues.indexesInTimeOrder(), [1, 0])
     }
 
     func testFixingCaptionsIsOneUndoStep() throws {
@@ -184,6 +202,196 @@ final class StudioCaptionQualityTests: XCTestCase {
 
         model.undo()
         XCTAssertEqual(model.project.captions.cues[0].end, 1.2, accuracy: Self.tolerance)
+    }
+
+    // MARK: - Editing
+
+    func testMovingAnEndKeepsACaptionAShortestPartLongAndInTheRecording() throws {
+        let words = [StudioCaptionWord(start: 1, end: 1.4, text: "Hi"), StudioCaptionWord(start: 1.5, end: 2, text: "there")]
+        let cues = [
+            StudioCaptionCue(id: "a", start: 1, end: 2, text: "Hi there", words: words),
+            StudioCaptionCue(id: "b", start: 3, end: 4, text: "Next"),
+        ]
+
+        let earlier = try XCTUnwrap(StudioCaptionEditing.retime(cues, at: 0, edge: .start, to: -5, sourceDuration: 60))
+        XCTAssertEqual(earlier.cues[0].start, 0)
+        XCTAssertEqual(earlier.cues[0].words, words)
+
+        let late = try XCTUnwrap(StudioCaptionEditing.retime(cues, at: 0, edge: .start, to: 10, sourceDuration: 60))
+        XCTAssertEqual(late.cues[0].start, 1.9, accuracy: Self.tolerance)
+        XCTAssertTrue(late.cues[0].words.isEmpty, "A word whose middle is outside the caption is no longer its word")
+
+        let long = try XCTUnwrap(StudioCaptionEditing.retime(cues, at: 1, edge: .end, to: 100, sourceDuration: 60))
+        XCTAssertEqual(long.cues[1].end, 60)
+        let short = try XCTUnwrap(StudioCaptionEditing.retime(cues, at: 1, edge: .end, to: 0, sourceDuration: 60))
+        XCTAssertEqual(short.cues[1].end, 3.1, accuracy: Self.tolerance)
+
+        let moved = try XCTUnwrap(StudioCaptionEditing.retime(cues, at: 1, edge: .start, to: 0.5, sourceDuration: 60))
+        XCTAssertEqual(moved.cues.map(\.id), ["b", "a"])
+        XCTAssertEqual(moved.index, 0)
+
+        XCTAssertNil(StudioCaptionEditing.retime(cues, at: 0, edge: .start, to: 1, sourceDuration: 60))
+        XCTAssertNil(StudioCaptionEditing.retime(cues, at: 0, edge: .end, to: .nan, sourceDuration: 60))
+        XCTAssertNil(StudioCaptionEditing.retime(cues, at: 5, edge: .end, to: 3, sourceDuration: 60))
+    }
+
+    func testSplittingACaptionGoesByItsWordsAndKeepsItsText() throws {
+        let cue = StudioCaptionCue(id: "a", start: 1, end: 3, text: "Hello there,\nworld", words: [
+            StudioCaptionWord(start: 1, end: 1.4, text: "Hello"),
+            StudioCaptionWord(start: 1.5, end: 1.9, text: "there,"),
+            StudioCaptionWord(start: 2.5, end: 3, text: "world"),
+        ])
+
+        let result = try XCTUnwrap(StudioCaptionEditing.split([cue], at: 0, time: 2.2))
+        XCTAssertEqual(result.cues.map(\.text), ["Hello there,", "world"])
+        XCTAssertEqual(result.cues.map(\.start), [1, 2.2])
+        XCTAssertEqual(result.cues.map(\.end), [2.2, 3])
+        XCTAssertEqual(result.cues.map(\.words.count), [2, 1])
+        XCTAssertEqual(result.cues[0].id, "a")
+        XCTAssertNotEqual(result.cues[1].id, "a")
+        XCTAssertEqual(result.cues[1].id, result.cues[1].id.lowercased())
+        XCTAssertEqual(result.index, 1, "The second part starts at the split, where the playhead is")
+
+        let early = try XCTUnwrap(StudioCaptionEditing.split([cue], at: 0, time: 1.1))
+        XCTAssertEqual(early.cues.map(\.text), ["Hello", "there,\nworld"])
+        XCTAssertTrue(early.cues[0].words.isEmpty, "A word said after the split is not the first part's")
+
+        let unspaced = StudioCaptionCue(start: 0, end: 2, text: "こんにちは世界", words: [
+            StudioCaptionWord(start: 0, end: 1, text: "こんにちは"),
+            StudioCaptionWord(start: 1, end: 2, text: "世界"),
+        ])
+        XCTAssertEqual(StudioCaptionEditing.split([unspaced], at: 0, time: 1)?.cues.map(\.text), ["こんにちは", "世界"])
+    }
+
+    func testSplittingACaptionWithoutWordsGoesByHowFarThroughItIs() throws {
+        let cue = StudioCaptionCue(id: "a", start: 0, end: 4, text: "aaaa bbbb\ncccc  dddd")
+
+        let result = try XCTUnwrap(StudioCaptionEditing.split([cue], at: 0, time: 1))
+        XCTAssertEqual(result.cues.map(\.text), ["aaaa", "bbbb cccc dddd"])
+        XCTAssertTrue(result.cues.allSatisfy(\.words.isEmpty))
+
+        XCTAssertTrue(StudioCaptionEditing.canSplit(cue, at: 2))
+        XCTAssertFalse(StudioCaptionEditing.canSplit(cue, at: 0.05), "Each part is a shortest part long")
+        XCTAssertFalse(StudioCaptionEditing.canSplit(cue, at: 3.95))
+        XCTAssertFalse(StudioCaptionEditing.canSplit(StudioCaptionCue(start: 0, end: 4, text: "Hello"), at: 2))
+        XCTAssertNil(StudioCaptionEditing.split([cue], at: 0, time: 5))
+    }
+
+    func testMergingACaptionWithTheNextOneInTime() throws {
+        let first = StudioCaptionCue(id: "a", start: 1, end: 2, text: "Hello\nthere", words: [
+            StudioCaptionWord(start: 1, end: 1.4, text: "Hello"),
+            StudioCaptionWord(start: 1.5, end: 2, text: "there"),
+        ])
+        let next = StudioCaptionCue(id: "b", start: 3, end: 4, text: " world ", words: [StudioCaptionWord(start: 3, end: 4, text: "world")])
+
+        let result = try XCTUnwrap(StudioCaptionEditing.mergeWithNext([next, first], at: 1))
+        XCTAssertEqual(result.cues.count, 1)
+        XCTAssertEqual(result.index, 0)
+        XCTAssertEqual(result.cues[0].id, "a")
+        XCTAssertEqual(result.cues[0].text, "Hello there world")
+        XCTAssertEqual(result.cues[0].start, 1)
+        XCTAssertEqual(result.cues[0].end, 4)
+        XCTAssertEqual(result.cues[0].words.map(\.text), ["Hello", "there", "world"])
+
+        var unspelled = next
+        unspelled.words = []
+        XCTAssertEqual(StudioCaptionEditing.mergeWithNext([first, unspelled], at: 0)?.cues[0].words, [])
+
+        XCTAssertFalse(StudioCaptionEditing.canMergeWithNext([first, next], at: 1))
+        XCTAssertNil(StudioCaptionEditing.mergeWithNext([first, next], at: 1))
+        XCTAssertNil(StudioCaptionEditing.mergeWithNext([first], at: 0))
+    }
+
+    func testTheCaptionAtATimeEndsWhereTheNextStarts() {
+        let cues = [
+            StudioCaptionCue(start: 0, end: 1),
+            StudioCaptionCue(start: 1, end: 2),
+            StudioCaptionCue(start: 3, end: 4),
+        ]
+        XCTAssertEqual(StudioCaptionEditing.position(at: 0.5, in: cues), 0)
+        XCTAssertEqual(StudioCaptionEditing.position(at: 1, in: cues), 1)
+        XCTAssertNil(StudioCaptionEditing.position(at: 2.5, in: cues))
+        XCTAssertEqual(StudioCaptionEditing.position(at: 3.99, in: cues), 2)
+        XCTAssertNil(StudioCaptionEditing.position(at: 4, in: cues))
+        XCTAssertNil(StudioCaptionEditing.position(at: -1, in: cues))
+        XCTAssertNil(StudioCaptionEditing.position(at: .nan, in: cues))
+
+        let covered = [StudioCaptionCue(start: 0, end: 10), StudioCaptionCue(start: 2, end: 3)]
+        XCTAssertNil(StudioCaptionEditing.position(at: 5, in: covered), "The first was cut short where the second starts")
+    }
+
+    func testNextProblemGoesRoundAfterTheLast() {
+        let problems: Set<Int> = [1, 3]
+        let next = { StudioCaptionEditing.nextProblem(count: 5, after: $0, hasProblem: problems.contains) }
+        XCTAssertEqual(next(nil), 1, "With nothing open, the first")
+        XCTAssertEqual(next(1), 3)
+        XCTAssertEqual(next(2), 3)
+        XCTAssertEqual(next(3), 1, "Round to the first after the last")
+        XCTAssertEqual(next(4), 1)
+        XCTAssertEqual(StudioCaptionEditing.nextProblem(count: 5, after: 3) { $0 == 3 }, 3, "The only one stays open")
+        XCTAssertNil(StudioCaptionEditing.nextProblem(count: 5, after: nil) { _ in false })
+        XCTAssertNil(StudioCaptionEditing.nextProblem(count: 0, after: nil) { _ in true })
+    }
+
+    func testSplittingMergingAndMovingCaptionsAreEachOneUndoStep() throws {
+        var model = try makeModel()
+        model.replaceCaptions([
+            StudioCaptionCue(id: "a", start: 1, end: 3, text: "One two"),
+            StudioCaptionCue(id: "b", start: 4, end: 5, text: "Three"),
+        ])
+        let original = model.project.captions.cues
+
+        XCTAssertEqual(model.splitCaption(at: 0, sourceTime: 2), 1)
+        XCTAssertEqual(model.project.captions.cues.map(\.text), ["One", "two", "Three"])
+        model.undo()
+        XCTAssertEqual(model.project.captions.cues, original)
+
+        XCTAssertEqual(model.mergeCaptionWithNext(at: 0), 0)
+        XCTAssertEqual(model.project.captions.cues.map(\.text), ["One two Three"])
+        model.undo()
+        XCTAssertEqual(model.project.captions.cues, original)
+
+        XCTAssertEqual(model.retimeCaption(at: 1, edge: .start, to: 0), 0)
+        XCTAssertEqual(model.project.captions.cues.map(\.id), ["b", "a"])
+        XCTAssertNil(model.retimeCaption(at: 0, edge: .start, to: 0))
+        model.undo()
+        XCTAssertEqual(model.project.captions.cues, original)
+
+        XCTAssertNil(model.splitCaption(at: 1, sourceTime: 4.5))
+        XCTAssertNil(model.mergeCaptionWithNext(at: 1))
+    }
+
+    // MARK: - Panel
+
+    func testSearchingCaptionsIgnoresCaseAccentsAndWidth() {
+        XCTAssertTrue(StudioCaptionSearch.matches("Le café est ouvert", query: "CAFE"))
+        XCTAssertTrue(StudioCaptionSearch.matches("ＴｉｎｙＣｌｉｐｓ rocks", query: "tinyclips"))
+        XCTAssertFalse(StudioCaptionSearch.matches("Hello", query: ""))
+        XCTAssertEqual(StudioCaptionSearch.normalized("  hi \n"), "hi")
+
+        let text = "Go, go, GO!"
+        XCTAssertEqual(StudioCaptionSearch.ranges(of: "go", in: text).map { String(text[$0]) }, ["Go", "go", "GO"])
+        XCTAssertEqual(StudioCaptionSearch.ranges(of: "", in: text), [])
+    }
+
+    func testTheNoSpeechNoticeNamesTheLanguageAndSaysTheCaptionsAreKept() {
+        XCTAssertEqual(
+            StudioCaptionPanelText.noSpeechMessage(languageName: "French", hasCaptions: false),
+            "No speech was found in this recording when listening for French. If people speak another language in it, try that one."
+        )
+        XCTAssertEqual(
+            StudioCaptionPanelText.noSpeechMessage(languageName: nil, hasCaptions: true),
+            "No speech was found in this recording. If people speak another language in it, try that one. The captions are as they were."
+        )
+    }
+
+    func testCaptionTimesReadAsAClockToATenth() {
+        XCTAssertEqual(StudioCaptionPanelText.clockText(5), "0:05.0")
+        XCTAssertEqual(StudioCaptionPanelText.clockText(65.34), "1:05.3")
+        XCTAssertEqual(StudioCaptionPanelText.clockText(59.96), "1:00.0")
+        XCTAssertEqual(StudioCaptionPanelText.clockText(-1), "0:00.0")
+        XCTAssertEqual(StudioCaptionPanelText.clockText(.nan), "0:00.0")
+        XCTAssertEqual(StudioCaptionPanelText.clockText(1e19), "5999:59.0")
     }
 
     // MARK: - Fixtures

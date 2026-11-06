@@ -67,6 +67,8 @@ CAPTION_SHORTEST = 0.7
 CAPTION_LONGEST_LINE = 42
 CAPTION_MOST_LINES = 2
 CAPTION_FASTEST = 20
+CAPTION_MOST_MOVED = 0.5
+CAPTION_ROOM = 0.001
 CAPTION_TIMING = re.compile(
     r"^\s*(?:([0-9]+):)?([0-9]{1,2}):([0-9]{2})[.,]([0-9]{1,3})\s*-->\s*(?:([0-9]+):)?([0-9]{1,2}):([0-9]{2})[.,]([0-9]{1,3})"
 )
@@ -3076,8 +3078,82 @@ def caption_in_order(cues):
     )
 
 
+def caption_enough(text):
+    """The least time that reads, and a millisecond so rounding cannot leave a cue just short."""
+    return max(CAPTION_SHORTEST, caption_count(text) / CAPTION_FASTEST) + CAPTION_ROOM
+
+
+def caption_present(cue):
+    s, e = cue["start"], cue["end"]
+    return math.isfinite(s) and math.isfinite(e) and e > s and bool(cue["text"])
+
+
+def caption_hard(cue):
+    length = cue["end"] - cue["start"]
+    return length < CAPTION_SHORTEST or caption_count(cue["text"]) / length > CAPTION_FASTEST
+
+
+def caption_spare(cue):
+    if not caption_present(cue):
+        return 0
+    return min(CAPTION_MOST_MOVED, max(0, cue["end"] - cue["start"] - caption_enough(cue["text"])))
+
+
+def caption_room(cues, index, duration):
+    """The seconds the cue at index can take after its end and before its start."""
+    cue = cues[index]
+    if index + 1 == len(cues):
+        after = duration - cue["end"]
+    else:
+        following = cues[index + 1]
+        if not caption_present(following) or following["start"] < cue["end"]:
+            after = 0
+        else:
+            after = min(duration, following["start"] + caption_spare(following)) - cue["end"]
+    if index == 0:
+        before = min(CAPTION_MOST_MOVED, cue["start"])
+    else:
+        previous = cues[index - 1]
+        if not caption_present(previous) or previous["end"] > cue["start"]:
+            before = 0
+        else:
+            before = min(CAPTION_MOST_MOVED, cue["start"] - (previous["end"] - caption_spare(previous)))
+    return max(0, after), max(0, before)
+
+
+def caption_spells(words, text):
+    return "".join("".join(word["text"].split()) for word in words) == "".join(text.split())
+
+
+def caption_join(first, second):
+    if not caption_present(first) or not caption_present(second):
+        return None
+    if not 0 <= second["start"] - first["end"] <= CAPTION_MOST_MOVED:
+        return None
+    text = caption_wrap(first["text"] + " " + second["text"])
+    if text is None or second["end"] - first["start"] < caption_enough(text):
+        return None
+    both = all(cue["words"] and caption_spells(cue["words"], cue["text"]) for cue in (first, second))
+    return {**first, "end": second["end"], "text": text, "words": first["words"] + second["words"] if both else []}
+
+
+def caption_join_order(cues, index):
+    """Where a cue too hard to read looks for one to join: the one before it first, unless that ends a sentence."""
+    if index > 0 and cues[index - 1]["text"][-1:] not in (".", "!", "?"):
+        return [index - 1, index]
+    return [index, index - 1]
+
+
+def caption_can_join(cues, index):
+    return any(
+        0 <= first and first + 1 < len(cues) and caption_join(cues[first], cues[first + 1]) is not None
+        for first in caption_join_order(cues, index)
+    )
+
+
 def check_captions(cues, duration):
     ordered = caption_in_order(cues)
+    tidied_cues = [{**cue, "text": caption_tidy(cue["text"])} for cue in ordered]
     findings = []
     previous = None
 
@@ -3104,11 +3180,18 @@ def check_captions(cues, duration):
                 found(index, "tooManyLines", fixes_layout)
             length = e - s
             limit = duration if index + 1 == len(ordered) else min(ordered[index + 1]["start"], duration)
-            can_extend = s + caption_wanted(length, tidied) <= limit
+            can_fix_time = False
+            if caption_hard(tidied_cues[index]):
+                more = caption_enough(tidied) - length
+                can_fix_time = (
+                    s + caption_wanted(length, tidied) <= limit
+                    or sum(caption_room(tidied_cues, index, duration)) >= more
+                    or caption_can_join(tidied_cues, index)
+                )
             if length < CAPTION_SHORTEST:
-                found(index, "shortDuration", can_extend)
+                found(index, "shortDuration", can_fix_time)
             if caption_count(tidied) / length > CAPTION_FASTEST:
-                found(index, "readingSpeed", can_extend)
+                found(index, "readingSpeed", can_fix_time)
         else:
             found(index, "empty", True)
         previous = cue
@@ -3158,6 +3241,37 @@ def fix_captions(cues, duration):
         if cue["start"] + wanted <= limit:
             cue["end"] = cue["start"] + wanted
             applied += 1
+    for index, cue in enumerate(laid_out):
+        if not caption_present(cue) or not caption_hard(cue):
+            continue
+        more = caption_enough(cue["text"]) - (cue["end"] - cue["start"])
+        after, before = caption_room(laid_out, index, duration)
+        if after + before < more:
+            continue
+        later = min(more, after)
+        earlier = more - later
+        if later > 0:
+            cue["end"] += later
+            if index + 1 < len(laid_out):
+                laid_out[index + 1]["start"] = max(laid_out[index + 1]["start"], cue["end"])
+        if earlier > 0:
+            cue["start"] -= earlier
+            if index > 0:
+                laid_out[index - 1]["end"] = min(laid_out[index - 1]["end"], cue["start"])
+        applied += 1
+    index = 0
+    while index < len(laid_out):
+        if caption_present(laid_out[index]) and caption_hard(laid_out[index]):
+            for first in caption_join_order(laid_out, index):
+                joined = None
+                if 0 <= first and first + 1 < len(laid_out):
+                    joined = caption_join(laid_out[first], laid_out[first + 1])
+                if joined is not None:
+                    laid_out[first:first + 2] = [joined]
+                    applied += 1
+                    index = first
+                    break
+        index += 1
     return laid_out, applied
 
 
@@ -3287,19 +3401,44 @@ def generate_caption_quality():
             [quality_cue(1, 6, A_WORD_TOO_LONG + " tail")],
             [(0, "longLine", False)], "1 long line",
             [(1, 6, A_WORD_TOO_LONG + " tail", 0)], 0, ["longLine"]),
-        "short-extends.json": quality_fixture("A short cue lasts a second when there is room, and is left alone when there is not.", 60,
+        "short-extends.json": quality_fixture("A short cue lasts a second when there is room, and only as long as it needs when there is less.", 60,
             [quality_cue(1, 1.5, "Hi."), quality_cue(5, 5.5, "Tight."), quality_cue(5.75, 8, "Next.")],
-            [(0, "shortDuration", True), (1, "shortDuration", False)], "2 too short",
-            [(1, 2, "Hi.", 0), (5, 5.5, "Tight.", 0), (5.75, 8, "Next.", 0)], 1, ["shortDuration"]),
-        "fast-extends.json": quality_fixture("A cue too fast to read lasts as long as its text needs, up to the next cue.", 60,
+            [(0, "shortDuration", True), (1, "shortDuration", True)], "2 too short",
+            [(1, 2, "Hi.", 0), (5, 5.701, "Tight.", 0), (5.75, 8, "Next.", 0)], 2, []),
+        "fast-extends.json": quality_fixture("A cue too fast to read lasts as long as its text needs, up to the next cue, or borrows what the cues around it can spare.", 60,
             [quality_cue(1, 2, "Thirty characters of plain text"), quality_cue(10, 11, "Thirty characters of plain text"), quality_cue(11.25, 12, "Close.")],
-            [(0, "readingSpeed", True), (1, "readingSpeed", False)], "2 too fast to read",
-            [(1, 2.35, "Thirty characters of plain text", 0), (10, 11, "Thirty characters of plain text", 0), (11.25, 12, "Close.", 0)], 1,
-            ["readingSpeed"]),
-        "end-of-recording.json": quality_fixture("A cue is not extended past the end of the recording.", 2,
+            [(0, "readingSpeed", True), (1, "readingSpeed", True)], "2 too fast to read",
+            [(1, 2.35, "Thirty characters of plain text", 0), (9.948, 11.299, "Thirty characters of plain text", 0), (11.299, 12, "Close.", 0)], 2,
+            []),
+        "end-of-recording.json": quality_fixture("A cue is not extended past the end of the recording, so it starts a little earlier instead.", 2,
             [quality_cue(1.5, 1.75, "Hi.")],
-            [(0, "shortDuration", False)], "1 too short",
-            [(1.5, 1.75, "Hi.", 0)], 0, ["shortDuration"]),
+            [(0, "shortDuration", True)], "1 too short",
+            [(1.299, 2, "Hi.", 0)], 1, []),
+        "borrow.json": quality_fixture("A cue too fast to read takes what the next cue can spare after it, and up to half a second before it, and those cues move over.", 60,
+            [quality_cue(0, 3, "A calm first caption."), quality_cue(3, 4, "This caption has rather a lot to say."), quality_cue(4, 5, "Then a pause.")],
+            [(1, "readingSpeed", True)], "1 too fast to read",
+            [(0, 2.798, "A calm first caption.", 0), (2.798, 4.299, "This caption has rather a lot to say.", 0), (4.299, 5, "Then a pause.", 0)], 1,
+            []),
+        "join-previous.json": quality_fixture("A cue too short to read that cannot borrow joins the cue before it, when that does not end a sentence, and keeps both cues' words.", 60,
+            [
+                quality_cue(0, 1.7, "multiple sessions, like, that's your",
+                    [(0, 0.4, "multiple"), (0.4, 0.8, "sessions,"), (0.8, 1.1, "like,"), (1.1, 1.4, "that's"), (1.4, 1.7, "your")]),
+                quality_cue(1.7, 2.1, "go-to.", [(1.7, 2.1, "go-to.")]),
+                quality_cue(2.1, 2.85, "Next one."),
+            ],
+            [(1, "shortDuration", True)], "1 too short",
+            [(0, 2.1, "multiple sessions, like,\nthat's your go-to.", 6), (2.1, 2.85, "Next one.", 0)], 1,
+            []),
+        "join-next.json": quality_fixture("A cue too short to read after one that ends a sentence joins the cue after it, and its words go when one of them has none.", 60,
+            [quality_cue(1.3, 2.2, "That is all."), quality_cue(2.2, 2.5, "So"), quality_cue(2.5, 3.3, "here we go.", [(2.5, 3.3, "here")])],
+            [(1, "shortDuration", True)], "1 too short",
+            [(1.3, 2.2, "That is all.", 0), (2.2, 3.3, "So here we go.", 0)], 1,
+            []),
+        "back-to-back.json": quality_fixture("Fast speech in cues back to back leaves nothing to borrow and is too much to join, so it is only reported.", 2,
+            [quality_cue(0, 1, "Every word here comes out fast."), quality_cue(1, 2, "and the next one is just as quick.")],
+            [(0, "readingSpeed", False), (1, "readingSpeed", False)], "2 too fast to read",
+            [(0, 1, "Every word here comes out fast.", 0), (1, 2, "and the next one is just as quick.", 0)], 0,
+            ["readingSpeed", "readingSpeed"]),
         "unsorted.json": quality_fixture("Findings name a cue by its place in time order, and fixes come back in that order.", 60,
             [quality_cue(5, 6, " Later"), quality_cue(1, 2, "Earlier.")],
             [(1, "whitespace", True)], "1 with extra space",

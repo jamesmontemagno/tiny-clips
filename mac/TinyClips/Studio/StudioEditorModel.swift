@@ -1644,19 +1644,9 @@ struct StudioEditorModel: Equatable, Sendable {
     // An index is a cue's place in `project.captions.cues`. What this app writes there is in time
     // order, and what an agent or another app wrote need not be. Each edit is one undo step.
 
-    /// What a list of the captions shows: the places of the cues in time order.
-    func captionIndexesInOrder() -> [Int] {
-        let cues = project.captions.cues
-        return cues.indices.sorted { first, second in
-            if cues[first].start != cues[second].start { return cues[first].start < cues[second].start }
-            if cues[first].end != cues[second].end { return cues[first].end < cues[second].end }
-            return first < second
-        }
-    }
-
     /// Puts `cues` in place of the captions: section 15.5 of the project format.
     mutating func replaceCaptions(_ cues: [StudioCaptionCue]) {
-        let ordered = StudioCaptionQuality.inOrder(cues)
+        let ordered = cues.inTimeOrder()
         mutate {
             $0.captions.language = nil
             $0.captions.cues = ordered
@@ -1666,7 +1656,7 @@ struct StudioEditorModel: Equatable, Sendable {
     /// Puts what speech recognition heard in place of the captions: section 15.7 of the project
     /// format.
     mutating func setGeneratedCaptions(language: String?, cues: [StudioCaptionCue]) {
-        let ordered = StudioCaptionQuality.inOrder(cues)
+        let ordered = cues.inTimeOrder()
         mutate {
             $0.captions.language = language
             $0.captions.cues = ordered
@@ -1693,6 +1683,39 @@ struct StudioEditorModel: Equatable, Sendable {
         guard project.captions.cues.indices.contains(index) else { return false }
         mutate { $0.captions.cues.remove(at: index) }
         return true
+    }
+
+    /// Moves one end of a cue toward `sourceTime`. Returns where the cue is now, or nil when
+    /// nothing changed.
+    @discardableResult
+    mutating func retimeCaption(at index: Int, edge: StudioCaptionEdge, to sourceTime: Double) -> Int? {
+        guard let result = StudioCaptionEditing.retime(
+            project.captions.cues,
+            at: index,
+            edge: edge,
+            to: sourceTime,
+            sourceDuration: sourceDuration
+        ) else { return nil }
+        mutate { $0.captions.cues = result.cues }
+        return result.index
+    }
+
+    /// Splits a cue in two at `sourceTime`. Returns where the second part is, or nil when the cue
+    /// cannot be split there.
+    @discardableResult
+    mutating func splitCaption(at index: Int, sourceTime: Double) -> Int? {
+        guard let result = StudioCaptionEditing.split(project.captions.cues, at: index, time: sourceTime) else { return nil }
+        mutate { $0.captions.cues = result.cues }
+        return result.index
+    }
+
+    /// Puts a cue together with the one after it. Returns where the merged cue is, or nil when
+    /// there is no cue after it.
+    @discardableResult
+    mutating func mergeCaptionWithNext(at index: Int) -> Int? {
+        guard let result = StudioCaptionEditing.mergeWithNext(project.captions.cues, at: index) else { return nil }
+        mutate { $0.captions.cues = result.cues }
+        return result.index
     }
 
     /// Makes the safe fixes of section 15.6, and says how many things changed.

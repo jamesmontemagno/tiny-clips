@@ -84,6 +84,36 @@ struct StudioCaptionStyle: Equatable, Sendable {
     }
 }
 
+// MARK: - Time Order
+
+/// Something that starts and ends, in seconds.
+protocol StudioCaptionTimed {
+    var start: Double { get }
+    var end: Double { get }
+}
+
+extension StudioCaptionCue: StudioCaptionTimed {}
+extension StudioCaptionWord: StudioCaptionTimed {}
+extension StudioResolvedCaption: StudioCaptionTimed {}
+
+extension Array where Element: StudioCaptionTimed {
+    /// The places of the elements in time order: by start, then end. What is equal in both keeps
+    /// its order, which `sorted` does not promise to.
+    func indexesInTimeOrder() -> [Int] {
+        indices.sorted { first, second in
+            if self[first].start != self[second].start { return self[first].start < self[second].start }
+            if self[first].end != self[second].end { return self[first].end < self[second].end }
+            return first < second
+        }
+    }
+
+    /// The elements in the order of `indexesInTimeOrder`. Captions, checks, and the panel's list
+    /// all use this one order.
+    func inTimeOrder() -> [Element] {
+        indexesInTimeOrder().map { self[$0] }
+    }
+}
+
 // MARK: - Resolver
 
 /// A caption as a video shows it, in output time.
@@ -121,7 +151,7 @@ enum StudioCaptionResolver {
             }
         }
 
-        let ordered = inOrder(parts, start: \.start, end: \.end)
+        let ordered = parts.inTimeOrder()
         var result: [StudioResolvedCaption] = []
         result.reserveCapacity(ordered.count)
         for part in ordered {
@@ -190,20 +220,11 @@ enum StudioCaptionResolver {
 
     // MARK: - Private
 
-    private struct UsableCue {
+    private struct UsableCue: StudioCaptionTimed {
         var start: Double
         var end: Double
         var text: String
         var words: [StudioCaptionWord]
-    }
-
-    /// Sorted by start, then end. What is equal in both keeps its order: `sorted` does not promise to.
-    private static func inOrder<T>(_ items: [T], start: (T) -> Double, end: (T) -> Double) -> [T] {
-        items.enumerated().sorted { first, second in
-            if start(first.element) != start(second.element) { return start(first.element) < start(second.element) }
-            if end(first.element) != end(second.element) { return end(first.element) < end(second.element) }
-            return first.offset < second.offset
-        }.map(\.element)
     }
 
     private static func usableCues(_ cues: [StudioCaptionCue]) -> [UsableCue] {
@@ -214,9 +235,9 @@ enum StudioCaptionResolver {
                 $0.start.isFinite && $0.end.isFinite && $0.end >= $0.start
                     && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
-            return UsableCue(start: cue.start, end: cue.end, text: text, words: inOrder(words, start: \.start, end: \.end))
+            return UsableCue(start: cue.start, end: cue.end, text: text, words: words.inTimeOrder())
         }
-        return inOrder(usable, start: \.start, end: \.end)
+        return usable.inTimeOrder()
     }
 
     private static func part(of cue: UsableCue, in piece: StudioTimePiece, elapsed: Double) -> StudioResolvedCaption? {
@@ -243,10 +264,226 @@ enum StudioCaptionResolver {
     }
 }
 
+// MARK: - Editing
+
+/// One end of a caption.
+enum StudioCaptionEdge: Sendable {
+    case start
+    case end
+}
+
+/// The Captions panel's edits to the cues, all in source time. Each gives back every cue in time
+/// order and where the cue it changed is now, or nil when the edit cannot be made or would change
+/// nothing. No part is made shorter than `StudioCaptionResolver.shortestPart`. A cue keeps its
+/// words only while each word's middle is inside it, as the resolver reads them.
+enum StudioCaptionEditing {
+    struct Result: Equatable {
+        var cues: [StudioCaptionCue]
+        /// Where the changed cue is in `cues`. After a split, the second part, which starts at
+        /// the split.
+        var index: Int
+    }
+
+    /// Moves one end of the cue at `index` to `time`, or as near to it as it can go: the start
+    /// stays at or after 0 and a shortest part before the end, and the end a shortest part after
+    /// the start and at or before the end of the recording.
+    static func retime(
+        _ cues: [StudioCaptionCue],
+        at index: Int,
+        edge: StudioCaptionEdge,
+        to time: Double,
+        sourceDuration: Double
+    ) -> Result? {
+        guard cues.indices.contains(index), time.isFinite else { return nil }
+        let shortest = StudioCaptionResolver.shortestPart
+        var cue = cues[index]
+        switch edge {
+        case .start:
+            guard cue.end.isFinite, cue.end >= shortest else { return nil }
+            cue.start = min(max(0, time), cue.end - shortest)
+        case .end:
+            guard cue.start.isFinite else { return nil }
+            let earliest = cue.start + shortest
+            let latest = sourceDuration.isFinite && sourceDuration > 0 ? max(earliest, sourceDuration) : .infinity
+            cue.end = min(max(earliest, time), latest)
+        }
+        guard cue.start != cues[index].start || cue.end != cues[index].end else { return nil }
+        if !wordsFit(cue.words, start: cue.start, end: cue.end) {
+            cue.words = []
+        }
+        var changed = cues
+        changed[index] = cue
+        return inTimeOrder(changed, following: index)
+    }
+
+    /// Whether `cue` can be split at `time`: each part a shortest part long or more, with at least
+    /// one word of the text in each.
+    static func canSplit(_ cue: StudioCaptionCue, at time: Double) -> Bool {
+        isInside(cue, time) && splitText(of: cue, at: time) != nil
+    }
+
+    /// Splits the cue at `index` in two at `time`. The words said before it go in the first part
+    /// and the rest in the second, by the cue's word times when it has them, and otherwise by how
+    /// far through the cue `time` is. The first part keeps the cue's id, and the second has a new one.
+    static func split(_ cues: [StudioCaptionCue], at index: Int, time: Double) -> Result? {
+        guard cues.indices.contains(index), isInside(cues[index], time),
+              let parts = splitText(of: cues[index], at: time) else { return nil }
+        let cue = cues[index]
+        var first = cue
+        first.end = time
+        first.text = parts.firstText
+        first.words = wordsFit(parts.firstWords, start: cue.start, end: time) ? parts.firstWords : []
+        var second = cue
+        second.id = UUID().uuidString.lowercased()
+        second.start = time
+        second.text = parts.secondText
+        second.words = wordsFit(parts.secondWords, start: time, end: cue.end) ? parts.secondWords : []
+
+        var changed = cues
+        changed[index] = first
+        changed.insert(second, at: index + 1)
+        return inTimeOrder(changed, following: index + 1)
+    }
+
+    /// Whether the cue at `index` has one after it in time order to be put together with.
+    static func canMergeWithNext(_ cues: [StudioCaptionCue], at index: Int) -> Bool {
+        let order = cues.indexesInTimeOrder()
+        guard let position = order.firstIndex(of: index), position + 1 < order.count else { return false }
+        return [cues[index], cues[order[position + 1]]].allSatisfy { $0.start.isFinite && $0.end.isFinite }
+    }
+
+    /// Puts the cue at `index` together with the one after it in time order: from the earlier
+    /// start to the later end, saying the one and then the other on a line. It keeps the first's
+    /// id. Its words are both cues' words when each had words that spell out its text.
+    static func mergeWithNext(_ cues: [StudioCaptionCue], at index: Int) -> Result? {
+        guard canMergeWithNext(cues, at: index) else { return nil }
+        let order = cues.indexesInTimeOrder()
+        guard let position = order.firstIndex(of: index) else { return nil }
+        let nextIndex = order[position + 1]
+        let first = cues[index]
+        let next = cues[nextIndex]
+
+        var merged = first
+        merged.start = min(first.start, next.start)
+        merged.end = max(first.end, next.end)
+        merged.text = [first.text, next.text]
+            .map { StudioCaptionQuality.tidy($0).replacingOccurrences(of: "\n", with: " ") }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        let spellsBoth = [first, next].allSatisfy {
+            !$0.words.isEmpty && StudioCaptionTranscript.spells($0.words, $0.text)
+        }
+        merged.words = spellsBoth ? first.words + next.words : []
+
+        var changed = cues
+        changed[index] = merged
+        changed.remove(at: nextIndex)
+        return inTimeOrder(changed, following: nextIndex < index ? index - 1 : index)
+    }
+
+    /// Where in `ordered`, which is in time order, the caption showing at `time` is, or nil when
+    /// none is. A caption ends where the next one starts, as in section 15.2 of the project format.
+    static func position<Element: StudioCaptionTimed>(at time: Double, in ordered: [Element]) -> Int? {
+        guard time.isFinite else { return nil }
+        var low = 0
+        var high = ordered.count
+        while low < high {
+            let middle = low + (high - low) / 2
+            if ordered[middle].start <= time {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        guard low > 0, ordered[low - 1].end > time else { return nil }
+        return low - 1
+    }
+
+    /// The place, among `count` rows, of the next one that `hasProblem`: after `current`, or the
+    /// first when there is no current row, going round to the first after the last. Nil when
+    /// none has a problem.
+    static func nextProblem(count: Int, after current: Int?, hasProblem: (Int) -> Bool) -> Int? {
+        guard count > 0 else { return nil }
+        let start = current.map { min(max($0 + 1, 0), count) } ?? 0
+        return (start..<count).first(where: hasProblem) ?? (0..<start).first(where: hasProblem)
+    }
+
+    // MARK: - Private
+
+    private struct SplitText {
+        var firstText: String
+        var secondText: String
+        var firstWords: [StudioCaptionWord] = []
+        var secondWords: [StudioCaptionWord] = []
+    }
+
+    private static func isInside(_ cue: StudioCaptionCue, _ time: Double) -> Bool {
+        let shortest = StudioCaptionResolver.shortestPart
+        return time.isFinite && cue.start.isFinite && cue.end.isFinite
+            && time - cue.start >= shortest && cue.end - time >= shortest
+    }
+
+    private static func splitText(of cue: StudioCaptionCue, at time: Double) -> SplitText? {
+        let text = StudioCaptionResolver.cleanText(cue.text)
+        let words = cue.words
+        // Split where the words say, out of the text itself, so its spacing and its lines stay.
+        if words.count >= 2, StudioCaptionTranscript.spells(words, text),
+           let places = StudioCaptionTranscript.places(of: words, in: text) {
+            let said = words.firstIndex { ($0.start + $0.end) / 2 >= time } ?? words.count
+            let count = min(max(said, 1), words.count - 1)
+            let firstText = StudioCaptionResolver.cleanText(String(text[..<places[count - 1].upperBound]))
+            let secondText = StudioCaptionResolver.cleanText(String(text[places[count].lowerBound...]))
+            guard !firstText.isEmpty, !secondText.isEmpty else { return nil }
+            return SplitText(
+                firstText: firstText,
+                secondText: secondText,
+                firstWords: Array(words[..<count]),
+                secondWords: Array(words[count...])
+            )
+        }
+
+        // Without word times, the text is split where its letters are shared most like the time.
+        let tokens = text.unicodeScalars
+            .split { $0.properties.isWhitespace }
+            .map { String(String.UnicodeScalarView($0)) }
+        guard tokens.count >= 2 else { return nil }
+        let wanted = (time - cue.start) / (cue.end - cue.start)
+        let lengths = tokens.map { $0.unicodeScalars.count }
+        let total = Double(lengths.reduce(0, +))
+        var best = 1
+        var bestDistance = Double.infinity
+        var before = 0
+        for count in 1..<tokens.count {
+            before += lengths[count - 1]
+            let distance = abs(Double(before) / total - wanted)
+            if distance < bestDistance {
+                best = count
+                bestDistance = distance
+            }
+        }
+        return SplitText(
+            firstText: tokens[..<best].joined(separator: " "),
+            secondText: tokens[best...].joined(separator: " ")
+        )
+    }
+
+    private static func wordsFit(_ words: [StudioCaptionWord], start: Double, end: Double) -> Bool {
+        words.allSatisfy {
+            let middle = ($0.start + $0.end) / 2
+            return middle >= start && middle <= end
+        }
+    }
+
+    private static func inTimeOrder(_ cues: [StudioCaptionCue], following index: Int) -> Result {
+        let order = cues.indexesInTimeOrder()
+        return Result(cues: order.map { cues[$0] }, index: order.firstIndex(of: index) ?? 0)
+    }
+}
+
 // MARK: - Files
 
 /// A kind of caption file.
-enum StudioCaptionFormat: String, CaseIterable, Sendable {
+enum StudioCaptionFormat: String, Sendable {
     case srt
     case vtt
 

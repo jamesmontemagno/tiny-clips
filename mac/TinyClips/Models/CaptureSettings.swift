@@ -352,6 +352,9 @@ class CaptureSettings: ObservableObject {
     static let videoCodecKey = CaptureSettingsDefaultsKey.videoCodec
     static let confirmEditorEscapeKey = CaptureSettingsDefaultsKey.confirmEditorEscape
     static let screenshotEditorNativeSizeKey = "screenshotEditorNativeSize"
+    /// Where the Captions panel keeps the language captions are generated in, as a BCP 47 tag, or
+    /// empty for the system's.
+    static let studioCaptionLanguageKey = "studioCaptionLanguage"
     static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
     private let defaults: UserDefaults
 
@@ -436,8 +439,6 @@ class CaptureSettings: ObservableObject {
     /// The most disk space the Studio projects that cleanup may remove can use before the ones
     /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
     @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
-    /// The language captions are generated in, as a BCP 47 tag, or empty for the system's.
-    @AppStorage("studioCaptionLanguage") var studioCaptionLanguage: String = ""
     var studioCleanupOptions: StudioCleanupOptions {
         StudioCleanupOptions(retentionDays: studioSourceRetentionDays, sizeCapGigabytes: studioStorageCapGigabytes)
     }
@@ -872,7 +873,7 @@ class CaptureSettings: ObservableObject {
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
-        "studioSourceRetentionDays", "studioStorageCapGigabytes", "studioCaptionLanguage",
+        "studioSourceRetentionDays", "studioStorageCapGigabytes", studioCaptionLanguageKey,
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",

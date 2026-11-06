@@ -331,6 +331,7 @@ private final class WeakSaveService: @unchecked Sendable {
 class SaveService: NSObject, UNUserNotificationCenterDelegate {
     static let shared = SaveService()
     private let notificationURLKey = "savedFileURL"
+    private let notificationStudioProjectKey = "studioProjectID"
     @MainActor private var noticePanel: NSPanel?
 
     override init() {
@@ -776,7 +777,17 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     ) {
         defer { completionHandler() }
 
-        guard let savedFilePath = response.notification.request.content.userInfo[notificationURLKey] as? String else {
+        let userInfo = response.notification.request.content.userInfo
+        if let studioProjectID = userInfo[notificationStudioProjectKey] as? String {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    StudioWindowRegistry.shared.open(projectID: studioProjectID)
+                }
+            }
+            return
+        }
+
+        guard let savedFilePath = userInfo[notificationURLKey] as? String else {
             return
         }
 
@@ -798,11 +809,14 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         alert.runModal()
     }
 
+    /// Tells the person something with a notification, or a panel when notifications are off.
+    /// With `studioProjectID`, clicking the notification brings that project's editor forward.
     @MainActor
-    func showNotice(_ message: String) {
+    func showNotice(_ message: String, title: String = "TinyClips", studioProjectID: String? = nil) {
         AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
 
         let service = WeakSaveService(self)
+        let studioProjectKey = notificationStudioProjectKey
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized ||
                     settings.authorizationStatus == .provisional else {
@@ -815,8 +829,11 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
             }
 
             let content = UNMutableNotificationContent()
-            content.title = "TinyClips"
+            content.title = title
             content.body = message
+            if let studioProjectID {
+                content.userInfo = [studioProjectKey: studioProjectID]
+            }
 
             let request = UNNotificationRequest(
                 identifier: UUID().uuidString,

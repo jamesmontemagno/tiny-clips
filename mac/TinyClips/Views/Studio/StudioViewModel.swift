@@ -62,8 +62,15 @@ final class StudioViewModel: ObservableObject {
 
     @Published private(set) var captionGenerationProgress = StudioCaptionProgress(stage: .readingSound, fraction: 0)
 
-    /// What the last import, fix, or export of captions came to, for the Captions panel.
-    @Published private(set) var captionStatus = ""
+    /// What the Captions panel says about the last thing done to the captions, or nil.
+    @Published private(set) var captionNotice: StudioCaptionNotice?
+
+    /// Takes a notice away when it has been on show long enough. A notice that asks for something
+    /// to be done stays until it is closed.
+    private var captionNoticeTimer: Task<Void, Never>?
+
+    /// The language captions were last asked for in, to name it when no speech was found.
+    private var captionLanguageAsked: String?
 
     /// What is typed for the selected cue, until the box is left. So typing is one undo step.
     private var pendingCaptionText: String?
@@ -93,6 +100,10 @@ final class StudioViewModel: ObservableObject {
 
     /// Set by the window. Called to close it once an export started from the close prompt is done.
     var requestClose: (() -> Void)?
+
+    /// Set by the window. Whether it is in front of someone, so that what they would otherwise
+    /// miss can be sent as a notification instead.
+    var isWindowInFront: (() -> Bool)?
 
     private let store: StudioProjectStore
     private var events = StudioEvents()
@@ -182,9 +193,14 @@ final class StudioViewModel: ObservableObject {
 
     @discardableResult
     func applyAutomationProject(_ updated: StudioProject, expectedModifiedAt: Date) -> Bool {
-        guard isEditable, !isInGesture, project?.modifiedAt == expectedModifiedAt, saveNow() else { return false }
+        guard isEditable, !isInGesture else { return false }
+        // What is being typed goes into the project first, so an agent's edit cannot drop it. When
+        // that changes the project, the agent's edit was made without it and is refused as a
+        // conflict: the agent reads the project again.
+        let typed = editor?.editableState
+        commitCaptionText()
+        guard editor?.editableState == typed, project?.modifiedAt == expectedModifiedAt, saveNow() else { return false }
         selectedCaptionIndex = nil
-        pendingCaptionText = nil
         edit { $0.applyAutomationProject(updated) }
         guard saveNow() else {
             undo()
@@ -403,11 +419,81 @@ final class StudioViewModel: ObservableObject {
 
     // MARK: - Captions
 
+    /// What the Captions panel shows of the cues. The panel is drawn again each time the playhead
+    /// moves, and checking hundreds of cues takes longer than a frame, so this is worked out again
+    /// only when the cues, the edits, or the recording's length change.
+    private struct CaptionOverview {
+        var cues: [StudioCaptionCue]
+        var edits: StudioEdits
+        var sourceDuration: Double
+        var rows: [StudioCaptionRow]
+        var findings: [StudioCaptionFinding]
+        /// What the checks found in each cue, by its place in `project.captions.cues`.
+        var problems: [Int: [StudioCaptionFindingKind]]
+        var canExport: Bool
+    }
+
+    private var cachedCaptionOverview: CaptionOverview?
+
+    private var captionOverview: CaptionOverview? {
+        guard let project else { return nil }
+        let cues = project.captions.cues
+        let duration = project.sources.screen.duration
+        if let cached = cachedCaptionOverview,
+           cached.cues == cues, cached.edits == project.edits, cached.sourceDuration == duration {
+            return cached
+        }
+        let rows = cues.indexesInTimeOrder().map { StudioCaptionRow(index: $0, cue: cues[$0]) }
+        let findings = StudioCaptionQuality.check(cues, sourceDuration: duration)
+        var problems: [Int: [StudioCaptionFindingKind]] = [:]
+        // A finding counts the cue's place in time order, which is its row.
+        for finding in findings where rows.indices.contains(finding.cue) {
+            let index = rows[finding.cue].index
+            if !(problems[index]?.contains(finding.kind) ?? false) {
+                problems[index, default: []].append(finding.kind)
+            }
+        }
+        let overview = CaptionOverview(
+            cues: cues,
+            edits: project.edits,
+            sourceDuration: duration,
+            rows: rows,
+            findings: findings,
+            problems: problems,
+            canExport: !StudioCaptionResolver.resolve(project: project).isEmpty
+        )
+        cachedCaptionOverview = overview
+        return overview
+    }
+
     /// The cues, in time order, with their places in `project.captions.cues`.
-    var captionRows: [StudioCaptionRow] {
-        guard let editor else { return [] }
-        let cues = editor.project.captions.cues
-        return editor.captionIndexesInOrder().map { StudioCaptionRow(index: $0, cue: cues[$0]) }
+    var captionRows: [StudioCaptionRow] { captionOverview?.rows ?? [] }
+
+    private var cachedCaptionSearch: (query: String, cues: [StudioCaptionCue], rows: [StudioCaptionRow])?
+
+    /// The rows whose text has `query` in it, ignoring case and accents. All of them for an empty
+    /// query. The panel asks each time the playhead moves, so the last answer is kept.
+    func captionRows(matching query: String) -> [StudioCaptionRow] {
+        let rows = captionRows
+        let query = StudioCaptionSearch.normalized(query)
+        guard !query.isEmpty, let cues = captionOverview?.cues else { return rows }
+        if let cached = cachedCaptionSearch, cached.query == query, cached.cues == cues {
+            return cached.rows
+        }
+        let found = rows.filter { StudioCaptionSearch.matches(StudioCaptionText.rowText($0.cue), query: query) }
+        cachedCaptionSearch = (query, cues, found)
+        return found
+    }
+
+    /// What the checks found in a cue, by its place in `project.captions.cues`.
+    func captionProblems(at index: Int) -> [StudioCaptionFindingKind] {
+        captionOverview?.problems[index] ?? []
+    }
+
+    /// The cue the video shows at the playhead, as its place in `project.captions.cues`.
+    var captionIndexAtPlayhead: Int? {
+        let rows = captionRows
+        return StudioCaptionEditing.position(at: playhead, in: rows).map { rows[$0].index }
     }
 
     var selectedCaption: StudioCaptionCue? {
@@ -415,15 +501,9 @@ final class StudioViewModel: ObservableObject {
         return cues[index]
     }
 
-    var captionFindings: [StudioCaptionFinding] {
-        guard let project else { return [] }
-        return StudioCaptionQuality.check(project.captions.cues, sourceDuration: project.sources.screen.duration)
-    }
+    var captionFindings: [StudioCaptionFinding] { captionOverview?.findings ?? [] }
 
-    var canExportCaptions: Bool {
-        guard let project else { return false }
-        return !StudioCaptionResolver.resolve(project: project).isEmpty
-    }
+    var canExportCaptions: Bool { captionOverview?.canExport ?? false }
 
     // MARK: - Generating Captions
 
@@ -442,7 +522,8 @@ final class StudioViewModel: ObservableObject {
     func generateCaptions(language: String?) {
         guard canGenerateCaptions, let project, let paths else { return }
         commitCaptionText()
-        captionStatus = ""
+        dismissCaptionNotice()
+        captionLanguageAsked = language
         captionGenerationNumber += 1
         let generation = captionGenerationNumber
         isGeneratingCaptions = true
@@ -491,29 +572,72 @@ final class StudioViewModel: ObservableObject {
         captionGenerationTask = nil
         guard state == .ready else { return }
 
-        let message: String
+        let notice: StudioCaptionNotice
         switch outcome {
-        case .success(let heard) where wasStopped:
-            _ = heard
-            message = StudioCaptionText.cancelledMessage
+        case .success where wasStopped:
+            notice = StudioCaptionNotice(.info, StudioCaptionText.cancelledMessage)
+        case .success(let heard) where heard.cues.isEmpty:
+            notice = noSpeechNotice()
         case .success(let heard):
             guard isEditable else {
-                message = "The captions could not be put in the project. Try again."
+                notice = StudioCaptionNotice(.problem, "The captions could not be put in the project. Try again.")
                 break
             }
+            // What was being typed goes in first, so Undo brings it back with the old captions.
+            commitCaptionText()
             selectedCaptionIndex = nil
-            pendingCaptionText = nil
             edit { $0.setGeneratedCaptions(language: heard.language, cues: heard.cues) }
-            message = StudioCaptionText.generatedMessage(heard.cues.count)
+            notice = StudioCaptionNotice(.done, StudioCaptionText.generatedMessage(heard.cues.count))
         case .failure(let error) where error is CancellationError || wasStopped:
-            message = StudioCaptionText.cancelledMessage
+            notice = StudioCaptionNotice(.info, StudioCaptionText.cancelledMessage)
+        case .failure(let error as StudioCaptionGenerationError) where error == .noSpeech:
+            notice = noSpeechNotice()
         case .failure(let error):
-            message = error.localizedDescription
+            notice = StudioCaptionNotice(.problem, error.localizedDescription)
         }
-        captionStatus = message
-        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
-            .announcement: message,
-        ])
+        showCaptionNotice(notice)
+
+        // Generating can take minutes, and whoever asked may have gone to another window. They
+        // are told how it went unless they stopped it themselves.
+        if notice.kind != .info, isWindowInFront?() == false {
+            SaveService.shared.showNotice(
+                StudioCaptionPanelText.notificationMessage(for: notice, clipName: clipName),
+                title: StudioCaptionPanelText.notificationTitle(for: notice),
+                studioProjectID: projectID
+            )
+        } else {
+            announce(notice.spokenText)
+        }
+    }
+
+    private func noSpeechNotice() -> StudioCaptionNotice {
+        StudioCaptionNotice(
+            .noSpeech,
+            StudioCaptionPanelText.noSpeechMessage(
+                languageName: captionLanguageAsked.flatMap { Locale.current.localizedString(forIdentifier: $0) },
+                hasCaptions: !(project?.captions.cues.isEmpty ?? true)
+            ),
+            title: StudioCaptionPanelText.noSpeechTitle
+        )
+    }
+
+    /// Shows `notice` in the Captions panel. One that says something went well goes after a while.
+    private func showCaptionNotice(_ notice: StudioCaptionNotice) {
+        captionNoticeTimer?.cancel()
+        captionNotice = notice
+        guard notice.kind == .done || notice.kind == .info else { return }
+        let id = notice.id
+        captionNoticeTimer = Task { [weak self] in
+            try? await Task.sleep(for: StudioCaptionNotice.shownFor)
+            guard !Task.isCancelled, let self, self.captionNotice?.id == id else { return }
+            self.captionNotice = nil
+        }
+    }
+
+    func dismissCaptionNotice() {
+        captionNoticeTimer?.cancel()
+        captionNoticeTimer = nil
+        captionNotice = nil
     }
 
     /// Selects a cue and moves the playhead to where it starts, or lets go with nil. A selected
@@ -546,15 +670,109 @@ final class StudioViewModel: ObservableObject {
         guard let index = selectedCaptionIndex else { return }
         selectedCaptionIndex = nil
         edit { $0.removeCaption(at: index) }
+        announce(StudioCaptionPanelText.deletedMessage)
     }
 
-    /// Makes the safe fixes, and says what came of them.
+    /// Whether the selected cue can be split at the playhead.
+    var canSplitSelectedCaption: Bool {
+        guard isEditable, let cue = selectedCaption else { return false }
+        return StudioCaptionEditing.canSplit(cue, at: playhead)
+    }
+
+    /// Whether the selected cue has one after it to be put together with.
+    var canMergeSelectedCaption: Bool {
+        guard isEditable, let index = selectedCaptionIndex, let cues = project?.captions.cues else { return false }
+        return StudioCaptionEditing.canMergeWithNext(cues, at: index)
+    }
+
+    /// Splits the selected cue at the playhead, and selects the second part, which starts there.
+    func splitSelectedCaptionAtPlayhead() {
+        commitCaptionText()
+        guard isEditable, let index = selectedCaptionIndex else { return }
+        let time = playhead
+        var second: Int?
+        edit { second = $0.splitCaption(at: index, sourceTime: time) }
+        guard let second else { return }
+        selectedCaptionIndex = second
+        announce(StudioCaptionPanelText.splitMessage)
+    }
+
+    /// Puts the selected cue together with the one after it, and selects what they make.
+    func mergeSelectedCaptionWithNext() {
+        commitCaptionText()
+        guard isEditable, let index = selectedCaptionIndex else { return }
+        var merged: Int?
+        edit { merged = $0.mergeCaptionWithNext(at: index) }
+        guard let merged else { return }
+        selectedCaptionIndex = merged
+        announce(StudioCaptionPanelText.mergedMessage)
+    }
+
+    /// Moves one end of the selected cue by `seconds`, for the panel's step buttons.
+    func nudgeSelectedCaption(_ edge: StudioCaptionEdge, by seconds: Double) {
+        guard let cue = selectedCaption else { return }
+        retimeSelectedCaption(edge, to: (edge == .start ? cue.start : cue.end) + seconds)
+    }
+
+    /// Puts one end of the selected cue at the playhead. The playhead stays where it is.
+    func setSelectedCaptionAtPlayhead(_ edge: StudioCaptionEdge) {
+        retimeSelectedCaption(edge, to: playhead)
+    }
+
+    private func retimeSelectedCaption(_ edge: StudioCaptionEdge, to time: Double) {
+        commitCaptionText()
+        guard isEditable, let index = selectedCaptionIndex else { return }
+        var moved: Int?
+        edit { moved = $0.retimeCaption(at: index, edge: edge, to: time) }
+        guard let moved else { return }
+        selectedCaptionIndex = moved
+        if let cue = selectedCaption {
+            announce(StudioCaptionText.rangeText(cue))
+        }
+    }
+
+    /// Makes the safe fixes, and says what came of them and how many problems are left.
     func fixCaptions() {
         commitCaptionText()
         selectedCaptionIndex = nil
         var applied = 0
         edit { applied = $0.fixCaptions() }
-        reportCaptions(StudioCaptionText.fixedMessage(applied))
+        reportCaptions(StudioCaptionText.fixedMessage(applied, left: captionFindings.count))
+    }
+
+    /// Where the selected cue is among the rows, in time order.
+    var selectedCaptionRowPosition: Int? {
+        guard let index = selectedCaptionIndex else { return nil }
+        return captionRows.firstIndex { $0.index == index }
+    }
+
+    /// Whether there is a cue `step` rows from the selected one, in time order.
+    func canSelectCaption(by step: Int) -> Bool {
+        guard let position = selectedCaptionRowPosition else { return false }
+        return captionRows.indices.contains(position + step)
+    }
+
+    /// Selects the cue `step` rows from the selected one, in time order: -1 for the one before.
+    func selectCaption(by step: Int) {
+        guard let position = selectedCaptionRowPosition else { return }
+        let rows = captionRows
+        guard rows.indices.contains(position + step) else { return }
+        selectCaption(at: rows[position + step].index)
+    }
+
+    /// Whether the checks found a problem that Next Problem can go to.
+    var hasCaptionProblems: Bool { !(captionOverview?.problems.isEmpty ?? true) }
+
+    /// Selects the next cue, in time order, that the checks found a problem in: after the selected
+    /// one, or the first when none is selected, going round after the last.
+    func selectNextCaptionProblem() {
+        guard let overview = captionOverview else { return }
+        let rows = overview.rows
+        let next = StudioCaptionEditing.nextProblem(count: rows.count, after: selectedCaptionRowPosition) {
+            overview.problems[rows[$0].index] != nil
+        }
+        guard let next else { return }
+        selectCaption(at: rows[next].index)
     }
 
     /// Asks for a caption file and puts its cues in place of the captions.
@@ -578,14 +796,14 @@ final class StudioViewModel: ObservableObject {
                 timeMap: editor.timeMap
             )
             guard !contents.cues.isEmpty else {
-                SaveService.shared.showError(StudioCaptionText.nothingToImport)
+                reportCaptionProblem(StudioCaptionText.nothingToImport)
                 return
             }
             selectedCaptionIndex = nil
             edit { $0.replaceCaptions(contents.cues) }
             reportCaptions(StudioCaptionText.importedMessage(count: contents.cues.count, skipped: contents.skippedBlocks))
         } catch {
-            SaveService.shared.showError("The captions could not be read: \(error.localizedDescription)")
+            reportCaptionProblem("The captions could not be read: \(error.localizedDescription)")
         }
     }
 
@@ -615,13 +833,18 @@ final class StudioViewModel: ObservableObject {
             try Data(StudioCaptionFiles.write(chosen, captions).utf8).write(to: url, options: .atomic)
             reportCaptions(StudioCaptionText.exportedMessage)
         } catch {
-            SaveService.shared.showError("The captions could not be written: \(error.localizedDescription)")
+            reportCaptionProblem("The captions could not be written: \(error.localizedDescription)")
         }
     }
 
     private func reportCaptions(_ message: String) {
-        captionStatus = message
+        showCaptionNotice(StudioCaptionNotice(.done, message))
         announce(message)
+    }
+
+    private func reportCaptionProblem(_ message: String) {
+        showCaptionNotice(StudioCaptionNotice(.problem, message))
+        AccessibilityAnnouncementService.shared.announce(message, priority: .high)
     }
 
     func setLayout(_ layout: StudioLayout) {

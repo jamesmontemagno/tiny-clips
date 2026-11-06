@@ -113,12 +113,24 @@ enum StudioSymbol {
     static let showScene = StudioInspectorPanel.scene.symbolName
     static let saveDefaultLook = "paintpalette"
     static let saveRecording = "square.and.arrow.down"
+    static let generateCaptions = "waveform"
+    static let noSpeech = "waveform.slash"
+    static let importCaptions = "square.and.arrow.down"
+    static let exportCaptions = "square.and.arrow.up"
+    static let splitCaption = "scissors"
+    static let mergeCaption = "arrow.triangle.merge"
+    static let captionProblem = "exclamationmark.triangle.fill"
+    static let autoFixCaptions = "wand.and.stars"
+    static let nextCaptionProblem = "arrow.down.circle"
+    static let searchCaptions = "magnifyingglass"
 
     /// Every symbol the editor names, the rail's included.
     static var all: [String] {
         StudioInspectorPanel.allCases.map(\.symbolName) + [
             splitScene, addZoom, addCut, addSpeed, suggestZooms, removeSuggestions, delete,
             trimStart, trimEnd, resetCrop, showScene, saveDefaultLook, saveRecording,
+            generateCaptions, noSpeech, importCaptions, exportCaptions, splitCaption, mergeCaption,
+            captionProblem, autoFixCaptions, nextCaptionProblem, searchCaptions,
         ]
     }
 }

@@ -28,22 +28,19 @@ enum StudioCaptionQuality {
     static let longestLine = 42
     static let mostLines = 2
     static let fastestRate = 20.0
+    /// The most a fix moves a cue's start earlier, or takes from a neighbour.
+    static let mostMoved = 0.5
 
     private static let mostParts = 64
 
-    /// The cues in the order the checks and `StudioCaptionResolver` use. What is equal in both
-    /// keeps its order: `sorted` does not promise to.
-    static func inOrder(_ cues: [StudioCaptionCue]) -> [StudioCaptionCue] {
-        cues.enumerated().sorted { first, second in
-            if first.element.start != second.element.start { return first.element.start < second.element.start }
-            if first.element.end != second.element.end { return first.element.end < second.element.end }
-            return first.offset < second.offset
-        }.map(\.element)
-    }
-
     /// What is found in the cues of a recording `sourceDuration` seconds long.
     static func check(_ cues: [StudioCaptionCue], sourceDuration: Double) -> [StudioCaptionFinding] {
-        let ordered = inOrder(cues)
+        let ordered = cues.inTimeOrder()
+        let tidiedCues = ordered.map { cue -> StudioCaptionCue in
+            var copy = cue
+            copy.text = tidy(cue.text)
+            return copy
+        }
         var findings: [StudioCaptionFinding] = []
         var previous: StudioCaptionCue?
         for (index, cue) in ordered.enumerated() {
@@ -54,11 +51,11 @@ enum StudioCaptionQuality {
             if let previous, cue.start < previous.end {
                 findings.append(StudioCaptionFinding(cue: index, kind: .overlap, canFix: cue.start - previous.start >= shortestDuration))
             }
-            let tidied = tidy(cue.text)
+            let tidied = tidiedCues[index].text
             if tidied.isEmpty {
                 findings.append(StudioCaptionFinding(cue: index, kind: .empty, canFix: true))
             } else {
-                checkText(&findings, index: index, cue: cue, tidied: tidied, limit: limit(ordered, index, sourceDuration))
+                checkText(&findings, index: index, cue: cue, tidiedCues: tidiedCues, sourceDuration: sourceDuration)
             }
             previous = cue
         }
@@ -67,7 +64,7 @@ enum StudioCaptionQuality {
 
     /// Makes the safe fixes, in the order of the format.
     static func fix(_ cues: [StudioCaptionCue], sourceDuration: Double) -> (cues: [StudioCaptionCue], applied: Int) {
-        let ordered = inOrder(cues)
+        let ordered = cues.inTimeOrder()
         var kept = ordered.filter { !tidy($0.text).isEmpty }
         var applied = ordered.count - kept.count
 
@@ -101,6 +98,9 @@ enum StudioCaptionQuality {
                 applied += 1
             }
         }
+
+        applied += borrow(&laidOut, sourceDuration: sourceDuration)
+        applied += joinHardCues(&laidOut)
         return (laidOut, applied)
     }
 
@@ -130,9 +130,10 @@ enum StudioCaptionQuality {
         _ findings: inout [StudioCaptionFinding],
         index: Int,
         cue: StudioCaptionCue,
-        tidied: String,
-        limit: Double
+        tidiedCues: [StudioCaptionCue],
+        sourceDuration: Double
     ) {
+        let tidied = tidiedCues[index].text
         if tidied != cue.text {
             findings.append(StudioCaptionFinding(cue: index, kind: .whitespace, canFix: true))
         }
@@ -151,12 +152,139 @@ enum StudioCaptionQuality {
         }
 
         let cueLength = cue.end - cue.start
-        let canExtend = cue.start + wanted(length: cueLength, text: tidied) <= limit
+        var canFixTime = false
+        if isHard(tidiedCues[index]) {
+            let more = enough(tidied) - cueLength
+            let space = room(tidiedCues, index, sourceDuration)
+            canFixTime = cue.start + wanted(length: cueLength, text: tidied) <= limit(tidiedCues, index, sourceDuration)
+                || space.after + space.before >= more
+                || canJoin(tidiedCues, index)
+        }
         if cueLength < shortestDuration {
-            findings.append(StudioCaptionFinding(cue: index, kind: .shortDuration, canFix: canExtend))
+            findings.append(StudioCaptionFinding(cue: index, kind: .shortDuration, canFix: canFixTime))
         }
         if Double(count(of: tidied)) / cueLength > fastestRate {
-            findings.append(StudioCaptionFinding(cue: index, kind: .readingSpeed, canFix: canExtend))
+            findings.append(StudioCaptionFinding(cue: index, kind: .readingSpeed, canFix: canFixTime))
+        }
+    }
+
+    /// Lengthens each cue still too hard to read into the time its neighbours can spare: its end
+    /// later and its start a little earlier. Says how many cues that was.
+    private static func borrow(_ cues: inout [StudioCaptionCue], sourceDuration: Double) -> Int {
+        var applied = 0
+        for index in cues.indices {
+            let cue = cues[index]
+            guard isPresent(cue), isHard(cue) else { continue }
+            let more = enough(cue.text) - (cue.end - cue.start)
+            let space = room(cues, index, sourceDuration)
+            guard space.after + space.before >= more else { continue }
+            let later = min(more, space.after)
+            let earlier = more - later
+            if later > 0 {
+                cues[index].end += later
+                if index + 1 < cues.count {
+                    cues[index + 1].start = max(cues[index + 1].start, cues[index].end)
+                }
+            }
+            if earlier > 0 {
+                cues[index].start -= earlier
+                if index > 0 {
+                    cues[index - 1].end = min(cues[index - 1].end, cues[index].start)
+                }
+            }
+            applied += 1
+        }
+        return applied
+    }
+
+    /// Puts each cue still too hard to read together with a neighbour, when the two read as one.
+    /// Says how many joins that was.
+    private static func joinHardCues(_ cues: inout [StudioCaptionCue]) -> Int {
+        var applied = 0
+        var index = 0
+        while index < cues.count {
+            if isPresent(cues[index]), isHard(cues[index]) {
+                for first in joinOrder(cues, index) where first >= 0 && first + 1 < cues.count {
+                    if let joined = join(cues[first], cues[first + 1]) {
+                        cues.replaceSubrange(first...(first + 1), with: [joined])
+                        applied += 1
+                        index = first
+                        break
+                    }
+                }
+            }
+            index += 1
+        }
+        return applied
+    }
+
+    /// The least time the text reads in, and a millisecond so rounding cannot leave a cue just short.
+    private static func enough(_ text: String) -> Double {
+        max(shortestDuration, Double(count(of: text)) / fastestRate) + 0.001
+    }
+
+    /// Whether the cue has a time and text, so it can give time to or join a neighbour.
+    private static func isPresent(_ cue: StudioCaptionCue) -> Bool {
+        cue.start.isFinite && cue.end.isFinite && cue.end > cue.start && !cue.text.isEmpty
+    }
+
+    private static func isHard(_ cue: StudioCaptionCue) -> Bool {
+        let length = cue.end - cue.start
+        return length < shortestDuration || Double(count(of: cue.text)) / length > fastestRate
+    }
+
+    private static func spare(_ cue: StudioCaptionCue) -> Double {
+        guard isPresent(cue) else { return 0 }
+        return min(mostMoved, max(0, cue.end - cue.start - enough(cue.text)))
+    }
+
+    /// The seconds the cue at `index` can take after its end and before its start.
+    private static func room(_ cues: [StudioCaptionCue], _ index: Int, _ sourceDuration: Double) -> (after: Double, before: Double) {
+        let cue = cues[index]
+        let after: Double
+        if index + 1 == cues.count {
+            after = sourceDuration - cue.end
+        } else {
+            let next = cues[index + 1]
+            after = !isPresent(next) || next.start < cue.end ? 0 : min(sourceDuration, next.start + spare(next)) - cue.end
+        }
+        let before: Double
+        if index == 0 {
+            before = min(mostMoved, cue.start)
+        } else {
+            let previous = cues[index - 1]
+            before = !isPresent(previous) || previous.end > cue.start
+                ? 0
+                : min(mostMoved, cue.start - (previous.end - spare(previous)))
+        }
+        return (max(0, after), max(0, before))
+    }
+
+    private static func join(_ first: StudioCaptionCue, _ second: StudioCaptionCue) -> StudioCaptionCue? {
+        guard isPresent(first), isPresent(second) else { return nil }
+        let gap = second.start - first.end
+        guard gap >= 0, gap <= mostMoved,
+              let text = wrap(first.text + " " + second.text),
+              second.end - first.start >= enough(text) else { return nil }
+        let spellsBoth = [first, second].allSatisfy {
+            !$0.words.isEmpty && StudioCaptionTranscript.spells($0.words, $0.text)
+        }
+        var joined = first
+        joined.end = second.end
+        joined.text = text
+        joined.words = spellsBoth ? first.words + second.words : []
+        return joined
+    }
+
+    /// Where a cue too hard to read looks for one to join: the one before it first, unless that ends a sentence.
+    private static func joinOrder(_ cues: [StudioCaptionCue], _ index: Int) -> [Int] {
+        let endsSentence = index > 0 && cues[index - 1].text.unicodeScalars.last.map { ".!?".unicodeScalars.contains($0) } == true
+        return index > 0 && !endsSentence ? [index - 1, index] : [index, index - 1]
+    }
+
+    private static func canJoin(_ cues: [StudioCaptionCue], _ index: Int) -> Bool {
+        joinOrder(cues, index).contains { first in
+            first >= 0 && first + 1 < cues.count && join(cues[first], cues[first + 1]) != nil
         }
     }
 
@@ -404,12 +532,28 @@ enum StudioCaptionText {
         }
     }
 
-    /// What came of Auto Fix: `Made 3 fixes.`
-    static func fixedMessage(_ applied: Int) -> String {
+    /// What came of Auto Fix: `Made 3 fixes.`, and how many of the problems are `left`:
+    /// `Made 3 fixes. 1 problem needs a manual edit.`
+    static func fixedMessage(_ applied: Int, left: Int = 0) -> String {
+        let made: String
         switch applied {
-        case 0: return "Nothing to fix."
-        case 1: return "Made 1 fix."
-        default: return "Made \(applied) fixes."
+        case 0: made = left > 0 ? "Nothing could be fixed automatically." : "Nothing to fix."
+        case 1: made = "Made 1 fix."
+        default: made = "Made \(applied) fixes."
         }
+        guard left > 0 else { return made }
+        return "\(made) \(left == 1 ? "1 problem needs" : "\(left) problems need") a manual edit."
+    }
+
+    /// Said with the checks when Auto Fix cannot fix every problem they found, or nil when it can.
+    static func manualFixNote(fixable: Int, total: Int) -> String? {
+        guard total > max(0, fixable) else { return nil }
+        if fixable <= 0 {
+            return total == 1
+                ? "Auto Fix can't fix this one. Edit the caption's text or timing."
+                : "Auto Fix can't fix these. Edit the captions' text or timing."
+        }
+        let left = total - fixable
+        return "Auto Fix can fix \(fixable) of \(total). \(left == 1 ? "The other needs" : "The others need") a manual edit."
     }
 }
