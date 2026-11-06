@@ -38,6 +38,11 @@ Do not mix platform-specific implementation patterns:
 - Preserve opt-in Agent Control, pairing, least-privilege scopes, sensitive-action approvals, audit logging, path restrictions, OS permissions, and Pro/Store requirements. Never bypass these protections to make a feature autonomous.
 - If a capability cannot be safely or meaningfully exposed, explain the limitation and get user direction rather than silently omitting agent support.
 
+## Editor Themes Coverage
+
+- When adding or changing screenshot annotations, annotation styles, or the export canvas and background setup, update Editor Themes in the same change: the screenshot editor's theme behavior, the Settings theme editor and its preview, and the shared JSON that import, export, and agents use.
+- Follow `.github/instructions/editor-themes.instructions.md` on each platform that has the feature. If a setting can't be themed, record why in `plans/editor-themes.md`.
+
 ## Build and Validate
 
 ### macOS (always validate both schemes for mac changes)
@@ -99,3 +104,4 @@ dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c De
   - mac: VoiceOver + keyboard for affected flows
   - windows: keyboard navigation and accessible names for new/changed controls
 - Confirm new and changed capabilities have agent API coverage, tests, and relevant documentation on each supported platform.
+- Confirm new and changed annotation styles and canvas settings work in Editor Themes, including the Settings theme editor, import, and export.
