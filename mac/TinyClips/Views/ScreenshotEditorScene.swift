@@ -212,7 +212,8 @@ private struct ScreenshotEditorSceneRoot: View {
                 ScreenshotEditorView(
                     imageURL: session.imageURL,
                     initialSaveURL: session.initialSaveURL,
-                    deleteSourceAfterSave: session.deleteSourceAfterSave
+                    deleteSourceAfterSave: session.deleteSourceAfterSave,
+                    themeID: session.themeID
                 ) { resultURL in
                     completionResult = resultURL
                     // `dismissWindow` is ignored while a sheet is attached, and a confirmation dialog
@@ -250,6 +251,8 @@ final class ScreenshotEditorRegistry {
         let imageURL: URL
         let initialSaveURL: URL
         let deleteSourceAfterSave: Bool
+        /// Uses this theme instead of the active one.
+        let themeID: String?
         let onComplete: (URL?) -> Void
     }
 
@@ -274,6 +277,7 @@ final class ScreenshotEditorRegistry {
         imageURL: URL,
         initialSaveURL: URL? = nil,
         deleteSourceAfterSave: Bool = false,
+        themeID: String? = nil,
         onComplete: @escaping (URL?) -> Void
     ) {
         let id = UUID()
@@ -281,6 +285,7 @@ final class ScreenshotEditorRegistry {
             imageURL: imageURL,
             initialSaveURL: initialSaveURL ?? imageURL,
             deleteSourceAfterSave: deleteSourceAfterSave,
+            themeID: themeID,
             onComplete: onComplete
         )
         updateActivationPolicy()

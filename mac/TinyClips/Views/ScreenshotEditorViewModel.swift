@@ -10,6 +10,32 @@ private struct EditorCanvasState {
     /// keeps the reference (not a copy) to restore the pre-crop pixels on undo.
     let image: NSImage?
     let imagePixelSize: CGSize
+    /// Only theme switches record this, so other undo steps leave the canvas and theme alone.
+    let themeState: EditorThemeHistoryState?
+}
+
+/// What a theme switch changes beyond the annotations.
+private struct EditorThemeHistoryState {
+    let activeThemeID: String?
+    let baselineTheme: EditorTheme?
+    let canvasBaseline: EditorTheme.CanvasGroup?
+    let acceptedLooks: [UUID: EditorThemeAnnotationLook]
+    let toolGroup: EditorThemeGroupKind?
+    let defaults: EditorThemeAnnotationDefaults
+    let selectedColor: Color
+    let lineWidth: CGFloat
+    let backgroundStyle: ExportBackgroundStyle
+    let backgroundColor: Color
+    let backgroundSecondaryColor: Color
+    let gradientDirectionDegrees: Double
+    let selectedBackgroundPresetID: String
+    let wallpaperImage: NSImage?
+    let canvasPadding: CGFloat
+    let canvasCornerRadius: CGFloat
+    let canvasShadowRadius: CGFloat
+    let exportFramePreset: ExportFramePreset
+    let horizontalExportAlignment: ExportHorizontalAlignment
+    let verticalExportAlignment: ExportVerticalAlignment
 }
 
 private enum AnnotationResizeHandle {
@@ -34,8 +60,20 @@ class ScreenshotEditorViewModel: ObservableObject {
             if oldValue == .crop, selectedTool != .crop {
                 clearCropSelection()
             }
+            syncThemeToolStyle()
         }
     }
+    /// The window's theme, or nil for None. `baselineTheme` is that theme as it was last applied or saved.
+    @Published private(set) var activeThemeID: String?
+    @Published private(set) var baselineTheme: EditorTheme?
+    private var themeCanvasBaseline: EditorTheme.CanvasGroup?
+    /// Looks an Update or Save as New already took into account, which no longer count as edits.
+    private var acceptedThemeLooks: [UUID: EditorThemeAnnotationLook] = [:]
+    /// While a theme is active, each group's color and width. The group in `themeToolGroup` is live
+    /// in `selectedColor` and `lineWidth`, so its entry here is out of date.
+    private var themeToolStyles: [EditorThemeGroupKind: EditorThemeAnnotationDefaults.ToolStyle] = [:]
+    private var themeToolGroup: EditorThemeGroupKind?
+    private var lastThemeModified = false
     @Published var selectedColor: Color = .red
     @Published var selectedFillColor: Color = .clear
     @Published var shapeEffects = ShapeEffects()
@@ -1403,7 +1441,7 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     func undo() {
         guard let previousState = undoStack.popLast() else { return }
-        redoStack.append(canvasState())
+        redoStack.append(canvasState(includingThemeState: previousState.themeState != nil))
         restoreCanvasState(previousState)
         updateHistoryAvailability()
         markDirty()
@@ -1411,7 +1449,7 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     func redo() {
         guard let nextState = redoStack.popLast() else { return }
-        undoStack.append(canvasState())
+        undoStack.append(canvasState(includingThemeState: nextState.themeState != nil))
         restoreCanvasState(nextState)
         updateHistoryAvailability()
         markDirty()
@@ -1625,12 +1663,13 @@ class ScreenshotEditorViewModel: ObservableObject {
         initialVerticalExportAlignment = verticalExportAlignment
     }
 
-    private func canvasState() -> EditorCanvasState {
+    private func canvasState(includingThemeState: Bool = false) -> EditorCanvasState {
         EditorCanvasState(
             annotations: annotations,
             nextNumberLabel: nextNumberLabel,
             image: originalImage,
-            imagePixelSize: imagePixelSize
+            imagePixelSize: imagePixelSize,
+            themeState: includingThemeState ? currentThemeHistoryState() : nil
         )
     }
 
@@ -1646,6 +1685,9 @@ class ScreenshotEditorViewModel: ObservableObject {
         currentAnnotation = nil
         pencilPoints = []
         clearCropSelection()
+        if let themeState = state.themeState {
+            restoreThemeHistoryState(themeState)
+        }
     }
 
     private func recordHistory() {
@@ -2554,5 +2596,308 @@ class ScreenshotEditorViewModel: ObservableObject {
             abs(lg - rg) < 0.0001 &&
             abs(lb - rb) < 0.0001 &&
             abs(la - ra) < 0.0001
+    }
+}
+
+// Theme switching for the editor. See "Theme Design" in plans/editor-themes.md.
+extension ScreenshotEditorViewModel {
+    /// Chooses a theme: restyles what it covers, applies its canvas, and sets the defaults for new
+    /// annotations, as one undo step. Redactions and emoji are left alone.
+    func applyTheme(_ theme: EditorTheme) {
+        recordThemeSwitchHistory()
+        var restyled = annotations
+        for index in restyled.indices {
+            EditorThemeStyling.apply(theme, to: &restyled[index], imagePixelSize: imagePixelSize)
+        }
+        annotations = restyled
+        applyThemeCanvas(theme.canvas)
+        activateTheme(theme)
+        markDirty()
+    }
+
+    /// Sets up a new window. The canvas applies only if the theme opts in, and the document is
+    /// rebaselined so that an untouched editor doesn't prompt on close.
+    func activateThemeOnOpen(_ theme: EditorTheme) {
+        if theme.canvas.applyOnOpen {
+            applyThemeCanvas(theme.canvas)
+        }
+        activateTheme(theme)
+        markSaved()
+    }
+
+    /// None stops theming and changes nothing else. It is not an undo step.
+    func clearTheme() {
+        guard baselineTheme != nil else { return }
+        setThemeState(
+            id: nil,
+            baseline: nil,
+            canvasBaseline: nil,
+            acceptedLooks: [:],
+            toolStyles: [:],
+            toolGroup: nil
+        )
+    }
+
+    /// Whether the document's look differs from the saved theme. Mid-gesture, it keeps its last
+    /// answer, so that dragging doesn't convert every annotation's colors on every frame.
+    var isThemeModified: Bool {
+        guard !isThemeGestureActive else { return lastThemeModified }
+        guard let baselineTheme, let look = capturedThemeLook() else {
+            lastThemeModified = false
+            return false
+        }
+        let isModified = !EditorThemeStyling.hasSameLook(look, baselineTheme)
+        lastThemeModified = isModified
+        return isModified
+    }
+
+    /// The document's look, under the active theme's id and name.
+    func capturedThemeLook() -> EditorTheme? {
+        guard let baselineTheme, let canvasBaseline = themeCanvasBaseline else { return nil }
+        return EditorThemeStyling.captured(
+            from: baselineTheme,
+            annotations: annotations,
+            defaults: currentThemeDefaults(),
+            canvas: currentThemeCanvas(),
+            canvasBaseline: canvasBaseline,
+            acceptedLooks: acceptedThemeLooks,
+            imagePixelSize: imagePixelSize
+        )
+    }
+
+    /// Saves the document's look over the active theme.
+    @discardableResult
+    func updateActiveTheme(in store: EditorThemeStore) throws -> EditorTheme? {
+        guard var look = capturedThemeLook() else { return nil }
+        // It may have been renamed in Settings since this window chose it.
+        look.name = store.theme(id: look.id)?.name ?? look.name
+        let saved = try store.save(look)
+        rebaseTheme(on: saved)
+        return saved
+    }
+
+    /// Saves the document's look under a new name and makes it active.
+    @discardableResult
+    func saveAsNewTheme(name: String, in store: EditorThemeStore) throws -> EditorTheme? {
+        guard var look = capturedThemeLook() else { return nil }
+        look.id = UUID().uuidString
+        look.name = store.uniqueName(for: name.trimmingCharacters(in: .whitespacesAndNewlines))
+        let saved = try store.save(look)
+        try store.setActive(id: saved.id)
+        rebaseTheme(on: saved)
+        return saved
+    }
+
+    /// Applies a theme's canvas. An image background stays, because themes leave out images.
+    func applyThemeCanvas(_ canvas: EditorTheme.CanvasGroup) {
+        if backgroundStyle != .wallpaper {
+            let style = EditorThemeNames.background(canvas.background)
+            backgroundStyle = style
+            switch style {
+            case .solid: selectedBackgroundPresetID = "custom-solid"
+            case .gradient: selectedBackgroundPresetID = "custom-gradient"
+            case .transparent, .wallpaper: selectedBackgroundPresetID = "transparent"
+            }
+            backgroundColor = EditorThemeColor.color(canvas.color)
+            backgroundSecondaryColor = EditorThemeColor.color(canvas.secondaryColor)
+            gradientDirectionDegrees = canvas.gradientDirection
+        }
+        canvasPadding = CGFloat(canvas.padding)
+        canvasCornerRadius = CGFloat(canvas.cornerRadius)
+        canvasShadowRadius = CGFloat(canvas.shadow)
+        exportFramePreset = EditorThemeNames.frame(canvas.frame)
+        horizontalExportAlignment = EditorThemeNames.horizontalAlignment(canvas.horizontalAlignment)
+        verticalExportAlignment = EditorThemeNames.verticalAlignment(canvas.verticalAlignment)
+    }
+
+    func currentThemeCanvas() -> EditorTheme.CanvasGroup {
+        EditorTheme.CanvasGroup(
+            applyOnOpen: false,
+            background: EditorThemeNames.name(for: backgroundStyle) ?? "wallpaper",
+            color: EditorThemeColor.hex(backgroundColor),
+            secondaryColor: EditorThemeColor.hex(backgroundSecondaryColor),
+            gradientDirection: gradientDirectionDegrees,
+            padding: Double(canvasPadding),
+            cornerRadius: Double(canvasCornerRadius),
+            shadow: Double(canvasShadowRadius),
+            frame: EditorThemeNames.name(for: exportFramePreset),
+            horizontalAlignment: EditorThemeNames.name(for: horizontalExportAlignment),
+            verticalAlignment: EditorThemeNames.name(for: verticalExportAlignment)
+        )
+    }
+
+    private func activateTheme(_ theme: EditorTheme) {
+        let defaults = EditorThemeStyling.defaults(from: theme, current: currentThemeDefaults())
+        applyThemeDefaults(defaults)
+        setThemeState(
+            id: theme.id,
+            baseline: theme,
+            canvasBaseline: currentThemeCanvas(),
+            acceptedLooks: [:],
+            toolStyles: defaults.toolStyles,
+            toolGroup: EditorThemeGroupKind(tool: selectedTool) ?? .shape
+        )
+        loadThemeToolStyle()
+    }
+
+    /// After a save, the document matches the theme by definition. Annotations the save didn't
+    /// take its values from keep their looks, and those looks stop counting as edits.
+    private func rebaseTheme(on saved: EditorTheme) {
+        let defaults = EditorThemeStyling.defaults(from: saved, current: currentThemeDefaults())
+        applyThemeDefaults(defaults)
+        var accepted: [UUID: EditorThemeAnnotationLook] = [:]
+        for annotation in annotations {
+            accepted[annotation.id] = EditorThemeStyling.look(of: annotation, theme: saved, imagePixelSize: imagePixelSize)
+        }
+        setThemeState(
+            id: saved.id,
+            baseline: saved,
+            canvasBaseline: currentThemeCanvas(),
+            acceptedLooks: accepted,
+            toolStyles: defaults.toolStyles,
+            toolGroup: EditorThemeGroupKind(tool: selectedTool) ?? themeToolGroup ?? .shape
+        )
+        loadThemeToolStyle()
+    }
+}
+
+// MARK: - Theme state
+
+private extension ScreenshotEditorViewModel {
+    var isThemeGestureActive: Bool {
+        pendingDragHistoryState != nil || currentAnnotation != nil
+    }
+
+    func recordThemeSwitchHistory() {
+        undoStack.append(canvasState(includingThemeState: true))
+        redoStack.removeAll()
+        updateHistoryAvailability()
+    }
+
+    func setThemeState(
+        id: String?,
+        baseline: EditorTheme?,
+        canvasBaseline: EditorTheme.CanvasGroup?,
+        acceptedLooks: [UUID: EditorThemeAnnotationLook],
+        toolStyles: [EditorThemeGroupKind: EditorThemeAnnotationDefaults.ToolStyle],
+        toolGroup: EditorThemeGroupKind?
+    ) {
+        activeThemeID = id
+        baselineTheme = baseline
+        themeCanvasBaseline = canvasBaseline
+        acceptedThemeLooks = acceptedLooks
+        themeToolStyles = toolStyles
+        themeToolGroup = toolGroup
+    }
+
+    func currentThemeDefaults() -> EditorThemeAnnotationDefaults {
+        var styles = themeToolStyles
+        if let themeToolGroup {
+            styles[themeToolGroup] = .init(color: selectedColor, lineWidth: lineWidth)
+        }
+        return EditorThemeAnnotationDefaults(
+            toolStyles: styles,
+            fillColor: selectedFillColor,
+            shapeEffects: shapeEffects,
+            arrowStyle: selectedArrowStylePreset,
+            fontFamily: textFontFamily,
+            fontSize: textFontSize,
+            isBold: textIsBold,
+            isItalic: textIsItalic,
+            isUnderlined: textIsUnderlined,
+            textBoxStyle: textBoxStyle,
+            numberTextColor: numberTextColor,
+            numberSizeMultiplier: numberSizeMultiplier
+        )
+    }
+
+    /// Everything but the tool styles, which `setThemeState` and `loadThemeToolStyle` handle.
+    func applyThemeDefaults(_ defaults: EditorThemeAnnotationDefaults) {
+        selectedFillColor = defaults.fillColor
+        shapeEffects = defaults.shapeEffects
+        selectedArrowStylePreset = defaults.arrowStyle
+        textFontFamily = defaults.fontFamily
+        textFontSize = defaults.fontSize
+        textIsBold = defaults.isBold
+        textIsItalic = defaults.isItalic
+        textIsUnderlined = defaults.isUnderlined
+        textBoxStyle = defaults.textBoxStyle
+        numberTextColor = defaults.numberTextColor
+        numberSizeMultiplier = defaults.numberSizeMultiplier
+    }
+
+    func loadThemeToolStyle() {
+        guard let themeToolGroup, let style = themeToolStyles[themeToolGroup] else { return }
+        selectedColor = style.color
+        lineWidth = style.lineWidth
+    }
+
+    /// With a theme active, leaving a tool stores its group's color and width, and choosing a tool
+    /// of another group loads that group's. Tools with no group leave them as they are.
+    func syncThemeToolStyle() {
+        guard baselineTheme != nil,
+              let group = EditorThemeGroupKind(tool: selectedTool),
+              group != themeToolGroup else {
+            return
+        }
+        if let themeToolGroup {
+            themeToolStyles[themeToolGroup] = .init(color: selectedColor, lineWidth: lineWidth)
+        }
+        themeToolGroup = group
+        loadThemeToolStyle()
+    }
+
+    func currentThemeHistoryState() -> EditorThemeHistoryState {
+        EditorThemeHistoryState(
+            activeThemeID: activeThemeID,
+            baselineTheme: baselineTheme,
+            canvasBaseline: themeCanvasBaseline,
+            acceptedLooks: acceptedThemeLooks,
+            toolGroup: themeToolGroup,
+            defaults: currentThemeDefaults(),
+            selectedColor: selectedColor,
+            lineWidth: lineWidth,
+            backgroundStyle: backgroundStyle,
+            backgroundColor: backgroundColor,
+            backgroundSecondaryColor: backgroundSecondaryColor,
+            gradientDirectionDegrees: gradientDirectionDegrees,
+            selectedBackgroundPresetID: selectedBackgroundPresetID,
+            wallpaperImage: wallpaperImage,
+            canvasPadding: canvasPadding,
+            canvasCornerRadius: canvasCornerRadius,
+            canvasShadowRadius: canvasShadowRadius,
+            exportFramePreset: exportFramePreset,
+            horizontalExportAlignment: horizontalExportAlignment,
+            verticalExportAlignment: verticalExportAlignment
+        )
+    }
+
+    func restoreThemeHistoryState(_ state: EditorThemeHistoryState) {
+        backgroundStyle = state.backgroundStyle
+        backgroundColor = state.backgroundColor
+        backgroundSecondaryColor = state.backgroundSecondaryColor
+        gradientDirectionDegrees = state.gradientDirectionDegrees
+        selectedBackgroundPresetID = state.selectedBackgroundPresetID
+        wallpaperImage = state.wallpaperImage
+        canvasPadding = state.canvasPadding
+        canvasCornerRadius = state.canvasCornerRadius
+        canvasShadowRadius = state.canvasShadowRadius
+        exportFramePreset = state.exportFramePreset
+        horizontalExportAlignment = state.horizontalExportAlignment
+        verticalExportAlignment = state.verticalExportAlignment
+
+        applyThemeDefaults(state.defaults)
+        selectedColor = state.selectedColor
+        lineWidth = state.lineWidth
+        setThemeState(
+            id: state.activeThemeID,
+            baseline: state.baselineTheme,
+            canvasBaseline: state.canvasBaseline,
+            acceptedLooks: state.acceptedLooks,
+            toolStyles: state.defaults.toolStyles,
+            toolGroup: state.toolGroup
+        )
+        // The tool may have changed since this state was recorded.
+        syncThemeToolStyle()
     }
 }

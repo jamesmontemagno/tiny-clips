@@ -16,8 +16,9 @@ enum AutomationAnnotations {
     ]
 
     /// Validates every annotation against `imagePixelSize` and returns editor annotations in
-    /// normalized coordinates. Agent sizes (`lineWidth`, `fontSize`) are image pixels.
-    static func parse(_ value: Any?, imagePixelSize: CGSize) throws -> [ScreenshotAnnotation] {
+    /// normalized coordinates. Agent sizes (`lineWidth`, `fontSize`) are image pixels. Values an
+    /// annotation leaves out come from `theme`, if there is one, whose sizes are editor units.
+    static func parse(_ value: Any?, imagePixelSize: CGSize, theme: EditorTheme? = nil) throws -> [ScreenshotAnnotation] {
         guard imagePixelSize.width >= 1, imagePixelSize.height >= 1 else {
             throw AutomationError(.invalidParams, "The image has no pixels.")
         }
@@ -32,7 +33,11 @@ enum AutomationAnnotations {
             guard let object = item as? [String: Any] else {
                 throw AutomationError(.invalidParams, "annotations[\(index)] must be an object.")
             }
-            return try parseAnnotation(object, index: index, imagePixelSize: imagePixelSize, nextNumber: &nextNumber)
+            var annotation = try parseAnnotation(object, index: index, imagePixelSize: imagePixelSize, nextNumber: &nextNumber)
+            if let theme {
+                applyTheme(theme, to: &annotation, explicit: object)
+            }
+            return annotation
         }
     }
 
@@ -180,6 +185,57 @@ enum AutomationAnnotations {
         return annotation
     }
 
+    /// Keys on the annotation win. Bounds are required, so they always set the position and a
+    /// number's size. Redactions and emoji take nothing from a theme.
+    private static func applyTheme(_ theme: EditorTheme, to annotation: inout ScreenshotAnnotation, explicit object: [String: Any]) {
+        func isMissing(_ key: String) -> Bool {
+            object[key] == nil || object[key] is NSNull
+        }
+        func themed(_ key: String, _ hex: String, _ keyPath: WritableKeyPath<ScreenshotAnnotation, Color>) {
+            if isMissing(key) { annotation[keyPath: keyPath] = EditorThemeColor.color(hex) }
+        }
+
+        switch annotation.tool {
+        case .rectangle, .circle:
+            themed("color", theme.shape.strokeColor, \.color)
+            themed("fillColor", theme.shape.fillColor, \.fillColor)
+            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(theme.shape.strokeWidth) }
+            if isMissing("fillEndColor") {
+                if let endColor = theme.shape.gradientEndColor, EditorThemeColor.isVisible(EditorThemeColor.hex(annotation.fillColor)) {
+                    annotation.shapeEffects.isGradientFill = true
+                    annotation.shapeEffects.gradientEndColor = EditorThemeColor.color(endColor)
+                    annotation.shapeEffects.gradientDirectionDegrees = theme.shape.gradientDirection
+                }
+            } else if isMissing("fillDirection") {
+                annotation.shapeEffects.gradientDirectionDegrees = theme.shape.gradientDirection
+            }
+            if isMissing("shadowBlur") {
+                annotation.shapeEffects.hasShadow = theme.shape.shadowBlur > 0
+                if theme.shape.shadowBlur > 0 { annotation.shapeEffects.shadowBlur = CGFloat(theme.shape.shadowBlur) }
+            }
+            if isMissing("shadowColor") {
+                annotation.shapeEffects.shadowColor = EditorThemeColor.color(theme.shape.shadowColor)
+            }
+        case .arrow, .line, .pencil:
+            themed("color", theme.line.color, \.color)
+            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(theme.line.width) }
+            if annotation.tool == .arrow { annotation.arrowStyle = EditorThemeNames.arrowStyle(theme.line.arrowStyle) }
+        case .text:
+            themed("color", theme.text.color, \.color)
+            if isMissing("fontSize") { annotation.fontSize = CGFloat(theme.text.fontSize) }
+            annotation.fontFamily = theme.text.fontFamily ?? textSystemFontFamily
+            annotation.isBold = theme.text.bold
+            annotation.isItalic = theme.text.italic
+            annotation.isUnderlined = theme.text.underline
+            annotation.textBoxStyle = EditorThemeStyling.textBoxStyle(theme.text.box)
+        case .number:
+            themed("color", theme.number.badgeColor, \.color)
+            themed("textColor", theme.number.textColor, \.textColor)
+        case .blur, .emoji, .move, .crop:
+            break
+        }
+    }
+
     private static func parseShapeEffects(
         _ object: [String: Any],
         tool: EditTool,
@@ -315,6 +371,7 @@ enum AutomationAnnotations {
     static func render(
         sourceURL: URL,
         annotationsJSON: Any?,
+        theme: EditorTheme? = nil,
         destination: (_ fileExtension: String) -> URL
     ) throws -> (url: URL, count: Int) {
         let viewModel = ScreenshotEditorViewModel(url: sourceURL)
@@ -324,9 +381,13 @@ enum AutomationAnnotations {
         }
         let annotations = try parse(
             annotationsJSON,
-            imagePixelSize: CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+            imagePixelSize: CGSize(width: rep.pixelsWide, height: rep.pixelsHigh),
+            theme: theme
         )
         viewModel.annotations = annotations
+        if let theme, theme.canvas.applyOnOpen {
+            viewModel.applyThemeCanvas(theme.canvas)
+        }
         guard let url = viewModel.save(to: destination(viewModel.saveFormat.rawValue)) else {
             throw AutomationError(.internal, "Could not save the annotated screenshot.")
         }

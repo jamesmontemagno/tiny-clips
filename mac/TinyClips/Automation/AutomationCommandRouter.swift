@@ -16,6 +16,7 @@ final class AutomationCommandRouter {
         "editor.open", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
         "library.delete", "library.upload", "studio.projects.list", "studio.project.get",
         "studio.project.edit", "studio.zoom.suggest", "studio.export",
+        "editor.themes.list", "editor.themes.get", "editor.themes.save", "editor.themes.setActive", "editor.themes.delete",
     ]
 
     private unowned let controller: AutomationController
@@ -61,6 +62,11 @@ final class AutomationCommandRouter {
         case "editor.annotate": return try annotate(params)
         case "editor.trim": return try await trim(params)
         case "editor.saveFrame": return try await saveFrame(params)
+        case "editor.themes.list": return try AutomationEditorThemes.list(params, store: .shared)
+        case "editor.themes.get": return try AutomationEditorThemes.get(params, store: .shared)
+        case "editor.themes.save": return try AutomationEditorThemes.save(params, store: .shared)
+        case "editor.themes.setActive": return try AutomationEditorThemes.setActive(params, store: .shared)
+        case "editor.themes.delete": return try AutomationEditorThemes.delete(params, store: .shared)
         case "library.reveal": return try reveal(params)
         case "library.copy": return try copy(params)
         case "library.delete": return try await delete(params)
@@ -300,14 +306,15 @@ final class AutomationCommandRouter {
     }
 
     private func annotate(_ params: [String: Any]) throws -> [String: Any] {
-        if let unknown = params.keys.first(where: { $0 != "path" && $0 != "annotations" }) {
+        if let unknown = params.keys.first(where: { !["path", "annotations", "themeId"].contains($0) }) {
             throw AutomationError(.invalidParams, "Unknown parameter \(unknown).")
         }
         let source = try existingFile(params)
         guard AutomationLibrary.kind(forPath: source.path) == "screenshot" else {
             throw AutomationError(.invalidParams, "editor.annotate works on screenshot images only.")
         }
-        let rendered = try AutomationAnnotations.render(sourceURL: source, annotationsJSON: params["annotations"]) { fileExtension in
+        let theme = try AutomationEditorThemes.theme(forParam: params["themeId"], store: .shared)
+        let rendered = try AutomationAnnotations.render(sourceURL: source, annotationsJSON: params["annotations"], theme: theme) { fileExtension in
             SaveService.shared.generateURL(for: .screenshot, fileExtension: fileExtension, stemSuffix: "annotated")
         }
         guard rendered.url.standardizedFileURL != source else {
@@ -536,8 +543,14 @@ final class AutomationCommandRouter {
     private func openEditor(_ params: [String: Any]) throws -> [String: Any] {
         let url = try existingFile(params)
         let manager = try captureManager()
+        let theme = try AutomationEditorThemes.theme(forParam: params["themeId"], store: .shared)
+        let requiresScreenshot: () throws -> Void = {
+            guard theme != nil else { return }
+            throw AutomationError(.invalidParams, "themeId works on screenshots only.")
+        }
         if url.pathExtension.lowercased() == StudioProjectStore.projectFileExtension
             || StudioProjectStore.shared.isSavedProjectFolder(url) {
+            try requiresScreenshot()
             guard CaptureSettings.shared.studioPreviewEnabled else {
                 throw AutomationError(.notSupported, "Tiny Clips Studio is turned off. Turn it on in Settings → Studio.")
             }
@@ -548,12 +561,12 @@ final class AutomationCommandRouter {
         let type: CaptureType
         switch AutomationLibrary.kind(forPath: url.path) {
         case "screenshot": type = .screenshot; editor = "screenshot"
-        case "video": type = .video; editor = "videoTrimmer"
-        case "gif": type = .gif; editor = "gifTrimmer"
+        case "video": type = .video; editor = "videoTrimmer"; try requiresScreenshot()
+        case "gif": type = .gif; editor = "gifTrimmer"; try requiresScreenshot()
         default:
             throw AutomationError(.invalidParams, "Tiny Clips cannot edit .\(url.pathExtension) files.")
         }
-        manager.openRecentCapture(RecentCaptureItem(path: url.path, type: type))
+        manager.openRecentCapture(RecentCaptureItem(path: url.path, type: type), themeID: theme?.id)
         return ["opened": url.path, "editor": editor]
     }
 
