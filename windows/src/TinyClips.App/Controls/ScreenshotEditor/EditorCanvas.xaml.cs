@@ -79,7 +79,10 @@ public sealed partial class EditorCanvas : UserControl
     private EditorController _controller = null!;
     private ICaptureSettings? _settings;
     private XamlRoot? _observedXamlRoot;
-    /// <summary>A composition shadow's blur radius for a Gaussian standard deviation of one.</summary>
+    /// <summary>
+    /// A composition shadow's blur radius for a Gaussian standard deviation of one, measured
+    /// against the Win2D export. See plans/editor-themes.md.
+    /// </summary>
     private const double PreviewBlurRadiusPerDeviation = 3;
 
     private readonly Dictionary<Annotation, AnnotationVisual> _visuals = new();
