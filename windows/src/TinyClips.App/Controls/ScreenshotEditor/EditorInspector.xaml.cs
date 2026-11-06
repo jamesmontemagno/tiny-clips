@@ -488,7 +488,9 @@ public sealed partial class EditorInspector : UserControl
 
         var enabled = FillCheck.IsChecked == true;
         _controller.SetFillEnabled(enabled);
-        FillColorPicker.Color = enabled ? _controller.FillColor : Colors.Transparent;
+        FillColorPicker.Color = _controller.SelectedAnnotation is { } selected && selected.Tool.SupportsShapeEffects()
+            ? selected.FillColor
+            : enabled ? _controller.FillColor : Colors.Transparent;
         UpdateGradientAvailability(enabled);
     }
 

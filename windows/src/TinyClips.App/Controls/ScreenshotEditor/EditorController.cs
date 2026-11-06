@@ -381,7 +381,7 @@ internal sealed partial class EditorController : IDisposable
         // changed, and so it can never outlive the drag as an orphaned retained visual.
         CancelActiveAnnotation();
 
-        SwapThemeStroke(tool);
+        SwapThemeDefaults(tool);
         Tool = tool;
         SelectedAnnotation = null;
         ToolChanged?.Invoke(this, tool);
@@ -475,7 +475,11 @@ internal sealed partial class EditorController : IDisposable
 
     public void SetNumberColor(Color color)
     {
-        NumberTextColor = color;
+        if (!KeepsThemeDefaultsWhileEditingSelection)
+        {
+            NumberTextColor = color;
+        }
+
         if (SelectedAnnotation is { Tool: EditTool.Counter } ann)
         {
             ann.TextColor = color;
@@ -523,11 +527,15 @@ internal sealed partial class EditorController : IDisposable
 
     public void SetFillEnabled(bool enabled)
     {
-        FillEnabled = enabled;
+        if (!KeepsThemeDefaultsWhileEditingSelection)
+        {
+            FillEnabled = enabled;
+        }
+
         if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann)
         {
             RecordStyleUndo(ann);
-            ann.FillColor = enabled ? FillColor : Colors.Transparent;
+            ann.FillColor = enabled ? ThemeShapeFor(ann.Tool).FillColor : Colors.Transparent;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
@@ -539,7 +547,11 @@ internal sealed partial class EditorController : IDisposable
     {
         if (color.A == 0)
         {
-            FillEnabled = false;
+            if (!KeepsThemeDefaultsWhileEditingSelection)
+            {
+                FillEnabled = false;
+            }
+
             if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } cleared)
             {
                 RecordStyleUndo(cleared);
@@ -551,8 +563,12 @@ internal sealed partial class EditorController : IDisposable
             return;
         }
 
-        FillColor = color;
-        FillEnabled = true;
+        if (!KeepsThemeDefaultsWhileEditingSelection)
+        {
+            FillColor = color;
+            FillEnabled = true;
+        }
+
         if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann)
         {
             RecordStyleUndo(ann);
@@ -613,7 +629,11 @@ internal sealed partial class EditorController : IDisposable
 
     public void SetNumberSize(double scale)
     {
-        NumberScale = scale;
+        if (!KeepsThemeDefaultsWhileEditingSelection)
+        {
+            NumberScale = scale;
+        }
+
         if (SelectedAnnotation is { Tool: EditTool.Counter } ann)
         {
             ann.SizeScale = scale;
@@ -1185,16 +1205,18 @@ internal sealed partial class EditorController : IDisposable
 
     public Annotation BeginAnnotation(EditTool tool, Point pixelStart)
     {
+        var stroke = ThemeStrokeFor(tool);
+        var shape = ThemeShapeFor(tool);
         var ann = new Annotation
         {
             Tool = tool,
-            Color = StrokeColor,
-            FillColor = (tool is EditTool.Rectangle or EditTool.Ellipse && FillEnabled) ? FillColor : Colors.Transparent,
-            Thickness = StrokeThickness,
+            Color = stroke.Color,
+            FillColor = (tool is EditTool.Rectangle or EditTool.Ellipse && shape.FillEnabled) ? shape.FillColor : Colors.Transparent,
+            Thickness = stroke.Width,
             Redaction = RedactionLevelDefault,
             RedactStyle = RedactionStyleDefault,
             ArrowStyle = ArrowStyleDefault,
-            ShapeEffects = tool.SupportsShapeEffects() ? ShapeEffectsDefault : ShapeEffects.Default,
+            ShapeEffects = tool.SupportsShapeEffects() ? shape.Effects : ShapeEffects.Default,
             Bounds = new Rect(pixelStart.X, pixelStart.Y, 0, 0),
         };
 
@@ -1321,7 +1343,7 @@ internal sealed partial class EditorController : IDisposable
         var ann = new Annotation
         {
             Tool = EditTool.Counter,
-            Color = StrokeColor,
+            Color = ThemeStrokeFor(EditTool.Counter).Color,
             Thickness = StrokeThickness,
             SizeScale = NumberScale,
             TextColor = NumberTextColor,

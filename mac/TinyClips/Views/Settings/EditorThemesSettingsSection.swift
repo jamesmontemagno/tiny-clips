@@ -31,8 +31,11 @@ struct EditorThemesSettingsSection: View {
                 EditorThemePreview(theme: theme)
             }
             nameSection
-            shapeSection(theme)
-            lineSection
+            shapeSection("Rectangle", theme.rectangle, \.rectangle)
+            shapeSection("Ellipse", theme.ellipse, \.ellipse)
+            arrowSection
+            strokeSection("Line", \.line)
+            strokeSection("Pen", \.pen)
             textSection(theme)
             numberSection
             canvasSection(theme)
@@ -221,22 +224,25 @@ struct EditorThemesSettingsSection: View {
         )
     }
 
-    private func colorRow(_ title: String, _ keyPath: WritableKeyPath<EditorTheme, String>) -> some View {
+    /// Sections repeat titles such as "Color:", so `name` is what VoiceOver reads.
+    private func colorRow(_ title: String, _ keyPath: WritableKeyPath<EditorTheme, String>, name: String) -> some View {
         ColorPicker(title, selection: color(keyPath), supportsOpacity: true)
+            .accessibilityLabel(name)
     }
 
     private func slider(
         _ title: String,
         _ keyPath: WritableKeyPath<EditorTheme, Double>,
         in range: ClosedRange<Double>,
-        step: Double = 1
+        step: Double = 1,
+        name: String
     ) -> some View {
         let current = selectedTheme?[keyPath: keyPath] ?? range.lowerBound
         let text = current.formatted(.number.precision(.fractionLength(0...2)))
         return HStack {
             Text(title)
             Slider(value: value(keyPath, default: range.lowerBound), in: range, step: step)
-                .accessibilityLabel(title)
+                .accessibilityLabel(name)
                 .accessibilityValue(text)
             Text(text)
                 .monospacedDigit()
@@ -248,13 +254,15 @@ struct EditorThemesSettingsSection: View {
     private func namedPicker(
         _ title: String,
         _ keyPath: WritableKeyPath<EditorTheme, String>,
-        options: [(name: String, label: String)]
+        options: [(name: String, label: String)],
+        name: String
     ) -> some View {
         Picker(title, selection: value(keyPath, default: options[0].name)) {
             ForEach(options, id: \.name) { option in
                 Text(option.label).tag(option.name)
             }
         }
+        .accessibilityLabel(name)
     }
 }
 
@@ -273,86 +281,125 @@ private extension EditorThemesSettingsSection {
         }
     }
 
-    func shapeSection(_ theme: EditorTheme) -> some View {
-        Section("Shapes") {
-            colorRow("Stroke color:", \.shape.strokeColor)
-            slider("Stroke width:", \.shape.strokeWidth, in: EditorThemeRange.strokeWidth, step: 0.5)
-            ColorPicker("Fill color:", selection: shapeFillBinding, supportsOpacity: true)
-            Toggle("Gradient fill", isOn: gradientBinding)
-                .disabled(!EditorThemeColor.isVisible(theme.shape.fillColor))
+    /// The rectangle and ellipse controls, which differ only in the section they edit.
+    func shapeSection(
+        _ title: String,
+        _ section: EditorTheme.ShapeSection,
+        _ keyPath: WritableKeyPath<EditorTheme, EditorTheme.ShapeSection>
+    ) -> some View {
+        Section(title) {
+            colorRow("Stroke color:", keyPath.appending(path: \EditorTheme.ShapeSection.strokeColor), name: "\(title) stroke color")
+            slider(
+                "Stroke width:",
+                keyPath.appending(path: \EditorTheme.ShapeSection.strokeWidth),
+                in: EditorThemeRange.strokeWidth,
+                step: 0.5,
+                name: "\(title) stroke width"
+            )
+            ColorPicker("Fill color:", selection: shapeFillBinding(keyPath), supportsOpacity: true)
+                .accessibilityLabel("\(title) fill color")
+            Toggle("Gradient fill", isOn: gradientBinding(keyPath))
+                .disabled(!EditorThemeColor.isVisible(section.fillColor))
                 .help("A gradient starts from the fill color, so the fill can't be transparent.")
-            if theme.shape.gradientEndColor != nil {
-                ColorPicker("End color:", selection: gradientEndBinding, supportsOpacity: true)
-                slider("Direction:", \.shape.gradientDirection, in: EditorThemeRange.direction)
+                .accessibilityLabel("\(title) gradient fill")
+            if section.gradientEndColor != nil {
+                ColorPicker("End color:", selection: gradientEndBinding(keyPath), supportsOpacity: true)
+                    .accessibilityLabel("\(title) gradient end color")
+                slider(
+                    "Direction:",
+                    keyPath.appending(path: \EditorTheme.ShapeSection.gradientDirection),
+                    in: EditorThemeRange.direction,
+                    name: "\(title) gradient direction"
+                )
             }
-            slider("Shadow blur:", \.shape.shadowBlur, in: EditorThemeRange.shadowBlur)
-            if theme.shape.shadowBlur > 0 {
-                colorRow("Shadow color:", \.shape.shadowColor)
+            slider(
+                "Shadow blur:",
+                keyPath.appending(path: \EditorTheme.ShapeSection.shadowBlur),
+                in: EditorThemeRange.shadowBlur,
+                name: "\(title) shadow blur"
+            )
+            if section.shadowBlur > 0 {
+                colorRow("Shadow color:", keyPath.appending(path: \EditorTheme.ShapeSection.shadowColor), name: "\(title) shadow color")
             }
         }
     }
 
     /// A transparent fill can't start a gradient, so losing the fill also ends the gradient.
-    var shapeFillBinding: Binding<Color> {
+    func shapeFillBinding(_ keyPath: WritableKeyPath<EditorTheme, EditorTheme.ShapeSection>) -> Binding<Color> {
         Binding(
-            get: { EditorThemeColor.color(selectedTheme?.shape.fillColor ?? EditorThemeColor.transparentHex) },
+            get: { EditorThemeColor.color(selectedTheme?[keyPath: keyPath].fillColor ?? EditorThemeColor.transparentHex) },
             set: { newValue in
                 update { theme in
-                    theme.shape.fillColor = EditorThemeColor.hex(newValue)
-                    if !EditorThemeColor.isVisible(theme.shape.fillColor) {
-                        theme.shape.gradientEndColor = nil
+                    theme[keyPath: keyPath].fillColor = EditorThemeColor.hex(newValue)
+                    if !EditorThemeColor.isVisible(theme[keyPath: keyPath].fillColor) {
+                        theme[keyPath: keyPath].gradientEndColor = nil
                     }
                 }
             }
         )
     }
 
-    var gradientBinding: Binding<Bool> {
+    func gradientBinding(_ keyPath: WritableKeyPath<EditorTheme, EditorTheme.ShapeSection>) -> Binding<Bool> {
         Binding(
-            get: { selectedTheme?.shape.gradientEndColor != nil },
+            get: { selectedTheme?[keyPath: keyPath].gradientEndColor != nil },
             set: { isOn in
-                update { $0.shape.gradientEndColor = isOn ? "#FF3385F5" : nil }
+                update { $0[keyPath: keyPath].gradientEndColor = isOn ? "#FF3385F5" : nil }
             }
         )
     }
 
-    var gradientEndBinding: Binding<Color> {
+    func gradientEndBinding(_ keyPath: WritableKeyPath<EditorTheme, EditorTheme.ShapeSection>) -> Binding<Color> {
         Binding(
-            get: { EditorThemeColor.color(selectedTheme?.shape.gradientEndColor ?? EditorThemeColor.transparentHex) },
-            set: { newValue in update { $0.shape.gradientEndColor = EditorThemeColor.hex(newValue) } }
+            get: { EditorThemeColor.color(selectedTheme?[keyPath: keyPath].gradientEndColor ?? EditorThemeColor.transparentHex) },
+            set: { newValue in update { $0[keyPath: keyPath].gradientEndColor = EditorThemeColor.hex(newValue) } }
         )
     }
 
-    var lineSection: some View {
-        Section("Arrows, Lines, and Pen") {
-            colorRow("Color:", \.line.color)
-            slider("Width:", \.line.width, in: EditorThemeRange.strokeWidth, step: 0.5)
+    var arrowSection: some View {
+        Section("Arrow") {
+            colorRow("Color:", \.arrow.color, name: "Arrow color")
+            slider("Width:", \.arrow.width, in: EditorThemeRange.strokeWidth, step: 0.5, name: "Arrow width")
             namedPicker(
-                "Arrow style:",
-                \.line.arrowStyle,
-                options: ArrowStyle.allCases.map { (EditorThemeNames.name(for: $0), $0.label) }
+                "Style:",
+                \.arrow.style,
+                options: ArrowStyle.allCases.map { (EditorThemeNames.name(for: $0), $0.label) },
+                name: "Arrow style"
+            )
+        }
+    }
+
+    func strokeSection(_ title: String, _ keyPath: WritableKeyPath<EditorTheme, EditorTheme.StrokeSection>) -> some View {
+        Section(title) {
+            colorRow("Color:", keyPath.appending(path: \EditorTheme.StrokeSection.color), name: "\(title) color")
+            slider(
+                "Width:",
+                keyPath.appending(path: \EditorTheme.StrokeSection.width),
+                in: EditorThemeRange.strokeWidth,
+                step: 0.5,
+                name: "\(title) width"
             )
         }
     }
 
     func textSection(_ theme: EditorTheme) -> some View {
         Section("Text") {
-            colorRow("Color:", \.text.color)
+            colorRow("Color:", \.text.color, name: "Text color")
             Picker("Font:", selection: value(\.text.fontFamily, default: nil)) {
                 Text(textSystemFontFamily).tag(String?.none)
                 ForEach(fontFamilyOptions(including: theme.text.fontFamily), id: \.self) { family in
                     Text(family).tag(String?.some(family))
                 }
             }
-            slider("Size:", \.text.fontSize, in: EditorThemeRange.fontSize)
+            .accessibilityLabel("Text font")
+            slider("Size:", \.text.fontSize, in: EditorThemeRange.fontSize, name: "Text size")
             Toggle("Bold", isOn: value(\.text.bold, default: false))
             Toggle("Italic", isOn: value(\.text.italic, default: false))
             Toggle("Underline", isOn: value(\.text.underline, default: false))
-            colorRow("Box background:", \.text.box.backgroundColor)
-            colorRow("Box border:", \.text.box.borderColor)
-            slider("Border width:", \.text.box.borderWidth, in: EditorThemeRange.boxBorderWidth)
-            slider("Box padding:", \.text.box.padding, in: EditorThemeRange.boxPadding)
-            slider("Box corners:", \.text.box.cornerRadius, in: EditorThemeRange.boxCornerRadius)
+            colorRow("Box background:", \.text.box.backgroundColor, name: "Text box background")
+            colorRow("Box border:", \.text.box.borderColor, name: "Text box border")
+            slider("Border width:", \.text.box.borderWidth, in: EditorThemeRange.boxBorderWidth, name: "Text box border width")
+            slider("Box padding:", \.text.box.padding, in: EditorThemeRange.boxPadding, name: "Text box padding")
+            slider("Box corners:", \.text.box.cornerRadius, in: EditorThemeRange.boxCornerRadius, name: "Text box corners")
         }
     }
 
@@ -364,9 +411,9 @@ private extension EditorThemesSettingsSection {
 
     var numberSection: some View {
         Section("Numbers") {
-            colorRow("Badge color:", \.number.badgeColor)
-            colorRow("Text color:", \.number.textColor)
-            slider("Size:", \.number.size, in: EditorThemeRange.numberSize, step: 0.05)
+            colorRow("Badge color:", \.number.badgeColor, name: "Number badge color")
+            colorRow("Text color:", \.number.textColor, name: "Number text color")
+            slider("Size:", \.number.size, in: EditorThemeRange.numberSize, step: 0.05, name: "Number size")
         }
     }
 
@@ -375,32 +422,36 @@ private extension EditorThemesSettingsSection {
             namedPicker(
                 "Background:",
                 \.canvas.background,
-                options: [("transparent", "Transparent"), ("solid", "Solid"), ("gradient", "Gradient")]
+                options: [("transparent", "Transparent"), ("solid", "Solid"), ("gradient", "Gradient")],
+                name: "Canvas background"
             )
             if theme.canvas.background != "transparent" {
-                colorRow("Color:", \.canvas.color)
+                colorRow("Color:", \.canvas.color, name: "Canvas color")
             }
             if theme.canvas.background == "gradient" {
-                colorRow("Color 2:", \.canvas.secondaryColor)
-                slider("Direction:", \.canvas.gradientDirection, in: EditorThemeRange.direction)
+                colorRow("Color 2:", \.canvas.secondaryColor, name: "Canvas second color")
+                slider("Direction:", \.canvas.gradientDirection, in: EditorThemeRange.direction, name: "Canvas gradient direction")
             }
-            slider("Padding:", \.canvas.padding, in: EditorThemeRange.canvasPadding)
-            slider("Image corners:", \.canvas.cornerRadius, in: EditorThemeRange.canvasCornerRadius)
-            slider("Shadow:", \.canvas.shadow, in: EditorThemeRange.canvasShadow)
+            slider("Padding:", \.canvas.padding, in: EditorThemeRange.canvasPadding, name: "Canvas padding")
+            slider("Image corners:", \.canvas.cornerRadius, in: EditorThemeRange.canvasCornerRadius, name: "Canvas image corners")
+            slider("Shadow:", \.canvas.shadow, in: EditorThemeRange.canvasShadow, name: "Canvas shadow")
             namedPicker(
                 "Frame:",
                 \.canvas.frame,
-                options: ExportFramePreset.allCases.map { (EditorThemeNames.name(for: $0), $0.label) }
+                options: ExportFramePreset.allCases.map { (EditorThemeNames.name(for: $0), $0.label) },
+                name: "Canvas frame"
             )
             namedPicker(
                 "Horizontal alignment:",
                 \.canvas.horizontalAlignment,
-                options: ExportHorizontalAlignment.allCases.map { (EditorThemeNames.name(for: $0), $0.label) }
+                options: ExportHorizontalAlignment.allCases.map { (EditorThemeNames.name(for: $0), $0.label) },
+                name: "Canvas horizontal alignment"
             )
             namedPicker(
                 "Vertical alignment:",
                 \.canvas.verticalAlignment,
-                options: ExportVerticalAlignment.allCases.map { (EditorThemeNames.name(for: $0), $0.label) }
+                options: ExportVerticalAlignment.allCases.map { (EditorThemeNames.name(for: $0), $0.label) },
+                name: "Canvas vertical alignment"
             )
         }
     }
@@ -438,7 +489,7 @@ private struct EditorThemePreview: View {
 
         ZStack(alignment: .topLeading) {
             background
-            sample(scale: scale, size: imageRect.size)
+            samples(scale: scale, size: imageRect.size)
                 .frame(width: imageRect.width, height: imageRect.height)
                 .background(Color(nsColor: .textBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: CGFloat(theme.canvas.cornerRadius) * scale))
@@ -475,57 +526,51 @@ private struct EditorThemePreview: View {
         }
     }
 
-    private func styled(_ annotation: ScreenshotAnnotation) -> ScreenshotAnnotation {
-        var annotation = annotation
+    private func styled(_ tool: EditTool, rect: CGRect = .zero, text: String = "") -> ScreenshotAnnotation {
+        var annotation = ScreenshotAnnotation(tool: tool, rect: rect, color: .clear, lineWidth: 0, text: text, points: [])
         EditorThemeStyling.apply(theme, to: &annotation, imagePixelSize: imageSize)
         return annotation
     }
 
-    private func sample(scale: CGFloat, size: CGSize) -> some View {
-        let shape = styled(ScreenshotAnnotation(
-            tool: .rectangle,
-            rect: CGRect(x: 0.08, y: 0.14, width: 0.34, height: 0.42),
-            color: .clear,
-            lineWidth: 0,
-            text: "",
-            points: []
-        ))
-        let number = styled(ScreenshotAnnotation(
-            tool: .number,
-            rect: CGRect(x: 0.84, y: 0.14, width: 0.05, height: 0.09),
-            color: .clear,
-            lineWidth: 0,
-            text: "1",
-            points: []
-        ))
-        let lineWidth = CGFloat(theme.line.width) * scale
-        let start = CGPoint(x: size.width * 0.5, y: size.height * 0.72)
-        let end = CGPoint(x: size.width * 0.8, y: size.height * 0.3)
-        let lineColor = EditorThemeColor.color(theme.line.color)
+    /// One sample of each annotation type: shapes and the number along the top, then the arrow,
+    /// line, pen, and text along the bottom, in separate parts of the image so they don't overlap.
+    private func samples(scale: CGFloat, size: CGSize) -> some View {
+        let shapes = [
+            styled(.rectangle, rect: CGRect(x: 0.05, y: 0.08, width: 0.26, height: 0.36)),
+            styled(.circle, rect: CGRect(x: 0.37, y: 0.08, width: 0.26, height: 0.36)),
+        ]
+        let number = styled(.number, rect: CGRect(x: 0.795, y: 0.215, width: 0.05, height: 0.09), text: "1")
+        let arrow = styled(.arrow)
+        let line = styled(.line)
+        let pen = styled(.pencil)
 
         return ZStack(alignment: .topLeading) {
             Canvas { context, _ in
-                ShapeEffectsRenderer.drawPreview(
-                    shape,
-                    in: context,
-                    rect: CGRect(
-                        x: shape.rect.minX * size.width,
-                        y: shape.rect.minY * size.height,
-                        width: shape.rect.width * size.width,
-                        height: shape.rect.height * size.height
-                    ),
-                    lineWidth: CGFloat(theme.shape.strokeWidth) * scale,
-                    effectScale: scale
+                for shape in shapes {
+                    ShapeEffectsRenderer.drawPreview(
+                        shape,
+                        in: context,
+                        rect: RotatableAnnotationGeometry.scaledRect(shape.rect, in: size),
+                        lineWidth: shape.lineWidth * scale,
+                        effectScale: scale
+                    )
+                }
+                drawArrow(
+                    arrow,
+                    from: CGPoint(x: size.width * 0.05, y: size.height * 0.9),
+                    to: CGPoint(x: size.width * 0.27, y: size.height * 0.6),
+                    scale: scale,
+                    in: context
                 )
-                context.stroke(
-                    arrowPath(from: start, to: end, headLength: max(6, lineWidth * 3)),
-                    with: .color(lineColor),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
-                )
+                var linePath = Path()
+                linePath.move(to: CGPoint(x: size.width * 0.34, y: size.height * 0.9))
+                linePath.addLine(to: CGPoint(x: size.width * 0.5, y: size.height * 0.6))
+                context.stroke(linePath, with: .color(line.color), lineWidth: line.lineWidth * scale)
+                context.stroke(penPath(in: size), with: .color(pen.color), lineWidth: pen.lineWidth * scale)
             }
 
             sampleText(scale: scale)
-                .position(x: size.width * 0.28, y: size.height * 0.8)
+                .position(x: size.width * 0.85, y: size.height * 0.75)
 
             Circle()
                 .fill(number.color)
@@ -541,7 +586,7 @@ private struct EditorThemePreview: View {
 
     private func sampleText(scale: CGFloat) -> some View {
         let box = theme.text.box
-        return Text("Sample text")
+        return Text("Text")
             .font(textPreviewFont(
                 family: theme.text.fontFamily ?? textSystemFontFamily,
                 size: CGFloat(theme.text.fontSize) * scale,
@@ -563,23 +608,44 @@ private struct EditorThemePreview: View {
             }
     }
 
-    private func arrowPath(from start: CGPoint, to end: CGPoint, headLength: CGFloat) -> Path {
-        let style = EditorThemeNames.arrowStyle(theme.line.arrowStyle)
-        let bend = hypot(end.x - start.x, end.y - start.y) * 0.25 * style.curvatureSign
-        let control = CGPoint(
-            x: (start.x + end.x) / 2 - (end.y - start.y) / hypot(end.x - start.x, end.y - start.y) * bend,
-            y: (start.y + end.y) / 2 + (end.x - start.x) / hypot(end.x - start.x, end.y - start.y) * bend
+    /// The editor canvas's arrow: a shaft ending at the base of a filled head.
+    private func drawArrow(_ arrow: ScreenshotAnnotation, from start: CGPoint, to end: CGPoint, scale: CGFloat, in context: GraphicsContext) {
+        let lineWidth = arrow.lineWidth * scale
+        let headLength = max(18 * scale, lineWidth * 4)
+        let headAngle = CGFloat.pi / 6
+        let control = arrowControlPoint(start: start, end: end, style: arrow.arrowStyle)
+        let tipAngle = atan2(end.y - control.y, end.x - control.x)
+        let shaftEnd = CGPoint(
+            x: end.x - headLength * cos(headAngle) * cos(tipAngle),
+            y: end.y - headLength * cos(headAngle) * sin(tipAngle)
         )
-        let angle = atan2(end.y - control.y, end.x - control.x)
+
+        var shaft = Path()
+        shaft.move(to: start)
+        shaft.addQuadCurve(to: shaftEnd, control: control)
+        context.stroke(shaft, with: .color(arrow.color), lineWidth: lineWidth)
+
+        var head = Path()
+        head.move(to: end)
+        head.addLine(to: CGPoint(x: end.x - headLength * cos(tipAngle - headAngle), y: end.y - headLength * sin(tipAngle - headAngle)))
+        head.addLine(to: CGPoint(x: end.x - headLength * cos(tipAngle + headAngle), y: end.y - headLength * sin(tipAngle + headAngle)))
+        head.closeSubpath()
+        context.fill(head, with: .color(arrow.color))
+    }
+
+    private func penPath(in size: CGSize) -> Path {
         var path = Path()
-        path.move(to: start)
-        path.addQuadCurve(to: end, control: control)
-        for offset in [CGFloat.pi * 0.85, -CGFloat.pi * 0.85] {
-            path.move(to: end)
-            path.addLine(to: CGPoint(
-                x: end.x + cos(angle + offset) * headLength,
-                y: end.y + sin(angle + offset) * headLength
-            ))
+        for step in 0...32 {
+            let progress = CGFloat(step) / 32
+            let point = CGPoint(
+                x: size.width * (0.56 + 0.14 * progress),
+                y: size.height * (0.75 + 0.12 * sin(progress * 6 * .pi))
+            )
+            if step == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
         }
         return path
     }

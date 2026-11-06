@@ -2,15 +2,6 @@ using Windows.UI;
 
 namespace TinyClips.Core.Editing.Themes;
 
-/// <summary>Which part of a theme styles an annotation.</summary>
-public enum EditorThemeGroup
-{
-    Shape,
-    Line,
-    Text,
-    Number,
-}
-
 /// <summary>Converts theme sizes to image pixels and back. See shared/editor-themes/README.md.</summary>
 public static class EditorThemeUnits
 {
@@ -27,15 +18,20 @@ public static class EditorThemeUnits
     public static double TextUnits(double pixels, double imageWidth) => pixels / TextUnit(imageWidth);
 }
 
-/// <summary>The editor's defaults for new annotations, in image pixels.</summary>
+/// <summary>A tool's color and width for new annotations, in image pixels.</summary>
+public readonly record struct EditorThemeStrokeDefaults(Color Color, double Width);
+
+/// <summary>A rectangle's or an ellipse's defaults for new annotations, in image pixels.</summary>
+public readonly record struct EditorThemeShapeDefaults(Color StrokeColor, double StrokeWidth, Color Fill, ShapeEffects Effects);
+
+/// <summary>The editor's defaults for new annotations, one set per annotation type, in image pixels.</summary>
 public sealed record EditorThemeDefaults(
-    Color ShapeColor,
-    double ShapeWidth,
-    Color ShapeFill,
-    ShapeEffects ShapeEffects,
-    Color LineColor,
-    double LineWidth,
+    EditorThemeShapeDefaults Rectangle,
+    EditorThemeShapeDefaults Ellipse,
+    EditorThemeStrokeDefaults Arrow,
     ArrowStyle ArrowStyle,
+    EditorThemeStrokeDefaults Line,
+    EditorThemeStrokeDefaults Pen,
     Color TextColor,
     string FontFamily,
     double FontSize,
@@ -66,43 +62,45 @@ public static class EditorThemeStyling
     /// <summary>The font a theme with no font family uses on Windows.</summary>
     public const string PlatformFontFamily = "Segoe UI";
 
-    public static EditorThemeGroup? GroupOf(EditTool tool) => tool switch
-    {
-        EditTool.Rectangle or EditTool.Ellipse => EditorThemeGroup.Shape,
-        EditTool.Arrow or EditTool.Line or EditTool.Pen => EditorThemeGroup.Line,
-        EditTool.Text => EditorThemeGroup.Text,
-        EditTool.Counter => EditorThemeGroup.Number,
-        _ => null,
-    };
+    /// <summary>Whether a theme has a section for this tool. Redaction and emoji never do.</summary>
+    public static bool IsThemed(EditTool tool) =>
+        tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Arrow or EditTool.Line or EditTool.Pen
+            or EditTool.Text or EditTool.Counter;
 
     /// <summary>
-    /// Restyles an annotation. Redactions and emoji are never touched, so a theme can't weaken a
-    /// redaction. Text and pen bounds depend on the new style, so the caller re-measures them.
+    /// Restyles an annotation from its own section. Redactions and emoji are never touched, so a
+    /// theme can't weaken a redaction. Text and pen bounds depend on the new style, so the caller
+    /// re-measures them.
     /// </summary>
     public static void Apply(ScreenshotAnnotation annotation, EditorTheme theme, double imageWidth)
     {
         ArgumentNullException.ThrowIfNull(annotation);
         ArgumentNullException.ThrowIfNull(theme);
-        switch (GroupOf(annotation.Tool))
+        switch (annotation.Tool)
         {
-            case EditorThemeGroup.Shape:
-                annotation.Color = EditorTheme.ColorOf(theme.Shape.StrokeColor);
-                annotation.Thickness = EditorThemeUnits.StrokePixels(theme.Shape.StrokeWidth, imageWidth);
-                annotation.FillColor = EditorTheme.ColorOf(theme.Shape.FillColor);
-                annotation.ShapeEffects = ShapeEffectsOf(theme.Shape, imageWidth);
+            case EditTool.Rectangle:
+                ApplyShape(annotation, theme.Rectangle, imageWidth);
                 break;
 
-            case EditorThemeGroup.Line:
-                annotation.Color = EditorTheme.ColorOf(theme.Line.Color);
-                annotation.Thickness = EditorThemeUnits.StrokePixels(theme.Line.Width, imageWidth);
-                if (annotation.Tool == EditTool.Arrow)
-                {
-                    annotation.ArrowStyle = ArrowStyleOf(theme.Line.ArrowStyle);
-                }
-
+            case EditTool.Ellipse:
+                ApplyShape(annotation, theme.Ellipse, imageWidth);
                 break;
 
-            case EditorThemeGroup.Text:
+            case EditTool.Arrow:
+                annotation.Color = EditorTheme.ColorOf(theme.Arrow.Color);
+                annotation.Thickness = EditorThemeUnits.StrokePixels(theme.Arrow.Width, imageWidth);
+                annotation.ArrowStyle = ArrowStyleOf(theme.Arrow.Style);
+                break;
+
+            case EditTool.Line:
+                ApplyStroke(annotation, theme.Line, imageWidth);
+                break;
+
+            case EditTool.Pen:
+                ApplyStroke(annotation, theme.Pen, imageWidth);
+                break;
+
+            case EditTool.Text:
                 annotation.Color = EditorTheme.ColorOf(theme.Text.Color);
                 annotation.FontFamily = FontFamilyOf(theme.Text);
                 annotation.FontSize = EditorThemeUnits.TextPixels(theme.Text.FontSize, imageWidth);
@@ -112,7 +110,7 @@ public static class EditorThemeStyling
                 annotation.TextBoxStyle = TextBoxStyleOf(theme.Text.Box, imageWidth);
                 break;
 
-            case EditorThemeGroup.Number:
+            case EditTool.Counter:
                 annotation.Color = EditorTheme.ColorOf(theme.Number.BadgeColor);
                 annotation.TextColor = EditorTheme.ColorOf(theme.Number.TextColor);
                 annotation.SizeScale = theme.Number.Size;
@@ -125,13 +123,12 @@ public static class EditorThemeStyling
     {
         ArgumentNullException.ThrowIfNull(theme);
         return new EditorThemeDefaults(
-            EditorTheme.ColorOf(theme.Shape.StrokeColor),
-            EditorThemeUnits.StrokePixels(theme.Shape.StrokeWidth, imageWidth),
-            EditorTheme.ColorOf(theme.Shape.FillColor),
-            ShapeEffectsOf(theme.Shape, imageWidth),
-            EditorTheme.ColorOf(theme.Line.Color),
-            EditorThemeUnits.StrokePixels(theme.Line.Width, imageWidth),
-            ArrowStyleOf(theme.Line.ArrowStyle),
+            ShapeDefaultsOf(theme.Rectangle, imageWidth),
+            ShapeDefaultsOf(theme.Ellipse, imageWidth),
+            new EditorThemeStrokeDefaults(EditorTheme.ColorOf(theme.Arrow.Color), EditorThemeUnits.StrokePixels(theme.Arrow.Width, imageWidth)),
+            ArrowStyleOf(theme.Arrow.Style),
+            StrokeDefaultsOf(theme.Line, imageWidth),
+            StrokeDefaultsOf(theme.Pen, imageWidth),
             EditorTheme.ColorOf(theme.Text.Color),
             FontFamilyOf(theme.Text),
             EditorThemeUnits.TextPixels(theme.Text.FontSize, imageWidth),
@@ -143,6 +140,30 @@ public static class EditorThemeStyling
             EditorTheme.ColorOf(theme.Number.TextColor),
             theme.Number.Size);
     }
+
+    private static void ApplyShape(ScreenshotAnnotation annotation, EditorThemeShape shape, double imageWidth)
+    {
+        annotation.Color = EditorTheme.ColorOf(shape.StrokeColor);
+        annotation.Thickness = EditorThemeUnits.StrokePixels(shape.StrokeWidth, imageWidth);
+        annotation.FillColor = EditorTheme.ColorOf(shape.FillColor);
+        annotation.ShapeEffects = ShapeEffectsOf(shape, imageWidth);
+    }
+
+    private static void ApplyStroke(ScreenshotAnnotation annotation, EditorThemeStroke stroke, double imageWidth)
+    {
+        annotation.Color = EditorTheme.ColorOf(stroke.Color);
+        annotation.Thickness = EditorThemeUnits.StrokePixels(stroke.Width, imageWidth);
+    }
+
+    private static EditorThemeShapeDefaults ShapeDefaultsOf(EditorThemeShape shape, double imageWidth) => new(
+        EditorTheme.ColorOf(shape.StrokeColor),
+        EditorThemeUnits.StrokePixels(shape.StrokeWidth, imageWidth),
+        EditorTheme.ColorOf(shape.FillColor),
+        ShapeEffectsOf(shape, imageWidth));
+
+    private static EditorThemeStrokeDefaults StrokeDefaultsOf(EditorThemeStroke stroke, double imageWidth) => new(
+        EditorTheme.ColorOf(stroke.Color),
+        EditorThemeUnits.StrokePixels(stroke.Width, imageWidth));
 
     /// <summary>
     /// The canvas a theme asks for. Themes leave out image backgrounds, so one already in place

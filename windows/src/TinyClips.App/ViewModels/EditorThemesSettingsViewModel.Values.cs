@@ -8,8 +8,11 @@ public sealed partial class EditorThemesSettingsViewModel
 {
     private static readonly Color DefaultGradientEnd = Color.FromArgb(255, 51, 133, 245);
 
-    private EditorThemeShape Shape => (_theme ?? Placeholder).Shape;
-    private EditorThemeLine Line => (_theme ?? Placeholder).Line;
+    private EditorThemeShape Rectangle => (_theme ?? Placeholder).Rectangle;
+    private EditorThemeShape Ellipse => (_theme ?? Placeholder).Ellipse;
+    private EditorThemeArrow Arrow => (_theme ?? Placeholder).Arrow;
+    private EditorThemeStroke Line => (_theme ?? Placeholder).Line;
+    private EditorThemeStroke Pen => (_theme ?? Placeholder).Pen;
     private EditorThemeText Text => (_theme ?? Placeholder).Text;
     private EditorThemeNumber Number => (_theme ?? Placeholder).Number;
     private EditorThemeCanvas Canvas => (_theme ?? Placeholder).Canvas;
@@ -28,6 +31,29 @@ public sealed partial class EditorThemesSettingsViewModel
             Edit(theme => change(theme, value));
         }
     }
+
+    private void EditRectangle(Func<EditorThemeShape, EditorThemeShape> change) =>
+        Edit(theme => theme with { Rectangle = change(theme.Rectangle) });
+
+    private void EditEllipse(Func<EditorThemeShape, EditorThemeShape> change) =>
+        Edit(theme => theme with { Ellipse = change(theme.Ellipse) });
+
+    /// <summary>A gradient needs a fill, so clearing the fill also ends the gradient.</summary>
+    private static EditorThemeShape WithFill(EditorThemeShape shape, Color fill) => shape with
+    {
+        FillColor = ToHex(fill),
+        GradientEndColor = fill.A == 0 ? null : shape.GradientEndColor,
+    };
+
+    private static EditorThemeShape WithGradient(EditorThemeShape shape, bool hasGradient) => shape with
+    {
+        GradientEndColor = hasGradient && ToColor(shape.FillColor).A > 0
+            ? shape.GradientEndColor ?? ToHex(DefaultGradientEnd)
+            : null,
+    };
+
+    private static EditorThemeShape WithGradientEnd(EditorThemeShape shape, Color end) =>
+        shape.GradientEndColor is null ? shape : shape with { GradientEndColor = ToHex(end) };
 
     /// <summary>What's typed stays as typed; a blank name isn't saved and leaves the saved one.</summary>
     public string NameText
@@ -52,75 +78,131 @@ public sealed partial class EditorThemesSettingsViewModel
         }
     }
 
-    // -- Shapes ----------------------------------------------------------------------------------
+    // -- Rectangle --------------------------------------------------------------------------------
 
-    public Color ShapeStrokeColor
+    public Color RectangleStrokeColor
     {
-        get => ToColor(Shape.StrokeColor);
-        set => Edit(t => t with { Shape = t.Shape with { StrokeColor = ToHex(value) } });
+        get => ToColor(Rectangle.StrokeColor);
+        set => EditRectangle(shape => shape with { StrokeColor = ToHex(value) });
     }
 
-    public double ShapeStrokeWidth
+    public double RectangleStrokeWidth
     {
-        get => Shape.StrokeWidth;
-        set => EditNumber(value, (t, v) => t with { Shape = t.Shape with { StrokeWidth = v } });
+        get => Rectangle.StrokeWidth;
+        set => EditNumber(value, (t, v) => t with { Rectangle = t.Rectangle with { StrokeWidth = v } });
     }
 
-    /// <summary>A gradient needs a fill, so clearing the fill also ends the gradient.</summary>
-    public Color ShapeFillColor
+    public Color RectangleFillColor
     {
-        get => ToColor(Shape.FillColor);
-        set => Edit(t => t with
-        {
-            Shape = t.Shape with
-            {
-                FillColor = ToHex(value),
-                GradientEndColor = value.A == 0 ? null : t.Shape.GradientEndColor,
-            },
-        });
+        get => ToColor(Rectangle.FillColor);
+        set => EditRectangle(shape => WithFill(shape, value));
     }
 
-    public bool HasVisibleFill => ShapeFillColor.A > 0;
+    public bool HasVisibleRectangleFill => RectangleFillColor.A > 0;
 
-    public bool HasShapeGradient
+    public bool HasRectangleGradient
     {
-        get => Shape.GradientEndColor is not null;
-        set => Edit(t => t with
-        {
-            Shape = t.Shape with
-            {
-                GradientEndColor = value && ToColor(t.Shape.FillColor).A > 0
-                    ? t.Shape.GradientEndColor ?? ToHex(DefaultGradientEnd)
-                    : null,
-            },
-        });
+        get => Rectangle.GradientEndColor is not null;
+        set => EditRectangle(shape => WithGradient(shape, value));
     }
 
-    public Color ShapeGradientEndColor
+    public Color RectangleGradientEndColor
     {
-        get => Shape.GradientEndColor is { } end ? ToColor(end) : DefaultGradientEnd;
-        set => Edit(t => t.Shape.GradientEndColor is null ? t : t with { Shape = t.Shape with { GradientEndColor = ToHex(value) } });
+        get => Rectangle.GradientEndColor is { } end ? ToColor(end) : DefaultGradientEnd;
+        set => EditRectangle(shape => WithGradientEnd(shape, value));
     }
 
-    public double ShapeGradientDirection
+    public double RectangleGradientDirection
     {
-        get => Shape.GradientDirection;
-        set => EditNumber(value, (t, v) => t with { Shape = t.Shape with { GradientDirection = v } });
+        get => Rectangle.GradientDirection;
+        set => EditNumber(value, (t, v) => t with { Rectangle = t.Rectangle with { GradientDirection = v } });
     }
 
-    public double ShapeShadowBlur
+    public double RectangleShadowBlur
     {
-        get => Shape.ShadowBlur;
-        set => EditNumber(value, (t, v) => t with { Shape = t.Shape with { ShadowBlur = v } });
+        get => Rectangle.ShadowBlur;
+        set => EditNumber(value, (t, v) => t with { Rectangle = t.Rectangle with { ShadowBlur = v } });
     }
 
-    public Color ShapeShadowColor
+    public Color RectangleShadowColor
     {
-        get => ToColor(Shape.ShadowColor);
-        set => Edit(t => t with { Shape = t.Shape with { ShadowColor = ToHex(value) } });
+        get => ToColor(Rectangle.ShadowColor);
+        set => EditRectangle(shape => shape with { ShadowColor = ToHex(value) });
     }
 
-    // -- Lines -----------------------------------------------------------------------------------
+    // -- Ellipse ----------------------------------------------------------------------------------
+
+    public Color EllipseStrokeColor
+    {
+        get => ToColor(Ellipse.StrokeColor);
+        set => EditEllipse(shape => shape with { StrokeColor = ToHex(value) });
+    }
+
+    public double EllipseStrokeWidth
+    {
+        get => Ellipse.StrokeWidth;
+        set => EditNumber(value, (t, v) => t with { Ellipse = t.Ellipse with { StrokeWidth = v } });
+    }
+
+    public Color EllipseFillColor
+    {
+        get => ToColor(Ellipse.FillColor);
+        set => EditEllipse(shape => WithFill(shape, value));
+    }
+
+    public bool HasVisibleEllipseFill => EllipseFillColor.A > 0;
+
+    public bool HasEllipseGradient
+    {
+        get => Ellipse.GradientEndColor is not null;
+        set => EditEllipse(shape => WithGradient(shape, value));
+    }
+
+    public Color EllipseGradientEndColor
+    {
+        get => Ellipse.GradientEndColor is { } end ? ToColor(end) : DefaultGradientEnd;
+        set => EditEllipse(shape => WithGradientEnd(shape, value));
+    }
+
+    public double EllipseGradientDirection
+    {
+        get => Ellipse.GradientDirection;
+        set => EditNumber(value, (t, v) => t with { Ellipse = t.Ellipse with { GradientDirection = v } });
+    }
+
+    public double EllipseShadowBlur
+    {
+        get => Ellipse.ShadowBlur;
+        set => EditNumber(value, (t, v) => t with { Ellipse = t.Ellipse with { ShadowBlur = v } });
+    }
+
+    public Color EllipseShadowColor
+    {
+        get => ToColor(Ellipse.ShadowColor);
+        set => EditEllipse(shape => shape with { ShadowColor = ToHex(value) });
+    }
+
+    // -- Arrow ------------------------------------------------------------------------------------
+
+    public Color ArrowColor
+    {
+        get => ToColor(Arrow.Color);
+        set => Edit(t => t with { Arrow = t.Arrow with { Color = ToHex(value) } });
+    }
+
+    public double ArrowWidth
+    {
+        get => Arrow.Width;
+        set => EditNumber(value, (t, v) => t with { Arrow = t.Arrow with { Width = v } });
+    }
+
+    public int ArrowStyleIndex
+    {
+        get => Array.IndexOf(EditorTheme.ArrowStyles, Arrow.Style);
+        set => EditChoice(value, EditorTheme.ArrowStyles, (t, v) => t with { Arrow = t.Arrow with { Style = v } });
+    }
+
+    // -- Line -------------------------------------------------------------------------------------
 
     public Color LineColor
     {
@@ -134,10 +216,18 @@ public sealed partial class EditorThemesSettingsViewModel
         set => EditNumber(value, (t, v) => t with { Line = t.Line with { Width = v } });
     }
 
-    public int ArrowStyleIndex
+    // -- Pen --------------------------------------------------------------------------------------
+
+    public Color PenColor
     {
-        get => Array.IndexOf(EditorTheme.ArrowStyles, Line.ArrowStyle);
-        set => EditChoice(value, EditorTheme.ArrowStyles, (t, v) => t with { Line = t.Line with { ArrowStyle = v } });
+        get => ToColor(Pen.Color);
+        set => Edit(t => t with { Pen = t.Pen with { Color = ToHex(value) } });
+    }
+
+    public double PenWidth
+    {
+        get => Pen.Width;
+        set => EditNumber(value, (t, v) => t with { Pen = t.Pen with { Width = v } });
     }
 
     // -- Text ------------------------------------------------------------------------------------

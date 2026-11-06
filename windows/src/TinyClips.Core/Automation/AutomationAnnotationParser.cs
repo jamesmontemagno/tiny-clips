@@ -113,7 +113,7 @@ public static class AutomationAnnotationParser
         return result;
     }
 
-    /// <summary>Styles an annotation from the theme, then puts back what its JSON set.</summary>
+    /// <summary>Styles an annotation from its own theme section, then puts back what its JSON set.</summary>
     private static void ApplyTheme(ScreenshotAnnotation annotation, JsonObject obj, EditorTheme theme, int imageWidth)
     {
         var color = annotation.Color;
@@ -126,9 +126,10 @@ public static class AutomationAnnotationParser
         EditorThemeStyling.Apply(annotation, theme, imageWidth);
 
         bool Has(string key) => obj[key] is not null;
-        switch (EditorThemeStyling.GroupOf(annotation.Tool))
+        switch (annotation.Tool)
         {
-            case EditorThemeGroup.Shape:
+            case EditTool.Rectangle:
+            case EditTool.Ellipse:
                 if (Has("color")) annotation.Color = color;
                 if (Has("lineWidth")) annotation.Thickness = thickness;
                 if (Has("fillColor")) annotation.FillColor = fill;
@@ -152,18 +153,20 @@ public static class AutomationAnnotationParser
                 annotation.ShapeEffects = themed;
                 break;
 
-            case EditorThemeGroup.Line:
+            case EditTool.Arrow:
+            case EditTool.Line:
+            case EditTool.Pen:
                 if (Has("color")) annotation.Color = color;
                 if (Has("lineWidth")) annotation.Thickness = thickness;
                 break;
 
-            case EditorThemeGroup.Text:
+            case EditTool.Text:
                 if (Has("textColor") || Has("color")) annotation.Color = color;
                 if (Has("fontSize")) annotation.FontSize = fontSize;
                 if (Has("fillColor")) annotation.TextBoxStyle = textBox;
                 break;
 
-            case EditorThemeGroup.Number:
+            case EditTool.Counter:
                 if (Has("color")) annotation.Color = color;
                 if (Has("textColor")) annotation.TextColor = textColor;
                 break;

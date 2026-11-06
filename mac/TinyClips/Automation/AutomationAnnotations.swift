@@ -195,31 +195,45 @@ enum AutomationAnnotations {
             if isMissing(key) { annotation[keyPath: keyPath] = EditorThemeColor.color(hex) }
         }
 
-        switch annotation.tool {
-        case .rectangle, .circle:
-            themed("color", theme.shape.strokeColor, \.color)
-            themed("fillColor", theme.shape.fillColor, \.fillColor)
-            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(theme.shape.strokeWidth) }
+        func applyShape(_ section: EditorTheme.ShapeSection) {
+            themed("color", section.strokeColor, \.color)
+            themed("fillColor", section.fillColor, \.fillColor)
+            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(section.strokeWidth) }
             if isMissing("fillEndColor") {
-                if let endColor = theme.shape.gradientEndColor, EditorThemeColor.isVisible(EditorThemeColor.hex(annotation.fillColor)) {
+                if let endColor = section.gradientEndColor, EditorThemeColor.isVisible(EditorThemeColor.hex(annotation.fillColor)) {
                     annotation.shapeEffects.isGradientFill = true
                     annotation.shapeEffects.gradientEndColor = EditorThemeColor.color(endColor)
-                    annotation.shapeEffects.gradientDirectionDegrees = theme.shape.gradientDirection
+                    annotation.shapeEffects.gradientDirectionDegrees = section.gradientDirection
                 }
             } else if isMissing("fillDirection") {
-                annotation.shapeEffects.gradientDirectionDegrees = theme.shape.gradientDirection
+                annotation.shapeEffects.gradientDirectionDegrees = section.gradientDirection
             }
             if isMissing("shadowBlur") {
-                annotation.shapeEffects.hasShadow = theme.shape.shadowBlur > 0
-                if theme.shape.shadowBlur > 0 { annotation.shapeEffects.shadowBlur = CGFloat(theme.shape.shadowBlur) }
+                annotation.shapeEffects.hasShadow = section.shadowBlur > 0
+                if section.shadowBlur > 0 { annotation.shapeEffects.shadowBlur = CGFloat(section.shadowBlur) }
             }
             if isMissing("shadowColor") {
-                annotation.shapeEffects.shadowColor = EditorThemeColor.color(theme.shape.shadowColor)
+                annotation.shapeEffects.shadowColor = EditorThemeColor.color(section.shadowColor)
             }
-        case .arrow, .line, .pencil:
-            themed("color", theme.line.color, \.color)
-            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(theme.line.width) }
-            if annotation.tool == .arrow { annotation.arrowStyle = EditorThemeNames.arrowStyle(theme.line.arrowStyle) }
+        }
+        func applyStroke(_ section: EditorTheme.StrokeSection) {
+            themed("color", section.color, \.color)
+            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(section.width) }
+        }
+
+        switch annotation.tool {
+        case .rectangle:
+            applyShape(theme.rectangle)
+        case .circle:
+            applyShape(theme.ellipse)
+        case .arrow:
+            themed("color", theme.arrow.color, \.color)
+            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(theme.arrow.width) }
+            annotation.arrowStyle = EditorThemeNames.arrowStyle(theme.arrow.style)
+        case .line:
+            applyStroke(theme.line)
+        case .pencil:
+            applyStroke(theme.pen)
         case .text:
             themed("color", theme.text.color, \.color)
             if isMissing("fontSize") { annotation.fontSize = CGFloat(theme.text.fontSize) }

@@ -8,14 +8,15 @@ namespace TinyClips.Core.Editing.Themes;
 /// </summary>
 public sealed class EditorThemeSettledStyles
 {
-    private readonly HashSet<object> _styles;
+    private readonly HashSet<(EditTool Tool, object Style)> _styles;
 
-    internal EditorThemeSettledStyles(HashSet<object> styles)
+    internal EditorThemeSettledStyles(HashSet<(EditTool Tool, object Style)> styles)
     {
         _styles = styles;
     }
 
-    internal bool Contains(object style) => _styles.Contains(style);
+    // Keyed by tool: a look settled on a rectangle is still an edit when an ellipse takes it.
+    internal bool Contains(EditTool tool, object style) => _styles.Contains((tool, style));
 }
 
 /// <summary>What the current document's look is compared with.</summary>
@@ -46,8 +47,9 @@ public static class EditorThemeCapture
     }
 
     /// <summary>
-    /// The theme with each group taken from the newest annotation that differs from it, otherwise
-    /// from the defaults for new annotations when they differ, otherwise kept as saved.
+    /// The theme with each annotation type's section taken from the newest annotation of that type
+    /// that differs from it, otherwise from that type's defaults when they differ, otherwise kept
+    /// as saved.
     /// </summary>
     public static EditorTheme Capture(
         EditorTheme baseline,
@@ -63,53 +65,57 @@ public static class EditorThemeCapture
         ArgumentNullException.ThrowIfNull(defaults);
 
         var saved = baseline.Rounded();
-        EditorThemeShape? shape = null;
-        EditorThemeLine? line = null;
-        EditorThemeText? text = null;
-        EditorThemeNumber? number = null;
-
-        bool Differs(object style, object savedStyle) => !style.Equals(savedStyle) && settled?.Contains(style) != true;
-
         var items = annotations as IReadOnlyList<ScreenshotAnnotation> ?? annotations.ToArray();
-        for (var i = items.Count - 1; i >= 0; i--)
-        {
-            var annotation = items[i];
-            switch (EditorThemeStyling.GroupOf(annotation.Tool))
-            {
-                case EditorThemeGroup.Shape when shape is null:
-                    var shapeStyle = ShapeStyle(annotation, baseline, imageWidth);
-                    shape = Differs(shapeStyle, saved.Shape) ? shapeStyle : null;
-                    break;
-                case EditorThemeGroup.Line when line is null:
-                    var lineStyle = LineStyle(annotation, baseline, imageWidth);
-                    line = Differs(lineStyle, saved.Line) ? lineStyle : null;
-                    break;
-                case EditorThemeGroup.Text when text is null:
-                    var textStyle = TextStyle(annotation, baseline, imageWidth);
-                    text = Differs(textStyle, saved.Text) ? textStyle : null;
-                    break;
-                case EditorThemeGroup.Number when number is null:
-                    var numberStyle = NumberStyle(annotation, baseline);
-                    number = Differs(numberStyle, saved.Number) ? numberStyle : null;
-                    break;
-            }
-        }
 
-        var defaultShape = ShapeStyle(defaults.ShapeColor, defaults.ShapeWidth, defaults.ShapeFill, defaults.ShapeEffects, baseline, imageWidth);
-        var defaultLine = new EditorThemeLine(
-            Hex(defaults.LineColor, baseline.Line.Color),
-            StrokeSize(defaults.LineWidth, imageWidth),
-            EditorThemeStyling.NameOf(defaults.ArrowStyle));
-        var defaultText = TextStyle(
-            defaults.TextColor, defaults.FontFamily, defaults.FontSize, defaults.Bold, defaults.Italic, defaults.Underline, defaults.TextBox, baseline, imageWidth);
-        var defaultNumber = NumberStyle(defaults.NumberColor, defaults.NumberTextColor, defaults.NumberScale, baseline);
+        // The section to save: the newest edited annotation, then the defaults, then the theme.
+        T Section<T>(EditTool tool, T savedSection, T themeSection, T fromDefaults, Func<ScreenshotAnnotation, T> styleOf)
+            where T : class
+        {
+            for (var i = items.Count - 1; i >= 0; i--)
+            {
+                if (items[i].Tool == tool)
+                {
+                    var style = styleOf(items[i]);
+                    if (!style.Equals(savedSection) && settled?.Contains(tool, style) != true)
+                    {
+                        return style;
+                    }
+                }
+            }
+
+            return fromDefaults.Equals(savedSection) ? themeSection : fromDefaults;
+        }
 
         return baseline with
         {
-            Shape = shape ?? (defaultShape != saved.Shape ? defaultShape : baseline.Shape),
-            Line = line ?? (defaultLine != saved.Line ? defaultLine : baseline.Line),
-            Text = text ?? (defaultText != saved.Text ? defaultText : baseline.Text),
-            Number = number ?? (defaultNumber != saved.Number ? defaultNumber : baseline.Number),
+            Rectangle = Section(
+                EditTool.Rectangle, saved.Rectangle, baseline.Rectangle,
+                ShapeStyle(defaults.Rectangle, baseline.Rectangle, imageWidth),
+                annotation => ShapeStyle(annotation, baseline.Rectangle, imageWidth)),
+            Ellipse = Section(
+                EditTool.Ellipse, saved.Ellipse, baseline.Ellipse,
+                ShapeStyle(defaults.Ellipse, baseline.Ellipse, imageWidth),
+                annotation => ShapeStyle(annotation, baseline.Ellipse, imageWidth)),
+            Arrow = Section(
+                EditTool.Arrow, saved.Arrow, baseline.Arrow,
+                ArrowSection(defaults.Arrow.Color, defaults.Arrow.Width, defaults.ArrowStyle, baseline.Arrow, imageWidth),
+                annotation => ArrowSection(annotation.Color, annotation.Thickness, annotation.ArrowStyle, baseline.Arrow, imageWidth)),
+            Line = Section(
+                EditTool.Line, saved.Line, baseline.Line,
+                StrokeStyle(defaults.Line.Color, defaults.Line.Width, baseline.Line, imageWidth),
+                annotation => StrokeStyle(annotation.Color, annotation.Thickness, baseline.Line, imageWidth)),
+            Pen = Section(
+                EditTool.Pen, saved.Pen, baseline.Pen,
+                StrokeStyle(defaults.Pen.Color, defaults.Pen.Width, baseline.Pen, imageWidth),
+                annotation => StrokeStyle(annotation.Color, annotation.Thickness, baseline.Pen, imageWidth)),
+            Text = Section(
+                EditTool.Text, saved.Text, baseline.Text,
+                TextStyle(defaults.TextColor, defaults.FontFamily, defaults.FontSize, defaults.Bold, defaults.Italic, defaults.Underline, defaults.TextBox, baseline, imageWidth),
+                annotation => TextStyle(annotation, baseline, imageWidth)),
+            Number = Section(
+                EditTool.Counter, saved.Number, baseline.Number,
+                NumberStyle(defaults.NumberColor, defaults.NumberTextColor, defaults.NumberScale, baseline),
+                annotation => NumberStyle(annotation, baseline)),
             Canvas = CaptureCanvas(baseline.Canvas, canvas, canvasAtActivation),
         };
     }
@@ -127,20 +133,23 @@ public static class EditorThemeCapture
     {
         ArgumentNullException.ThrowIfNull(theme);
         ArgumentNullException.ThrowIfNull(annotations);
-        var styles = new HashSet<object>();
+        var styles = new HashSet<(EditTool Tool, object Style)>();
         foreach (var annotation in annotations)
         {
-            object? style = EditorThemeStyling.GroupOf(annotation.Tool) switch
+            object? style = annotation.Tool switch
             {
-                EditorThemeGroup.Shape => ShapeStyle(annotation, theme, imageWidth),
-                EditorThemeGroup.Line => LineStyle(annotation, theme, imageWidth),
-                EditorThemeGroup.Text => TextStyle(annotation, theme, imageWidth),
-                EditorThemeGroup.Number => NumberStyle(annotation, theme),
+                EditTool.Rectangle => ShapeStyle(annotation, theme.Rectangle, imageWidth),
+                EditTool.Ellipse => ShapeStyle(annotation, theme.Ellipse, imageWidth),
+                EditTool.Arrow => ArrowSection(annotation.Color, annotation.Thickness, annotation.ArrowStyle, theme.Arrow, imageWidth),
+                EditTool.Line => StrokeStyle(annotation.Color, annotation.Thickness, theme.Line, imageWidth),
+                EditTool.Pen => StrokeStyle(annotation.Color, annotation.Thickness, theme.Pen, imageWidth),
+                EditTool.Text => TextStyle(annotation, theme, imageWidth),
+                EditTool.Counter => NumberStyle(annotation, theme),
                 _ => null,
             };
             if (style is not null)
             {
-                styles.Add(style);
+                styles.Add((annotation.Tool, style));
             }
         }
 
@@ -176,30 +185,33 @@ public static class EditorThemeCapture
                 : theme.VerticalAlignment,
         };
 
-    private static EditorThemeShape ShapeStyle(ScreenshotAnnotation annotation, EditorTheme theme, double imageWidth) =>
-        ShapeStyle(annotation.Color, annotation.Thickness, annotation.FillColor, annotation.ShapeEffects, theme, imageWidth);
+    private static EditorThemeShape ShapeStyle(ScreenshotAnnotation annotation, EditorThemeShape section, double imageWidth) =>
+        ShapeStyle(annotation.Color, annotation.Thickness, annotation.FillColor, annotation.ShapeEffects, section, imageWidth);
 
-    private static EditorThemeShape ShapeStyle(Color stroke, double width, Color fill, ShapeEffects effects, EditorTheme theme, double imageWidth)
+    private static EditorThemeShape ShapeStyle(EditorThemeShapeDefaults defaults, EditorThemeShape section, double imageWidth) =>
+        ShapeStyle(defaults.StrokeColor, defaults.StrokeWidth, defaults.Fill, defaults.Effects, section, imageWidth);
+
+    private static EditorThemeShape ShapeStyle(Color stroke, double width, Color fill, ShapeEffects effects, EditorThemeShape section, double imageWidth)
     {
         // A gradient without a fill and a shadow without a blur draw nothing, so their other
         // settings are not edits to the theme.
         var hasGradient = effects.IsGradientFill && fill.A > 0;
         var hasShadow = effects.DrawsShadow;
         return new EditorThemeShape(
-            Hex(stroke, theme.Shape.StrokeColor),
+            Hex(stroke, section.StrokeColor),
             StrokeSize(width, imageWidth),
-            Hex(fill, theme.Shape.FillColor),
+            Hex(fill, section.FillColor),
             hasGradient ? EditorTheme.HexOf(effects.GradientEndColor) : null,
-            hasGradient ? Size(effects.GradientDirectionDegrees, 0, EditorTheme.MaximumDirection) : EditorTheme.Round(theme.Shape.GradientDirection),
+            hasGradient ? Size(effects.GradientDirectionDegrees, 0, EditorTheme.MaximumDirection) : EditorTheme.Round(section.GradientDirection),
             hasShadow ? Size(EditorThemeUnits.StrokeUnits(effects.ShadowBlur, imageWidth), 0, EditorTheme.MaximumShadowBlur) : 0,
-            hasShadow ? Hex(effects.ShadowColor, theme.Shape.ShadowColor) : theme.Shape.ShadowColor);
+            hasShadow ? Hex(effects.ShadowColor, section.ShadowColor) : section.ShadowColor);
     }
 
-    private static EditorThemeLine LineStyle(ScreenshotAnnotation annotation, EditorTheme theme, double imageWidth) =>
-        new(
-            Hex(annotation.Color, theme.Line.Color),
-            StrokeSize(annotation.Thickness, imageWidth),
-            annotation.Tool == EditTool.Arrow ? EditorThemeStyling.NameOf(annotation.ArrowStyle) : theme.Line.ArrowStyle);
+    private static EditorThemeArrow ArrowSection(Color color, double width, ArrowStyle style, EditorThemeArrow section, double imageWidth) =>
+        new(Hex(color, section.Color), StrokeSize(width, imageWidth), EditorThemeStyling.NameOf(style));
+
+    private static EditorThemeStroke StrokeStyle(Color color, double width, EditorThemeStroke section, double imageWidth) =>
+        new(Hex(color, section.Color), StrokeSize(width, imageWidth));
 
     private static EditorThemeText TextStyle(ScreenshotAnnotation annotation, EditorTheme theme, double imageWidth) =>
         TextStyle(annotation.Color, annotation.FontFamily, annotation.FontSize, annotation.Bold, annotation.Italic, annotation.Underline, annotation.TextBoxStyle, theme, imageWidth);

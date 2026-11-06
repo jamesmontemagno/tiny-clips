@@ -4,17 +4,28 @@ using Windows.UI;
 
 namespace TinyClips.App.ScreenshotEditor;
 
-/// <summary>Editor Themes: the active theme, its baseline, and per-group stroke defaults.</summary>
+/// <summary>Editor Themes: the active theme, its baseline, and each tool's own defaults.</summary>
 internal sealed partial class EditorController
 {
     private EditorThemeBaseline? _themeBaseline;
-    private readonly Dictionary<EditorThemeGroup, (Color Color, double Width)> _themeStrokes = new();
-    private EditorThemeGroup _themeStrokeOwner = EditorThemeGroup.Shape;
+
+    // While a theme is active, StrokeColor and StrokeThickness are the stroke owner's, and FillEnabled,
+    // FillColor, and ShapeEffectsDefault are the shape owner's. Every other tool's are stored here.
+    private readonly Dictionary<EditTool, ThemeToolStroke> _themeStrokes = new();
+    private readonly Dictionary<EditTool, ThemeToolShape> _themeShapes = new();
+    private EditTool _themeStrokeOwner = EditTool.Rectangle;
+    private EditTool _themeShapeOwner = EditTool.Rectangle;
+
+    private readonly record struct ThemeToolStroke(Color Color, double Width);
+
+    private readonly record struct ThemeToolShape(bool FillEnabled, Color FillColor, ShapeEffects Effects);
 
     private sealed record ThemeUndoState(
         EditorThemeBaseline? Baseline,
-        Dictionary<EditorThemeGroup, (Color Color, double Width)> Strokes,
-        EditorThemeGroup StrokeOwner,
+        Dictionary<EditTool, ThemeToolStroke> Strokes,
+        Dictionary<EditTool, ThemeToolShape> Shapes,
+        EditTool StrokeOwner,
+        EditTool ShapeOwner,
         Color StrokeColor,
         double StrokeThickness,
         bool FillEnabled,
@@ -44,22 +55,50 @@ internal sealed partial class EditorController
     /// <summary>A selected annotation is saved through the document, so its edits stay out of the defaults.</summary>
     private bool KeepsThemeDefaultsWhileEditingSelection => _themeBaseline is not null && SelectedAnnotation is not null;
 
-    /// <summary>While a theme is active, each group keeps its own color and width.</summary>
-    private void SwapThemeStroke(EditTool nextTool)
+    /// <summary>
+    /// While a theme is active, each tool keeps its own color and width, and rectangles and ellipses
+    /// their own fill and effects. Stored when a tool is left and loaded when it is chosen, so
+    /// switching changes no value and can't read as Modified. With None, tools share them.
+    /// </summary>
+    private void SwapThemeDefaults(EditTool nextTool)
     {
-        if (_themeBaseline is null || EditorThemeStyling.GroupOf(nextTool) is not { } next)
+        if (_themeBaseline is null || !EditorThemeStyling.IsThemed(nextTool))
         {
             return;
         }
 
-        _themeStrokes[_themeStrokeOwner] = (StrokeColor, StrokeThickness);
-        _themeStrokeOwner = next;
-        if (_themeStrokes.TryGetValue(next, out var stroke))
+        _themeStrokes[_themeStrokeOwner] = new ThemeToolStroke(StrokeColor, StrokeThickness);
+        _themeStrokeOwner = nextTool;
+        if (_themeStrokes.TryGetValue(nextTool, out var stroke))
         {
             StrokeColor = stroke.Color;
             StrokeThickness = stroke.Width;
         }
+
+        if (nextTool.SupportsShapeEffects())
+        {
+            _themeShapes[_themeShapeOwner] = new ThemeToolShape(FillEnabled, FillColor, ShapeEffectsDefault);
+            _themeShapeOwner = nextTool;
+            if (_themeShapes.TryGetValue(nextTool, out var shape))
+            {
+                FillEnabled = shape.FillEnabled;
+                FillColor = shape.FillColor;
+                ShapeEffectsDefault = shape.Effects;
+            }
+        }
     }
+
+    /// <summary>The color and width a new annotation of this tool takes.</summary>
+    private ThemeToolStroke ThemeStrokeFor(EditTool tool) =>
+        _themeBaseline is not null && tool != _themeStrokeOwner && _themeStrokes.TryGetValue(tool, out var stroke)
+            ? stroke
+            : new ThemeToolStroke(StrokeColor, StrokeThickness);
+
+    /// <summary>The fill and effects a new rectangle or ellipse takes.</summary>
+    private ThemeToolShape ThemeShapeFor(EditTool tool) =>
+        _themeBaseline is not null && tool != _themeShapeOwner && _themeShapes.TryGetValue(tool, out var shape)
+            ? shape
+            : new ThemeToolShape(FillEnabled, FillColor, ShapeEffectsDefault);
 
     /// <summary>Restyles the document and canvas and sets the defaults, as one undo step.</summary>
     public bool ApplyTheme(EditorTheme theme)
@@ -76,7 +115,7 @@ internal sealed partial class EditorController
         EndSelectedStyleEdit();
 
         var restyled = _annotations
-            .Where(annotation => EditorThemeStyling.GroupOf(annotation.Tool) is not null)
+            .Where(annotation => EditorThemeStyling.IsThemed(annotation.Tool))
             .Select(annotation => (annotation, annotation.CaptureSnapshot()))
             .ToArray();
         _styleUndo.Push(new StyleUndoEntry(restyled, CaptureThemeUndoState()));
@@ -139,6 +178,7 @@ internal sealed partial class EditorController
 
         _themeBaseline = null;
         _themeStrokes.Clear();
+        _themeShapes.Clear();
         RaiseThemeStateChanged();
     }
 
@@ -243,20 +283,30 @@ internal sealed partial class EditorController
     private void SetThemeDefaults(EditorTheme theme, double width)
     {
         var defaults = EditorThemeStyling.DefaultsOf(theme, width);
-        _themeStrokes[EditorThemeGroup.Shape] = (defaults.ShapeColor, defaults.ShapeWidth);
-        _themeStrokes[EditorThemeGroup.Line] = (defaults.LineColor, defaults.LineWidth);
-        _themeStrokes[EditorThemeGroup.Text] = (defaults.TextColor, defaults.ShapeWidth);
-        _themeStrokes[EditorThemeGroup.Number] = (defaults.NumberColor, defaults.ShapeWidth);
-        _themeStrokeOwner = EditorThemeStyling.GroupOf(Tool) ?? EditorThemeGroup.Shape;
-        (StrokeColor, StrokeThickness) = _themeStrokes[_themeStrokeOwner];
 
-        FillEnabled = defaults.ShapeFill.A > 0;
-        if (FillEnabled)
-        {
-            FillColor = defaults.ShapeFill;
-        }
+        // Text and numbers have no width in a theme, and neither draws one.
+        var unusedWidth = defaults.Rectangle.StrokeWidth;
+        _themeStrokes[EditTool.Rectangle] = new ThemeToolStroke(defaults.Rectangle.StrokeColor, defaults.Rectangle.StrokeWidth);
+        _themeStrokes[EditTool.Ellipse] = new ThemeToolStroke(defaults.Ellipse.StrokeColor, defaults.Ellipse.StrokeWidth);
+        _themeStrokes[EditTool.Arrow] = new ThemeToolStroke(defaults.Arrow.Color, defaults.Arrow.Width);
+        _themeStrokes[EditTool.Line] = new ThemeToolStroke(defaults.Line.Color, defaults.Line.Width);
+        _themeStrokes[EditTool.Pen] = new ThemeToolStroke(defaults.Pen.Color, defaults.Pen.Width);
+        _themeStrokes[EditTool.Text] = new ThemeToolStroke(defaults.TextColor, unusedWidth);
+        _themeStrokes[EditTool.Counter] = new ThemeToolStroke(defaults.NumberColor, unusedWidth);
+        _themeStrokeOwner = EditorThemeStyling.IsThemed(Tool) ? Tool : EditTool.Rectangle;
+        var stroke = _themeStrokes[_themeStrokeOwner];
+        StrokeColor = stroke.Color;
+        StrokeThickness = stroke.Width;
 
-        ShapeEffectsDefault = defaults.ShapeEffects;
+        // A shape with no fill keeps the fill color it would go back to when fill is turned on.
+        _themeShapes[EditTool.Rectangle] = ThemeShapeOf(defaults.Rectangle);
+        _themeShapes[EditTool.Ellipse] = ThemeShapeOf(defaults.Ellipse);
+        _themeShapeOwner = Tool.SupportsShapeEffects() ? Tool : EditTool.Rectangle;
+        var shape = _themeShapes[_themeShapeOwner];
+        FillEnabled = shape.FillEnabled;
+        FillColor = shape.FillColor;
+        ShapeEffectsDefault = shape.Effects;
+
         ArrowStyleDefault = defaults.ArrowStyle;
         TextFontFamily = defaults.FontFamily;
         TextFontSize = defaults.FontSize;
@@ -268,31 +318,43 @@ internal sealed partial class EditorController
         NumberScale = defaults.NumberScale;
     }
 
+    private ThemeToolShape ThemeShapeOf(EditorThemeShapeDefaults defaults) =>
+        new(defaults.Fill.A > 0, defaults.Fill.A > 0 ? defaults.Fill : FillColor, defaults.Effects);
+
     private EditorThemeDefaults CurrentThemeDefaults()
     {
-        (Color Color, double Width) Stroke(EditorThemeGroup group) =>
-            _themeBaseline is not null && group != _themeStrokeOwner && _themeStrokes.TryGetValue(group, out var stroke)
-                ? stroke
-                : (StrokeColor, StrokeThickness);
+        EditorThemeShapeDefaults Shape(EditTool tool)
+        {
+            var stroke = ThemeStrokeFor(tool);
+            var shape = ThemeShapeFor(tool);
+            return new EditorThemeShapeDefaults(
+                stroke.Color,
+                stroke.Width,
+                shape.FillEnabled ? shape.FillColor : Microsoft.UI.Colors.Transparent,
+                shape.Effects);
+        }
 
-        var shape = Stroke(EditorThemeGroup.Shape);
-        var line = Stroke(EditorThemeGroup.Line);
+        EditorThemeStrokeDefaults Stroke(EditTool tool)
+        {
+            var stroke = ThemeStrokeFor(tool);
+            return new EditorThemeStrokeDefaults(stroke.Color, stroke.Width);
+        }
+
         return new EditorThemeDefaults(
-            shape.Color,
-            shape.Width,
-            FillEnabled ? FillColor : Microsoft.UI.Colors.Transparent,
-            ShapeEffectsDefault,
-            line.Color,
-            line.Width,
+            Shape(EditTool.Rectangle),
+            Shape(EditTool.Ellipse),
+            Stroke(EditTool.Arrow),
             ArrowStyleDefault,
-            Stroke(EditorThemeGroup.Text).Color,
+            Stroke(EditTool.Line),
+            Stroke(EditTool.Pen),
+            ThemeStrokeFor(EditTool.Text).Color,
             TextFontFamily,
             TextFontSize,
             TextBold,
             TextItalic,
             TextUnderline,
             TextBoxStyleDefault,
-            Stroke(EditorThemeGroup.Number).Color,
+            ThemeStrokeFor(EditTool.Counter).Color,
             NumberTextColor,
             NumberScale);
     }
@@ -328,8 +390,10 @@ internal sealed partial class EditorController
 
     private ThemeUndoState CaptureThemeUndoState() => new(
         _themeBaseline,
-        new Dictionary<EditorThemeGroup, (Color Color, double Width)>(_themeStrokes),
+        new Dictionary<EditTool, ThemeToolStroke>(_themeStrokes),
+        new Dictionary<EditTool, ThemeToolShape>(_themeShapes),
         _themeStrokeOwner,
+        _themeShapeOwner,
         StrokeColor,
         StrokeThickness,
         FillEnabled,
@@ -350,12 +414,19 @@ internal sealed partial class EditorController
     {
         _themeBaseline = state.Baseline;
         _themeStrokes.Clear();
-        foreach (var (group, stroke) in state.Strokes)
+        foreach (var (tool, stroke) in state.Strokes)
         {
-            _themeStrokes[group] = stroke;
+            _themeStrokes[tool] = stroke;
+        }
+
+        _themeShapes.Clear();
+        foreach (var (tool, shape) in state.Shapes)
+        {
+            _themeShapes[tool] = shape;
         }
 
         _themeStrokeOwner = state.StrokeOwner;
+        _themeShapeOwner = state.ShapeOwner;
         StrokeColor = state.StrokeColor;
         StrokeThickness = state.StrokeThickness;
         FillEnabled = state.FillEnabled;
@@ -371,5 +442,8 @@ internal sealed partial class EditorController
         NumberTextColor = state.NumberTextColor;
         NumberScale = state.NumberScale;
         ApplyCanvasState(state.Canvas);
+
+        // The tool may have changed since the switch, and the inspector shows the current tool's values.
+        SwapThemeDefaults(Tool);
     }
 }

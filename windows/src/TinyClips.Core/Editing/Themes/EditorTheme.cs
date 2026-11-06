@@ -27,7 +27,10 @@ public sealed record EditorThemeShape(
     double ShadowBlur,
     string ShadowColor);
 
-public sealed record EditorThemeLine(string Color, double Width, string ArrowStyle);
+public sealed record EditorThemeArrow(string Color, double Width, string Style);
+
+/// <summary>A theme section with only a color and a width: <c>line</c> and <c>pen</c>.</summary>
+public sealed record EditorThemeStroke(string Color, double Width);
 
 public sealed record EditorThemeTextBox(
     string BackgroundColor,
@@ -67,8 +70,11 @@ public sealed record EditorThemeCanvas(
 public sealed record EditorTheme(
     string Id,
     string Name,
-    EditorThemeShape Shape,
-    EditorThemeLine Line,
+    EditorThemeShape Rectangle,
+    EditorThemeShape Ellipse,
+    EditorThemeArrow Arrow,
+    EditorThemeStroke Line,
+    EditorThemeStroke Pen,
     EditorThemeText Text,
     EditorThemeNumber Number,
     EditorThemeCanvas Canvas)
@@ -98,7 +104,8 @@ public sealed record EditorTheme(
     public static readonly string[] VerticalAlignments = ["top", "center", "bottom"];
 
     private static readonly EditorThemeShape DefaultShape = new("#FFFF3B30", 4, "#00000000", null, 45, 0, "#59000000");
-    private static readonly EditorThemeLine DefaultLine = new("#FFFF3B30", 4, "straight");
+    private static readonly EditorThemeArrow DefaultArrow = new("#FFFF3B30", 4, "straight");
+    private static readonly EditorThemeStroke DefaultStroke = new("#FFFF3B30", 4);
     private static readonly EditorThemeTextBox DefaultBox = new("#00000000", "#00000000", 0, 0, 0);
     private static readonly EditorThemeText DefaultText = new("#FFFF3B30", null, 16, false, false, false, DefaultBox);
     private static readonly EditorThemeNumber DefaultNumber = new("#FFFF3B30", "#FFFFFFFF", 1);
@@ -107,7 +114,7 @@ public sealed record EditorTheme(
 
     /// <summary>A new theme with every value at its documented default.</summary>
     public static EditorTheme CreateDefault(string id, string name) =>
-        new(id, name, DefaultShape, DefaultLine, DefaultText, DefaultNumber, DefaultCanvas);
+        new(id, name, DefaultShape, DefaultShape, DefaultArrow, DefaultStroke, DefaultStroke, DefaultText, DefaultNumber, DefaultCanvas);
 
     /// <summary>Parses and validates a theme. Throws <see cref="EditorThemeFormatException"/>.</summary>
     public static EditorTheme Parse(string json)
@@ -141,15 +148,9 @@ public sealed record EditorTheme(
         var id = ReadId(root);
         var name = ReadName(root);
 
-        var shape = ReadGroup(root, "shape", "shape");
-        var fillColor = ReadColor(shape, "fillColor", "shape", DefaultShape.FillColor);
-        var gradientEnd = ReadOptionalColor(shape, "gradientEndColor", "shape", DefaultShape.GradientEndColor);
-        if (gradientEnd is not null && ColorOf(fillColor).A == 0)
-        {
-            throw new EditorThemeFormatException("shape.gradientEndColor", "needs a visible shape.fillColor.");
-        }
-
-        var line = ReadGroup(root, "line", "line");
+        var rectangle = ReadShape(root, "rectangle");
+        var ellipse = ReadShape(root, "ellipse");
+        var arrow = ReadGroup(root, "arrow", "arrow");
         var text = ReadGroup(root, "text", "text");
         var box = ReadGroup(text, "box", "text.box");
         var number = ReadGroup(root, "number", "number");
@@ -158,18 +159,14 @@ public sealed record EditorTheme(
         return new EditorTheme(
             id,
             name,
-            new EditorThemeShape(
-                ReadColor(shape, "strokeColor", "shape", DefaultShape.StrokeColor),
-                ReadNumber(shape, "strokeWidth", "shape", DefaultShape.StrokeWidth, 0, MaximumStrokeWidth),
-                fillColor,
-                gradientEnd,
-                ReadNumber(shape, "gradientDirection", "shape", DefaultShape.GradientDirection, 0, MaximumDirection),
-                ReadNumber(shape, "shadowBlur", "shape", DefaultShape.ShadowBlur, 0, MaximumShadowBlur),
-                ReadColor(shape, "shadowColor", "shape", DefaultShape.ShadowColor)),
-            new EditorThemeLine(
-                ReadColor(line, "color", "line", DefaultLine.Color),
-                ReadNumber(line, "width", "line", DefaultLine.Width, 0, MaximumStrokeWidth),
-                ReadChoice(line, "arrowStyle", "line", DefaultLine.ArrowStyle, ArrowStyles)),
+            rectangle,
+            ellipse,
+            new EditorThemeArrow(
+                ReadColor(arrow, "color", "arrow", DefaultArrow.Color),
+                ReadNumber(arrow, "width", "arrow", DefaultArrow.Width, 0, MaximumStrokeWidth),
+                ReadChoice(arrow, "style", "arrow", DefaultArrow.Style, ArrowStyles)),
+            ReadStroke(root, "line"),
+            ReadStroke(root, "pen"),
             new EditorThemeText(
                 ReadColor(text, "color", "text", DefaultText.Color),
                 ReadFontFamily(text),
@@ -206,22 +203,16 @@ public sealed record EditorTheme(
         ["version"] = CurrentVersion,
         ["id"] = Id,
         ["name"] = Name,
-        ["shape"] = new JsonObject
+        ["rectangle"] = ShapeJson(Rectangle),
+        ["ellipse"] = ShapeJson(Ellipse),
+        ["arrow"] = new JsonObject
         {
-            ["strokeColor"] = Shape.StrokeColor,
-            ["strokeWidth"] = Shape.StrokeWidth,
-            ["fillColor"] = Shape.FillColor,
-            ["gradientEndColor"] = Shape.GradientEndColor,
-            ["gradientDirection"] = Shape.GradientDirection,
-            ["shadowBlur"] = Shape.ShadowBlur,
-            ["shadowColor"] = Shape.ShadowColor,
+            ["color"] = Arrow.Color,
+            ["width"] = Arrow.Width,
+            ["style"] = Arrow.Style,
         },
-        ["line"] = new JsonObject
-        {
-            ["color"] = Line.Color,
-            ["width"] = Line.Width,
-            ["arrowStyle"] = Line.ArrowStyle,
-        },
+        ["line"] = StrokeJson(Line),
+        ["pen"] = StrokeJson(Pen),
         ["text"] = new JsonObject
         {
             ["color"] = Text.Color,
@@ -264,13 +255,11 @@ public sealed record EditorTheme(
     /// <summary>The same theme with every size rounded the way Modified compares them.</summary>
     public EditorTheme Rounded() => this with
     {
-        Shape = Shape with
-        {
-            StrokeWidth = Round(Shape.StrokeWidth),
-            GradientDirection = Round(Shape.GradientDirection),
-            ShadowBlur = Round(Shape.ShadowBlur),
-        },
+        Rectangle = Rounded(Rectangle),
+        Ellipse = Rounded(Ellipse),
+        Arrow = Arrow with { Width = Round(Arrow.Width) },
         Line = Line with { Width = Round(Line.Width) },
+        Pen = Pen with { Width = Round(Pen.Width) },
         Text = Text with
         {
             FontSize = Round(Text.FontSize),
@@ -292,6 +281,58 @@ public sealed record EditorTheme(
     };
 
     internal static double Round(double value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    private static EditorThemeShape Rounded(EditorThemeShape shape) => shape with
+    {
+        StrokeWidth = Round(shape.StrokeWidth),
+        GradientDirection = Round(shape.GradientDirection),
+        ShadowBlur = Round(shape.ShadowBlur),
+    };
+
+    private static JsonObject ShapeJson(EditorThemeShape shape) => new()
+    {
+        ["strokeColor"] = shape.StrokeColor,
+        ["strokeWidth"] = shape.StrokeWidth,
+        ["fillColor"] = shape.FillColor,
+        ["gradientEndColor"] = shape.GradientEndColor,
+        ["gradientDirection"] = shape.GradientDirection,
+        ["shadowBlur"] = shape.ShadowBlur,
+        ["shadowColor"] = shape.ShadowColor,
+    };
+
+    private static JsonObject StrokeJson(EditorThemeStroke stroke) => new()
+    {
+        ["color"] = stroke.Color,
+        ["width"] = stroke.Width,
+    };
+
+    private static EditorThemeShape ReadShape(JsonObject root, string section)
+    {
+        var shape = ReadGroup(root, section, section);
+        var fillColor = ReadColor(shape, "fillColor", section, DefaultShape.FillColor);
+        var gradientEnd = ReadOptionalColor(shape, "gradientEndColor", section, DefaultShape.GradientEndColor);
+        if (gradientEnd is not null && ColorOf(fillColor).A == 0)
+        {
+            throw new EditorThemeFormatException($"{section}.gradientEndColor", $"needs a visible {section}.fillColor.");
+        }
+
+        return new EditorThemeShape(
+            ReadColor(shape, "strokeColor", section, DefaultShape.StrokeColor),
+            ReadNumber(shape, "strokeWidth", section, DefaultShape.StrokeWidth, 0, MaximumStrokeWidth),
+            fillColor,
+            gradientEnd,
+            ReadNumber(shape, "gradientDirection", section, DefaultShape.GradientDirection, 0, MaximumDirection),
+            ReadNumber(shape, "shadowBlur", section, DefaultShape.ShadowBlur, 0, MaximumShadowBlur),
+            ReadColor(shape, "shadowColor", section, DefaultShape.ShadowColor));
+    }
+
+    private static EditorThemeStroke ReadStroke(JsonObject root, string section)
+    {
+        var stroke = ReadGroup(root, section, section);
+        return new EditorThemeStroke(
+            ReadColor(stroke, "color", section, DefaultStroke.Color),
+            ReadNumber(stroke, "width", section, DefaultStroke.Width, 0, MaximumStrokeWidth));
+    }
 
     /// <summary>The color a validated theme value stands for.</summary>
     public static Color ColorOf(string hex) =>

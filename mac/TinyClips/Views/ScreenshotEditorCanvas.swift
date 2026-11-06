@@ -328,7 +328,7 @@ struct ScreenshotEditorCanvasView: View {
                         isBold: viewModel.textIsBold,
                         isItalic: viewModel.textIsItalic,
                         isUnderlined: viewModel.textIsUnderlined,
-                        color: viewModel.selectedColor,
+                        color: viewModel.newTextColor,
                         textBoxStyle: viewModel.textBoxStyle,
                         boxScale: imageSize.width / 800,
                         onCommit: {

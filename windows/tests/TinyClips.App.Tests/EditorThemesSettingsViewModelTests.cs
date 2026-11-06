@@ -41,14 +41,59 @@ public sealed class EditorThemesSettingsViewModelTests : IDisposable
         var vm = new EditorThemesSettingsViewModel(_store);
         vm.New();
 
-        vm.ShapeStrokeWidth = 9;
+        vm.RectangleStrokeWidth = 9;
         vm.LineColor = Color.FromArgb(255, 1, 2, 3);
         vm.ArrowStyleIndex = 2;
 
         var saved = _store.Themes[0];
-        Assert.Equal(9, saved.Shape.StrokeWidth);
+        Assert.Equal(9, saved.Rectangle.StrokeWidth);
         Assert.Equal("#FF010203", saved.Line.Color);
-        Assert.Equal("curvedRight", saved.Line.ArrowStyle);
+        Assert.Equal("curvedRight", saved.Arrow.Style);
+    }
+
+    [Fact]
+    public void EditingOneSectionLeavesTheOthersAlone()
+    {
+        var vm = new EditorThemesSettingsViewModel(_store);
+        vm.New();
+        var original = _store.Themes[0];
+
+        vm.EllipseStrokeColor = Color.FromArgb(255, 1, 2, 3);
+        vm.EllipseFillColor = Color.FromArgb(255, 4, 5, 6);
+        vm.HasEllipseGradient = true;
+        vm.EllipseGradientDirection = 90;
+        vm.EllipseShadowBlur = 12;
+        vm.EllipseShadowColor = Color.FromArgb(128, 7, 8, 9);
+
+        var ellipse = _store.Themes[0].Ellipse;
+        Assert.Equal("#FF010203", ellipse.StrokeColor);
+        Assert.Equal("#FF040506", ellipse.FillColor);
+        Assert.NotNull(ellipse.GradientEndColor);
+        Assert.Equal(90, ellipse.GradientDirection);
+        Assert.Equal(12, ellipse.ShadowBlur);
+        Assert.Equal("#80070809", ellipse.ShadowColor);
+        Assert.Equal(original with { Ellipse = ellipse }, _store.Themes[0]);
+    }
+
+    [Fact]
+    public void ArrowLineAndPenEditIndependently()
+    {
+        var vm = new EditorThemesSettingsViewModel(_store);
+        vm.New();
+
+        vm.ArrowColor = Color.FromArgb(255, 1, 1, 1);
+        vm.ArrowWidth = 5;
+        vm.LineColor = Color.FromArgb(255, 2, 2, 2);
+        vm.LineWidth = 6;
+        vm.PenColor = Color.FromArgb(255, 3, 3, 3);
+        vm.PenWidth = 7;
+
+        var saved = _store.Themes[0];
+        Assert.Equal(new EditorThemeArrow("#FF010101", 5, "straight"), saved.Arrow);
+        Assert.Equal(new EditorThemeStroke("#FF020202", 6), saved.Line);
+        Assert.Equal(new EditorThemeStroke("#FF030303", 7), saved.Pen);
+        Assert.Equal(Color.FromArgb(255, 3, 3, 3), vm.PenColor);
+        Assert.Equal(6, vm.LineWidth);
     }
 
     [Fact]
@@ -67,14 +112,19 @@ public sealed class EditorThemesSettingsViewModelTests : IDisposable
     {
         var vm = new EditorThemesSettingsViewModel(_store);
         vm.New();
-        vm.ShapeFillColor = Color.FromArgb(255, 1, 2, 3);
-        vm.HasShapeGradient = true;
-        Assert.NotNull(_store.Themes[0].Shape.GradientEndColor);
+        vm.RectangleFillColor = Color.FromArgb(255, 1, 2, 3);
+        vm.HasRectangleGradient = true;
+        vm.EllipseFillColor = Color.FromArgb(255, 1, 2, 3);
+        vm.HasEllipseGradient = true;
+        Assert.NotNull(_store.Themes[0].Rectangle.GradientEndColor);
 
-        vm.ShapeFillColor = Color.FromArgb(0, 0, 0, 0);
+        vm.RectangleFillColor = Color.FromArgb(0, 0, 0, 0);
 
-        Assert.Null(_store.Themes[0].Shape.GradientEndColor);
-        Assert.False(vm.HasShapeGradient);
+        Assert.Null(_store.Themes[0].Rectangle.GradientEndColor);
+        Assert.False(vm.HasRectangleGradient);
+        Assert.False(vm.HasVisibleRectangleFill);
+        Assert.NotNull(_store.Themes[0].Ellipse.GradientEndColor);
+        Assert.True(vm.HasEllipseGradient);
     }
 
     [Fact]
@@ -101,9 +151,9 @@ public sealed class EditorThemesSettingsViewModelTests : IDisposable
     {
         var vm = new EditorThemesSettingsViewModel(_store);
 
-        vm.Import("""{ "name": "A", "line": { "width": 500 } }""");
+        vm.Import("""{ "name": "A", "pen": { "width": 500 } }""");
         Assert.True(vm.HasError);
-        Assert.Contains("line.width", vm.ErrorMessage, StringComparison.Ordinal);
+        Assert.Contains("pen.width", vm.ErrorMessage, StringComparison.Ordinal);
         Assert.Empty(_store.Themes);
 
         vm.Import("""{ "id": "a", "name": "A" }""");

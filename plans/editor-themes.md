@@ -27,12 +27,17 @@ Let people save a named look for screenshot annotations and the export canvas, t
 
 ## What a Theme Contains
 
-| Group | Settings |
+Each annotation type has its own section with its own settings, so changing one never changes another.
+
+| Section | Settings |
 | --- | --- |
-| Shapes | Stroke color and width, solid or gradient fill, shadow |
-| Arrows, lines, pen | Color, width, arrow style |
+| Rectangle | Stroke color and width, solid or gradient fill, shadow |
+| Ellipse | Stroke color and width, solid or gradient fill, shadow |
+| Arrow | Color, width, style |
+| Line | Color, width |
+| Pen | Color, width |
 | Text | Color, font, size, bold, italic, underline, box style |
-| Numbers | Badge color, text color, size |
+| Number | Badge color, text color, size |
 | Canvas | Solid or gradient background, padding, corners, shadow, frame, alignment |
 
 Themes leave out redaction, emoji, image backgrounds, and strikethrough, which only Windows has.
@@ -92,15 +97,15 @@ The format, units, ranges, and storage are in [`shared/editor-themes/README.md`]
 
 ### Modified, Update, and Save as New
 
-The look to save is computed from the document, not from hooks on each control. For each group (shape, line, text, number):
+The look to save is computed from the document, not from hooks on each control. For each annotation type:
 
-1. Use the newest annotation in the group that differs from the theme.
+1. Use the newest annotation of that type that differs from the theme.
 2. Otherwise use the defaults for new annotations, when they differ.
 3. Otherwise keep the theme's values.
 
 The canvas is compared with its state when the theme became active, because a theme that doesn't apply on open must not read as Modified. **Modified** means this result differs from the saved theme, after rounding sizes to two decimals. **Update** saves it over the theme. **Save as New** saves it under a new name and makes it active. With None selected, the look starts from the default theme. After either one, older annotations keep their looks, and those looks stop counting as edits.
 
-Tools share one color and one width in the inspector. While a theme is active, each group keeps its own, stored when a tool is left and loaded when a tool of that group is chosen. With None, tools share them as they do today.
+Tools share one color and one width in the inspector, and rectangles and ellipses share one fill and one set of effects. While a theme is active, each tool keeps its own, stored when the tool is left and loaded when it is chosen. With None, tools share them as they do today.
 
 On Windows, a theme's pixel sizes use the image width when the theme was applied, so a later crop doesn't read as Modified.
 

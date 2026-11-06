@@ -60,10 +60,45 @@ public sealed class EditorThemeFormatTests
     [Fact]
     public void UnknownFieldsAreIgnored_AndAMissingIdStaysBlank()
     {
-        var theme = EditorTheme.Parse("""{ "name": "A", "future": 1, "shape": { "corners": 4 } }""");
+        var theme = EditorTheme.Parse("""{ "name": "A", "future": 1, "rectangle": { "corners": 4 } }""");
 
         Assert.Equal(string.Empty, theme.Id);
         Assert.Equal(EditorTheme.CreateDefault(string.Empty, "A"), theme);
+    }
+
+    [Fact]
+    public void TheOldGroupedFieldsAreNotRead()
+    {
+        var theme = EditorTheme.Parse("""
+            { "name": "A", "shape": { "strokeColor": "#FF010203" }, "line": { "arrowStyle": "curvedLeft" } }
+            """);
+
+        Assert.Equal(EditorTheme.CreateDefault(string.Empty, "A"), theme);
+    }
+
+    [Theory]
+    [InlineData("rectangle", """{ "strokeColor": "#FF010203", "strokeWidth": 9, "fillColor": "#FF040506", "gradientEndColor": "#FF070809", "gradientDirection": 10, "shadowBlur": 3, "shadowColor": "#FF0A0B0C" }""")]
+    [InlineData("ellipse", """{ "strokeColor": "#FF010203", "strokeWidth": 9, "fillColor": "#FF040506", "gradientEndColor": "#FF070809", "gradientDirection": 10, "shadowBlur": 3, "shadowColor": "#FF0A0B0C" }""")]
+    [InlineData("arrow", """{ "color": "#FF010203", "width": 9, "style": "curvedLeft" }""")]
+    [InlineData("line", """{ "color": "#FF010203", "width": 9 }""")]
+    [InlineData("pen", """{ "color": "#FF010203", "width": 9 }""")]
+    public void EachSectionRoundTripsWithoutTouchingTheOthers(string section, string values)
+    {
+        var defaults = EditorTheme.CreateDefault("a", "A").ToJson();
+        var expected = defaults.DeepClone().AsObject();
+        expected[section] = JsonNode.Parse(values);
+
+        var theme = EditorTheme.Parse(expected);
+        var json = theme.ToJson();
+
+        Assert.True(JsonNode.DeepEquals(expected, json), json.ToJsonString());
+        foreach (var other in new[] { "rectangle", "ellipse", "arrow", "line", "pen", "text", "number", "canvas" })
+        {
+            if (other != section)
+            {
+                Assert.True(JsonNode.DeepEquals(defaults[other], json[other]), other);
+            }
+        }
     }
 
     [Fact]
@@ -360,10 +395,69 @@ public sealed class EditorThemeStylingTests
     [Fact]
     public void NoGradientAndNoBlurTurnTheEffectsOff()
     {
-        var effects = EditorThemeStyling.ShapeEffectsOf(EditorTheme.CreateDefault("a", "A").Shape, Width);
+        var effects = EditorThemeStyling.ShapeEffectsOf(EditorTheme.CreateDefault("a", "A").Rectangle, Width);
 
         Assert.False(effects.IsGradientFill);
         Assert.False(effects.HasShadow);
+    }
+
+    [Fact]
+    public void RectanglesAndEllipsesEachUseTheirOwnSection()
+    {
+        var rectangle = new ScreenshotAnnotation { Tool = EditTool.Rectangle };
+        var ellipse = new ScreenshotAnnotation { Tool = EditTool.Ellipse };
+
+        EditorThemeStyling.Apply(rectangle, Brand(), 1800);
+        EditorThemeStyling.Apply(ellipse, Brand(), 1800);
+
+        Assert.Equal(EditorTheme.ColorOf("#FF102030"), rectangle.Color);
+        Assert.Equal(EditorTheme.ColorOf("#FF203040"), ellipse.Color);
+        Assert.Equal(11, rectangle.Thickness, 6);
+        Assert.Equal(7, ellipse.Thickness, 6);
+        Assert.Equal(EditorTheme.ColorOf("#80405060"), rectangle.FillColor);
+        Assert.Equal(EditorTheme.ColorOf("#90506070"), ellipse.FillColor);
+        Assert.True(rectangle.ShapeEffects.IsGradientFill);
+        Assert.False(ellipse.ShapeEffects.IsGradientFill);
+        Assert.Equal(200, ellipse.ShapeEffects.GradientDirectionDegrees);
+        Assert.Equal(36, rectangle.ShapeEffects.ShadowBlur, 6);
+        Assert.Equal(18, ellipse.ShapeEffects.ShadowBlur, 6);
+        Assert.Equal(EditorTheme.ColorOf("#55110000"), ellipse.ShapeEffects.ShadowColor);
+    }
+
+    [Fact]
+    public void ArrowsLinesAndPensEachUseTheirOwnSection()
+    {
+        var arrow = new ScreenshotAnnotation { Tool = EditTool.Arrow };
+        var line = new ScreenshotAnnotation { Tool = EditTool.Line };
+        var pen = new ScreenshotAnnotation { Tool = EditTool.Pen };
+
+        EditorThemeStyling.Apply(arrow, Brand(), 1800);
+        EditorThemeStyling.Apply(line, Brand(), 1800);
+        EditorThemeStyling.Apply(pen, Brand(), 1800);
+
+        Assert.Equal(EditorTheme.ColorOf("#FFA0B0C0"), arrow.Color);
+        Assert.Equal(EditorTheme.ColorOf("#FFB0C0D0"), line.Color);
+        Assert.Equal(EditorTheme.ColorOf("#FFC0D0E0"), pen.Color);
+        Assert.Equal(14, arrow.Thickness, 6);
+        Assert.Equal(12, line.Thickness, 6);
+        Assert.Equal(5, pen.Thickness, 6);
+    }
+
+    [Fact]
+    public void DefaultsComeFromEachToolsOwnSection()
+    {
+        var defaults = EditorThemeStyling.DefaultsOf(Brand(), 1800);
+
+        Assert.Equal(EditorTheme.ColorOf("#FF102030"), defaults.Rectangle.StrokeColor);
+        Assert.Equal(EditorTheme.ColorOf("#FF203040"), defaults.Ellipse.StrokeColor);
+        Assert.Equal(EditorTheme.ColorOf("#80405060"), defaults.Rectangle.Fill);
+        Assert.Equal(EditorTheme.ColorOf("#90506070"), defaults.Ellipse.Fill);
+        Assert.True(defaults.Rectangle.Effects.IsGradientFill);
+        Assert.False(defaults.Ellipse.Effects.IsGradientFill);
+        Assert.Equal(new EditorThemeStrokeDefaults(EditorTheme.ColorOf("#FFA0B0C0"), 14), defaults.Arrow);
+        Assert.Equal(new EditorThemeStrokeDefaults(EditorTheme.ColorOf("#FFB0C0D0"), 12), defaults.Line);
+        Assert.Equal(new EditorThemeStrokeDefaults(EditorTheme.ColorOf("#FFC0D0E0"), 5), defaults.Pen);
+        Assert.Equal(ArrowStyle.Curved2, defaults.ArrowStyle);
     }
 
     [Fact]
@@ -472,31 +566,138 @@ public sealed class EditorThemeCaptureTests
         var theme = Brand();
         var older = Themed(EditTool.Rectangle, theme);
         older.Color = Color.FromArgb(255, 1, 1, 1);
-        var newer = Themed(EditTool.Ellipse, theme);
+        var newer = Themed(EditTool.Rectangle, theme);
         newer.Color = Color.FromArgb(255, 2, 2, 2);
         var newest = Themed(EditTool.Rectangle, theme);
 
         var captured = Capture(theme, [older, newer, newest]);
 
-        Assert.Equal("#FF020202", captured.Shape.StrokeColor);
+        Assert.Equal("#FF020202", captured.Rectangle.StrokeColor);
         Assert.True(EditorThemeCapture.IsModified(theme, captured));
     }
 
     [Fact]
-    public void GroupsAreCapturedSeparately()
+    public void EditingARectangleOnlyChangesRectangle()
     {
         var theme = Brand();
-        var line = Themed(EditTool.Arrow, theme);
-        line.ArrowStyle = ArrowStyle.Straight;
+        var rectangle = Themed(EditTool.Rectangle, theme);
+        rectangle.Color = Color.FromArgb(255, 1, 1, 1);
+        rectangle.FillColor = Color.FromArgb(255, 2, 2, 2);
+
+        var captured = Capture(theme, [rectangle, Themed(EditTool.Ellipse, theme)]);
+
+        Assert.Equal("#FF010101", captured.Rectangle.StrokeColor);
+        Assert.Equal("#FF020202", captured.Rectangle.FillColor);
+        Assert.Equal(theme with { Rectangle = captured.Rectangle }, captured);
+    }
+
+    [Fact]
+    public void EditingAnEllipseOnlyChangesEllipse()
+    {
+        var theme = Brand();
+        var ellipse = Themed(EditTool.Ellipse, theme);
+        ellipse.ShapeEffects = ellipse.ShapeEffects with { HasShadow = false };
+
+        var captured = Capture(theme, [Themed(EditTool.Rectangle, theme), ellipse]);
+
+        Assert.Equal(0, captured.Ellipse.ShadowBlur);
+        Assert.Equal(theme with { Ellipse = captured.Ellipse }, captured);
+    }
+
+    [Theory]
+    [InlineData(EditTool.Arrow)]
+    [InlineData(EditTool.Line)]
+    [InlineData(EditTool.Pen)]
+    public void EditingOneStrokeToolOnlyChangesItsSection(EditTool tool)
+    {
+        var theme = Brand();
+        var edited = Themed(tool, theme);
+        edited.Color = Color.FromArgb(255, 1, 1, 1);
+        edited.Thickness = EditorThemeUnits.StrokePixels(9, Width);
+        ScreenshotAnnotation[] annotations =
+        [
+            Themed(EditTool.Arrow, theme),
+            Themed(EditTool.Line, theme),
+            Themed(EditTool.Pen, theme),
+            edited,
+        ];
+
+        var captured = Capture(theme, annotations);
+
+        var expected = tool switch
+        {
+            EditTool.Arrow => theme with { Arrow = new EditorThemeArrow("#FF010101", 9, theme.Arrow.Style) },
+            EditTool.Line => theme with { Line = new EditorThemeStroke("#FF010101", 9) },
+            _ => theme with { Pen = new EditorThemeStroke("#FF010101", 9) },
+        };
+        Assert.Equal(expected, captured);
+    }
+
+    [Fact]
+    public void AnArrowsStyleIsCapturedIntoArrowOnly()
+    {
+        var theme = Brand();
+        var arrow = Themed(EditTool.Arrow, theme);
+        arrow.ArrowStyle = ArrowStyle.Straight;
         var number = Themed(EditTool.Counter, theme);
         number.SizeScale = 2;
 
-        var captured = Capture(theme, [line, number, Themed(EditTool.Text, theme)]);
+        var captured = Capture(theme, [arrow, number, Themed(EditTool.Text, theme)]);
 
-        Assert.Equal("straight", captured.Line.ArrowStyle);
+        Assert.Equal("straight", captured.Arrow.Style);
         Assert.Equal(2, captured.Number.Size);
-        Assert.Equal(theme.Shape, captured.Shape);
-        Assert.Equal(theme.Text, captured.Text);
+        Assert.Equal(theme with { Arrow = captured.Arrow, Number = captured.Number }, captured);
+    }
+
+    [Fact]
+    public void AToolsDefaultsAreCapturedIntoOnlyItsSection()
+    {
+        var theme = Brand();
+        var canvas = EditorThemeStyling.CanvasStateOf(theme);
+        var unchanged = EditorThemeStyling.DefaultsOf(theme, Width);
+        var defaults = unchanged with
+        {
+            Ellipse = unchanged.Ellipse with { Fill = Color.FromArgb(255, 1, 1, 1) },
+            Pen = new EditorThemeStrokeDefaults(Color.FromArgb(255, 2, 2, 2), unchanged.Pen.Width),
+        };
+
+        var captured = EditorThemeCapture.Capture(theme, [], defaults, canvas, canvas, Width);
+
+        Assert.Equal("#FF010101", captured.Ellipse.FillColor);
+        Assert.Equal("#FF020202", captured.Pen.Color);
+        Assert.Equal(theme with { Ellipse = captured.Ellipse, Pen = captured.Pen }, captured);
+    }
+
+    [Fact]
+    public void ALookSettledOnOneToolIsStillAnEditOnAnother()
+    {
+        // Each pair below has the same fields, so a shared settled set would hide the edit.
+        var brand = Brand();
+        var theme = brand with { Rectangle = brand.Rectangle with { GradientDirection = brand.Ellipse.GradientDirection } };
+        var canvas = EditorThemeStyling.CanvasStateOf(theme);
+        var defaults = EditorThemeStyling.DefaultsOf(theme, Width);
+        var rectangle = Themed(EditTool.Rectangle, theme);
+        rectangle.Color = Color.FromArgb(255, 1, 1, 1);
+        rectangle.Thickness = EditorThemeUnits.StrokePixels(theme.Ellipse.StrokeWidth, Width);
+        rectangle.FillColor = EditorTheme.ColorOf(theme.Ellipse.FillColor);
+        rectangle.ShapeEffects = EditorThemeStyling.ShapeEffectsOf(theme.Ellipse, Width);
+        var line = Themed(EditTool.Line, theme);
+        line.Color = Color.FromArgb(255, 2, 2, 2);
+        line.Thickness = EditorThemeUnits.StrokePixels(theme.Pen.Width, Width);
+        var settled = EditorThemeCapture.Settle(theme, [rectangle, line], Width);
+        var baseline = new EditorThemeBaseline(theme, canvas, Width, settled);
+
+        var ellipse = Themed(EditTool.Ellipse, theme);
+        ellipse.Color = rectangle.Color;
+        var pen = Themed(EditTool.Pen, theme);
+        pen.Color = line.Color;
+
+        var captured = EditorThemeCapture.Capture(baseline, [rectangle, line, ellipse, pen], defaults, canvas);
+
+        Assert.Equal("#FF010101", captured.Ellipse.StrokeColor);
+        Assert.Equal("#FF020202", captured.Pen.Color);
+        Assert.Equal(theme.Rectangle, captured.Rectangle);
+        Assert.Equal(theme.Line, captured.Line);
     }
 
     [Fact]
@@ -504,19 +705,22 @@ public sealed class EditorThemeCaptureTests
     {
         var theme = Brand();
         var canvas = EditorThemeStyling.CanvasStateOf(theme);
-        var defaults = EditorThemeStyling.DefaultsOf(theme, Width) with { LineWidth = EditorThemeUnits.StrokePixels(9, Width) };
+        var defaults = WithLineWidth(EditorThemeStyling.DefaultsOf(theme, Width), 9);
 
         var captured = EditorThemeCapture.Capture(theme, [Themed(EditTool.Line, theme)], defaults, canvas, canvas, Width);
 
         Assert.Equal(9, captured.Line.Width);
     }
 
+    private static EditorThemeDefaults WithLineWidth(EditorThemeDefaults defaults, double units) =>
+        defaults with { Line = defaults.Line with { Width = EditorThemeUnits.StrokePixels(units, Width) } };
+
     [Fact]
     public void AnAnnotationBeatsTheDefaults()
     {
         var theme = Brand();
         var canvas = EditorThemeStyling.CanvasStateOf(theme);
-        var defaults = EditorThemeStyling.DefaultsOf(theme, Width) with { LineWidth = EditorThemeUnits.StrokePixels(9, Width) };
+        var defaults = WithLineWidth(EditorThemeStyling.DefaultsOf(theme, Width), 9);
         var line = Themed(EditTool.Line, theme);
         line.Thickness = EditorThemeUnits.StrokePixels(12, Width);
 
@@ -586,8 +790,8 @@ public sealed class EditorThemeCaptureTests
     public void SizesRoundToTwoDecimals()
     {
         var theme = Brand();
-        var almost = theme with { Line = theme.Line with { Width = 7.004 } };
-        var different = theme with { Line = theme.Line with { Width = 7.01 } };
+        var almost = theme with { Arrow = theme.Arrow with { Width = 7.004 } };
+        var different = theme with { Pen = theme.Pen with { Width = 2.51 } };
 
         Assert.False(EditorThemeCapture.IsModified(theme, almost));
         Assert.True(EditorThemeCapture.IsModified(theme, different));
@@ -602,8 +806,8 @@ public sealed class EditorThemeCaptureTests
 
         var captured = Capture(theme, [shape]);
 
-        Assert.Null(captured.Shape.GradientEndColor);
-        Assert.Equal(0, captured.Shape.ShadowBlur);
+        Assert.Null(captured.Rectangle.GradientEndColor);
+        Assert.Equal(0, captured.Rectangle.ShadowBlur);
     }
 
     [Fact]
@@ -675,7 +879,26 @@ public sealed class EditorThemeParserTests
     }
 
     [Fact]
-    public void TextAndNumbersTakeTheirGroups()
+    public void EachTypeTakesItsOwnSection()
+    {
+        var ellipse = ParseOne(""" "type": "ellipse" """, Brand());
+        var arrow = ParseOne(""" "type": "arrow", "points": [{ "x": 1, "y": 1 }, { "x": 9, "y": 9 }] """, Brand());
+        var line = ParseOne(""" "type": "line", "points": [{ "x": 1, "y": 1 }, { "x": 9, "y": 9 }] """, Brand());
+        var pen = ParseOne(""" "type": "pen", "points": [{ "x": 1, "y": 1 }, { "x": 9, "y": 9 }], "lineWidth": 3 """, Brand());
+
+        Assert.Equal(EditorTheme.ColorOf("#FF203040"), ellipse.Color);
+        Assert.False(ellipse.ShapeEffects.IsGradientFill);
+        Assert.Equal(EditorTheme.ColorOf("#FFA0B0C0"), arrow.Color);
+        Assert.Equal(ArrowStyle.Curved2, arrow.ArrowStyle);
+        Assert.Equal(14, arrow.Thickness, 6);
+        Assert.Equal(EditorTheme.ColorOf("#FFB0C0D0"), line.Color);
+        Assert.Equal(12, line.Thickness, 6);
+        Assert.Equal(EditorTheme.ColorOf("#FFC0D0E0"), pen.Color);
+        Assert.Equal(3, pen.Thickness);
+    }
+
+    [Fact]
+    public void TextAndNumbersTakeTheirSections()
     {
         var text = ParseOne(""" "type": "text", "text": "Hi", "fontSize": 30 """, Brand());
         var number = ParseOne(""" "type": "number", "textColor": "#FF010203" """, Brand());

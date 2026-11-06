@@ -18,12 +18,17 @@ private struct EditorCanvasState {
 private struct EditorThemeHistoryState {
     let activeThemeID: String?
     let baselineTheme: EditorTheme?
-    let canvasBaseline: EditorTheme.CanvasGroup?
+    let canvasBaseline: EditorTheme.CanvasSection?
     let acceptedLooks: [UUID: EditorThemeAnnotationLook]
-    let toolGroup: EditorThemeGroupKind?
+    let toolKind: EditorThemeToolKind?
+    let shapeKind: EditorThemeToolKind?
+    let toolStyles: [EditorThemeToolKind: EditorThemeAnnotationDefaults.ToolStyle]
+    let shapeStyles: [EditorThemeToolKind: EditorThemeAnnotationDefaults.ShapeStyle]
     let defaults: EditorThemeAnnotationDefaults
     let selectedColor: Color
     let lineWidth: CGFloat
+    let selectedFillColor: Color
+    let shapeEffects: ShapeEffects
     let backgroundStyle: ExportBackgroundStyle
     let backgroundColor: Color
     let backgroundSecondaryColor: Color
@@ -66,13 +71,17 @@ class ScreenshotEditorViewModel: ObservableObject {
     /// The window's theme, or nil for None. `baselineTheme` is that theme as it was last applied or saved.
     @Published private(set) var activeThemeID: String?
     @Published private(set) var baselineTheme: EditorTheme?
-    private var themeCanvasBaseline: EditorTheme.CanvasGroup?
+    private var themeCanvasBaseline: EditorTheme.CanvasSection?
     /// Looks an Update or Save as New already took into account, which no longer count as edits.
     private var acceptedThemeLooks: [UUID: EditorThemeAnnotationLook] = [:]
-    /// While a theme is active, each group's color and width. The group in `themeToolGroup` is live
+    /// While a theme is active, each type's color and width. The type in `themeToolKind` is live
     /// in `selectedColor` and `lineWidth`, so its entry here is out of date.
-    private var themeToolStyles: [EditorThemeGroupKind: EditorThemeAnnotationDefaults.ToolStyle] = [:]
-    private var themeToolGroup: EditorThemeGroupKind?
+    private var themeToolStyles: [EditorThemeToolKind: EditorThemeAnnotationDefaults.ToolStyle] = [:]
+    private var themeToolKind: EditorThemeToolKind?
+    /// The same for each shape's fill and effects. The shape in `themeShapeKind` is live in
+    /// `selectedFillColor` and `shapeEffects`, and stays so while a tool with no fill is chosen.
+    private var themeShapeStyles: [EditorThemeToolKind: EditorThemeAnnotationDefaults.ShapeStyle] = [:]
+    private var themeShapeKind: EditorThemeToolKind?
     private var lastThemeModified = false
     @Published var selectedColor: Color = .red
     @Published var selectedFillColor: Color = .clear
@@ -105,7 +114,10 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var textIsItalic = false
     @Published var textIsUnderlined = false
     @Published var textBoxStyle: TextBoxStyle = .plain
-    @Published var selectedAnnotationIndex: Int?
+    @Published var selectedAnnotationIndex: Int? {
+        // The color and width controls edit the defaults of the type the inspector is showing.
+        didSet { syncThemeToolStyle() }
+    }
     @Published var saveFormat: ImageFormat
     @Published var saveScale: Int
     @Published var saveJpegQuality: Double
@@ -1859,6 +1871,13 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
+    /// The color of the text being typed. The inline editor can outlast the Text tool, and then
+    /// with a theme active `selectedColor` holds the next tool's color.
+    var newTextColor: Color {
+        guard themeToolKind != .text, let style = themeToolStyles[.text] else { return selectedColor }
+        return style.color
+    }
+
     func commitTextAnnotation() {
         guard let pos = textEditPosition, !textEditValue.isEmpty else {
             cancelTextAnnotation()
@@ -1872,7 +1891,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         annotations.append(ScreenshotAnnotation(
             tool: .text,
             rect: rect,
-            color: selectedColor,
+            color: newTextColor,
             textColor: numberTextColor,
             lineWidth: lineWidth,
             text: textEditValue,
@@ -2634,7 +2653,9 @@ extension ScreenshotEditorViewModel {
             canvasBaseline: nil,
             acceptedLooks: [:],
             toolStyles: [:],
-            toolGroup: nil
+            shapeStyles: [:],
+            toolKind: nil,
+            shapeKind: nil
         )
     }
 
@@ -2665,17 +2686,13 @@ extension ScreenshotEditorViewModel {
         )
     }
 
-    /// With None, tools share one color and width, and whatever differs from the default theme is the look.
+    /// With None, tools share their defaults, and whatever differs from the default theme is the look.
     private func capturedLookWithoutTheme() -> EditorTheme {
         let start = EditorTheme(name: "Theme")
-        var defaults = currentThemeDefaults()
-        for group in EditorThemeGroupKind.allCases {
-            defaults.toolStyles[group] = .init(color: selectedColor, lineWidth: lineWidth)
-        }
         return EditorThemeStyling.captured(
             from: start,
             annotations: annotations,
-            defaults: defaults,
+            defaults: currentThemeDefaults(),
             canvas: currentThemeCanvas(),
             canvasBaseline: start.canvas,
             imagePixelSize: imagePixelSize
@@ -2706,7 +2723,7 @@ extension ScreenshotEditorViewModel {
     }
 
     /// Applies a theme's canvas. An image background stays, because themes leave out images.
-    func applyThemeCanvas(_ canvas: EditorTheme.CanvasGroup) {
+    func applyThemeCanvas(_ canvas: EditorTheme.CanvasSection) {
         if backgroundStyle != .wallpaper {
             let style = EditorThemeNames.background(canvas.background)
             backgroundStyle = style
@@ -2727,8 +2744,8 @@ extension ScreenshotEditorViewModel {
         verticalExportAlignment = EditorThemeNames.verticalAlignment(canvas.verticalAlignment)
     }
 
-    func currentThemeCanvas() -> EditorTheme.CanvasGroup {
-        EditorTheme.CanvasGroup(
+    func currentThemeCanvas() -> EditorTheme.CanvasSection {
+        EditorTheme.CanvasSection(
             applyOnOpen: false,
             background: EditorThemeNames.name(for: backgroundStyle) ?? "wallpaper",
             color: EditorThemeColor.hex(backgroundColor),
@@ -2746,13 +2763,16 @@ extension ScreenshotEditorViewModel {
     private func activateTheme(_ theme: EditorTheme) {
         let defaults = EditorThemeStyling.defaults(from: theme, current: currentThemeDefaults())
         applyThemeDefaults(defaults)
+        let kinds = liveThemeKinds()
         setThemeState(
             id: theme.id,
             baseline: theme,
             canvasBaseline: currentThemeCanvas(),
             acceptedLooks: [:],
             toolStyles: defaults.toolStyles,
-            toolGroup: EditorThemeGroupKind(tool: selectedTool) ?? .shape
+            shapeStyles: defaults.shapeStyles,
+            toolKind: kinds.tool,
+            shapeKind: kinds.shape
         )
         loadThemeToolStyle()
     }
@@ -2766,13 +2786,16 @@ extension ScreenshotEditorViewModel {
         for annotation in annotations {
             accepted[annotation.id] = EditorThemeStyling.look(of: annotation, theme: saved, imagePixelSize: imagePixelSize)
         }
+        let kinds = liveThemeKinds()
         setThemeState(
             id: saved.id,
             baseline: saved,
             canvasBaseline: currentThemeCanvas(),
             acceptedLooks: accepted,
             toolStyles: defaults.toolStyles,
-            toolGroup: EditorThemeGroupKind(tool: selectedTool) ?? themeToolGroup ?? .shape
+            shapeStyles: defaults.shapeStyles,
+            toolKind: kinds.tool,
+            shapeKind: kinds.shape
         )
         loadThemeToolStyle()
     }
@@ -2794,28 +2817,41 @@ private extension ScreenshotEditorViewModel {
     func setThemeState(
         id: String?,
         baseline: EditorTheme?,
-        canvasBaseline: EditorTheme.CanvasGroup?,
+        canvasBaseline: EditorTheme.CanvasSection?,
         acceptedLooks: [UUID: EditorThemeAnnotationLook],
-        toolStyles: [EditorThemeGroupKind: EditorThemeAnnotationDefaults.ToolStyle],
-        toolGroup: EditorThemeGroupKind?
+        toolStyles: [EditorThemeToolKind: EditorThemeAnnotationDefaults.ToolStyle],
+        shapeStyles: [EditorThemeToolKind: EditorThemeAnnotationDefaults.ShapeStyle],
+        toolKind: EditorThemeToolKind?,
+        shapeKind: EditorThemeToolKind?
     ) {
         activeThemeID = id
         baselineTheme = baseline
         themeCanvasBaseline = canvasBaseline
         acceptedThemeLooks = acceptedLooks
         themeToolStyles = toolStyles
-        themeToolGroup = toolGroup
+        themeShapeStyles = shapeStyles
+        themeToolKind = toolKind
+        themeShapeKind = shapeKind
     }
 
+    /// With None, every tool shares the inspector's values. With a theme, only the live types do.
     func currentThemeDefaults() -> EditorThemeAnnotationDefaults {
-        var styles = themeToolStyles
-        if let themeToolGroup {
-            styles[themeToolGroup] = .init(color: selectedColor, lineWidth: lineWidth)
+        var toolStyles = themeToolStyles
+        var shapeStyles = themeShapeStyles
+        let toolStyle = EditorThemeAnnotationDefaults.ToolStyle(color: selectedColor, lineWidth: lineWidth)
+        let shapeStyle = EditorThemeAnnotationDefaults.ShapeStyle(fillColor: selectedFillColor, effects: shapeEffects)
+        if baselineTheme == nil {
+            for kind in EditorThemeToolKind.allCases {
+                toolStyles[kind] = toolStyle
+                if kind.isShape { shapeStyles[kind] = shapeStyle }
+            }
+        } else {
+            if let themeToolKind { toolStyles[themeToolKind] = toolStyle }
+            if let themeShapeKind { shapeStyles[themeShapeKind] = shapeStyle }
         }
         return EditorThemeAnnotationDefaults(
-            toolStyles: styles,
-            fillColor: selectedFillColor,
-            shapeEffects: shapeEffects,
+            toolStyles: toolStyles,
+            shapeStyles: shapeStyles,
             arrowStyle: selectedArrowStylePreset,
             fontFamily: textFontFamily,
             fontSize: textFontSize,
@@ -2828,10 +2864,8 @@ private extension ScreenshotEditorViewModel {
         )
     }
 
-    /// Everything but the tool styles, which `setThemeState` and `loadThemeToolStyle` handle.
+    /// Everything but the per-type styles, which `setThemeState` and `loadThemeToolStyle` handle.
     func applyThemeDefaults(_ defaults: EditorThemeAnnotationDefaults) {
-        selectedFillColor = defaults.fillColor
-        shapeEffects = defaults.shapeEffects
         selectedArrowStylePreset = defaults.arrowStyle
         textFontFamily = defaults.fontFamily
         textFontSize = defaults.fontSize
@@ -2843,24 +2877,42 @@ private extension ScreenshotEditorViewModel {
         numberSizeMultiplier = defaults.numberSizeMultiplier
     }
 
-    func loadThemeToolStyle() {
-        guard let themeToolGroup, let style = themeToolStyles[themeToolGroup] else { return }
-        selectedColor = style.color
-        lineWidth = style.lineWidth
+    /// The types to make live when a theme takes over: what the inspector is showing, or else
+    /// what was already live, or else a rectangle.
+    func liveThemeKinds() -> (tool: EditorThemeToolKind, shape: EditorThemeToolKind) {
+        let tool = EditorThemeToolKind(tool: inspectorTool) ?? themeToolKind ?? .rectangle
+        return (tool, tool.isShape ? tool : themeShapeKind ?? .rectangle)
     }
 
-    /// With a theme active, leaving a tool stores its group's color and width, and choosing a tool
-    /// of another group loads that group's. Tools with no group leave them as they are.
+    func loadThemeToolStyle() {
+        if let themeToolKind, let style = themeToolStyles[themeToolKind] {
+            selectedColor = style.color
+            lineWidth = style.lineWidth
+        }
+        if let themeShapeKind, let style = themeShapeStyles[themeShapeKind] {
+            selectedFillColor = style.fillColor
+            shapeEffects = style.effects
+        }
+    }
+
+    /// With a theme active, leaving a type stores its values and choosing a type loads its own, so
+    /// the inspector and new annotations both use them. Tools a theme doesn't style change nothing.
     func syncThemeToolStyle() {
         guard baselineTheme != nil,
-              let group = EditorThemeGroupKind(tool: selectedTool),
-              group != themeToolGroup else {
+              let kind = EditorThemeToolKind(tool: inspectorTool),
+              kind != themeToolKind else {
             return
         }
-        if let themeToolGroup {
-            themeToolStyles[themeToolGroup] = .init(color: selectedColor, lineWidth: lineWidth)
+        if let themeToolKind {
+            themeToolStyles[themeToolKind] = .init(color: selectedColor, lineWidth: lineWidth)
         }
-        themeToolGroup = group
+        if let themeShapeKind {
+            themeShapeStyles[themeShapeKind] = .init(fillColor: selectedFillColor, effects: shapeEffects)
+        }
+        themeToolKind = kind
+        if kind.isShape {
+            themeShapeKind = kind
+        }
         loadThemeToolStyle()
     }
 
@@ -2870,10 +2922,15 @@ private extension ScreenshotEditorViewModel {
             baselineTheme: baselineTheme,
             canvasBaseline: themeCanvasBaseline,
             acceptedLooks: acceptedThemeLooks,
-            toolGroup: themeToolGroup,
+            toolKind: themeToolKind,
+            shapeKind: themeShapeKind,
+            toolStyles: themeToolStyles,
+            shapeStyles: themeShapeStyles,
             defaults: currentThemeDefaults(),
             selectedColor: selectedColor,
             lineWidth: lineWidth,
+            selectedFillColor: selectedFillColor,
+            shapeEffects: shapeEffects,
             backgroundStyle: backgroundStyle,
             backgroundColor: backgroundColor,
             backgroundSecondaryColor: backgroundSecondaryColor,
@@ -2906,13 +2963,17 @@ private extension ScreenshotEditorViewModel {
         applyThemeDefaults(state.defaults)
         selectedColor = state.selectedColor
         lineWidth = state.lineWidth
+        selectedFillColor = state.selectedFillColor
+        shapeEffects = state.shapeEffects
         setThemeState(
             id: state.activeThemeID,
             baseline: state.baselineTheme,
             canvasBaseline: state.canvasBaseline,
             acceptedLooks: state.acceptedLooks,
-            toolStyles: state.defaults.toolStyles,
-            toolGroup: state.toolGroup
+            toolStyles: state.toolStyles,
+            shapeStyles: state.shapeStyles,
+            toolKind: state.toolKind,
+            shapeKind: state.shapeKind
         )
         // The tool may have changed since this state was recorded.
         syncThemeToolStyle()

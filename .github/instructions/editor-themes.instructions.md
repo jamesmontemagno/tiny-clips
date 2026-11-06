@@ -5,7 +5,7 @@ applyTo: "mac/TinyClips/Views/ScreenshotEditor*.swift, mac/TinyClips/Models/Edit
 
 # Editor Themes Coverage
 
-A new or changed annotation style or canvas setting must reach Editor Themes in the same change, on each platform that has it. That includes a new annotation type. The design is in [plans/editor-themes.md](../../plans/editor-themes.md), and the format is in [shared/editor-themes/README.md](../../shared/editor-themes/README.md).
+A new or changed annotation style or canvas setting must reach Editor Themes in the same change, on each platform that has it. A new annotation type gets its own theme section and its own Settings controls, unless it's excluded below. The design is in [plans/editor-themes.md](../../plans/editor-themes.md), and the format is in [shared/editor-themes/README.md](../../shared/editor-themes/README.md).
 
 ## What to Update
 

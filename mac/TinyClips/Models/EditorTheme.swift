@@ -18,7 +18,8 @@ struct EditorTheme: Equatable, Identifiable {
     static let maximumNameLength = 60
     static let maximumIDLength = 64
 
-    struct ShapeGroup: Equatable {
+    /// `rectangle` and `ellipse` each have one of these.
+    struct ShapeSection: Equatable {
         var strokeColor = "#FFFF3B30"
         var strokeWidth: Double = 4
         var fillColor = "#00000000"
@@ -28,13 +29,19 @@ struct EditorTheme: Equatable, Identifiable {
         var shadowColor = "#59000000"
     }
 
-    struct LineGroup: Equatable {
+    struct ArrowSection: Equatable {
         var color = "#FFFF3B30"
         var width: Double = 4
-        var arrowStyle = "straight"
+        var style = "straight"
     }
 
-    struct TextBoxGroup: Equatable {
+    /// `line` and `pen` each have one of these.
+    struct StrokeSection: Equatable {
+        var color = "#FFFF3B30"
+        var width: Double = 4
+    }
+
+    struct TextBoxSection: Equatable {
         var backgroundColor = "#00000000"
         var borderColor = "#00000000"
         var borderWidth: Double = 0
@@ -42,23 +49,23 @@ struct EditorTheme: Equatable, Identifiable {
         var cornerRadius: Double = 0
     }
 
-    struct TextGroup: Equatable {
+    struct TextSection: Equatable {
         var color = "#FFFF3B30"
         var fontFamily: String?
         var fontSize: Double = 16
         var bold = false
         var italic = false
         var underline = false
-        var box = TextBoxGroup()
+        var box = TextBoxSection()
     }
 
-    struct NumberGroup: Equatable {
+    struct NumberSection: Equatable {
         var badgeColor = "#FFFF3B30"
         var textColor = "#FFFFFFFF"
         var size: Double = 1
     }
 
-    struct CanvasGroup: Equatable {
+    struct CanvasSection: Equatable {
         var applyOnOpen = false
         var background = "transparent"
         var color = "#FFF5F5FA"
@@ -75,11 +82,14 @@ struct EditorTheme: Equatable, Identifiable {
     var version = EditorTheme.currentVersion
     var id: String
     var name: String
-    var shape = ShapeGroup()
-    var line = LineGroup()
-    var text = TextGroup()
-    var number = NumberGroup()
-    var canvas = CanvasGroup()
+    var rectangle = ShapeSection()
+    var ellipse = ShapeSection()
+    var arrow = ArrowSection()
+    var line = StrokeSection()
+    var pen = StrokeSection()
+    var text = TextSection()
+    var number = NumberSection()
+    var canvas = CanvasSection()
 
     /// A nil `id` makes a new one.
     init(id: String? = nil, name: String) {
@@ -186,45 +196,56 @@ private extension KeyedDecodingContainer {
     }
 }
 
+private extension Decoder {
+    /// The key a section was read from, so a type two sections share names the right field.
+    var themeSectionName: String {
+        codingPath.last?.stringValue ?? "section"
+    }
+}
+
 extension EditorTheme: Codable {
     private enum CodingKeys: String, CodingKey {
-        case version, id, name, shape, line, text, number, canvas
+        case version, id, name, rectangle, ellipse, arrow, line, pen, text, number, canvas
     }
 
     /// An omitted `id` gets a new one, so saving such a theme creates it.
     init(from decoder: Decoder) throws {
         self.init(name: "Default")
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        // Checked first: a newer format's groups may not parse, and the version is the real problem.
+        // Checked first: a newer format's sections may not parse, and the version is the real problem.
         version = try container.themeValue(.version, "version", default: version)
         guard version == Self.currentVersion else {
             throw EditorThemeValidationError(field: "version", reason: "must be \(Self.currentVersion).")
         }
         id = try container.themeValue(.id, "id", default: id)
         name = try container.themeValue(.name, "name", default: name)
-        shape = try container.themeValue(.shape, "shape", default: shape)
+        rectangle = try container.themeValue(.rectangle, "rectangle", default: rectangle)
+        ellipse = try container.themeValue(.ellipse, "ellipse", default: ellipse)
+        arrow = try container.themeValue(.arrow, "arrow", default: arrow)
         line = try container.themeValue(.line, "line", default: line)
+        pen = try container.themeValue(.pen, "pen", default: pen)
         text = try container.themeValue(.text, "text", default: text)
         number = try container.themeValue(.number, "number", default: number)
         canvas = try container.themeValue(.canvas, "canvas", default: canvas)
     }
 }
 
-extension EditorTheme.ShapeGroup: Codable {
+extension EditorTheme.ShapeSection: Codable {
     private enum CodingKeys: String, CodingKey {
         case strokeColor, strokeWidth, fillColor, gradientEndColor, gradientDirection, shadowBlur, shadowColor
     }
 
     init(from decoder: Decoder) throws {
         self.init()
+        let section = decoder.themeSectionName
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        strokeColor = try container.themeValue(.strokeColor, "shape.strokeColor", default: strokeColor)
-        strokeWidth = try container.themeValue(.strokeWidth, "shape.strokeWidth", default: strokeWidth)
-        fillColor = try container.themeValue(.fillColor, "shape.fillColor", default: fillColor)
-        gradientEndColor = try container.themeNullableString(.gradientEndColor, "shape.gradientEndColor")
-        gradientDirection = try container.themeValue(.gradientDirection, "shape.gradientDirection", default: gradientDirection)
-        shadowBlur = try container.themeValue(.shadowBlur, "shape.shadowBlur", default: shadowBlur)
-        shadowColor = try container.themeValue(.shadowColor, "shape.shadowColor", default: shadowColor)
+        strokeColor = try container.themeValue(.strokeColor, "\(section).strokeColor", default: strokeColor)
+        strokeWidth = try container.themeValue(.strokeWidth, "\(section).strokeWidth", default: strokeWidth)
+        fillColor = try container.themeValue(.fillColor, "\(section).fillColor", default: fillColor)
+        gradientEndColor = try container.themeNullableString(.gradientEndColor, "\(section).gradientEndColor")
+        gradientDirection = try container.themeValue(.gradientDirection, "\(section).gradientDirection", default: gradientDirection)
+        shadowBlur = try container.themeValue(.shadowBlur, "\(section).shadowBlur", default: shadowBlur)
+        shadowColor = try container.themeValue(.shadowColor, "\(section).shadowColor", default: shadowColor)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -244,21 +265,35 @@ extension EditorTheme.ShapeGroup: Codable {
     }
 }
 
-extension EditorTheme.LineGroup: Codable {
+extension EditorTheme.ArrowSection: Codable {
     private enum CodingKeys: String, CodingKey {
-        case color, width, arrowStyle
+        case color, width, style
     }
 
     init(from decoder: Decoder) throws {
         self.init()
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        color = try container.themeValue(.color, "line.color", default: color)
-        width = try container.themeValue(.width, "line.width", default: width)
-        arrowStyle = try container.themeValue(.arrowStyle, "line.arrowStyle", default: arrowStyle)
+        color = try container.themeValue(.color, "arrow.color", default: color)
+        width = try container.themeValue(.width, "arrow.width", default: width)
+        style = try container.themeValue(.style, "arrow.style", default: style)
     }
 }
 
-extension EditorTheme.TextBoxGroup: Codable {
+extension EditorTheme.StrokeSection: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case color, width
+    }
+
+    init(from decoder: Decoder) throws {
+        self.init()
+        let section = decoder.themeSectionName
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        color = try container.themeValue(.color, "\(section).color", default: color)
+        width = try container.themeValue(.width, "\(section).width", default: width)
+    }
+}
+
+extension EditorTheme.TextBoxSection: Codable {
     private enum CodingKeys: String, CodingKey {
         case backgroundColor, borderColor, borderWidth, padding, cornerRadius
     }
@@ -274,7 +309,7 @@ extension EditorTheme.TextBoxGroup: Codable {
     }
 }
 
-extension EditorTheme.TextGroup: Codable {
+extension EditorTheme.TextSection: Codable {
     private enum CodingKeys: String, CodingKey {
         case color, fontFamily, fontSize, bold, italic, underline, box
     }
@@ -308,7 +343,7 @@ extension EditorTheme.TextGroup: Codable {
     }
 }
 
-extension EditorTheme.NumberGroup: Codable {
+extension EditorTheme.NumberSection: Codable {
     private enum CodingKeys: String, CodingKey {
         case badgeColor, textColor, size
     }
@@ -322,7 +357,7 @@ extension EditorTheme.NumberGroup: Codable {
     }
 }
 
-extension EditorTheme.CanvasGroup: Codable {
+extension EditorTheme.CanvasSection: Codable {
     private enum CodingKeys: String, CodingKey {
         case applyOnOpen, background, color, secondaryColor, gradientDirection, padding, cornerRadius, shadow, frame
         case horizontalAlignment, verticalAlignment
@@ -404,22 +439,15 @@ extension EditorTheme {
             throw EditorThemeValidationError(field: "name", reason: "must be 1 to \(Self.maximumNameLength) characters.")
         }
 
-        theme.shape.strokeColor = try Self.checkedColor(shape.strokeColor, "shape.strokeColor")
-        try Self.check(shape.strokeWidth, EditorThemeRange.strokeWidth, "shape.strokeWidth")
-        theme.shape.fillColor = try Self.checkedColor(shape.fillColor, "shape.fillColor")
-        if let endColor = shape.gradientEndColor {
-            theme.shape.gradientEndColor = try Self.checkedColor(endColor, "shape.gradientEndColor")
-            guard EditorThemeColor.isVisible(theme.shape.fillColor) else {
-                throw EditorThemeValidationError(field: "shape.gradientEndColor", reason: "needs a visible shape.fillColor.")
-            }
-        }
-        try Self.check(shape.gradientDirection, EditorThemeRange.direction, "shape.gradientDirection")
-        try Self.check(shape.shadowBlur, EditorThemeRange.shadowBlur, "shape.shadowBlur")
-        theme.shape.shadowColor = try Self.checkedColor(shape.shadowColor, "shape.shadowColor")
+        theme.rectangle = try Self.validatedShape(rectangle, "rectangle")
+        theme.ellipse = try Self.validatedShape(ellipse, "ellipse")
 
-        theme.line.color = try Self.checkedColor(line.color, "line.color")
-        try Self.check(line.width, EditorThemeRange.strokeWidth, "line.width")
-        try Self.checkName(line.arrowStyle, EditorThemeNames.arrowStyles, "line.arrowStyle")
+        theme.arrow.color = try Self.checkedColor(arrow.color, "arrow.color")
+        try Self.check(arrow.width, EditorThemeRange.strokeWidth, "arrow.width")
+        try Self.checkName(arrow.style, EditorThemeNames.arrowStyles, "arrow.style")
+
+        theme.line = try Self.validatedStroke(line, "line")
+        theme.pen = try Self.validatedStroke(pen, "pen")
 
         theme.text.color = try Self.checkedColor(text.color, "text.color")
         try Self.check(text.fontSize, EditorThemeRange.fontSize, "text.fontSize")
@@ -444,6 +472,30 @@ extension EditorTheme {
         try Self.checkName(canvas.horizontalAlignment, EditorThemeNames.horizontalAlignments, "canvas.horizontalAlignment")
         try Self.checkName(canvas.verticalAlignment, EditorThemeNames.verticalAlignments, "canvas.verticalAlignment")
         return theme
+    }
+
+    private static func validatedShape(_ section: ShapeSection, _ name: String) throws -> ShapeSection {
+        var result = section
+        result.strokeColor = try checkedColor(section.strokeColor, "\(name).strokeColor")
+        try check(section.strokeWidth, EditorThemeRange.strokeWidth, "\(name).strokeWidth")
+        result.fillColor = try checkedColor(section.fillColor, "\(name).fillColor")
+        if let endColor = section.gradientEndColor {
+            result.gradientEndColor = try checkedColor(endColor, "\(name).gradientEndColor")
+            guard EditorThemeColor.isVisible(result.fillColor) else {
+                throw EditorThemeValidationError(field: "\(name).gradientEndColor", reason: "needs a visible \(name).fillColor.")
+            }
+        }
+        try check(section.gradientDirection, EditorThemeRange.direction, "\(name).gradientDirection")
+        try check(section.shadowBlur, EditorThemeRange.shadowBlur, "\(name).shadowBlur")
+        result.shadowColor = try checkedColor(section.shadowColor, "\(name).shadowColor")
+        return result
+    }
+
+    private static func validatedStroke(_ section: StrokeSection, _ name: String) throws -> StrokeSection {
+        var result = section
+        result.color = try checkedColor(section.color, "\(name).color")
+        try check(section.width, EditorThemeRange.strokeWidth, "\(name).width")
+        return result
     }
 
     private static func checkedColor(_ value: String, _ field: String) throws -> String {
