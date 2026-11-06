@@ -149,14 +149,31 @@ public sealed class StudioEditorSessionCaptionGenerationTests : StudioEditorSess
         session.ImportCaptions("1\n00:00:05,000 --> 00:00:06,000\nImported\n", StudioCaptionTiming.Recording);
 
         var generating = session.GenerateCaptionsAsync(StudioCaptionModels.Default);
-        generator.Fail(new StudioCaptionException("No speech was found in this recording."));
+        generator.Fail(new StudioCaptionException("The speech could not be recognized: boom"));
         await PumpUntilCompletedAsync(generating);
 
         var result = await generating;
         Assert.Equal(StudioCaptionGenerationOutcome.Failed, result.Outcome);
-        Assert.Equal("No speech was found in this recording.", result.Message);
+        Assert.Equal("The speech could not be recognized: boom", result.Message);
         Assert.False(session.IsGeneratingCaptions);
         Assert.Equal("Imported", session.Model!.Project.Captions.Cues[0].Text);
+    }
+
+    [Fact]
+    public async Task HearingNobodySpeak_SaysSo_AndLeavesTheCaptionsAlone()
+    {
+        var (session, generator) = await OpenWithGeneratorAsync();
+        session.ImportCaptions("1\n00:00:05,000 --> 00:00:06,000\nImported\n", StudioCaptionTiming.Recording);
+
+        var generating = session.GenerateCaptionsAsync(StudioCaptionModels.Default);
+        generator.Finish("en");
+        await PumpUntilCompletedAsync(generating);
+
+        var result = await generating;
+        Assert.Equal(StudioCaptionGenerationOutcome.NoSpeech, result.Outcome);
+        Assert.Equal(StudioGeneratedCaptions.NoSpeechMessage, result.Message);
+        Assert.Equal("Imported", Assert.Single(session.Model!.Project.Captions.Cues).Text);
+        Assert.True(session.CanGenerateCaptions);
     }
 
     [Fact]

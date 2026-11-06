@@ -14,7 +14,11 @@ public sealed partial class StudioViewModel
 {
     private const string CaptionActivityId = "StudioCaptions";
 
+    /// <summary>How far the nudge buttons move one end of a cue, in seconds.</summary>
+    public const double CaptionNudgeStep = 0.1;
+
     private static readonly StudioCaptionRow[] NoCaptionRows = [];
+    private static readonly StudioCaptionCue[] NoOrderedCaptions = [];
     private static readonly StudioCaptionFinding[] NoCaptionFindings = [];
 
     // What changes when another cue is selected and the project stays as it is.
@@ -24,15 +28,55 @@ public sealed partial class StudioViewModel
         nameof(HasSelectedCaption),
         nameof(SelectedCaptionText),
         nameof(SelectedCaptionTimeText),
+        nameof(SelectedCaptionStartText),
+        nameof(SelectedCaptionEndText),
+        nameof(SelectedCaptionProblemText),
+        nameof(HasSelectedCaptionProblems),
+        nameof(CanEditSelectedCaption),
+        nameof(CanSplitSelectedCaption),
+        nameof(CanMergeSelectedCaption),
     ];
 
-    private StudioCaptionRow[] _captionRows = NoCaptionRows;
+    // What changes when what the panel says changes.
+    private static readonly string[] CaptionNoticePropertyNames =
+    [
+        nameof(CaptionNotice),
+        nameof(IsCaptionNoticeOpen),
+        nameof(CaptionNoticeKind),
+        nameof(CaptionNoticeTitle),
+        nameof(HasCaptionNoticeTitle),
+        nameof(CaptionNoticeMessage),
+        nameof(IsCaptionNoticeRetryVisible),
+    ];
+
+    // What changes when what is searched for changes.
+    private static readonly string[] CaptionSearchPropertyNames =
+    [
+        nameof(CaptionRows),
+        nameof(SelectedCaptionRow),
+        nameof(IsSearchingCaptions),
+        nameof(CaptionSearchCountText),
+        nameof(IsCaptionNoMatchesVisible),
+        nameof(IsCaptionListVisible),
+        nameof(CaptionNoMatchesText),
+    ];
+
+    private StudioCaptionRow[] _allCaptionRows = NoCaptionRows;
+    private StudioCaptionCue[] _orderedCaptions = NoOrderedCaptions;
     private StudioCaptionCue[]? _captionRowsList;
+    private StudioCaptionRow[] _captionRows = NoCaptionRows;
+    private StudioCaptionRow[]? _captionRowsSource;
+    private string _captionRowsQuery = string.Empty;
+    private string _captionSearchQuery = string.Empty;
+    private StudioCaptionRow? _currentCaptionRow;
+    private bool _couldSplitSelectedCaption;
     private StudioProject? _captionStateProject;
     private StudioCaptionFinding[] _captionFindings = NoCaptionFindings;
     private bool _hasResolvedCaptions;
     private string? _pendingCaptionText;
     private bool _isChoosingCaptionFile;
+    private StudioCaptionNotice? _captionNotice;
+    private ITimer? _captionNoticeTimer;
 
     /// <summary>Asks for a caption file to read. Null when none was chosen.</summary>
     public Func<Task<string?>>? ChooseCaptionFile { get; set; }
@@ -40,24 +84,42 @@ public sealed partial class StudioViewModel
     /// <summary>Asks where to write captions, from a folder and a file name. Null when nowhere was chosen.</summary>
     public Func<string, string, StudioCaptionFormat, Task<string?>>? ChooseCaptionExportFile { get; set; }
 
-    /// <summary>The cues in time order. The same list for as long as no cue changes.</summary>
+    /// <summary>
+    /// Whether the window is the one in use. When generating ends while it is not, a notification
+    /// says what came of it instead of a screen reader.
+    /// </summary>
+    public Func<bool>? IsWindowInFront { get; set; }
+
+    /// <summary>Raised when generating has ended while the window was not in front.</summary>
+    public event EventHandler<StudioProjectNotificationEventArgs>? CaptionNotificationRequested;
+
+    /// <summary>
+    /// The cues in time order that have what is searched for: all of them when nothing is. The
+    /// same list for as long as no cue changes and the search stays as it is.
+    /// </summary>
     public IReadOnlyList<StudioCaptionRow> CaptionRows
     {
         get
         {
-            if (_session.Model is not { } model)
+            RefreshCaptionRows();
+            if (!ReferenceEquals(_captionRowsSource, _allCaptionRows) || _captionRowsQuery != _captionSearchQuery)
             {
-                return NoCaptionRows;
-            }
-
-            var cues = model.Project.Captions.Cues;
-            if (!ReferenceEquals(cues, _captionRowsList))
-            {
-                _captionRowsList = cues;
-                _captionRows = model.GetCaptionIndexesInOrder().Select(index => StudioCaptionRow.From(index, cues[index])).ToArray();
+                _captionRowsSource = _allCaptionRows;
+                _captionRowsQuery = _captionSearchQuery;
+                _captionRows = FilterCaptionRows(_allCaptionRows, _captionSearchQuery);
             }
 
             return _captionRows;
+        }
+    }
+
+    /// <summary>The row of the cue on show at the playhead, which the list keeps in view while nothing is selected.</summary>
+    public StudioCaptionRow? CurrentCaptionRow
+    {
+        get
+        {
+            RefreshCaptionRows();
+            return _currentCaptionRow;
         }
     }
 
@@ -69,10 +131,74 @@ public sealed partial class StudioViewModel
 
     public string CaptionExportNote => StudioCaptionText.ExportNote;
 
-    /// <summary>What the last import, fix or export came to, for those who do not hear it said.</summary>
-    public string CaptionStatus { get; private set; } = string.Empty;
+    // What the panel says
 
-    public bool HasCaptionStatus => CaptionStatus.Length > 0;
+    /// <summary>What the last import, fix, export or generating came to. Null when there is nothing to say.</summary>
+    public StudioCaptionNotice? CaptionNotice => _captionNotice;
+
+    /// <summary>Whether there is something to say. The banner's close button turns this off.</summary>
+    public bool IsCaptionNoticeOpen
+    {
+        get => _captionNotice is not null;
+        set
+        {
+            if (!value)
+            {
+                DismissCaptionNotice();
+            }
+
+            ResyncIfDifferent(value, IsCaptionNoticeOpen);
+        }
+    }
+
+    public StudioCaptionNoticeKind CaptionNoticeKind => _captionNotice?.Kind ?? StudioCaptionNoticeKind.Info;
+
+    public string CaptionNoticeTitle => _captionNotice?.Title ?? string.Empty;
+
+    public bool HasCaptionNoticeTitle => CaptionNoticeTitle.Length > 0;
+
+    public string CaptionNoticeMessage => _captionNotice?.Message ?? string.Empty;
+
+    /// <summary>Whether it offers to try another model: after hearing nobody speak.</summary>
+    public bool IsCaptionNoticeRetryVisible => _captionNotice?.Kind == StudioCaptionNoticeKind.NoSpeech && CanGenerateCaptions;
+
+    public void DismissCaptionNotice()
+    {
+        _captionNoticeTimer?.Dispose();
+        _captionNoticeTimer = null;
+        if (_captionNotice is not null)
+        {
+            _captionNotice = null;
+            Raise(CaptionNoticePropertyNames);
+        }
+    }
+
+    // Searching
+
+    public bool IsSearchingCaptions => _captionSearchQuery.Length > 0;
+
+    /// <summary>How many cues have what is searched for: "3 of 12". Nothing while nothing is.</summary>
+    public string CaptionSearchCountText => IsSearchingCaptions
+        ? StudioCaptionPanelText.GetSearchCountText(CaptionRows.Count, _allCaptionRows.Length)
+        : string.Empty;
+
+    public bool IsCaptionNoMatchesVisible => IsSearchingCaptions && HasCaptions && CaptionRows.Count == 0;
+
+    /// <summary>Whether the list has a row to show: there are captions, and the search finds one.</summary>
+    public bool IsCaptionListVisible => CaptionRows.Count > 0;
+
+    public string CaptionNoMatchesText => StudioCaptionPanelText.GetNoMatchesText(_captionSearchQuery);
+
+    /// <summary>Shows only the cues that have <paramref name="text"/>, and marks it in them.</summary>
+    public void SetCaptionSearchText(string text)
+    {
+        var query = StudioCaptionSearch.Normalize(text);
+        if (query != _captionSearchQuery)
+        {
+            _captionSearchQuery = query;
+            Raise(CaptionSearchPropertyNames);
+        }
+    }
 
     /// <summary>The selected cue's place in <see cref="CaptionRows"/>, or -1.</summary>
     public int SelectedCaptionRow
@@ -103,8 +229,43 @@ public sealed partial class StudioViewModel
     // must not put the old text back.
     public string SelectedCaptionText => _pendingCaptionText ?? _session.SelectedCaption?.Text ?? string.Empty;
 
+    /// <summary>When the selected cue starts and ends, as a screen reader says it.</summary>
     public string SelectedCaptionTimeText =>
         _session.SelectedCaption is { } cue ? StudioCaptionText.GetRangeText(cue) : string.Empty;
+
+    public string SelectedCaptionStartText =>
+        _session.SelectedCaption is { } cue ? StudioCaptionPanelText.GetClockText(cue.Start) : string.Empty;
+
+    public string SelectedCaptionEndText =>
+        _session.SelectedCaption is { } cue ? StudioCaptionPanelText.GetClockText(cue.End) : string.Empty;
+
+    /// <summary>What the checks found in the selected cue, or nothing.</summary>
+    public string SelectedCaptionProblemText
+    {
+        get
+        {
+            if (_session.SelectedCaptionIndex is not { } index)
+            {
+                return string.Empty;
+            }
+
+            RefreshCaptionRows();
+            return Array.Find(_allCaptionRows, row => row.Index == index)?.ProblemText ?? string.Empty;
+        }
+    }
+
+    public bool HasSelectedCaptionProblems => SelectedCaptionProblemText.Length > 0;
+
+    /// <summary>Whether the selected cue can be retimed or deleted.</summary>
+    public bool CanEditSelectedCaption => IsEditable && HasSelectedCaption;
+
+    /// <summary>Whether the selected cue can be split at the playhead: it is there, and has two words or two lines.</summary>
+    public bool CanSplitSelectedCaption => _session.CanSplitSelectedCaption;
+
+    public bool CanMergeSelectedCaption => _session.CanMergeSelectedCaption;
+
+    /// <summary>The words on the Generate button: an invitation until there are captions.</summary>
+    public string CaptionGenerateButtonText => StudioCaptionPanelText.GetGenerateButtonText(HasCaptions);
 
     public bool CanImportCaptions => IsEditable && !_isChoosingCaptionFile;
 
@@ -128,6 +289,18 @@ public sealed partial class StudioViewModel
 
     public bool HasCaptions => (Project?.Captions.Cues.Length ?? 0) > 0;
 
+    /// <summary>Whether the checks find something in the captions there are.</summary>
+    public bool HasCaptionProblems
+    {
+        get
+        {
+            RefreshCaptionState();
+            return _captionFindings.Length > 0;
+        }
+    }
+
+    public bool AreCaptionsClean => HasCaptions && !HasCaptionProblems;
+
     /// <summary>What the checks find, such as "2 long lines, 1 too short".</summary>
     public string CaptionCheckText
     {
@@ -146,8 +319,17 @@ public sealed partial class StudioViewModel
         _session.SelectCaption(row >= 0 && row < rows.Count ? rows[row].Index : null);
     }
 
-    /// <summary>Keeps what is typed for the selected cue until the box is left.</summary>
-    public void SetPendingCaptionText(string text) => _pendingCaptionText = text;
+    /// <summary>
+    /// Keeps what is typed for the selected cue until the box is left. The box saying what the cue
+    /// says already, as it does each time it is refreshed, is nothing typed: kept, it would hide
+    /// what an undo or a redo puts there next.
+    /// </summary>
+    public void SetPendingCaptionText(string text) =>
+        _pendingCaptionText = _session.SelectedCaption is { } cue && !IsSameCaptionText(text, cue.Text) ? text : null;
+
+    // A text box ends its lines with \r, so the cue it shows is told apart only by its words.
+    private static bool IsSameCaptionText(string shown, string text) =>
+        string.Equals(shown.ReplaceLineEndings("\n"), text.ReplaceLineEndings("\n"), StringComparison.Ordinal);
 
     /// <summary>Puts what was typed for the selected cue into the project.</summary>
     public void CommitCaptionText()
@@ -159,17 +341,101 @@ public sealed partial class StudioViewModel
         }
     }
 
-    public void RemoveSelectedCaption()
+    /// <summary>Lets go of the selected cue, keeping what was typed for it.</summary>
+    public void DeselectCaption()
     {
-        _pendingCaptionText = null;
-        _session.RemoveSelectedCaption();
+        CommitCaptionText();
+        _session.SelectCaption(null);
     }
 
-    /// <summary>Makes the safe fixes, and says what came of them.</summary>
+    public void RemoveSelectedCaption()
+    {
+        if (!CanEditSelectedCaption)
+        {
+            return;
+        }
+
+        _pendingCaptionText = null;
+        _session.RemoveSelectedCaption();
+        Announce(StudioCaptionPanelText.DeletedMessage, CaptionActivityId, StudioAnnouncementKind.Completed);
+    }
+
+    /// <summary>Splits the selected cue in two at the playhead, and selects the second part.</summary>
+    public void SplitSelectedCaption()
+    {
+        CommitCaptionText();
+        if (_session.SplitSelectedCaptionAtPlayhead())
+        {
+            Announce(StudioCaptionPanelText.SplitMessage, CaptionActivityId, StudioAnnouncementKind.Completed);
+        }
+    }
+
+    /// <summary>Puts the selected cue together with the one after it.</summary>
+    public void MergeSelectedCaption()
+    {
+        CommitCaptionText();
+        if (_session.MergeSelectedCaptionWithNext())
+        {
+            Announce(StudioCaptionPanelText.MergedMessage, CaptionActivityId, StudioAnnouncementKind.Completed);
+        }
+    }
+
+    public void NudgeCaptionStartEarlier() => NudgeSelectedCaption(StudioCaptionEdge.Start, -CaptionNudgeStep);
+
+    public void NudgeCaptionStartLater() => NudgeSelectedCaption(StudioCaptionEdge.Start, CaptionNudgeStep);
+
+    public void NudgeCaptionEndEarlier() => NudgeSelectedCaption(StudioCaptionEdge.End, -CaptionNudgeStep);
+
+    public void NudgeCaptionEndLater() => NudgeSelectedCaption(StudioCaptionEdge.End, CaptionNudgeStep);
+
+    public void MoveCaptionStartToPlayhead() => RetimeSelectedCaption(StudioCaptionEdge.Start, _session.Playhead);
+
+    public void MoveCaptionEndToPlayhead() => RetimeSelectedCaption(StudioCaptionEdge.End, _session.Playhead);
+
+    /// <summary>Makes the safe fixes, and says what came of them and how many problems are left.</summary>
     public void FixCaptions()
     {
         CommitCaptionText();
-        ReportCaptions(StudioCaptionText.GetFixedMessage(_session.FixCaptions()));
+        var applied = _session.FixCaptions();
+        RefreshCaptionState();
+        ShowCaptionNotice(new StudioCaptionNotice(StudioCaptionNoticeKind.Done, StudioCaptionText.GetFixedMessage(applied, _captionFindings.Length)));
+    }
+
+    /// <summary>Whether the checks found a problem that Next problem can go to.</summary>
+    public bool CanSelectNextCaptionProblem => IsEditable && HasCaptionProblems;
+
+    /// <summary>Said with the checks when Auto Fix cannot fix every problem they found, or empty when it can.</summary>
+    public string CaptionManualFixNote
+    {
+        get
+        {
+            RefreshCaptionState();
+            var fixable = _captionFindings.Count(static finding => finding.CanFix);
+            return StudioCaptionText.GetManualFixNote(fixable, _captionFindings.Length) ?? string.Empty;
+        }
+    }
+
+    public bool HasCaptionManualFixNote => CaptionManualFixNote.Length > 0;
+
+    /// <summary>
+    /// Selects the next cue, in time order, that the checks found a problem in: after the selected
+    /// one, or the first when none is selected, going round after the last.
+    /// </summary>
+    public void SelectNextCaptionProblem()
+    {
+        CommitCaptionText();
+        RefreshCaptionRows();
+        var rows = _allCaptionRows;
+        int? current = null;
+        if (_session.SelectedCaptionIndex is { } index && Array.FindIndex(rows, row => row.Index == index) is var place and >= 0)
+        {
+            current = place;
+        }
+
+        if (StudioCaptionEditing.GetNextProblem(rows.Length, current, row => rows[row].HasProblems) is { } next)
+        {
+            _session.SelectCaption(rows[next].Index);
+        }
     }
 
     /// <summary>Asks for a caption file and puts its cues in place of the captions.</summary>
@@ -198,15 +464,17 @@ public sealed partial class StudioViewModel
 
             if (result.Count == 0)
             {
-                ShowError(StudioCaptionText.NothingToImport);
+                ShowCaptionProblem(StudioCaptionText.NothingToImport);
                 return;
             }
 
-            ReportCaptions(StudioCaptionText.GetImportedMessage(result.Count, result.Skipped));
+            ShowCaptionNotice(new StudioCaptionNotice(
+                StudioCaptionNoticeKind.Done,
+                StudioCaptionText.GetImportedMessage(result.Count, result.Skipped)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            ShowError($"The captions could not be read: {ex.Message}");
+            ShowCaptionProblem($"The captions could not be read: {ex.Message}");
         }
         finally
         {
@@ -239,11 +507,11 @@ public sealed partial class StudioViewModel
 
             var text = StudioCaptionFiles.Write(StudioCaptionFiles.GetFormat(path) ?? format, _session.GetResolvedCaptions());
             await Task.Run(() => StudioCaptionFiles.ReplaceFile(path, text));
-            ReportCaptions(StudioCaptionText.ExportedMessage);
+            ShowCaptionNotice(new StudioCaptionNotice(StudioCaptionNoticeKind.Done, StudioCaptionText.ExportedMessage));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ShowError($"The captions could not be written: {ex.Message}");
+            ShowCaptionProblem($"The captions could not be written: {ex.Message}");
         }
         finally
         {
@@ -406,7 +674,7 @@ public sealed partial class StudioViewModel
         }
 
         CommitCaptionText();
-        ClearCaptionStatus();
+        DismissCaptionNotice();
         var model = SelectedCaptionModel;
         var generation = _session.GenerateCaptionsAsync(model);
         Announce(StudioCaptionText.GeneratingMessage, CaptionActivityId, StudioAnnouncementKind.Information);
@@ -415,34 +683,187 @@ public sealed partial class StudioViewModel
         // A model it downloaded is on this computer now, whatever came of the rest.
         OnPropertyChanged(nameof(CaptionModelNote));
         OnPropertyChanged(nameof(CaptionGenerateActionText));
-        switch (result.Outcome)
+        if (_session.IsClosed)
         {
-            case StudioCaptionGenerationOutcome.Generated:
-                _pendingCaptionText = null;
-                ReportCaptions(StudioCaptionText.GetGeneratedMessage(result.Count));
-                break;
-            case StudioCaptionGenerationOutcome.Failed:
-                ShowError(result.Message ?? "Captions could not be generated.");
-                break;
-            case StudioCaptionGenerationOutcome.Cancelled when !_session.IsClosed:
-                ReportCaptions(StudioCaptionText.CancelledMessage);
-                break;
+            return;
+        }
+
+        var notice = result.Outcome switch
+        {
+            StudioCaptionGenerationOutcome.Generated => new StudioCaptionNotice(
+                StudioCaptionNoticeKind.Done,
+                StudioCaptionText.GetGeneratedMessage(result.Count)),
+            StudioCaptionGenerationOutcome.NoSpeech => new StudioCaptionNotice(
+                StudioCaptionNoticeKind.NoSpeech,
+                StudioCaptionPanelText.GetNoSpeechMessage(model.IsEnglishOnly, HasCaptions),
+                StudioCaptionPanelText.NoSpeechTitle),
+            StudioCaptionGenerationOutcome.Failed => new StudioCaptionNotice(
+                StudioCaptionNoticeKind.Problem,
+                result.Message ?? StudioCaptionPanelText.NotGeneratedMessage),
+            _ => new StudioCaptionNotice(StudioCaptionNoticeKind.Info, StudioCaptionText.CancelledMessage),
+        };
+        if (result.Outcome == StudioCaptionGenerationOutcome.Generated)
+        {
+            _pendingCaptionText = null;
+        }
+
+        ShowCaptionNotice(notice, notifyWhenBehind: true);
+    }
+
+    // Says what came of something: in the panel, and to a screen reader, or in a notification
+    // when generating ended while the window was not in front. Done and Info go after a while.
+    private void ShowCaptionNotice(StudioCaptionNotice notice, bool notifyWhenBehind = false)
+    {
+        _captionNoticeTimer?.Dispose();
+        _captionNoticeTimer = null;
+        _captionNotice = notice;
+        Raise(CaptionNoticePropertyNames);
+        if (notice.GoesByItself)
+        {
+            _captionNoticeTimer = _timeProvider.CreateTimer(
+                _ => _post(() =>
+                {
+                    if (ReferenceEquals(_captionNotice, notice))
+                    {
+                        DismissCaptionNotice();
+                    }
+                }),
+                null,
+                StudioCaptionNotice.ShownFor,
+                Timeout.InfiniteTimeSpan);
+        }
+
+        if (notifyWhenBehind && notice.Kind != StudioCaptionNoticeKind.Info && IsWindowInFront?.Invoke() == false)
+        {
+            CaptionNotificationRequested?.Invoke(this, new StudioProjectNotificationEventArgs(
+                ProjectId,
+                StudioCaptionPanelText.GetNotificationTitle(notice),
+                StudioCaptionPanelText.GetNotificationMessage(notice, ClipName)));
+            return;
+        }
+
+        Announce(notice.SpokenText, CaptionActivityId, notice.Kind switch
+        {
+            StudioCaptionNoticeKind.Done or StudioCaptionNoticeKind.NoSpeech => StudioAnnouncementKind.Completed,
+            StudioCaptionNoticeKind.Info => StudioAnnouncementKind.Stopped,
+            _ => StudioAnnouncementKind.Information,
+        });
+    }
+
+    private void ShowCaptionProblem(string message) =>
+        ShowCaptionNotice(new StudioCaptionNotice(StudioCaptionNoticeKind.Problem, message));
+
+    private void NudgeSelectedCaption(StudioCaptionEdge edge, double step)
+    {
+        if (_session.SelectedCaption is { } cue)
+        {
+            RetimeSelectedCaption(edge, (edge == StudioCaptionEdge.Start ? cue.Start : cue.End) + step);
         }
     }
 
-    private void ClearCaptionStatus()
+    // Moves one end of the selected cue, and says where it is now.
+    private void RetimeSelectedCaption(StudioCaptionEdge edge, double time)
     {
-        CaptionStatus = string.Empty;
-        OnPropertyChanged(nameof(CaptionStatus));
-        OnPropertyChanged(nameof(HasCaptionStatus));
+        CommitCaptionText();
+        if (_session.RetimeSelectedCaption(edge, time) && _session.SelectedCaption is { } cue)
+        {
+            Announce(StudioCaptionText.GetRangeText(cue), CaptionActivityId, StudioAnnouncementKind.Information);
+        }
     }
 
-    private void ReportCaptions(string message)
+    // The rows of all the cues, made again when a cue changes, with what the checks found in each
+    // and which one is at the playhead.
+    private void RefreshCaptionRows()
     {
-        CaptionStatus = message;
-        OnPropertyChanged(nameof(CaptionStatus));
-        OnPropertyChanged(nameof(HasCaptionStatus));
-        Announce(message, CaptionActivityId, StudioAnnouncementKind.Completed);
+        if (_session.Model is not { } model)
+        {
+            _captionRowsList = null;
+            _allCaptionRows = NoCaptionRows;
+            _orderedCaptions = NoOrderedCaptions;
+            _currentCaptionRow = null;
+            return;
+        }
+
+        var cues = model.Project.Captions.Cues;
+        if (ReferenceEquals(cues, _captionRowsList))
+        {
+            return;
+        }
+
+        RefreshCaptionState();
+        _captionRowsList = cues;
+        var order = model.GetCaptionIndexesInOrder();
+        var problems = _captionFindings.ToLookup(static finding => finding.Cue, static finding => finding.Kind);
+        _orderedCaptions = order.Select(index => cues[index]).ToArray();
+        _allCaptionRows = order.Select((index, place) => new StudioCaptionRow(index, cues[index], problems[place])).ToArray();
+        _currentCaptionRow = null;
+        UpdateCurrentCaptionRow();
+    }
+
+    // Marks the row at the playhead. True when it is another one than before.
+    private bool UpdateCurrentCaptionRow()
+    {
+        var row = StudioCaptionEditing.GetPositionAt(_orderedCaptions, _session.Playhead) is { } place ? _allCaptionRows[place] : null;
+        if (ReferenceEquals(row, _currentCaptionRow))
+        {
+            return false;
+        }
+
+        if (_currentCaptionRow is not null)
+        {
+            _currentCaptionRow.IsCurrent = false;
+        }
+
+        if (row is not null)
+        {
+            row.IsCurrent = true;
+        }
+
+        _currentCaptionRow = row;
+        return true;
+    }
+
+    private static StudioCaptionRow[] FilterCaptionRows(StudioCaptionRow[] rows, string query)
+    {
+        var found = new List<StudioCaptionRow>(rows.Length);
+        foreach (var row in rows)
+        {
+            var ranges = StudioCaptionSearch.GetRanges(row.Text, query);
+            row.Highlights = ranges;
+            if (query.Length == 0 || ranges.Length > 0)
+            {
+                found.Add(row);
+            }
+        }
+
+        return found.Count == rows.Length ? rows : [.. found];
+    }
+
+    /// <summary>
+    /// The row at the playhead, and whether the selected cue can be split there, follow the
+    /// playhead. Each is reported when it has changed, and not for every frame.
+    /// </summary>
+    private void RaiseCaptionStateAtPlayhead()
+    {
+        RefreshCaptionRows();
+        if (UpdateCurrentCaptionRow())
+        {
+            OnPropertyChanged(nameof(CurrentCaptionRow));
+        }
+
+        var canSplit = CanSplitSelectedCaption;
+        if (canSplit != _couldSplitSelectedCaption)
+        {
+            _couldSplitSelectedCaption = canSplit;
+            OnPropertyChanged(nameof(CanSplitSelectedCaption));
+        }
+    }
+
+    private void RememberCaptionStateAtPlayhead()
+    {
+        RefreshCaptionRows();
+        UpdateCurrentCaptionRow();
+        _couldSplitSelectedCaption = CanSplitSelectedCaption;
     }
 
     private void SetChoosingCaptionFile(bool isChoosing)

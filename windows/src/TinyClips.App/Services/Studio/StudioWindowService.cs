@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using TinyClips.App.Models.Studio;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.App.Views.Studio;
 using TinyClips.Core.Services;
@@ -126,6 +127,12 @@ public sealed class StudioWindowService : IStudioProjectHost
     /// that was still being saved when its window closed and could not be.
     /// </summary>
     public event EventHandler<StudioEditorErrorEventArgs>? ErrorReported;
+
+    /// <summary>
+    /// Raised when an editor that is not in front has finished something with its captions, such
+    /// as generating them, so the app can say so in a notification that opens the editor.
+    /// </summary>
+    public event EventHandler<StudioProjectNotificationEventArgs>? CaptionNotificationRequested;
 
     /// <summary>
     /// How a window is shown and brought to the front. The app replaces this with the way it
@@ -256,6 +263,7 @@ public sealed class StudioWindowService : IStudioProjectHost
             viewModel.Exported += OnExported;
             viewModel.ScreenRecordingSaved += OnScreenRecordingSaved;
             viewModel.ErrorReported += OnErrorReported;
+            viewModel.CaptionNotificationRequested += OnCaptionNotificationRequested;
             viewModel.StateChanged += OnEditorStateChanged;
             global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio window: view model created");
 
@@ -465,6 +473,9 @@ public sealed class StudioWindowService : IStudioProjectHost
 
     private void OnScreenRecordingSaved(object? sender, StudioExportedEventArgs e) => ScreenRecordingSaved?.Invoke(this, e);
 
+    private void OnCaptionNotificationRequested(object? sender, StudioProjectNotificationEventArgs e) =>
+        CaptionNotificationRequested?.Invoke(this, e);
+
     private void OnErrorReported(object? sender, StudioEditorErrorEventArgs e)
     {
         // A window that is still open shows the message itself. One that is closing does not:
@@ -525,6 +536,7 @@ public sealed class StudioWindowService : IStudioProjectHost
         window.ViewModel.Exported -= OnExported;
         window.ViewModel.ScreenRecordingSaved -= OnScreenRecordingSaved;
         window.ViewModel.ErrorReported -= OnErrorReported;
+        window.ViewModel.CaptionNotificationRequested -= OnCaptionNotificationRequested;
         window.ViewModel.StateChanged -= OnEditorStateChanged;
         _deletingProjectIds.Remove(projectId);
 

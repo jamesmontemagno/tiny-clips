@@ -201,6 +201,13 @@ public sealed class StudioCaptionQualityTests
         Assert.Equal("Nothing to fix.", StudioCaptionText.GetFixedMessage(0));
         Assert.Equal("Made 1 fix.", StudioCaptionText.GetFixedMessage(1));
         Assert.Equal("Made 3 fixes.", StudioCaptionText.GetFixedMessage(3));
+        Assert.Equal("Made 2 fixes. 1 problem needs a manual edit.", StudioCaptionText.GetFixedMessage(2, left: 1));
+        Assert.Equal("Nothing could be fixed automatically. 3 problems need a manual edit.", StudioCaptionText.GetFixedMessage(0, left: 3));
+        Assert.Null(StudioCaptionText.GetManualFixNote(2, 2));
+        Assert.Equal("Auto Fix can't fix this one. Edit the caption's text or timing.", StudioCaptionText.GetManualFixNote(0, 1));
+        Assert.Equal("Auto Fix can't fix these. Edit the captions' text or timing.", StudioCaptionText.GetManualFixNote(0, 2));
+        Assert.Equal("Auto Fix can fix 2 of 3. The other needs a manual edit.", StudioCaptionText.GetManualFixNote(2, 3));
+        Assert.Equal("Auto Fix can fix 1 of 3. The others need a manual edit.", StudioCaptionText.GetManualFixNote(1, 3));
     }
 
     [Theory]

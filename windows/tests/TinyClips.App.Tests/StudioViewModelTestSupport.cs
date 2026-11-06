@@ -35,6 +35,9 @@ public abstract class StudioViewModelTestBase : IDisposable
         ((CountingStore)_store).Inner = Projects;
     }
 
+    /// <summary>The clock of the view models a test opens, which moves only when the test moves it.</summary>
+    private protected ManualTimeProvider Time => _time;
+
     /// <summary>The store itself, for writing the project a test opens and for reading it afterwards.</summary>
     protected StudioProjectStore Projects { get; }
 

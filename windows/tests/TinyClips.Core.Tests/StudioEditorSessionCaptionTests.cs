@@ -140,6 +140,46 @@ public sealed class StudioEditorSessionCaptionTests : StudioEditorSessionTestBas
     }
 
     [Fact]
+    public async Task SplittingMergingAndMovingTheSelectedCaption_KeepWhatTheyMadeSelected_AndAreEachOneUndoStep()
+    {
+        var session = await OpenAsync(CreateProject());
+        session.ImportCaptions("1\n00:00:01,000 --> 00:00:03,000\nOne two\n\n2\n00:00:04,000 --> 00:00:05,000\nThree\n", StudioCaptionTiming.Recording);
+        var original = session.Model!.Project.Captions.Cues;
+        session.SelectCaption(0);
+        session.Scrub(2);
+
+        Assert.True(session.CanSplitSelectedCaption);
+        Assert.True(session.SplitSelectedCaptionAtPlayhead());
+        Assert.Equal(["One", "two", "Three"], session.Model.Project.Captions.Cues.Select(static cue => cue.Text));
+        Assert.Equal("two", session.SelectedCaption!.Text);
+        session.Undo();
+        Assert.Equal(original, session.Model.Project.Captions.Cues);
+
+        session.SelectCaption(0);
+        Assert.True(session.CanMergeSelectedCaption);
+        Assert.True(session.MergeSelectedCaptionWithNext());
+        Assert.Equal("One two Three", session.SelectedCaption!.Text);
+        Assert.False(session.CanMergeSelectedCaption);
+        session.Undo();
+        Assert.Equal(original, session.Model.Project.Captions.Cues);
+
+        session.SelectCaption(1);
+        Assert.True(session.RetimeSelectedCaption(StudioCaptionEdge.Start, 0));
+        Assert.Equal(0, session.SelectedCaptionIndex);
+        Assert.Equal("Three", session.SelectedCaption!.Text);
+        Assert.Equal(4, session.Playhead, Precision);
+        Assert.False(session.RetimeSelectedCaption(StudioCaptionEdge.Start, 0));
+        session.Undo();
+        Assert.Equal(original, session.Model.Project.Captions.Cues);
+
+        session.SelectCaption(1);
+        session.Scrub(4.5);
+        Assert.False(session.CanSplitSelectedCaption);
+        Assert.False(session.SplitSelectedCaptionAtPlayhead());
+        Assert.False(session.MergeSelectedCaptionWithNext());
+    }
+
+    [Fact]
     public async Task TheCaptionsAreSaved_AndRead_WithTheProject()
     {
         var session = await OpenAsync(CreateProject());

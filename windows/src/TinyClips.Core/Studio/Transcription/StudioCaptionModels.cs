@@ -18,7 +18,11 @@ public sealed record StudioCaptionModel(
     long ApproximateBytes,
     string Guidance,
     GgmlType Type,
-    string FileName);
+    string FileName)
+{
+    /// <summary>Whether it hears only English: Whisper's ".en" models.</summary>
+    public bool IsEnglishOnly => Id.EndsWith("En", StringComparison.Ordinal);
+}
 
 /// <summary>The models on offer. The ones OutroKit offers, without its two older large ones.</summary>
 public static class StudioCaptionModels

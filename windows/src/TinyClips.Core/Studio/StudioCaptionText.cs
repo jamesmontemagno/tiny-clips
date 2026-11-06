@@ -67,13 +67,46 @@ public static class StudioCaptionText
         };
     }
 
-    /// <summary>What came of Auto Fix: <c>Made 3 fixes.</c></summary>
-    public static string GetFixedMessage(int applied) => applied switch
+    /// <summary>
+    /// What came of Auto Fix: <c>Made 3 fixes.</c>, and how many of the problems are
+    /// <paramref name="left"/>: <c>Made 3 fixes. 1 problem needs a manual edit.</c>
+    /// </summary>
+    public static string GetFixedMessage(int applied, int left = 0)
     {
-        0 => "Nothing to fix.",
-        1 => "Made 1 fix.",
-        _ => string.Create(CultureInfo.InvariantCulture, $"Made {applied} fixes."),
-    };
+        var made = applied switch
+        {
+            0 => left > 0 ? "Nothing could be fixed automatically." : "Nothing to fix.",
+            1 => "Made 1 fix.",
+            _ => string.Create(CultureInfo.InvariantCulture, $"Made {applied} fixes."),
+        };
+        if (left <= 0)
+        {
+            return made;
+        }
+
+        return left == 1
+            ? $"{made} 1 problem needs a manual edit."
+            : string.Create(CultureInfo.InvariantCulture, $"{made} {left} problems need a manual edit.");
+    }
+
+    /// <summary>Said with the checks when Auto Fix cannot fix every problem they found, or null when it can.</summary>
+    public static string? GetManualFixNote(int fixable, int total)
+    {
+        if (total <= Math.Max(0, fixable))
+        {
+            return null;
+        }
+
+        if (fixable <= 0)
+        {
+            return total == 1
+                ? "Auto Fix can't fix this one. Edit the caption's text or timing."
+                : "Auto Fix can't fix these. Edit the captions' text or timing.";
+        }
+
+        var others = total - fixable == 1 ? "The other needs" : "The others need";
+        return string.Create(CultureInfo.InvariantCulture, $"Auto Fix can fix {fixable} of {total}. {others} a manual edit.");
+    }
 
     // Generating.
 

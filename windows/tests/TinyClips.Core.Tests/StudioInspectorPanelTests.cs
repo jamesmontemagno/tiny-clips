@@ -147,6 +147,7 @@ public sealed class StudioInspectorPanelTests
     [InlineData(nameof(StudioGlyphs.SuggestZooms), '\uE794')]
     [InlineData(nameof(StudioGlyphs.RemoveSuggestions), '\uEA39')]
     [InlineData(nameof(StudioGlyphs.Delete), '\uE74D')]
+    [InlineData(nameof(StudioGlyphs.MergeCaptions), '\uE71B')]
     [InlineData(nameof(StudioGlyphs.TrimStart), '\uEA52')]
     [InlineData(nameof(StudioGlyphs.TrimEnd), '\uE8B5')]
     [InlineData(nameof(StudioGlyphs.ResetCrop), '\uE777')]
@@ -174,7 +175,7 @@ public sealed class StudioInspectorPanelTests
             .ToDictionary(property => property.Name, property => (string)property.GetValue(null)!);
 
         // Every glyph there is a name for is in the list of all of them, after the rail's ten.
-        Assert.Equal(17, named.Count);
+        Assert.Equal(18, named.Count);
         Assert.Equal(EveryPanel.Select(StudioInspectorPanels.GetGlyph), StudioGlyphs.All.Take(EveryPanel.Length));
         Assert.Equal(named.Values.Order(StringComparer.Ordinal), StudioGlyphs.All.Skip(EveryPanel.Length).Order(StringComparer.Ordinal));
 

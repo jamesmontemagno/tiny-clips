@@ -1,4 +1,5 @@
 using System.Text;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.Core.Studio;
 
@@ -35,6 +36,9 @@ public static class StudioCaptionQuality
     public const int MostLines = 2;
     public const double FastestRate = 20;
 
+    /// <summary>The most a fix moves a cue's start earlier, or takes from a neighbour.</summary>
+    public const double MostMoved = 0.5;
+
     private const int MostParts = 64;
 
     /// <summary>The cues in the order the checks and <see cref="StudioCaptionResolver"/> use.</summary>
@@ -48,6 +52,7 @@ public static class StudioCaptionQuality
     public static StudioCaptionFinding[] Check(IEnumerable<StudioCaptionCue> cues, double sourceDuration)
     {
         var ordered = InOrder(cues);
+        var tidiedCues = ordered.Select(static cue => cue with { Text = Tidy(cue.Text) }).ToArray();
         var findings = new List<StudioCaptionFinding>();
         StudioCaptionCue? previous = null;
         for (var index = 0; index < ordered.Length; index++)
@@ -64,14 +69,13 @@ public static class StudioCaptionQuality
                 findings.Add(new(index, StudioCaptionFindingKind.Overlap, cue.Start - previous.Start >= ShortestDuration));
             }
 
-            var tidied = Tidy(cue.Text);
-            if (tidied.Length == 0)
+            if (tidiedCues[index].Text.Length == 0)
             {
                 findings.Add(new(index, StudioCaptionFindingKind.Empty, true));
             }
             else
             {
-                CheckText(findings, index, cue, tidied, Limit(ordered, index, sourceDuration));
+                CheckText(findings, index, cue, tidiedCues, sourceDuration);
             }
 
             previous = cue;
@@ -129,6 +133,8 @@ public static class StudioCaptionQuality
             }
         }
 
+        applied += Borrow(laidOut, sourceDuration);
+        applied += JoinHardCues(laidOut);
         return new StudioCaptionFixResult([.. laidOut], applied);
     }
 
@@ -178,8 +184,14 @@ public static class StudioCaptionQuality
         return string.Join('\n', lines);
     }
 
-    private static void CheckText(List<StudioCaptionFinding> findings, int index, StudioCaptionCue cue, string tidied, double limit)
+    private static void CheckText(
+        List<StudioCaptionFinding> findings,
+        int index,
+        StudioCaptionCue cue,
+        IReadOnlyList<StudioCaptionCue> tidiedCues,
+        double sourceDuration)
     {
+        var tidied = tidiedCues[index].Text;
         if (!string.Equals(tidied, cue.Text, StringComparison.Ordinal))
         {
             findings.Add(new(index, StudioCaptionFindingKind.Whitespace, true));
@@ -203,17 +215,176 @@ public static class StudioCaptionQuality
         }
 
         var length = cue.End - cue.Start;
-        var canExtend = cue.Start + Wanted(length, tidied) <= limit;
+        var canFixTime = false;
+        if (IsHard(tidiedCues[index]))
+        {
+            var more = Enough(tidied) - length;
+            var (after, before) = GetRoom(tidiedCues, index, sourceDuration);
+            canFixTime = cue.Start + Wanted(length, tidied) <= Limit(tidiedCues, index, sourceDuration)
+                || after + before >= more
+                || CanJoin(tidiedCues, index);
+        }
+
         if (length < ShortestDuration)
         {
-            findings.Add(new(index, StudioCaptionFindingKind.ShortDuration, canExtend));
+            findings.Add(new(index, StudioCaptionFindingKind.ShortDuration, canFixTime));
         }
 
         if (Count(tidied) / length > FastestRate)
         {
-            findings.Add(new(index, StudioCaptionFindingKind.ReadingSpeed, canExtend));
+            findings.Add(new(index, StudioCaptionFindingKind.ReadingSpeed, canFixTime));
         }
     }
+
+    // Lengthens each cue still too hard to read into the time its neighbours can spare: its end
+    // later and its start a little earlier. Says how many cues that was.
+    private static int Borrow(List<StudioCaptionCue> cues, double sourceDuration)
+    {
+        var applied = 0;
+        for (var index = 0; index < cues.Count; index++)
+        {
+            var cue = cues[index];
+            if (!IsPresent(cue) || !IsHard(cue))
+            {
+                continue;
+            }
+
+            var more = Enough(cue.Text) - (cue.End - cue.Start);
+            var (after, before) = GetRoom(cues, index, sourceDuration);
+            if (after + before < more)
+            {
+                continue;
+            }
+
+            var later = Math.Min(more, after);
+            var earlier = more - later;
+            if (later > 0)
+            {
+                cues[index] = cues[index] with { End = cues[index].End + later };
+                if (index + 1 < cues.Count)
+                {
+                    cues[index + 1] = cues[index + 1] with { Start = Math.Max(cues[index + 1].Start, cues[index].End) };
+                }
+            }
+
+            if (earlier > 0)
+            {
+                cues[index] = cues[index] with { Start = cues[index].Start - earlier };
+                if (index > 0)
+                {
+                    cues[index - 1] = cues[index - 1] with { End = Math.Min(cues[index - 1].End, cues[index].Start) };
+                }
+            }
+
+            applied++;
+        }
+
+        return applied;
+    }
+
+    // Puts each cue still too hard to read together with a neighbour, when the two read as one.
+    // Says how many joins that was.
+    private static int JoinHardCues(List<StudioCaptionCue> cues)
+    {
+        var applied = 0;
+        for (var index = 0; index < cues.Count; index++)
+        {
+            if (!IsPresent(cues[index]) || !IsHard(cues[index]))
+            {
+                continue;
+            }
+
+            foreach (var first in GetJoinOrder(cues, index))
+            {
+                if (first < 0 || first + 1 >= cues.Count || Join(cues[first], cues[first + 1]) is not { } joined)
+                {
+                    continue;
+                }
+
+                cues[first] = joined;
+                cues.RemoveAt(first + 1);
+                applied++;
+                index = first;
+                break;
+            }
+        }
+
+        return applied;
+    }
+
+    // The least time the text reads in, and a millisecond so rounding cannot leave a cue just short.
+    private static double Enough(string text) => Math.Max(ShortestDuration, Count(text) / FastestRate) + 0.001;
+
+    // Whether the cue has a time and text, so it can give time to or join a neighbour.
+    private static bool IsPresent(StudioCaptionCue cue) =>
+        double.IsFinite(cue.Start) && double.IsFinite(cue.End) && cue.End > cue.Start && cue.Text.Length > 0;
+
+    private static bool IsHard(StudioCaptionCue cue)
+    {
+        var length = cue.End - cue.Start;
+        return length < ShortestDuration || Count(cue.Text) / length > FastestRate;
+    }
+
+    private static double Spare(StudioCaptionCue cue) =>
+        IsPresent(cue) ? Math.Min(MostMoved, Math.Max(0, cue.End - cue.Start - Enough(cue.Text))) : 0;
+
+    // The seconds the cue at index can take after its end and before its start.
+    private static (double After, double Before) GetRoom(IReadOnlyList<StudioCaptionCue> cues, int index, double sourceDuration)
+    {
+        var cue = cues[index];
+        double after;
+        if (index + 1 == cues.Count)
+        {
+            after = sourceDuration - cue.End;
+        }
+        else
+        {
+            var next = cues[index + 1];
+            after = !IsPresent(next) || next.Start < cue.End ? 0 : Math.Min(sourceDuration, next.Start + Spare(next)) - cue.End;
+        }
+
+        double before;
+        if (index == 0)
+        {
+            before = Math.Min(MostMoved, cue.Start);
+        }
+        else
+        {
+            var previous = cues[index - 1];
+            before = !IsPresent(previous) || previous.End > cue.Start
+                ? 0
+                : Math.Min(MostMoved, cue.Start - (previous.End - Spare(previous)));
+        }
+
+        return (Math.Max(0, after), Math.Max(0, before));
+    }
+
+    private static StudioCaptionCue? Join(StudioCaptionCue first, StudioCaptionCue second)
+    {
+        if (!IsPresent(first) || !IsPresent(second))
+        {
+            return null;
+        }
+
+        var gap = second.Start - first.End;
+        if (gap < 0 || gap > MostMoved || Wrap(first.Text + " " + second.Text) is not { } text || second.End - first.Start < Enough(text))
+        {
+            return null;
+        }
+
+        var spellsBoth = new[] { first, second }.All(static cue => cue.Words.Length > 0 && StudioCaptionTranscript.Spells(cue.Words, cue.Text));
+        return first with { End = second.End, Text = text, Words = spellsBoth ? [.. first.Words, .. second.Words] : [] };
+    }
+
+    // Where a cue too hard to read looks for one to join: the one before it first, unless that ends a sentence.
+    private static int[] GetJoinOrder(IReadOnlyList<StudioCaptionCue> cues, int index)
+    {
+        var endsSentence = index > 0 && cues[index - 1].Text is { Length: > 0 } text && text[^1] is '.' or '!' or '?';
+        return index > 0 && !endsSentence ? [index - 1, index] : [index, index - 1];
+    }
+
+    private static bool CanJoin(IReadOnlyList<StudioCaptionCue> cues, int index) =>
+        GetJoinOrder(cues, index).Any(first => first >= 0 && first + 1 < cues.Count && Join(cues[first], cues[first + 1]) is not null);
 
     // Adds the cue to the list, wrapped or split where it has to be, and says how many fixes that was.
     private static int LayOut(StudioCaptionCue cue, List<StudioCaptionCue> laidOut)

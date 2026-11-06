@@ -127,6 +127,7 @@ public sealed partial class StudioWindow : Window
         ViewModel.ChooseExportFile = ChooseExportFileAsync;
         ViewModel.ChooseCaptionFile = ChooseCaptionFileAsync;
         ViewModel.ChooseCaptionExportFile = ChooseCaptionExportFileAsync;
+        ViewModel.IsWindowInFront = () => _isActive && !_isClosed;
         ViewModel.DeleteProjectRequested += OnDeleteProjectRequested;
         ViewModel.ProjectSaved += OnProjectSaved;
         Activated += OnActivated;
@@ -834,6 +835,7 @@ public sealed partial class StudioWindow : Window
         ViewModel.ChooseExportFile = null;
         ViewModel.ChooseCaptionFile = null;
         ViewModel.ChooseCaptionExportFile = null;
+        ViewModel.IsWindowInFront = null;
         ViewModel.DeleteProjectRequested -= OnDeleteProjectRequested;
         ViewModel.ProjectSaved -= OnProjectSaved;
 

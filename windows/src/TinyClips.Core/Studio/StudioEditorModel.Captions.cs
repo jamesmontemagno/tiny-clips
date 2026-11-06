@@ -17,14 +17,7 @@ public sealed partial class StudioEditorModel
         Mutate(project => project with { Overlays = project.Overlays with { Captions = change(project.Overlays.Captions) } });
 
     /// <summary>What a list of the captions shows: the places of the cues in time order.</summary>
-    public int[] GetCaptionIndexesInOrder()
-    {
-        var cues = Project.Captions.Cues;
-        return Enumerable.Range(0, cues.Length)
-            .OrderBy(index => cues[index].Start)
-            .ThenBy(index => cues[index].End)
-            .ToArray();
-    }
+    public int[] GetCaptionIndexesInOrder() => StudioCaptionEditing.GetIndexesInTimeOrder(Project.Captions.Cues);
 
     /// <summary>Puts <paramref name="cues"/> in place of the captions: section 15.5 of the project format.</summary>
     public void ReplaceCaptions(IEnumerable<StudioCaptionCue> cues)
@@ -77,6 +70,32 @@ public sealed partial class StudioEditorModel
         var updated = cues.Where((_, place) => place != index).ToArray();
         Mutate(project => project with { Captions = project.Captions with { Cues = updated } });
         return true;
+    }
+
+    /// <summary>Moves one end of a cue toward <paramref name="sourceTime"/>.</summary>
+    /// <returns>Where the cue is now, or null when nothing changed.</returns>
+    public int? RetimeCaption(int index, StudioCaptionEdge edge, double sourceTime) =>
+        ApplyCaptionEdit(StudioCaptionEditing.Retime(Project.Captions.Cues, index, edge, sourceTime, SourceDuration));
+
+    /// <summary>Splits a cue in two at <paramref name="sourceTime"/>.</summary>
+    /// <returns>Where the second part is, or null when the cue cannot be split there.</returns>
+    public int? SplitCaption(int index, double sourceTime) =>
+        ApplyCaptionEdit(StudioCaptionEditing.Split(Project.Captions.Cues, index, sourceTime));
+
+    /// <summary>Puts a cue together with the one after it.</summary>
+    /// <returns>Where the merged cue is, or null when there is no cue after it.</returns>
+    public int? MergeCaptionWithNext(int index) =>
+        ApplyCaptionEdit(StudioCaptionEditing.MergeWithNext(Project.Captions.Cues, index));
+
+    private int? ApplyCaptionEdit(StudioCaptionEditResult? result)
+    {
+        if (result is null)
+        {
+            return null;
+        }
+
+        Mutate(project => project with { Captions = project.Captions with { Cues = result.Cues } });
+        return result.Index;
     }
 
     /// <summary>Makes the safe fixes of section 15.6, and says how many things changed.</summary>

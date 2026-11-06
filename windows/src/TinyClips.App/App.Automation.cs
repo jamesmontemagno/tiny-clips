@@ -529,10 +529,8 @@ public partial class App : IAutomationAppActions
             case "studio.captions.import":
             {
                 var projectId = RequiredStudioString(parameters, "projectId");
+                var timing = AutomationCaptionTiming.Parse(parameters["timing"]);
                 var current = ReadCheckedProject(parameters, projectId, store);
-                var timing = parameters["timing"]?.GetValue<string>() == "editedVideo"
-                    ? StudioCaptionTiming.EditedVideo
-                    : StudioCaptionTiming.Recording;
                 var contents = StudioCaptionFiles.Read(
                     RequiredStudioString(parameters, "text"), timing, StudioTimeMap.FromProject(current));
                 if (contents.Cues.Length == 0)
@@ -614,7 +612,15 @@ public partial class App : IAutomationAppActions
                     throw new AutomationException(AutomationErrorCodes.Internal, ex.Message);
                 }
 
-                // It took a while. The cues are in source time, so an edit made meanwhile is kept.
+                // Nothing heard leaves the captions as they were, as in the editor.
+                if (heard.Cues.Length == 0)
+                {
+                    throw new AutomationException(AutomationErrorCodes.Internal, StudioGeneratedCaptions.NoSpeechMessage);
+                }
+
+                // It took a while. The cues are in source time, so an edit made meanwhile is kept: the
+                // open editor's, with what is being typed in it, or else the saved project.
+                StudioWindows().FindOpenViewModel(projectId)?.CommitCaptionText();
                 var latest = ReadAutomationProject(projectId, store);
                 var saved = ApplyAutomationEdit(projectId, latest, latest with
                 {

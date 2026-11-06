@@ -1,3 +1,4 @@
+using TinyClips.App.Models.Studio;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
@@ -166,12 +167,13 @@ public sealed class StudioViewModelCaptionGenerationTests : StudioViewModelTestB
         await FinishAsync(generating);
 
         Assert.Equal(["Hello"], viewModel.CaptionRows.Select(static row => row.Text));
-        Assert.Equal(StudioCaptionText.GetGeneratedMessage(1), viewModel.CaptionStatus);
+        Assert.Equal(StudioCaptionNoticeKind.Done, viewModel.CaptionNoticeKind);
+        Assert.Equal(StudioCaptionText.GetGeneratedMessage(1), viewModel.CaptionNoticeMessage);
         Assert.Contains(StudioCaptionText.GetGeneratedMessage(1), Announcements);
     }
 
     [Fact]
-    public async Task WhenItFails_ItSaysWhy()
+    public async Task WhenItFails_ThePanelSaysWhy_UntilItIsClosed()
     {
         var (viewModel, generator) = await OpenWithGeneratorAsync();
 
@@ -179,9 +181,78 @@ public sealed class StudioViewModelCaptionGenerationTests : StudioViewModelTestB
         generator.Fail("This recording has no sound to make captions from.");
         await FinishAsync(generating);
 
-        Assert.Equal("This recording has no sound to make captions from.", viewModel.ErrorMessage);
+        Assert.Equal(StudioCaptionNoticeKind.Problem, viewModel.CaptionNoticeKind);
+        Assert.Equal("This recording has no sound to make captions from.", viewModel.CaptionNoticeMessage);
+        Assert.False(viewModel.HasError);
         Assert.Empty(viewModel.CaptionRows);
         Assert.True(viewModel.CanGenerateCaptions);
+
+        Time.Advance(StudioCaptionNotice.ShownFor * 2);
+        Pump();
+        Assert.True(viewModel.IsCaptionNoticeOpen);
+
+        viewModel.IsCaptionNoticeOpen = false;
+        Assert.Null(viewModel.CaptionNotice);
+    }
+
+    [Fact]
+    public async Task HearingNobodySpeak_SaysSo_OffersAnotherModel_AndKeepsTheCaptions()
+    {
+        var (viewModel, generator) = await OpenWithGeneratorAsync(static project => project with
+        {
+            Captions = new StudioCaptions { Cues = [new StudioCaptionCue { Id = "kept", Start = 1, End = 2, Text = "Kept" }] },
+        });
+
+        var generating = viewModel.GenerateCaptionsAsync();
+        generator.Finish();
+        await FinishAsync(generating);
+
+        var expected = StudioCaptionPanelText.GetNoSpeechMessage(StudioCaptionModels.Default.IsEnglishOnly, hasCaptions: true);
+        Assert.Equal(StudioCaptionNoticeKind.NoSpeech, viewModel.CaptionNoticeKind);
+        Assert.Equal(StudioCaptionPanelText.NoSpeechTitle, viewModel.CaptionNoticeTitle);
+        Assert.Equal(expected, viewModel.CaptionNoticeMessage);
+        Assert.EndsWith("The captions are as they were.", expected, StringComparison.Ordinal);
+        Assert.True(viewModel.IsCaptionNoticeRetryVisible);
+        Assert.Contains($"{StudioCaptionPanelText.NoSpeechTitle}. {expected}", Announcements);
+        Assert.Equal(["Kept"], viewModel.CaptionRows.Select(static row => row.Text));
+
+        Time.Advance(StudioCaptionNotice.ShownFor * 2);
+        Pump();
+        Assert.True(viewModel.IsCaptionNoticeOpen);
+    }
+
+    [Fact]
+    public async Task NobodyHeardByAnEnglishOnlyModel_SuggestsOneThatHearsOtherLanguages()
+    {
+        Assert.Contains("not English-only", StudioCaptionPanelText.GetNoSpeechMessage(isEnglishOnly: true, hasCaptions: false), StringComparison.Ordinal);
+        var (viewModel, generator) = await OpenWithGeneratorAsync();
+        viewModel.SelectedCaptionModelIndex = viewModel.CaptionModelOptions.ToList().FindIndex(static option => option.Model.IsEnglishOnly);
+
+        var generating = viewModel.GenerateCaptionsAsync();
+        generator.Finish();
+        await FinishAsync(generating);
+
+        Assert.Equal(StudioCaptionPanelText.GetNoSpeechMessage(isEnglishOnly: true, hasCaptions: false), viewModel.CaptionNoticeMessage);
+    }
+
+    [Fact]
+    public async Task WhenTheWindowIsBehind_ANotificationSaysWhatCameOfIt_InsteadOfAScreenReader()
+    {
+        var (viewModel, generator) = await OpenWithGeneratorAsync();
+        var notifications = new List<StudioProjectNotificationEventArgs>();
+        viewModel.CaptionNotificationRequested += (_, e) => notifications.Add(e);
+        viewModel.IsWindowInFront = static () => false;
+
+        var generating = viewModel.GenerateCaptionsAsync();
+        generator.Finish(Heard);
+        await FinishAsync(generating);
+
+        var notification = Assert.Single(notifications);
+        Assert.Equal(viewModel.ProjectId, notification.ProjectId);
+        Assert.Equal("Captions ready", notification.Title);
+        Assert.Equal($"{viewModel.ClipName}: {StudioCaptionText.GetGeneratedMessage(1)}", notification.Message);
+        Assert.DoesNotContain(StudioCaptionText.GetGeneratedMessage(1), Announcements);
+        Assert.Equal(StudioCaptionText.GetGeneratedMessage(1), viewModel.CaptionNoticeMessage);
     }
 
     [Fact]
@@ -193,9 +264,13 @@ public sealed class StudioViewModelCaptionGenerationTests : StudioViewModelTestB
         viewModel.CancelCaptionGeneration();
         await FinishAsync(generating);
 
-        Assert.Equal(StudioCaptionText.CancelledMessage, viewModel.CaptionStatus);
+        Assert.Equal(StudioCaptionText.CancelledMessage, viewModel.CaptionNoticeMessage);
         Assert.Empty(viewModel.CaptionRows);
         Assert.False(viewModel.IsGeneratingCaptions);
+
+        Time.Advance(StudioCaptionNotice.ShownFor);
+        Pump();
+        Assert.False(viewModel.IsCaptionNoticeOpen);
     }
 
     [Fact]
@@ -229,7 +304,7 @@ public sealed class StudioViewModelCaptionGenerationTests : StudioViewModelTestB
 
         Assert.False(viewModel.IsStoppingCaptionGeneration);
         Assert.False(viewModel.CanCancelCaptionGeneration);
-        Assert.Equal(StudioCaptionText.CancelledMessage, viewModel.CaptionStatus);
+        Assert.Equal(StudioCaptionText.CancelledMessage, viewModel.CaptionNoticeMessage);
         Assert.Empty(viewModel.CaptionRows);
     }
 
@@ -263,6 +338,6 @@ public sealed class StudioViewModelCaptionGenerationTests : StudioViewModelTestB
         await FinishAsync(generating);
 
         Assert.Empty(Projects.Load(projectId).Captions.Cues);
-        Assert.NotEqual(StudioCaptionText.CancelledMessage, viewModel.CaptionStatus);
+        Assert.Null(viewModel.CaptionNotice);
     }
 }

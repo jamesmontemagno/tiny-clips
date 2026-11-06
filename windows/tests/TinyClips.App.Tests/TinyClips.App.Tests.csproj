@@ -50,6 +50,8 @@
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Cut.cs" Link="Studio\StudioViewModel.Cut.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Captions.cs" Link="Studio\StudioViewModel.Captions.cs" />
     <Compile Include="..\..\src\TinyClips.App\Models\Studio\StudioCaptionRow.cs" Link="Studio\StudioCaptionRow.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Models\Studio\StudioCaptionNotice.cs" Link="Studio\StudioCaptionNotice.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Models\Studio\StudioCaptionPanelText.cs" Link="Studio\StudioCaptionPanelText.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Inspector.cs" Link="Studio\StudioViewModel.Inspector.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Project.cs" Link="Studio\StudioViewModel.Project.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Scene.cs" Link="Studio\StudioViewModel.Scene.cs" />

@@ -580,6 +580,7 @@ public sealed partial class StudioViewModel
         RaiseZoomStateAtPlayhead();
         RaiseCutStateAtPlayhead();
         RaiseSpeedStateAtPlayhead();
+        _couldSplitSelectedCaption = CanSplitSelectedCaption;
     }
 
     /// <summary>

@@ -12,6 +12,7 @@ using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using Windows.Foundation;
+using Windows.System;
 using Windows.UI;
 
 namespace TinyClips.App.Controls.Studio;
@@ -86,6 +87,10 @@ public sealed partial class StudioInspector : UserControl
 
         AddSwatches(SolidSwatches, StudioSwatch.Solid);
         AddSwatches(GradientSwatches, StudioSwatch.Gradient);
+        AddCaptionLooks();
+        CaptionsHeaderIcon.Glyph = StudioInspectorPanels.GetGlyph(StudioInspectorPanel.Captions);
+        CaptionRetryButton.Content = StudioCaptionPanelText.TryAnotherModel;
+        StudioGlyphRow.Attach(CaptionEditRow);
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -98,6 +103,7 @@ public sealed partial class StudioInspector : UserControl
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         SyncSwatches();
         FocusPad.Update(ViewModel.ZoomPad);
+        SyncCaptionStates();
         SyncPanels();
     }
 
@@ -116,9 +122,19 @@ public sealed partial class StudioInspector : UserControl
             FocusPad.Update(ViewModel.ZoomPad);
         }
 
-        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(StudioViewModel.SelectedCaptionRow))
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName is nameof(StudioViewModel.SelectedCaptionRow) or nameof(StudioViewModel.CaptionRows))
         {
             SyncCaptionList();
+        }
+
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName is nameof(StudioViewModel.CaptionNoticeKind) or nameof(StudioViewModel.HasCaptions))
+        {
+            SyncCaptionStates();
+        }
+
+        if (e.PropertyName == nameof(StudioViewModel.CurrentCaptionRow))
+        {
+            KeepCurrentCaptionInView();
         }
 
         if (string.IsNullOrEmpty(e.PropertyName))
@@ -178,6 +194,76 @@ public sealed partial class StudioInspector : UserControl
         {
             ViewModel.SelectCaptionRow(CaptionList.SelectedIndex);
         }
+    }
+
+    // While nothing is selected, the list follows the playhead, as the Mac's does.
+    private void KeepCurrentCaptionInView()
+    {
+        if (ViewModel.SelectedCaptionRow < 0 && ViewModel.CurrentCaptionRow is { } row)
+        {
+            CaptionList.ScrollIntoView(row);
+        }
+    }
+
+    // The banner's colors and glyph follow what it says, and Generate is the accent button until
+    // there are captions.
+    private void SyncCaptionStates()
+    {
+        VisualStateManager.GoToState(this, $"CaptionNotice{ViewModel.CaptionNoticeKind}", false);
+        VisualStateManager.GoToState(this, ViewModel.HasCaptions ? "CaptionGenerateAgain" : "CaptionGenerateFirst", false);
+    }
+
+    // Each look is drawn as the video draws it. The item carries the look's name for a screen reader.
+    private void AddCaptionLooks()
+    {
+        var itemStyle = (Style)Resources["StudioCaptionLookItemStyle"];
+        foreach (var appearance in Enum.GetValues<StudioCaptionAppearance>())
+        {
+            var name = StudioCaptionPanelText.GetLookName(appearance);
+            var item = new GridViewItem
+            {
+                Style = itemStyle,
+                Content = new StudioCaptionLookTile(appearance),
+            };
+            AutomationProperties.SetName(item, name);
+            AutomationProperties.SetAutomationId(item, $"StudioCaptionLook_{appearance}");
+            ToolTipService.SetToolTip(item, name);
+            CaptionLooks.Items.Add(item);
+        }
+    }
+
+    private void OnTryAnotherCaptionModel(object sender, RoutedEventArgs e) =>
+        CaptionGenerateFlyout.ShowAt(CaptionGenerateButton);
+
+    private void OnCaptionSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) =>
+        ViewModel.SetCaptionSearchText(sender.Text);
+
+    private void OnCaptionSearchKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Escape && CaptionSearchBox.Text.Length > 0)
+        {
+            CaptionSearchBox.Text = string.Empty;
+            e.Handled = true;
+        }
+    }
+
+    private void OnCaptionDone(object sender, RoutedEventArgs e) => CloseSelectedCaption();
+
+    // Esc closes the caption, keeping what was typed, as Done does. Enter makes a new line.
+    private void OnCaptionTextKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Escape)
+        {
+            e.Handled = true;
+            CloseSelectedCaption();
+        }
+    }
+
+    // The box and its buttons go once the caption is let go of, so the list takes the focus.
+    private void CloseSelectedCaption()
+    {
+        ViewModel.DeselectCaption();
+        CaptionList.Focus(FocusState.Programmatic);
     }
 
     private void OnCaptionTextChanged(object sender, TextChangedEventArgs e) =>

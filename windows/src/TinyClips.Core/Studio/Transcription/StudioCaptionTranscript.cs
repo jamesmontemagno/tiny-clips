@@ -70,6 +70,51 @@ internal static class StudioCaptionTranscript
         return string.Equals(spelled, WithoutWhiteSpace(text), StringComparison.Ordinal) ? [.. words] : [];
     }
 
+    /// <summary>Whether <paramref name="words"/> spell out <paramref name="text"/>, leaving out the space between and around them.</summary>
+    public static bool Spells(IReadOnlyList<StudioCaptionWord> words, string text) =>
+        string.Equals(
+            WithoutWhiteSpace(string.Concat(words.Select(static word => word.Text))),
+            WithoutWhiteSpace(text),
+            StringComparison.Ordinal);
+
+    /// <summary>
+    /// Where each word is in <paramref name="text"/>, from its first letter to just after its last,
+    /// or null when the words do not spell it out from its start.
+    /// </summary>
+    public static (int Start, int End)[]? GetPlaces(IReadOnlyList<StudioCaptionWord> words, string text)
+    {
+        var index = 0;
+        var places = new (int Start, int End)[words.Count];
+        for (var place = 0; place < words.Count; place++)
+        {
+            int? start = null;
+            foreach (var character in words[place].Text)
+            {
+                if (char.IsWhiteSpace(character))
+                {
+                    continue;
+                }
+
+                while (index < text.Length && char.IsWhiteSpace(text[index]))
+                {
+                    index++;
+                }
+
+                if (index >= text.Length || text[index] != character)
+                {
+                    return null;
+                }
+
+                start ??= index;
+                index++;
+            }
+
+            places[place] = (start ?? index, index);
+        }
+
+        return places;
+    }
+
     private static string WithoutWhiteSpace(string text) =>
         string.Concat(text.Where(static character => !char.IsWhiteSpace(character)));
 }

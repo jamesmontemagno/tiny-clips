@@ -17,8 +17,12 @@ public readonly record struct StudioCaptionProgress(StudioCaptionStage Stage, do
 
 /// <summary>What was heard in a recording.</summary>
 /// <param name="Language">The language Whisper took it for, or null.</param>
-/// <param name="Cues">The cues in time order, in source time.</param>
-public sealed record StudioGeneratedCaptions(string? Language, StudioCaptionCue[] Cues);
+/// <param name="Cues">The cues in time order, in source time. None when nobody was heard speaking.</param>
+public sealed record StudioGeneratedCaptions(string? Language, StudioCaptionCue[] Cues)
+{
+    /// <summary>Said when nobody was heard speaking. The same on the Mac.</summary>
+    public const string NoSpeechMessage = "No speech was found in this recording.";
+}
 
 /// <summary>Generating captions failed, for a reason a user can read in this message.</summary>
 public sealed class StudioCaptionException : Exception
@@ -44,6 +48,7 @@ public interface IStudioCaptionGenerator
     /// asked for the download first. Calls may come from any thread, and the work is not on the
     /// caller's.
     /// </summary>
+    /// <returns>What was heard: no cues when nobody was heard speaking.</returns>
     /// <exception cref="StudioCaptionException">It failed, for a reason a user can read.</exception>
     /// <exception cref="OperationCanceledException">It was cancelled.</exception>
     Task<StudioGeneratedCaptions> GenerateAsync(
@@ -189,7 +194,7 @@ public sealed class StudioCaptionGenerator(StudioCaptionModelStore models) : ISt
 
         if (cues.Count == 0)
         {
-            throw new StudioCaptionException("No speech was found in this recording.");
+            return new StudioGeneratedCaptions(language, []);
         }
 
         return new StudioGeneratedCaptions(language, StudioCaptionQuality.Fix(cues, duration).Cues);

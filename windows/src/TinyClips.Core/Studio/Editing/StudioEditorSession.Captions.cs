@@ -13,6 +13,9 @@ public enum StudioCaptionGenerationOutcome
     /// <summary>It could not start: the project cannot be edited just now, or it is already running.</summary>
     NotStarted,
     Generated,
+
+    /// <summary>Nobody was heard speaking. The captions are as they were.</summary>
+    NoSpeech,
     Cancelled,
     Failed,
 }
@@ -119,6 +122,57 @@ public sealed partial class StudioEditorSession
             _selectedCaptionList = null;
             Edit(model => model.RemoveCaption(index));
         }
+    }
+
+    /// <summary>Whether the selected cue can be split at the playhead.</summary>
+    public bool CanSplitSelectedCaption => IsEditable && SelectedCaption is { } cue && StudioCaptionEditing.CanSplit(cue, Playhead);
+
+    /// <summary>Whether the selected cue has one after it to be put together with.</summary>
+    public bool CanMergeSelectedCaption =>
+        IsEditable
+        && SelectedCaptionIndex is { } index
+        && Model is { } model
+        && StudioCaptionEditing.CanMergeWithNext(model.Project.Captions.Cues, index);
+
+    /// <summary>Splits the selected cue at the playhead, and selects the second part, which starts there.</summary>
+    /// <returns>False when it could not be split there.</returns>
+    public bool SplitSelectedCaptionAtPlayhead()
+    {
+        var time = Playhead;
+        return EditSelectedCaption((model, index) => model.SplitCaption(index, time));
+    }
+
+    /// <summary>Puts the selected cue together with the one after it, and selects what they make.</summary>
+    /// <returns>False when there is none after it.</returns>
+    public bool MergeSelectedCaptionWithNext() => EditSelectedCaption(static (model, index) => model.MergeCaptionWithNext(index));
+
+    /// <summary>
+    /// Moves one end of the selected cue to <paramref name="sourceTime"/>, or as near as it can go.
+    /// It stays selected, and the playhead stays where it is.
+    /// </summary>
+    /// <returns>False when nothing changed.</returns>
+    public bool RetimeSelectedCaption(StudioCaptionEdge edge, double sourceTime) =>
+        EditSelectedCaption((model, index) => model.RetimeCaption(index, edge, sourceTime));
+
+    // An edit to the selected cue that says where it is afterwards, and keeps it selected there.
+    private bool EditSelectedCaption(Func<StudioEditorModel, int, int?> change)
+    {
+        if (SelectedCaptionIndex is not { } index)
+        {
+            return false;
+        }
+
+        int? moved = null;
+        Edit(model =>
+        {
+            moved = change(model, index);
+            if (moved is not null)
+            {
+                _selectedCaptionIndex = moved;
+                _selectedCaptionList = model.Project.Captions.Cues;
+            }
+        });
+        return moved is not null;
     }
 
     /// <summary>
@@ -245,7 +299,11 @@ public sealed partial class StudioEditorSession
             IsStoppingCaptionGeneration = false;
             if (heard is not null && !_isClosed && !cancellation.IsCancellationRequested)
             {
-                if (IsEditable)
+                if (heard.Cues.Length == 0)
+                {
+                    result = new StudioCaptionGenerationResult(StudioCaptionGenerationOutcome.NoSpeech, 0, StudioGeneratedCaptions.NoSpeechMessage);
+                }
+                else if (IsEditable)
                 {
                     _selectedCaptionIndex = null;
                     _selectedCaptionList = null;

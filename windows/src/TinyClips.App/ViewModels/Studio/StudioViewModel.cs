@@ -78,6 +78,7 @@ public sealed partial class StudioViewModel : ObservableObject
 
     // Runs something on the UI thread, a moment later.
     private readonly Action<Action> _post;
+    private readonly TimeProvider _timeProvider;
     private StudioEditorLoadState _lastState = StudioEditorLoadState.Loading;
     private string _errorMessage = string.Empty;
     private bool _isSaveErrorShown;
@@ -126,6 +127,7 @@ public sealed partial class StudioViewModel : ObservableObject
         _settings = settings;
         _storage = storage;
         _post = post;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         CanFindPeople = canFindPeople;
         _session = new StudioEditorSession(
             projectId,
@@ -168,8 +170,14 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public StudioProject? Project => _session.Project;
 
-    internal bool ApplyAutomationProject(StudioProject updated, DateTimeOffset expectedModifiedAt) =>
-        _session.ApplyAutomationProject(updated, expectedModifiedAt);
+    // What is being typed goes in first, so that it is not put on top of the agent's edit later.
+    // When it changed the project, the agent edited one that is no longer there, and is told so.
+    internal bool ApplyAutomationProject(StudioProject updated, DateTimeOffset expectedModifiedAt)
+    {
+        var read = _session.Project;
+        CommitCaptionText();
+        return ReferenceEquals(read, _session.Project) && _session.ApplyAutomationProject(updated, expectedModifiedAt);
+    }
 
     internal bool SaveForAutomationExport() => _session.SaveNow();
 
@@ -593,7 +601,12 @@ public sealed partial class StudioViewModel : ObservableObject
     /// saved at that moment (<see cref="SaveScreenRecordingAsync"/>) is waited for as well, so
     /// that the editor has not closed before it has been said what came of that save.
     /// </summary>
-    public Task CloseAsync(bool deleteProject) => _session.CloseAsync(deleteProject);
+    public Task CloseAsync(bool deleteProject)
+    {
+        _captionNoticeTimer?.Dispose();
+        _captionNoticeTimer = null;
+        return _session.CloseAsync(deleteProject);
+    }
 
     // Session events
 
@@ -607,6 +620,7 @@ public sealed partial class StudioViewModel : ObservableObject
             RememberCutStateAtPlayhead();
             RememberSpeedStateAtPlayhead();
             RememberSceneStateAtPlayhead();
+            RememberCaptionStateAtPlayhead();
             OnPropertyChanged(string.Empty);
         }
         else
@@ -629,6 +643,7 @@ public sealed partial class StudioViewModel : ObservableObject
                 RaiseCutStateAtPlayhead();
                 RaiseSpeedStateAtPlayhead();
                 RaiseSceneStateAtPlayhead();
+                RaiseCaptionStateAtPlayhead();
             }
 
             if (e.Includes(StudioEditorChanges.Export))
