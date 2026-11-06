@@ -103,6 +103,8 @@ public sealed partial class StudioInspector : UserControl
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         SyncSwatches();
         FocusPad.Update(ViewModel.ZoomPad);
+        // The project may have loaded before this subscribed, so the list is filled here too.
+        SyncCaptionList();
         SyncCaptionStates();
         SyncPanels();
     }
