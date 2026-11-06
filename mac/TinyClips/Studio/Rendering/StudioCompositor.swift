@@ -67,6 +67,7 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
         case background
         case branding
         case annotation
+        case caption
     }
 
     static let shared = StudioCompositorImageCache()
@@ -88,6 +89,7 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
         .background: Bucket(capacity: 2),
         .branding: Bucket(capacity: 2),
         .annotation: Bucket(capacity: 16),
+        .caption: Bucket(capacity: 3),
     ]
 
     /// The measured size of an annotation's text. Shaping text is far slower than drawing it, and
@@ -394,6 +396,12 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         if snapshot.project.overlays.branding {
             output = brandingLayer(renderSize: renderSize)
                 .composited(over: output)
+        }
+
+        // On the canvas, over everything, and in no layer that fades (section 15.4).
+        if let index = StudioCaptionResolver.index(in: snapshot.captions, at: request.compositionTime.seconds),
+           let caption = captionLayer(snapshot.captions[index].text, project: snapshot.project, renderSize: renderSize) {
+            output = caption.composited(over: output)
         }
 
         output = output.cropped(to: outputExtent)
@@ -955,6 +963,32 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             BrandingOverlayProcessor.applyBranding(to: transparent, renderSize: renderSize).cropped(to: extent)
         }
         return branded ?? transparent
+    }
+
+    /// A caption's picture, in its place. A caption shows for many frames, and is drawn once.
+    private func captionLayer(_ text: String, project: StudioProject, renderSize: CGSize) -> CIImage? {
+        let overlay = project.overlays.captions
+        let language = project.captions.language
+        let key = [
+            cacheSizeKey(renderSize),
+            overlay.size.rawValue,
+            overlay.position.rawValue,
+            overlay.appearance.rawValue,
+            language ?? "",
+            text,
+        ].joined(separator: "|")
+        return StudioCompositorImageCache.shared.image(for: key, in: .caption) {
+            StudioCaptionPainter.picture(
+                text: text,
+                overlay: overlay,
+                language: language,
+                canvasWidth: Int(renderSize.width),
+                canvasHeight: Int(renderSize.height)
+            ).map { picture in
+                CIImage(cgImage: picture.image)
+                    .transformed(by: CGAffineTransform(translationX: 0, y: CGFloat(picture.originY)))
+            }
+        }
     }
 
     /// Decodes the background image once, upright and no larger than a 4K canvas needs. The file's

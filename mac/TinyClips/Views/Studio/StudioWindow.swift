@@ -429,6 +429,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         viewModel.requestClose = { [weak self] in
             self?.close()
         }
+        viewModel.isWindowInFront = { [weak self] in
+            guard let self else { return false }
+            return NSApp.isActive && (isKeyWindow || isMainWindow)
+        }
         contentView = NSHostingView(rootView: StudioRootView(viewModel: viewModel))
     }
 
@@ -447,6 +451,7 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         viewModel.requestClose = nil
+        viewModel.isWindowInFront = nil
         viewModel.tearDown()
         // Cleared before it is called, so a second close cannot report twice.
         let callback = onClose

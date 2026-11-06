@@ -14,6 +14,7 @@ using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App;
 
@@ -726,6 +727,58 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private double _studioStorageCapGigabytes = CaptureSettings.DefaultStudioStorageCapGigabytes;
 
+    /// <summary>What the speech models for captions take up, such as "1 model downloaded, using 141 MB."</summary>
+    [ObservableProperty]
+    private string _studioCaptionModelsDisplay = string.Empty;
+
+    [ObservableProperty]
+    private bool _canDeleteStudioCaptionModels;
+
+    /// <summary>The speech models on this computer. Without it, Settings says nothing about them.</summary>
+    public StudioCaptionModelStore? StudioCaptionModelStore { get; init; }
+
+    /// <summary>Reads how much room the speech models take.</summary>
+    public async Task RefreshStudioCaptionModelsAsync()
+    {
+        if (StudioCaptionModelStore is not { } models)
+        {
+            return;
+        }
+
+        try
+        {
+            var (count, bytes) = await Task.Run(() => (models.GetInstalled().Count, models.GetInstalledBytes()));
+            StudioCaptionModelsDisplay = StudioCaptionText.GetInstalledModelsText(count, bytes);
+            CanDeleteStudioCaptionModels = count > 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            StudioCaptionModelsDisplay = "Couldn't read the speech models.";
+            CanDeleteStudioCaptionModels = false;
+        }
+    }
+
+    /// <summary>Deletes the speech models. Captions already made are in their projects, and stay.</summary>
+    public async Task DeleteStudioCaptionModelsAsync()
+    {
+        if (StudioCaptionModelStore is not { } models)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Run(models.DeleteAll);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            StudioCaptionModelsDisplay = $"Couldn't delete the speech models: {ex.Message}";
+            return;
+        }
+
+        await RefreshStudioCaptionModelsAsync();
+    }
+
     /// <summary>Project count and total size, such as "3 projects, 1.2 GB".</summary>
     [ObservableProperty]
     private string _studioStorageDisplay = "Calculating\u2026";
@@ -1088,6 +1141,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private async Task RefreshStudioStorageAsync()
     {
+        _ = RefreshStudioCaptionModelsAsync();
         if (_studioProjects is null)
         {
             return;

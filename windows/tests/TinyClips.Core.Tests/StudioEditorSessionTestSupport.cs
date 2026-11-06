@@ -108,9 +108,12 @@ public abstract class StudioEditorSessionTestBase : IDisposable
         return paths.ProjectId;
     }
 
+    /// <summary>What a session a test creates generates captions with. Without it, it cannot.</summary>
+    protected TinyClips.Core.Studio.Transcription.IStudioCaptionGenerator? CaptionGenerator { get; set; }
+
     protected StudioEditorSession CreateSession(string projectId)
     {
-        var session = new StudioEditorSession(projectId, Store, Previews, Exporter, Settings, Post, Time);
+        var session = new StudioEditorSession(projectId, Store, Previews, Exporter, Settings, Post, Time, CaptionGenerator);
         session.Changed += (_, e) => Changes.Add(e.Changes);
         session.ErrorReported += (_, e) =>
         {

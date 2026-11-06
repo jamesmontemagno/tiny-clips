@@ -22,6 +22,7 @@ public sealed class StudioEditableState
         Edits = project.Edits;
         Audio = project.Audio;
         Overlays = project.Overlays;
+        Captions = project.Captions;
     }
 
     public StudioCanvas Canvas { get; }
@@ -39,6 +40,8 @@ public sealed class StudioEditableState
     public StudioAudio Audio { get; }
 
     public StudioOverlays Overlays { get; }
+
+    public StudioCaptions Captions { get; }
 
     public static StudioEditableState From(StudioProject project)
     {
@@ -60,6 +63,7 @@ public sealed class StudioEditableState
             Edits = Edits,
             Audio = Audio,
             Overlays = Overlays,
+            Captions = Captions,
         };
     }
 
@@ -87,7 +91,8 @@ public sealed class StudioEditableState
             && ReferenceEquals(Zooms, other.Zooms)
             && Edits == other.Edits
             && Audio == other.Audio
-            && Overlays == other.Overlays)
+            && Overlays == other.Overlays
+            && Captions == other.Captions)
         {
             return true;
         }
@@ -1222,6 +1227,7 @@ public sealed partial class StudioEditorModel
             Edits = updated.Edits,
             Audio = updated.Audio,
             Overlays = updated.Overlays,
+            Captions = updated.Captions,
         });
     }
 

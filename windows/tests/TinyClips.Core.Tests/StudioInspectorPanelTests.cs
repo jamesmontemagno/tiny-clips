@@ -24,9 +24,10 @@ public sealed class StudioInspectorPanelTests
                 StudioInspectorPanel.Screen,
                 StudioInspectorPanel.Camera,
                 StudioInspectorPanel.Zoom,
+                StudioInspectorPanel.Annotate,
                 StudioInspectorPanel.Cut,
                 StudioInspectorPanel.Speed,
-                StudioInspectorPanel.Annotate,
+                StudioInspectorPanel.Captions,
                 StudioInspectorPanel.Audio,
                 StudioInspectorPanel.Project,
             },
@@ -44,9 +45,10 @@ public sealed class StudioInspectorPanelTests
                 StudioInspectorPanel.Background,
                 StudioInspectorPanel.Screen,
                 StudioInspectorPanel.Zoom,
+                StudioInspectorPanel.Annotate,
                 StudioInspectorPanel.Cut,
                 StudioInspectorPanel.Speed,
-                StudioInspectorPanel.Annotate,
+                StudioInspectorPanel.Captions,
                 StudioInspectorPanel.Audio,
                 StudioInspectorPanel.Project,
             },
@@ -56,7 +58,7 @@ public sealed class StudioInspectorPanelTests
     [Fact]
     public void TheRailGroups_LookThenTimelineEditsThenTheRest()
     {
-        var timelineEdits = new[] { StudioInspectorPanel.Zoom, StudioInspectorPanel.Cut, StudioInspectorPanel.Speed, StudioInspectorPanel.Annotate };
+        var timelineEdits = new[] { StudioInspectorPanel.Zoom, StudioInspectorPanel.Annotate, StudioInspectorPanel.Cut, StudioInspectorPanel.Speed, StudioInspectorPanel.Captions };
         var rest = new[] { StudioInspectorPanel.Audio, StudioInspectorPanel.Project };
 
         var withCamera = StudioInspectorPanels.GetGroups(hasCamera: true);
@@ -148,6 +150,7 @@ public sealed class StudioInspectorPanelTests
     [InlineData(nameof(StudioGlyphs.SuggestZooms), '\uE794')]
     [InlineData(nameof(StudioGlyphs.RemoveSuggestions), '\uEA39')]
     [InlineData(nameof(StudioGlyphs.Delete), '\uE74D')]
+    [InlineData(nameof(StudioGlyphs.MergeCaptions), '\uE71B')]
     [InlineData(nameof(StudioGlyphs.TrimStart), '\uEA52')]
     [InlineData(nameof(StudioGlyphs.TrimEnd), '\uE8B5')]
     [InlineData(nameof(StudioGlyphs.ResetCrop), '\uE777')]
@@ -179,8 +182,8 @@ public sealed class StudioInspectorPanelTests
             .Where(property => property.PropertyType == typeof(string))
             .ToDictionary(property => property.Name, property => (string)property.GetValue(null)!);
 
-        // Every glyph there is a name for is in the list of all of them, after the rail's nine.
-        Assert.Equal(22, named.Count);
+        // Every glyph there is a name for is in the list of all of them, after the rail's eleven.
+        Assert.Equal(23, named.Count);
         Assert.Equal(EveryPanel.Select(StudioInspectorPanels.GetGlyph), StudioGlyphs.All.Take(EveryPanel.Length));
         Assert.Equal(named.Values.Order(StringComparer.Ordinal), StudioGlyphs.All.Skip(EveryPanel.Length).Order(StringComparer.Ordinal));
 
@@ -209,9 +212,10 @@ public sealed class StudioInspectorPanelTests
     [InlineData(StudioInspectorPanel.Screen, "Screen", "Screen: corners, shadow, clicks, and crop")]
     [InlineData(StudioInspectorPanel.Camera, "Camera", "Camera: placement, appearance, and crop")]
     [InlineData(StudioInspectorPanel.Zoom, "Zoom", "Zooms")]
+    [InlineData(StudioInspectorPanel.Annotate, "Annotate", "Annotations: arrows, callouts, and text")]
     [InlineData(StudioInspectorPanel.Cut, "Cut", "Cuts")]
     [InlineData(StudioInspectorPanel.Speed, "Speed", "Speed changes")]
-    [InlineData(StudioInspectorPanel.Annotate, "Annotate", "Annotations: arrows, callouts, and text")]
+    [InlineData(StudioInspectorPanel.Captions, "Captions", "Captions: import, edit, and export")]
     [InlineData(StudioInspectorPanel.Audio, "Audio", "Audio: mute and volume")]
     [InlineData(StudioInspectorPanel.Project, "Project", "Project: badge, storage, and default look")]
     public void APanel_IsCalledWhatItsRailItemSays_AndItsHelpSaysWhatItHoldsOnWindows(

@@ -22,14 +22,16 @@ public enum StudioInspectorPanel
     /// <summary>The zooms, and the selected one.</summary>
     Zoom,
 
+    /// <summary>The arrows, callouts and text over the picture, and the selected one.</summary>
+    Annotate,
+
     /// <summary>The cuts, and the selected one.</summary>
     Cut,
 
     /// <summary>The speed changes, and the selected one.</summary>
     Speed,
-
-    /// <summary>The arrows, callouts and text over the picture, and the selected one.</summary>
-    Annotate,
+    /// <summary>The words of the video: their list, importing and exporting them, and what the checks find.</summary>
+    Captions,
 
     /// <summary>The sound of the video.</summary>
     Audio,
@@ -55,6 +57,7 @@ public static class StudioInspectorPanels
     private const string CutGlyph = "\uE8C6";
     private const string SpeedHighGlyph = "\uEC4A";
     private const string EditGlyph = "\uE70F";
+    private const string CaptionsGlyph = "\uE7F0";
     private const string VolumeGlyph = "\uE767";
     private const string FolderGlyph = "\uE8B7";
 
@@ -75,9 +78,10 @@ public static class StudioInspectorPanels
     private static readonly StudioInspectorPanel[] TimelineEdits =
     [
         StudioInspectorPanel.Zoom,
+        StudioInspectorPanel.Annotate,
         StudioInspectorPanel.Cut,
         StudioInspectorPanel.Speed,
-        StudioInspectorPanel.Annotate,
+        StudioInspectorPanel.Captions,
     ];
 
     private static readonly StudioInspectorPanel[] Rest =
@@ -105,6 +109,7 @@ public static class StudioInspectorPanels
         StudioInspectorPanel.Cut => "Cut",
         StudioInspectorPanel.Speed => "Speed",
         StudioInspectorPanel.Annotate => "Annotate",
+        StudioInspectorPanel.Captions => "Captions",
         StudioInspectorPanel.Audio => "Audio",
         StudioInspectorPanel.Project => "Project",
         _ => string.Empty,
@@ -121,6 +126,7 @@ public static class StudioInspectorPanels
         StudioInspectorPanel.Cut => CutGlyph,
         StudioInspectorPanel.Speed => SpeedHighGlyph,
         StudioInspectorPanel.Annotate => EditGlyph,
+        StudioInspectorPanel.Captions => CaptionsGlyph,
         StudioInspectorPanel.Audio => VolumeGlyph,
         StudioInspectorPanel.Project => FolderGlyph,
         _ => string.Empty,
@@ -140,6 +146,7 @@ public static class StudioInspectorPanels
         StudioInspectorPanel.Cut => "Cuts",
         StudioInspectorPanel.Speed => "Speed changes",
         StudioInspectorPanel.Annotate => "Annotations: arrows, callouts, and text",
+        StudioInspectorPanel.Captions => "Captions: import, edit, and export",
         StudioInspectorPanel.Audio => "Audio: mute and volume",
         StudioInspectorPanel.Project => "Project: badge, storage, and default look",
         _ => string.Empty,

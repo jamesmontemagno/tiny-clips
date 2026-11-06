@@ -1,0 +1,6 @@
+{
+  "description": "A VTT with no cues has nothing to skip.",
+  "text": "WEBVTT\n",
+  "expected": [],
+  "skipped": 0
+}

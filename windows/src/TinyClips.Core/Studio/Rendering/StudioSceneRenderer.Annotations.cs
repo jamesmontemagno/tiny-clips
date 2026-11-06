@@ -16,7 +16,7 @@ public sealed partial class StudioSceneRenderer
 
     private readonly Dictionary<(string Text, float Font, float MaxWidth), IDWriteTextLayout> _textLayouts = new();
     private readonly Dictionary<float, IDWriteTextFormat> _textFormats = new();
-    private IDWriteFactory? _writeFactory;
+    private IDWriteFactory? _annotationWriteFactory;
     private ID2D1StrokeStyle? _arrowStroke;
 
     private void DrawAnnotations(StudioProject project, in StudioResolvedFrame frame, double time, int width, int height)
@@ -177,17 +177,17 @@ public sealed partial class StudioSceneRenderer
             ForgetTextLayouts();
         }
 
-        _writeFactory ??= DWrite.DWriteCreateFactory<IDWriteFactory>();
+        _annotationWriteFactory ??= DWrite.DWriteCreateFactory<IDWriteFactory>();
         if (!_textFormats.TryGetValue(font, out var format))
         {
-            format = _writeFactory.CreateTextFormat("Segoe UI", FontWeight.SemiBold, FontStyle.Normal, FontStretch.Normal, font);
+            format = _annotationWriteFactory.CreateTextFormat("Segoe UI", FontWeight.SemiBold, FontStyle.Normal, FontStretch.Normal, font);
             format.WordWrapping = WordWrapping.Wrap;
             format.TextAlignment = TextAlignment.Center;
             format.ParagraphAlignment = ParagraphAlignment.Near;
             _textFormats[font] = format;
         }
 
-        var layout = _writeFactory.CreateTextLayout(text, format, maxWidth, float.MaxValue);
+        var layout = _annotationWriteFactory.CreateTextLayout(text, format, maxWidth, float.MaxValue);
         _textLayouts[key] = layout;
         return layout;
     }
@@ -212,7 +212,7 @@ public sealed partial class StudioSceneRenderer
     {
         ForgetTextLayouts();
         _arrowStroke?.Dispose();
-        _writeFactory?.Dispose();
+        _annotationWriteFactory?.Dispose();
     }
 
     private static Vector2 ToVector(StudioPoint point) => new((float)point.X, (float)point.Y);

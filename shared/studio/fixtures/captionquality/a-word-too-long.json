@@ -1,0 +1,32 @@
+{
+  "description": "A word longer than a line cannot be wrapped or split.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 6,
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx tail"
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "longLine",
+      "canFix": false
+    }
+  ],
+  "summary": "1 long line",
+  "fixed": [
+    {
+      "start": 1,
+      "end": 6,
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx tail",
+      "wordCount": 0
+    }
+  ],
+  "applied": 0,
+  "after": [
+    "longLine"
+  ]
+}

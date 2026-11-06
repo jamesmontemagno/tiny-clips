@@ -42,6 +42,14 @@ enum StudioSound {
         }
     }
 
+    /// The tracks that speech is listened for in: the microphone when there is one, because what
+    /// the computer played is not what was said, and otherwise all of them.
+    static func speechTrackIndexes(project: StudioProject, trackCount: Int) -> [Int] {
+        let kinds = trackKinds(project: project, trackCount: trackCount)
+        let microphones = kinds.indices.filter { kinds[$0] == .microphone }
+        return microphones.isEmpty ? Array(kinds.indices) : microphones
+    }
+
     /// Whether an export adds the sound tracks together itself: when there is more than one, so
     /// that the video has one sound track, and when one is not at the volume it was recorded
     /// at. A single track as recorded is copied as it is.

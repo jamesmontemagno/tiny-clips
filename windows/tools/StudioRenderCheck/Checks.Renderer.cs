@@ -62,6 +62,13 @@ internal static partial class RendererChecks
                 await Check("annotation: follows a zoom", context => AnnotationFollowsZoom(context, bench)).ConfigureAwait(false);
                 await Check("annotation: callout and text boxes", context => AnnotationBoxes(context, bench)).ConfigureAwait(false);
                 await Check("annotation: fades with the screen", context => AnnotationFades(context, bench)).ConfigureAwait(false);
+                await Check("captions: when they show", context => CaptionTimes(context, bench)).ConfigureAwait(false);
+                await Check("captions: their sizes", context => CaptionSizes(context, bench)).ConfigureAwait(false);
+                await Check("captions: their places", context => CaptionPlaces(context, bench)).ConfigureAwait(false);
+                await Check("captions: lines and wrapping", context => CaptionWrapping(context, bench)).ConfigureAwait(false);
+                await Check("captions: their looks", context => CaptionLooks(context, bench)).ConfigureAwait(false);
+                await Check("captions: on top of everything", context => CaptionOnTop(context, bench)).ConfigureAwait(false);
+                await Check("captions: other scripts", context => CaptionScripts(context, bench)).ConfigureAwait(false);
                 await Check("targets and sources: formats, padding, caches", context => TargetsAndSources(context, bench)).ConfigureAwait(false);
                 await Check("scaling quality: linear and high-quality", context => ScalingQuality(context, bench)).ConfigureAwait(false);
                 await Check("time to draw a frame", context => DrawTime(context, bench)).ConfigureAwait(false);

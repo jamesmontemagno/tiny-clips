@@ -15,6 +15,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
+using TinyClips.App.Models.Studio;
 using TinyClips.App.Services.ClipsLibrary;
 using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
@@ -36,6 +37,9 @@ public partial class App : Application
 {
     private static readonly FontFamily FluentIconFont = new("Segoe Fluent Icons");
     private static readonly object NotificationRegistrationGate = new();
+    private const string NotificationActionArgument = "action";
+    private const string NotificationProjectArgument = "projectId";
+    private const string OpenStudioProjectAction = "openStudioProject";
 
     // Segoe Fluent Icons glyphs.
     private const string GlyphScreenshot = "\uE722";
@@ -2602,6 +2606,7 @@ public partial class App : Application
             _studioWindows.Exported += OnStudioExported;
             _studioWindows.ScreenRecordingSaved += OnStudioExported;
             _studioWindows.ErrorReported += (_, e) => ShowMessageNotification(e.Message);
+            _studioWindows.CaptionNotificationRequested += (_, e) => ShowStudioProjectNotification(e);
         }
 
         return _studioWindows;
@@ -3354,13 +3359,51 @@ public partial class App : Application
 
             try
             {
+                // A click on a toast is told only to a handler that was there before Register.
+                AppNotificationManager.Default.NotificationInvoked += OnNotificationInvoked;
                 AppNotificationManager.Default.Register();
                 _notificationsRegistered = true;
             }
             catch (Exception ex)
             {
+                AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
                 Debug.WriteLine($"Notification registration failed: {ex}");
             }
+        }
+    }
+
+    // Comes on a worker thread. Only a toast about a Studio project does something when clicked:
+    // it brings that project's editor to the front, or opens it again.
+    private static void OnNotificationInvoked(AppNotificationManager sender, AppNotificationActivatedEventArgs args)
+    {
+        if (args.Arguments.TryGetValue(NotificationActionArgument, out var action)
+            && action == OpenStudioProjectAction
+            && args.Arguments.TryGetValue(NotificationProjectArgument, out var projectId)
+            && !string.IsNullOrEmpty(projectId)
+            && Current is App app)
+        {
+            app._dispatcher?.TryEnqueue(() => app.OpenStudioWindow(projectId));
+        }
+    }
+
+    /// <summary>Shows a toast about a Studio project, which opens its editor when it is clicked.</summary>
+    private static void ShowStudioProjectNotification(StudioProjectNotificationEventArgs e)
+    {
+        try
+        {
+            EnsureNotificationsRegistered();
+            var notification = new AppNotificationBuilder()
+                .AddArgument(NotificationActionArgument, OpenStudioProjectAction)
+                .AddArgument(NotificationProjectArgument, e.ProjectId)
+                .AddText(e.Title)
+                .AddText(e.Message)
+                .BuildNotification();
+
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show Studio notification '{e.Title}': {ex}");
         }
     }
 

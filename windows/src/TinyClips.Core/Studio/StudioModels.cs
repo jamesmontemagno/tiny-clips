@@ -95,6 +95,30 @@ public enum StudioMouseButton
     Other,
 }
 
+[JsonConverter(typeof(StudioCaptionSizeJsonConverter))]
+public enum StudioCaptionSize
+{
+    Small,
+    Medium,
+    Large,
+}
+
+[JsonConverter(typeof(StudioCaptionPositionJsonConverter))]
+public enum StudioCaptionPosition
+{
+    Bottom,
+    Top,
+}
+
+[JsonConverter(typeof(StudioCaptionAppearanceJsonConverter))]
+public enum StudioCaptionAppearance
+{
+    ClassicOutline,
+    ContrastPanel,
+    BoldImpact,
+    CleanShadow,
+}
+
 [JsonConverter(typeof(StudioCaptureKindJsonConverter))]
 public enum StudioCaptureKind
 {
@@ -148,6 +172,7 @@ public sealed record StudioProject
     public StudioEdits Edits { get; init; } = new();
     public StudioAudio Audio { get; init; } = new();
     public StudioOverlays Overlays { get; init; } = new();
+    public StudioCaptions Captions { get; init; } = new();
     public StudioExport[] Exports { get; init; } = [];
 
     [JsonExtensionData]
@@ -367,6 +392,60 @@ public sealed record StudioOverlays
 
     /// <summary>What is drawn over the picture, bottom first (section 6.10 of the project format).</summary>
     public StudioAnnotation[] Annotations { get; init; } = [];
+
+    public StudioCaptionOverlay Captions { get; init; } = new();
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+/// <summary>How captions are drawn into the video (section 15.4 of the project format).</summary>
+public sealed record StudioCaptionOverlay
+{
+    public bool Enabled { get; init; }
+    public StudioCaptionSize Size { get; init; } = StudioCaptionSize.Medium;
+    public StudioCaptionPosition Position { get; init; } = StudioCaptionPosition.Bottom;
+    public StudioCaptionAppearance Appearance { get; init; } = StudioCaptionAppearance.ClassicOutline;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+/// <summary>The words of a project, in source time (section 15 of the project format).</summary>
+public sealed record StudioCaptions
+{
+    /// <summary>The language of the cues as a BCP 47 tag, or null when that is not known.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Language { get; init; }
+
+    public StudioCaptionCue[] Cues { get; init; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+public sealed record StudioCaptionCue
+{
+    public string Id { get; init; } = string.Empty;
+    public double Start { get; init; }
+    public double End { get; init; }
+    public string Text { get; init; } = string.Empty;
+
+    /// <summary>
+    /// When each word of <see cref="Text"/> is said. Whoever changes the text empties this, because
+    /// the words no longer match it.
+    /// </summary>
+    public StudioCaptionWord[] Words { get; init; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+public sealed record StudioCaptionWord
+{
+    public double Start { get; init; }
+    public double End { get; init; }
+    public string Text { get; init; } = string.Empty;
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];

@@ -1,0 +1,37 @@
+{
+  "description": "A line that is too long becomes two balanced lines, and the words stay.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 6,
+      "text": "This line of a caption is much too long to fit on one line",
+      "words": [
+        {
+          "start": 1,
+          "end": 6,
+          "text": "This"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "longLine",
+      "canFix": true
+    }
+  ],
+  "summary": "1 long line",
+  "fixed": [
+    {
+      "start": 1,
+      "end": 6,
+      "text": "This line of a caption is much\ntoo long to fit on one line",
+      "wordCount": 1
+    }
+  ],
+  "applied": 1,
+  "after": []
+}

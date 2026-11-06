@@ -80,6 +80,7 @@ as well, as the rail's are.
 | Suggest zooms | Zoom panel | U+E794 Effects, the mark a suggested zoom has on its block | `sparkles` | `SuggestZooms` |
 | Remove suggestions | Zoom panel | U+EA39 ErrorBadge, a cross in a ring | `xmark.circle` | `RemoveSuggestions` |
 | Delete scene, zoom, cut, speed change | their panels | U+E74D Delete, a bin | `trash` | `Delete` |
+| Split, Merge, Delete on the selected caption | Captions panel | Split's U+E90C and Delete's bin; Merge U+E71B Link, the caption joined to the next | `scissors`, `arrow.triangle.merge`, `trash` | `SplitScene`, `MergeCaptions`, `Delete` |
 | Reset crop | Screen and Camera panels | U+E777 UpdateRestore, an arrow going round against the clock | `arrow.counterclockwise` | `ResetCrop` |
 | Show scene | Camera panel, when the camera is hidden | the Scene panel's, U+E8B2 Movies | the Scene panel's | `ShowScene` |
 | Save as default look | Project panel | U+E790 Color, a palette | `paintpalette` | `SaveDefaultLook` |

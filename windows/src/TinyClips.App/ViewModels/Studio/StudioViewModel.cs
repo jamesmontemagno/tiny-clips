@@ -5,6 +5,7 @@ using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App.ViewModels.Studio;
 
@@ -77,6 +78,7 @@ public sealed partial class StudioViewModel : ObservableObject
 
     // Runs something on the UI thread, a moment later.
     private readonly Action<Action> _post;
+    private readonly TimeProvider _timeProvider;
     private StudioEditorLoadState _lastState = StudioEditorLoadState.Loading;
     private string _errorMessage = string.Empty;
     private bool _isSaveErrorShown;
@@ -90,7 +92,8 @@ public sealed partial class StudioViewModel : ObservableObject
         ICaptureSettings settings,
         IClipStorageService storage,
         DispatcherQueue dispatcher,
-        bool canFindPeople)
+        bool canFindPeople,
+        IStudioCaptionGenerator captionGenerator)
         : this(
             projectId,
             store,
@@ -99,7 +102,8 @@ public sealed partial class StudioViewModel : ObservableObject
             settings,
             storage,
             action => dispatcher.TryEnqueue(() => action()),
-            canFindPeople)
+            canFindPeople,
+            captionGenerator: captionGenerator)
     {
     }
 
@@ -116,12 +120,14 @@ public sealed partial class StudioViewModel : ObservableObject
         IClipStorageService storage,
         Action<Action> post,
         bool canFindPeople,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IStudioCaptionGenerator? captionGenerator = null)
     {
         _store = store;
         _settings = settings;
         _storage = storage;
         _post = post;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         CanFindPeople = canFindPeople;
         _session = new StudioEditorSession(
             projectId,
@@ -130,7 +136,8 @@ public sealed partial class StudioViewModel : ObservableObject
             exporter,
             settings,
             post,
-            timeProvider);
+            timeProvider,
+            captionGenerator);
         _session.Changed += OnSessionChanged;
         _session.Exported += OnSessionExported;
         _session.ScreenRecordingSaved += OnSessionScreenRecordingSaved;
@@ -164,8 +171,14 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public StudioProject? Project => _session.Project;
 
-    internal bool ApplyAutomationProject(StudioProject updated, DateTimeOffset expectedModifiedAt) =>
-        _session.ApplyAutomationProject(updated, expectedModifiedAt);
+    // What is being typed goes in first, so that it is not put on top of the agent's edit later.
+    // When it changed the project, the agent edited one that is no longer there, and is told so.
+    internal bool ApplyAutomationProject(StudioProject updated, DateTimeOffset expectedModifiedAt)
+    {
+        var read = _session.Project;
+        CommitCaptionText();
+        return ReferenceEquals(read, _session.Project) && _session.ApplyAutomationProject(updated, expectedModifiedAt);
+    }
 
     internal bool SaveForAutomationExport() => _session.SaveNow();
 
@@ -541,6 +554,7 @@ public sealed partial class StudioViewModel : ObservableObject
     /// </summary>
     public async Task<StudioExportOutcome> ExportAsync()
     {
+        CommitCaptionText();
         if (_isChoosingExport || !_session.CanExport) return StudioExportOutcome.NotStarted;
         StudioExportTarget target;
         StudioExportChoice choice;
@@ -624,7 +638,11 @@ public sealed partial class StudioViewModel : ObservableObject
     // Closing
 
     /// <summary>What to ask before the window closes.</summary>
-    public StudioClosePrompt GetClosePrompt() => _session.GetClosePrompt();
+    public StudioClosePrompt GetClosePrompt()
+    {
+        CommitCaptionText();
+        return _session.GetClosePrompt();
+    }
 
     /// <summary>
     /// Ends the editor when its window is closing for good. The edits are saved by the time this
@@ -635,6 +653,8 @@ public sealed partial class StudioViewModel : ObservableObject
     /// </summary>
     public Task CloseAsync(bool deleteProject)
     {
+        _captionNoticeTimer?.Dispose();
+        _captionNoticeTimer = null;
         // The settings outlive every editor, and would keep this one in memory.
         _settings.StudioExportResolutionChanged -= OnExportResolutionChanged;
         return _session.CloseAsync(deleteProject);
@@ -664,6 +684,7 @@ public sealed partial class StudioViewModel : ObservableObject
             RememberSpeedStateAtPlayhead();
             RememberAnnotationStateAtPlayhead();
             RememberSceneStateAtPlayhead();
+            RememberCaptionStateAtPlayhead();
             OnPropertyChanged(string.Empty);
         }
         else
@@ -687,6 +708,7 @@ public sealed partial class StudioViewModel : ObservableObject
                 RaiseSpeedStateAtPlayhead();
                 RaiseAnnotationStateAtPlayhead();
                 RaiseSceneStateAtPlayhead();
+                RaiseCaptionStateAtPlayhead();
             }
 
             if (e.Includes(StudioEditorChanges.Export))
@@ -702,6 +724,11 @@ public sealed partial class StudioViewModel : ObservableObject
             if (e.Includes(StudioEditorChanges.Inspector))
             {
                 Raise(InspectorPropertyNames);
+            }
+
+            if (e.Includes(StudioEditorChanges.Captions))
+            {
+                Raise(CaptionGenerationPropertyNames);
             }
 
             if (e.Includes(StudioEditorChanges.ProjectFolder))

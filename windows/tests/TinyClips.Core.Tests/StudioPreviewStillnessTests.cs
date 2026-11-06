@@ -122,6 +122,27 @@ public sealed class StudioPreviewStillnessTests
     }
 
     [Fact]
+    public void ACaptionThatComesOrGoes_ChangesTheScene_AndOneThatStaysDoesNot()
+    {
+        // From 3 s to 5 s: the frames 90 to 149, whose middles are inside it.
+        var cues = new StudioCaptions { Cues = [new StudioCaptionCue { Id = "cue", Start = 3, End = 5, Text = "Caption" }] };
+        var project = Project() with
+        {
+            Captions = cues,
+            Overlays = new StudioOverlays { Captions = new StudioCaptionOverlay { Enabled = true } },
+        };
+
+        Assert.True(Same(project, 100, 112));
+        Assert.True(Same(project, 70, 80));
+        Assert.False(Same(project, 89, 90));
+        Assert.False(Same(project, 149, 150));
+        Assert.False(Same(project, 85, 95));
+
+        // With burn-in switched off nothing is drawn for it.
+        Assert.True(Same(Project() with { Captions = cues }, 89, 90));
+    }
+
+    [Fact]
     public void TheRingOfAClick_ChangesTheSceneForAsLongAsItShows()
     {
         // A click at 5 s; its ring shows for 0.45 s: in the frames 150 to 162, whose middles

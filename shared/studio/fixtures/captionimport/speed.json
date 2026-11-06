@@ -1,0 +1,41 @@
+{
+  "description": "Output time in a faster piece takes in more of the recording.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": [
+      {
+        "start": 5,
+        "end": 10,
+        "rate": 2
+      }
+    ]
+  },
+  "cues": [
+    {
+      "start": 4,
+      "end": 6,
+      "text": "At 4"
+    },
+    {
+      "start": 6,
+      "end": 8,
+      "text": "At 6"
+    }
+  ],
+  "expected": [
+    {
+      "start": 4,
+      "end": 7,
+      "text": "At 4"
+    },
+    {
+      "start": 7,
+      "end": 10.5,
+      "text": "At 6"
+    }
+  ],
+  "dropped": 0
+}

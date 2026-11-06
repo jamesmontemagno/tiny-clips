@@ -761,8 +761,9 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
                     break;
             }
 
-            // Keeping a project is written at once and is no edit. Everything else is one.
-            var edits = binding.Property == nameof(StudioViewModel.KeepsProject) ? 0 : 1;
+            // Keeping a project is written at once and the speech model is a setting, so neither
+            // is an edit. Everything else is one.
+            var edits = binding.Property is nameof(StudioViewModel.KeepsProject) or nameof(StudioViewModel.SelectedCaptionModelIndex) ? 0 : 1;
             Assert.True(
                 Preview.Updates.Count == before + edits,
                 $"{binding}: {Preview.Updates.Count - before} edits, where {edits} was asked for");

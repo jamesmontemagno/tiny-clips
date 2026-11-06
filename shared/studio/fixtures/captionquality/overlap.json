@@ -1,0 +1,73 @@
+{
+  "description": "An overlap is fixed when the later cue starts at least 0.7 after the earlier one, and not otherwise.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 4,
+      "text": "Long overlap."
+    },
+    {
+      "id": "cue-2",
+      "start": 2,
+      "end": 5,
+      "text": "Fixed."
+    },
+    {
+      "id": "cue-10",
+      "start": 10,
+      "end": 13,
+      "text": "Too close."
+    },
+    {
+      "id": "cue-10.5",
+      "start": 10.5,
+      "end": 14,
+      "text": "Not fixed."
+    }
+  ],
+  "findings": [
+    {
+      "cue": 1,
+      "kind": "overlap",
+      "canFix": true
+    },
+    {
+      "cue": 3,
+      "kind": "overlap",
+      "canFix": false
+    }
+  ],
+  "summary": "2 overlaps",
+  "fixed": [
+    {
+      "start": 1,
+      "end": 2,
+      "text": "Long overlap.",
+      "wordCount": 0
+    },
+    {
+      "start": 2,
+      "end": 5,
+      "text": "Fixed.",
+      "wordCount": 0
+    },
+    {
+      "start": 10,
+      "end": 13,
+      "text": "Too close.",
+      "wordCount": 0
+    },
+    {
+      "start": 10.5,
+      "end": 14,
+      "text": "Not fixed.",
+      "wordCount": 0
+    }
+  ],
+  "applied": 1,
+  "after": [
+    "overlap"
+  ]
+}

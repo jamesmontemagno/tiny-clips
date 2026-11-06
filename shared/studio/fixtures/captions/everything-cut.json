@@ -1,0 +1,30 @@
+{
+  "description": "Nothing is kept, so there are no captions.",
+  "sourceDuration": 10,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [
+      {
+        "start": 0,
+        "end": 10
+      }
+    ],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-1",
+        "start": 1,
+        "end": 2,
+        "text": "Gone."
+      }
+    ]
+  },
+  "expected": [],
+  "at": [],
+  "srt": "",
+  "vtt": "WEBVTT\n"
+}

@@ -50,6 +50,9 @@ public static class StudioGlyphs
     /// <summary>Delete scene, zoom, cut and speed change, and Delete on the question on closing: a bin (Delete).</summary>
     public static string Delete => "\uE74D";
 
+    /// <summary>Merge, on the selected caption: a link, for the caption joined to the next (Link).</summary>
+    public static string MergeCaptions => "\uE71B";
+
     /// <summary>Start here: an arrow up to a line on its left, where the video starts (ImportMirrored).</summary>
     public static string TrimStart => "\uEA52";
 
@@ -84,7 +87,7 @@ public static class StudioGlyphs
     public static IReadOnlyList<string> All =>
     [
         .. StudioInspectorPanels.All.Select(StudioInspectorPanels.GetGlyph),
-        SplitScene, AddZoom, AddCut, AddSpeed, AddArrow, AddCallout, AddText, BringForward, SendBack, SuggestZooms, RemoveSuggestions, Delete,
+        SplitScene, AddZoom, AddCut, AddSpeed, AddArrow, AddCallout, AddText, BringForward, SendBack, SuggestZooms, RemoveSuggestions, Delete, MergeCaptions,
         TrimStart, TrimEnd, ResetCrop, ShowScene, SaveDefaultLook, SaveRecording,
         OpenProject, OpenRecentProject, SaveProject, DeleteProject,
     ];

@@ -146,8 +146,8 @@ internal static class StudioPreviewStillness
     /// shown, their shapes, shadows and opacities; and nothing is drawn over the screen that
     /// changes from frame to frame. A zoom that moves, a scene that is being entered, a zoom
     /// that follows the pointer while the pointer moves, the frame at which the camera appears
-    /// or goes, the ring of a click while it shows, and the frame at which an annotation starts
-    /// or ends are not.
+    /// or goes, the ring of a click while it shows, the frame at which an annotation starts
+    /// or ends, and the frame at which a caption changes are not.
     /// </summary>
     /// <param name="frameRate">Frames a second of the timeline the frame numbers count in.</param>
     public static bool SameLayout(StudioProject project, StudioEvents? events, double frameRate, long first, long last, double canvasWidth, double canvasHeight)
@@ -172,6 +172,20 @@ internal static class StudioPreviewStillness
             foreach (var click in clicks)
             {
                 if (click.T <= to && click.T + rings.Duration >= from)
+                {
+                    return false;
+                }
+            }
+        }
+
+        // A caption that comes or goes names the frame it does so at.
+        if (project.Overlays.Captions.Enabled)
+        {
+            var captions = StudioCaptionTrack.For(project);
+            var caption = captions.TextAtSourceTime(StudioPreviewTimeMath.FrameMiddle(first, frameRate));
+            for (var frame = first + 1; frame <= last; frame++)
+            {
+                if (!string.Equals(caption, captions.TextAtSourceTime(StudioPreviewTimeMath.FrameMiddle(frame, frameRate)), StringComparison.Ordinal))
                 {
                     return false;
                 }

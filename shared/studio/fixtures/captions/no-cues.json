@@ -1,0 +1,18 @@
+{
+  "description": "No cues: an SRT is empty and a VTT is only its header.",
+  "sourceDuration": 10,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": []
+  },
+  "expected": [],
+  "at": [],
+  "srt": "",
+  "vtt": "WEBVTT\n"
+}

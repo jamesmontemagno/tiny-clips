@@ -1,0 +1,42 @@
+{
+  "description": "Times round to the nearest millisecond, half up. A VTT escapes its text and an SRT does not.",
+  "sourceDuration": 7200,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-3661.5",
+        "start": 3661.5,
+        "end": 3662.0625,
+        "text": "Fish & chips <now> -> later"
+      },
+      {
+        "id": "cue-0.0625",
+        "start": 0.0625,
+        "end": 1,
+        "text": "Half a millisecond rounds up."
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 0.0625,
+      "end": 1,
+      "text": "Half a millisecond rounds up."
+    },
+    {
+      "start": 3661.5,
+      "end": 3662.0625,
+      "text": "Fish & chips <now> -> later"
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:00,063 --> 00:00:01,000\nHalf a millisecond rounds up.\n\n2\n01:01:01,500 --> 01:01:02,063\nFish & chips <now> -> later\n",
+  "vtt": "WEBVTT\n\n00:00:00.063 --> 00:00:01.000\nHalf a millisecond rounds up.\n\n01:01:01.500 --> 01:01:02.063\nFish &amp; chips &lt;now&gt; -&gt; later\n"
+}

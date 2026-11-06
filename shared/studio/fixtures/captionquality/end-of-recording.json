@@ -1,0 +1,30 @@
+{
+  "description": "A cue is not extended past the end of the recording, so it starts a little earlier instead.",
+  "sourceDuration": 2,
+  "cues": [
+    {
+      "id": "cue-1.5",
+      "start": 1.5,
+      "end": 1.75,
+      "text": "Hi."
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "shortDuration",
+      "canFix": true
+    }
+  ],
+  "summary": "1 too short",
+  "fixed": [
+    {
+      "start": 1.299,
+      "end": 2.0,
+      "text": "Hi.",
+      "wordCount": 0
+    }
+  ],
+  "applied": 1,
+  "after": []
+}

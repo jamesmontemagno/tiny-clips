@@ -1,0 +1,40 @@
+{
+  "description": "With no edits the times are the same, and a cue past the end has no time left.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "cues": [
+    {
+      "start": 1,
+      "end": 2,
+      "text": "At 1"
+    },
+    {
+      "start": 19,
+      "end": 25,
+      "text": "At 19"
+    },
+    {
+      "start": 21,
+      "end": 22,
+      "text": "At 21"
+    }
+  ],
+  "expected": [
+    {
+      "start": 1,
+      "end": 2,
+      "text": "At 1"
+    },
+    {
+      "start": 19,
+      "end": 20,
+      "text": "At 19"
+    }
+  ],
+  "dropped": 1
+}

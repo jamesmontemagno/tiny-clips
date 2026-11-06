@@ -40,6 +40,12 @@ public sealed partial class StudioSettingsSection : UserControl, ISettingsSectio
 
     public void NotifyWindowClosed() => _closed = true;
 
+    private async void OnDeleteCaptionModels(object sender, RoutedEventArgs e)
+    {
+        DeleteCaptionModelsFlyout.Hide();
+        await ViewModel.DeleteStudioCaptionModelsAsync();
+    }
+
     private async void OnCleanUpStudioProjects(object sender, RoutedEventArgs e)
     {
         await ViewModel.CleanUpStudioProjectsAsync();

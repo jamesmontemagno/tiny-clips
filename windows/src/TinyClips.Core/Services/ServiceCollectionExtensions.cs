@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Services.ClipsLibrary;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.Core.Services;
 
@@ -26,6 +27,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IClipMetadataStore>(_ => new JsonClipMetadataStore(
             JsonClipMetadataStore.DefaultFilePath(ClipsLibraryPaths.LocalDataDirectory())));
         services.AddSingleton<IStudioProjectStore>(_ => new StudioProjectStore());
+        services.AddSingleton(provider => new StudioCaptionModelStore(provider.GetRequiredService<HttpClient>()));
+        services.AddSingleton<IStudioCaptionGenerator>(provider => new StudioCaptionGenerator(provider.GetRequiredService<StudioCaptionModelStore>()));
         services.AddSingleton<IUploadcareUploadService, UploadcareUploadService>();
         services.AddSingleton<IAppUpdateService, GitHubReleaseUpdateService>();
         services.AddSingleton<IHotKeyService, HotKeyService>();

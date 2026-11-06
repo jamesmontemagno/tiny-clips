@@ -1,0 +1,31 @@
+{
+  "description": "Space around lines and blank lines go, whatever ends the lines.",
+  "sourceDuration": 10,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-1",
+        "start": 1,
+        "end": 2,
+        "text": "  Line one  \r\n\r\n  Line two\rLine three \n"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 1,
+      "end": 2,
+      "text": "Line one\nLine two\nLine three"
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:01,000 --> 00:00:02,000\nLine one\nLine two\nLine three\n",
+  "vtt": "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nLine one\nLine two\nLine three\n"
+}

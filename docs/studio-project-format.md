@@ -2,7 +2,7 @@
 
 This is the contract between the macOS and Windows implementations of Tiny Clips Studio: the files a project is made of, every field in them, and the math that turns a project into a frame layout. The design it serves is in [plans/video-studio-plan.md](../plans/video-studio-plan.md).
 
-Both platforms implement sections 5 to 8 as pure functions, and both test suites run the shared fixtures in `shared/studio/fixtures/`. If the two implementations disagree, this document decides which one is wrong.
+Both platforms implement sections 5 to 8 and the rules of sections 15.2 and 15.3 as pure functions, and both test suites run the shared fixtures in `shared/studio/fixtures/`. If the two implementations disagree, this document decides which one is wrong.
 
 ## 1. Files
 
@@ -63,6 +63,7 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 | `edits` | Edits | | |
 | `audio` | Audio | | |
 | `overlays` | Overlays | | |
+| `captions` | Captions | | See section 15 |
 | `exports` | Export[] | `[]` | |
 
 ### Sources
@@ -171,6 +172,10 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `overlays.clicks.duration` | number | 0.45 | Seconds |
 | `overlays.branding` | bool | false | |
 | `overlays.annotations` | Annotation[] | `[]` | Arrows, callouts, and text over the picture. The last in the list is on top. See below and section 6.10 |
+| `overlays.captions.enabled` | bool | false | Draw the captions into the video (section 15.4) |
+| `overlays.captions.size` | enum | `medium` | `small`, `medium`, `large` |
+| `overlays.captions.position` | enum | `bottom` | `bottom`, `top` |
+| `overlays.captions.appearance` | enum | `classicOutline` | `classicOutline`, `contrastPanel`, `boldImpact`, `cleanShadow` |
 | `exports[].path` | string | | Absolute path of a rendered video |
 | `exports[].exportedAt` | timestamp | | |
 | `exports[].bytes` | int or null | null | How large the video file was when it was exported, in bytes. Left out, or null, when that is not known; 0 or less is read the same way. Section 12 says what it is used for |
@@ -191,6 +196,19 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `fill` | string | `""` | | `#RRGGBB` in place of the style's fill, in either case. Anything else, an empty text included, leaves the style's |
 | `textColor` | string | `""` | | `#RRGGBB` in place of the style's text color, in the same way. An arrow does not use it |
 | `scale` | number | 1 | 0.5 to 3 | What `size` is multiplied by |
+
+### Captions
+
+| Property | Type | Default | Notes |
+|---|---|---|---|
+| `captions.language` | string or null | null | The language of the cues as a BCP 47 tag, such as `en` or `pt-BR`. Left out when it is not known |
+| `captions.cues` | Cue[] | `[]` | In any order |
+| `cues[].id` | string | `""` | A lowercase UUID that tells a cue apart while it is edited. Nothing else depends on it |
+| `cues[].start`, `cues[].end` | number | 0 | Source time |
+| `cues[].text` | string | `""` | One or more lines, separated by `\n` |
+| `cues[].words` | Word[] | `[]` | When each word is said. Whoever changes `text` empties this, because the words no longer match it |
+| `words[].start`, `words[].end` | number | 0 | Source time |
+| `words[].text` | string | `""` | One word |
 
 ## 4. events.json
 
@@ -926,6 +944,8 @@ Fixtures only sit on a decision boundary (a rounding midpoint, or either side of
 
 Project files, in `folder/`: the `.tinyclips` file of a project saved as a folder (section 14), as an app really wrote it, byte for byte. These are not generated and have no expected values: a test puts a few bytes under the names the file gives, opens the folder, and holds what was read against the file. `saved-on-macos-1.9.0.tinyclips` is from a folder the macOS app saved on 7 October 2026. Only the Windows tests load it so far.
 
+Caption fixtures, in `captions/`: a source duration, edits, `captions`, the `expected` captions of section 15.2, `at` queries with the index of the caption showing at an output time (`null` for none), and the `srt` and `vtt` text of section 15.3. In `captionfiles/`: the `text` of a file, the `expected` cues, and how many blocks are `skipped`. Text there is compared exactly.
+
 ## 14. A project saved as a folder
 
 A project lives in the projects root (section 1), which no one is meant to look into. To keep a project elsewhere, or take it to another computer, the editor saves a copy of it as a folder:
@@ -983,3 +1003,235 @@ A `.tinyclips` file larger than 16 MB is refused unread; one a writer wrote is a
 - A folder the macOS app saved was opened by the Windows store, from its file and from its folder, and saved again as a folder: the only value that differs in the project file is the `id`. Since 8 October the Windows file has one property more, `audio.volume` at 1, which a Mac of 1.9.0 does not write; nothing the Mac wrote is dropped or changed. Its project file is the fixture `folder/saved-on-macos-1.9.0.tinyclips` (section 13). The same project was exported by the Windows exporter and held against the Mac's export; `windows/docs/studio-project-folders.md` has what agreed and what did not.
 - The Windows app has the commands for both since the night of 7 October: built and unit tested, and the editor's part run in the real window by the window check. The app itself was not started, so no folder has been saved or opened by a person there, and the folder from the Mac has been opened by the store only. `windows/docs/studio-project-folders.md` has what was run and what was not.
 - A folder saved on Windows has not been opened on a Mac.
+
+## 15. Captions
+
+### 15.1 What a project holds
+
+Captions are words on the recording's timeline: `captions.cues` in section 3. Their times are source time, so a trim, a cut, or a speed change never calls for a new transcription. What a video shows is worked out from the cues and the time map whenever it is needed, by section 15.2. A file and a drawn caption both come from there, so they cannot disagree.
+
+`captions` and `overlays.captions` are not part of a look, are undone and redone with the other edits, and go with a project saved as a folder. A reader from before captions keeps both as properties it does not recognize (section 2) and shows no captions.
+
+### 15.2 From cues to captions
+
+```
+clean(text): lines end at \r\n, \r, or \n. Every line without the white space around
+             it, leaving out blank lines, joined by \n.
+
+words of a cue: drop a word whose start or end is not finite, whose end < start, or
+                whose text is only white space. Sort by start, then by end; words equal
+                in both keep the order of the file.
+
+cues: drop a cue whose start or end is not finite, whose end <= start, or whose
+      clean(text) is empty. Sort by start, then by end; cues equal in both keep the
+      order of the file.
+
+parts: for each cue, for each piece k of the time map (section 7) with r_k == 1, in order:
+    s = max(cue.start, a_k)
+    e = min(cue.end, b_k)
+    text = clean(cue.text)
+    next piece if e <= s
+    if the cue has words:
+        kept = its words with a_k <= (word.start + word.end) / 2 < b_k
+        next piece if kept is empty
+        if kept is not all of its words:
+            text = the text of each kept word, without the white space around it,
+                   joined by one space
+            s = max(a_k, kept[first].start)
+            e = min(b_k, kept[last].end)
+    next piece if e - s < 0.1
+    part: start = c_k + (s - a_k), end = c_k + (e - a_k), text
+
+captions: sort the parts by start, then by end; parts equal in both keep the order above.
+    In that order, when the caption before this part ends after this part starts:
+        its end = this part's start
+        drop it if it now lasts less than 0.1
+    Add this part.
+```
+
+What follows from that:
+
+- **A piece at another rate has no captions**, faster or slower, because it has no sound (section 7).
+- **A cut takes the words said in it.** A word stays or goes by where its middle is, and each side of the cut covers only the words it keeps.
+- **A cue without words cannot be divided**, so it is clipped, and each side of a cut shows all of its text. That is what an imported or edited cue is.
+- **One caption shows at a time.** A caption ends where the next starts. At output time `u` the caption showing is the one with `start <= u < end`, or none.
+- **Mute changes nothing.** A muted video still has its captions.
+
+### 15.3 SRT and WebVTT
+
+**Writing.** Both are UTF-8 with no byte order mark, lines end with `\n`, and the file ends with one. A time is rounded to whole milliseconds with `floor(seconds * 1000 + 0.5)`, and hours take at least two digits.
+
+```
+1                                  WEBVTT
+00:00:01,000 --> 00:00:02,500
+First line                         00:00:01.000 --> 00:00:02.500
+Second line                        First line
+                                   Second line
+2
+00:00:03,000 --> 00:00:04,000      00:00:03.000 --> 00:00:04.000
+Third line                         Third line
+```
+
+An SRT with no captions is empty, and a WebVTT is only its first line. A WebVTT writes `&`, `<`, and `>` in its text as `&amp;`, `&lt;`, and `&gt;`. An SRT writes its text as it is.
+
+**Reading.** A leading byte order mark is ignored, and lines end at `\r\n`, `\r`, or `\n`. Lines of only white space divide the text into blocks. It is a WebVTT when its first block's first line is `WEBVTT`, or starts with that and a space or a tab. Otherwise it is read as an SRT, which has no sign of its own.
+
+- In a WebVTT the first block is the header, and a block whose first line is, or starts with and a space or a tab, `NOTE`, `STYLE`, or `REGION` is not a cue. Neither is counted as skipped.
+- The timing is the first line of a block, or the second after a number or a name. It is `[hours:]minutes:seconds` with a `.` or a `,` before one to three digits of fraction, `-->`, and another time. A fraction of fewer than three digits is filled with zeros on the right, so `.5` is 500 ms. Anything after the second time, such as WebVTT cue settings, is ignored.
+- The lines after the timing are the text. An SRT loses its tags (`b`, `i`, `u`, `s`, `font`, in any case) and its `{\...}` overrides. A WebVTT loses everything shaped like a tag (`<v Sam>`, `</c>`, `<00:00:03.500>`), and then `&lt;`, `&gt;`, `&nbsp;`, `&lrm;`, `&rlm;`, and last `&amp;` become what they stand for. An SRT has no way to write a literal tag, so `<now>` stays. The result is `clean`ed.
+- A block with no timing, with an end at or before its start, or with no text left is skipped and counted, so the app can say so.
+
+Times read this way are taken as source time. Each cue gets a new `id` and no `words`. The cues stay in the order of the file; section 15.2 sorts them when it uses them.
+
+### 15.4 Drawing
+
+With `overlays.captions.enabled`, a frame at output time `u` has the caption showing at `u` drawn over everything else, on the canvas: after the camera and the branding, not moved by a zoom or a scene, and not part of any layer that fades. These rules are not covered by fixtures, because they describe pixels. Both renderers follow them so an export looks alike on either platform, but each lays text out with its own system, so lines may wrap at different words.
+
+`unit = canvas short side / 288`. All sizes below are in units, so captions look the same at 720p and 4K and stay in proportion on a portrait canvas.
+
+| `size` | Text height |
+|---|---|
+| `small` | 14 |
+| `medium` | 18 |
+| `large` | 24 |
+
+- **Font.** The platform's system sans-serif, regular weight unless the appearance below says bold.
+- **Lines.** The text is centered on the canvas. It keeps its own lines, and a line wider than 90 percent of the canvas wraps between words.
+- **Position.** With `bottom`, the bottom of the last line is 12 above the bottom of the canvas. With `top`, the top of the first line is 12 below the top of the canvas. Text too tall for the canvas keeps its first line on it.
+- **Paints.** An outline reaches that far outside the letters, under them. A shadow is the letters and their outline in the shadow's color, moved by that much. One panel lies behind all the lines. A paint that is not solid is laid on as one sheet, so it does not darken where letters overlap.
+
+| `appearance` | Text | Outline | Shadow | Panel |
+|---|---|---|---|---|
+| `classicOutline` | `#FFFFFF` | `#000000`, 1.2 wide | none | none |
+| `contrastPanel` | `#FFFFFF` | none | none | `#000000` at 60 percent behind the lines, reaching 4 past them |
+| `boldImpact` | `#FFD700`, bold | `#000000`, 2.4 wide | `#000000`, 1.2 down and right | none |
+| `cleanShadow` | `#F5F5F5` | `#000000` at 50 percent, 0.6 wide | `#000000` at 50 percent, 1.5 down and right | none |
+
+### 15.5 Importing and editing
+
+**Importing** replaces `captions.cues` with the cues of a file, in the order of section 15.2, and sets `captions.language` to null, as one undoable edit. Other properties of `captions` stay. A file has one of two timings, which the person importing it chooses:
+
+- **Timed to the recording:** its times are source time, as section 15.3 reads them. This is the default.
+- **Timed to the edited video:** its times are output time, such as a file made from an exported video or by section 15.3 itself. Each time `u` becomes `outputToSource(u)` (section 7). A cue whose end is then at or before its start is dropped and counted as skipped. What falls in a piece at another rate maps there, and section 15.2 then shows none of it.
+
+Reading back what section 15.3 wrote, timed to the edited video, gives the same captions to within the rounding of a millisecond.
+
+**Editing a cue's text** stores `clean(text)`. When that equals `clean` of what it held, nothing changes. Otherwise its `words` are emptied, because they no longer match. An edit that leaves no text keeps the cue, which then shows nothing and which a check reports as empty.
+
+An editor may also offer these, each as one undoable edit that keeps the cues in the order of section 15.2. They are optional: a reader only sees the cues they leave.
+
+- **Moving a start or an end** keeps the cue at least 0.1 seconds long, its start at or after 0, and its end at or before the recording's end. Its `words` are emptied when one of them no longer falls inside it.
+- **Splitting a cue at a time** needs each part to be at least 0.1 seconds long. When the cue's `words` spell its text, the text is split before the first word whose middle is at or after the time; otherwise it is split between the words that leave the share of the text before the time closest to the share of the cue's time. The first part keeps the cue's `id`, the second gets a new one, and each keeps the `words` that fall inside it.
+- **Merging a cue with the next one in time** makes one cue from the start of the earlier to the end of the later, with the `id` of the first and their texts joined by a space. It keeps both cues' `words` only when each cue's `words` spell its text.
+
+### 15.6 Checks and safe fixes
+
+Checks look at cues in the order of section 15.2, in source time, against a recording of length `D`. A finding names a cue by its place in that order, from 0. They are limits for reading, not rules of the format: a project with findings is valid.
+
+```
+shortest = 0.7 seconds      longest line = 42 characters
+most lines = 2              fastest = 20 characters a second
+most moved = 0.5 seconds
+
+A character is a Unicode code point. count(text) leaves out white space.
+
+tidy(text): lines end at \r\n, \r, or \n. In every line each run of white space becomes
+            one space and the white space around it goes. Blank lines go. Joined by \n.
+
+wanted(cue, text): the seconds the cue should last. Its length, or 1 when that is under
+                   shortest, or count(text) / fastest when that is more than either.
+
+balance(words, n): n groups of neighbouring words.
+    n <= 1: all of them in one group. As many words as n or fewer: each in its own group.
+    Otherwise for each group g from 1 to n - 1, from the first word not yet in a group:
+        target = length of the remaining words joined by spaces / (n - g + 1)
+        for each candidate end, leaving at least n - g words for the groups after it:
+            score = |length of the group's words joined by spaces - target| - bonus
+            bonus = 6 when its last word ends in . ! ?, 3 when in , ; :, otherwise 0
+        take the lowest score, the earliest of equals.
+    The last group has what is left.
+
+wrap(text): null when tidy(text) has no words, or a word longer than the longest line.
+    The first of balance(words, 1), balance(words, 2) whose lines all fit the longest
+    line, joined by \n. Null when neither does.
+
+split(text): null with fewer than two words, or a word longer than the longest line.
+    From n = max(2, ceil(length of the words joined by spaces / (longest line * most lines)))
+    to min(64, number of words): the first balance(words, n) for which wrap of every group
+    is not null gives those wraps as the parts. Null when none does.
+
+timing(start, end, parts): each part lasts its share of end - start, by max(1, count(part)).
+    Parts follow each other from start. The last ends at end.
+
+hard(cue): it lasts less than shortest, or count(text) / its length is more than fastest.
+
+enough(text): max(shortest, count(text) / fastest) + 0.001. The least time that reads, and
+              a millisecond so rounding cannot leave a cue just short.
+
+A neighbour is the cue just before or just after in order. One whose end is not after its
+start, either not finite, or whose text is empty gives nothing.
+
+spare(cue): min(most moved, max(0, its length - enough(text))), or 0 for a neighbour that
+            gives nothing.
+
+room(cue): the seconds it can take after its end and before its start.
+    after:  for the last cue D - end. Otherwise 0 when the next cue gives nothing or starts
+            before this one ends, else min(D, next start + spare(next)) - end.
+    before: for the first cue min(most moved, start). Otherwise 0 when the cue before gives
+            nothing or ends after this one starts, else
+            min(most moved, start - (that cue's end - spare(that cue))).
+    Each is at least 0.
+
+join(a, b): null unless neither gives nothing, b starts 0 to most moved after a ends,
+    wrap(a's text + " " + b's text) is not null, and b's end - a's start is at least
+    enough of that wrap. Otherwise a cue with a's id, from a's start to b's end, with that
+    wrap as its text. Its words are a's and then b's when each has words that spell its
+    text, as merging does in section 15.5, and none otherwise.
+
+join order: the cue before and this one, then this one and the cue after. The other way
+    round when the cue before's text ends in . ! or ?, or there is no cue before.
+```
+
+| Check, in this order for each cue | Found when | Can be fixed when |
+|---|---|---|
+| `invalidTiming` | `end <= start`, or either is not finite. No other check looks at this cue, and it is not "the cue before" the next one | Never |
+| `overlap` | It starts before the cue before it ends | It starts at least `shortest` after that cue starts |
+| `empty` | `tidy(text)` is empty. The checks below do not look at this cue | Always |
+| `whitespace` | `tidy(text)` is not `text` | Always |
+| `longLine` | A line of `tidy(text)` is longer than the longest line | `wrap` is not null, or `split` is not null and each of its parts would last at least `shortest` |
+| `tooManyLines` | `tidy(text)` has more than the most lines | The same |
+| `shortDuration` | It lasts less than `shortest` | `start + wanted` is at or before the next cue's start and at or before `D`; or `after + before` of its `room` is at least `enough - length`; or a pair in its `join order` has a `join`. Each looks at the cues as they are, with `tidy(text)` |
+| `readingSpeed` | `count(tidy(text)) / length` is more than `fastest` | The same |
+
+**The safe fixes** run in this order on all the cues, and each thing one changes counts as one fix:
+
+1. Remove every cue whose `tidy(text)` is empty.
+2. Set every cue's text to `tidy(text)`. Its `words` stay: the words are the same.
+3. From the second cue on, when a cue overlaps the one before it and starts at least `shortest` after it, end the one before where this one starts.
+4. For each cue with a line too long or too many lines: when `wrap` is not null, that is its text, and its `words` stay. Otherwise, when `split` is not null and each part would last at least `shortest`, it becomes those parts at their `timing`. The first keeps the cue's `id`, the others get new ones, and none has `words`.
+5. For each cue with a length above 0, when `wanted` is more than its length and `start + wanted` is at or before the next cue's start and at or before `D`, it ends at `start + wanted`.
+6. **Borrow.** For each cue, in order, that gives something and is still `hard`: let `more = enough(text) - length`. When `after + before` of its `room` is at least `more`, it ends `min(more, after)` later and starts what is left of `more` earlier. A next cue it now ends after starts where it ends, and a cue before it now starts before ends where it starts.
+7. **Join.** For each cue, in order, that gives something and is still `hard`: the first pair in its `join order` that has a `join` becomes that one cue. This step then carries on from the cue after it.
+
+Borrowing never moves a cue's start more than `most moved` earlier, and takes from a neighbour only what it can spare and still read. Joining puts a fragment such as the end of a sentence with the words it belongs to.
+
+Fixes are one undoable edit. What they could not fix is what the checks find afterwards.
+
+A summary names the findings by count, in the order of the table, joined by `, `:
+
+| Check | One | More |
+|---|---|---|
+| `invalidTiming` | `1 invalid time` | `2 invalid times` |
+| `overlap` | `1 overlap` | `2 overlaps` |
+| `empty` | `1 empty caption` | `2 empty captions` |
+| `whitespace` | `1 with extra space` | `2 with extra space` |
+| `longLine` | `1 long line` | `2 long lines` |
+| `tooManyLines` | `1 with too many lines` | `2 with too many lines` |
+| `shortDuration` | `1 too short` | `2 too short` |
+| `readingSpeed` | `1 too fast to read` | `2 too fast to read` |
+
+### 15.7 Generating
+
+**Generating** replaces `captions.cues` with what speech recognition heard, and sets `captions.language` to the language it heard, or null if it does not say, as one undoable edit. Other properties of `captions` stay. A cue's times, and those of its `words`, are source time, so generating listens to the whole recording, including what is cut, muted, or trimmed away, and an edit made while it runs is kept. Recognition breaks its cues at word boundaries, at most 84 characters long, and then the safe fixes of section 15.6 are made. A recording in which nothing is heard is an error and leaves the captions as they were, and so does stopping.
+
+The speech recognition is the platform's own, so two platforms need not make the same cues from the same sound.

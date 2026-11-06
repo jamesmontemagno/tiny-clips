@@ -355,6 +355,9 @@ class CaptureSettings: ObservableObject {
     static let confirmEditorEscapeKey = CaptureSettingsDefaultsKey.confirmEditorEscape
     static let studioExportResolutionKey = CaptureSettingsDefaultsKey.studioExportResolution
     static let screenshotEditorNativeSizeKey = "screenshotEditorNativeSize"
+    /// Where the Captions panel keeps the language captions are generated in, as a BCP 47 tag, or
+    /// empty for the system's.
+    static let studioCaptionLanguageKey = "studioCaptionLanguage"
     static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
     private let defaults: UserDefaults
 
@@ -889,7 +892,8 @@ class CaptureSettings: ObservableObject {
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
-        "studioSourceRetentionDays", "studioStorageCapGigabytes", studioExportResolutionKey, CaptureSettingsDefaultsKey.studioExportQuality,
+        "studioSourceRetentionDays", "studioStorageCapGigabytes", studioCaptionLanguageKey,
+        studioExportResolutionKey, CaptureSettingsDefaultsKey.studioExportQuality,
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",

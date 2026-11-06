@@ -1,0 +1,73 @@
+{
+  "description": "Words in a cut are gone, and each side covers only the words it keeps.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [
+      {
+        "start": 4,
+        "end": 6
+      }
+    ],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-2",
+        "start": 2,
+        "end": 8,
+        "text": "One two three four five six.",
+        "words": [
+          {
+            "start": 2,
+            "end": 3,
+            "text": "One"
+          },
+          {
+            "start": 3,
+            "end": 3.9,
+            "text": "two"
+          },
+          {
+            "start": 4,
+            "end": 4.9,
+            "text": "three"
+          },
+          {
+            "start": 5,
+            "end": 5.9,
+            "text": "four"
+          },
+          {
+            "start": 6,
+            "end": 7,
+            "text": "five"
+          },
+          {
+            "start": 7,
+            "end": 8,
+            "text": "six."
+          }
+        ]
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 2,
+      "end": 3.9,
+      "text": "One two"
+    },
+    {
+      "start": 4,
+      "end": 6,
+      "text": "five six."
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:02,000 --> 00:00:03,900\nOne two\n\n2\n00:00:04,000 --> 00:00:06,000\nfive six.\n",
+  "vtt": "WEBVTT\n\n00:00:02.000 --> 00:00:03.900\nOne two\n\n00:00:04.000 --> 00:00:06.000\nfive six.\n"
+}

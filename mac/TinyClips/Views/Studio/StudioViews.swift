@@ -461,6 +461,8 @@ private struct StudioInspectorView: View {
             StudioSpeedInspectorSection(viewModel: viewModel)
         case .annotate:
             StudioAnnotationInspectorSection(viewModel: viewModel)
+        case .captions:
+            StudioCaptionsInspectorSection(viewModel: viewModel)
         case .audio:
             audioPanel
         case .project:

@@ -56,7 +56,7 @@ public sealed partial class StudioViewModel
     public string SavingProjectText => StudioProjectFolderText.SavingMessage;
 
     /// <summary>Whether the project can be saved as a folder: it is open, and neither exporting nor being saved.</summary>
-    public bool CanSaveProject => IsEditable && Project?.Sources.Screen.External == false;
+    public bool CanSaveProject => IsEditable && !IsGeneratingCaptions && Project?.Sources.Screen.External == false;
 
     public string ProjectFolderHelp => Project?.Sources.Screen.External == true
         ? "Imported video edits are saved automatically in Studio. Saving a portable project folder is unavailable because the source video is stored externally. Keep the original video."
@@ -152,6 +152,7 @@ public sealed partial class StudioViewModel
     /// <summary>Asks for this project to be saved as a folder. The window asks where.</summary>
     public void RequestSaveProject()
     {
+        CommitCaptionText();
         if (CanSaveProject)
         {
             Pause();
@@ -161,6 +162,7 @@ public sealed partial class StudioViewModel
 
     public void RequestSaveProjectAs()
     {
+        CommitCaptionText();
         if (CanSaveProject)
         {
             Pause();

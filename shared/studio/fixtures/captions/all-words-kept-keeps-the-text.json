@@ -1,0 +1,43 @@
+{
+  "description": "A part with all the words keeps the cue's own text, with its punctuation and lines.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 1,
+    "trimEnd": null,
+    "cuts": [],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-0.5",
+        "start": 0.5,
+        "end": 4,
+        "text": "Hi,\nthere!",
+        "words": [
+          {
+            "start": 1,
+            "end": 2,
+            "text": "Hi"
+          },
+          {
+            "start": 2,
+            "end": 3.5,
+            "text": "there"
+          }
+        ]
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 0,
+      "end": 3,
+      "text": "Hi,\nthere!"
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:00,000 --> 00:00:03,000\nHi,\nthere!\n",
+  "vtt": "WEBVTT\n\n00:00:00.000 --> 00:00:03.000\nHi,\nthere!\n"
+}

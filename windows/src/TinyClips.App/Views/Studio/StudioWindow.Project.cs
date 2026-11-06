@@ -194,6 +194,38 @@ public sealed partial class StudioWindow
         return null;
     }
 
+    private async Task<string?> ChooseCaptionFileAsync()
+    {
+        if (_isClosed || _isPromptOpen) return null;
+        _isPromptOpen = true;
+        var focused = FocusManager.GetFocusedElement(RootGrid.XamlRoot) as Control;
+        try
+        {
+            return await _projects.ChooseCaptionFileAsync(this);
+        }
+        finally
+        {
+            _isPromptOpen = false;
+            if (!_isClosed && _isActive) focused?.Focus(FocusState.Programmatic);
+        }
+    }
+
+    private async Task<string?> ChooseCaptionExportFileAsync(string folder, string filename, StudioCaptionFormat format)
+    {
+        if (_isClosed || _isPromptOpen) return null;
+        _isPromptOpen = true;
+        var focused = FocusManager.GetFocusedElement(RootGrid.XamlRoot) as Control;
+        try
+        {
+            return await _projects.ChooseCaptionExportFileAsync(this, folder, filename, format);
+        }
+        finally
+        {
+            _isPromptOpen = false;
+            if (!_isClosed && _isActive) focused?.Focus(FocusState.Programmatic);
+        }
+    }
+
     /// <summary>
     /// Shows the resolution and quality in a flyout on Export, whatever asked for the export: the
     /// button, Ctrl+E, or the question when a draft is closed. It counts as a question while it is

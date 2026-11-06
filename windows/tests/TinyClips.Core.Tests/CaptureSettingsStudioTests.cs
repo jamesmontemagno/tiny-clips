@@ -20,6 +20,18 @@ public sealed class CaptureSettingsStudioTests
         Assert.Null(settings.StudioDefaultLook);
     }
 
+    [Fact]
+    public void TheCaptionModel_DefaultsToBase_AndIsKept()
+    {
+        var settings = Create(out var service);
+
+        Assert.Equal("Base", settings.StudioCaptionModelId);
+
+        settings.StudioCaptionModelId = "Small";
+
+        Assert.Equal("Small", new CaptureSettings(service).StudioCaptionModelId);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

@@ -1,0 +1,22 @@
+{
+  "description": "The tags and overrides of an SRT go, and what only looks like them stays. An SRT has no entities.",
+  "text": "1\n00:00:01,000 --> 00:00:02,000\n<i>Slanted</i> and <FONT color=\"#fff\">white</FONT>\n\n2\n00:00:03,000 --> 00:00:04,000\n{\\an8}On top\n\n3\n00:00:05,000 --> 00:00:06,000\n3 < 4 & 5 > 2 &amp; <now>\n",
+  "expected": [
+    {
+      "start": 1.0,
+      "end": 2.0,
+      "text": "Slanted and white"
+    },
+    {
+      "start": 3.0,
+      "end": 4.0,
+      "text": "On top"
+    },
+    {
+      "start": 5.0,
+      "end": 6.0,
+      "text": "3 < 4 & 5 > 2 &amp; <now>"
+    }
+  ],
+  "skipped": 0
+}

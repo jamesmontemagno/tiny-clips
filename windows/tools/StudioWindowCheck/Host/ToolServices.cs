@@ -6,6 +6,7 @@ using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
+using TinyClips.Core.Studio.Transcription;
 using TinyClips.Core.Studio.Rendering;
 using WinRT.Interop;
 
@@ -61,7 +62,8 @@ internal sealed class ToolServices
             Settings,
             Storage,
             Tracker,
-            cleanup)
+            cleanup,
+            new StudioCaptionGenerator(new StudioCaptionModelStore(new HttpClient())))
         {
             ActivateWindow = Show,
 

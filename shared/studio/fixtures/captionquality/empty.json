@@ -1,0 +1,47 @@
+{
+  "description": "An empty cue is removed, and the one after it is compared with it first.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 2,
+      "text": "Kept."
+    },
+    {
+      "id": "cue-3",
+      "start": 3,
+      "end": 4,
+      "text": " \n "
+    },
+    {
+      "id": "cue-5",
+      "start": 5,
+      "end": 6,
+      "text": ""
+    }
+  ],
+  "findings": [
+    {
+      "cue": 1,
+      "kind": "empty",
+      "canFix": true
+    },
+    {
+      "cue": 2,
+      "kind": "empty",
+      "canFix": true
+    }
+  ],
+  "summary": "2 empty captions",
+  "fixed": [
+    {
+      "start": 1,
+      "end": 2,
+      "text": "Kept.",
+      "wordCount": 0
+    }
+  ],
+  "applied": 2,
+  "after": []
+}
