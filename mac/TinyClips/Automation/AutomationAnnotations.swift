@@ -12,6 +12,7 @@ enum AutomationAnnotations {
     private static let allowedKeys: Set<String> = [
         "type", "bounds", "points", "text", "color", "textColor", "fillColor",
         "lineWidth", "fontSize", "redactionLevel", "redactionStyle", "emoji",
+        "fillEndColor", "fillDirection", "shadowBlur", "shadowColor",
     ]
 
     /// Validates every annotation against `imagePixelSize` and returns editor annotations in
@@ -120,6 +121,8 @@ enum AutomationAnnotations {
             points: points.map { CGPoint(x: $0.x / size.width, y: $0.y / size.height) }
         )
 
+        annotation.shapeEffects = try parseShapeEffects(object, tool: tool, imagePixelSize: size, label: label)
+
         let text = try optionalString(object["text"], key: "text", label: label)
         switch tool {
         case .text:
@@ -175,6 +178,55 @@ enum AutomationAnnotations {
             throw fail("redactionLevel and redactionStyle are only used by redact.")
         }
         return annotation
+    }
+
+    private static func parseShapeEffects(
+        _ object: [String: Any],
+        tool: EditTool,
+        imagePixelSize size: CGSize,
+        label: String
+    ) throws -> ShapeEffects {
+        func fail(_ message: String) -> AutomationError {
+            AutomationError(.invalidParams, "\(label).\(message)")
+        }
+        var effects = ShapeEffects()
+        let keys = ["fillEndColor", "fillDirection", "shadowBlur", "shadowColor"]
+        guard tool.supportsShapeEffects else {
+            if let key = keys.first(where: { object[$0] != nil }) {
+                throw fail("\(key) is only used by rectangle and ellipse.")
+            }
+            return effects
+        }
+
+        if let endColor = try parseColor(object["fillEndColor"], key: "fillEndColor", label: label) {
+            guard let start = try optionalString(object["fillColor"], key: "fillColor", label: label),
+                  let components = hexComponents(start), components.alpha > 0 else {
+                throw fail("fillEndColor needs a visible fillColor to start from.")
+            }
+            effects.isGradientFill = true
+            effects.gradientEndColor = endColor
+        }
+        if object["fillDirection"] != nil {
+            guard effects.isGradientFill else { throw fail("fillDirection needs fillEndColor.") }
+            guard let degrees = AutomationValue.double(object["fillDirection"]), degrees.isFinite, degrees >= 0, degrees <= 360 else {
+                throw fail("fillDirection must be a number from 0 to 360.")
+            }
+            effects.gradientDirectionDegrees = degrees
+        }
+
+        if object["shadowBlur"] != nil {
+            guard let pixels = AutomationValue.double(object["shadowBlur"]), pixels.isFinite, pixels >= 0, pixels <= 500 else {
+                throw fail("shadowBlur must be a number from 0 to 500.")
+            }
+            effects.hasShadow = pixels > 0
+            effects.shadowBlur = CGFloat(pixels) / max(1, size.width / editorStrokeReferenceWidth)
+            if let color = try parseColor(object["shadowColor"], key: "shadowColor", label: label) {
+                effects.shadowColor = color
+            }
+        } else if object["shadowColor"] != nil {
+            throw fail("shadowColor needs shadowBlur.")
+        }
+        return effects
     }
 
     static func parseBounds(_ value: Any?, imagePixelSize size: CGSize, label: String) throws -> CGRect {

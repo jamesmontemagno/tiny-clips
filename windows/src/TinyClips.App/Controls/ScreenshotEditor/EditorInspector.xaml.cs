@@ -137,6 +137,7 @@ public sealed partial class EditorInspector : UserControl
         SyncTextBoxStyle(_controller.TextBoxStyleDefault);
         FillCheck.IsChecked = _controller.FillEnabled;
         FillColorPicker.Color = _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
+        SyncShapeEffects(_controller.ShapeEffectsDefault, _controller.FillEnabled);
         UpdateInspectorHeaders();
 
         _inspectorInitializing = false;
@@ -357,6 +358,7 @@ public sealed partial class EditorInspector : UserControl
             var hasFill = ann.FillColor.A > 0;
             FillCheck.IsChecked = hasFill;
             FillColorPicker.Color = hasFill ? ann.FillColor : Colors.Transparent;
+            SyncShapeEffects(ann.ShapeEffects, hasFill);
         }
         if (isText)
         {
@@ -459,6 +461,7 @@ public sealed partial class EditorInspector : UserControl
         var enabled = FillCheck.IsChecked == true;
         _controller.SetFillEnabled(enabled);
         FillColorPicker.Color = enabled ? _controller.FillColor : Colors.Transparent;
+        UpdateGradientAvailability(enabled);
     }
 
     private void OnFillColorChanged(object? sender, Color color)
@@ -476,6 +479,80 @@ public sealed partial class EditorInspector : UserControl
         else
         {
             FillCheck.IsChecked = true;
+        }
+        UpdateGradientAvailability(color.A > 0);
+    }
+
+    private void SyncShapeEffects(ShapeEffects effects, bool hasFill)
+    {
+        GradientFillCheck.IsChecked = effects.IsGradientFill;
+        GradientEndColorPicker.Color = effects.GradientEndColor;
+        ShapeGradientDirectionSlider.Value = effects.GradientDirectionDegrees;
+        ShadowCheck.IsChecked = effects.HasShadow;
+        ShapeShadowColorPicker.Color = effects.ShadowColor;
+        ShapeShadowBlurSlider.Value = effects.ShadowBlur;
+        ShadowPanel.Visibility = effects.HasShadow ? Visibility.Visible : Visibility.Collapsed;
+        UpdateGradientAvailability(hasFill);
+    }
+
+    /// <summary>A gradient needs a fill to start from, so it is only offered once the shape has one.</summary>
+    private void UpdateGradientAvailability(bool hasFill)
+    {
+        GradientFillCheck.Visibility = hasFill ? Visibility.Visible : Visibility.Collapsed;
+        GradientFillPanel.Visibility = hasFill && GradientFillCheck.IsChecked == true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void OnGradientFillToggled(object sender, RoutedEventArgs e)
+    {
+        var isGradient = GradientFillCheck.IsChecked == true;
+        GradientFillPanel.Visibility = isGradient ? Visibility.Visible : Visibility.Collapsed;
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { IsGradientFill = isGradient });
+        }
+    }
+
+    private void OnGradientEndColorChanged(object? sender, Color color)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { GradientEndColor = color });
+        }
+    }
+
+    private void OnShapeGradientDirectionChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { GradientDirectionDegrees = e.NewValue });
+        }
+    }
+
+    private void OnShapeShadowToggled(object sender, RoutedEventArgs e)
+    {
+        var hasShadow = ShadowCheck.IsChecked == true;
+        ShadowPanel.Visibility = hasShadow ? Visibility.Visible : Visibility.Collapsed;
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { HasShadow = hasShadow });
+        }
+    }
+
+    private void OnShapeShadowColorChanged(object? sender, Color color)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { ShadowColor = color });
+        }
+    }
+
+    private void OnShapeShadowBlurChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { ShadowBlur = e.NewValue });
         }
     }
 
@@ -576,14 +653,14 @@ public sealed partial class EditorInspector : UserControl
         SyncTextBoxStyle(CurrentTextBoxStyle());
     }
 
-    private void OnTextStyleSliderPointerPressed(object sender, PointerRoutedEventArgs e) =>
-        _controller.BeginSelectedTextStyleEdit();
+    private void OnStyleSliderPointerPressed(object sender, PointerRoutedEventArgs e) =>
+        _controller.BeginSelectedStyleEdit();
 
-    private void OnTextStyleSliderPointerReleased(object sender, PointerRoutedEventArgs e) =>
-        _controller.EndSelectedTextStyleEdit();
+    private void OnStyleSliderPointerReleased(object sender, PointerRoutedEventArgs e) =>
+        _controller.EndSelectedStyleEdit();
 
-    private void OnTextStyleSliderPointerCaptureLost(object sender, PointerRoutedEventArgs e) =>
-        _controller.EndSelectedTextStyleEdit();
+    private void OnStyleSliderPointerCaptureLost(object sender, PointerRoutedEventArgs e) =>
+        _controller.EndSelectedStyleEdit();
 
     private TextBoxStyle CurrentTextBoxStyle() =>
         _controller.SelectedAnnotation is { Tool: EditTool.Text } ann

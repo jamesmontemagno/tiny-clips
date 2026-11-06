@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
 
 ### Added
+- Screenshot editor rectangles and ellipses can have a gradient fill and a soft shadow, on selected shapes and new ones, and Agent Control's `editor.annotate` accepts them too. The Fill control now also edits a selected shape.
 - Agent Control settings now show both plugin install paths and a separate CLI-only setup with `dnx` and global tool commands on macOS and Windows.
 - Agent permissions are now yours to choose: the pairing prompt lists every scope with the agent's request pre-checked, so you can remove or add permissions before approving, and each paired agent has a **Permissions** control in Settings → Agent Control that applies changes immediately without re-pairing. Sensitive scopes still ask every time.
 - Moved the portable Agent Plugin to the repository root so VS Code can install it directly from the repository URL without a manual clone or marketplace; updated installation guidance, CI, and release packaging.

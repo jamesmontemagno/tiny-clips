@@ -200,8 +200,54 @@ public readonly record struct TextBoxStyle(
     }
 }
 
+/// <summary>
+/// Gradient fill and shadow for rectangles and ellipses, copied by value into each annotation.
+/// macOS models the same values; see plans/editor-themes.md.
+/// </summary>
+public readonly record struct ShapeEffects(
+    bool IsGradientFill,
+    Color GradientEndColor,
+    double GradientDirectionDegrees,
+    bool HasShadow,
+    Color ShadowColor,
+    double ShadowBlur)
+{
+    public const double MinimumShadowBlur = 1;
+    public const double MaximumShadowBlur = 80;
+
+    /// <summary>How far a shadow falls, as a fraction of its blur.</summary>
+    public const double ShadowOffsetRatio = 0.35;
+
+    public static ShapeEffects Default => new(
+        false,
+        Color.FromArgb(255, 51, 133, 245),
+        45,
+        false,
+        Color.FromArgb(89, 0, 0, 0),
+        12);
+
+    public bool DrawsShadow => HasShadow && ShadowBlur > 0;
+
+    /// <summary>As in CSS, a shadow's Gaussian standard deviation is half its blur.</summary>
+    public double ShadowStandardDeviation => ShadowBlur / 2;
+
+    public double ShadowOffsetY => ShadowBlur * ShadowOffsetRatio;
+
+    /// <summary>
+    /// A shadow's downward offset in the local space of a shape turned by
+    /// <paramref name="rotationDegrees"/>, so that it still falls straight down on screen.
+    /// </summary>
+    public static Vector2 LocalShadowOffset(double offsetY, double rotationDegrees)
+    {
+        var radians = rotationDegrees * Math.PI / 180;
+        return new Vector2((float)(offsetY * Math.Sin(radians)), (float)(offsetY * Math.Cos(radians)));
+    }
+}
+
 public static class EditToolExtensions
 {
+    public static bool SupportsShapeEffects(this EditTool tool) => tool is EditTool.Rectangle or EditTool.Ellipse;
+
     public static bool SupportsRotation(this EditTool tool) =>
         tool is EditTool.Emoji or EditTool.Text or EditTool.Rectangle or EditTool.Ellipse or EditTool.Pen;
 
@@ -232,12 +278,13 @@ public class ScreenshotAnnotation
     public bool Strikethrough { get; set; }
     public TextBoxStyle TextBoxStyle { get; set; } = TextBoxStyle.Plain;
     public double Rotation { get; set; }
+    public ShapeEffects ShapeEffects { get; set; } = ShapeEffects.Default;
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 
     public AnnotationSnapshot CaptureSnapshot() => new(
         Tool, Bounds, Color, FillColor, Thickness, Text, Number, SizeScale,
         Redaction, RedactStyle, ArrowStyle, Points.ToImmutableArray(), TextColor,
-        FontSize, FontFamily, Bold, Italic, Underline, Strikethrough, TextBoxStyle, Rotation);
+        FontSize, FontFamily, Bold, Italic, Underline, Strikethrough, TextBoxStyle, Rotation, ShapeEffects);
 }
 
 /// <summary>Immutable image-pixel annotation data; deliberately excludes live XAML previews.</summary>
@@ -262,7 +309,8 @@ public sealed record AnnotationSnapshot(
     bool Underline,
     bool Strikethrough,
     TextBoxStyle TextBoxStyle,
-    double Rotation)
+    double Rotation,
+    ShapeEffects ShapeEffects)
 {
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 }

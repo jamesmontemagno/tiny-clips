@@ -101,6 +101,71 @@
                         AllowTransparent="True"
                         ColorChanged="OnFillColorChanged"
                         IsAlphaEnabled="True" />
+                    <CheckBox
+                        x:Name="GradientFillCheck"
+                        AutomationProperties.AutomationId="EditorGradientFillCheck"
+                        AutomationProperties.HelpText="Blends the fill color into an end color."
+                        AutomationProperties.Name="Gradient fill"
+                        Checked="OnGradientFillToggled"
+                        Content="Gradient fill"
+                        Unchecked="OnGradientFillToggled" />
+                    <StackPanel x:Name="GradientFillPanel" Spacing="6">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="End color" />
+                        <local:SwatchColorPicker
+                            x:Name="GradientEndColorPicker"
+                            AutomationProperties.AutomationId="EditorGradientEndColorButton"
+                            AutomationProperties.Name="Gradient end color"
+                            ColorChanged="OnGradientEndColorChanged"
+                            IsAlphaEnabled="True" />
+                        <Slider
+                            x:Name="ShapeGradientDirectionSlider"
+                            AutomationProperties.AutomationId="EditorShapeGradientDirectionSlider"
+                            AutomationProperties.HelpText="Direction from the fill color to the end color. 0 degrees is left to right; 90 degrees is top to bottom."
+                            AutomationProperties.Name="Gradient direction"
+                            Header="Direction"
+                            Maximum="360"
+                            Minimum="0"
+                            PointerCaptureLost="OnStyleSliderPointerCaptureLost"
+                            PointerPressed="OnStyleSliderPointerPressed"
+                            PointerReleased="OnStyleSliderPointerReleased"
+                            StepFrequency="1"
+                            ValueChanged="OnShapeGradientDirectionChanged" />
+                    </StackPanel>
+                    <CheckBox
+                        x:Name="ShadowCheck"
+                        AutomationProperties.AutomationId="EditorShadowCheck"
+                        AutomationProperties.HelpText="Casts a soft shadow below the shape."
+                        AutomationProperties.Name="Shadow"
+                        Checked="OnShapeShadowToggled"
+                        Content="Shadow"
+                        Unchecked="OnShapeShadowToggled" />
+                    <StackPanel x:Name="ShadowPanel" Spacing="6">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Shadow color" />
+                        <local:SwatchColorPicker
+                            x:Name="ShapeShadowColorPicker"
+                            AutomationProperties.AutomationId="EditorShadowColorButton"
+                            AutomationProperties.Name="Shadow color"
+                            ColorChanged="OnShapeShadowColorChanged"
+                            IsAlphaEnabled="True" />
+                        <Slider
+                            x:Name="ShapeShadowBlurSlider"
+                            AutomationProperties.AutomationId="EditorShadowBlurSlider"
+                            AutomationProperties.Name="Shadow blur"
+                            Header="Blur"
+                            Maximum="80"
+                            Minimum="1"
+                            PointerCaptureLost="OnStyleSliderPointerCaptureLost"
+                            PointerPressed="OnStyleSliderPointerPressed"
+                            PointerReleased="OnStyleSliderPointerReleased"
+                            StepFrequency="1"
+                            ValueChanged="OnShapeShadowBlurChanged" />
+                    </StackPanel>
                 </StackPanel>
 
                 <!--  Text  -->
@@ -164,9 +229,9 @@
                         Header="Border width"
                         Maximum="12"
                         Minimum="0"
-                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
-                        PointerPressed="OnTextStyleSliderPointerPressed"
-                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        PointerCaptureLost="OnStyleSliderPointerCaptureLost"
+                        PointerPressed="OnStyleSliderPointerPressed"
+                        PointerReleased="OnStyleSliderPointerReleased"
                         StepFrequency="1"
                         ValueChanged="OnTextBorderWidthChanged" />
                     <Slider
@@ -176,9 +241,9 @@
                         Header="Padding"
                         Maximum="48"
                         Minimum="0"
-                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
-                        PointerPressed="OnTextStyleSliderPointerPressed"
-                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        PointerCaptureLost="OnStyleSliderPointerCaptureLost"
+                        PointerPressed="OnStyleSliderPointerPressed"
+                        PointerReleased="OnStyleSliderPointerReleased"
                         StepFrequency="1"
                         ValueChanged="OnTextPaddingChanged" />
                     <Slider
@@ -188,9 +253,9 @@
                         Header="Corner radius"
                         Maximum="32"
                         Minimum="0"
-                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
-                        PointerPressed="OnTextStyleSliderPointerPressed"
-                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        PointerCaptureLost="OnStyleSliderPointerCaptureLost"
+                        PointerPressed="OnStyleSliderPointerPressed"
+                        PointerReleased="OnStyleSliderPointerReleased"
                         StepFrequency="1"
                         ValueChanged="OnTextCornerRadiusChanged" />
                 </StackPanel>

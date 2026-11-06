@@ -235,6 +235,8 @@ struct ScreenshotAnnotation: Identifiable {
     var arrowStyle: ArrowStyle = .straight
     /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
     var rotation: CGFloat = 0
+    /// Only rectangles and ellipses draw these; see `EditTool.supportsShapeEffects`.
+    var shapeEffects = ShapeEffects()
 
     /// Whether this annotation is drawn through a rotation transform.
     var isRotated: Bool {

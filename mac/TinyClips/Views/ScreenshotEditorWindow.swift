@@ -698,6 +698,81 @@ struct ScreenshotEditorView: View {
         )
     }
 
+    private var shapeFillColorBinding: Binding<Color> {
+        Binding(
+            get: { viewModel.shapeFillColorForInspector() },
+            set: viewModel.updateShapeFillColor
+        )
+    }
+
+    private func shapeEffectBinding<Value>(_ keyPath: WritableKeyPath<ShapeEffects, Value>) -> Binding<Value> {
+        Binding(
+            get: { viewModel.shapeEffectsForInspector()[keyPath: keyPath] },
+            set: { newValue in
+                viewModel.updateShapeEffects { $0[keyPath: keyPath] = newValue }
+            }
+        )
+    }
+
+    private func handleShapeStyleSliderEditing(_ isEditing: Bool) {
+        if isEditing {
+            viewModel.beginSelectedShapeStyleEdit()
+        } else {
+            viewModel.endSelectedShapeStyleEdit()
+        }
+    }
+
+    /// A gradient needs a fill to start from, so it is only offered once the shape has one.
+    @ViewBuilder
+    private var shapeEffectControls: some View {
+        let effects = viewModel.shapeEffectsForInspector()
+
+        if viewModel.shapeFillColorForInspector() != .clear {
+            Toggle("Gradient fill", isOn: shapeEffectBinding(\.isGradientFill))
+                .accessibilityHint("Blends the fill color into an end color.")
+
+            if effects.isGradientFill {
+                SwatchColorPicker(label: "End color", color: shapeEffectBinding(\.gradientEndColor), supportsOpacity: true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Direction: \(Int(effects.gradientDirectionDegrees))°")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: shapeEffectBinding(\.gradientDirectionDegrees),
+                        in: 0...360,
+                        step: 1,
+                        onEditingChanged: handleShapeStyleSliderEditing
+                    )
+                    .accessibilityLabel("Gradient direction")
+                    .accessibilityValue("\(Int(effects.gradientDirectionDegrees)) degrees")
+                    .accessibilityHint("Direction from the fill color to the end color. 0 degrees is left to right; 90 degrees is top to bottom.")
+                }
+            }
+        }
+
+        Toggle("Shadow", isOn: shapeEffectBinding(\.hasShadow))
+            .accessibilityHint("Casts a soft shadow below the shape.")
+
+        if effects.hasShadow {
+            SwatchColorPicker(label: "Shadow color", color: shapeEffectBinding(\.shadowColor), supportsOpacity: true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Blur: \(Int(effects.shadowBlur))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(
+                    value: shapeEffectBinding(\.shadowBlur),
+                    in: ShapeEffects.shadowBlurRange,
+                    step: 1,
+                    onEditingChanged: handleShapeStyleSliderEditing
+                )
+                .accessibilityLabel("Shadow blur")
+                .accessibilityValue("\(Int(effects.shadowBlur))")
+            }
+        }
+    }
+
     private func handleTextBoxSliderEditing(_ isEditing: Bool) {
         if isEditing {
             viewModel.beginSelectedTextBoxStyleEdit()
@@ -1117,7 +1192,8 @@ struct ScreenshotEditorView: View {
             }
 
             if showsFillColorPicker {
-                SwatchColorPicker(label: "Fill", color: $viewModel.selectedFillColor, supportsOpacity: true, allowsTransparent: true)
+                SwatchColorPicker(label: "Fill", color: shapeFillColorBinding, supportsOpacity: true, allowsTransparent: true)
+                shapeEffectControls
             }
 
             if showsNumberTextColorPicker {

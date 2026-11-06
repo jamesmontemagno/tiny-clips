@@ -49,12 +49,12 @@ internal sealed class EditorController : IDisposable
     private bool _isDisposed;
 
     private readonly List<Annotation> _annotations = new();
-    private readonly Stack<TextStyleUndoEntry> _textStyleUndo = new();
+    private readonly Stack<StyleUndoEntry> _styleUndo = new();
     private int _counterValue = 1;
-    private bool _textStyleEditGroupActive;
-    private bool _textStyleEditGroupRecorded;
+    private bool _styleEditGroupActive;
+    private bool _styleEditGroupRecorded;
 
-    private sealed record TextStyleUndoEntry(Annotation Annotation, AnnotationSnapshot Snapshot);
+    private sealed record StyleUndoEntry(Annotation Annotation, AnnotationSnapshot Snapshot);
 
     public static readonly BackgroundPreset[] SolidPresets =
     {
@@ -170,6 +170,8 @@ internal sealed class EditorController : IDisposable
     public bool TextStrikethrough { get; private set; }
 
     public TextBoxStyle TextBoxStyleDefault { get; private set; } = TextBoxStyle.Plain;
+
+    public ShapeEffects ShapeEffectsDefault { get; private set; } = ShapeEffects.Default;
 
     public RedactionLevel RedactionLevelDefault { get; private set; } = RedactionLevel.Medium;
 
@@ -423,7 +425,7 @@ internal sealed class EditorController : IDisposable
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } selectedText)
         {
-            RecordTextStyleUndo(selectedText);
+            RecordStyleUndo(selectedText);
             selectedText.Color = color;
             if (selectedText.TextBoxStyle.Preset != TextBoxPreset.Plain)
             {
@@ -500,6 +502,7 @@ internal sealed class EditorController : IDisposable
         FillEnabled = enabled;
         if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann)
         {
+            RecordStyleUndo(ann);
             ann.FillColor = enabled ? FillColor : Colors.Transparent;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
@@ -514,6 +517,7 @@ internal sealed class EditorController : IDisposable
             FillEnabled = false;
             if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } cleared)
             {
+                RecordStyleUndo(cleared);
                 cleared.FillColor = Colors.Transparent;
                 MarkDirty();
                 AnnotationVisualInvalidated?.Invoke(this, cleared);
@@ -525,17 +529,33 @@ internal sealed class EditorController : IDisposable
         FillEnabled = true;
         if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann)
         {
+            RecordStyleUndo(ann);
             ann.FillColor = color;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
     }
 
+    /// <summary>Changes the selected shape as one undo step, or else the effects of the next shape.</summary>
+    public void UpdateShapeEffects(Func<ShapeEffects, ShapeEffects> update)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.SupportsShapeEffects())
+        {
+            RecordStyleUndo(ann);
+            ann.ShapeEffects = update(ann.ShapeEffects);
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+            return;
+        }
+
+        ShapeEffectsDefault = update(ShapeEffectsDefault);
+    }
+
     public void SetFontFamily(string font)
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
-            RecordTextStyleUndo(ann);
+            RecordStyleUndo(ann);
             ann.FontFamily = font;
             UpdateTextBounds(ann);
             MarkDirty();
@@ -551,7 +571,7 @@ internal sealed class EditorController : IDisposable
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
-            RecordTextStyleUndo(ann);
+            RecordStyleUndo(ann);
             ann.FontSize = size;
             UpdateTextBounds(ann);
             MarkDirty();
@@ -630,7 +650,7 @@ internal sealed class EditorController : IDisposable
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
-            RecordTextStyleUndo(ann);
+            RecordStyleUndo(ann);
             var resolved = TextBoxStyle.Resolve(preset, ann.Color, accentColor);
             ann.TextBoxStyle = resolved.Style;
             ann.Color = resolved.TextColor;
@@ -669,7 +689,7 @@ internal sealed class EditorController : IDisposable
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
-            RecordTextStyleUndo(ann);
+            RecordStyleUndo(ann);
             ann.TextBoxStyle = update(ann.TextBoxStyle).AsCustom();
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
@@ -685,35 +705,36 @@ internal sealed class EditorController : IDisposable
         TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public void BeginSelectedTextStyleEdit()
+    public void BeginSelectedStyleEdit()
     {
-        _textStyleEditGroupActive = SelectedAnnotation is { Tool: EditTool.Text };
-        _textStyleEditGroupRecorded = false;
+        _styleEditGroupActive = SelectedAnnotation is { } ann
+            && (ann.Tool == EditTool.Text || ann.Tool.SupportsShapeEffects());
+        _styleEditGroupRecorded = false;
     }
 
-    public void EndSelectedTextStyleEdit()
+    public void EndSelectedStyleEdit()
     {
-        _textStyleEditGroupActive = false;
-        _textStyleEditGroupRecorded = false;
+        _styleEditGroupActive = false;
+        _styleEditGroupRecorded = false;
     }
 
-    private void RecordTextStyleUndo(Annotation annotation)
+    private void RecordStyleUndo(Annotation annotation)
     {
-        if (_textStyleEditGroupActive)
+        if (_styleEditGroupActive)
         {
-            if (_textStyleEditGroupRecorded)
+            if (_styleEditGroupRecorded)
             {
                 return;
             }
-            _textStyleEditGroupRecorded = true;
+            _styleEditGroupRecorded = true;
         }
-        _textStyleUndo.Push(new TextStyleUndoEntry(annotation, annotation.CaptureSnapshot()));
+        _styleUndo.Push(new StyleUndoEntry(annotation, annotation.CaptureSnapshot()));
     }
 
-    private void ClearTextStyleUndo()
+    private void ClearStyleUndo()
     {
-        _textStyleUndo.Clear();
-        EndSelectedTextStyleEdit();
+        _styleUndo.Clear();
+        EndSelectedStyleEdit();
     }
 
     public static double CounterRadius(double scale) => Math.Max(12, 22 * scale);
@@ -754,7 +775,7 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         ann.Rotation = normalized;
         MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
@@ -788,7 +809,7 @@ internal sealed class EditorController : IDisposable
         Point pixelPoint,
         bool snap)
     {
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         var center = ToRectD(originalBounds).Center;
         var angle = RotatableAnnotationGeometry.AngleDegrees(center, new PointD(pixelPoint.X, pixelPoint.Y));
         var snapped = RotatableAnnotationGeometry.NormalizeDegrees(RotatableAnnotationGeometry.Snap(angle, 15, snap));
@@ -813,7 +834,7 @@ internal sealed class EditorController : IDisposable
 
     public Annotation AddEmojiAnnotation(Point pixelCenter)
     {
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         var imageWidth = _bitmap?.PixelWidth ?? 1000;
         var imageHeight = _bitmap?.PixelHeight ?? 1000;
         var side = EmojiAnnotationMath.DefaultSidePixels(imageWidth, imageHeight);
@@ -1142,6 +1163,7 @@ internal sealed class EditorController : IDisposable
             Redaction = RedactionLevelDefault,
             RedactStyle = RedactionStyleDefault,
             ArrowStyle = ArrowStyleDefault,
+            ShapeEffects = tool.SupportsShapeEffects() ? ShapeEffectsDefault : ShapeEffects.Default,
             Bounds = new Rect(pixelStart.X, pixelStart.Y, 0, 0),
         };
 
@@ -1235,7 +1257,7 @@ internal sealed class EditorController : IDisposable
 
         if (significant)
         {
-            ClearTextStyleUndo();
+            ClearStyleUndo();
             _annotations.Add(ann);
             MarkDirty();
             AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
@@ -1263,7 +1285,7 @@ internal sealed class EditorController : IDisposable
 
     public Annotation AddCounterAnnotation(Point pixelCenter)
     {
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         var radius = CounterRadius(NumberScale);
         var ann = new Annotation
         {
@@ -1285,7 +1307,7 @@ internal sealed class EditorController : IDisposable
         Point pixelPoint, string text, string fontFamily, double fontSize, Color color,
         bool bold, bool italic, bool underline, bool strikethrough, TextBoxStyle textBoxStyle)
     {
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         var ann = new Annotation
         {
             Tool = EditTool.Text,
@@ -1315,7 +1337,7 @@ internal sealed class EditorController : IDisposable
     {
         if (string.IsNullOrWhiteSpace(text))
         {
-            ClearTextStyleUndo();
+            ClearStyleUndo();
             _annotations.Remove(ann);
             if (ReferenceEquals(SelectedAnnotation, ann))
             {
@@ -1326,7 +1348,7 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
-        RecordTextStyleUndo(ann);
+        RecordStyleUndo(ann);
         ann.Text = text;
         ann.FontFamily = fontFamily;
         ann.FontSize = fontSize;
@@ -1343,7 +1365,7 @@ internal sealed class EditorController : IDisposable
 
     public void MoveAnnotationBy(Annotation ann, double dx, double dy)
     {
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         ann.Bounds = new Rect(ann.Bounds.X + dx, ann.Bounds.Y + dy, ann.Bounds.Width, ann.Bounds.Height);
         for (var i = 0; i < ann.Points.Count; i++)
         {
@@ -1363,7 +1385,7 @@ internal sealed class EditorController : IDisposable
         AnnotationResizeHandle handle,
         Point pixelPoint)
     {
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         if (ann.Tool == EditTool.Emoji || ann.IsRotated)
         {
             ResizeRotatedAboutCenter(
@@ -1546,7 +1568,7 @@ internal sealed class EditorController : IDisposable
 
     public void MoveAnnotationEndpoint(Annotation ann, bool start, Point pixelPoint)
     {
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         var (segmentStart, segmentEnd) = Segment(ann);
         if (ann.Points.Count < 2)
         {
@@ -1579,7 +1601,7 @@ internal sealed class EditorController : IDisposable
         }).ToArray();
         if (annotations.Length == 0) return false;
         CancelActiveAnnotation();
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         _annotations.AddRange(annotations);
         Select(null);
         MarkDirty();
@@ -1589,9 +1611,9 @@ internal sealed class EditorController : IDisposable
 
     public void Undo()
     {
-        while (_textStyleUndo.Count > 0)
+        while (_styleUndo.Count > 0)
         {
-            var entry = _textStyleUndo.Pop();
+            var entry = _styleUndo.Pop();
             if (!_annotations.Contains(entry.Annotation))
             {
                 continue;
@@ -1629,7 +1651,7 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
-        ClearTextStyleUndo();
+        ClearStyleUndo();
         CancelRedactPreview(SelectedAnnotation);
         _annotations.Remove(SelectedAnnotation);
         SelectedAnnotation = null;
@@ -1661,6 +1683,7 @@ internal sealed class EditorController : IDisposable
         annotation.Strikethrough = snapshot.Strikethrough;
         annotation.TextBoxStyle = snapshot.TextBoxStyle;
         annotation.Rotation = snapshot.Rotation;
+        annotation.ShapeEffects = snapshot.ShapeEffects;
     }
 
     // -- Crop -------------------------------------------------------------------------------
@@ -2244,6 +2267,11 @@ internal sealed class EditorController : IDisposable
         var color = ann.Color;
         var thickness = (float)ann.Thickness;
 
+        if (ann.Tool.SupportsShapeEffects() && ann.ShapeEffects.DrawsShadow)
+        {
+            DrawShapeShadow(ds, ann, color, thickness);
+        }
+
         // Rotated shapes/text draw through a rotation about their center composed with whatever
         // transform the export path already applied (e.g. the padded-frame translation).
         var previousTransform = ds.Transform;
@@ -2266,6 +2294,61 @@ internal sealed class EditorController : IDisposable
         }
     }
 
+    /// <summary>
+    /// One shadow cast by the fill and stroke together, drawn under them. It turns with the shape
+    /// but falls straight down in image space.
+    /// </summary>
+    private static void DrawShapeShadow(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)
+    {
+        using var shape = new CanvasCommandList(ds.Device);
+        using (var shapeSession = shape.CreateDrawingSession())
+        {
+            DrawAnnotationCore(shapeSession, ann, color, thickness);
+        }
+
+        using var shadow = new ShadowEffect
+        {
+            Source = shape,
+            BlurAmount = (float)ann.ShapeEffects.ShadowStandardDeviation,
+            ShadowColor = ann.ShapeEffects.ShadowColor,
+        };
+
+        var previousTransform = ds.Transform;
+        var turn = Matrix3x2.Identity;
+        if (ann.IsRotated)
+        {
+            var b = NormalizedBounds(ann);
+            var center = new Vector2((float)(b.X + b.Width / 2), (float)(b.Y + b.Height / 2));
+            turn = Matrix3x2.CreateRotation((float)(ann.Rotation * Math.PI / 180.0), center);
+        }
+
+        ds.Transform = turn
+            * Matrix3x2.CreateTranslation(0, (float)ann.ShapeEffects.ShadowOffsetY)
+            * previousTransform;
+        ds.DrawImage(shadow);
+        ds.Transform = previousTransform;
+    }
+
+    /// <summary>A brush for a shape's gradient fill, or null when there is no gradient to draw.</summary>
+    private static CanvasLinearGradientBrush? CreateShapeGradient(CanvasDrawingSession ds, AnnotationSnapshot ann, Rect bounds)
+    {
+        if (!ann.ShapeEffects.IsGradientFill || bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            return null;
+        }
+
+        var endpoints = ScreenshotGradientMath.Endpoints(ann.ShapeEffects.GradientDirectionDegrees, bounds.Width, bounds.Height);
+        return new CanvasLinearGradientBrush(ds.Device, ann.FillColor, ann.ShapeEffects.GradientEndColor)
+        {
+            StartPoint = new Vector2(
+                (float)(bounds.X + endpoints.Start.X * bounds.Width),
+                (float)(bounds.Y + endpoints.Start.Y * bounds.Height)),
+            EndPoint = new Vector2(
+                (float)(bounds.X + endpoints.End.X * bounds.Width),
+                (float)(bounds.Y + endpoints.End.Y * bounds.Height)),
+        };
+    }
+
     private static void DrawAnnotationCore(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)
     {
         switch (ann.Tool)
@@ -2275,7 +2358,15 @@ internal sealed class EditorController : IDisposable
                 var b = NormalizedBounds(ann);
                 if (ann.FillColor.A > 0)
                 {
-                    ds.FillRectangle((float)b.X, (float)b.Y, (float)b.Width, (float)b.Height, ann.FillColor);
+                    using var gradient = CreateShapeGradient(ds, ann, b);
+                    if (gradient is not null)
+                    {
+                        ds.FillRectangle(b, gradient);
+                    }
+                    else
+                    {
+                        ds.FillRectangle((float)b.X, (float)b.Y, (float)b.Width, (float)b.Height, ann.FillColor);
+                    }
                 }
                 ds.DrawRectangle((float)b.X, (float)b.Y, (float)b.Width, (float)b.Height, color, thickness);
                 break;
@@ -2285,12 +2376,25 @@ internal sealed class EditorController : IDisposable
                 var b = NormalizedBounds(ann);
                 if (ann.FillColor.A > 0)
                 {
-                    ds.FillEllipse(
-                        (float)(b.X + b.Width / 2),
-                        (float)(b.Y + b.Height / 2),
-                        (float)(b.Width / 2),
-                        (float)(b.Height / 2),
-                        ann.FillColor);
+                    using var gradient = CreateShapeGradient(ds, ann, b);
+                    if (gradient is not null)
+                    {
+                        ds.FillEllipse(
+                            (float)(b.X + b.Width / 2),
+                            (float)(b.Y + b.Height / 2),
+                            (float)(b.Width / 2),
+                            (float)(b.Height / 2),
+                            gradient);
+                    }
+                    else
+                    {
+                        ds.FillEllipse(
+                            (float)(b.X + b.Width / 2),
+                            (float)(b.Y + b.Height / 2),
+                            (float)(b.Width / 2),
+                            (float)(b.Height / 2),
+                            ann.FillColor);
+                    }
                 }
                 ds.DrawEllipse(
                     (float)(b.X + b.Width / 2),

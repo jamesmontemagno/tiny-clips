@@ -38,6 +38,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
     @Published var selectedColor: Color = .red
     @Published var selectedFillColor: Color = .clear
+    @Published var shapeEffects = ShapeEffects()
     @Published var lineWidth: CGFloat = 4
     @Published var annotations: [ScreenshotAnnotation] = [] {
         didSet { invalidateSensitiveText() }
@@ -116,6 +117,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var pendingDragHistoryState: EditorCanvasState?
     private var didChangePendingDrag = false
     private var isGroupingTextBoxStyleEdit = false
+    private var isGroupingShapeStyleEdit = false
 
     private var initialBackgroundStyle: ExportBackgroundStyle
     private var initialBackgroundColor: Color
@@ -744,6 +746,67 @@ class ScreenshotEditorViewModel: ObservableObject {
         return annotations[index].color
     }
 
+    /// The shape the inspector is editing, when one is selected under the Move tool.
+    private var selectedShapeIndex: Int? {
+        guard selectedTool == .move,
+              let index = selectedAnnotationIndex,
+              annotations.indices.contains(index),
+              annotations[index].tool.supportsShapeEffects else {
+            return nil
+        }
+        return index
+    }
+
+    func shapeFillColorForInspector() -> Color {
+        selectedShapeIndex.map { annotations[$0].fillColor } ?? selectedFillColor
+    }
+
+    func shapeEffectsForInspector() -> ShapeEffects {
+        selectedShapeIndex.map { annotations[$0].shapeEffects } ?? shapeEffects
+    }
+
+    func updateShapeFillColor(_ color: Color) {
+        guard let index = selectedShapeIndex else {
+            selectedFillColor = color
+            return
+        }
+        if !isGroupingShapeStyleEdit {
+            recordHistory()
+        }
+        annotations[index].fillColor = color
+        markDirty()
+    }
+
+    /// Changes the selected shape as one undo step, or else the effects of the next shape.
+    func updateShapeEffects(_ mutation: (inout ShapeEffects) -> Void) {
+        guard let index = selectedShapeIndex else {
+            mutation(&shapeEffects)
+            return
+        }
+        if !isGroupingShapeStyleEdit {
+            recordHistory()
+        }
+        mutation(&annotations[index].shapeEffects)
+        markDirty()
+    }
+
+    func beginSelectedShapeStyleEdit() {
+        guard !isGroupingShapeStyleEdit, selectedShapeIndex != nil else { return }
+        recordHistory()
+        isGroupingShapeStyleEdit = true
+    }
+
+    func endSelectedShapeStyleEdit() {
+        isGroupingShapeStyleEdit = false
+    }
+
+    /// Display points per stored shadow unit, so a preview's shadow is the size the export draws.
+    func shapeEffectScale(forRenderedImageWidth renderedImageWidth: CGFloat) -> CGFloat {
+        guard imagePixelSize.width > 0 else { return 1 }
+        let frameWidth = exportLayout(for: imagePixelSize).frameSize.width
+        return exportStrokeWidth(baseWidth: 1, outputWidth: frameWidth) * renderedImageWidth / imagePixelSize.width
+    }
+
     func textBoxStyleForInspector() -> TextBoxStyle {
         guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return textBoxStyle }
         return annotations[index].textBoxStyle
@@ -1023,7 +1086,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                 points: (selectedTool == .arrow || selectedTool == .line) ? [start, current] : [],
                 redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
                 isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
-                arrowStyle: selectedArrowStylePreset
+                arrowStyle: selectedArrowStylePreset,
+                shapeEffects: selectedTool.supportsShapeEffects ? shapeEffects : ShapeEffects()
             )
         }
     }
@@ -1076,7 +1140,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                     points: (selectedTool == .arrow || selectedTool == .line) ? [start, end] : [],
                     redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
                     isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
-                    arrowStyle: selectedArrowStylePreset
+                    arrowStyle: selectedArrowStylePreset,
+                    shapeEffects: selectedTool.supportsShapeEffects ? shapeEffects : ShapeEffects()
                 ))
                 markDirty()
             }
@@ -2138,25 +2203,12 @@ class ScreenshotEditorViewModel: ObservableObject {
         ctx.setLineWidth(strokeWidth)
 
         switch annotation.tool {
-        case .rectangle:
-            withRotation(annotation, around: pixelRect, in: ctx) { rect in
-                if annotation.fillColor != .clear {
-                    let fillCGColor = NSColor(annotation.fillColor).cgColor
-                    ctx.setFillColor(fillCGColor)
-                    ctx.fill(rect)
+        case .rectangle, .circle:
+            let effectScale = exportStrokeWidth(baseWidth: 1, outputWidth: outputSize.width)
+            ShapeEffectsRenderer.withExportShadow(annotation.shapeEffects, scale: effectScale, in: ctx) {
+                withRotation(annotation, around: pixelRect, in: ctx) { rect in
+                    ShapeEffectsRenderer.drawExportShape(annotation, in: ctx, rect: rect)
                 }
-
-                ctx.stroke(rect)
-            }
-
-        case .circle:
-            withRotation(annotation, around: pixelRect, in: ctx) { rect in
-                if annotation.fillColor != .clear {
-                    let fillCGColor = NSColor(annotation.fillColor).cgColor
-                    ctx.setFillColor(fillCGColor)
-                    ctx.fillEllipse(in: rect)
-                }
-                ctx.strokeEllipse(in: rect)
             }
 
         case .arrow:
