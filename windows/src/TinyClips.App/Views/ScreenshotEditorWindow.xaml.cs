@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Input;
 using TinyClips.App.ScreenshotEditor;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Editing;
+using TinyClips.Core.Editing.Themes;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using Windows.Graphics.Imaging;
@@ -43,6 +44,9 @@ public sealed partial class ScreenshotEditorWindow : Window
     private readonly CapturedFrame? _initialFrame;
     private readonly Task<string>? _pendingSave;
     private readonly WindowOpenTrace? _openTrace;
+    private readonly EditorThemeStore _themeStore;
+    private readonly EditorTheme? _requestedTheme;
+    private bool _hasActivatedTheme;
 
     // Discard-changes-on-close tracking (parity with macOS's hasUnsavedChanges exit
     // confirmation). EditorController.IsDirty is the source of truth for annotation/crop-apply
@@ -64,8 +68,10 @@ public sealed partial class ScreenshotEditorWindow : Window
     private bool _initialLoadQueued;
     private bool _initialLoadStarted;
 
-    public ScreenshotEditorWindow(string filePath)
-        : this(filePath, initialFrame: null, pendingSave: null, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
+    /// <param name="filePath">The screenshot to edit.</param>
+    /// <param name="theme">Used instead of the active theme.</param>
+    public ScreenshotEditorWindow(string filePath, EditorTheme? theme = null)
+        : this(filePath, initialFrame: null, pendingSave: null, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor), theme)
     {
     }
 
@@ -75,12 +81,13 @@ public sealed partial class ScreenshotEditorWindow : Window
     /// Open folder) as soon as that task yields the final path.
     /// </summary>
     public ScreenshotEditorWindow(CapturedFrame frame, Task<string> pendingSave)
-        : this(string.Empty, frame, pendingSave, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
+        : this(string.Empty, frame, pendingSave, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor), requestedTheme: null)
     {
     }
 
-    private ScreenshotEditorWindow(string filePath, CapturedFrame? initialFrame, Task<string>? pendingSave, WindowOpenTrace? openTrace)
+    private ScreenshotEditorWindow(string filePath, CapturedFrame? initialFrame, Task<string>? pendingSave, WindowOpenTrace? openTrace, EditorTheme? requestedTheme)
     {
+        _requestedTheme = requestedTheme;
         _openTrace = openTrace;
         _openTrace?.Mark(WindowOpenMilestone.ConstructorEntered);
         using var construction = _openTrace?.Measure(WindowOpenPhase.ConstructorBody);
@@ -100,6 +107,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         using (_openTrace?.Measure(WindowOpenPhase.ControllerAndBindings))
         {
             settings = App.Services.GetRequiredService<ICaptureSettings>();
+            _themeStore = App.Services.GetRequiredService<EditorThemeStore>();
             _controller = new EditorController(DispatcherQueue, settings.ScreenshotEditorDefaultTool);
             Toolbar.Attach(_controller);
             Inspector.Attach(_controller);
@@ -107,6 +115,7 @@ public sealed partial class ScreenshotEditorWindow : Window
             Inspector.SensitiveTextRequested += (_, anchor) => SensitiveTextFlyout.ShowAt(anchor);
             Canvas.Attach(_controller, settings);
 
+            _controller.ThemeStateChanged += OnThemeStateChanged;
             _controller.ImageChanged += OnControllerImageChanged;
             _controller.DocumentChanged += OnSensitiveTextDocumentChanged;
             // Padding, corner radius, shadow and frame presets change the exported frame size without
@@ -358,6 +367,7 @@ public sealed partial class ScreenshotEditorWindow : Window
                 // Fast path: show the captured pixels immediately; the file is still being written.
                 await _controller.LoadCapturedFrameAsync(frame);
                 if (_isClosed || request != _loadRequest) return;
+                ActivateThemeAfterLoad();
                 CaptureFlowTrace.Mark("editor: image visible (from memory)");
                 _openTrace?.Mark(WindowOpenMilestone.ContentReady);
                 if (string.IsNullOrEmpty(_filePath))
@@ -369,6 +379,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
             await _controller.LoadAsync(_filePath);
             if (_isClosed || request != _loadRequest) return;
+            ActivateThemeAfterLoad();
             CaptureFlowTrace.Mark("editor: image visible (from file)");
             _openTrace?.Mark(WindowOpenMilestone.ContentReady);
         }

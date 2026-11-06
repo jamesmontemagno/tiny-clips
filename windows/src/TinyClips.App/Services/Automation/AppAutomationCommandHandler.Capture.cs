@@ -6,6 +6,7 @@ using TinyClips.App.ScreenshotEditor;
 using TinyClips.Core.Automation;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Editing;
+using TinyClips.Core.Editing.Themes;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 
@@ -173,6 +174,8 @@ internal sealed partial class AppAutomationCommandHandler
             throw new AutomationException(AutomationErrorCodes.InvalidParams, "editor.annotate works on screenshots only.");
         }
 
+        var theme = OptionalTheme(context);
+
         ScreenshotBackgroundPixels pixels;
         try
         {
@@ -184,7 +187,7 @@ internal sealed partial class AppAutomationCommandHandler
                 "The screenshot could not be read as a still PNG, JPEG, or WebP image of 32 megapixels or less.");
         }
 
-        var annotations = AutomationAnnotationParser.Parse(annotationsNode, pixels.Width, pixels.Height);
+        var annotations = AutomationAnnotationParser.Parse(annotationsNode, pixels.Width, pixels.Height, theme);
         var snapshots = annotations.Select(a => a.CaptureSnapshot()).ToImmutableArray();
 
         var extension = Path.GetExtension(source).ToLowerInvariant() switch
@@ -202,7 +205,7 @@ internal sealed partial class AppAutomationCommandHandler
 
         var quality = App.Services.GetRequiredService<ICaptureSettings>().JpegQuality;
         using (var rendered = await EditorController.RenderAnnotationsAsync(
-            pixels.BgraPixels, pixels.Width, pixels.Height, snapshots, cancellationToken))
+            pixels.BgraPixels, pixels.Width, pixels.Height, snapshots, theme is { Canvas.ApplyOnOpen: true } ? EditorThemeStyling.CanvasStateOf(theme) : null, cancellationToken))
         {
             output = await Task.Run(() => ScreenshotExportFile.WriteNewAsync(output,
                 (temporaryPath, token) => ScreenshotEditorWindow.EncodeBitmapToFileAsync(output, temporaryPath, rendered, quality, token),

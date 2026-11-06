@@ -57,6 +57,14 @@
                     Icon="Camera"
                     Tag="Screenshot" />
                 <NavigationViewItem
+                    AutomationProperties.AutomationId="EditorThemesNavigationItem"
+                    Content="Editor Themes"
+                    Tag="EditorThemes">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE790;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
                     AutomationProperties.AutomationId="VideoNavigationItem"
                     Content="Video"
                     Icon="Video"

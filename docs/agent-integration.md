@@ -170,6 +170,12 @@ Framing is one UTF-8 JSON object per line (`\n`). A connection may send several 
 
 `editor.annotate` accepts a screenshot path and typed annotation objects for rectangles, ellipses, arrows, lines, pen strokes, text, numbered callouts, emoji, and redactions. Bounds and points use source-image pixels from the top-left. It renders to a new library capture and never overwrites the source. It does not open the interactive editor. Redactions accept `redactionLevel` (`light`, `medium`, or `heavy`) and `redactionStyle` (`blur`, `pixelate`, or `solid`). Blur and pixelate are built from the image, so use `solid` for passwords, keys, and other secrets; `light` can stay readable. Rectangles and ellipses also accept a gradient fill (`fillColor` to `fillEndColor`, with `fillDirection` in degrees) and a shadow (`shadowBlur` in image pixels, with an optional `shadowColor`).
 
+### Editor themes
+
+An editor theme is a named look for screenshot annotations and the export canvas. `editor.themes.list` returns each theme's `id` and `name` with `activeThemeId`, and `editor.themes.get` returns one theme as JSON. `editor.themes.save` creates a theme, or replaces the one with the same `id`, and `editor.themes.setActive` chooses the theme new editor windows use (omit `id` for None). `editor.themes.delete` needs in-app approval. To export or import a theme, use `get` and `save`; no file paths are involved. The [theme format](../shared/editor-themes/README.md) stores sizes in editor units rather than image pixels.
+
+Pass `themeId` to `editor.open` to open a screenshot with that theme, or to `editor.annotate` to style its annotations. Values given on an annotation win. Theme styling never changes redactions or emoji. Its canvas applies to `editor.annotate` only if the theme sets `canvas.applyOnOpen`. Without `themeId`, `editor.annotate` stays unthemed, even when a theme is active.
+
 ### Trimming and frames
 
 `editor.trim` takes a video or GIF `path` plus `start` and `end` in seconds and saves a trimmed copy; an `end` past the media length is clamped. Pass `removeAudio: true` to drop a video's audio. GIFs keep each frame overlapping the range, and the result reports the actual `start`, `end`, and `frameCount`. `editor.saveFrame` saves a single still image from a video at `time` seconds, or from a GIF at `time` or a zero-based `frame` index. Windows saves frames as PNG; macOS uses the configured screenshot format. Both commands need the `edit` scope, add a new library item, never overwrite or delete the source, and do not open a trimmer window.

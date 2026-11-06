@@ -61,6 +61,8 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   and window shortcuts can be set in Settings → Keyboard shortcuts; they are unbound by default.
 - **Launch at login** — optionally start TinyClips when you sign in to Windows, from the welcome
   wizard or Settings.
+- **Editor Themes**: named looks for screenshot annotations and the export canvas. Switch from the editor's
+  picker as one undo step, and manage them, with JSON import and export, in Settings → Editor Themes.
 - **Pre-capture countdown** and **save toast notifications** (both opt-in via Settings).
 - **Include Tiny Clips in captures** (Settings → General → Capture behavior) lets app windows
   and capture controls appear in screenshots and recordings for demos, and makes eligible

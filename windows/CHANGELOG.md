@@ -17,6 +17,7 @@ own `CHANGELOG.md` at the repository root.
 - Studio handoff protects pending trimmer edits and prevents competing actions; the footer fits the minimum window width. Existing project links are checked before importing, and portable project saving explains why external videos cannot be saved as a folder.
 
 ### Added
+- **Editor Themes**: save a named look for screenshot annotations and the export canvas, and switch from the picker in the screenshot editor as one undo step. Redactions and emoji are never restyled. Manage themes in **Settings → Editor Themes**, including import and export as JSON. Agents can use `editor.themes.list`, `get`, `save`, `setActive`, and `delete`, plus `themeId` on `editor.open` and `editor.annotate`.
 - Screenshot editor rectangles and ellipses can have a gradient fill and a soft shadow, on selected shapes and new ones, and Agent Control's `editor.annotate` accepts them too. Fill changes on a selected shape can now be undone.
 - The welcome wizard now asks whether to start Tiny Clips when you sign in to Windows. It stays off unless you turn it on, and it can be changed later in Settings.
 - Agent Control settings now show a CLI-only setup alongside both plugin install paths, with copyable `dnx` and global tool commands.

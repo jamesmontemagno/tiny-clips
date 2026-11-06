@@ -10,4 +10,6 @@ Autonomous capture commands use ephemeral target IDs from `capture.targets`; ref
 
 `recording.startVideo` and `recording.startGif` use the same screen/region/window target parameters, saved recording settings, and bypass interactive pickers and setup UI. Agent-started recordings save without opening a trimmer. Scrolling capture is a start/status/stop/cancel lifecycle; the agent performs the scrolling with its own UI tools, and Tiny Clips only captures and stitches frames.
 
+Editor themes use the JSON format in [`shared/editor-themes`](../editor-themes/README.md), whose sizes are editor units rather than image pixels. Theme commands work with JSON and never take file paths.
+
 Studio automation uses `studio.projects.list` and `studio.project.get` for discovery, `studio.project.edit` for validated atomic patches to editable fields, `studio.zoom.suggest` for read-only proposals, and `studio.export` for unattended MP4 rendering. Project edits use an `expectedModifiedAt` concurrency check, preserve source/identity/bookkeeping fields, and apply to an open editor through its undo history. Studio exports must target a new MP4 directly in the configured video folder.

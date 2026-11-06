@@ -19,6 +19,7 @@ using Windows.Storage;
 using Windows.Storage.Streams;
 using Windows.UI;
 using TinyClips.Core.Editing;
+using TinyClips.Core.Editing.Themes;
 using TinyClips.Core.Capture;
 
 namespace TinyClips.App.ScreenshotEditor;
@@ -32,7 +33,7 @@ namespace TinyClips.App.ScreenshotEditor;
 /// and <see cref="EditorInspector"/> own their own controls, and all three react to this
 /// controller's narrow events.
 /// </summary>
-internal sealed class EditorController : IDisposable
+internal sealed partial class EditorController : IDisposable
 {
     private readonly DispatcherQueue _dispatcherQueue;
 
@@ -54,7 +55,10 @@ internal sealed class EditorController : IDisposable
     private bool _styleEditGroupActive;
     private bool _styleEditGroupRecorded;
 
-    private sealed record StyleUndoEntry(Annotation Annotation, AnnotationSnapshot Snapshot);
+    /// <summary>One undo step. Only a theme switch has <see cref="Theme"/> or more than one annotation.</summary>
+    private sealed record StyleUndoEntry(
+        IReadOnlyList<(Annotation Annotation, AnnotationSnapshot Snapshot)> Annotations,
+        ThemeUndoState? Theme = null);
 
     public static readonly BackgroundPreset[] SolidPresets =
     {
@@ -92,6 +96,9 @@ internal sealed class EditorController : IDisposable
     {
         _dispatcherQueue = dispatcherQueue;
         Tool = Enum.IsDefined(initialTool) ? initialTool : EditTool.Select;
+        DocumentChanged += (_, _) => RaiseThemeStateChanged();
+        BackgroundChanged += (_, _) => RaiseThemeStateChanged();
+        TextDefaultsChanged += (_, _) => RaiseThemeStateChanged();
     }
 
     // -- State ------------------------------------------------------------------------------
@@ -338,6 +345,7 @@ internal sealed class EditorController : IDisposable
             PreviewSource = source;
             source = null;
             _annotations.Clear();
+            ClearStyleUndo();
             _counterValue = 1;
             SelectedAnnotation = null;
             if (resetAnnotations)
@@ -373,6 +381,7 @@ internal sealed class EditorController : IDisposable
         // changed, and so it can never outlive the drag as an orphaned retained visual.
         CancelActiveAnnotation();
 
+        SwapThemeStroke(tool);
         Tool = tool;
         SelectedAnnotation = null;
         ToolChanged?.Invoke(this, tool);
@@ -439,7 +448,11 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
-        StrokeColor = color;
+        if (!KeepsThemeDefaultsWhileEditingSelection)
+        {
+            StrokeColor = color;
+        }
+
         if (SelectedAnnotation is not null)
         {
             SelectedAnnotation.Color = color;
@@ -454,6 +467,10 @@ internal sealed class EditorController : IDisposable
             }
             TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
         }
+        else
+        {
+            RaiseThemeStateChanged();
+        }
     }
 
     public void SetNumberColor(Color color)
@@ -465,17 +482,23 @@ internal sealed class EditorController : IDisposable
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
+        RaiseThemeStateChanged();
     }
 
     public void SetStrokeThickness(double thickness)
     {
-        StrokeThickness = thickness;
+        if (!KeepsThemeDefaultsWhileEditingSelection)
+        {
+            StrokeThickness = thickness;
+        }
+
         if (SelectedAnnotation is { Tool: not EditTool.Counter and not EditTool.Text } ann)
         {
             ann.Thickness = thickness;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
+        RaiseThemeStateChanged();
     }
 
     public void SetArrowStyle(ArrowStyle style)
@@ -494,6 +517,7 @@ internal sealed class EditorController : IDisposable
                 active.ArrowStyle = style;
                 AnnotationVisualInvalidated?.Invoke(this, active);
             }
+            RaiseThemeStateChanged();
         }
     }
 
@@ -507,6 +531,7 @@ internal sealed class EditorController : IDisposable
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
+        RaiseThemeStateChanged();
     }
 
     /// <summary>Returns true when the fill color represents "None" (alpha 0), matching the swatch behavior.</summary>
@@ -522,6 +547,7 @@ internal sealed class EditorController : IDisposable
                 MarkDirty();
                 AnnotationVisualInvalidated?.Invoke(this, cleared);
             }
+            RaiseThemeStateChanged();
             return;
         }
 
@@ -534,6 +560,7 @@ internal sealed class EditorController : IDisposable
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
+        RaiseThemeStateChanged();
     }
 
     /// <summary>Changes the selected shape as one undo step, or else the effects of the next shape.</summary>
@@ -549,6 +576,7 @@ internal sealed class EditorController : IDisposable
         }
 
         ShapeEffectsDefault = update(ShapeEffectsDefault);
+        RaiseThemeStateChanged();
     }
 
     public void SetFontFamily(string font)
@@ -595,6 +623,7 @@ internal sealed class EditorController : IDisposable
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
+        RaiseThemeStateChanged();
     }
 
     public void SetRedactionLevel(RedactionLevel level)
@@ -690,7 +719,9 @@ internal sealed class EditorController : IDisposable
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
         {
             RecordStyleUndo(ann);
-            ann.TextBoxStyle = update(ann.TextBoxStyle).AsCustom();
+            // Not clamped: a theme's box can exceed the sliders on a large image, and changing one
+            // value must not shrink the others. The sliders bound what they write themselves.
+            ann.TextBoxStyle = update(ann.TextBoxStyle) with { Preset = TextBoxPreset.Custom };
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
             return;
@@ -701,7 +732,7 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
-        TextBoxStyleDefault = update(TextBoxStyleDefault).AsCustom();
+        TextBoxStyleDefault = update(TextBoxStyleDefault) with { Preset = TextBoxPreset.Custom };
         TextDefaultsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -728,7 +759,7 @@ internal sealed class EditorController : IDisposable
             }
             _styleEditGroupRecorded = true;
         }
-        _styleUndo.Push(new StyleUndoEntry(annotation, annotation.CaptureSnapshot()));
+        _styleUndo.Push(new StyleUndoEntry([(annotation, annotation.CaptureSnapshot())]));
     }
 
     private void ClearStyleUndo()
@@ -1614,16 +1645,23 @@ internal sealed class EditorController : IDisposable
         while (_styleUndo.Count > 0)
         {
             var entry = _styleUndo.Pop();
-            if (!_annotations.Contains(entry.Annotation))
+            if (entry.Theme is { } themeState)
+            {
+                UndoThemeSwitch(entry, themeState);
+                return;
+            }
+
+            var (annotation, snapshot) = entry.Annotations[0];
+            if (!_annotations.Contains(annotation))
             {
                 continue;
             }
 
-            RestoreAnnotation(entry.Annotation, entry.Snapshot);
-            SelectedAnnotation = entry.Annotation;
+            RestoreAnnotation(annotation, snapshot);
+            SelectedAnnotation = annotation;
             MarkDirty();
-            AnnotationVisualInvalidated?.Invoke(this, entry.Annotation);
-            SelectionChanged?.Invoke(this, entry.Annotation);
+            AnnotationVisualInvalidated?.Invoke(this, annotation);
+            SelectionChanged?.Invoke(this, annotation);
             return;
         }
 
@@ -1945,24 +1983,27 @@ internal sealed class EditorController : IDisposable
         int width,
         int height,
         ImmutableArray<AnnotationSnapshot> annotations,
+        EditorThemeCanvasState? canvas,
         CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
             var bitmap = SoftwareBitmap.CreateCopyFromBuffer(premultipliedBgra.AsBuffer(),
                 BitmapPixelFormat.Bgra8, width, height, BitmapAlphaMode.Premultiplied);
-            var frame = ExportFrameLayout.Create(width, height, 0,
-                ExportFramePreset.Original, ExportHorizontalAlignment.Center, ExportVerticalAlignment.Center);
+            var frame = canvas is { } look
+                ? ExportFrameLayout.Create(width, height, look.Padding, look.Frame, look.HorizontalAlignment, look.VerticalAlignment)
+                : ExportFrameLayout.Create(width, height, 0,
+                    ExportFramePreset.Original, ExportHorizontalAlignment.Center, ExportVerticalAlignment.Center);
             var state = new ScreenshotRenderState(
                 annotations,
                 frame,
-                ExportBackgroundStyle.Transparent,
-                Colors.Transparent,
-                Colors.Transparent,
-                0,
-                0,
-                0,
-                false,
+                canvas?.Background ?? ExportBackgroundStyle.Transparent,
+                canvas?.Color ?? Colors.Transparent,
+                canvas?.SecondaryColor ?? Colors.Transparent,
+                canvas?.GradientDirection ?? 0,
+                canvas?.CornerRadius ?? 0,
+                canvas?.Shadow ?? 0,
+                canvas is not null,
                 ScreenshotExportSize.Create(frame.FrameSize, 100));
             using var owner = new SharedResource<EditorImage>(new EditorImage(bitmap));
             using var snapshot = new EditorRenderSnapshot(owner.Acquire(), state, default, cancellationToken);
