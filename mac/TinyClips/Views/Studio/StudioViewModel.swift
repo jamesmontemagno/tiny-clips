@@ -33,7 +33,7 @@ final class StudioViewModel: ObservableObject {
     @Published private(set) var exportProgress: Double = 0
 
     /// Whether the Export popover is showing, asking for the resolution and quality.
-    @Published var isChoosingExportOptions = false
+    @Published private(set) var isChoosingExportOptions = false
     /// The zoom the inspector shows, as its place in the project's zooms, or nil. It stays on its
     /// zoom while edits, undo, and redo change the list around it.
     @Published private(set) var selectedZoomIndex: Int?
@@ -1466,7 +1466,7 @@ final class StudioViewModel: ObservableObject {
                     quality: quality,
                     onProgress: reportProgress,
                     destination: target
-                )
+                ).url
                 try? await StudioExporter.writePoster(
                     project: project,
                     events: projectEvents,

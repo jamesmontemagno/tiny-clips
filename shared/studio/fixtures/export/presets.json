@@ -31,6 +31,11 @@
     { "width": 1920, "height": 1080, "frameRate": 30, "codec": "h264", "quality": "small", "expected": 3110400 },
     { "width": 1920, "height": 1080, "frameRate": 30, "codec": "hevc", "quality": "standard", "expected": 3732480 },
     { "width": 3840, "height": 2160, "frameRate": 60, "codec": "h264", "quality": "best", "expected": 60000000 },
+    { "width": 5120, "height": 2880, "frameRate": 20, "codec": "h264", "quality": "standard", "expected": 29491200 },
+    { "width": 5120, "height": 2880, "frameRate": 30, "codec": "h264", "quality": "standard", "expected": 42666666 },
+    { "width": 5120, "height": 2880, "frameRate": 30, "codec": "h264", "quality": "best", "expected": 106666665 },
+    { "width": 5120, "height": 2880, "frameRate": 30, "codec": "hevc", "quality": "standard", "expected": 25599999 },
+    { "width": 7680, "height": 4320, "frameRate": 60, "codec": "hevc", "quality": "best", "expected": 144000000 },
     { "width": 640, "height": 360, "frameRate": 30, "codec": "h264", "quality": "small", "expected": 1000000 },
     { "width": 1920, "height": 1080, "frameRate": 0, "codec": "h264", "quality": "standard", "expected": 6220800 }
   ],

@@ -141,9 +141,25 @@ final class StudioExportPresetsTests: XCTestCase {
         XCTAssertEqual(StudioExportChoice.default, StudioExportChoice(resolution: .p1080, quality: .high))
     }
 
-    func testAStoredResolutionThatIsNotKnownCountsAsTheDefault() {
+    @MainActor
+    func testAnAgentsChoiceFallsBackToTheSavedOneWhenLeftOutOrNull() throws {
+        let saved = StudioExportChoice(resolution: .p720, quality: .small)
+
+        XCTAssertEqual(try AutomationCommandRouter.studioExportChoice([:], saved: saved), saved)
+        XCTAssertEqual(try AutomationCommandRouter.studioExportChoice(["resolution": NSNull(), "quality": NSNull()], saved: saved), saved)
+        XCTAssertEqual(
+            try AutomationCommandRouter.studioExportChoice(["resolution": "source", "quality": "best"], saved: saved),
+            StudioExportChoice(resolution: .source, quality: .best)
+        )
+        XCTAssertThrowsError(try AutomationCommandRouter.studioExportChoice(["resolution": "8k"], saved: saved))
+        XCTAssertThrowsError(try AutomationCommandRouter.studioExportChoice(["quality": 3], saved: saved))
+    }
+
+    func testAStoredChoiceThatIsNotKnownCountsAsTheDefault() {
         XCTAssertEqual(StudioExportResolution(stored: "720p"), .p720)
         XCTAssertEqual(StudioExportResolution(stored: "8k"), StudioExportChoice.default.resolution)
+        XCTAssertEqual(StudioExportQuality(stored: "small"), .small)
+        XCTAssertEqual(StudioExportQuality(stored: "nice"), StudioExportChoice.default.quality)
         XCTAssertEqual(CaptureSettings.studioExportResolutionKey, "studioExportResolution")
     }
 

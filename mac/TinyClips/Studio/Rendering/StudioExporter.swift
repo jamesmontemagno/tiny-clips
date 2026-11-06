@@ -42,6 +42,13 @@ enum StudioExporter {
         }
     }
 
+    /// A finished export: where it was saved, and the codec its video was written in. That is
+    /// H.264 where HEVC was asked for but this Mac could not write it at that size.
+    struct Output {
+        let url: URL
+        let codec: VideoCodec
+    }
+
     @discardableResult
     static func export(
         project: StudioProject,
@@ -53,7 +60,7 @@ enum StudioExporter {
         quality: StudioExportQuality,
         onProgress: (@Sendable (Double) -> Void)? = nil,
         destination: StudioExportDestination? = nil
-    ) async throws -> URL {
+    ) async throws -> Output {
         let replacementDirectory: URL?
         if destination != nil {
             replacementDirectory = try FileManager.default.url(
@@ -113,7 +120,7 @@ enum StudioExporter {
                 job.cancel()
             }
             onProgress?(1)
-            return outputURL
+            return Output(url: outputURL, codec: job.codec)
         } catch {
             // What this export wrote so far is removed. Not when it never began because a
             // file had taken the name in the last moment: that file is not this export's.

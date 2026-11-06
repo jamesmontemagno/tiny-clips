@@ -45,6 +45,10 @@ enum StudioExportQuality: String, CaseIterable, Sendable {
     case standard
     case small
 
+    init(stored: String) {
+        self = StudioExportQuality(rawValue: stored) ?? StudioExportChoice.default.quality
+    }
+
     var label: String {
         switch self {
         case .best: return "Best"
@@ -146,8 +150,9 @@ enum StudioExportPresets {
             .first { $0.width == exported.width && $0.height == exported.height }?.resolution ?? resolution
     }
 
-    /// The video bitrate of an export. Standard is the recorder's rule on Windows; the others are
-    /// multiples of it. HEVC gets the same picture from fewer bits.
+    /// The video bitrate of an export. Up to 4K, Standard is the recorder's rule on Windows; past
+    /// 4K its ceiling grows with the pixels, so a Source export of a larger canvas is not starved.
+    /// The others are multiples of it. HEVC gets the same picture from fewer bits.
     static func videoBitrate(
         width: Double,
         height: Double,
@@ -156,7 +161,8 @@ enum StudioExportPresets {
         quality: StudioExportQuality
     ) -> Int {
         let fps = framesPerSecond.isFinite && framesPerSecond > 0 ? min(240, max(1, framesPerSecond)) : 30
-        let standard = min(24_000_000, max(2_000_000, (width * height * fps / 10).rounded(.towardZero)))
+        let ceiling = (24_000_000 * max(1, width * height / (3840 * 2160))).rounded(.towardZero)
+        let standard = min(ceiling, max(2_000_000, (width * height * fps / 10).rounded(.towardZero)))
         return Int(standard * quality.bitrateMultiple * (isHEVC ? 0.6 : 1))
     }
 

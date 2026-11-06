@@ -171,13 +171,16 @@ public static class StudioExportPresets
     }
 
     /// <summary>
-    /// The video bitrate of an export. Standard is the recorder's own rule, so that an export at
-    /// that quality weighs what a recording of its size does; the others are multiples of it.
+    /// The video bitrate of an export. Up to 4K, Standard is the recorder's own rule, so that an
+    /// export at that quality weighs what a recording of its size does; past 4K its ceiling grows
+    /// with the pixels, so a Source export of a larger canvas is not starved. The other qualities
+    /// are multiples of Standard.
     /// </summary>
     public static uint GetVideoBitrate(double width, double height, double framesPerSecond, VideoCodec codec, StudioExportQuality quality)
     {
         var fps = double.IsFinite(framesPerSecond) && framesPerSecond > 0 ? Math.Clamp(framesPerSecond, 1, 240) : 30;
-        var standard = Math.Clamp((long)(width * height * fps / 10), 2_000_000, 24_000_000);
+        var ceiling = (long)(24_000_000 * Math.Max(1, width * height / (3840.0 * 2160)));
+        var standard = Math.Clamp((long)(width * height * fps / 10), 2_000_000, ceiling);
         var multiple = quality switch
         {
             StudioExportQuality.Best => 2.5,

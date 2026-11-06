@@ -418,7 +418,7 @@ internal sealed class StudioExportJob
                 width,
                 height,
                 rate,
-                StudioRenderingMath.VideoBitrate(width, height, rate.FramesPerSecond, _options.Codec, _options.Quality),
+                StudioExportPresets.GetVideoBitrate(width, height, rate.FramesPerSecond, _options.Codec, _options.Quality),
                 _options.Codec,
                 attempt.AllowHardware,
                 attempt.GpuFrames);

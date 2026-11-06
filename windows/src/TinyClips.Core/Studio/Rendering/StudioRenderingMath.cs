@@ -1,5 +1,4 @@
 using System.Globalization;
-using TinyClips.Core.Models;
 
 namespace TinyClips.Core.Studio.Rendering;
 
@@ -226,10 +225,6 @@ public static class StudioRenderingMath
 
     public static long SecondsToMfTicks(double seconds) =>
         (long)Math.Round(seconds * MediaFoundationTicksPerSecond, MidpointRounding.AwayFromZero);
-
-    /// <summary>The bitrate of an export. At Standard, the recorder's rule: an export weighs what a recording of that size does.</summary>
-    public static uint VideoBitrate(int width, int height, double framesPerSecond, VideoCodec codec, StudioExportQuality quality = StudioExportQuality.Standard) =>
-        StudioExportPresets.GetVideoBitrate(width, height, framesPerSecond, codec, quality);
 
     public static (double StartX, double StartY, double EndX, double EndY) GradientEndpoints(double width, double height, double degrees = 45)
     {

@@ -227,12 +227,13 @@ public sealed partial class StudioEditorSession
         ? StudioEditorText.GetTimeText(model.GetOutputTime(Playhead), model.OutputDuration)
         : StudioEditorText.GetTimeText(0, 0);
 
-    /// <summary>The pixel size the project exports at.</summary>
-    public StudioSize ExportSize => Project is { } project
+    /// <summary>
+    /// The pixel size the editor lays the canvas out at: the canvas, limited on its long side.
+    /// What an export comes to depends on the resolution chosen for it.
+    /// </summary>
+    public StudioSize CanvasSize => Project is { } project
         ? StudioExportLimits.GetExportSize(project)
         : new StudioSize(1920, 1080);
-
-    public string ExportSizeText => StudioEditorText.GetExportSizeText(ExportSize);
 
     /// <summary>The camera bubble on a canvas of the given size, while the bubble layout is showing.</summary>
     public StudioFrameRect? GetBubbleRect(double canvasWidth, double canvasHeight) =>

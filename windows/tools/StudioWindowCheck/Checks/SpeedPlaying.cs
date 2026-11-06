@@ -374,7 +374,7 @@ internal sealed partial class WindowChecks
             .. Enumerable.Range(149, 60).Select(i => i + 60),
         ];
         var project = editor.Expected;
-        var size = StudioExportLimits.GetExportSize(project);
+        var size = ExportedSize(project);
         var (width, height) = ((int)size.Width, (int)size.Height);
         var time = TimeText(editor);
         var speeds = LaneText(editor, SpeedLane);

@@ -302,6 +302,7 @@ private enum CaptureSettingsDefaultsKey {
     static let videoCodec = "videoCodec"
     static let confirmEditorEscape = "confirmEditorEscape"
     static let studioExportResolution = "studioExportResolution"
+    static let studioExportQuality = "studioExportQuality"
 }
 
 extension NSColor {
@@ -439,14 +440,14 @@ class CaptureSettings: ObservableObject {
     /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
     @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
     @AppStorage(CaptureSettingsDefaultsKey.studioExportResolution) var studioExportResolution: String = StudioExportChoice.default.resolution.rawValue
-    @AppStorage("studioExportQuality") var studioExportQuality: String = StudioExportChoice.default.quality.rawValue
+    @AppStorage(CaptureSettingsDefaultsKey.studioExportQuality) var studioExportQuality: String = StudioExportChoice.default.quality.rawValue
 
     /// What the Export popover offers first: the last choice made there.
     var studioExportChoice: StudioExportChoice {
         get {
             StudioExportChoice(
                 resolution: StudioExportResolution(stored: studioExportResolution),
-                quality: StudioExportQuality(rawValue: studioExportQuality) ?? StudioExportChoice.default.quality
+                quality: StudioExportQuality(stored: studioExportQuality)
             )
         }
         set {
@@ -888,7 +889,7 @@ class CaptureSettings: ObservableObject {
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
-        "studioSourceRetentionDays", "studioStorageCapGigabytes", studioExportResolutionKey, "studioExportQuality",
+        "studioSourceRetentionDays", "studioStorageCapGigabytes", studioExportResolutionKey, CaptureSettingsDefaultsKey.studioExportQuality,
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",

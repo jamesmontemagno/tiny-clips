@@ -25,7 +25,7 @@ public sealed class StudioExportService : IStudioExportService
             events,
             paths,
             outputPath,
-            new StudioExportOptions(StudioExportLimits.LongSide, codec, Resolution: choice.Resolution, Quality: choice.Quality),
+            new StudioExportOptions(Codec: codec, Resolution: choice.Resolution, Quality: choice.Quality),
             progress,
             cancellationToken);
 

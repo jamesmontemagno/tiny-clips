@@ -18,6 +18,8 @@ final class StudioExportWriteJob: @unchecked Sendable {
     private let streams: [Stream]
     private let duration: CMTime
     private let onProgress: (@Sendable (Double) -> Void)?
+    /// The codec the video is written in: the one asked for, or H.264 where this Mac has no HEVC encoder.
+    let codec: VideoCodec
     private let cancellationLock = NSLock()
     private var isCancelledFlag = false
 
@@ -54,13 +56,14 @@ final class StudioExportWriteJob: @unchecked Sendable {
         guard reader.canAdd(videoOutput) else { throw StudioExporter.Error.readerSetupFailed }
         reader.add(videoOutput)
 
-        let videoInput = try StudioExportWriteJob.makeVideoInput(
+        let (videoInput, writtenCodec) = try StudioExportWriteJob.makeVideoInput(
             writer: writer,
             renderSize: renderSize,
             framesPerSecond: framesPerSecond,
             codec: codec,
             quality: quality
         )
+        self.codec = writtenCodec
         writer.add(videoInput)
         var streams = [Stream(output: videoOutput, input: videoInput, isVideo: true)]
 
@@ -259,11 +262,13 @@ final class StudioExportWriteJob: @unchecked Sendable {
         framesPerSecond: Double,
         codec: VideoCodec,
         quality: StudioExportQuality
-    ) throws -> AVAssetWriterInput {
+    ) throws -> (input: AVAssetWriterInput, codec: VideoCodec) {
         // Where the hardware or the system has no HEVC encoder, the video is H.264 at H.264's bitrate.
+        var codec = codec
         var settings = videoSettings(renderSize: renderSize, framesPerSecond: framesPerSecond, codec: codec, quality: quality)
         if codec == .hevc, !writer.canApply(outputSettings: settings, forMediaType: .video) {
-            settings = videoSettings(renderSize: renderSize, framesPerSecond: framesPerSecond, codec: .h264, quality: quality)
+            codec = .h264
+            settings = videoSettings(renderSize: renderSize, framesPerSecond: framesPerSecond, codec: codec, quality: quality)
         }
         guard writer.canApply(outputSettings: settings, forMediaType: .video) else {
             throw StudioExporter.Error.writerSetupFailed
@@ -271,7 +276,7 @@ final class StudioExportWriteJob: @unchecked Sendable {
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
         guard writer.canAdd(input) else { throw StudioExporter.Error.writerSetupFailed }
-        return input
+        return (input, codec)
     }
 
     private static func videoSettings(

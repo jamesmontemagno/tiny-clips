@@ -673,17 +673,18 @@ final class AutomationCommandRouter {
         ]
     }
 
-    /// What was asked for, and for what was not, the choice last made in the Export popover.
-    private static func studioExportChoice(_ params: [String: Any]) throws -> StudioExportChoice {
-        var choice = CaptureSettings.shared.studioExportChoice
-        if let asked = params["resolution"] {
+    /// What was asked for, and for what was not (left out or null), the choice last made in the
+    /// Export popover.
+    static func studioExportChoice(_ params: [String: Any], saved: StudioExportChoice = CaptureSettings.shared.studioExportChoice) throws -> StudioExportChoice {
+        var choice = saved
+        if let asked = params["resolution"], !(asked is NSNull) {
             guard let id = asked as? String, let resolution = StudioExportResolution(rawValue: id) else {
                 let ids = StudioExportResolution.allCases.map(\.rawValue).joined(separator: ", ")
                 throw AutomationError(.invalidParams, "resolution must be one of: \(ids).")
             }
             choice.resolution = resolution
         }
-        if let asked = params["quality"] {
+        if let asked = params["quality"], !(asked is NSNull) {
             guard let id = asked as? String, let quality = StudioExportQuality(rawValue: id) else {
                 let ids = StudioExportQuality.allCases.map(\.rawValue).joined(separator: ", ")
                 throw AutomationError(.invalidParams, "quality must be one of: \(ids).")
@@ -773,7 +774,7 @@ final class AutomationCommandRouter {
         let size = StudioExportPresets.size(naturalWidth: natural.width, naturalHeight: natural.height, resolution: choice.resolution)
         let resolution = StudioExportPresets.effective(naturalWidth: natural.width, naturalHeight: natural.height, resolution: choice.resolution)
         do {
-            _ = try await StudioExporter.export(
+            let exported = try await StudioExporter.export(
                 project: project,
                 events: events,
                 paths: paths,
@@ -791,6 +792,7 @@ final class AutomationCommandRouter {
                 "quality": choice.quality.rawValue,
                 "width": Int(size.width),
                 "height": Int(size.height),
+                "codec": exported.codec.rawValue,
             ]
         } catch {
             throw AutomationError(.internal, "Studio export failed: \(error.localizedDescription)")

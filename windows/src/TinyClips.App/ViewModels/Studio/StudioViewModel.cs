@@ -306,7 +306,7 @@ public sealed partial class StudioViewModel : ObservableObject
     /// <summary>The size the next export comes to with the resolution Export offers first.</summary>
     public string ExportSizeText => _session.Project is { } project
         ? StudioEditorText.GetExportSizeText(StudioExportPresets.GetSize(StudioCanvasMath.NaturalSize(project), _settings.StudioExportResolution))
-        : _session.ExportSizeText;
+        : StudioEditorText.GetExportSizeText(_session.CanvasSize);
 
     public bool CanUndo => _session.CanUndo;
 
@@ -333,10 +333,10 @@ public sealed partial class StudioViewModel : ObservableObject
     /// <summary>The live preview, once the project is open.</summary>
     public IStudioPreview? Preview => _session.Preview;
 
-    /// <summary>The size of the exported video, which is the canvas everything is laid out on.</summary>
-    public double CanvasWidth => _session.ExportSize.Width;
+    /// <summary>The size of the canvas everything is laid out on in the editor.</summary>
+    public double CanvasWidth => _session.CanvasSize.Width;
 
-    public double CanvasHeight => _session.ExportSize.Height;
+    public double CanvasHeight => _session.CanvasSize.Height;
 
     /// <summary>Canvas width over height. 16:9 until a project is open.</summary>
     public double CanvasAspectRatio =>

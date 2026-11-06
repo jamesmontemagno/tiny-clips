@@ -640,6 +640,7 @@ public partial class App : IAutomationAppActions
 
                 var temporaryPath = Path.Combine(outputDirectory,
                     $".{Path.GetFileNameWithoutExtension(outputPath)}.{Guid.NewGuid():N}.export.mp4");
+                var codec = settings.VideoCodec;
                 try
                 {
                     await Services.GetRequiredService<IStudioExportService>().ExportAsync(
@@ -647,7 +648,7 @@ public partial class App : IAutomationAppActions
                         store.LoadEvents(projectId),
                         paths,
                         temporaryPath,
-                        settings.VideoCodec,
+                        codec,
                         choice,
                         progress: null,
                         cancellationToken: cancellationToken);
@@ -674,6 +675,7 @@ public partial class App : IAutomationAppActions
                         ["quality"] = StudioExportPresets.Id(choice.Quality),
                         ["width"] = (int)exported.Width,
                         ["height"] = (int)exported.Height,
+                        ["codec"] = codec == VideoCodec.Hevc ? "hevc" : "h264",
                     };
                 }
                 catch (OperationCanceledException)
@@ -739,7 +741,7 @@ public partial class App : IAutomationAppActions
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(StudioProjectJson.WriteProject(project))))
             .ToLowerInvariant();
 
-    // What was asked for, and for what was not, the choice last made in Export's flyout.
+    // What was asked for, and for what was not (left out or null), the choice last made in Export's flyout.
     private static StudioExportChoice ReadStudioExportChoice(JsonObject parameters, ICaptureSettings settings)
     {
         var resolution = settings.StudioExportResolution;

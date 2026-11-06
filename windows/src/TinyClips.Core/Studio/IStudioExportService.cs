@@ -2,16 +2,19 @@ using TinyClips.Core.Models;
 
 namespace TinyClips.Core.Studio;
 
-/// <summary>The sizes Studio renders at. The editor shows the export size, so both use these.</summary>
+/// <summary>
+/// The sizes Studio renders at when no export resolution is chosen: the editor's canvas, posters,
+/// and an export that names none. The resolutions an export can be given are in <see cref="StudioExportPresets"/>.
+/// </summary>
 public static class StudioExportLimits
 {
-    /// <summary>The longest side of an exported video, in pixels. Larger canvases are scaled down.</summary>
+    /// <summary>The longest side of the editor's canvas, and of an export that names no resolution, in pixels. Larger canvases are scaled down.</summary>
     public const double LongSide = 3840;
 
     /// <summary>The longest side of a project's poster image, in pixels.</summary>
     public const double PosterLongSide = 640;
 
-    /// <summary>The pixel size <paramref name="project"/> exports at.</summary>
+    /// <summary>The pixel size <paramref name="project"/> is laid out at in the editor, and exports at when no resolution is named.</summary>
     public static StudioSize GetExportSize(StudioProject project) =>
         StudioCanvasMath.ExportSize(StudioCanvasMath.NaturalSize(project), LongSide);
 }
