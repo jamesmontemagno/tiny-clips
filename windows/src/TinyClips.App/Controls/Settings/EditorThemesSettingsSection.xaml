@@ -166,20 +166,23 @@
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1">
                         <Canvas>
+                            <Canvas
+                                x:Name="PreviewShadowHost"
+                                Canvas.Left="20"
+                                Canvas.Top="20"
+                                Width="130"
+                                Height="84"
+                                IsHitTestVisible="False" />
                             <Rectangle
                                 x:Name="PreviewRectangle"
                                 Canvas.Left="20"
                                 Canvas.Top="20"
                                 Width="130"
                                 Height="84" />
-                            <Line
+                            <Path
                                 x:Name="PreviewLine"
                                 StrokeEndLineCap="Round"
-                                StrokeStartLineCap="Round"
-                                X1="180"
-                                X2="290"
-                                Y1="100"
-                                Y2="40" />
+                                StrokeStartLineCap="Round" />
                             <Polygon x:Name="PreviewArrowHead" />
                             <Border x:Name="PreviewTextBox" Canvas.Left="20" Canvas.Top="118">
                                 <TextBlock x:Name="PreviewText" Text="Sample text" />

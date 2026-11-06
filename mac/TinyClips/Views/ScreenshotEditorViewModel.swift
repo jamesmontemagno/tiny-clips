@@ -2665,6 +2665,23 @@ extension ScreenshotEditorViewModel {
         )
     }
 
+    /// With None, tools share one color and width, and whatever differs from the default theme is the look.
+    private func capturedLookWithoutTheme() -> EditorTheme {
+        let start = EditorTheme(name: "Theme")
+        var defaults = currentThemeDefaults()
+        for group in EditorThemeGroupKind.allCases {
+            defaults.toolStyles[group] = .init(color: selectedColor, lineWidth: lineWidth)
+        }
+        return EditorThemeStyling.captured(
+            from: start,
+            annotations: annotations,
+            defaults: defaults,
+            canvas: currentThemeCanvas(),
+            canvasBaseline: start.canvas,
+            imagePixelSize: imagePixelSize
+        )
+    }
+
     /// Saves the document's look over the active theme.
     @discardableResult
     func updateActiveTheme(in store: EditorThemeStore) throws -> EditorTheme? {
@@ -2679,7 +2696,7 @@ extension ScreenshotEditorViewModel {
     /// Saves the document's look under a new name and makes it active.
     @discardableResult
     func saveAsNewTheme(name: String, in store: EditorThemeStore) throws -> EditorTheme? {
-        guard var look = capturedThemeLook() else { return nil }
+        var look = capturedThemeLook() ?? capturedLookWithoutTheme()
         look.id = UUID().uuidString
         look.name = store.uniqueName(for: name.trimmingCharacters(in: .whitespacesAndNewlines))
         let saved = try store.save(look)
