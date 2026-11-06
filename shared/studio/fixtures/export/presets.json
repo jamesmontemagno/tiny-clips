@@ -1,13 +1,15 @@
 {
   "description": "What both apps' Export popups and studio.export come to: sizes, the resolutions offered, bitrates, and estimates.",
   "sizes": [
-    { "natural": { "width": 3840, "height": 2160 }, "resolution": "maximum", "expected": { "width": 3840, "height": 2160 } },
+    { "natural": { "width": 3840, "height": 2160 }, "resolution": "source", "expected": { "width": 3840, "height": 2160 } },
     { "natural": { "width": 3840, "height": 2160 }, "resolution": "2160p", "expected": { "width": 3840, "height": 2160 } },
     { "natural": { "width": 3840, "height": 2160 }, "resolution": "1440p", "expected": { "width": 2560, "height": 1440 } },
     { "natural": { "width": 3840, "height": 2160 }, "resolution": "1080p", "expected": { "width": 1920, "height": 1080 } },
     { "natural": { "width": 3840, "height": 2160 }, "resolution": "720p", "expected": { "width": 1280, "height": 720 } },
     { "natural": { "width": 3840, "height": 2160 }, "resolution": "480p", "expected": { "width": 854, "height": 480 } },
-    { "natural": { "width": 5120, "height": 2880 }, "resolution": "maximum", "expected": { "width": 3840, "height": 2160 } },
+    { "natural": { "width": 5120, "height": 2880 }, "resolution": "source", "expected": { "width": 5120, "height": 2880 } },
+    { "natural": { "width": 5120, "height": 9102 }, "resolution": "source", "expected": { "width": 5120, "height": 9102 } },
+    { "natural": { "width": 5120, "height": 2880 }, "resolution": "2160p", "expected": { "width": 3840, "height": 2160 } },
     { "natural": { "width": 2880, "height": 1800 }, "resolution": "1080p", "expected": { "width": 1728, "height": 1080 } },
     { "natural": { "width": 3440, "height": 1440 }, "resolution": "1080p", "expected": { "width": 1920, "height": 804 } },
     { "natural": { "width": 2160, "height": 3840 }, "resolution": "1080p", "expected": { "width": 1080, "height": 1920 } },
@@ -15,12 +17,12 @@
     { "natural": { "width": 1280, "height": 720 }, "resolution": "1080p", "expected": { "width": 1280, "height": 720 } }
   ],
   "offered": [
-    { "natural": { "width": 3840, "height": 2160 }, "expected": ["maximum", "1440p", "1080p", "720p", "480p"] },
-    { "natural": { "width": 5120, "height": 2880 }, "expected": ["maximum", "1440p", "1080p", "720p", "480p"] },
-    { "natural": { "width": 5120, "height": 3200 }, "expected": ["maximum", "2160p", "1440p", "1080p", "720p", "480p"] },
-    { "natural": { "width": 1920, "height": 1080 }, "expected": ["maximum", "720p", "480p"] },
-    { "natural": { "width": 1280, "height": 720 }, "expected": ["maximum", "480p"] },
-    { "natural": { "width": 640, "height": 360 }, "expected": ["maximum"] }
+    { "natural": { "width": 3840, "height": 2160 }, "expected": ["source", "1440p", "1080p", "720p", "480p"] },
+    { "natural": { "width": 5120, "height": 2880 }, "expected": ["source", "2160p", "1440p", "1080p", "720p", "480p"] },
+    { "natural": { "width": 5120, "height": 3200 }, "expected": ["source", "2160p", "1440p", "1080p", "720p", "480p"] },
+    { "natural": { "width": 1920, "height": 1080 }, "expected": ["source", "720p", "480p"] },
+    { "natural": { "width": 1280, "height": 720 }, "expected": ["source", "480p"] },
+    { "natural": { "width": 640, "height": 360 }, "expected": ["source"] }
   ],
   "bitrates": [
     { "width": 1920, "height": 1080, "frameRate": 30, "codec": "h264", "quality": "best", "expected": 15552000 },

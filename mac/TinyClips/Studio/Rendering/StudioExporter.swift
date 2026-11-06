@@ -15,6 +15,8 @@ enum StudioExporter {
         case posterDestinationCreationFailed
         case posterWriteFailed
         case outputNameTaken(String)
+        case sizeNotEncodable(width: Int, height: Int)
+        case sizeNeedsHEVC(width: Int, height: Int)
 
         var errorDescription: String? {
             switch self {
@@ -32,6 +34,10 @@ enum StudioExporter {
                 return "Could not write the Studio poster image."
             case .outputNameTaken(let name):
                 return "Another file was saved as \(name) in the meantime. Export again to give the video another name."
+            case .sizeNotEncodable(let width, let height):
+                return "This Mac can't encode a \(width) × \(height) video. Choose 4K or a smaller resolution and export again."
+            case .sizeNeedsHEVC(let width, let height):
+                return "This Mac can't encode a \(width) × \(height) video as H.264. Choose 4K or a smaller resolution, or set the video codec to H.265 / HEVC in Settings, and export again."
             }
         }
     }
@@ -78,6 +84,13 @@ enum StudioExporter {
             throw Error.outputNameTaken(outputURL.lastPathComponent)
         }
 
+        let codec = try await StudioExportWriteJob.codec(
+            renderSize: renderSize,
+            framesPerSecond: project.sources.screen.frameRate,
+            preferred: codec,
+            quality: quality
+        )
+
         // An export session has no setting for its bitrate, so the frames and the sound are read
         // and written here. The one sound track an export gets comes from the mix output either
         // way, as `exportAudioMix` describes.
@@ -109,6 +122,12 @@ enum StudioExporter {
             }
             if Task.isCancelled {
                 throw CancellationError()
+            }
+            // An encoder that gives up past the 4K frame says only that something went wrong.
+            let nsError = error as NSError
+            if !StudioExportPresets.fitsFourK(width: renderSize.width, height: renderSize.height),
+               nsError.domain == AVFoundationErrorDomain, nsError.code == AVError.Code.unknown.rawValue {
+                throw Error.sizeNotEncodable(width: Int(renderSize.width), height: Int(renderSize.height))
             }
             throw error
         }

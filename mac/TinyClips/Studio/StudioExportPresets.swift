@@ -4,8 +4,8 @@ import Foundation
 
 /// How large an exported video is. A video is never made larger than its canvas.
 enum StudioExportResolution: String, CaseIterable, Sendable {
-    /// The canvas as it is, limited only by `StudioExportPresets.maximumLongSide`.
-    case maximum
+    /// The canvas at its own size, however large that is.
+    case source
     case p2160 = "2160p"
     case p1440 = "1440p"
     case p1080 = "1080p"
@@ -19,7 +19,7 @@ enum StudioExportResolution: String, CaseIterable, Sendable {
 
     var label: String {
         switch self {
-        case .maximum: return "Maximum"
+        case .source: return "Source"
         case .p2160: return "4K"
         default: return rawValue
         }
@@ -28,7 +28,7 @@ enum StudioExportResolution: String, CaseIterable, Sendable {
     /// The long and short sides of the frame a named resolution fits a canvas inside.
     fileprivate var frame: (long: Double, short: Double)? {
         switch self {
-        case .maximum: return nil
+        case .source: return nil
         case .p2160: return (3840, 2160)
         case .p1440: return (2560, 1440)
         case .p1080: return (1920, 1080)
@@ -90,19 +90,15 @@ struct StudioExportQualityOption: Equatable, Sendable {
 /// The sizes, bitrates and estimates behind the Export popover. The numbers are the same on
 /// Windows; `shared/studio/fixtures/export` holds what both have to come to.
 enum StudioExportPresets {
-    static let maximumLongSide = 3840.0
     private static let soundBitrate = 192_000.0
 
     /// The size a canvas exports at. A named resolution fits the canvas inside a frame of that
     /// resolution, turned to match the canvas: 1080p is 1920 × 1080 for a wide canvas and
-    /// 1080 × 1920 for a tall one. The shape never changes, and nothing is scaled up.
+    /// 1080 × 1920 for a tall one. Source is the canvas's own size. The shape never changes, and
+    /// nothing is scaled up.
     static func size(naturalWidth: Double, naturalHeight: Double, resolution: StudioExportResolution) -> StudioRect {
         guard let frame = resolution.frame else {
-            return StudioCanvasMath.exportSize(
-                naturalWidth: naturalWidth,
-                naturalHeight: naturalHeight,
-                longSideLimit: maximumLongSide
-            )
+            return StudioCanvasMath.exportSize(naturalWidth: naturalWidth, naturalHeight: naturalHeight, longSideLimit: 0)
         }
         let canvasLong = max(naturalWidth, naturalHeight)
         let canvasShort = min(naturalWidth, naturalHeight)
@@ -120,8 +116,14 @@ enum StudioExportPresets {
         return size(naturalWidth: natural.width, naturalHeight: natural.height, resolution: resolution)
     }
 
+    /// Whether a size fits inside the 4K frame, turned to match it. Past it, the largest video
+    /// H.264 and HEVC can make depends on the Mac and on the shape of the frame.
+    static func fitsFourK(width: Double, height: Double) -> Bool {
+        max(width, height) <= 3840 && min(width, height) <= 2160
+    }
+
     /// The resolutions worth offering for a canvas, largest first. One that would give the same
-    /// size as a larger one is left out, so a 720p recording offers Maximum, not a 1080p that is
+    /// size as a larger one is left out, so a 720p recording offers Source, not a 1080p that is
     /// not there, and a 720p that says the same thing.
     static func resolutionOptions(naturalWidth: Double, naturalHeight: Double) -> [StudioExportResolutionOption] {
         var options: [StudioExportResolutionOption] = []
@@ -169,7 +171,7 @@ enum StudioExportPresets {
 
 /// What the Export popover shows and holds while it is open, without the controls that show it.
 /// The choice that was offered is kept apart from the one that was saved: a small project offers
-/// Maximum where 1080p was saved, and that alone should not change what larger projects offer.
+/// Source where 1080p was saved, and that alone should not change what larger projects offer.
 struct StudioExportOptionsModel: Equatable, Sendable {
     let naturalWidth: Double
     let naturalHeight: Double

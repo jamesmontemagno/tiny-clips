@@ -104,11 +104,11 @@ public sealed class StudioExportPresetsTests
     }
 
     [Fact]
-    public void Options_OnASmallCanvas_OfferMaximumAndKeepTheSavedResolutionUnlessItIsChanged()
+    public void Options_OnASmallCanvas_OfferSourceAndKeepTheSavedResolutionUnlessItIsChanged()
     {
         var options = new StudioExportOptionsModel(new StudioSize(1280, 720), 30, VideoCodec.H264, 60, hasSound: false, StudioExportChoice.Default);
 
-        Assert.Equal(StudioExportResolution.Maximum, options.Choice.Resolution);
+        Assert.Equal(StudioExportResolution.Source, options.Choice.Resolution);
         Assert.Equal(StudioExportResolution.P1080, options.ChoiceToRemember.Resolution);
 
         options.Choice = options.Choice with { Resolution = StudioExportResolution.P480 };

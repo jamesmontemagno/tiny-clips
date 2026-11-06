@@ -112,15 +112,22 @@ final class StudioExportPresetsTests: XCTestCase {
         XCTAssertEqual(options.choiceToRemember, chosen)
     }
 
-    func testOptionsOnASmallCanvasOfferMaximumAndKeepTheSavedResolutionUnlessItIsChanged() {
+    func testOptionsOnASmallCanvasOfferSourceAndKeepTheSavedResolutionUnlessItIsChanged() {
         var options = model(width: 1280, height: 720, saved: .default)
 
-        XCTAssertEqual(options.choice.resolution, .maximum)
+        XCTAssertEqual(options.choice.resolution, .source)
         XCTAssertEqual(options.choiceToRemember.resolution, .p1080)
 
         options.choice.resolution = .p480
 
         XCTAssertEqual(options.choiceToRemember.resolution, .p480)
+    }
+
+    func testOnlySizesPastThe4KFrameAreCheckedWithTheEncoder() {
+        XCTAssertTrue(StudioExportPresets.fitsFourK(width: 3840, height: 2160))
+        XCTAssertTrue(StudioExportPresets.fitsFourK(width: 2160, height: 3840))
+        XCTAssertFalse(StudioExportPresets.fitsFourK(width: 3840, height: 2162))
+        XCTAssertFalse(StudioExportPresets.fitsFourK(width: 5120, height: 2880))
     }
 
     func testOptionsOfferEveryQualityFromBestToSmallest() {

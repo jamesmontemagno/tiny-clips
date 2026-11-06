@@ -187,6 +187,72 @@ final class StudioExportWriteJob: @unchecked Sendable {
         }
     }
 
+    /// The codec to export a video of this size in. Within the 4K frame it is the one asked for.
+    /// Past it, H.264 and HEVC each stop at sizes that depend on the Mac, and the writer accepts
+    /// a size its encoder then refuses at the first frame, after the export has begun, so one
+    /// frame is written first to find out.
+    static func codec(
+        renderSize: CGSize,
+        framesPerSecond: Double,
+        preferred: VideoCodec,
+        quality: StudioExportQuality
+    ) async throws -> VideoCodec {
+        guard !StudioExportPresets.fitsFourK(width: renderSize.width, height: renderSize.height) else { return preferred }
+        func encodes(_ codec: VideoCodec) async -> Bool {
+            await canEncodeOneFrame(
+                settings: videoSettings(renderSize: renderSize, framesPerSecond: framesPerSecond, codec: codec, quality: quality),
+                renderSize: renderSize
+            )
+        }
+        if await encodes(preferred) { return preferred }
+        let width = Int(renderSize.width)
+        let height = Int(renderSize.height)
+        switch preferred {
+        case .hevc:
+            // As where there is no HEVC encoder at all, the video is H.264 instead.
+            if await encodes(.h264) { return .h264 }
+        case .h264:
+            if await encodes(.hevc) { throw StudioExporter.Error.sizeNeedsHEVC(width: width, height: height) }
+        }
+        throw StudioExporter.Error.sizeNotEncodable(width: width, height: height)
+    }
+
+    private static func canEncodeOneFrame(settings: [String: Any], renderSize: CGSize) async -> Bool {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TinyClips-encoder-check-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        guard let writer = try? AVAssetWriter(url: url, fileType: .mp4),
+              writer.canApply(outputSettings: settings, forMediaType: .video) else { return false }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferWidthKey as String: Int(renderSize.width),
+            kCVPixelBufferHeightKey as String: Int(renderSize.height),
+        ])
+        guard writer.canAdd(input) else { return false }
+        writer.add(input)
+        guard writer.startWriting() else { return false }
+        writer.startSession(atSourceTime: .zero)
+        for _ in 0..<1000 where !input.isReadyForMoreMediaData && writer.status == .writing {
+            try? await Task.sleep(nanoseconds: 2_000_000)
+        }
+        var buffer: CVPixelBuffer?
+        guard writer.status == .writing,
+              let pool = adaptor.pixelBufferPool,
+              CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess,
+              let buffer,
+              adaptor.append(buffer, withPresentationTime: .zero)
+        else {
+            if writer.status == .writing { writer.cancelWriting() }
+            return false
+        }
+        input.markAsFinished()
+        writer.endSession(atSourceTime: CMTime(value: 1, timescale: 30))
+        await writer.finishWriting()
+        return writer.status == .completed
+    }
+
     private static func makeVideoInput(
         writer: AVAssetWriter,
         renderSize: CGSize,

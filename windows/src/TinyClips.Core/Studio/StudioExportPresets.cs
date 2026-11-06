@@ -6,8 +6,8 @@ namespace TinyClips.Core.Studio;
 /// <summary>How large an exported video is. A video is never made larger than its canvas.</summary>
 public enum StudioExportResolution
 {
-    /// <summary>The canvas as it is, limited only by <see cref="StudioExportLimits.LongSide"/>.</summary>
-    Maximum,
+    /// <summary>The canvas at its own size, however large that is.</summary>
+    Source,
     P2160,
     P1440,
     P1080,
@@ -56,7 +56,7 @@ public static class StudioExportPresets
         StudioExportResolution.P1080 => "1080p",
         StudioExportResolution.P720 => "720p",
         StudioExportResolution.P480 => "480p",
-        _ => "maximum",
+        _ => "source",
     };
 
     public static string Id(StudioExportQuality quality) => quality switch
@@ -70,7 +70,7 @@ public static class StudioExportPresets
     public static string Label(StudioExportResolution resolution) => resolution switch
     {
         StudioExportResolution.P2160 => "4K",
-        StudioExportResolution.Maximum => "Maximum",
+        StudioExportResolution.Source => "Source",
         _ => Id(resolution),
     };
 
@@ -119,13 +119,14 @@ public static class StudioExportPresets
     /// <summary>
     /// The size a canvas exports at. A named resolution fits the canvas inside a frame of that
     /// resolution, turned to match the canvas: 1080p is 1920 × 1080 for a wide canvas and
-    /// 1080 × 1920 for a tall one. The shape never changes, and nothing is scaled up.
+    /// 1080 × 1920 for a tall one. Source is the canvas's own size. The shape never changes, and
+    /// nothing is scaled up.
     /// </summary>
     public static StudioSize GetSize(StudioSize natural, StudioExportResolution resolution)
     {
-        if (resolution == StudioExportResolution.Maximum)
+        if (resolution == StudioExportResolution.Source)
         {
-            return StudioCanvasMath.ExportSize(natural, StudioExportLimits.LongSide);
+            return StudioCanvasMath.ExportSize(natural, 0);
         }
 
         var (frameLong, frameShort) = FrameOf(resolution);
@@ -136,8 +137,15 @@ public static class StudioExportPresets
     }
 
     /// <summary>
+    /// Whether a size fits inside the 4K frame, turned to match it. Past it, the largest video an
+    /// encoder can make depends on the PC and on the shape of the frame.
+    /// </summary>
+    public static bool FitsFourK(double width, double height) =>
+        Math.Max(width, height) <= 3840 && Math.Min(width, height) <= 2160;
+
+    /// <summary>
     /// The resolutions worth offering for a canvas, largest first. One that would give the same
-    /// size as a larger one is left out, so a 720p recording offers Maximum, not a 1080p that is
+    /// size as a larger one is left out, so a 720p recording offers Source, not a 1080p that is
     /// not there, and a 720p that says the same thing.
     /// </summary>
     public static IReadOnlyList<StudioExportResolutionOption> GetResolutionOptions(StudioSize natural)
@@ -242,14 +250,14 @@ public static class StudioExportPresets
         StudioExportResolution.P1080 => (1920, 1080),
         StudioExportResolution.P720 => (1280, 720),
         StudioExportResolution.P480 => (854, 480),
-        _ => (StudioExportLimits.LongSide, StudioExportLimits.LongSide),
+        _ => throw new ArgumentOutOfRangeException(nameof(resolution), resolution, "Source has no frame."),
     };
 }
 
 /// <summary>
 /// What the Export popup shows and holds while it is open, without the controls that show it.
 /// The choice that was offered is kept apart from the one that was saved: a small project offers
-/// Maximum where 1080p was saved, and that alone should not change what larger projects offer.
+/// Source where 1080p was saved, and that alone should not change what larger projects offer.
 /// </summary>
 public sealed class StudioExportOptionsModel
 {

@@ -245,6 +245,7 @@ internal sealed class StudioExportJob
     private readonly CancellationToken _cancellationToken;
     private int _width;
     private int _height;
+    private long _trialFrames;
     private StudioRenderQuality _quality;
     private double _reported = -1;
 
@@ -340,7 +341,7 @@ internal sealed class StudioExportJob
         IReadOnlyList<StudioExportFrame> plan)
     {
         var attempts = Attempts(graphics);
-        var trialFrames = (long)Math.Ceiling(EncoderTrialSeconds * rate.FramesPerSecond);
+        var trialFrames = _trialFrames = (long)Math.Ceiling(EncoderTrialSeconds * rate.FramesPerSecond);
         for (var index = 0; ; index++)
         {
             try
@@ -683,6 +684,9 @@ internal sealed class StudioExportJob
             StudioGraphicsDeviceUnavailableException => new StudioExportException("Tiny Clips could not start a graphics device to draw the video with.", exception),
             StudioEncoderFailedException when _options.Codec == VideoCodec.Hevc && StudioMediaFoundation.FindEncoder(VideoFormatGuids.Hevc, hardware: true) is null && StudioMediaFoundation.FindEncoder(VideoFormatGuids.Hevc, hardware: false) is null
                 => new StudioExportException("This PC has no HEVC encoder. Choose H.264 and export again.", exception),
+            // Past the 4K frame, an encoder that gives up at the start most likely cannot make the size.
+            StudioEncoderFailedException { FramesWritten: var written } when written <= _trialFrames && !StudioExportPresets.FitsFourK(_width, _height)
+                => new StudioExportException($"This PC can't encode a {_width}×{_height} {CodecName(_options.Codec)} video. Choose 4K or a smaller resolution and export again.", exception),
             StudioEncoderFailedException => new StudioExportException($"The video could not be encoded as {CodecName(_options.Codec)} at {_width}×{_height} on this PC: {exception.Message}.", exception),
             _ when StudioMediaFoundation.IsDeviceLost(exception) => new StudioExportException("The graphics device stopped working during the export. Export again.", exception),
             IOException or UnauthorizedAccessException => new StudioExportException($"The video could not be saved to {outputPath}. {exception.Message}", exception),

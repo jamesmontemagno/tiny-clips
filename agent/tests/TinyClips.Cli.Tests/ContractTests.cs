@@ -112,6 +112,8 @@ public class ContractTests
     [InlineData("studio.export", "{\"projectId\":\"p\",\"outputPath\":\"a.mp4\",\"resolution\":\"8k\"}", "one of")]
     [InlineData("studio.export", "{\"projectId\":\"p\",\"outputPath\":\"a.mp4\",\"quality\":\"nice\"}", "one of")]
     [InlineData("studio.export", "{\"projectId\":\"p\",\"outputPath\":\"a.mp4\",\"resolution\":\"1080p\",\"quality\":\"high\"}", null)]
+    [InlineData("studio.export", "{\"projectId\":\"p\",\"outputPath\":\"a.mp4\",\"resolution\":\"source\"}", null)]
+    [InlineData("studio.export", "{\"projectId\":\"p\",\"outputPath\":\"a.mp4\",\"resolution\":\"maximum\"}", "one of")]
     [InlineData("studio.export.options", "{\"projectId\":\"p\",\"resolution\":\"720p\"}", null)]
     [InlineData("editor.open", "{}", "Missing required")]
     [InlineData("app.status", "{\"extra\":1}", "Unknown parameter")]
