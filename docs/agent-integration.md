@@ -168,7 +168,13 @@ Framing is one UTF-8 JSON object per line (`\n`). A connection may send several 
 
 `capture.targets` lists display and visible-window targets. IDs are opaque and valid only for the current app session; refresh the list before using an ID after a restart. Display-relative regions use physical pixels with `(0,0)` at that display's top-left. `capture.screenshot` and `capture.ocr` accept a `windowId`, or `displayId` plus `region: {x,y,width,height}`; no picker is shown, and OCR returns recognized text without changing the clipboard.
 
-`editor.annotate` accepts a screenshot path and typed annotation objects for rectangles, ellipses, arrows, lines, pen strokes, text, numbered callouts, emoji, and redactions. Bounds and points use source-image pixels from the top-left. It renders to a new library capture and never overwrites the source. It does not open the interactive editor. Redactions accept `redactionLevel` (`light`, `medium`, or `heavy`) and `redactionStyle` (`blur`, `pixelate`, or `solid`). Blur and pixelate are built from the image, so use `solid` for passwords, keys, and other secrets; `light` can stay readable.
+`editor.annotate` accepts a screenshot path and typed annotation objects for rectangles, ellipses, arrows, lines, pen strokes, text, numbered callouts, emoji, and redactions. Bounds and points use source-image pixels from the top-left. It renders to a new library capture and never overwrites the source. It does not open the interactive editor. Redactions accept `redactionLevel` (`light`, `medium`, or `heavy`) and `redactionStyle` (`blur`, `pixelate`, or `solid`). Blur and pixelate are built from the image, so use `solid` for passwords, keys, and other secrets; `light` can stay readable. Rectangles and ellipses also accept a gradient fill (`fillColor` to `fillEndColor`, with `fillDirection` in degrees) and a shadow (`shadowBlur` in image pixels, with an optional `shadowColor`).
+
+### Editor themes
+
+An editor theme is a named look for screenshot annotations and the export canvas. `editor.themes.list` returns each theme's `id` and `name` with `activeThemeId`, and `editor.themes.get` returns one theme as JSON. `editor.themes.save` creates a theme, or replaces the one with the same `id`, and `editor.themes.setActive` chooses the theme new editor windows use (omit `id` for None). `editor.themes.delete` needs in-app approval. To export or import a theme, use `get` and `save`; no file paths are involved. The [theme format](../shared/editor-themes/README.md) stores sizes in editor units rather than image pixels.
+
+Pass `themeId` to `editor.open` to open a screenshot with that theme, or to `editor.annotate` to style its annotations. Values given on an annotation win. Theme styling never changes redactions or emoji. Its canvas applies to `editor.annotate` only if the theme sets `canvas.applyOnOpen`. Without `themeId`, `editor.annotate` stays unthemed, even when a theme is active.
 
 ### Trimming and frames
 

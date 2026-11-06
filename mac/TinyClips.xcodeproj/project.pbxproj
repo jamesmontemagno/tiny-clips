@@ -7,6 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7EDAC7000000000000000E03 /* EditorThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EDAC7000000000000000E02 /* EditorThemeTests.swift */; };
+		B1000000000000000000E705 /* EditorThemesSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E705 /* EditorThemesSettingsSection.swift */; };
+		B2000000000000000000E705 /* EditorThemesSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E705 /* EditorThemesSettingsSection.swift */; };
+		B1000000000000000000E704 /* AutomationEditorThemes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E704 /* AutomationEditorThemes.swift */; };
+		B2000000000000000000E704 /* AutomationEditorThemes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E704 /* AutomationEditorThemes.swift */; };
+		B1000000000000000000E703 /* EditorThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E703 /* EditorThemeStore.swift */; };
+		B2000000000000000000E703 /* EditorThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E703 /* EditorThemeStore.swift */; };
+		B1000000000000000000E702 /* EditorThemeStyling.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E702 /* EditorThemeStyling.swift */; };
+		B2000000000000000000E702 /* EditorThemeStyling.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E702 /* EditorThemeStyling.swift */; };
+		B1000000000000000000E701 /* EditorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E701 /* EditorTheme.swift */; };
+		B2000000000000000000E701 /* EditorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000E701 /* EditorTheme.swift */; };
 		AB7000000000000000000001 /* AutomationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000001 /* AutomationContract.swift */; };
 		AC7000000000000000000001 /* AutomationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000001 /* AutomationContract.swift */; };
 		AB7000000000000000000002 /* AutomationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000002 /* AutomationPolicy.swift */; };
@@ -81,6 +92,7 @@
 		B10000000000000000000035 /* ScreenshotEditorModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000035 /* ScreenshotEditorModels.swift */; };
 		7EDAC7000000000000000002 /* ScreenshotRedactionRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EDAC7000000000000000001 /* ScreenshotRedactionRenderer.swift */; };
 		B10000000000000000000036 /* ScreenshotEditorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000036 /* ScreenshotEditorControls.swift */; };
+		B10000000000000000000F01 /* ScreenshotEditorShapeEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000F01 /* ScreenshotEditorShapeEffects.swift */; };
 		B10000000000000000000037 /* ScreenshotEditorCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000037 /* ScreenshotEditorCanvas.swift */; };
 		B10000000000000000000038 /* ScreenshotEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000038 /* ScreenshotEditorViewModel.swift */; };
 		B10000000000000000000039 /* IdleSleepAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* IdleSleepAssertion.swift */; };
@@ -131,6 +143,7 @@
 		B20000000000000000000035 /* ScreenshotEditorModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000035 /* ScreenshotEditorModels.swift */; };
 		7EDAC7000000000000000003 /* ScreenshotRedactionRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EDAC7000000000000000001 /* ScreenshotRedactionRenderer.swift */; };
 		B20000000000000000000036 /* ScreenshotEditorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000036 /* ScreenshotEditorControls.swift */; };
+		B20000000000000000000F01 /* ScreenshotEditorShapeEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000F01 /* ScreenshotEditorShapeEffects.swift */; };
 		B20000000000000000000037 /* ScreenshotEditorCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000037 /* ScreenshotEditorCanvas.swift */; };
 		B20000000000000000000038 /* ScreenshotEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000038 /* ScreenshotEditorViewModel.swift */; };
 		B20000000000000000000039 /* IdleSleepAssertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* IdleSleepAssertion.swift */; };
@@ -174,6 +187,7 @@
 		D61700000000000000000006 /* GifTrimmerTimingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61700000000000000000007 /* GifTrimmerTimingTests.swift */; };
 		D51700000000000000000004 /* SensitiveTextDetectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51700000000000000000005 /* SensitiveTextDetectionTests.swift */; };
 		7EDAC7000000000000000005 /* ScreenshotRedactionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EDAC7000000000000000004 /* ScreenshotRedactionTests.swift */; };
+		7EDAC7000000000000000F03 /* ScreenshotShapeEffectsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EDAC7000000000000000F02 /* ScreenshotShapeEffectsTests.swift */; };
 		B30000000000000000000433 /* RecordingAudioMixdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000433 /* RecordingAudioMixdownTests.swift */; };
 		B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* HotKeyBindingTests.swift */; };
 		B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* CaptureSettingsTests.swift */; };
@@ -262,6 +276,12 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		7EDAC7000000000000000E02 /* EditorThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorThemeTests.swift; sourceTree = "<group>"; };
+		A1000000000000000000E705 /* EditorThemesSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorThemesSettingsSection.swift; sourceTree = "<group>"; };
+		A1000000000000000000E704 /* AutomationEditorThemes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationEditorThemes.swift; sourceTree = "<group>"; };
+		A1000000000000000000E703 /* EditorThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorThemeStore.swift; sourceTree = "<group>"; };
+		A1000000000000000000E702 /* EditorThemeStyling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorThemeStyling.swift; sourceTree = "<group>"; };
+		A1000000000000000000E701 /* EditorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorTheme.swift; sourceTree = "<group>"; };
 		AA7000000000000000000001 /* AutomationContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationContract.swift; sourceTree = "<group>"; };
 		AA7000000000000000000002 /* AutomationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationPolicy.swift; sourceTree = "<group>"; };
 		AA7000000000000000000003 /* AutomationClientStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationClientStore.swift; sourceTree = "<group>"; };
@@ -330,6 +350,7 @@
 		A10000000000000000000035 /* ScreenshotEditorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorModels.swift; sourceTree = "<group>"; };
 		7EDAC7000000000000000001 /* ScreenshotRedactionRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotRedactionRenderer.swift; sourceTree = "<group>"; };
 		A10000000000000000000036 /* ScreenshotEditorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorControls.swift; sourceTree = "<group>"; };
+		A10000000000000000000F01 /* ScreenshotEditorShapeEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorShapeEffects.swift; sourceTree = "<group>"; };
 		A10000000000000000000037 /* ScreenshotEditorCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorCanvas.swift; sourceTree = "<group>"; };
 		A10000000000000000000038 /* ScreenshotEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotEditorViewModel.swift; sourceTree = "<group>"; };
 		A10000000000000000000039 /* IdleSleepAssertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleSleepAssertion.swift; sourceTree = "<group>"; };
@@ -364,6 +385,7 @@
 		D61700000000000000000007 /* GifTrimmerTimingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifTrimmerTimingTests.swift; sourceTree = "<group>"; };
 		D51700000000000000000005 /* SensitiveTextDetectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SensitiveTextDetectionTests.swift; sourceTree = "<group>"; };
 		7EDAC7000000000000000004 /* ScreenshotRedactionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotRedactionTests.swift; sourceTree = "<group>"; };
+		7EDAC7000000000000000F02 /* ScreenshotShapeEffectsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotShapeEffectsTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000433 /* RecordingAudioMixdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioMixdownTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000002 /* HotKeyBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyBindingTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000003 /* CaptureSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSettingsTests.swift; sourceTree = "<group>"; };
@@ -445,6 +467,7 @@
 				AA7000000000000000000009 /* AutomationCaptureTargets.swift */,
 				AA700000000000000000000A /* AutomationAnnotations.swift */,
 				AA7000000000000000000030 /* AutomationMediaEditing.swift */,
+				A1000000000000000000E704 /* AutomationEditorThemes.swift */,
 				AA700000000000000000001E /* commands.json */,
 			);
 			path = Automation;
@@ -484,6 +507,8 @@
 			children = (
 				A10000000000000000000002 /* CaptureSettings.swift */,
 				A10000000000000000000021 /* HotKeyBinding.swift */,
+				A1000000000000000000E702 /* EditorThemeStyling.swift */,
+				A1000000000000000000E701 /* EditorTheme.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -500,6 +525,7 @@
 				A10000000000000000000035 /* ScreenshotEditorModels.swift */,
 				7EDAC7000000000000000001 /* ScreenshotRedactionRenderer.swift */,
 				A10000000000000000000036 /* ScreenshotEditorControls.swift */,
+				A10000000000000000000F01 /* ScreenshotEditorShapeEffects.swift */,
 				A10000000000000000000037 /* ScreenshotEditorCanvas.swift */,
 				A10000000000000000000038 /* ScreenshotEditorViewModel.swift */,
 				A10000000000000000000012 /* GifTrimmerWindow.swift */,
@@ -534,6 +560,7 @@
 				A1000000000000000000002F /* MouseClicksSettingsSection.swift */,
 				A1000000000000000000002D /* ProSettingsSection.swift */,
 				A10000000000000000000028 /* ScreenshotSettingsSection.swift */,
+				A1000000000000000000E705 /* EditorThemesSettingsSection.swift */,
 				A10000000000000000000030 /* SettingsViewHelpers.swift */,
 				A1000000000000000000002B /* ShortcutsSettingsSection.swift */,
 				A10000000000000000000029 /* VideoSettingsSection.swift */,
@@ -577,6 +604,7 @@
 				A1000000000000000000001A /* StoreService.swift */,
 				A10000000000000000000020 /* LaunchAtLoginManager.swift */,
 				E308698787C7FE1F661D3513 /* StudioMaintenance.swift */,
+				A1000000000000000000E703 /* EditorThemeStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -626,6 +654,8 @@
 				D61700000000000000000007 /* GifTrimmerTimingTests.swift */,
 				D51700000000000000000005 /* SensitiveTextDetectionTests.swift */,
 				7EDAC7000000000000000004 /* ScreenshotRedactionTests.swift */,
+				7EDAC7000000000000000F02 /* ScreenshotShapeEffectsTests.swift */,
+				7EDAC7000000000000000E02 /* EditorThemeTests.swift */,
 				A30000000000000000000433 /* RecordingAudioMixdownTests.swift */,
 				A30000000000000000000002 /* HotKeyBindingTests.swift */,
 				A30000000000000000000003 /* CaptureSettingsTests.swift */,
@@ -815,6 +845,7 @@
 				AB7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */,
 				AB700000000000000000000A /* AutomationAnnotations.swift in Sources */,
 				AB7000000000000000000030 /* AutomationMediaEditing.swift in Sources */,
+				B1000000000000000000E704 /* AutomationEditorThemes.swift in Sources */,
 				AB7000000000000000000014 /* AgentControlSettingsSection.swift in Sources */,
 				B10000000000000000000001 /* TinyClipsApp.swift in Sources */,
 				B10000000000000000000002 /* CaptureSettings.swift in Sources */,
@@ -834,6 +865,7 @@
 				B10000000000000000000035 /* ScreenshotEditorModels.swift in Sources */,
 				7EDAC7000000000000000002 /* ScreenshotRedactionRenderer.swift in Sources */,
 				B10000000000000000000036 /* ScreenshotEditorControls.swift in Sources */,
+				B10000000000000000000F01 /* ScreenshotEditorShapeEffects.swift in Sources */,
 				B10000000000000000000037 /* ScreenshotEditorCanvas.swift in Sources */,
 				B10000000000000000000038 /* ScreenshotEditorViewModel.swift in Sources */,
 				B10000000000000000000039 /* IdleSleepAssertion.swift in Sources */,
@@ -857,6 +889,8 @@
 				B1000000000000000000001C /* CapturePickerPanel.swift in Sources */,
 				B1000000000000000000001D /* LaunchAtLoginManager.swift in Sources */,
 				B1000000000000000000001E /* HotKeyBinding.swift in Sources */,
+				B1000000000000000000E702 /* EditorThemeStyling.swift in Sources */,
+				B1000000000000000000E701 /* EditorTheme.swift in Sources */,
 				B1000000000000000000001F /* ShortcutRecorderField.swift in Sources */,
 				B10000000000000000000020 /* MouseClickOverlayProcessor.swift in Sources */,
 				B10000000000000000000433 /* RecordingAudioMixdown.swift in Sources */,
@@ -867,6 +901,7 @@
 				B10000000000000000000023 /* ProcessingIndicatorWindow.swift in Sources */,
 				B10000000000000000000024 /* GeneralSettingsSection.swift in Sources */,
 				B10000000000000000000025 /* ScreenshotSettingsSection.swift in Sources */,
+				B1000000000000000000E705 /* EditorThemesSettingsSection.swift in Sources */,
 				B10000000000000000000026 /* VideoSettingsSection.swift in Sources */,
 				B1000000000000000000003D /* TeleprompterSettingsSection.swift in Sources */,
 				B10000000000000000000027 /* GifSettingsSection.swift in Sources */,
@@ -903,6 +938,7 @@
 				41BEDED91D8C5A21C2E09BA4 /* StudioViewModel.swift in Sources */,
 				AD6EB0440F1B76B9EDB36906 /* StudioViews.swift in Sources */,
 				1DB109EA9A3826EF20303E71 /* StudioMaintenance.swift in Sources */,
+				B1000000000000000000E703 /* EditorThemeStore.swift in Sources */,
 				A7372DA762EFCB9B64677416 /* StudioSettingsSection.swift in Sources */,
 				588E5106C515877D432C5028 /* StudioZoomViews.swift in Sources */,
 				377D679ED809740738A2EA8C /* StudioSceneViews.swift in Sources */,
@@ -927,6 +963,7 @@
 				AC7000000000000000000009 /* AutomationCaptureTargets.swift in Sources */,
 				AC700000000000000000000A /* AutomationAnnotations.swift in Sources */,
 				AC7000000000000000000030 /* AutomationMediaEditing.swift in Sources */,
+				B2000000000000000000E704 /* AutomationEditorThemes.swift in Sources */,
 				AC7000000000000000000014 /* AgentControlSettingsSection.swift in Sources */,
 				B20000000000000000000001 /* TinyClipsApp.swift in Sources */,
 				B20000000000000000000002 /* CaptureSettings.swift in Sources */,
@@ -946,6 +983,7 @@
 				B20000000000000000000035 /* ScreenshotEditorModels.swift in Sources */,
 				7EDAC7000000000000000003 /* ScreenshotRedactionRenderer.swift in Sources */,
 				B20000000000000000000036 /* ScreenshotEditorControls.swift in Sources */,
+				B20000000000000000000F01 /* ScreenshotEditorShapeEffects.swift in Sources */,
 				B20000000000000000000037 /* ScreenshotEditorCanvas.swift in Sources */,
 				B20000000000000000000038 /* ScreenshotEditorViewModel.swift in Sources */,
 				B20000000000000000000039 /* IdleSleepAssertion.swift in Sources */,
@@ -969,6 +1007,8 @@
 				B2000000000000000000001C /* CapturePickerPanel.swift in Sources */,
 				B2000000000000000000001D /* LaunchAtLoginManager.swift in Sources */,
 				B2000000000000000000001E /* HotKeyBinding.swift in Sources */,
+				B2000000000000000000E702 /* EditorThemeStyling.swift in Sources */,
+				B2000000000000000000E701 /* EditorTheme.swift in Sources */,
 				B2000000000000000000001F /* ShortcutRecorderField.swift in Sources */,
 				B20000000000000000000020 /* MouseClickOverlayProcessor.swift in Sources */,
 				B20000000000000000000433 /* RecordingAudioMixdown.swift in Sources */,
@@ -979,6 +1019,7 @@
 				B20000000000000000000023 /* ProcessingIndicatorWindow.swift in Sources */,
 				B20000000000000000000024 /* GeneralSettingsSection.swift in Sources */,
 				B20000000000000000000025 /* ScreenshotSettingsSection.swift in Sources */,
+				B2000000000000000000E705 /* EditorThemesSettingsSection.swift in Sources */,
 				B20000000000000000000026 /* VideoSettingsSection.swift in Sources */,
 				B2000000000000000000003D /* TeleprompterSettingsSection.swift in Sources */,
 				B20000000000000000000027 /* GifSettingsSection.swift in Sources */,
@@ -1015,6 +1056,7 @@
 				FA537778CB43E2CA149BC770 /* StudioViewModel.swift in Sources */,
 				E5A1E7C1806510E0455B5B8A /* StudioViews.swift in Sources */,
 				BC954663A417203E5E361E44 /* StudioMaintenance.swift in Sources */,
+				B2000000000000000000E703 /* EditorThemeStore.swift in Sources */,
 				8AF8CF51250E1E2D92E92738 /* StudioSettingsSection.swift in Sources */,
 				B5ADC0138CB4DF6942EA3611 /* StudioZoomViews.swift in Sources */,
 				7FAC35F6E54C48937C1F2BD1 /* StudioSceneViews.swift in Sources */,
@@ -1038,6 +1080,8 @@
 				D61700000000000000000006 /* GifTrimmerTimingTests.swift in Sources */,
 				D51700000000000000000004 /* SensitiveTextDetectionTests.swift in Sources */,
 				7EDAC7000000000000000005 /* ScreenshotRedactionTests.swift in Sources */,
+				7EDAC7000000000000000F03 /* ScreenshotShapeEffectsTests.swift in Sources */,
+				7EDAC7000000000000000E03 /* EditorThemeTests.swift in Sources */,
 				B30000000000000000000433 /* RecordingAudioMixdownTests.swift in Sources */,
 				B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */,
 				B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */,

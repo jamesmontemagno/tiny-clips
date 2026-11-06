@@ -137,6 +137,7 @@ public sealed partial class EditorInspector : UserControl
         SyncTextBoxStyle(_controller.TextBoxStyleDefault);
         FillCheck.IsChecked = _controller.FillEnabled;
         FillColorPicker.Color = _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
+        SyncShapeEffects(_controller.ShapeEffectsDefault, _controller.FillEnabled);
         UpdateInspectorHeaders();
 
         _inspectorInitializing = false;
@@ -148,6 +149,8 @@ public sealed partial class EditorInspector : UserControl
         NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(_controller.NumberScale * 100)}%";
         FontSizeSlider.Header = $"Font size — {(int)_controller.TextFontSize} px";
         RotationSlider.Header = $"Rotation — {(int)Math.Round(RotationSlider.Value)}°";
+        ShapeGradientDirectionSlider.Header = $"Direction — {(int)Math.Round(ShapeGradientDirectionSlider.Value)}°";
+        ShapeShadowBlurSlider.Header = $"Blur — {(int)Math.Round(ShapeShadowBlurSlider.Value)} px";
     }
 
     private void InitializeEmojiControls()
@@ -258,6 +261,22 @@ public sealed partial class EditorInspector : UserControl
         EmojiSection.Visibility = showsEmoji ? Visibility.Visible : Visibility.Collapsed;
         RotationSection.Visibility = Visibility.Collapsed;
 
+        // These write nothing back: _inspectorInitializing is set, so a slider that clamps a theme's
+        // larger pixel value only shows its limit while the controller keeps the real one.
+        if (showsColor)
+        {
+            AnnotationColorPicker.Color = _controller.StrokeColor;
+        }
+        if (showsStroke)
+        {
+            StrokeSlider.Value = _controller.StrokeThickness;
+        }
+        if (showsNumber)
+        {
+            NumberSizeSlider.Value = _controller.NumberScale;
+            NumberColorPicker.Color = _controller.NumberTextColor;
+        }
+
         if (showsEmoji)
         {
             SyncEmojiSelection(_controller.EmojiDefault);
@@ -279,6 +298,12 @@ public sealed partial class EditorInspector : UserControl
             FontSizeSlider.Value = _controller.TextFontSize;
             SelectFontInCombo(_controller.TextFontFamily);
             SyncTextBoxStyle(_controller.TextBoxStyleDefault);
+        }
+        if (showsFill)
+        {
+            FillCheck.IsChecked = _controller.FillEnabled;
+            FillColorPicker.Color = _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
+            SyncShapeEffects(_controller.ShapeEffectsDefault, _controller.FillEnabled);
         }
 
         InspectorTitle.Text = tool switch
@@ -357,6 +382,7 @@ public sealed partial class EditorInspector : UserControl
             var hasFill = ann.FillColor.A > 0;
             FillCheck.IsChecked = hasFill;
             FillColorPicker.Color = hasFill ? ann.FillColor : Colors.Transparent;
+            SyncShapeEffects(ann.ShapeEffects, hasFill);
         }
         if (isText)
         {
@@ -389,6 +415,10 @@ public sealed partial class EditorInspector : UserControl
                 return;
             }
         }
+
+        // A theme can name a family outside the common list.
+        FontFamilyCombo.Items.Add(new ComboBoxItem { Content = font, Tag = font });
+        FontFamilyCombo.SelectedIndex = FontFamilyCombo.Items.Count - 1;
     }
 
     private void SyncTextBoxStyle(TextBoxStyle style)
@@ -458,7 +488,10 @@ public sealed partial class EditorInspector : UserControl
 
         var enabled = FillCheck.IsChecked == true;
         _controller.SetFillEnabled(enabled);
-        FillColorPicker.Color = enabled ? _controller.FillColor : Colors.Transparent;
+        FillColorPicker.Color = _controller.SelectedAnnotation is { } selected && selected.Tool.SupportsShapeEffects()
+            ? selected.FillColor
+            : enabled ? _controller.FillColor : Colors.Transparent;
+        UpdateGradientAvailability(enabled);
     }
 
     private void OnFillColorChanged(object? sender, Color color)
@@ -476,6 +509,82 @@ public sealed partial class EditorInspector : UserControl
         else
         {
             FillCheck.IsChecked = true;
+        }
+        UpdateGradientAvailability(color.A > 0);
+    }
+
+    private void SyncShapeEffects(ShapeEffects effects, bool hasFill)
+    {
+        GradientFillCheck.IsChecked = effects.IsGradientFill;
+        GradientEndColorPicker.Color = effects.GradientEndColor;
+        ShapeGradientDirectionSlider.Value = effects.GradientDirectionDegrees;
+        ShadowCheck.IsChecked = effects.HasShadow;
+        ShapeShadowColorPicker.Color = effects.ShadowColor;
+        ShapeShadowBlurSlider.Value = effects.ShadowBlur;
+        ShadowPanel.Visibility = effects.HasShadow ? Visibility.Visible : Visibility.Collapsed;
+        UpdateGradientAvailability(hasFill);
+    }
+
+    /// <summary>A gradient needs a fill to start from, so it is only offered once the shape has one.</summary>
+    private void UpdateGradientAvailability(bool hasFill)
+    {
+        GradientFillCheck.Visibility = hasFill ? Visibility.Visible : Visibility.Collapsed;
+        GradientFillPanel.Visibility = hasFill && GradientFillCheck.IsChecked == true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void OnGradientFillToggled(object sender, RoutedEventArgs e)
+    {
+        var isGradient = GradientFillCheck.IsChecked == true;
+        GradientFillPanel.Visibility = isGradient ? Visibility.Visible : Visibility.Collapsed;
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { IsGradientFill = isGradient });
+        }
+    }
+
+    private void OnGradientEndColorChanged(object? sender, Color color)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { GradientEndColor = color });
+        }
+    }
+
+    private void OnShapeGradientDirectionChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { GradientDirectionDegrees = e.NewValue });
+            UpdateInspectorHeaders();
+        }
+    }
+
+    private void OnShapeShadowToggled(object sender, RoutedEventArgs e)
+    {
+        var hasShadow = ShadowCheck.IsChecked == true;
+        ShadowPanel.Visibility = hasShadow ? Visibility.Visible : Visibility.Collapsed;
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { HasShadow = hasShadow });
+        }
+    }
+
+    private void OnShapeShadowColorChanged(object? sender, Color color)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { ShadowColor = color });
+        }
+    }
+
+    private void OnShapeShadowBlurChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.UpdateShapeEffects(effects => effects with { ShadowBlur = e.NewValue });
+            UpdateInspectorHeaders();
         }
     }
 
@@ -576,14 +685,14 @@ public sealed partial class EditorInspector : UserControl
         SyncTextBoxStyle(CurrentTextBoxStyle());
     }
 
-    private void OnTextStyleSliderPointerPressed(object sender, PointerRoutedEventArgs e) =>
-        _controller.BeginSelectedTextStyleEdit();
+    private void OnStyleSliderPointerPressed(object sender, PointerRoutedEventArgs e) =>
+        _controller.BeginSelectedStyleEdit();
 
-    private void OnTextStyleSliderPointerReleased(object sender, PointerRoutedEventArgs e) =>
-        _controller.EndSelectedTextStyleEdit();
+    private void OnStyleSliderPointerReleased(object sender, PointerRoutedEventArgs e) =>
+        _controller.EndSelectedStyleEdit();
 
-    private void OnTextStyleSliderPointerCaptureLost(object sender, PointerRoutedEventArgs e) =>
-        _controller.EndSelectedTextStyleEdit();
+    private void OnStyleSliderPointerCaptureLost(object sender, PointerRoutedEventArgs e) =>
+        _controller.EndSelectedStyleEdit();
 
     private TextBoxStyle CurrentTextBoxStyle() =>
         _controller.SelectedAnnotation is { Tool: EditTool.Text } ann
@@ -797,6 +906,14 @@ public sealed partial class EditorInspector : UserControl
             ChooseBackgroundImageButton.Content = _controller.HasBackgroundImage ? "Replace image..." : "Choose image...";
             RemoveBackgroundImageButton.IsEnabled = !_backgroundSelectionBusy && _controller.HasBackgroundImage;
             BackgroundImageName.Text = _backgroundSelectionBusy ? "Choosing image..." : _controller.BackgroundFileName ?? "No image selected";
+            GradientDirectionSlider.Value = _controller.GradientDirectionDegrees;
+            // _bgInitializing stays set, so sliders that clamp a theme's larger value write nothing back.
+            PaddingSlider.Value = _controller.CanvasPadding;
+            CornerSlider.Value = _controller.CanvasCornerRadius;
+            ShadowSlider.Value = _controller.CanvasShadow;
+            ExportFrameCombo.SelectedIndex = (int)_controller.FramePreset;
+            SyncAlignmentGrid();
+            UpdateSliderHeaders();
             UpdateBackgroundStyleUi();
         }
         finally

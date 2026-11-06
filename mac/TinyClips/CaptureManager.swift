@@ -2252,12 +2252,14 @@ class CaptureManager: ObservableObject {
         for url: URL,
         initialSaveURL: URL,
         deleteSourceOnCancel: Bool,
-        reopenPickerAfterClose: Bool
+        reopenPickerAfterClose: Bool,
+        themeID: String? = nil
     ) {
         ScreenshotEditorRegistry.shared.present(
             imageURL: url,
             initialSaveURL: initialSaveURL,
-            deleteSourceAfterSave: deleteSourceOnCancel
+            deleteSourceAfterSave: deleteSourceOnCancel,
+            themeID: themeID
         ) { [weak self] resultURL in
             if let resultURL {
                 SaveService.shared.handleSavedFile(url: resultURL, type: .screenshot)
@@ -2271,7 +2273,8 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    func openRecentCapture(_ item: RecentCaptureItem) {
+    /// `themeID` opens a screenshot with that theme instead of the active one.
+    func openRecentCapture(_ item: RecentCaptureItem, themeID: String? = nil) {
         guard FileManager.default.fileExists(atPath: item.path) else {
             RecentCaptureStore.shared.remove(item)
             return
@@ -2283,7 +2286,8 @@ class CaptureManager: ObservableObject {
                 for: item.url,
                 initialSaveURL: item.url,
                 deleteSourceOnCancel: false,
-                reopenPickerAfterClose: false
+                reopenPickerAfterClose: false,
+                themeID: themeID
             )
         case .video:
             // A video exported from Studio reopens its project, which is still editable.

@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using TinyClips.Core.Editing;
+using TinyClips.Core.Editing.Themes;
 using Windows.Foundation;
 using Windows.UI;
 
@@ -20,6 +21,7 @@ public static class AutomationAnnotationParser
     public const int MaximumPoints = 10_000;
     public const double MaximumLineWidth = 200;
     public const double MaximumFontSize = 1000;
+    public const double MaximumShadowBlur = 500;
 
     public const double DefaultLineWidth = 6;
     public const double DefaultFontSize = 28;
@@ -30,23 +32,27 @@ public static class AutomationAnnotationParser
     {
         "type", "bounds", "points", "text", "color", "textColor", "fillColor", "lineWidth",
         "fontSize", "redactionLevel", "redactionStyle", "emoji",
+        "fillEndColor", "fillDirection", "shadowBlur", "shadowColor",
     };
 
     private static readonly string[] RectKeys = ["x", "y", "width", "height"];
     private static readonly string[] PointKeys = ["x", "y"];
 
     /// <summary>Checks shape only (types, enums, colors, counts) before the image is decoded.</summary>
-    public static void ValidateStructure(JsonNode? annotations) => ParseCore(annotations, null);
+    public static void ValidateStructure(JsonNode? annotations) => ParseCore(annotations, null, null);
 
-    /// <summary>Parses and validates annotations against the source image size.</summary>
-    public static IReadOnlyList<ScreenshotAnnotation> Parse(JsonNode? annotations, int imageWidth, int imageHeight)
+    /// <summary>
+    /// Parses and validates annotations against the source image size. With a theme, values an
+    /// annotation leaves out come from the theme; values it sets win.
+    /// </summary>
+    public static IReadOnlyList<ScreenshotAnnotation> Parse(JsonNode? annotations, int imageWidth, int imageHeight, EditorTheme? theme = null)
     {
         if (imageWidth <= 0 || imageHeight <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(imageWidth), "Image size must be positive.");
         }
 
-        return ParseCore(annotations, (imageWidth, imageHeight));
+        return ParseCore(annotations, (imageWidth, imageHeight), theme);
     }
 
     public static bool TryParseColor(string? value, out Color color)
@@ -74,7 +80,7 @@ public static class AutomationAnnotationParser
         return true;
     }
 
-    private static IReadOnlyList<ScreenshotAnnotation> ParseCore(JsonNode? node, (int Width, int Height)? image)
+    private static IReadOnlyList<ScreenshotAnnotation> ParseCore(JsonNode? node, (int Width, int Height)? image, EditorTheme? theme)
     {
         if (node is not JsonArray array)
         {
@@ -95,10 +101,76 @@ public static class AutomationAnnotationParser
         var nextNumber = 1;
         for (var i = 0; i < array.Count; i++)
         {
-            result.Add(ParseOne(array[i], $"annotations[{i}]", image, ref nextNumber));
+            var item = ParseOne(array[i], $"annotations[{i}]", image, ref nextNumber);
+            if (theme is not null && image is { } size)
+            {
+                ApplyTheme(item, (JsonObject)array[i]!, theme, size.Width);
+            }
+
+            result.Add(item);
         }
 
         return result;
+    }
+
+    /// <summary>Styles an annotation from its own theme section, then puts back what its JSON set.</summary>
+    private static void ApplyTheme(ScreenshotAnnotation annotation, JsonObject obj, EditorTheme theme, int imageWidth)
+    {
+        var color = annotation.Color;
+        var thickness = annotation.Thickness;
+        var fill = annotation.FillColor;
+        var fontSize = annotation.FontSize;
+        var textColor = annotation.TextColor;
+        var textBox = annotation.TextBoxStyle;
+        var effects = annotation.ShapeEffects;
+        EditorThemeStyling.Apply(annotation, theme, imageWidth);
+
+        bool Has(string key) => obj[key] is not null;
+        switch (annotation.Tool)
+        {
+            case EditTool.Rectangle:
+            case EditTool.Ellipse:
+                if (Has("color")) annotation.Color = color;
+                if (Has("lineWidth")) annotation.Thickness = thickness;
+                if (Has("fillColor")) annotation.FillColor = fill;
+                var themed = annotation.ShapeEffects;
+                if (Has("fillEndColor"))
+                {
+                    themed = themed with { IsGradientFill = true, GradientEndColor = effects.GradientEndColor };
+                }
+
+                if (Has("fillDirection")) themed = themed with { GradientDirectionDegrees = effects.GradientDirectionDegrees };
+                if (Has("shadowBlur"))
+                {
+                    themed = themed with
+                    {
+                        HasShadow = effects.HasShadow,
+                        ShadowBlur = effects.ShadowBlur,
+                        ShadowColor = Has("shadowColor") ? effects.ShadowColor : themed.ShadowColor,
+                    };
+                }
+
+                annotation.ShapeEffects = themed;
+                break;
+
+            case EditTool.Arrow:
+            case EditTool.Line:
+            case EditTool.Pen:
+                if (Has("color")) annotation.Color = color;
+                if (Has("lineWidth")) annotation.Thickness = thickness;
+                break;
+
+            case EditTool.Text:
+                if (Has("textColor") || Has("color")) annotation.Color = color;
+                if (Has("fontSize")) annotation.FontSize = fontSize;
+                if (Has("fillColor")) annotation.TextBoxStyle = textBox;
+                break;
+
+            case EditTool.Counter:
+                if (Has("color")) annotation.Color = color;
+                if (Has("textColor")) annotation.TextColor = textColor;
+                break;
+        }
     }
 
     private static ScreenshotAnnotation ParseOne(JsonNode? node, string path, (int Width, int Height)? image, ref int nextNumber)
@@ -166,6 +238,7 @@ public static class AutomationAnnotationParser
             Bounds = bounds,
             Color = color,
             Thickness = lineWidth,
+            ShapeEffects = ParseShapeEffects(obj, tool, fillColor, path),
         };
 
         switch (tool)
@@ -283,6 +356,61 @@ public static class AutomationAnnotationParser
         }
 
         return annotation;
+    }
+
+    private static ShapeEffects ParseShapeEffects(JsonObject obj, EditTool tool, Color? fillColor, string path)
+    {
+        var effects = ShapeEffects.Default;
+        string[] keys = ["fillEndColor", "fillDirection", "shadowBlur", "shadowColor"];
+        if (!tool.SupportsShapeEffects())
+        {
+            foreach (var key in keys)
+            {
+                if (obj[key] is not null)
+                {
+                    throw Invalid($"{path}.{key} is only used by rectangle and ellipse.");
+                }
+            }
+
+            return effects;
+        }
+
+        if (OptionalColor(obj, "fillEndColor", path) is { } endColor)
+        {
+            if (fillColor is not { A: > 0 })
+            {
+                throw Invalid($"{path}.fillEndColor needs a visible fillColor to start from.");
+            }
+
+            effects = effects with { IsGradientFill = true, GradientEndColor = endColor };
+        }
+
+        if (OptionalNumber(obj, "fillDirection", path, 0, 360) is { } direction)
+        {
+            if (!effects.IsGradientFill)
+            {
+                throw Invalid($"{path}.fillDirection needs fillEndColor.");
+            }
+
+            effects = effects with { GradientDirectionDegrees = direction };
+        }
+
+        var shadowColor = OptionalColor(obj, "shadowColor", path);
+        if (OptionalNumber(obj, "shadowBlur", path, 0, MaximumShadowBlur) is { } blur)
+        {
+            effects = effects with
+            {
+                HasShadow = blur > 0,
+                ShadowBlur = blur,
+                ShadowColor = shadowColor ?? effects.ShadowColor,
+            };
+        }
+        else if (shadowColor is not null)
+        {
+            throw Invalid($"{path}.shadowColor needs shadowBlur.");
+        }
+
+        return effects;
     }
 
     private static void RequireArea(Rect bounds, string path)

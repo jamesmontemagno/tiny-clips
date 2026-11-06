@@ -328,7 +328,7 @@ struct ScreenshotEditorCanvasView: View {
                         isBold: viewModel.textIsBold,
                         isItalic: viewModel.textIsItalic,
                         isUnderlined: viewModel.textIsUnderlined,
-                        color: viewModel.selectedColor,
+                        color: viewModel.newTextColor,
                         textBoxStyle: viewModel.textBoxStyle,
                         boxScale: imageSize.width / 800,
                         onCommit: {
@@ -548,16 +548,6 @@ struct ScreenshotEditorCanvasView: View {
         ]
     }
 
-    /// Returns a context rotated about `scaledRect`'s center plus the rect re-centered on the
-    /// origin when the annotation is rotated; otherwise the untouched context and rect.
-    private func rotatedDrawing(_ context: GraphicsContext, annotation: ScreenshotAnnotation, scaledRect: CGRect) -> (GraphicsContext, CGRect) {
-        guard annotation.isRotated else { return (context, scaledRect) }
-        var rotated = context
-        rotated.translateBy(x: scaledRect.midX, y: scaledRect.midY)
-        rotated.rotate(by: .radians(annotation.rotation))
-        return (rotated, CGRect(x: -scaledRect.width / 2, y: -scaledRect.height / 2, width: scaledRect.width, height: scaledRect.height))
-    }
-
     private func drawAnnotation(_ annotation: ScreenshotAnnotation, in context: GraphicsContext, scaledRect: CGRect, imageSize: CGSize, origin: CGPoint, sourceImage: NSImage? = nil, zoomScale: CGFloat = 1) {
         let color = annotation.color
         // `imageSize` already grows with zoomScale, but stroke widths, arrowheads, and
@@ -567,19 +557,14 @@ struct ScreenshotEditorCanvasView: View {
         let lineWidth = annotation.lineWidth * zoomScale
 
         switch annotation.tool {
-        case .rectangle:
-            let (ctx, rect) = rotatedDrawing(context, annotation: annotation, scaledRect: scaledRect)
-            if annotation.fillColor != .clear {
-                ctx.fill(Path(rect), with: .color(annotation.fillColor))
-            }
-            ctx.stroke(Path(rect), with: .color(color), lineWidth: lineWidth)
-
-        case .circle:
-            let (ctx, rect) = rotatedDrawing(context, annotation: annotation, scaledRect: scaledRect)
-            if annotation.fillColor != .clear {
-                ctx.fill(Path(ellipseIn: rect), with: .color(annotation.fillColor))
-            }
-            ctx.stroke(Path(ellipseIn: rect), with: .color(color), lineWidth: lineWidth)
+        case .rectangle, .circle:
+            ShapeEffectsRenderer.drawPreview(
+                annotation,
+                in: context,
+                rect: scaledRect,
+                lineWidth: lineWidth,
+                effectScale: viewModel.shapeEffectScale(forRenderedImageWidth: imageSize.width)
+            )
 
         case .arrow:
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)

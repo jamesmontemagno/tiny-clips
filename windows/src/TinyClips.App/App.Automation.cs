@@ -13,6 +13,7 @@ using TinyClips.App.Settings;
 using TinyClips.Core.Automation;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Editing;
+using TinyClips.Core.Editing.Themes;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
@@ -382,7 +383,7 @@ public partial class App : IAutomationAppActions
 
     Task IAutomationAppActions.DiscardRecordingForAutomationAsync() => DiscardActiveRecordingAsync();
 
-    async Task<string> IAutomationAppActions.OpenEditorForAutomationAsync(string path, CaptureType? type)
+    async Task<string> IAutomationAppActions.OpenEditorForAutomationAsync(string path, CaptureType? type, EditorTheme? theme)
     {
         switch (type)
         {
@@ -397,7 +398,7 @@ public partial class App : IAutomationAppActions
 
                 return "studio";
             case CaptureType.Screenshot:
-                OpenScreenshotEditor(path, reopenPickerAfterClose: false);
+                OpenScreenshotEditor(path, reopenPickerAfterClose: false, theme);
                 return "screenshot";
             case CaptureType.Video when TryOpenStudioProjectForVideo(path):
                 return "studio";

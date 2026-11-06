@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
@@ -41,6 +43,16 @@ public sealed partial class EditorCanvas : UserControl
     /// changes between straight/curved) and Redact (placeholder Rectangle swaps to Image once a
     /// blurred preview is ready). Arrow's Secondary head and brushes survive shaft swaps. Brushes
     /// are allocated once and mutated in place to avoid hot-path allocation.</summary>
+    /// <summary>A shape's shadow, under the shape and clipped to the image as the export is.</summary>
+    private sealed class ShapeShadowVisual
+    {
+        public required Canvas ImageClip;
+        public required Canvas Host;
+        public required SpriteVisual Sprite;
+        public required DropShadow Shadow;
+        public required CompositionBrush Mask;
+    }
+
     private sealed class AnnotationVisual
     {
         public UIElement Primary = null!;
@@ -48,6 +60,8 @@ public sealed partial class EditorCanvas : UserControl
         public SolidColorBrush? StrokeBrush;
         public SolidColorBrush? FillBrush;
         public SolidColorBrush? TextBrush;
+        public LinearGradientBrush? GradientFillBrush;
+        public ShapeShadowVisual? Shadow;
 
         // Pen-stroke incremental sync bookkeeping: lets a growing stroke append only the new
         // points instead of rebuilding the whole polyline every pointer move.
@@ -65,6 +79,12 @@ public sealed partial class EditorCanvas : UserControl
     private EditorController _controller = null!;
     private ICaptureSettings? _settings;
     private XamlRoot? _observedXamlRoot;
+    /// <summary>
+    /// A composition shadow's blur radius for a Gaussian standard deviation of one, measured
+    /// against the Win2D export. See plans/editor-themes.md.
+    /// </summary>
+    internal const double PreviewBlurRadiusPerDeviation = 3;
+
     private readonly Dictionary<Annotation, AnnotationVisual> _visuals = new();
 
     private bool _dragging;
@@ -627,6 +647,14 @@ public sealed partial class EditorCanvas : UserControl
             {
                 OverlayCanvas.Children.Remove(visual.Secondary);
             }
+            if (visual.Shadow is { } shadow)
+            {
+                OverlayCanvas.Children.Remove(shadow.ImageClip);
+                ElementCompositionPreview.SetElementChildVisual(shadow.Host, null);
+                shadow.Sprite.Dispose();
+                shadow.Shadow.Dispose();
+                shadow.Mask.Dispose();
+            }
         }
     }
 
@@ -895,6 +923,102 @@ public sealed partial class EditorCanvas : UserControl
         element.RenderTransform = new RotateTransform();
     }
 
+    private static void ApplyShapeFill(Annotation ann, AnnotationVisual visual, Shape shape)
+    {
+        Brush brush;
+        if (ann.ShapeEffects.IsGradientFill && ann.FillColor.A > 0 && shape.Width > 0 && shape.Height > 0)
+        {
+            var gradient = visual.GradientFillBrush;
+            if (gradient is null)
+            {
+                gradient = new LinearGradientBrush();
+                gradient.GradientStops.Add(new GradientStop { Offset = 0 });
+                gradient.GradientStops.Add(new GradientStop { Offset = 1 });
+                visual.GradientFillBrush = gradient;
+            }
+
+            var endpoints = ScreenshotGradientMath.Endpoints(ann.ShapeEffects.GradientDirectionDegrees, shape.Width, shape.Height);
+            gradient.StartPoint = new Point(endpoints.Start.X, endpoints.Start.Y);
+            gradient.EndPoint = new Point(endpoints.End.X, endpoints.End.Y);
+            gradient.GradientStops[0].Color = ann.FillColor;
+            gradient.GradientStops[1].Color = ann.ShapeEffects.GradientEndColor;
+            brush = gradient;
+        }
+        else
+        {
+            visual.FillBrush!.Color = ann.FillColor;
+            brush = visual.FillBrush;
+        }
+
+        if (!ReferenceEquals(shape.Fill, brush))
+        {
+            shape.Fill = brush;
+        }
+    }
+
+    private ShapeShadowVisual CreateShapeShadow(Shape shape)
+    {
+        var compositor = ElementCompositionPreview.GetElementVisual(shape).Compositor;
+        var mask = shape.GetAlphaMask();
+        var dropShadow = compositor.CreateDropShadow();
+        dropShadow.Mask = mask;
+        var sprite = compositor.CreateSpriteVisual();
+        sprite.Shadow = dropShadow;
+
+        var host = new Canvas { IsHitTestVisible = false };
+        MakeRotatable(host);
+        ElementCompositionPreview.SetElementChildVisual(host, sprite);
+        var imageClip = new Canvas { IsHitTestVisible = false, Clip = new RectangleGeometry() };
+        imageClip.Children.Add(host);
+
+        // Same ZIndex as the shape, so child order is what keeps the shadow under it.
+        OverlayCanvas.Children.Insert(OverlayCanvas.Children.IndexOf(shape), imageClip);
+        return new ShapeShadowVisual
+        {
+            ImageClip = imageClip,
+            Host = host,
+            Sprite = sprite,
+            Shadow = dropShadow,
+            Mask = mask,
+        };
+    }
+
+    private void PositionShapeShadow(Annotation ann, AnnotationVisual visual, Shape shape, Point shapeTopLeft, double scale, double offX, double offY)
+    {
+        var effects = ann.ShapeEffects;
+        if (!effects.DrawsShadow || shape.Width <= 0 || shape.Height <= 0 || _controller.Bitmap is not { } bitmap)
+        {
+            if (visual.Shadow is { } hidden)
+            {
+                hidden.ImageClip.Visibility = Visibility.Collapsed;
+            }
+            return;
+        }
+
+        var shadow = visual.Shadow ??= CreateShapeShadow(shape);
+        shadow.ImageClip.Visibility = Visibility.Visible;
+        Canvas.SetZIndex(shadow.ImageClip, Canvas.GetZIndex(shape));
+
+        var imageTopLeft = ToCanvas(new Point(0, 0), scale, offX, offY);
+        Canvas.SetLeft(shadow.ImageClip, imageTopLeft.X);
+        Canvas.SetTop(shadow.ImageClip, imageTopLeft.Y);
+        ((RectangleGeometry)shadow.ImageClip.Clip).Rect = new Rect(0, 0, bitmap.PixelWidth * scale, bitmap.PixelHeight * scale);
+
+        Canvas.SetLeft(shadow.Host, shapeTopLeft.X - imageTopLeft.X);
+        Canvas.SetTop(shadow.Host, shapeTopLeft.Y - imageTopLeft.Y);
+        shadow.Host.Width = shape.Width;
+        shadow.Host.Height = shape.Height;
+        ApplyRotation(shadow.Host, ann.Rotation);
+
+        shadow.Sprite.Size = new Vector2((float)shape.Width, (float)shape.Height);
+        var color = effects.ShadowColor;
+        shadow.Shadow.Color = Color.FromArgb(255, color.R, color.G, color.B);
+        shadow.Shadow.Opacity = color.A / 255f;
+        shadow.Shadow.BlurRadius = (float)(effects.ShadowStandardDeviation * scale * PreviewBlurRadiusPerDeviation);
+        var offset = ShapeEffects.LocalShadowOffset(effects.ShadowOffsetY * scale, ann.Rotation);
+        shadow.Shadow.Offset = new Vector3(offset, 0);
+    }
+
     private static void ApplyRotation(FrameworkElement element, double degrees)
     {
         if (element.RenderTransform is RotateTransform rotate)
@@ -921,8 +1045,9 @@ public sealed partial class EditorCanvas : UserControl
                 rect.Height = b.Height * scale;
                 rect.StrokeThickness = thickness;
                 visual.StrokeBrush!.Color = ann.Color;
-                visual.FillBrush!.Color = ann.FillColor;
+                ApplyShapeFill(ann, visual, rect);
                 ApplyRotation(rect, ann.Rotation);
+                PositionShapeShadow(ann, visual, rect, tl, scale, offX, offY);
                 break;
             }
             case EditTool.Ellipse:
@@ -936,8 +1061,9 @@ public sealed partial class EditorCanvas : UserControl
                 ellipse.Height = b.Height * scale;
                 ellipse.StrokeThickness = thickness;
                 visual.StrokeBrush!.Color = ann.Color;
-                visual.FillBrush!.Color = ann.FillColor;
+                ApplyShapeFill(ann, visual, ellipse);
                 ApplyRotation(ellipse, ann.Rotation);
+                PositionShapeShadow(ann, visual, ellipse, tl, scale, offX, offY);
                 break;
             }
             case EditTool.Line:

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "acme-brand",
+  "name": "Acme Brand",
+  "rectangle": { "strokeColor": "#FF102030", "strokeWidth": 5.5, "fillColor": "#80405060", "gradientEndColor": "#FF708090", "gradientDirection": 120, "shadowBlur": 18, "shadowColor": "#66000011" },
+  "ellipse": { "strokeColor": "#FF203040", "strokeWidth": 3.5, "fillColor": "#90506070", "gradientEndColor": null, "gradientDirection": 200, "shadowBlur": 9, "shadowColor": "#55110000" },
+  "arrow": { "color": "#FFA0B0C0", "width": 7, "style": "curvedRight" },
+  "line": { "color": "#FFB0C0D0", "width": 6 },
+  "pen": { "color": "#FFC0D0E0", "width": 2.5 },
+  "text": {
+    "color": "#FFD0E0F0", "fontFamily": "Georgia", "fontSize": 22, "bold": true, "italic": true, "underline": true,
+    "box": { "backgroundColor": "#F0112233", "borderColor": "#FF445566", "borderWidth": 2, "padding": 10, "cornerRadius": 6 }
+  },
+  "number": { "badgeColor": "#FF778899", "textColor": "#FF001122", "size": 1.5 },
+  "canvas": {
+    "applyOnOpen": true, "background": "gradient", "color": "#FF334455", "secondaryColor": "#FF667788", "gradientDirection": 200,
+    "padding": 48, "cornerRadius": 16, "shadow": 24, "frame": "landscape16x9", "horizontalAlignment": "left", "verticalAlignment": "bottom"
+  }
+}

@@ -12,11 +12,13 @@ enum AutomationAnnotations {
     private static let allowedKeys: Set<String> = [
         "type", "bounds", "points", "text", "color", "textColor", "fillColor",
         "lineWidth", "fontSize", "redactionLevel", "redactionStyle", "emoji",
+        "fillEndColor", "fillDirection", "shadowBlur", "shadowColor",
     ]
 
     /// Validates every annotation against `imagePixelSize` and returns editor annotations in
-    /// normalized coordinates. Agent sizes (`lineWidth`, `fontSize`) are image pixels.
-    static func parse(_ value: Any?, imagePixelSize: CGSize) throws -> [ScreenshotAnnotation] {
+    /// normalized coordinates. Agent sizes (`lineWidth`, `fontSize`) are image pixels. Values an
+    /// annotation leaves out come from `theme`, if there is one, whose sizes are editor units.
+    static func parse(_ value: Any?, imagePixelSize: CGSize, theme: EditorTheme? = nil) throws -> [ScreenshotAnnotation] {
         guard imagePixelSize.width >= 1, imagePixelSize.height >= 1 else {
             throw AutomationError(.invalidParams, "The image has no pixels.")
         }
@@ -31,7 +33,11 @@ enum AutomationAnnotations {
             guard let object = item as? [String: Any] else {
                 throw AutomationError(.invalidParams, "annotations[\(index)] must be an object.")
             }
-            return try parseAnnotation(object, index: index, imagePixelSize: imagePixelSize, nextNumber: &nextNumber)
+            var annotation = try parseAnnotation(object, index: index, imagePixelSize: imagePixelSize, nextNumber: &nextNumber)
+            if let theme {
+                applyTheme(theme, to: &annotation, explicit: object)
+            }
+            return annotation
         }
     }
 
@@ -120,6 +126,8 @@ enum AutomationAnnotations {
             points: points.map { CGPoint(x: $0.x / size.width, y: $0.y / size.height) }
         )
 
+        annotation.shapeEffects = try parseShapeEffects(object, tool: tool, imagePixelSize: size, label: label)
+
         let text = try optionalString(object["text"], key: "text", label: label)
         switch tool {
         case .text:
@@ -175,6 +183,120 @@ enum AutomationAnnotations {
             throw fail("redactionLevel and redactionStyle are only used by redact.")
         }
         return annotation
+    }
+
+    /// Keys on the annotation win. Bounds are required, so they always set the position and a
+    /// number's size. Redactions and emoji take nothing from a theme.
+    private static func applyTheme(_ theme: EditorTheme, to annotation: inout ScreenshotAnnotation, explicit object: [String: Any]) {
+        func isMissing(_ key: String) -> Bool {
+            object[key] == nil || object[key] is NSNull
+        }
+        func themed(_ key: String, _ hex: String, _ keyPath: WritableKeyPath<ScreenshotAnnotation, Color>) {
+            if isMissing(key) { annotation[keyPath: keyPath] = EditorThemeColor.color(hex) }
+        }
+
+        func applyShape(_ section: EditorTheme.ShapeSection) {
+            themed("color", section.strokeColor, \.color)
+            themed("fillColor", section.fillColor, \.fillColor)
+            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(section.strokeWidth) }
+            if isMissing("fillEndColor") {
+                if let endColor = section.gradientEndColor, EditorThemeColor.isVisible(EditorThemeColor.hex(annotation.fillColor)) {
+                    annotation.shapeEffects.isGradientFill = true
+                    annotation.shapeEffects.gradientEndColor = EditorThemeColor.color(endColor)
+                    annotation.shapeEffects.gradientDirectionDegrees = section.gradientDirection
+                }
+            } else if isMissing("fillDirection") {
+                annotation.shapeEffects.gradientDirectionDegrees = section.gradientDirection
+            }
+            if isMissing("shadowBlur") {
+                annotation.shapeEffects.hasShadow = section.shadowBlur > 0
+                if section.shadowBlur > 0 { annotation.shapeEffects.shadowBlur = CGFloat(section.shadowBlur) }
+            }
+            if isMissing("shadowColor") {
+                annotation.shapeEffects.shadowColor = EditorThemeColor.color(section.shadowColor)
+            }
+        }
+        func applyStroke(_ section: EditorTheme.StrokeSection) {
+            themed("color", section.color, \.color)
+            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(section.width) }
+        }
+
+        switch annotation.tool {
+        case .rectangle:
+            applyShape(theme.rectangle)
+        case .circle:
+            applyShape(theme.ellipse)
+        case .arrow:
+            themed("color", theme.arrow.color, \.color)
+            if isMissing("lineWidth") { annotation.lineWidth = CGFloat(theme.arrow.width) }
+            annotation.arrowStyle = EditorThemeNames.arrowStyle(theme.arrow.style)
+        case .line:
+            applyStroke(theme.line)
+        case .pencil:
+            applyStroke(theme.pen)
+        case .text:
+            themed("color", theme.text.color, \.color)
+            if isMissing("fontSize") { annotation.fontSize = CGFloat(theme.text.fontSize) }
+            annotation.fontFamily = theme.text.fontFamily ?? textSystemFontFamily
+            annotation.isBold = theme.text.bold
+            annotation.isItalic = theme.text.italic
+            annotation.isUnderlined = theme.text.underline
+            annotation.textBoxStyle = EditorThemeStyling.textBoxStyle(theme.text.box)
+        case .number:
+            themed("color", theme.number.badgeColor, \.color)
+            themed("textColor", theme.number.textColor, \.textColor)
+        case .blur, .emoji, .move, .crop:
+            break
+        }
+    }
+
+    private static func parseShapeEffects(
+        _ object: [String: Any],
+        tool: EditTool,
+        imagePixelSize size: CGSize,
+        label: String
+    ) throws -> ShapeEffects {
+        func fail(_ message: String) -> AutomationError {
+            AutomationError(.invalidParams, "\(label).\(message)")
+        }
+        var effects = ShapeEffects()
+        let keys = ["fillEndColor", "fillDirection", "shadowBlur", "shadowColor"]
+        guard tool.supportsShapeEffects else {
+            if let key = keys.first(where: { object[$0] != nil }) {
+                throw fail("\(key) is only used by rectangle and ellipse.")
+            }
+            return effects
+        }
+
+        if let endColor = try parseColor(object["fillEndColor"], key: "fillEndColor", label: label) {
+            guard let start = try optionalString(object["fillColor"], key: "fillColor", label: label),
+                  let components = hexComponents(start), components.alpha > 0 else {
+                throw fail("fillEndColor needs a visible fillColor to start from.")
+            }
+            effects.isGradientFill = true
+            effects.gradientEndColor = endColor
+        }
+        if object["fillDirection"] != nil {
+            guard effects.isGradientFill else { throw fail("fillDirection needs fillEndColor.") }
+            guard let degrees = AutomationValue.double(object["fillDirection"]), degrees.isFinite, degrees >= 0, degrees <= 360 else {
+                throw fail("fillDirection must be a number from 0 to 360.")
+            }
+            effects.gradientDirectionDegrees = degrees
+        }
+
+        if object["shadowBlur"] != nil {
+            guard let pixels = AutomationValue.double(object["shadowBlur"]), pixels.isFinite, pixels >= 0, pixels <= 500 else {
+                throw fail("shadowBlur must be a number from 0 to 500.")
+            }
+            effects.hasShadow = pixels > 0
+            effects.shadowBlur = CGFloat(pixels) / max(1, size.width / editorStrokeReferenceWidth)
+            if let color = try parseColor(object["shadowColor"], key: "shadowColor", label: label) {
+                effects.shadowColor = color
+            }
+        } else if object["shadowColor"] != nil {
+            throw fail("shadowColor needs shadowBlur.")
+        }
+        return effects
     }
 
     static func parseBounds(_ value: Any?, imagePixelSize size: CGSize, label: String) throws -> CGRect {
@@ -263,6 +385,7 @@ enum AutomationAnnotations {
     static func render(
         sourceURL: URL,
         annotationsJSON: Any?,
+        theme: EditorTheme? = nil,
         destination: (_ fileExtension: String) -> URL
     ) throws -> (url: URL, count: Int) {
         let viewModel = ScreenshotEditorViewModel(url: sourceURL)
@@ -272,9 +395,13 @@ enum AutomationAnnotations {
         }
         let annotations = try parse(
             annotationsJSON,
-            imagePixelSize: CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+            imagePixelSize: CGSize(width: rep.pixelsWide, height: rep.pixelsHigh),
+            theme: theme
         )
         viewModel.annotations = annotations
+        if let theme, theme.canvas.applyOnOpen {
+            viewModel.applyThemeCanvas(theme.canvas)
+        }
         guard let url = viewModel.save(to: destination(viewModel.saveFormat.rawValue)) else {
             throw AutomationError(.internal, "Could not save the annotated screenshot.")
         }

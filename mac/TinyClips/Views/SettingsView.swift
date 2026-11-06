@@ -7,6 +7,7 @@ enum SettingsTab: String, CaseIterable {
     case general = "General"
     case analytics = "Analytics"
     case screenshot = "Screenshot"
+    case editorThemes = "Editor Themes"
     case video = "Video"
     case studio = "Studio"
     case teleprompter = "Teleprompter"
@@ -23,6 +24,7 @@ enum SettingsTab: String, CaseIterable {
         case .general: return "gearshape"
         case .analytics: return "chart.bar.xaxis"
         case .screenshot: return "camera"
+        case .editorThemes: return "paintpalette"
         case .video: return "video"
         case .studio: return "square.stack.3d.up"
         case .teleprompter: return "text.alignleft"
@@ -88,6 +90,8 @@ struct SettingsView: View {
                     AnalyticsSettingsSection(store: captureAnalytics)
                 case .screenshot:
                     ScreenshotSettingsSection(settings: settings)
+                case .editorThemes:
+                    EditorThemesSettingsSection()
                 case .video:
                     VideoSettingsSection(
                         settings: settings,

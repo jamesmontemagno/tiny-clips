@@ -9,6 +9,7 @@ using TinyClips.App.Settings;
 using TinyClips.App.Settings.Sections;
 using TinyClips.App.ViewModels;
 using TinyClips.App.ViewModels.ClipsLibrary;
+using TinyClips.Core.Editing.Themes;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
@@ -220,6 +221,9 @@ public sealed partial class SettingsWindow : Window
                 ViewModel,
                 WinRT.Interop.WindowNative.GetWindowHandle(this)),
             SettingsSectionKind.Screenshot => new ScreenshotSettingsSection(ViewModel),
+            SettingsSectionKind.EditorThemes => new EditorThemesSettingsSection(
+                new EditorThemesSettingsViewModel(App.Services.GetRequiredService<EditorThemeStore>()),
+                WinRT.Interop.WindowNative.GetWindowHandle(this)),
             SettingsSectionKind.Video => new VideoSettingsSection(ViewModel),
             SettingsSectionKind.Studio => new StudioSettingsSection(ViewModel),
             SettingsSectionKind.Gif => new GifSettingsSection(ViewModel),

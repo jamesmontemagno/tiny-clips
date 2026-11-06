@@ -49,6 +49,11 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         "editor.annotate",
         "editor.trim",
         "editor.saveFrame",
+        "editor.themes.list",
+        "editor.themes.get",
+        "editor.themes.save",
+        "editor.themes.setActive",
+        "editor.themes.delete",
         "library.reveal",
         "library.copy",
         "settings.set",
@@ -104,6 +109,11 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             "editor.annotate" => await AnnotateAsync(context, cancellationToken),
             "editor.trim" => await TrimAsync(context, cancellationToken),
             "editor.saveFrame" => await SaveFrameAsync(context, cancellationToken),
+            "editor.themes.list" => ListThemes(),
+            "editor.themes.get" => GetTheme(context),
+            "editor.themes.save" => SaveTheme(context),
+            "editor.themes.setActive" => SetActiveTheme(context),
+            "editor.themes.delete" => DeleteTheme(context),
             "library.reveal" => await OnUiAsync(() => Reveal(context)),
             "library.copy" => await CopyAsync(context),
             "library.delete" => await DeleteAsync(context, cancellationToken),
@@ -352,13 +362,28 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
                 throw NotFound();
             }
 
-            var editor = await OnUiAsync(() => _app.OpenEditorForAutomationAsync(project, null));
+            RejectThemeOutsideScreenshots(context);
+            var editor = await OnUiAsync(() => _app.OpenEditorForAutomationAsync(project, null, null));
             return new JsonObject { ["opened"] = true, ["editor"] = editor };
         }
 
         var (path, type) = ResolveLibraryFile(raw);
-        var opened = await OnUiAsync(() => _app.OpenEditorForAutomationAsync(path, type));
+        if (type != CaptureType.Screenshot)
+        {
+            RejectThemeOutsideScreenshots(context);
+        }
+
+        var theme = OptionalTheme(context);
+        var opened = await OnUiAsync(() => _app.OpenEditorForAutomationAsync(path, type, theme));
         return new JsonObject { ["opened"] = true, ["editor"] = opened };
+    }
+
+    private static void RejectThemeOutsideScreenshots(AutomationCommandContext context)
+    {
+        if (context.Params["themeId"] is not null)
+        {
+            throw new AutomationException(AutomationErrorCodes.InvalidParams, "themeId applies to screenshots only.");
+        }
     }
 
     private JsonNode Reveal(AutomationCommandContext context)

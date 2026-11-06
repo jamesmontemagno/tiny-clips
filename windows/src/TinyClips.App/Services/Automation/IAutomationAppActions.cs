@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using TinyClips.Core.Capture;
+using TinyClips.Core.Editing.Themes;
 using TinyClips.Core.Models;
 
 namespace TinyClips.App;
@@ -59,8 +60,11 @@ internal interface IAutomationAppActions
 
     Task DiscardRecordingForAutomationAsync();
 
-    /// <summary>Opens a clip or Studio project and returns the editor it opened in.</summary>
-    Task<string> OpenEditorForAutomationAsync(string path, CaptureType? type);
+    /// <summary>
+    /// Opens a clip or Studio project and returns the editor it opened in. A screenshot editor
+    /// uses <paramref name="theme"/> instead of the active theme.
+    /// </summary>
+    Task<string> OpenEditorForAutomationAsync(string path, CaptureType? type, EditorTheme? theme);
 
     /// <summary>Reads or edits a Studio project, suggests zooms, or exports its current snapshot.</summary>
     Task<JsonNode> ExecuteStudioAutomationCommandAsync(string commandName, JsonObject parameters, CancellationToken cancellationToken);

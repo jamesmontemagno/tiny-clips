@@ -1,0 +1,28 @@
+{
+  "description": "Themes both apps must reject. field is named in the error message.",
+  "cases": [
+    { "name": "newer version", "field": "version", "theme": { "version": 2, "id": "a", "name": "A" } },
+    { "name": "blank name", "field": "name", "theme": { "id": "a", "name": "   " } },
+    { "name": "long name", "field": "name", "theme": { "id": "a", "name": "1234567890123456789012345678901234567890123456789012345678901" } },
+    { "name": "bad id", "field": "id", "theme": { "id": "a/b", "name": "A" } },
+    { "name": "bad rectangle color", "field": "rectangle.strokeColor", "theme": { "id": "a", "name": "A", "rectangle": { "strokeColor": "red" } } },
+    { "name": "rectangle stroke too wide", "field": "rectangle.strokeWidth", "theme": { "id": "a", "name": "A", "rectangle": { "strokeWidth": 101 } } },
+    { "name": "rectangle gradient with no fill", "field": "rectangle.gradientEndColor", "theme": { "id": "a", "name": "A", "rectangle": { "gradientEndColor": "#FF000000" } } },
+    { "name": "rectangle blur too large", "field": "rectangle.shadowBlur", "theme": { "id": "a", "name": "A", "rectangle": { "shadowBlur": 101 } } },
+    { "name": "bad ellipse color", "field": "ellipse.fillColor", "theme": { "id": "a", "name": "A", "ellipse": { "fillColor": "blue" } } },
+    { "name": "ellipse gradient with no fill", "field": "ellipse.gradientEndColor", "theme": { "id": "a", "name": "A", "ellipse": { "gradientEndColor": "#FF000000" } } },
+    { "name": "ellipse blur too large", "field": "ellipse.shadowBlur", "theme": { "id": "a", "name": "A", "ellipse": { "shadowBlur": 101 } } },
+    { "name": "unknown arrow style", "field": "arrow.style", "theme": { "id": "a", "name": "A", "arrow": { "style": "zigzag" } } },
+    { "name": "arrow too wide", "field": "arrow.width", "theme": { "id": "a", "name": "A", "arrow": { "width": 101 } } },
+    { "name": "line too wide", "field": "line.width", "theme": { "id": "a", "name": "A", "line": { "width": 101 } } },
+    { "name": "bad pen color", "field": "pen.color", "theme": { "id": "a", "name": "A", "pen": { "color": "green" } } },
+    { "name": "pen too wide", "field": "pen.width", "theme": { "id": "a", "name": "A", "pen": { "width": 101 } } },
+    { "name": "text too small", "field": "text.fontSize", "theme": { "id": "a", "name": "A", "text": { "fontSize": 3 } } },
+    { "name": "padding too large", "field": "text.box.padding", "theme": { "id": "a", "name": "A", "text": { "box": { "padding": 49 } } } },
+    { "name": "number too small", "field": "number.size", "theme": { "id": "a", "name": "A", "number": { "size": 0.1 } } },
+    { "name": "image background", "field": "canvas.background", "theme": { "id": "a", "name": "A", "canvas": { "background": "wallpaper" } } },
+    { "name": "unknown frame", "field": "canvas.frame", "theme": { "id": "a", "name": "A", "canvas": { "frame": "2:1" } } },
+    { "name": "unknown alignment", "field": "canvas.horizontalAlignment", "theme": { "id": "a", "name": "A", "canvas": { "horizontalAlignment": "leading" } } },
+    { "name": "section is null", "field": "ellipse", "theme": { "id": "a", "name": "A", "ellipse": null } }
+  ]
+}

@@ -1,0 +1,737 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="TinyClips.App.Settings.Sections.EditorThemesSettingsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:TinyClips.App"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="using:CommunityToolkit.WinUI"
+    xmlns:vm="using:TinyClips.App.ViewModels"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <Style x:Key="ThemeStrokeWidthBoxStyle" TargetType="NumberBox">
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="LargeChange" Value="2.5" />
+            <Setter Property="Maximum" Value="100" />
+            <Setter Property="Minimum" Value="0" />
+            <Setter Property="SmallChange" Value="0.5" />
+            <Setter Property="SpinButtonPlacementMode" Value="Compact" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border HorizontalAlignment="Stretch">
+        <StackPanel
+            MaxWidth="1064"
+            HorizontalAlignment="Stretch"
+            Spacing="4">
+            <StackPanel Margin="4,8,4,12" Spacing="2">
+                <TextBlock
+                    AutomationProperties.HeadingLevel="Level1"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Editor Themes" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Save named looks for screenshot annotations and the export canvas, then switch between them in the screenshot editor. Changes here save right away. Editors that are already open keep their look."
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <InfoBar
+                AutomationProperties.AutomationId="EditorThemesErrorInfoBar"
+                IsOpen="{x:Bind ViewModel.HasError, Mode=TwoWay}"
+                Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                Severity="Error" />
+
+            <Border
+                Padding="12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <StackPanel Spacing="8">
+                    <CommandBar
+                        HorizontalAlignment="Left"
+                        Background="Transparent"
+                        DefaultLabelPosition="Right"
+                        IsOpen="False">
+                        <AppBarButton
+                            AutomationProperties.AutomationId="EditorThemeNewButton"
+                            Click="OnNewClick"
+                            Icon="Add"
+                            Label="New" />
+                        <AppBarButton
+                            AutomationProperties.AutomationId="EditorThemeDuplicateButton"
+                            Click="OnDuplicateClick"
+                            Icon="Copy"
+                            IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                            Label="Duplicate" />
+                        <AppBarButton
+                            AutomationProperties.AutomationId="EditorThemeDeleteButton"
+                            Icon="Delete"
+                            IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                            Label="Delete">
+                            <AppBarButton.Flyout>
+                                <Flyout x:Name="DeleteFlyout">
+                                    <StackPanel Width="260" Spacing="12">
+                                        <TextBlock Text="Delete this theme? Saved captures aren't changed." TextWrapping="Wrap" />
+                                        <Button
+                                            AutomationProperties.AutomationId="EditorThemeConfirmDeleteButton"
+                                            Click="OnConfirmDeleteClick"
+                                            Content="Delete theme"
+                                            Style="{ThemeResource AccentButtonStyle}" />
+                                    </StackPanel>
+                                </Flyout>
+                            </AppBarButton.Flyout>
+                        </AppBarButton>
+                        <AppBarSeparator />
+                        <AppBarButton
+                            AutomationProperties.AutomationId="EditorThemeImportButton"
+                            Click="OnImportClick"
+                            Icon="Import"
+                            Label="Import…" />
+                        <AppBarButton
+                            AutomationProperties.AutomationId="EditorThemeExportButton"
+                            Click="OnExportClick"
+                            IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                            Label="Export…">
+                            <AppBarButton.Icon>
+                                <FontIcon Glyph="&#xEDE1;" />
+                            </AppBarButton.Icon>
+                        </AppBarButton>
+                        <AppBarButton
+                            AutomationProperties.AutomationId="EditorThemeSetActiveButton"
+                            Click="OnSetActiveClick"
+                            IsEnabled="{x:Bind ViewModel.CanSetActive, Mode=OneWay}"
+                            Label="Set Active"
+                            ToolTipService.ToolTip="New editor windows use this theme">
+                            <AppBarButton.Icon>
+                                <FontIcon Glyph="&#xE73E;" />
+                            </AppBarButton.Icon>
+                        </AppBarButton>
+                    </CommandBar>
+                    <TextBlock
+                        Margin="4"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="No themes yet. Choose New, or save one from the screenshot editor."
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind ViewModel.HasNoSelection, Mode=OneWay}" />
+                    <ListView
+                        MaxHeight="220"
+                        AutomationProperties.AutomationId="EditorThemesList"
+                        AutomationProperties.Name="Editor themes"
+                        ItemsSource="{x:Bind ViewModel.Themes}"
+                        SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+                        SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:EditorThemeListItem">
+                                <Grid AutomationProperties.Name="{x:Bind AccessibleName}" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Text="{x:Bind Name}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                        Style="{ThemeResource CaptionTextBlockStyle}"
+                                        Text="Active"
+                                        Visibility="{x:Bind IsActive}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                <controls:SettingsCard Header="Name" HeaderIcon="{ui:FontIcon Glyph=&#xE8AC;}">
+                    <TextBox
+                        MinWidth="240"
+                        AutomationProperties.AutomationId="EditorThemeNameBox"
+                        AutomationProperties.Name="Theme name"
+                        MaxLength="60"
+                        Text="{x:Bind ViewModel.NameText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard Description="A sample of this theme. Actual sizes follow each image." Header="Preview" HeaderIcon="{ui:FontIcon Glyph=&#xE8FF;}" />
+                <Border
+                    x:Name="PreviewBackground"
+                    Height="240"
+                    AutomationProperties.AutomationId="EditorThemePreview"
+                    AutomationProperties.Name="Theme preview: a rectangle, an ellipse, an arrow, a line, a pen stroke, text, and a number badge"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource ControlCornerRadius}">
+                    <Border
+                        x:Name="PreviewCard"
+                        Width="420"
+                        Height="170"
+                        Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1">
+                        <Canvas>
+                            <Canvas
+                                x:Name="PreviewRectangleShadowHost"
+                                Canvas.Left="16"
+                                Canvas.Top="14"
+                                Width="96"
+                                Height="56"
+                                IsHitTestVisible="False" />
+                            <Rectangle
+                                x:Name="PreviewRectangle"
+                                Canvas.Left="16"
+                                Canvas.Top="14"
+                                Width="96"
+                                Height="56" />
+                            <Canvas
+                                x:Name="PreviewEllipseShadowHost"
+                                Canvas.Left="128"
+                                Canvas.Top="14"
+                                Width="96"
+                                Height="56"
+                                IsHitTestVisible="False" />
+                            <Ellipse
+                                x:Name="PreviewEllipse"
+                                Canvas.Left="128"
+                                Canvas.Top="14"
+                                Width="96"
+                                Height="56" />
+                            <Path
+                                x:Name="PreviewArrowShaft"
+                                StrokeEndLineCap="Round"
+                                StrokeStartLineCap="Round" />
+                            <Polygon x:Name="PreviewArrowHead" />
+                            <Line
+                                x:Name="PreviewLine"
+                                StrokeEndLineCap="Round"
+                                StrokeStartLineCap="Round"
+                                X1="170"
+                                X2="250"
+                                Y1="150"
+                                Y2="96" />
+                            <Path
+                                x:Name="PreviewPen"
+                                Data="M 272,128 C 288,92 304,92 320,124 S 352,156 372,122 S 392,100 404,112"
+                                StrokeEndLineCap="Round"
+                                StrokeLineJoin="Round"
+                                StrokeStartLineCap="Round" />
+                            <Border
+                                x:Name="PreviewTextBox"
+                                Canvas.Left="16"
+                                Canvas.Top="92">
+                                <TextBlock x:Name="PreviewText" Text="Sample text" />
+                            </Border>
+                            <Grid x:Name="PreviewBadge">
+                                <Ellipse x:Name="PreviewBadgeCircle" />
+                                <TextBlock
+                                    x:Name="PreviewBadgeText"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontWeight="SemiBold"
+                                    Text="1" />
+                            </Grid>
+                        </Canvas>
+                    </Border>
+                </Border>
+
+                <controls:SettingsExpander
+                    AutomationProperties.AutomationId="ThemeRectangleExpander"
+                    AutomationProperties.Name="Rectangle theme settings"
+                    Description="Stroke, fill, gradient, and shadow for rectangles."
+                    Header="Rectangle"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE71A;}" IsExpanded="True">
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="Stroke color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeRectangleStrokeColor"
+                                AutomationProperties.Name="Rectangle stroke color"
+                                Color="{x:Bind ViewModel.RectangleStrokeColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Stroke width">
+                            <NumberBox
+                                AutomationProperties.AutomationId="ThemeRectangleStrokeWidthBox"
+                                AutomationProperties.Name="Rectangle stroke width"
+                                Style="{StaticResource ThemeStrokeWidthBoxStyle}"
+                                Value="{x:Bind ViewModel.RectangleStrokeWidth, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Fill color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeRectangleFillColor"
+                                AutomationProperties.Name="Rectangle fill color" AllowTransparent="True"
+                                Color="{x:Bind ViewModel.RectangleFillColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="Blends the fill color into an end color. Needs a fill." Header="Gradient fill">
+                            <ToggleSwitch
+                                AutomationProperties.AutomationId="ThemeRectangleGradientToggle"
+                                AutomationProperties.Name="Rectangle gradient fill"
+                                IsEnabled="{x:Bind ViewModel.HasVisibleRectangleFill, Mode=OneWay}"
+                                IsOn="{x:Bind ViewModel.HasRectangleGradient, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Gradient end color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeRectangleGradientEndColor"
+                                AutomationProperties.Name="Rectangle gradient end color"
+                                Color="{x:Bind ViewModel.RectangleGradientEndColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="0 is left to right. 90 is top to bottom." Header="Gradient direction">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeRectangleGradientDirectionBox"
+                                AutomationProperties.Name="Rectangle gradient direction"
+                                LargeChange="25"
+                                Maximum="360"
+                                Minimum="0"
+                                SmallChange="5"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.RectangleGradientDirection, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="0 means no shadow." Header="Shadow blur">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeRectangleShadowBlurBox"
+                                AutomationProperties.Name="Rectangle shadow blur"
+                                LargeChange="5"
+                                Maximum="100"
+                                Minimum="0"
+                                SmallChange="1"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.RectangleShadowBlur, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Shadow color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeRectangleShadowColor"
+                                AutomationProperties.Name="Rectangle shadow color"
+                                Color="{x:Bind ViewModel.RectangleShadowColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+                <controls:SettingsExpander
+                    AutomationProperties.AutomationId="ThemeEllipseExpander"
+                    AutomationProperties.Name="Ellipse theme settings"
+                    Description="Stroke, fill, gradient, and shadow for ellipses."
+                    Header="Ellipse"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xEA3A;}">
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="Stroke color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeEllipseStrokeColor"
+                                AutomationProperties.Name="Ellipse stroke color"
+                                Color="{x:Bind ViewModel.EllipseStrokeColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Stroke width">
+                            <NumberBox
+                                AutomationProperties.AutomationId="ThemeEllipseStrokeWidthBox"
+                                AutomationProperties.Name="Ellipse stroke width"
+                                Style="{StaticResource ThemeStrokeWidthBoxStyle}"
+                                Value="{x:Bind ViewModel.EllipseStrokeWidth, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Fill color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeEllipseFillColor"
+                                AutomationProperties.Name="Ellipse fill color" AllowTransparent="True"
+                                Color="{x:Bind ViewModel.EllipseFillColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="Blends the fill color into an end color. Needs a fill." Header="Gradient fill">
+                            <ToggleSwitch
+                                AutomationProperties.AutomationId="ThemeEllipseGradientToggle"
+                                AutomationProperties.Name="Ellipse gradient fill"
+                                IsEnabled="{x:Bind ViewModel.HasVisibleEllipseFill, Mode=OneWay}"
+                                IsOn="{x:Bind ViewModel.HasEllipseGradient, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Gradient end color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeEllipseGradientEndColor"
+                                AutomationProperties.Name="Ellipse gradient end color"
+                                Color="{x:Bind ViewModel.EllipseGradientEndColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="0 is left to right. 90 is top to bottom." Header="Gradient direction">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeEllipseGradientDirectionBox"
+                                AutomationProperties.Name="Ellipse gradient direction"
+                                LargeChange="25"
+                                Maximum="360"
+                                Minimum="0"
+                                SmallChange="5"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.EllipseGradientDirection, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="0 means no shadow." Header="Shadow blur">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeEllipseShadowBlurBox"
+                                AutomationProperties.Name="Ellipse shadow blur"
+                                LargeChange="5"
+                                Maximum="100"
+                                Minimum="0"
+                                SmallChange="1"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.EllipseShadowBlur, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Shadow color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeEllipseShadowColor"
+                                AutomationProperties.Name="Ellipse shadow color"
+                                Color="{x:Bind ViewModel.EllipseShadowColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+                <controls:SettingsExpander
+                    AutomationProperties.AutomationId="ThemeArrowExpander"
+                    AutomationProperties.Name="Arrow theme settings"
+                    Description="Color, width, and style."
+                    Header="Arrow"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE72A;}">
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="Color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeArrowColor"
+                                AutomationProperties.Name="Arrow color"
+                                Color="{x:Bind ViewModel.ArrowColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Width">
+                            <NumberBox
+                                AutomationProperties.AutomationId="ThemeArrowWidthBox"
+                                AutomationProperties.Name="Arrow width"
+                                Style="{StaticResource ThemeStrokeWidthBoxStyle}"
+                                Value="{x:Bind ViewModel.ArrowWidth, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Style">
+                            <ComboBox
+                                AutomationProperties.AutomationId="ThemeArrowStyleCombo"
+                                AutomationProperties.Name="Arrow style"
+                                SelectedIndex="{x:Bind ViewModel.ArrowStyleIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Straight" />
+                                <ComboBoxItem Content="Curved" />
+                                <ComboBoxItem Content="Curved (alt)" />
+                            </ComboBox>
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+                <controls:SettingsExpander
+                    AutomationProperties.AutomationId="ThemeLineExpander"
+                    AutomationProperties.Name="Line theme settings"
+                    Description="Color and width."
+                    Header="Line"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE738;}">
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="Color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeLineColor"
+                                AutomationProperties.Name="Line color"
+                                Color="{x:Bind ViewModel.LineColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Width">
+                            <NumberBox
+                                AutomationProperties.AutomationId="ThemeLineWidthBox"
+                                AutomationProperties.Name="Line width"
+                                Style="{StaticResource ThemeStrokeWidthBoxStyle}"
+                                Value="{x:Bind ViewModel.LineWidth, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+                <controls:SettingsExpander
+                    AutomationProperties.AutomationId="ThemePenExpander"
+                    AutomationProperties.Name="Pen theme settings"
+                    Description="Color and width of freehand strokes."
+                    Header="Pen"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}">
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="Color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemePenColor"
+                                AutomationProperties.Name="Pen color"
+                                Color="{x:Bind ViewModel.PenColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Width">
+                            <NumberBox
+                                AutomationProperties.AutomationId="ThemePenWidthBox"
+                                AutomationProperties.Name="Pen width"
+                                Style="{StaticResource ThemeStrokeWidthBoxStyle}"
+                                Value="{x:Bind ViewModel.PenWidth, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+                <controls:SettingsExpander
+                    AutomationProperties.AutomationId="ThemeTextExpander"
+                    AutomationProperties.Name="Text theme settings"
+                    Description="Font, color, and box."
+                    Header="Text"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8D2;}">
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="Color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeTextColor"
+                                AutomationProperties.Name="Text color"
+                                Color="{x:Bind ViewModel.TextColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="Leave blank for the default font." Header="Font">
+                            <ComboBox
+                                MinWidth="180"
+                                AutomationProperties.AutomationId="ThemeFontCombo"
+                                AutomationProperties.Name="Font"
+                                IsEditable="True"
+                                ItemsSource="{x:Bind FontChoices}"
+                                PlaceholderText="Default font"
+                                Text="{x:Bind ViewModel.FontFamilyText, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Font size">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeFontSizeBox"
+                                AutomationProperties.Name="Font size"
+                                LargeChange="5"
+                                Maximum="200"
+                                Minimum="4"
+                                SmallChange="1"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.FontSize, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Bold">
+                            <ToggleSwitch
+                                AutomationProperties.AutomationId="ThemeBoldToggle"
+                                AutomationProperties.Name="Bold"
+                                IsOn="{x:Bind ViewModel.Bold, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Italic">
+                            <ToggleSwitch
+                                AutomationProperties.AutomationId="ThemeItalicToggle"
+                                AutomationProperties.Name="Italic"
+                                IsOn="{x:Bind ViewModel.Italic, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Underline">
+                            <ToggleSwitch
+                                AutomationProperties.AutomationId="ThemeUnderlineToggle"
+                                AutomationProperties.Name="Underline"
+                                IsOn="{x:Bind ViewModel.Underline, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Box background">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeTextBoxBackgroundColor"
+                                AutomationProperties.Name="Box background" AllowTransparent="True"
+                                Color="{x:Bind ViewModel.TextBoxBackgroundColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Box border color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeTextBoxBorderColor"
+                                AutomationProperties.Name="Box border color" AllowTransparent="True"
+                                Color="{x:Bind ViewModel.TextBoxBorderColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Box border width">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeTextBoxBorderWidthBox"
+                                AutomationProperties.Name="Box border width"
+                                LargeChange="2.5"
+                                Maximum="12"
+                                Minimum="0"
+                                SmallChange="0.5"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.TextBoxBorderWidth, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Box padding">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeTextBoxPaddingBox"
+                                AutomationProperties.Name="Box padding"
+                                LargeChange="5"
+                                Maximum="48"
+                                Minimum="0"
+                                SmallChange="1"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.TextBoxPadding, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Box corner radius">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeTextBoxCornerRadiusBox"
+                                AutomationProperties.Name="Box corner radius"
+                                LargeChange="5"
+                                Maximum="32"
+                                Minimum="0"
+                                SmallChange="1"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.TextBoxCornerRadius, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+                <controls:SettingsExpander
+                    AutomationProperties.AutomationId="ThemeNumbersExpander"
+                    AutomationProperties.Name="Numbers theme settings"
+                    Description="Numbered badges."
+                    Header="Numbers"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8EF;}">
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Header="Badge color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeNumberBadgeColor"
+                                AutomationProperties.Name="Badge color"
+                                Color="{x:Bind ViewModel.NumberBadgeColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Number color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeNumberTextColor"
+                                AutomationProperties.Name="Number color"
+                                Color="{x:Bind ViewModel.NumberTextColor, Mode=TwoWay}"
+                                IsAlphaEnabled="True" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="A multiple of the default badge size." Header="Size">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeNumberSizeBox"
+                                AutomationProperties.Name="Number size"
+                                LargeChange="1.25"
+                                Maximum="4"
+                                Minimum="0.25"
+                                SmallChange="0.25"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.NumberSize, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+                <controls:SettingsExpander
+                    AutomationProperties.AutomationId="ThemeCanvasExpander"
+                    AutomationProperties.Name="Canvas theme settings"
+                    Description="Background and framing when exporting. Image backgrounds stay as they are."
+                    Header="Canvas"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE7F4;}">
+                    <controls:SettingsExpander.Items>
+                        <controls:SettingsCard Description="Otherwise the canvas applies only when you choose this theme in the editor." Header="Apply when an editor opens">
+                            <ToggleSwitch
+                                AutomationProperties.AutomationId="ThemeCanvasApplyOnOpenToggle"
+                                AutomationProperties.Name="Apply when an editor opens"
+                                IsOn="{x:Bind ViewModel.CanvasApplyOnOpen, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Background">
+                            <ComboBox
+                                AutomationProperties.AutomationId="ThemeCanvasBackgroundCombo"
+                                AutomationProperties.Name="Background"
+                                SelectedIndex="{x:Bind ViewModel.CanvasBackgroundIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="None" />
+                                <ComboBoxItem Content="Solid" />
+                                <ComboBoxItem Content="Gradient" />
+                            </ComboBox>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeCanvasColor"
+                                AutomationProperties.Name="Canvas color"
+                                Color="{x:Bind ViewModel.CanvasColor, Mode=TwoWay}"
+                                IsAlphaEnabled="False" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Second gradient color">
+                            <local:SwatchColorPicker
+                                AutomationProperties.AutomationId="ThemeCanvasSecondaryColor"
+                                AutomationProperties.Name="Canvas second gradient color"
+                                Color="{x:Bind ViewModel.CanvasSecondaryColor, Mode=TwoWay}"
+                                IsAlphaEnabled="False" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Gradient direction">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeCanvasGradientDirectionBox"
+                                AutomationProperties.Name="Canvas gradient direction"
+                                LargeChange="25"
+                                Maximum="360"
+                                Minimum="0"
+                                SmallChange="5"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.CanvasGradientDirection, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="In image pixels." Header="Padding">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeCanvasPaddingBox"
+                                AutomationProperties.Name="Canvas padding"
+                                LargeChange="20"
+                                Maximum="500"
+                                Minimum="0"
+                                SmallChange="4"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.CanvasPadding, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Description="In image pixels." Header="Image corners">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeCanvasCornerRadiusBox"
+                                AutomationProperties.Name="Image corners"
+                                LargeChange="5"
+                                Maximum="200"
+                                Minimum="0"
+                                SmallChange="1"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.CanvasCornerRadius, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Shadow">
+                            <NumberBox
+                                MinWidth="120"
+                                AutomationProperties.AutomationId="ThemeCanvasShadowBox"
+                                AutomationProperties.Name="Canvas shadow"
+                                LargeChange="5"
+                                Maximum="200"
+                                Minimum="0"
+                                SmallChange="1"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.CanvasShadow, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Frame">
+                            <ComboBox
+                                AutomationProperties.AutomationId="ThemeCanvasFrameCombo"
+                                AutomationProperties.Name="Frame"
+                                SelectedIndex="{x:Bind ViewModel.CanvasFrameIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Original" />
+                                <ComboBoxItem Content="Square" />
+                                <ComboBoxItem Content="4:3" />
+                                <ComboBoxItem Content="16:9" />
+                                <ComboBoxItem Content="3:4" />
+                                <ComboBoxItem Content="9:16" />
+                            </ComboBox>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Horizontal placement">
+                            <ComboBox
+                                AutomationProperties.AutomationId="ThemeCanvasHorizontalAlignmentCombo"
+                                AutomationProperties.Name="Horizontal placement"
+                                SelectedIndex="{x:Bind ViewModel.CanvasHorizontalAlignmentIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Left" />
+                                <ComboBoxItem Content="Center" />
+                                <ComboBoxItem Content="Right" />
+                            </ComboBox>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard Header="Vertical placement">
+                            <ComboBox
+                                AutomationProperties.AutomationId="ThemeCanvasVerticalAlignmentCombo"
+                                AutomationProperties.Name="Vertical placement"
+                                SelectedIndex="{x:Bind ViewModel.CanvasVerticalAlignmentIndex, Mode=TwoWay}">
+                                <ComboBoxItem Content="Top" />
+                                <ComboBoxItem Content="Center" />
+                                <ComboBoxItem Content="Bottom" />
+                            </ComboBox>
+                        </controls:SettingsCard>
+                    </controls:SettingsExpander.Items>
+                </controls:SettingsExpander>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

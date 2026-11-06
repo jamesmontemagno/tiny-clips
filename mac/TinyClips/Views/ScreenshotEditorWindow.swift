@@ -479,9 +479,15 @@ struct ScreenshotEditorView: View {
     let imageURL: URL
     let initialSaveURL: URL
     let deleteSourceAfterSave: Bool
+    /// Uses this theme instead of the active one.
+    let themeID: String?
     let onDone: (URL?) -> Void
 
     @StateObject private var viewModel: ScreenshotEditorViewModel
+    @ObservedObject private var themeStore = EditorThemeStore.shared
+    @State private var didActivateInitialTheme = false
+    @State private var isSavingNewTheme = false
+    @State private var newThemeName = ""
     @State private var isSaving = false
     @State private var splitVisibility: NavigationSplitViewVisibility = .automatic
     @State private var activePopover: EditorPopover?
@@ -505,11 +511,13 @@ struct ScreenshotEditorView: View {
         imageURL: URL,
         initialSaveURL: URL,
         deleteSourceAfterSave: Bool,
+        themeID: String? = nil,
         onDone: @escaping (URL?) -> Void
     ) {
         self.imageURL = imageURL
         self.initialSaveURL = initialSaveURL
         self.deleteSourceAfterSave = deleteSourceAfterSave
+        self.themeID = themeID
         self.onDone = onDone
         _viewModel = StateObject(wrappedValue: ScreenshotEditorViewModel(url: imageURL))
         _currentSaveURL = State(initialValue: initialSaveURL)
@@ -572,10 +580,14 @@ struct ScreenshotEditorView: View {
         )
     }
 
+    private static let numberSizePresets: [CGFloat] = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0]
+
     private var numberSizeBinding: Binding<CGFloat> {
         Binding(
             get: {
-                viewModel.selectedNumberSizeMultiplier() ?? viewModel.numberSizeMultiplier
+                // A selected badge's size comes from its rect, so it can land just off a preset.
+                let size = viewModel.selectedNumberSizeMultiplier() ?? viewModel.numberSizeMultiplier
+                return Self.numberSizePresets.first { abs($0 - size) < 0.005 } ?? size
             },
             set: { newValue in
                 if !viewModel.updateSelectedNumberSizeMultiplier(newValue) {
@@ -696,6 +708,86 @@ struct ScreenshotEditorView: View {
             get: { viewModel.textBoxStyleForInspector().cornerRadius },
             set: viewModel.updateTextBoxCornerRadius
         )
+    }
+
+    private var shapeFillColorBinding: Binding<Color> {
+        Binding(
+            get: { viewModel.shapeFillColorForInspector() },
+            set: viewModel.updateShapeFillColor
+        )
+    }
+
+    private func shapeEffectBinding<Value>(_ keyPath: WritableKeyPath<ShapeEffects, Value>) -> Binding<Value> {
+        Binding(
+            get: { viewModel.shapeEffectsForInspector()[keyPath: keyPath] },
+            set: { newValue in
+                viewModel.updateShapeEffects { $0[keyPath: keyPath] = newValue }
+            }
+        )
+    }
+
+    private func handleShapeStyleSliderEditing(_ isEditing: Bool) {
+        if isEditing {
+            viewModel.beginSelectedShapeStyleEdit()
+        } else {
+            viewModel.endSelectedShapeStyleEdit()
+        }
+    }
+
+    /// A gradient needs a fill to start from, so it is only offered once the shape has one.
+    @ViewBuilder
+    private var shapeGradientControls: some View {
+        let effects = viewModel.shapeEffectsForInspector()
+
+        if viewModel.shapeFillColorForInspector() != .clear {
+            Toggle("Gradient fill", isOn: shapeEffectBinding(\.isGradientFill))
+                .accessibilityHint("Blends the fill color into an end color.")
+
+            if effects.isGradientFill {
+                SwatchColorPicker(label: "End color", color: shapeEffectBinding(\.gradientEndColor), supportsOpacity: true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Direction: \(Int(effects.gradientDirectionDegrees))°")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: shapeEffectBinding(\.gradientDirectionDegrees),
+                        in: 0...360,
+                        step: 1,
+                        onEditingChanged: handleShapeStyleSliderEditing
+                    )
+                    .accessibilityLabel("Gradient direction")
+                    .accessibilityValue("\(Int(effects.gradientDirectionDegrees)) degrees")
+                    .accessibilityHint("Direction from the fill color to the end color. 0 degrees is left to right; 90 degrees is top to bottom.")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var shapeShadowControls: some View {
+        let effects = viewModel.shapeEffectsForInspector()
+
+        Toggle("Shadow", isOn: shapeEffectBinding(\.hasShadow))
+            .accessibilityHint("Casts a soft shadow below the shape.")
+
+        if effects.hasShadow {
+            SwatchColorPicker(label: "Shadow color", color: shapeEffectBinding(\.shadowColor), supportsOpacity: true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Blur: \(Int(effects.shadowBlur))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(
+                    value: shapeEffectBinding(\.shadowBlur),
+                    in: ShapeEffects.shadowBlurRange,
+                    step: 1,
+                    onEditingChanged: handleShapeStyleSliderEditing
+                )
+                .accessibilityLabel("Shadow blur")
+                .accessibilityValue("\(Int(effects.shadowBlur))")
+            }
+        }
     }
 
     private func handleTextBoxSliderEditing(_ isEditing: Bool) {
@@ -918,6 +1010,14 @@ struct ScreenshotEditorView: View {
         .onChange(of: viewModel.horizontalExportAlignment) { _, _ in updateZoomForLayoutChange() }
         .onChange(of: viewModel.verticalExportAlignment) { _, _ in updateZoomForLayoutChange() }
         .disabled(isSaving)
+        .onAppear(perform: activateInitialTheme)
+        .alert("Save as New Theme", isPresented: $isSavingNewTheme) {
+            TextField("Name", text: $newThemeName)
+            Button("Save", action: saveAsNewTheme)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Saves this look as a new theme and makes it the active theme.")
+        }
         .onDisappear { viewModel.invalidateSensitiveText() }
         .overlay {
             if isSaving {
@@ -928,6 +1028,11 @@ struct ScreenshotEditorView: View {
 
     private var sidebar: some View {
         List {
+            Section {
+                themePicker
+                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
+            }
+
             Section("Tools") {
                 toolGrid
                     .listRowInsets(EdgeInsets(top: 2, leading: 2, bottom: 4, trailing: 2))
@@ -965,6 +1070,97 @@ struct ScreenshotEditorView: View {
             }
         }
         .listStyle(.sidebar)
+    }
+
+    // MARK: - Themes
+
+    private var themePicker: some View {
+        let isModified = viewModel.isThemeModified
+        let name = viewModel.baselineTheme?.name ?? "None"
+
+        return LabeledContent("Theme") {
+            Menu {
+                Toggle("None", isOn: themeChoiceBinding(for: nil))
+
+                if !themeStore.themes.isEmpty {
+                    Divider()
+                    ForEach(themeStore.themes) { theme in
+                        Toggle(theme.name, isOn: themeChoiceBinding(for: theme))
+                    }
+                }
+
+                Divider()
+
+                Button("Update Theme", action: updateActiveTheme)
+                    .disabled(!isModified)
+                Button("Save as New…") {
+                    newThemeName = themeStore.uniqueName(for: viewModel.baselineTheme?.name ?? "New Theme")
+                    isSavingNewTheme = true
+                }
+
+                Divider()
+
+                Button("Manage Themes…", action: openThemeSettings)
+            } label: {
+                Text(verbatim: isModified ? "\(name) · Modified" : name)
+                    .lineLimit(1)
+            }
+            .help("Restyle this screenshot and its new annotations with a saved look.")
+            .accessibilityLabel("Theme")
+            .accessibilityValue(isModified ? "\(name), modified" : name)
+            .accessibilityHint("Chooses a saved look, or saves changes to the current one.")
+        }
+    }
+
+    /// Choosing the current theme again goes back to how it was saved.
+    private func themeChoiceBinding(for theme: EditorTheme?) -> Binding<Bool> {
+        Binding(
+            get: { viewModel.activeThemeID == theme?.id },
+            set: { _ in chooseTheme(theme) }
+        )
+    }
+
+    private func chooseTheme(_ theme: EditorTheme?) {
+        if let theme {
+            viewModel.applyTheme(theme)
+        } else {
+            viewModel.clearTheme()
+        }
+        do {
+            try themeStore.setActive(id: theme?.id)
+        } catch {
+            SaveService.shared.showError("Could not save the active theme: \(error.localizedDescription)")
+        }
+    }
+
+    private func updateActiveTheme() {
+        do {
+            try viewModel.updateActiveTheme(in: themeStore)
+        } catch {
+            SaveService.shared.showError("Could not update the theme: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveAsNewTheme() {
+        do {
+            try viewModel.saveAsNewTheme(name: newThemeName, in: themeStore)
+        } catch {
+            SaveService.shared.showError("Could not save the theme: \(error.localizedDescription)")
+        }
+    }
+
+    private func openThemeSettings() {
+        SettingsWindowManager.shared.selectedTab = .editorThemes
+        _ = AutomationWindowOpener.shared.open(id: "settings-window", title: "Tiny Clips Settings")
+    }
+
+    /// Runs once. A window's look stays its own after this, whatever changes elsewhere.
+    private func activateInitialTheme() {
+        guard !didActivateInitialTheme else { return }
+        didActivateInitialTheme = true
+        if let theme = themeID.flatMap(themeStore.theme(id:)) ?? themeStore.activeTheme {
+            viewModel.activateThemeOnOpen(theme)
+        }
     }
 
     private var sensitiveTextControls: some View {
@@ -1117,7 +1313,8 @@ struct ScreenshotEditorView: View {
             }
 
             if showsFillColorPicker {
-                SwatchColorPicker(label: "Fill", color: $viewModel.selectedFillColor, supportsOpacity: true, allowsTransparent: true)
+                SwatchColorPicker(label: "Fill", color: shapeFillColorBinding, supportsOpacity: true, allowsTransparent: true)
+                shapeGradientControls
             }
 
             if showsNumberTextColorPicker {
@@ -1176,6 +1373,10 @@ struct ScreenshotEditorView: View {
                 Picker("Font", selection: textFontFamilyBinding) {
                     ForEach(viewModel.availableTextFontFamilies, id: \.self) { family in
                         Text(family).tag(family)
+                    }
+                    // A theme may name a font this Mac doesn't have.
+                    if !viewModel.availableTextFontFamilies.contains(textFontFamilyBinding.wrappedValue) {
+                        Text(textFontFamilyBinding.wrappedValue).tag(textFontFamilyBinding.wrappedValue)
                     }
                 }
 
@@ -1258,7 +1459,16 @@ struct ScreenshotEditorView: View {
                     Text("6 px").tag(CGFloat(6))
                     Text("8 px").tag(CGFloat(8))
                     Text("10 px").tag(CGFloat(10))
+                    // A theme can set any width, and a picker needs a row for its selection.
+                    if ![CGFloat(1), 2, 4, 6, 8, 10].contains(viewModel.lineWidth) {
+                        Text(verbatim: "\(Double(viewModel.lineWidth).formatted(.number.precision(.fractionLength(0...2)))) px")
+                            .tag(viewModel.lineWidth)
+                    }
                 }
+            }
+
+            if showsFillColorPicker {
+                shapeShadowControls
             }
 
             if viewModel.showsArrowStyleControl {
@@ -1287,6 +1497,10 @@ struct ScreenshotEditorView: View {
                     Text("150%").tag(CGFloat(1.5))
                     Text("175%").tag(CGFloat(1.75))
                     Text("200%").tag(CGFloat(2.0))
+                    if !Self.numberSizePresets.contains(numberSizeBinding.wrappedValue) {
+                        Text(verbatim: "\(Int((numberSizeBinding.wrappedValue * 100).rounded()))%")
+                            .tag(numberSizeBinding.wrappedValue)
+                    }
                 }
             }
 
