@@ -87,6 +87,7 @@
     <!-- The question the other editors ask before Esc closes them. The Studio window asks it too. -->
     <Compile Include="$(AppSource)\Views\EditorEscapeConfirmation.cs" Link="Views\EditorEscapeConfirmation.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorController.cs" Link="Controls\ScreenshotEditor\EditorController.cs" />
+    <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorController.Themes.cs" Link="Controls\ScreenshotEditor\EditorController.Themes.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorModels.cs" Link="Controls\ScreenshotEditor\EditorModels.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorRenderSnapshot.cs" Link="Controls\ScreenshotEditor\EditorRenderSnapshot.cs" />
 
