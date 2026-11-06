@@ -442,9 +442,15 @@ enum StudioCaptionEditing {
         let words = cue.words
         guard words.count >= 2,
               StudioCaptionTranscript.spells(words, StudioCaptionResolver.cleanText(cue.text)) else { return nil }
-        return (1..<words.count)
-            .map { (words[$0 - 1].end + words[$0].start) / 2 }
-            .min { abs($0 - middle) < abs($1 - middle) }
+        var best: Double?
+        for count in 1..<words.count {
+            let gap: Double = (words[count - 1].end + words[count].start) / 2
+            if let nearest = best, abs(nearest - middle) <= abs(gap - middle) {
+                continue
+            }
+            best = gap
+        }
+        return best
     }
 
     private static func splitText(of cue: StudioCaptionCue, at time: Double) -> SplitText? {
