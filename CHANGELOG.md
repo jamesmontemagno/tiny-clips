@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
 
 ### Added
+- macOS Settings → General now shows system notification permission, with **Enable Notifications** or **Open Notification Settings** actions separate from the after-save preference. Agent Control exposes notification status and permission/settings actions without bypassing macOS permission or delivery choices.
 - Agent Control settings now show both plugin install paths and a separate CLI-only setup with `dnx` and global tool commands on macOS and Windows.
 - Agent permissions are now yours to choose: the pairing prompt lists every scope with the agent's request pre-checked, so you can remove or add permissions before approving, and each paired agent has a **Permissions** control in Settings → Agent Control that applies changes immediately without re-pairing. Sensitive scopes still ask every time.
 - Moved the portable Agent Plugin to the repository root so VS Code can install it directly from the repository URL without a manual clone or marketplace; updated installation guidance, CI, and release packaging.

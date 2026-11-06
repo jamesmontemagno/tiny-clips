@@ -164,6 +164,20 @@ Framing is one UTF-8 JSON object per line (`\n`). A connection may send several 
 | `session.pair` | `clientName`, `scopes[]` | `pairingId` |
 | `session.pairStatus` | `pairingId` | `status` (`pending`/`approved`/`denied`), and when approved `token`, `scopes` |
 
+### macOS notification permissions
+
+`notifications.status` (`read` scope) returns `status` (`notDetermined`, `denied`, `authorized`, `provisional`, `ephemeral`, or `unknown`), `alertsEnabled`, and `canRequest`. This is system permission, separate from the `showSaveNotifications` preference available through `settings.get` / `settings.set`.
+
+With the `settings` scope, `notifications.requestPermission` requests permission only if macOS has not yet asked. The user must answer the macOS prompt; agents cannot grant permission. It returns the same status fields on success or `permission_required` otherwise. `notifications.openSettings` opens macOS notification settings so the user can restore denied permission or adjust alerts. These commands do not change the after-save preference or override Focus, quiet delivery, or other system choices.
+
+```sh
+tinyclips notifications.status
+tinyclips notifications.requestPermission
+tinyclips notifications.openSettings
+```
+
+The corresponding MCP tools are `tinyclips_notifications_status`, `tinyclips_notifications_requestPermission`, and `tinyclips_notifications_openSettings`. Windows does not advertise these macOS-only commands and returns `not_supported`.
+
 ### Autonomous capture and annotation
 
 `capture.targets` lists display and visible-window targets. IDs are opaque and valid only for the current app session; refresh the list before using an ID after a restart. Display-relative regions use physical pixels with `(0,0)` at that display's top-left. `capture.screenshot` and `capture.ocr` accept a `windowId`, or `displayId` plus `region: {x,y,width,height}`; no picker is shown, and OCR returns recognized text without changing the clipboard.

@@ -3,6 +3,35 @@ import AVFoundation
 import ScreenCaptureKit
 import UserNotifications
 
+struct NotificationPermissionState {
+    let authorizationStatus: UNAuthorizationStatus
+    let alertsEnabled: Bool
+
+    var canRequest: Bool { authorizationStatus == .notDetermined }
+
+    var status: String {
+        switch authorizationStatus {
+        case .notDetermined: return "notDetermined"
+        case .denied: return "denied"
+        case .authorized: return "authorized"
+        case .provisional: return "provisional"
+        case .ephemeral: return "ephemeral"
+        @unknown default: return "unknown"
+        }
+    }
+
+    var summary: String {
+        switch authorizationStatus {
+        case .notDetermined: return "Not requested"
+        case .denied: return "Disabled in macOS"
+        case .provisional: return "Delivered quietly"
+        case .authorized, .ephemeral:
+            return alertsEnabled ? "Enabled" : "Enabled without alerts"
+        @unknown default: return "Unknown"
+        }
+    }
+}
+
 @MainActor
 class PermissionManager: ObservableObject {
     static let shared = PermissionManager()
@@ -141,12 +170,19 @@ class PermissionManager: ObservableObject {
         return false
     }
 
-    private func notificationPermissionStatus() async -> UNAuthorizationStatus {
+    func notificationPermissionState() async -> NotificationPermissionState {
         await withCheckedContinuation { continuation in
             UNUserNotificationCenter.current().getNotificationSettings { settings in
-                continuation.resume(returning: settings.authorizationStatus)
+                continuation.resume(returning: NotificationPermissionState(
+                    authorizationStatus: settings.authorizationStatus,
+                    alertsEnabled: settings.alertSetting == .enabled
+                ))
             }
         }
+    }
+
+    private func notificationPermissionStatus() async -> UNAuthorizationStatus {
+        await notificationPermissionState().authorizationStatus
     }
 
 }

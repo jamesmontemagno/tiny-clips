@@ -90,6 +90,23 @@ final class AutomationPolicyTests: XCTestCase {
         for code in AutomationErrorCode.allCases {
             XCTAssertNotNil(contract.errors[code.rawValue], "\(code.rawValue) is not a contract error")
         }
+
+        @MainActor
+        func testNotificationCommandsUseLeastPrivilegeScopes() throws {
+            let contract = try loadContract()
+            for (name, scope) in [
+                "notifications.status": "read",
+                "notifications.requestPermission": "settings",
+                "notifications.openSettings": "settings"
+            ] {
+                XCTAssertEqual(contract.commands.first(where: { $0.name == name })?.scope, scope)
+                XCTAssertTrue(AutomationCommandRouter.supportedCommands.contains(name))
+                XCTAssertEqual(
+                    AutomationPolicy.decide(enabled: true, clientScopes: ["capture"], command: name, contract: contract).fixtureValue,
+                    "missing_scope"
+                )
+            }
+        }
     }
 
     func testJSONValueParsing() {

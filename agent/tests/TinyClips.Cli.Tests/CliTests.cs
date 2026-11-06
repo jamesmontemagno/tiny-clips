@@ -41,6 +41,20 @@ public class CliTests
         Assert.Equal("missing_scope", Json(error)["error"]!["code"]!.GetValue<string>());
     }
 
+    [Theory]
+    [InlineData("notifications.status", "read")]
+    [InlineData("notifications.requestPermission", "settings")]
+    [InlineData("notifications.openSettings", "settings")]
+    public async Task NotificationCommandsReachTheAppWithTheRequiredScope(string command, string scope)
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = [scope];
+        var (output, error) = (new StringWriter(), new StringWriter());
+        Assert.Equal(0, await Cli.RunAsync([command], app.Environment(output, error, token: "t"), TestContext.Current.CancellationToken));
+        Assert.Equal(command, Json(output)["command"]!.GetValue<string>());
+        Assert.Empty(app.Received[^1]["params"]!.AsObject());
+    }
+
     [Fact]
     public async Task NamedPipeAcceptsSameUserAndCarriesAuthenticatedRequests()
     {

@@ -10,6 +10,8 @@ struct GeneralSettingsSection: View {
     @State private var showPurgeConfirmation = false
     @State private var temporaryFilesSummary: TinyClipsTemporaryFiles.Summary?
     @State private var isLoadingTemporaryFiles = true
+    @State private var notificationPermission: NotificationPermissionState?
+    @State private var isRequestingNotifications = false
 
     var body: some View {
         Section("Output") {
@@ -62,7 +64,48 @@ struct GeneralSettingsSection: View {
             }
 
             Toggle("Show in Finder after save", isOn: $settings.showInFinder)
+        }
+
+        Section("Notifications") {
+            LabeledContent("System notifications", value: notificationPermission?.summary ?? "Checking…")
+                .accessibilityElement(children: .combine)
+
+            if let notificationPermission {
+                if notificationPermission.canRequest {
+                    Button("Enable Notifications") {
+                        isRequestingNotifications = true
+                        Task {
+                            defer { isRequestingNotifications = false }
+                            _ = await PermissionManager.shared.requestNotificationPermission()
+                            await refreshNotificationPermission()
+                            if self.notificationPermission?.canRequest == true {
+                                SaveService.shared.showError("Could not request notification permission. Please try again or enable TinyClips notifications in macOS System Settings.")
+                            }
+                        }
+                    }
+                    .disabled(isRequestingNotifications)
+                    .accessibilityHint("Requests macOS permission for TinyClips notifications.")
+                } else {
+                    Button("Open Notification Settings") {
+                        PermissionManager.shared.openNotificationSettings()
+                    }
+                    .accessibilityHint("Opens macOS notification settings to manage TinyClips alerts.")
+                }
+            }
+
+            Text("System permission allows notifications for saved captures and background tasks, including Studio captions. macOS controls how they are delivered.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Toggle("Show notification after save", isOn: $settings.showSaveNotifications)
+                .accessibilityLabel("Show notification after save")
+                .help("Only controls save notifications. Does not grant system permission or change background-task notifications.")
+        }
+        .task {
+            await refreshNotificationPermission()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refreshNotificationPermission() }
         }
 
         Section("Editors") {
@@ -192,6 +235,10 @@ struct GeneralSettingsSection: View {
             try? TinyClipsTemporaryFiles.summary()
         }.value
         isLoadingTemporaryFiles = false
+    }
+
+    private func refreshNotificationPermission() async {
+        notificationPermission = await PermissionManager.shared.notificationPermissionState()
     }
 }
 

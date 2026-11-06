@@ -54,6 +54,27 @@ public class McpServerTests
     }
 
     [Theory]
+    [InlineData("notifications.status", "read")]
+    [InlineData("notifications.requestPermission", "settings")]
+    [InlineData("notifications.openSettings", "settings")]
+    public async Task NotificationToolsForwardCommandsAndEnforceScopes(string command, string scope)
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = [scope];
+        await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>
+        {
+            var result = await client.CallToolAsync(Contract.ToolName(command), cancellationToken: token);
+            Assert.False(result.IsError);
+            Assert.Equal(command, (string?)Body(result)["command"]);
+
+            app.Clients["t"] = ["capture"];
+            var denied = await client.CallToolAsync(Contract.ToolName(command), cancellationToken: token);
+            Assert.True(denied.IsError);
+            Assert.Equal("missing_scope", (string?)Body(denied)["error"]!["code"]);
+        });
+    }
+
+    [Theory]
     [InlineData("tinyclips_editor_open")]
     [InlineData("tinyclips_status")]
     public async Task InvalidArgumentsDoNotReachTheApp(string tool)

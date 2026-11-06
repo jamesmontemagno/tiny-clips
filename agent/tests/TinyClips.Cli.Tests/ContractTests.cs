@@ -24,6 +24,21 @@ public class ContractTests
     public void SensitiveScopesAreDeleteUploadAndDiscard() =>
         Assert.Equal(["delete", "discard", "upload"], Contract.Current.SensitiveScopes.Order());
 
+    [Theory]
+    [InlineData("notifications.status", "read")]
+    [InlineData("notifications.requestPermission", "settings")]
+    [InlineData("notifications.openSettings", "settings")]
+    public void NotificationCommandsUseLeastPrivilegeAndExposeParameterlessTools(string name, string scope)
+    {
+        var command = Contract.Current.Find(name)!;
+        Assert.Equal(scope, command.Scope);
+        Assert.Empty(command.Params);
+        Assert.Null(Contract.Validate(command, new JsonObject()));
+        Assert.Equal(command, Contract.Current.FromToolName(Contract.ToolName(name)));
+        Assert.Equal("missing_scope", FakeApp.Decide(Contract.Current, true, ["capture"], name));
+        Assert.Equal("allow", FakeApp.Decide(Contract.Current, true, [scope], name));
+    }
+
     [Fact]
     public void PolicyOrderInTheDocsMatchesTheSharedFixtures()
     {
