@@ -5,8 +5,6 @@ This repo now includes code paths for an `APPSTORE` build variant and Mac App St
 - `mac/TinyClips/Info-MAS.plist`
 - `mac/TinyClips/TinyClipsMAS.entitlements`
 
-Studio's speech models download from Hugging Face the first time someone generates captions with them, so the entitlements include `com.apple.security.network.client`. The entitlement allows any outgoing connection, not only this one. Recordings and their sound are not sent anywhere for captions, so check the App Privacy answers against that when submitting.
-
 ## What is already implemented in code
 
 When `APPSTORE` is defined at compile time:

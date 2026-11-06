@@ -8,14 +8,14 @@ import XCTest
 final class StudioCaptionGenerationTests: XCTestCase {
     private func words(_ text: String, startingAt start: Double = 0, each: Double = 0.5) -> [StudioCaptionWord] {
         text.split(separator: " ").enumerated().map { index, word in
-            // WhisperKit's words start with a space, as they did in a real run.
-            StudioCaptionWord(start: start + Double(index) * each, end: start + Double(index + 1) * each, text: " \(word)")
+            // SpeechAnalyzer's words end with their space, as they did in a real run.
+            StudioCaptionWord(start: start + Double(index) * each, end: start + Double(index + 1) * each, text: "\(word) ")
         }
     }
 
-    func testTheModelsOwnMarks_AreNotSpeech() {
+    func testACueKeepsItsWords_WithoutTheirSpaces() {
         let cues = StudioCaptionTranscript.cues(from: [
-            StudioTranscriptSegment(start: 0, end: 6.64, text: "<|startoftranscript|><|en|><|transcribe|><|0.00|> I believe that<|7.04|>", words: words("I believe that")),
+            StudioTranscriptSegment(start: 0, end: 6.64, text: "I believe that", words: words("I believe that")),
         ], sourceDuration: 20)
 
         XCTAssertEqual(cues.map(\.text), ["I believe that"])
@@ -25,8 +25,7 @@ final class StudioCaptionGenerationTests: XCTestCase {
 
     func testAStretchWithoutSpeech_IsNoCue() {
         let cues = StudioCaptionTranscript.cues(from: [
-            StudioTranscriptSegment(start: 0, end: 1, text: "[BLANK_AUDIO]"),
-            StudioTranscriptSegment(start: 1, end: 2, text: "  <|0.00|>  "),
+            StudioTranscriptSegment(start: 1, end: 2, text: "   "),
             StudioTranscriptSegment(start: 3, end: 3, text: "No time"),
         ], sourceDuration: 20)
 
@@ -80,45 +79,6 @@ final class StudioCaptionGenerationTests: XCTestCase {
         XCTAssertEqual(cues.map(\.text), [text])
     }
 
-    func testTheModelIDs_AreTheOnesAgentsAndWindowsUse() {
-        XCTAssertEqual(StudioCaptionModels.all.map(\.id), [
-            "Tiny", "TinyEn", "Base", "BaseEn", "Small", "SmallEn", "Medium", "MediumEn", "LargeV3Turbo", "LargeV3",
-        ])
-        XCTAssertEqual(StudioCaptionModels.defaultModel.id, "Base")
-        XCTAssertEqual(StudioCaptionModels.find("SmallEn")?.variant, "openai_whisper-small.en")
-        XCTAssertNil(StudioCaptionModels.find("NotAModel"))
-        XCTAssertNil(StudioCaptionModels.find(nil))
-        XCTAssertTrue(StudioCaptionModels.find("BaseEn")!.isEnglishOnly)
-        XCTAssertFalse(StudioCaptionModels.find("Base")!.isEnglishOnly)
-    }
-
-    func testAModelIsInstalled_OnlyOnceItsDownloadFinished_AndDeletingTakesAllOfIt() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let store = StudioCaptionModelStore(directory: directory)
-        let model = StudioCaptionModels.defaultModel
-
-        XCTAssertFalse(store.isInstalled(model))
-        XCTAssertEqual(store.usedBytes(), 0)
-
-        // A download that was stopped: files, and no word that it finished.
-        let folder = store.folder(for: model)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try Data(repeating: 1, count: 1000).write(to: folder.appendingPathComponent("AudioEncoder.bin"))
-        XCTAssertFalse(store.isInstalled(model))
-        XCTAssertTrue(store.installedModels().isEmpty)
-        XCTAssertEqual(store.usedBytes(), 1000)
-
-        try store.markInstalled(model)
-        XCTAssertTrue(store.isInstalled(model))
-        XCTAssertEqual(store.installedModels(), [model])
-
-        try store.deleteAll()
-        XCTAssertFalse(store.isInstalled(model))
-        XCTAssertEqual(store.usedBytes(), 0)
-        XCTAssertNoThrow(try store.deleteAll())
-    }
-
     func testSpeechIsListenedForInTheMicrophone_WhenThereIsOne() {
         var project = StudioProject(
             id: "3f0013cf-ba10-4453-af91-792b7882dae6",
@@ -157,72 +117,28 @@ final class StudioCaptionGenerationTests: XCTestCase {
         XCTAssertEqual(editor.project.captions.cues.map(\.text), ["Imported"])
     }
 
+    // MARK: - Apple Speech
+
     func testWhatThePanelSays() {
         XCTAssertEqual(StudioCaptionText.generatedMessage(1), "Generated 1 caption.")
         XCTAssertEqual(StudioCaptionText.generatedMessage(12), "Generated 12 captions.")
         XCTAssertEqual(StudioCaptionText.progressText(StudioCaptionProgress(stage: .recognizingSpeech, fraction: 0.4)), "Recognizing speech: 40%")
-        XCTAssertEqual(StudioCaptionText.progressText(StudioCaptionProgress(stage: .downloadingModel, fraction: 1.5)), "Downloading the model: 100%")
-        XCTAssertEqual(StudioCaptionText.progressText(StudioCaptionProgress(stage: .preparingModel, fraction: 0)), "Getting the model ready\u{2026}")
-        let base = StudioCaptionModels.defaultModel
-        XCTAssertEqual(StudioCaptionText.generateActionText(base, isInstalled: true), "Generate")
-        XCTAssertEqual(StudioCaptionText.generateActionText(base, isInstalled: false), "Download 147 MB and Generate")
-        XCTAssertEqual(StudioCaptionText.installedModelsText(count: 0, bytes: 0), "No models downloaded.")
-        XCTAssertTrue(StudioCaptionText.installedModelsText(count: 2, bytes: 5_000_000).hasPrefix("2 models downloaded, using "))
+        XCTAssertEqual(StudioCaptionText.progressText(StudioCaptionProgress(stage: .downloadingLanguage, fraction: 1.5)), "Downloading the language: 100%")
+        XCTAssertEqual(StudioCaptionText.generateActionText(isInstalled: true), "Generate")
+        XCTAssertEqual(StudioCaptionText.generateActionText(isInstalled: false), "Download and Generate")
+        XCTAssertTrue(StudioCaptionText.languageNote(isInstalled: false).contains("macOS downloads this language"))
+        XCTAssertTrue(StudioCaptionText.languageNote(isInstalled: true).contains("already on this Mac"))
     }
 
-    // MARK: - Apple Speech
+    func testAMacWithoutAppleSpeech_SaysSo_AndAgentsAreNotOfferedIt() async throws {
+        guard !StudioAppleSpeech.isAvailable else { throw XCTSkip("this Mac has Apple Speech") }
+        let languages = await StudioAppleSpeech.languages()
+        let systemLanguage = await StudioAppleSpeech.language(equivalentTo: nil)
+        XCTAssertTrue(languages.isEmpty)
+        XCTAssertNil(systemLanguage)
+        XCTAssertFalse(AutomationCommandRouter.supportedCommands.contains("studio.captions.models"))
+        XCTAssertFalse(AutomationCommandRouter.supportedCommands.contains("studio.captions.generate"))
 
-    func testAppleSpeech_IsOfferedFirst_OnlyWhereItIsAvailable() {
-        let all = StudioCaptionModels.all
-        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: false, whisper: all), all)
-        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true, whisper: all).first, StudioCaptionModels.appleSpeech)
-        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true, whisper: all).count, all.count + 1)
-        XCTAssertEqual(StudioCaptionModels.find("AppleSpeech"), StudioCaptionModels.appleSpeech)
-        XCTAssertTrue(StudioCaptionModels.appleSpeech.isAppleSpeech)
-        XCTAssertFalse(StudioCaptionModels.defaultModel.isAppleSpeech)
-        XCTAssertFalse(StudioCaptionModels.all.contains { $0.isAppleSpeech })
-    }
-
-    func testWithoutAChoice_AppleSpeechIsUsedWhereItCanHearTheSystemsLanguage() {
-        let apple = StudioCaptionModels.appleSpeech
-        let base = StudioCaptionModels.defaultModel
-        let all = StudioCaptionModels.all
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true, whisper: all), apple)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: nil, appleSpeechIsAvailable: true, whisper: all), apple)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: false, whisper: all), base)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true, canHearSystemLanguage: false, whisper: all), base)
-    }
-
-    func testAChoiceIsKept_UnlessThisMacCannotDoIt() {
-        let small = StudioCaptionModels.find("Small")
-        let all = StudioCaptionModels.all
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "Small", appleSpeechIsAvailable: true, whisper: all), small)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "AppleSpeech", appleSpeechIsAvailable: true, canHearSystemLanguage: false, whisper: all), StudioCaptionModels.appleSpeech)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "AppleSpeech", appleSpeechIsAvailable: false, whisper: all), StudioCaptionModels.defaultModel)
-    }
-
-    func testOnMacOS15_TheModelsSeenToGiveNonsenseAreLeftOut() {
-        let models = StudioCaptionModels.whisperModels(macOSMajor: 15, isIntel: false)
-        XCTAssertEqual(models.map(\.id), ["Tiny", "TinyEn", "SmallEn", "Medium", "MediumEn", "LargeV3Turbo", "LargeV3"])
-        XCTAssertEqual(StudioCaptionModels.whisperModels(macOSMajor: 26, isIntel: false), StudioCaptionModels.all)
-
-        // A choice from before, or from a newer macOS, becomes the best one there is.
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: false, whisper: models).id, "Tiny")
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "Base", appleSpeechIsAvailable: false, whisper: models).id, "Tiny")
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "SmallEn", appleSpeechIsAvailable: false, whisper: models).id, "SmallEn")
-    }
-
-    func testOnIntel_ThereAreNoWhisperModels_ForWhisperCrashesThere() {
-        XCTAssertEqual(StudioCaptionModels.whisperModels(macOSMajor: 26, isIntel: true), [])
-        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: false, whisper: []), [])
-        XCTAssertEqual(StudioCaptionModels.options(appleSpeechIsAvailable: true, whisper: []), [StudioCaptionModels.appleSpeech])
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "Base", appleSpeechIsAvailable: true, whisper: []), StudioCaptionModels.appleSpeech)
-        XCTAssertEqual(StudioCaptionModels.resolve(id: "", appleSpeechIsAvailable: true, canHearSystemLanguage: false, whisper: []), StudioCaptionModels.appleSpeech)
-    }
-
-    func testAskingForAModelThisMacCannotUse_SaysSo_InsteadOfRunningIt() async throws {
-        let unusable = StudioCaptionModels.all.first { !StudioCaptionModels.whisperModelsHere.contains($0) }
-        guard let unusable else { throw XCTSkip("every model can be used here") }
         let project = StudioProject(
             id: "3f0013cf-ba10-4453-af91-792b7882dae6",
             sources: StudioSources(screen: StudioScreenSource(width: 320, height: 180, frameRate: 15, duration: 1))
@@ -238,10 +154,10 @@ final class StudioCaptionGenerationTests: XCTestCase {
             posterURL: folder
         )
         do {
-            _ = try await StudioWhisperCaptionGenerator().generate(project: project, paths: paths, model: unusable, language: nil) { _ in }
+            _ = try await StudioAppleSpeechCaptionGenerator().generate(project: project, paths: paths, language: nil) { _ in }
             XCTFail("it ran")
         } catch let error as StudioCaptionGenerationError {
-            XCTAssertNotEqual(error, .missingRecording)
+            XCTAssertEqual(error.message, StudioCaptionText.needsNewerMac)
         }
     }
 
@@ -260,14 +176,6 @@ final class StudioCaptionGenerationTests: XCTestCase {
         XCTAssertNil(StudioCaptionLanguages.reservationToRelease(reserved: reserved, wanted: "de-DE", maximum: 5))
         XCTAssertNil(StudioCaptionLanguages.reservationToRelease(reserved: reserved, wanted: "fr-FR", maximum: 2))
         XCTAssertNil(StudioCaptionLanguages.reservationToRelease(reserved: [], wanted: "de-DE", maximum: 0))
-    }
-
-    func testThePanel_DoesNotPromiseASizeForAppleSpeech() {
-        let apple = StudioCaptionModels.appleSpeech
-        XCTAssertEqual(StudioCaptionText.generateActionText(apple, isInstalled: true), "Generate")
-        XCTAssertEqual(StudioCaptionText.generateActionText(apple, isInstalled: false), "Download and Generate")
-        XCTAssertTrue(StudioCaptionText.modelNote(apple, isInstalled: false).contains("macOS downloads this language"))
-        XCTAssertTrue(StudioCaptionText.modelNote(apple, isInstalled: true).contains("already on this Mac"))
     }
 
     /// What a real result from SpeechAnalyzer looks like: runs that end with their space, one with

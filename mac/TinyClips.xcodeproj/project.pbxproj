@@ -167,8 +167,6 @@
 		B2000000000000000000002C /* MouseClicksSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002F /* MouseClicksSettingsSection.swift */; };
 		B2000000000000000000002D /* SettingsViewHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000030 /* SettingsViewHelpers.swift */; };
 		B3EB92CF2F3FCA0B002723CD /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B3EB92CE2F3FCA0B002723CD /* Sparkle */; };
-		B5EB92CF2F3FCA0B002723CD /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = B5EB92CE2F3FCA0B002723CD /* WhisperKit */; };
-		B5EB92CF2F3FCA0B002723CE /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = B5EB92CE2F3FCA0B002723CD /* WhisperKit */; };
 		B4EB92CF2F3FCA0B002723CD /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = B4EB92CE2F3FCA0B002723CD /* libwebp */; };
 		B4EB92CF2F3FCA0B002723CE /* libwebp in Frameworks */ = {isa = PBXBuildFile; productRef = B4EB92CE2F3FCA0B002723CD /* libwebp */; };
 		B30000000000000000000001 /* CaptureMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* CaptureMathTests.swift */; };
@@ -227,8 +225,6 @@
 		D73E4D374157B85A9EF1C9E1 /* StudioCompositionBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */; };
 		AA00C4A1B0000000000000E2 /* StudioAppleSpeechGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000E1 /* StudioAppleSpeechGenerator.swift */; };
 		AA00C4A1B0000000000000E3 /* StudioAppleSpeechGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000E1 /* StudioAppleSpeechGenerator.swift */; };
-		AA00C4A1B0000000000000D2 /* StudioCaptionGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000D1 /* StudioCaptionGenerator.swift */; };
-		AA00C4A1B0000000000000D3 /* StudioCaptionGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000D1 /* StudioCaptionGenerator.swift */; };
 		AA00C4A1B0000000000000B1 /* StudioCaptionPainter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000A1 /* StudioCaptionPainter.swift */; };
 		AA00C4A1B0000000000000B2 /* StudioCaptionPainter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000A1 /* StudioCaptionPainter.swift */; };
 		F7EE90646BDD9AC23B804EF0 /* StudioCompositor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE54467E687EC983845F1A47 /* StudioCompositor.swift */; };
@@ -404,7 +400,6 @@
 		4FE5AD266D2D88BE76DBA9C7 /* StudioRenderState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioRenderState.swift; sourceTree = "<group>"; };
 		D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCompositionBuilder.swift; sourceTree = "<group>"; };
 		AA00C4A1B0000000000000E1 /* StudioAppleSpeechGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioAppleSpeechGenerator.swift; sourceTree = "<group>"; };
-		AA00C4A1B0000000000000D1 /* StudioCaptionGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionGenerator.swift; sourceTree = "<group>"; };
 		AA00C4A1B0000000000000A1 /* StudioCaptionPainter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionPainter.swift; sourceTree = "<group>"; };
 		FE54467E687EC983845F1A47 /* StudioCompositor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCompositor.swift; sourceTree = "<group>"; };
 		A70E12611BB3087DAEE68C93 /* StudioExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioExporter.swift; sourceTree = "<group>"; };
@@ -433,7 +428,6 @@
 			files = (
 				B3EB92CF2F3FCA0B002723CD /* Sparkle in Frameworks */,
 				B4EB92CF2F3FCA0B002723CD /* libwebp in Frameworks */,
-				B5EB92CF2F3FCA0B002723CD /* WhisperKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -442,7 +436,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				B4EB92CF2F3FCA0B002723CE /* libwebp in Frameworks */,
-				B5EB92CF2F3FCA0B002723CE /* WhisperKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -681,7 +674,6 @@
 				4FE5AD266D2D88BE76DBA9C7 /* StudioRenderState.swift */,
 				D21626B58213C824573007D7 /* StudioCompositionBuilder.swift */,
 				AA00C4A1B0000000000000E1 /* StudioAppleSpeechGenerator.swift */,
-				AA00C4A1B0000000000000D1 /* StudioCaptionGenerator.swift */,
 				AA00C4A1B0000000000000A1 /* StudioCaptionPainter.swift */,
 				FE54467E687EC983845F1A47 /* StudioCompositor.swift */,
 				A70E12611BB3087DAEE68C93 /* StudioExporter.swift */,
@@ -725,7 +717,6 @@
 			productReference = A1000000000000000000000E /* TinyClips.app */;
 			packageProductDependencies = (
 				B4EB92CE2F3FCA0B002723CD /* libwebp */,
-				B5EB92CE2F3FCA0B002723CD /* WhisperKit */,
 			);
 			productType = "com.apple.product-type.application";
 		};
@@ -746,7 +737,6 @@
 			productReference = A2000000000000000000000E /* TinyClipsMAS.app */;
 			packageProductDependencies = (
 				B4EB92CE2F3FCA0B002723CD /* libwebp */,
-				B5EB92CE2F3FCA0B002723CD /* WhisperKit */,
 			);
 			productType = "com.apple.product-type.application";
 		};
@@ -801,7 +791,6 @@
 			packageReferences = (
 				B3EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "Sparkle" */,
 				B4EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "libwebp-Xcode" */,
-				B5EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "WhisperKit" */,
 			);
 			productRefGroup = C10000000000000000000007 /* Products */;
 			projectDirPath = "";
@@ -933,7 +922,6 @@
 				B8EDC14A56F0ECC682744CCA /* StudioRenderState.swift in Sources */,
 				40548B5C1CEC09E72682102E /* StudioCompositionBuilder.swift in Sources */,
 				AA00C4A1B0000000000000E2 /* StudioAppleSpeechGenerator.swift in Sources */,
-				AA00C4A1B0000000000000D2 /* StudioCaptionGenerator.swift in Sources */,
 				AA00C4A1B0000000000000B1 /* StudioCaptionPainter.swift in Sources */,
 				F7EE90646BDD9AC23B804EF0 /* StudioCompositor.swift in Sources */,
 				3E2067888B99235F7647F19F /* StudioExporter.swift in Sources */,
@@ -1050,7 +1038,6 @@
 				322CB3FB9F91146FB467C8DF /* StudioRenderState.swift in Sources */,
 				D73E4D374157B85A9EF1C9E1 /* StudioCompositionBuilder.swift in Sources */,
 				AA00C4A1B0000000000000E3 /* StudioAppleSpeechGenerator.swift in Sources */,
-				AA00C4A1B0000000000000D3 /* StudioCaptionGenerator.swift in Sources */,
 				AA00C4A1B0000000000000B2 /* StudioCaptionPainter.swift in Sources */,
 				C15E5D215EE86B4B5BC530DC /* StudioCompositor.swift in Sources */,
 				07CED5D8E70FC72F8BFDD16A /* StudioExporter.swift in Sources */,
@@ -1447,14 +1434,6 @@
 				minimumVersion = 2.8.1;
 			};
 		};
-		B5EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.1.1;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1467,11 +1446,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B3EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
-		};
-		B5EB92CE2F3FCA0B002723CD /* WhisperKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = B5EB92CD2F3FCA0B002723CD /* XCRemoteSwiftPackageReference "WhisperKit" */;
-			productName = WhisperKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

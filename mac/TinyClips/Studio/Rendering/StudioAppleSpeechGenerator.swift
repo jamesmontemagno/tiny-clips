@@ -2,13 +2,192 @@ import AVFoundation
 import Foundation
 import Speech
 
-/// What the speech recognition built into macOS can do on this Mac. It needs macOS 26, and Apple
-/// says whether a Mac has it depends on the hardware too, without listing which.
+/// Reads a recording's sound as speech recognition wants it: one channel of floats at 16 kHz.
+enum StudioCaptionSound {
+    static let sampleRate = 16_000.0
+
+    static func read(
+        url: URL,
+        project: StudioProject,
+        progress: @Sendable (Double) -> Void
+    ) async throws -> [Float] {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw StudioCaptionGenerationError.missingRecording
+        }
+
+        let asset = AVURLAsset(url: url)
+        let tracks: [AVAssetTrack]
+        do {
+            tracks = try await asset.loadTracks(withMediaType: .audio)
+        } catch {
+            throw StudioCaptionGenerationError.unreadableSound
+        }
+        guard !tracks.isEmpty else {
+            throw StudioCaptionGenerationError.noSound
+        }
+
+        let chosen = StudioSound.speechTrackIndexes(project: project, trackCount: tracks.count).map { tracks[$0] }
+        do {
+            let reader = try AVAssetReader(asset: asset)
+            let output = AVAssetReaderAudioMixOutput(audioTracks: chosen, audioSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: sampleRate,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 32,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+            ])
+            output.alwaysCopiesSampleData = false
+            reader.add(output)
+            guard reader.startReading() else {
+                throw StudioCaptionGenerationError.unreadableSound
+            }
+
+            let duration = project.sources.screen.duration
+            let expected = duration > 0 ? Int(duration * sampleRate) : 0
+            var samples = [Float]()
+            samples.reserveCapacity(expected)
+            while let buffer = output.copyNextSampleBuffer() {
+                try Task.checkCancellation()
+                guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+                let bytes = CMBlockBufferGetDataLength(block)
+                let start = samples.count
+                let count = bytes / MemoryLayout<Float>.size
+                samples.append(contentsOf: repeatElement(0, count: count))
+                let status = samples.withUnsafeMutableBytes { target in
+                    CMBlockBufferCopyDataBytes(
+                        block,
+                        atOffset: 0,
+                        dataLength: count * MemoryLayout<Float>.size,
+                        destination: target.baseAddress!.advanced(by: start * MemoryLayout<Float>.size)
+                    )
+                }
+                guard status == kCMBlockBufferNoErr else {
+                    throw StudioCaptionGenerationError.unreadableSound
+                }
+                if expected > 0 {
+                    progress(min(1, Double(samples.count) / Double(expected)))
+                }
+            }
+            guard reader.status != .failed else {
+                throw StudioCaptionGenerationError.unreadableSound
+            }
+            return samples
+        } catch let error as StudioCaptionGenerationError {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw StudioCaptionGenerationError.unreadableSound
+        }
+    }
+}
+
+extension StudioCaptionSound {
+    /// The samples as a file in the temporary folder, for SpeechAnalyzer to read. The caller
+    /// deletes it.
+    static func writeTemporaryFile(_ samples: [Float]) throws -> URL {
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false) else {
+            throw StudioCaptionGenerationError.unreadableSound
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tinyclips-captions-\(UUID().uuidString).wav")
+        do {
+            let file = try AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let framesAtOnce = 65_536
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(framesAtOnce)),
+                  let channel = buffer.floatChannelData?[0] else {
+                throw StudioCaptionGenerationError.unreadableSound
+            }
+            var written = 0
+            while written < samples.count {
+                try Task.checkCancellation()
+                let count = min(framesAtOnce, samples.count - written)
+                samples.withUnsafeBufferPointer { source in
+                    channel.update(from: source.baseAddress!.advanced(by: written), count: count)
+                }
+                buffer.frameLength = AVAudioFrameCount(count)
+                try file.write(from: buffer)
+                written += count
+            }
+            return url
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
+    }
+}
+
+/// Passes on how far a stage is once for each percent. Reading the sound and recognizing speech
+/// each say so thousands of times, and all of that would otherwise land on the main thread.
+final class StudioCaptionPercentReports: @unchecked Sendable {
+    private let lock = NSLock()
+    private let stage: StudioCaptionProgress.Stage
+    private let progress: @Sendable (StudioCaptionProgress) -> Void
+    private var lastPercent = 0
+
+    init(stage: StudioCaptionProgress.Stage, _ progress: @escaping @Sendable (StudioCaptionProgress) -> Void) {
+        self.stage = stage
+        self.progress = progress
+    }
+
+    func report(_ fraction: Double) {
+        let percent = Int(min(1, max(0, fraction)) * 100)
+        lock.lock()
+        let isNews = percent > lastPercent
+        if isNews {
+            lastPercent = percent
+        }
+        lock.unlock()
+        if isNews {
+            progress(StudioCaptionProgress(stage: stage, fraction: Double(percent) / 100))
+        }
+    }
+}
+
+/// Ends a wait for a download with whichever comes first: the download, or being cancelled.
+final class StudioCaptionWait<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Error>?
+    private var outcome: Result<Value, Error>?
+
+    func begin(_ continuation: CheckedContinuation<Value, Error>) {
+        lock.lock()
+        if let outcome {
+            lock.unlock()
+            continuation.resume(with: outcome)
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func finish(_ result: Result<Value, Error>) {
+        lock.lock()
+        guard outcome == nil else {
+            lock.unlock()
+            return
+        }
+        outcome = result
+        let waiting = continuation
+        continuation = nil
+        lock.unlock()
+        waiting?.resume(with: result)
+    }
+}
+
+/// What the speech recognition built into macOS can do on this Mac. It is what makes captions, on
+/// macOS 26 and later. Apple says whether a Mac has it depends on the hardware too, without listing
+/// which. A Mac without it can do everything else with captions.
 enum StudioAppleSpeech {
-    static var isAvailable: Bool {
+    /// What agents call it, in the place of the Whisper models Windows has.
+    static let modelID = "AppleSpeech"
+
+    static let isAvailable: Bool = {
         guard #available(macOS 26.0, *) else { return false }
         return SpeechTranscriber.isAvailable
-    }
+    }()
 
     /// The languages it can listen for, by name. Empty on a Mac without it.
     static func languages() async -> [StudioCaptionLanguage] {
@@ -159,8 +338,8 @@ enum StudioSpeechAnalysis {
         }
 
         guard let request = try await AssetInventory.assetInstallationRequest(supporting: [module]) else { return }
-        progress(StudioCaptionProgress(stage: .downloadingModel, fraction: 0))
-        let reports = StudioCaptionPercentReports(stage: .downloadingModel, progress)
+        progress(StudioCaptionProgress(stage: .downloadingLanguage, fraction: 0))
+        let reports = StudioCaptionPercentReports(stage: .downloadingLanguage, progress)
         let watching = request.progress.observe(\.fractionCompleted) { measure, _ in
             reports.report(measure.fractionCompleted)
         }
@@ -193,7 +372,7 @@ private struct StudioInstallRequest: @unchecked Sendable {
 }
 
 /// Makes captions with the speech recognition built into macOS, on this Mac. Sound never leaves it.
-struct StudioAppleSpeechCaptionGenerator: Sendable {
+struct StudioAppleSpeechCaptionGenerator: StudioCaptionGenerating {
     func generate(
         project: StudioProject,
         paths: StudioProjectPaths,
@@ -201,13 +380,13 @@ struct StudioAppleSpeechCaptionGenerator: Sendable {
         progress: @escaping @Sendable (StudioCaptionProgress) -> Void
     ) async throws -> StudioGeneratedCaptions {
         guard #available(macOS 26.0, *), SpeechTranscriber.isAvailable else {
-            throw StudioCaptionGenerationError(message: "Apple Speech is not available on this Mac. Choose a Whisper model instead.")
+            throw StudioCaptionGenerationError(message: StudioCaptionText.needsNewerMac)
         }
 
         let wanted = language.map { Locale(identifier: $0) } ?? Locale.current
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) else {
             let name = Locale.current.localizedString(forIdentifier: wanted.identifier) ?? wanted.identifier
-            throw StudioCaptionGenerationError(message: "Apple Speech cannot listen for \(name) on this Mac. Choose another language, or a Whisper model, which detects the language by itself.")
+            throw StudioCaptionGenerationError(message: "Apple Speech cannot listen for \(name) on this Mac. Choose another language.")
         }
 
         // The sound first: a recording without any should not cost a download.
@@ -245,7 +424,7 @@ struct StudioAppleSpeechCaptionGenerator: Sendable {
         } catch let error as StudioCaptionGenerationError {
             throw error
         } catch {
-            throw StudioCaptionGenerationError(message: "Apple Speech could not recognize the speech: \(error.localizedDescription) Try a Whisper model instead.")
+            throw StudioCaptionGenerationError(message: "The speech could not be recognized: \(error.localizedDescription)")
         }
 
         let cues = StudioCaptionTranscript.cues(from: segments, sourceDuration: duration)
@@ -256,32 +435,5 @@ struct StudioAppleSpeechCaptionGenerator: Sendable {
             language: locale.identifier(.bcp47),
             cues: StudioCaptionQuality.fix(cues, sourceDuration: duration).cues
         )
-    }
-}
-
-/// Sends each model to the engine it belongs to.
-struct StudioCaptionEngines: StudioCaptionGenerating {
-    static let shared = StudioCaptionEngines()
-
-    var whisper: StudioCaptionGenerating = StudioWhisperCaptionGenerator.shared
-    var appleSpeech = StudioAppleSpeechCaptionGenerator()
-
-    /// For Whisper models. Whether Apple Speech has a language takes a while to ask, and is part
-    /// of `StudioAppleSpeech.languages()`.
-    func isModelInstalled(_ model: StudioCaptionModel) -> Bool {
-        !model.isAppleSpeech && whisper.isModelInstalled(model)
-    }
-
-    func generate(
-        project: StudioProject,
-        paths: StudioProjectPaths,
-        model: StudioCaptionModel,
-        language: String?,
-        progress: @escaping @Sendable (StudioCaptionProgress) -> Void
-    ) async throws -> StudioGeneratedCaptions {
-        if model.isAppleSpeech {
-            return try await appleSpeech.generate(project: project, paths: paths, language: language, progress: progress)
-        }
-        return try await whisper.generate(project: project, paths: paths, model: model, language: language, progress: progress)
     }
 }

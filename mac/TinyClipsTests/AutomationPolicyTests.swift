@@ -86,7 +86,10 @@ final class AutomationPolicyTests: XCTestCase {
         ]
         for (name, scope) in expected {
             XCTAssertEqual(contract.commands.first(where: { $0.name == name })?.scope, scope)
-            XCTAssertTrue(AutomationCommandRouter.supportedCommands.contains(name))
+            // These two are only advertised on a Mac that can generate captions.
+            if !["studio.captions.models", "studio.captions.generate"].contains(name) {
+                XCTAssertTrue(AutomationCommandRouter.supportedCommands.contains(name))
+            }
         }
     }
 

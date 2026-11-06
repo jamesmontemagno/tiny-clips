@@ -1,27 +1,6 @@
 import Foundation
 
-// MARK: - Models
-
-/// A speech model captions can be generated with. The ids are the same on both platforms, and
-/// agents use them, so that a choice means the same model wherever it is made.
-struct StudioCaptionModel: Identifiable, Equatable, Sendable {
-    let id: String
-    let name: String
-    /// About how large its download is, for whoever is asked to agree to it.
-    let sizeText: String
-    let approximateBytes: Int64
-    /// What it is good for.
-    let guidance: String
-    /// Its folder in the repository WhisperKit downloads from.
-    let variant: String
-
-    /// Whether it only knows English, and so has no language to detect.
-    var isEnglishOnly: Bool { variant.hasSuffix(".en") }
-
-    /// Whether it is the speech recognition built into macOS, which is told a language rather than
-    /// detecting one, and whose languages macOS downloads and manages.
-    var isAppleSpeech: Bool { id == StudioCaptionModels.appleSpeech.id }
-}
+// MARK: - Languages
 
 /// A language Apple Speech can listen for on this Mac.
 struct StudioCaptionLanguage: Identifiable, Equatable, Sendable {
@@ -30,95 +9,6 @@ struct StudioCaptionLanguage: Identifiable, Equatable, Sendable {
     let name: String
     /// Whether macOS has it already. Otherwise it downloads it the first time.
     let isInstalled: Bool
-}
-
-enum StudioCaptionModels {
-    private static let megabyte: Int64 = 1_000_000
-
-    static let all: [StudioCaptionModel] = [
-        StudioCaptionModel(id: "Tiny", name: "Tiny", sizeText: "77 MB", approximateBytes: 77 * megabyte, guidance: "Fastest, lowest accuracy", variant: "openai_whisper-tiny"),
-        StudioCaptionModel(id: "TinyEn", name: "Tiny English", sizeText: "150 MB", approximateBytes: 150 * megabyte, guidance: "Fastest for English", variant: "openai_whisper-tiny.en"),
-        StudioCaptionModel(id: "Base", name: "Base", sizeText: "147 MB", approximateBytes: 147 * megabyte, guidance: "Balanced, for most computers", variant: "openai_whisper-base"),
-        StudioCaptionModel(id: "BaseEn", name: "Base English", sizeText: "147 MB", approximateBytes: 147 * megabyte, guidance: "Balanced, for English", variant: "openai_whisper-base.en"),
-        StudioCaptionModel(id: "Small", name: "Small", sizeText: "486 MB", approximateBytes: 486 * megabyte, guidance: "More accurate, slower", variant: "openai_whisper-small"),
-        StudioCaptionModel(id: "SmallEn", name: "Small English", sizeText: "487 MB", approximateBytes: 487 * megabyte, guidance: "More accurate for English, slower", variant: "openai_whisper-small.en"),
-        StudioCaptionModel(id: "Medium", name: "Medium", sizeText: "1.5 GB", approximateBytes: 1530 * megabyte, guidance: "High accuracy, uses a lot of memory", variant: "openai_whisper-medium"),
-        StudioCaptionModel(id: "MediumEn", name: "Medium English", sizeText: "1.5 GB", approximateBytes: 1530 * megabyte, guidance: "High accuracy for English, uses a lot of memory", variant: "openai_whisper-medium.en"),
-        StudioCaptionModel(id: "LargeV3Turbo", name: "Large v3 Turbo", sizeText: "1.6 GB", approximateBytes: 1638 * megabyte, guidance: "Fast for its high accuracy", variant: "openai_whisper-large-v3-v20240930_turbo"),
-        StudioCaptionModel(id: "LargeV3", name: "Large v3", sizeText: "3.1 GB", approximateBytes: 3090 * megabyte, guidance: "Highest accuracy, slowest", variant: "openai_whisper-large-v3"),
-    ]
-
-    static let defaultModel = all[2]
-
-    /// The speech recognition built into macOS 26 and later. Not one of `all`, because not every
-    /// Mac has it and nothing of it is kept in the app's own folder.
-    static let appleSpeech = StudioCaptionModel(
-        id: "AppleSpeech",
-        name: "Apple Speech",
-        sizeText: "built into macOS",
-        approximateBytes: 0,
-        guidance: "Fast, for the language you choose",
-        variant: ""
-    )
-
-    static func find(_ id: String?) -> StudioCaptionModel? {
-        id == appleSpeech.id ? appleSpeech : all.first { $0.id == id }
-    }
-
-    /// Whether this is an Intel build, which is how an Intel Mac runs the app.
-    static var isIntel: Bool {
-        #if arch(x86_64)
-        return true
-        #else
-        return false
-        #endif
-    }
-
-    /// The Whisper models to offer, from running them on real speech on GitHub's runners (see
-    /// plans/studio-captions.md). WhisperKit crashes on Intel, on macOS 15 and 26. On
-    /// macOS 15 on Apple silicon these three give a word or two of nonsense, in every compute mode,
-    /// with any toolchain, and with nothing of this app involved.
-    static func whisperModels(macOSMajor: Int, isIntel: Bool) -> [StudioCaptionModel] {
-        if isIntel {
-            return []
-        }
-        return macOSMajor < 26 ? all.filter { !["Base", "BaseEn", "Small"].contains($0.id) } : all
-    }
-
-    static var whisperModelsHere: [StudioCaptionModel] {
-        whisperModels(macOSMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion, isIntel: isIntel)
-    }
-
-    /// Whether anything on this Mac can make captions. Without it, they can still be imported.
-    static var canGenerate: Bool {
-        StudioAppleSpeech.isAvailable || !whisperModelsHere.isEmpty
-    }
-
-    /// What can be chosen on this Mac, best first.
-    static func options(appleSpeechIsAvailable: Bool, whisper: [StudioCaptionModel] = whisperModelsHere) -> [StudioCaptionModel] {
-        appleSpeechIsAvailable ? [appleSpeech] + whisper : whisper
-    }
-
-    /// The model to use for a stored choice. Without one, Apple Speech where it can hear the
-    /// system's language, and otherwise a Whisper model, which detects the language by itself.
-    static func resolve(
-        id: String?,
-        appleSpeechIsAvailable: Bool,
-        canHearSystemLanguage: Bool = true,
-        whisper: [StudioCaptionModel] = whisperModelsHere
-    ) -> StudioCaptionModel {
-        let bestWhisper = whisper.contains(defaultModel) ? defaultModel : (whisper.first ?? defaultModel)
-        if id == appleSpeech.id {
-            return appleSpeechIsAvailable ? appleSpeech : bestWhisper
-        }
-        if let found = find(id), whisper.contains(found) {
-            return found
-        }
-        if appleSpeechIsAvailable, canHearSystemLanguage || whisper.isEmpty {
-            return appleSpeech
-        }
-        return bestWhisper
-    }
 }
 
 enum StudioCaptionLanguages {
@@ -135,73 +25,13 @@ enum StudioCaptionLanguages {
     }
 }
 
-/// Where the speech models are kept. A model counts as there only when its download finished, so
-/// one that was stopped is not taken for a model and is picked up again next time.
-struct StudioCaptionModelStore: Sendable {
-    private static let finishedMarker = ".tinyclips-finished"
-    /// Where WhisperKit puts a model under the folder it is told to use.
-    private static let repositoryPath = "models/argmaxinc/whisperkit-coreml"
-
-    let directory: URL
-
-    init(directory: URL = Self.defaultDirectory) {
-        self.directory = directory
-    }
-
-    static var defaultDirectory: URL {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return support.appendingPathComponent("TinyClips/Models", isDirectory: true)
-    }
-
-    func folder(for model: StudioCaptionModel) -> URL {
-        directory
-            .appendingPathComponent(Self.repositoryPath, isDirectory: true)
-            .appendingPathComponent(model.variant, isDirectory: true)
-    }
-
-    func isInstalled(_ model: StudioCaptionModel) -> Bool {
-        FileManager.default.fileExists(atPath: folder(for: model).appendingPathComponent(Self.finishedMarker).path)
-    }
-
-    func markInstalled(_ model: StudioCaptionModel) throws {
-        try Data().write(to: folder(for: model).appendingPathComponent(Self.finishedMarker))
-    }
-
-    /// The models on this computer, in the order of the catalog.
-    func installedModels() -> [StudioCaptionModel] {
-        StudioCaptionModels.all.filter(isInstalled)
-    }
-
-    /// How much room everything in the folder takes, a download that was stopped included.
-    func usedBytes() -> Int64 {
-        guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.fileSizeKey]) else {
-            return 0
-        }
-        var total: Int64 = 0
-        for case let file as URL in files {
-            total += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-        }
-        return total
-    }
-
-    /// Deletes every model, and whatever a download that was stopped left behind.
-    func deleteAll() throws {
-        if FileManager.default.fileExists(atPath: directory.path) {
-            try FileManager.default.removeItem(at: directory)
-        }
-    }
-}
-
 // MARK: - Generating
 
 /// How far generating captions is.
 struct StudioCaptionProgress: Equatable, Sendable {
     enum Stage: Sendable {
         case readingSound
-        case downloadingModel
-        /// The system compiles a model for this Mac the first time it is used, without a measure of how far it is.
-        case preparingModel
+        case downloadingLanguage
         case recognizingSpeech
     }
 
@@ -230,15 +60,11 @@ struct StudioCaptionGenerationError: LocalizedError, Equatable {
 
 /// Makes captions from a recording's sound, on this computer.
 protocol StudioCaptionGenerating: Sendable {
-    func isModelInstalled(_ model: StudioCaptionModel) -> Bool
-
-    /// Stops with `CancellationError` when its task is cancelled, which can take a few seconds.
-    /// - Parameter language: A BCP 47 tag for Apple Speech to listen for, or nil for the system's.
-    ///   A Whisper model detects the language and does not use it.
+    /// Stops with `CancellationError` when its task is cancelled.
+    /// - Parameter language: A BCP 47 tag to listen for, or nil for the system's.
     func generate(
         project: StudioProject,
         paths: StudioProjectPaths,
-        model: StudioCaptionModel,
         language: String?,
         progress: @escaping @Sendable (StudioCaptionProgress) -> Void
     ) async throws -> StudioGeneratedCaptions
@@ -260,23 +86,14 @@ enum StudioCaptionTranscript {
     /// The longest a cue is made: two full lines (section 15.6 of the project format).
     static var longestCue: Int { StudioCaptionQuality.longestLine * StudioCaptionQuality.mostLines }
 
-    // What whisper says instead of text for a stretch without speech.
-    private static let blankAudioMarker = "[BLANK_AUDIO]"
-
     static func cues(from segments: [StudioTranscriptSegment], sourceDuration: Double) -> [StudioCaptionCue] {
         segments.flatMap { cues(from: $0, sourceDuration: sourceDuration) }
     }
 
-    /// `<|startoftranscript|>`, `<|0.00|>` and the like are the model's own marks, not speech.
-    static func withoutMarks(_ text: String) -> String {
-        guard text.contains("<|") else { return text }
-        return text.replacingOccurrences(of: "<\\|[^|]*\\|>", with: "", options: .regularExpression)
-    }
-
     private static func cues(from segment: StudioTranscriptSegment, sourceDuration: Double) -> [StudioCaptionCue] {
-        let text = StudioCaptionResolver.cleanText(withoutMarks(segment.text))
+        let text = StudioCaptionResolver.cleanText(segment.text)
         let end = min(segment.end, sourceDuration)
-        guard !text.isEmpty, text != blankAudioMarker, end > segment.start else { return [] }
+        guard !text.isEmpty, end > segment.start else { return [] }
 
         let words = spelledWords(of: segment, text: text, sourceDuration: sourceDuration)
         guard text.count > longestCue, !words.isEmpty else {
@@ -333,7 +150,7 @@ enum StudioCaptionTranscript {
     /// a cut, which is right, and a cue with wrong words would say something else.
     private static func spelledWords(of segment: StudioTranscriptSegment, text: String, sourceDuration: Double) -> [StudioCaptionWord] {
         let words = segment.words.compactMap { word -> StudioCaptionWord? in
-            let cleaned = withoutMarks(word.text).trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = word.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleaned.isEmpty else { return nil }
             return StudioCaptionWord(start: min(word.start, sourceDuration), end: min(word.end, sourceDuration), text: cleaned)
         }

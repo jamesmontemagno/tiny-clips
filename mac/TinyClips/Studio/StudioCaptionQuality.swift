@@ -312,10 +312,10 @@ enum StudioCaptionQuality {
 /// What the editor says about captions. The same, word for word, on Windows (`StudioCaptionText`).
 enum StudioCaptionText {
     /// Said on a Mac that cannot make captions.
-    static let needsAppleSilicon = "Generating captions needs a Mac with Apple silicon. You can still import an SRT or WebVTT file."
+    static let needsNewerMac = "Generating captions needs macOS 26 or later, on a Mac that supports Apple's speech recognition. You can still import an SRT or WebVTT file."
 
     /// Said about where the sound goes.
-    static let privacyNote = "Your sound stays on this Mac. Only the model is downloaded."
+    static let privacyNote = "Your sound stays on this Mac."
 
     /// Said before generating over captions that are there.
     static let replaceNote = "This replaces the current captions. Undo brings them back."
@@ -339,37 +339,19 @@ enum StudioCaptionText {
         let percent = Int((min(1, max(0, progress.fraction)) * 100).rounded())
         switch progress.stage {
         case .readingSound: return "Reading the sound: \(percent)%"
-        case .downloadingModel: return "Downloading the model: \(percent)%"
-        case .preparingModel: return "Getting the model ready\u{2026}"
+        case .downloadingLanguage: return "Downloading the language: \(percent)%"
         case .recognizingSpeech: return "Recognizing speech: \(percent)%"
         }
     }
 
-    static func modelNote(_ model: StudioCaptionModel, isInstalled: Bool) -> String {
-        if model.isAppleSpeech {
-            return isInstalled
-                ? "\(model.guidance). This language is already on this Mac."
-                : "\(model.guidance). macOS downloads this language the first time, and keeps it for other apps too."
-        }
-        return isInstalled
-            ? "\(model.guidance). Already on this Mac."
-            : "\(model.guidance). Downloads \(model.sizeText) the first time."
+    static func languageNote(isInstalled: Bool) -> String {
+        isInstalled
+            ? "This language is already on this Mac."
+            : "macOS downloads this language the first time, and keeps it for other apps too."
     }
 
-    static func generateActionText(_ model: StudioCaptionModel, isInstalled: Bool) -> String {
-        if isInstalled {
-            return "Generate"
-        }
-        return model.isAppleSpeech ? "Download and Generate" : "Download \(model.sizeText) and Generate"
-    }
-
-    /// How much room the models take, in the words of Settings.
-    static func installedModelsText(count: Int, bytes: Int64) -> String {
-        if count == 0 {
-            return "No models downloaded."
-        }
-        let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-        return count == 1 ? "1 model downloaded, using \(size)." : "\(count) models downloaded, using \(size)."
+    static func generateActionText(isInstalled: Bool) -> String {
+        isInstalled ? "Generate" : "Download and Generate"
     }
 
     /// What the panel says when a project has no captions.
