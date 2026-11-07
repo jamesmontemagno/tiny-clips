@@ -127,9 +127,10 @@ public class PackageSmokeTests
             var commands = await RunAsync(executable, [.. prefix, "commands"], environment, cancellationToken);
             Assert.True(commands.ExitCode == 0, commands.Error + commands.Output);
             var commandList = JsonNode.Parse(commands.Output)!.AsArray();
-            Assert.Equal(Contract.Current.Commands.Select(c => c.Name).Order(),
+            var expectedCommands = Contract.Current.CommandsForPlatform(Contract.CurrentPlatform).ToArray();
+            Assert.Equal(expectedCommands.Select(c => c.Name).Order(),
                 commandList.Select(c => c!["name"]!.GetValue<string>()).Order());
-            foreach (var command in Contract.Current.Commands)
+            foreach (var command in expectedCommands)
             {
                 var actual = commandList.Single(c => (string?)c!["name"] == command.Name)!;
                 Assert.True(JsonNode.DeepEquals(Contract.InputSchema(command), actual["inputSchema"]),
@@ -163,7 +164,7 @@ public class PackageSmokeTests
                 Assert.Equal(PackageVersion, client.ServerInfo!.Version);
                 if (protocolVersion is not null) Assert.Equal(protocolVersion, client.NegotiatedProtocolVersion);
                 var listed = await client.ListToolsAsync(new ListToolsRequestParams(), cancellationToken);
-                Assert.Equal(Contract.Current.Commands.Count + 1, listed.Tools.Count);
+                Assert.Equal(expectedCommands.Length + 1, listed.Tools.Count);
                 Assert.Contains(listed.Tools, t => t.Name == "tinyclips_status");
                 var captured = await client.CallToolAsync("tinyclips_capture_screenshot",
                     new Dictionary<string, object?> { ["mode"] = "screen" }, cancellationToken: cancellationToken);
