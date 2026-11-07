@@ -18,22 +18,25 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-agent-ci-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
+  # Reusable calls inherit the caller's workflow_ref: isolate them by run and never cancel.
+  # Direct manual runs share the selected branch's push group; PRs keep their own group.
+  group: ${{ github.workflow }}-agent-ci-${{ !startsWith(github.workflow_ref, format('{0}/.github/workflows/agent-build.yml@', github.repository)) && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ startsWith(github.workflow_ref, format('{0}/.github/workflows/agent-build.yml@', github.repository)) }}
 
 jobs:
   changes:
     name: Detect agent changes
     runs-on: ubuntu-latest
     outputs:
-      agent: ${{ inputs.force || github.event_name == 'workflow_dispatch' || steps.filter.outputs.agent }}
+      # Only direct pushes supersede earlier runs; reusable calls keep their filtering.
+      agent: ${{ inputs.force || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.workflow_ref, format('{0}/.github/workflows/agent-build.yml@', github.repository))) || steps.filter.outputs.agent }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2
       - name: Filter changed files
         id: filter
-        if: ${{ !inputs.force && github.event_name != 'workflow_dispatch' }}
+        if: ${{ !inputs.force && github.event_name != 'workflow_dispatch' && !(github.event_name == 'push' && startsWith(github.workflow_ref, format('{0}/.github/workflows/agent-build.yml@', github.repository))) }}
         uses: dorny/paths-filter@v4
         with:
           base: ${{ github.ref }}
