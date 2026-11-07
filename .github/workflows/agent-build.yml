@@ -18,8 +18,10 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-agent-ci-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
+  # Reusable calls inherit the caller's workflow_ref: isolate them by run and never cancel.
+  # Direct manual runs share the selected branch's push group; PRs keep their own group.
+  group: ${{ github.workflow }}-agent-ci-${{ !startsWith(github.workflow_ref, format('{0}/.github/workflows/agent-build.yml@', github.repository)) && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ startsWith(github.workflow_ref, format('{0}/.github/workflows/agent-build.yml@', github.repository)) }}
 
 jobs:
   changes:
