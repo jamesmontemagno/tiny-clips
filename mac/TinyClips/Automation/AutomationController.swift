@@ -81,9 +81,21 @@ final class AutomationController: ObservableObject {
         syncWithSetting()
     }
 
-    func setEnabled(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
+    @discardableResult
+    func setEnabled(_ enabled: Bool) -> Bool {
+        let isFirstEnable = Self.updateEnabledPreference(enabled, in: .standard)
         syncWithSetting()
+        return isFirstEnable
+    }
+
+    @discardableResult
+    nonisolated static func updateEnabledPreference(_ enabled: Bool, in defaults: UserDefaults) -> Bool {
+        // Existing installations only have this preference after the user changed it.
+        let previous = defaults.object(forKey: enabledKey)
+        if enabled || previous != nil {
+            defaults.set(enabled, forKey: enabledKey)
+        }
+        return enabled && previous == nil
     }
 
     func shutdown() {

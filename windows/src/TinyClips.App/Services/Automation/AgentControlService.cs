@@ -60,15 +60,29 @@ internal sealed class AgentControlService
     /// <summary>Starts the pipe at launch when agent control was left on.</summary>
     public Task StartIfEnabledAsync() => _enabled ? ApplyAsync(true) : Task.CompletedTask;
 
-    public async Task SetEnabledAsync(bool enabled)
+    public async Task<bool> SetEnabledAsync(bool enabled)
     {
+        var isFirstEnable = false;
         if (_enabled != enabled)
         {
             _enabled = enabled;
-            _settings.Set(EnabledSettingKey, enabled);
+            isFirstEnable = UpdateEnabledSetting(_settings, enabled);
         }
 
         await ApplyAsync(enabled);
+        return isFirstEnable;
+    }
+
+    internal static bool UpdateEnabledSetting(ISettingsService settings, bool enabled)
+    {
+        // Existing installations only have this setting after the user changed it.
+        var previous = settings.Get<bool?>(EnabledSettingKey, null);
+        if (previous != enabled && (enabled || previous.HasValue))
+        {
+            settings.Set(EnabledSettingKey, enabled);
+        }
+
+        return enabled && !previous.HasValue;
     }
 
     /// <summary>Stops listening without changing the setting, e.g. when the app exits.</summary>

@@ -27,6 +27,7 @@ own `CHANGELOG.md` at the repository root.
 - Studio's segmented choices remain usable while a screen reader is listening.
 - Studio preview handles multiple shadowed emoji without failing and keeps every shadow when many are visible.
 - Opening a capture picker from the tray no longer reapplies unchanged capture-exclusion settings to the hidden toolbar, including on the first capture after launch. The toolbar window is created only when opened to avoid an empty startup surface.
+- The tray popup's agent control button now stays visible when agent control is off and offers **Turn on agent control**, instead of disappearing once it was turned off. The first time it is enabled from the tray, Settings opens to the Agent control setup instructions.
 - Studio captions: a caption being typed is kept when generating captions or an agent's edit lands, and Undo and Redo no longer bring back stale text in the caption box. Agent `studio.captions.import` refuses an unknown `timing` instead of treating it as `recording`.
 - Tiny Clips no longer runs in Windows Efficiency Mode. The tray library was putting the whole app at idle priority with EcoQoS, which delayed the tray popup, capture shortcuts, overlays, editors, and recordings, and could stop them responding at all while other apps were busy.
 - The capture picker appears right away: it no longer captures every monitor before showing, for frames that were almost never used.

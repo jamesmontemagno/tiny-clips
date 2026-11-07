@@ -17,7 +17,7 @@ skills/ (workflow guidance) ──────┘
 
 Use a Tiny Clips release that includes **Agent Control**, running on the same Mac or Windows PC as your agent. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) for the commands below. Your agent needs either terminal access or support for a local stdio MCP server. Tiny Clips provides capture tools, not an AI model; bring your own agent.
 
-1. Open **Settings → Agent Control** and turn on **Allow agents to control Tiny Clips**. Leave the app running.
+1. Turn on Agent Control from the macOS menu bar or Windows tray, or open **Settings → Agent Control** and turn on **Allow agents to control Tiny Clips**. If it has never been enabled, turning it on from the menu or tray opens Settings to the setup instructions. Leave the app running.
 2. **Recommended: install the Agent Plugin.** It bundles the MCP server and workflow Skills, so no separate MCP configuration or global CLI installation is needed. In VS Code, run **Chat: Install Plugin from Source** and enter:
    ```text
    https://github.com/jamesmontemagno/tiny-clips.git
@@ -163,6 +163,20 @@ Framing is one UTF-8 JSON object per line (`\n`). A connection may send several 
 | `session.hello` | – | `app`, `version`, `platform` (`macos`/`windows`), `build` (`direct`/`store`), `protocolVersion`, `automationEnabled`, `commands` (supported names) |
 | `session.pair` | `clientName`, `scopes[]` | `pairingId` |
 | `session.pairStatus` | `pairingId` | `status` (`pending`/`approved`/`denied`), and when approved `token`, `scopes` |
+
+### macOS notification permissions
+
+`notifications.status` (`read` scope) returns `status` (`notDetermined`, `denied`, `authorized`, `provisional`, `ephemeral`, or `unknown`), `alertsEnabled` (whether macOS currently allows alert presentation), and `canRequest`. `alertsEnabled` does not guarantee delivery; macOS may still adjust delivery based on alert style, Focus, or other system choices. This is system permission, separate from the `showSaveNotifications` preference available through `settings.get` / `settings.set`.
+
+With the `settings` scope, `notifications.requestPermission` requests permission only if macOS has not yet asked. The user must answer the macOS prompt; agents cannot grant permission. It returns the same status fields on success or `permission_required` otherwise. `notifications.openSettings` opens macOS notification settings so the user can restore denied permission or adjust alerts. These commands do not change the after-save preference or override Focus, quiet delivery, or other system choices.
+
+```sh
+tinyclips notifications.status
+tinyclips notifications.requestPermission
+tinyclips notifications.openSettings
+```
+
+The corresponding MCP tools are `tinyclips_notifications_status`, `tinyclips_notifications_requestPermission`, and `tinyclips_notifications_openSettings`. Windows does not advertise these macOS-only commands and returns `not_supported`.
 
 ### Autonomous capture and annotation
 

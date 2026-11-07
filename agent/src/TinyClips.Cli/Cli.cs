@@ -69,7 +69,7 @@ internal static class Cli
                     return Success;
                 }
                 case "commands":
-                    await PrintAsync(env, new JsonArray(Contract.Current.Commands.Select(c => (JsonNode)new JsonObject
+                    await PrintAsync(env, new JsonArray(Contract.Current.CommandsForPlatform(Contract.CurrentPlatform).Select(c => (JsonNode)new JsonObject
                     {
                         ["name"] = c.Name,
                         ["scope"] = c.Scope,

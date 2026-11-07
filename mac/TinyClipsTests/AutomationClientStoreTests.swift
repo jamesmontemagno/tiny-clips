@@ -14,6 +14,34 @@ final class AutomationClientStoreTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    func testFirstAgentControlEnableRequestsSetupOnlyOnce() throws {
+        let suiteName = "TinyClipsAgentControlTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertFalse(AutomationController.updateEnabledPreference(false, in: defaults))
+        XCTAssertNil(defaults.object(forKey: AutomationController.enabledKey))
+        XCTAssertTrue(AutomationController.updateEnabledPreference(true, in: defaults))
+        XCTAssertTrue(defaults.bool(forKey: AutomationController.enabledKey))
+        XCTAssertFalse(AutomationController.updateEnabledPreference(true, in: defaults))
+        XCTAssertFalse(AutomationController.updateEnabledPreference(false, in: defaults))
+
+        let reopened = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        XCTAssertFalse(AutomationController.updateEnabledPreference(true, in: reopened))
+        XCTAssertTrue(reopened.bool(forKey: AutomationController.enabledKey))
+    }
+
+    func testExistingAgentControlPreferencesDoNotRequestSetup() throws {
+        for enabled in [false, true] {
+            let suiteName = "TinyClipsAgentControlTests.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            defaults.set(enabled, forKey: AutomationController.enabledKey)
+            XCTAssertFalse(AutomationController.updateEnabledPreference(true, in: defaults))
+        }
+    }
+
     func testTokenHashIsSHA256Hex() {
         XCTAssertEqual(
             AutomationClientStore.hash(token: "abc"),

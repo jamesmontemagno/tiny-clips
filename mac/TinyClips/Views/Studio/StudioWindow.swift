@@ -150,10 +150,7 @@ final class StudioWindowRegistry {
 
         // Shown on the next run loop turn so it does not fight menu tracking or a closing panel.
         DispatchQueue.main.async {
-            window.collectionBehavior.insert(.moveToActiveSpace)
-            NSRunningApplication.current.activate(options: [.activateAllWindows])
-            window.makeKeyAndOrderFront(nil)
-            window.orderFrontRegardless()
+            WindowPresenter.shared.present(window)
         }
     }
 

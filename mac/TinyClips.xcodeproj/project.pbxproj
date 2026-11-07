@@ -49,6 +49,7 @@
 		D61700000000000000000001 /* GifTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61700000000000000000003 /* GifTiming.swift */; };
 		D61700000000000000000002 /* GifTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61700000000000000000003 /* GifTiming.swift */; };
 		B10000000000000000000009 /* SaveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* SaveService.swift */; };
+		B10000000000000000000040 /* WindowPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000040 /* WindowPresenter.swift */; };
 		B1000000000000000000000A /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* PermissionManager.swift */; };
 		B1000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Assets.xcassets */; };
 		B1000000000000000000000C /* SparkleController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* SparkleController.swift */; };
@@ -99,6 +100,7 @@
 		B20000000000000000000007 /* VideoRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* VideoRecorder.swift */; };
 		B20000000000000000000008 /* GifWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008 /* GifWriter.swift */; };
 		B20000000000000000000009 /* SaveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* SaveService.swift */; };
+		B20000000000000000000040 /* WindowPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000040 /* WindowPresenter.swift */; };
 		B2000000000000000000000A /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* PermissionManager.swift */; };
 		B2000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Assets.xcassets */; };
 		B2000000000000000000000C /* SparkleController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* SparkleController.swift */; };
@@ -177,7 +179,9 @@
 		B30000000000000000000433 /* RecordingAudioMixdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000433 /* RecordingAudioMixdownTests.swift */; };
 		B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* HotKeyBindingTests.swift */; };
 		B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* CaptureSettingsTests.swift */; };
+		B30000000000000000000008 /* WindowPresenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000008 /* WindowPresenterTests.swift */; };
 		B30000000000000000000004 /* SaveServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SaveServiceTests.swift */; };
+		B30000000000000000000582 /* NotificationPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000582 /* NotificationPermissionTests.swift */; };
 		B30000000000000000000005 /* CaptureAnalyticsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */; };
 		B30000000000000000000006 /* QuickFeedbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000007 /* QuickFeedbackTests.swift */; };
 		B40000000000000000000001 /* StudioJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000001 /* StudioJSON.swift */; };
@@ -311,6 +315,7 @@
 		A10000000000000000000008 /* GifWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifWriter.swift; sourceTree = "<group>"; };
 		D61700000000000000000003 /* GifTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifTiming.swift; sourceTree = "<group>"; };
 		A10000000000000000000009 /* SaveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveService.swift; sourceTree = "<group>"; };
+		A10000000000000000000040 /* WindowPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowPresenter.swift; sourceTree = "<group>"; };
 		A1000000000000000000000A /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		A1000000000000000000000B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1000000000000000000000C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -396,7 +401,9 @@
 		A30000000000000000000433 /* RecordingAudioMixdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAudioMixdownTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000002 /* HotKeyBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyBindingTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000003 /* CaptureSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSettingsTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000008 /* WindowPresenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowPresenterTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000004 /* SaveServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveServiceTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000582 /* NotificationPermissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPermissionTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAnalyticsStoreTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000006 /* TinyClipsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinyClipsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000007 /* QuickFeedbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickFeedbackTests.swift; sourceTree = "<group>"; };
@@ -600,6 +607,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000009 /* SaveService.swift */,
+				A10000000000000000000040 /* WindowPresenter.swift */,
 				A10000000000000000000039 /* IdleSleepAssertion.swift */,
 				A10000000000000000000032 /* CaptureAnalyticsStore.swift */,
 				A1000000000000000000000A /* PermissionManager.swift */,
@@ -667,7 +675,9 @@
 				A30000000000000000000433 /* RecordingAudioMixdownTests.swift */,
 				A30000000000000000000002 /* HotKeyBindingTests.swift */,
 				A30000000000000000000003 /* CaptureSettingsTests.swift */,
+				A30000000000000000000008 /* WindowPresenterTests.swift */,
 				A30000000000000000000004 /* SaveServiceTests.swift */,
+				A30000000000000000000582 /* NotificationPermissionTests.swift */,
 				A30000000000000000000005 /* CaptureAnalyticsStoreTests.swift */,
 				A30000000000000000000007 /* QuickFeedbackTests.swift */,
 				A50000000000000000000001 /* StudioProjectTests.swift */,
@@ -873,6 +883,7 @@
 				B10000000000000000000008 /* GifWriter.swift in Sources */,
 				D61700000000000000000001 /* GifTiming.swift in Sources */,
 				B10000000000000000000009 /* SaveService.swift in Sources */,
+				B10000000000000000000040 /* WindowPresenter.swift in Sources */,
 				B1000000000000000000000A /* PermissionManager.swift in Sources */,
 				B1000000000000000000000C /* SparkleController.swift in Sources */,
 				B1000000000000000000000D /* VideoTrimmerWindow.swift in Sources */,
@@ -993,6 +1004,7 @@
 				B20000000000000000000008 /* GifWriter.swift in Sources */,
 				D61700000000000000000002 /* GifTiming.swift in Sources */,
 				B20000000000000000000009 /* SaveService.swift in Sources */,
+				B20000000000000000000040 /* WindowPresenter.swift in Sources */,
 				B2000000000000000000000A /* PermissionManager.swift in Sources */,
 				B2000000000000000000000C /* SparkleController.swift in Sources */,
 				B2000000000000000000000D /* VideoTrimmerWindow.swift in Sources */,
@@ -1104,7 +1116,9 @@
 				B30000000000000000000433 /* RecordingAudioMixdownTests.swift in Sources */,
 				B30000000000000000000002 /* HotKeyBindingTests.swift in Sources */,
 				B30000000000000000000003 /* CaptureSettingsTests.swift in Sources */,
+				B30000000000000000000008 /* WindowPresenterTests.swift in Sources */,
 				B30000000000000000000004 /* SaveServiceTests.swift in Sources */,
+				B30000000000000000000582 /* NotificationPermissionTests.swift in Sources */,
 				B30000000000000000000005 /* CaptureAnalyticsStoreTests.swift in Sources */,
 				B30000000000000000000006 /* QuickFeedbackTests.swift in Sources */,
 				B60000000000000000000001 /* StudioProjectTests.swift in Sources */,
