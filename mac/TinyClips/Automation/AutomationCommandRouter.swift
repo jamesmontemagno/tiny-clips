@@ -47,7 +47,9 @@ final class AutomationCommandRouter {
             }
             return await notificationStatus()
         case "notifications.openSettings":
-            PermissionManager.shared.openNotificationSettings()
+            guard PermissionManager.shared.openNotificationSettings() else {
+                throw AutomationError(.internal, "Could not open macOS Notification Settings.")
+            }
             return ["opened": true]
         case "capture.screenshot": return try await screenshot(params)
         case "capture.targets": return try await captureTargets(params)

@@ -5,9 +5,21 @@ import UserNotifications
 
 struct NotificationPermissionState {
     let authorizationStatus: UNAuthorizationStatus
-    let alertsEnabled: Bool
+    let alertSetting: UNNotificationSetting
+    let alertStyle: UNAlertStyle
 
     var canRequest: Bool { authorizationStatus == .notDetermined }
+
+    var alertsEnabled: Bool {
+        switch authorizationStatus {
+        case .authorized, .ephemeral:
+            return alertSetting == .enabled && alertStyle != .none
+        case .notDetermined, .denied, .provisional:
+            return false
+        @unknown default:
+            return false
+        }
+    }
 
     var status: String {
         switch authorizationStatus {
@@ -26,7 +38,8 @@ struct NotificationPermissionState {
         case .denied: return "Disabled in macOS"
         case .provisional: return "Delivered quietly"
         case .authorized, .ephemeral:
-            return alertsEnabled ? "Enabled" : "Enabled without alerts"
+            if alertSetting != .enabled { return "Enabled without alerts" }
+            return alertStyle == .none ? "Enabled without banners" : "Enabled"
         @unknown default: return "Unknown"
         }
     }
@@ -135,9 +148,10 @@ class PermissionManager: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    func openNotificationSettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") else { return }
-        NSWorkspace.shared.open(url)
+    @discardableResult
+    func openNotificationSettings() -> Bool {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") else { return false }
+        return NSWorkspace.shared.open(url)
     }
 
     // MARK: - Internal
@@ -175,7 +189,8 @@ class PermissionManager: ObservableObject {
             UNUserNotificationCenter.current().getNotificationSettings { settings in
                 continuation.resume(returning: NotificationPermissionState(
                     authorizationStatus: settings.authorizationStatus,
-                    alertsEnabled: settings.alertSetting == .enabled
+                    alertSetting: settings.alertSetting,
+                    alertStyle: settings.alertStyle
                 ))
             }
         }

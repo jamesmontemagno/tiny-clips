@@ -50,11 +50,11 @@ internal static class McpServer
             },
         }, logging);
 
-    internal static IList<Tool> ListTools()
+    internal static IList<Tool> ListTools(string? platform = null)
     {
         var contract = Contract.Current;
         var tools = new List<Tool>();
-        foreach (var command in contract.Commands)
+        foreach (var command in contract.CommandsForPlatform(platform ?? Contract.CurrentPlatform))
         {
             var sensitive = contract.IsSensitive(command);
             tools.Add(new Tool

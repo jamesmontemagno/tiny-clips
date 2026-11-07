@@ -22,6 +22,20 @@ public class CliTests
     }
 
     [Fact]
+    public async Task CommandsListsOnlyCommandsForTheCurrentPlatform()
+    {
+        await using var app = new FakeApp();
+        var output = new StringWriter();
+        Assert.Equal(0, await Cli.RunAsync(["commands"], app.Environment(output, new StringWriter()), TestContext.Current.CancellationToken));
+
+        var listedCommands = Json(output).AsArray()
+            .Select(command => command!["name"]!.GetValue<string>());
+        var expectedCommands = Contract.Current.CommandsForPlatform(Contract.CurrentPlatform)
+            .Select(command => command.Name);
+        Assert.Equal(expectedCommands, listedCommands);
+    }
+
+    [Fact]
     public async Task PairingSavesATokenAndLaterCommandsUseIt()
     {
         await using var app = new FakeApp();

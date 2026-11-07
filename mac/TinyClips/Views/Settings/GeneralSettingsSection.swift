@@ -87,7 +87,10 @@ struct GeneralSettingsSection: View {
                     .accessibilityHint("Requests macOS permission for TinyClips notifications.")
                 } else {
                     Button("Open Notification Settings") {
-                        PermissionManager.shared.openNotificationSettings()
+                        guard PermissionManager.shared.openNotificationSettings() else {
+                            SaveService.shared.showError("Could not open macOS Notification Settings.")
+                            return
+                        }
                     }
                     .accessibilityHint("Opens macOS notification settings to manage TinyClips alerts.")
                 }

@@ -296,7 +296,10 @@ private struct OnboardingWizardView: View {
                 .help(notificationsGranted ? "Check notification access again." : "Request notification access.")
 
                 Button("Open Notifications Settings") {
-                    PermissionManager.shared.openNotificationSettings()
+                    guard PermissionManager.shared.openNotificationSettings() else {
+                        SaveService.shared.showError("Could not open macOS Notification Settings.")
+                        return
+                    }
                 }
                 .help("Open notification settings.")
             }

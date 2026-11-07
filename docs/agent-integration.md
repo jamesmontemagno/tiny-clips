@@ -166,7 +166,7 @@ Framing is one UTF-8 JSON object per line (`\n`). A connection may send several 
 
 ### macOS notification permissions
 
-`notifications.status` (`read` scope) returns `status` (`notDetermined`, `denied`, `authorized`, `provisional`, `ephemeral`, or `unknown`), `alertsEnabled`, and `canRequest`. This is system permission, separate from the `showSaveNotifications` preference available through `settings.get` / `settings.set`.
+`notifications.status` (`read` scope) returns `status` (`notDetermined`, `denied`, `authorized`, `provisional`, `ephemeral`, or `unknown`), `alertsEnabled` (whether macOS currently allows alert presentation), and `canRequest`. `alertsEnabled` does not guarantee delivery; macOS may still adjust delivery based on alert style, Focus, or other system choices. This is system permission, separate from the `showSaveNotifications` preference available through `settings.get` / `settings.set`.
 
 With the `settings` scope, `notifications.requestPermission` requests permission only if macOS has not yet asked. The user must answer the macOS prompt; agents cannot grant permission. It returns the same status fields on success or `permission_required` otherwise. `notifications.openSettings` opens macOS notification settings so the user can restore denied permission or adjust alerts. These commands do not change the after-save preference or override Focus, quiet delivery, or other system choices.
 

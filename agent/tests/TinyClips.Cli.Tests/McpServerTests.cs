@@ -16,15 +16,29 @@ public class McpServerTests
     public void OneToolPerCommandPlusStatus()
     {
         var tools = McpServer.ListTools();
-        Assert.Equal(Contract.Current.Commands.Count + 1, tools.Count);
+        var commands = Contract.Current.CommandsForPlatform(Contract.CurrentPlatform).ToArray();
+        Assert.Equal(commands.Length + 1, tools.Count);
         var delete = tools.Single(t => t.Name == "tinyclips_library_delete");
         Assert.True(delete.Annotations!.DestructiveHint);
         Assert.Contains("approve", delete.Description);
-        foreach (var command in Contract.Current.Commands)
+        foreach (var command in commands)
         {
             var tool = tools.Single(t => t.Name == Contract.ToolName(command.Name));
             Assert.True(JsonNode.DeepEquals(Contract.InputSchema(command), JsonNode.Parse(tool.InputSchema.GetRawText())));
         }
+    }
+
+    [Fact]
+    public void WindowsToolListOmitsMacOnlyNotificationCommands()
+    {
+        var tools = McpServer.ListTools("windows");
+        Assert.DoesNotContain(tools, tool => tool.Name.StartsWith("tinyclips_notifications_", StringComparison.Ordinal));
+        Assert.Contains(tools, tool => tool.Name == "tinyclips_app_status");
+
+        var macTools = McpServer.ListTools("macos");
+        Assert.Contains(macTools, tool => tool.Name == "tinyclips_notifications_status");
+        Assert.Contains(macTools, tool => tool.Name == "tinyclips_notifications_requestPermission");
+        Assert.Contains(macTools, tool => tool.Name == "tinyclips_notifications_openSettings");
     }
 
     [Theory]
@@ -42,7 +56,7 @@ public class McpServerTests
             Assert.Equal("tinyclips", client.ServerInfo!.Name);
             Assert.Contains("approve", client.ServerInstructions);
             var listed = await client.ListToolsAsync(new ListToolsRequestParams(), token);
-            Assert.Equal(Contract.Current.Commands.Count + 1, listed.Tools.Count);
+            Assert.Equal(Contract.Current.CommandsForPlatform(Contract.CurrentPlatform).Count() + 1, listed.Tools.Count);
             var screenshot = await client.CallToolAsync("tinyclips_capture_screenshot",
                 new Dictionary<string, object?> { ["mode"] = "screen" }, cancellationToken: token);
             Assert.False(screenshot.IsError);
@@ -59,6 +73,8 @@ public class McpServerTests
     [InlineData("notifications.openSettings", "settings")]
     public async Task NotificationToolsForwardCommandsAndEnforceScopes(string command, string scope)
     {
+        if (OperatingSystem.IsWindows()) return;
+
         await using var app = new FakeApp();
         app.Clients["t"] = [scope];
         await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>

@@ -5,7 +5,12 @@ namespace TinyClips.Cli;
 
 internal sealed record ParamSpec(string? Type, IReadOnlyList<string>? Enum, JsonNode? Default, bool Required, JsonObject Schema);
 
-internal sealed record CommandSpec(string Name, string Scope, string Description, IReadOnlyDictionary<string, ParamSpec> Params);
+internal sealed record CommandSpec(
+    string Name,
+    string Scope,
+    string Description,
+    IReadOnlyDictionary<string, ParamSpec> Params,
+    IReadOnlyList<string> Platforms);
 
 internal sealed class Contract
 {
@@ -17,6 +22,16 @@ internal sealed class Contract
     public required IReadOnlyDictionary<string, string> Scopes { get; init; }
     public required IReadOnlyList<string> SensitiveScopes { get; init; }
     public required IReadOnlyList<CommandSpec> Commands { get; init; }
+
+    public static string? CurrentPlatform =>
+        OperatingSystem.IsWindows() ? "windows" :
+        OperatingSystem.IsMacOS() ? "macos" : null;
+
+    public IEnumerable<CommandSpec> CommandsForPlatform(string? platform) =>
+        Commands.Where(command =>
+            command.Platforms.Count == 0 ||
+            platform is null ||
+            command.Platforms.Contains(platform, StringComparer.OrdinalIgnoreCase));
 
     public CommandSpec? Find(string name) => Commands.FirstOrDefault(c => c.Name == name);
 
@@ -54,7 +69,8 @@ internal sealed class Contract
                 command["name"]!.GetValue<string>(),
                 command["scope"]!.GetValue<string>(),
                 command["description"]!.GetValue<string>(),
-                parameters);
+                parameters,
+                command["platforms"]?.AsArray().Select(p => p!.GetValue<string>()).ToArray() ?? []);
         }).ToArray();
 
         return new Contract

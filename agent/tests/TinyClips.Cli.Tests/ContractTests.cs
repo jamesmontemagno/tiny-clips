@@ -24,6 +24,29 @@ public class ContractTests
     public void SensitiveScopesAreDeleteUploadAndDiscard() =>
         Assert.Equal(["delete", "discard", "upload"], Contract.Current.SensitiveScopes.Order());
 
+    [Fact]
+    public void NotificationCommandsAreMacOSOnly()
+    {
+        var contract = Contract.Current;
+        var notificationCommands = new[]
+        {
+            "notifications.status",
+            "notifications.requestPermission",
+            "notifications.openSettings",
+        };
+
+        foreach (var name in notificationCommands)
+        {
+            Assert.Equal(["macos"], contract.Find(name)!.Platforms);
+            Assert.DoesNotContain(
+                name,
+                contract.CommandsForPlatform("windows").Select(command => command.Name));
+            Assert.Contains(
+                name,
+                contract.CommandsForPlatform("macos").Select(command => command.Name));
+        }
+    }
+
     [Theory]
     [InlineData("notifications.status", "read")]
     [InlineData("notifications.requestPermission", "settings")]
