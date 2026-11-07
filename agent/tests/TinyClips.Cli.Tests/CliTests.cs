@@ -22,6 +22,20 @@ public class CliTests
     }
 
     [Fact]
+    public async Task CommandsListsOnlyCommandsForTheCurrentPlatform()
+    {
+        await using var app = new FakeApp();
+        var output = new StringWriter();
+        Assert.Equal(0, await Cli.RunAsync(["commands"], app.Environment(output, new StringWriter()), TestContext.Current.CancellationToken));
+
+        var listedCommands = Json(output).AsArray()
+            .Select(command => command!["name"]!.GetValue<string>());
+        var expectedCommands = Contract.Current.CommandsForPlatform(Contract.CurrentPlatform)
+            .Select(command => command.Name);
+        Assert.Equal(expectedCommands, listedCommands);
+    }
+
+    [Fact]
     public async Task PairingSavesATokenAndLaterCommandsUseIt()
     {
         await using var app = new FakeApp();
@@ -39,6 +53,20 @@ public class CliTests
         error = new StringWriter();
         Assert.Equal(2, await Cli.RunAsync(["recording.startVideo"], app.Environment(new StringWriter(), error), TestContext.Current.CancellationToken));
         Assert.Equal("missing_scope", Json(error)["error"]!["code"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("notifications.status", "read")]
+    [InlineData("notifications.requestPermission", "settings")]
+    [InlineData("notifications.openSettings", "settings")]
+    public async Task NotificationCommandsReachTheAppWithTheRequiredScope(string command, string scope)
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = [scope];
+        var (output, error) = (new StringWriter(), new StringWriter());
+        Assert.Equal(0, await Cli.RunAsync([command], app.Environment(output, error, token: "t"), TestContext.Current.CancellationToken));
+        Assert.Equal(command, Json(output)["command"]!.GetValue<string>());
+        Assert.Empty(app.Received[^1]["params"]!.AsObject());
     }
 
     [Fact]

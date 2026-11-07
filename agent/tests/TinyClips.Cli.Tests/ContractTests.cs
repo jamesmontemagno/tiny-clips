@@ -25,6 +25,44 @@ public class ContractTests
         Assert.Equal(["delete", "discard", "upload"], Contract.Current.SensitiveScopes.Order());
 
     [Fact]
+    public void NotificationCommandsAreMacOSOnly()
+    {
+        var contract = Contract.Current;
+        var notificationCommands = new[]
+        {
+            "notifications.status",
+            "notifications.requestPermission",
+            "notifications.openSettings",
+        };
+
+        foreach (var name in notificationCommands)
+        {
+            Assert.Equal(["macos"], contract.Find(name)!.Platforms);
+            Assert.DoesNotContain(
+                name,
+                contract.CommandsForPlatform("windows").Select(command => command.Name));
+            Assert.Contains(
+                name,
+                contract.CommandsForPlatform("macos").Select(command => command.Name));
+        }
+    }
+
+    [Theory]
+    [InlineData("notifications.status", "read")]
+    [InlineData("notifications.requestPermission", "settings")]
+    [InlineData("notifications.openSettings", "settings")]
+    public void NotificationCommandsUseLeastPrivilegeAndExposeParameterlessTools(string name, string scope)
+    {
+        var command = Contract.Current.Find(name)!;
+        Assert.Equal(scope, command.Scope);
+        Assert.Empty(command.Params);
+        Assert.Null(Contract.Validate(command, new JsonObject()));
+        Assert.Equal(command, Contract.Current.FromToolName(Contract.ToolName(name)));
+        Assert.Equal("missing_scope", FakeApp.Decide(Contract.Current, true, ["capture"], name));
+        Assert.Equal("allow", FakeApp.Decide(Contract.Current, true, [scope], name));
+    }
+
+    [Fact]
     public void PolicyOrderInTheDocsMatchesTheSharedFixtures()
     {
         var fixture = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "AutomationFixtures", "policy.json")))!;

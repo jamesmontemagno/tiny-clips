@@ -101,6 +101,23 @@ final class AutomationPolicyTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testNotificationCommandsUseLeastPrivilegeScopes() throws {
+        let contract = try loadContract()
+        for (name, scope) in [
+            "notifications.status": "read",
+            "notifications.requestPermission": "settings",
+            "notifications.openSettings": "settings"
+        ] {
+            XCTAssertEqual(contract.commands.first(where: { $0.name == name })?.scope, scope)
+            XCTAssertTrue(AutomationCommandRouter.supportedCommands.contains(name))
+            XCTAssertEqual(
+                AutomationPolicy.decide(enabled: true, clientScopes: ["capture"], command: name, contract: contract).fixtureValue,
+                "missing_scope"
+            )
+        }
+    }
+
     func testJSONValueParsing() {
         XCTAssertEqual(AutomationValue.bool(true), true)
         XCTAssertNil(AutomationValue.bool(1))

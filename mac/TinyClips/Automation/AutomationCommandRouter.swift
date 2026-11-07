@@ -9,6 +9,7 @@ final class AutomationCommandRouter {
     /// Contract commands this build implements. Everything else returns `not_supported`.
     static let supportedCommands = Set<String>([
         "app.status", "app.open", "recording.status", "library.list", "settings.get",
+        "notifications.status", "notifications.requestPermission", "notifications.openSettings",
         "capture.targets", "capture.screenshot", "capture.ocr",
         "capture.scrolling.start", "capture.scrolling.stop", "capture.scrolling.status", "capture.scrolling.cancel",
         "recording.startVideo", "recording.startGif", "recording.stop", "recording.togglePause",
@@ -40,6 +41,17 @@ final class AutomationCommandRouter {
         case "library.list": return try await listLibrary(params)
         case "settings.get": return try getSettings(params)
         case "settings.set": return try setSetting(params)
+        case "notifications.status": return await notificationStatus()
+        case "notifications.requestPermission":
+            guard await PermissionManager.shared.requestNotificationPermission() else {
+                throw AutomationError(.permissionRequired, "Enable notifications for TinyClips in macOS System Settings.")
+            }
+            return await notificationStatus()
+        case "notifications.openSettings":
+            guard PermissionManager.shared.openNotificationSettings() else {
+                throw AutomationError(.internal, "Could not open macOS Notification Settings.")
+            }
+            return ["opened": true]
         case "capture.screenshot": return try await screenshot(params)
         case "capture.targets": return try await captureTargets(params)
         case "capture.ocr": return try await ocr(params)
@@ -78,6 +90,15 @@ final class AutomationCommandRouter {
     }
 
     // MARK: - Read
+
+    private func notificationStatus() async -> [String: Any] {
+        let state = await PermissionManager.shared.notificationPermissionState()
+        return [
+            "status": state.status,
+            "alertsEnabled": state.alertsEnabled,
+            "canRequest": state.canRequest
+        ]
+    }
 
     private func appStatus() throws -> [String: Any] {
         let manager = try captureManager()
