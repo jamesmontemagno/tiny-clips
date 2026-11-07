@@ -14,6 +14,7 @@
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\TrayRecentItems.cs" Link="AppInfrastructure\TrayRecentItems.cs" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\App.xaml.cs" LogicalName="Tray.App.cs" />
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\WindowOpenTrace.cs" Link="AppInfrastructure\WindowOpenTrace.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\Automation\AgentControlService.cs" Link="AppServices\AgentControlService.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -17,7 +17,7 @@ skills/ (workflow guidance) ──────┘
 
 Use a Tiny Clips release that includes **Agent Control**, running on the same Mac or Windows PC as your agent. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) for the commands below. Your agent needs either terminal access or support for a local stdio MCP server. Tiny Clips provides capture tools, not an AI model; bring your own agent.
 
-1. Open **Settings → Agent Control** and turn on **Allow agents to control Tiny Clips**. Leave the app running.
+1. Turn on Agent Control from the macOS menu bar or Windows tray, or open **Settings → Agent Control** and turn on **Allow agents to control Tiny Clips**. If it has never been enabled, turning it on from the menu or tray opens Settings to the setup instructions. Leave the app running.
 2. **Recommended: install the Agent Plugin.** It bundles the MCP server and workflow Skills, so no separate MCP configuration or global CLI installation is needed. In VS Code, run **Chat: Install Plugin from Source** and enter:
    ```text
    https://github.com/jamesmontemagno/tiny-clips.git
