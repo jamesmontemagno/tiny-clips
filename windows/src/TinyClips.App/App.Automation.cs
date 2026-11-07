@@ -24,7 +24,7 @@ namespace TinyClips.App;
 public partial class App : IAutomationAppActions
 {
     private const string GlyphAgent = "\uE99A";
-    private Button? _trayAgentIndicator;
+    private TrayAgentIndicator? _trayAgentIndicator;
     private bool _agentControlWired;
 
     internal AgentControlService AgentControl => Services.GetRequiredService<AgentControlService>();
@@ -98,7 +98,7 @@ public partial class App : IAutomationAppActions
     private static string TrayToolTipWithAgentState(string toolTip) =>
         Services.GetRequiredService<AgentControlService>().IsEnabled ? toolTip + " — Agent control on" : toolTip;
 
-    /// <summary>The tray popup's title row, with a button that shows while agents may control the app.</summary>
+    /// <summary>The tray popup's title row, with a button that shows agent control state and toggles it.</summary>
     private Grid BuildTrayHeader(TextBlock title)
     {
         var header = new Grid { Margin = title.Margin, ColumnSpacing = 8 };
@@ -110,17 +110,16 @@ public partial class App : IAutomationAppActions
 
         var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         label.Children.Add(new FontIcon { Glyph = GlyphAgent, FontFamily = FluentIconFont, FontSize = 14 });
-        label.Children.Add(new TextBlock { Text = "Agent control", Style = ResourceStyle("CaptionTextBlockStyle"), VerticalAlignment = VerticalAlignment.Center });
+        var labelText = new TextBlock { Style = ResourceStyle("CaptionTextBlockStyle"), VerticalAlignment = VerticalAlignment.Center };
+        label.Children.Add(labelText);
 
-        var turnOff = new MenuFlyoutItem
-        {
-            Text = "Turn off agent control",
-            Icon = new FontIcon { Glyph = "\uE711", FontFamily = FluentIconFont },
-        };
-        turnOff.Click += async (_, _) =>
+        var status = new MenuFlyoutItem { IsEnabled = false };
+        var toggle = new MenuFlyoutItem();
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, "TrayAgentControlToggleItem");
+        toggle.Click += async (_, _) =>
         {
             _trayPopup?.Hide();
-            await AgentControl.SetEnabledAsync(false);
+            await AgentControl.SetEnabledAsync(!AgentControl.IsEnabled);
         };
 
         var openSettings = new MenuFlyoutItem
@@ -135,9 +134,9 @@ public partial class App : IAutomationAppActions
         };
 
         var flyout = new MenuFlyout();
-        flyout.Items.Add(new MenuFlyoutItem { Text = "Agents can control Tiny Clips", IsEnabled = false });
+        flyout.Items.Add(status);
         flyout.Items.Add(new MenuFlyoutSeparator());
-        flyout.Items.Add(turnOff);
+        flyout.Items.Add(toggle);
         flyout.Items.Add(openSettings);
 
         var indicator = new Button
@@ -148,24 +147,41 @@ public partial class App : IAutomationAppActions
             Padding = new Thickness(8, 4, 8, 4),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(indicator, "Agent control is on");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(indicator, "TrayAgentControlIndicator");
-        ToolTipService.SetToolTip(indicator, "Agents can control Tiny Clips. Select to turn it off.");
         Grid.SetColumn(indicator, 1);
         header.Children.Add(indicator);
 
-        _trayAgentIndicator = indicator;
+        _trayAgentIndicator = new TrayAgentIndicator(indicator, label, labelText, status, toggle);
         RefreshTrayAgentIndicator();
         return header;
     }
 
     private void RefreshTrayAgentIndicator()
     {
-        if (_trayAgentIndicator is { } indicator)
+        if (_trayAgentIndicator is not { } parts)
         {
-            indicator.Visibility = AgentControl.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
+            return;
         }
+
+        var enabled = AgentControl.IsEnabled;
+        parts.Label.Text = enabled ? "Agent control on" : "Agent control off";
+        parts.Content.Opacity = enabled ? 1.0 : 0.6;
+        parts.Status.Text = enabled ? "Agents can control Tiny Clips" : "Agents can't control Tiny Clips";
+        parts.Toggle.Text = enabled ? "Turn off agent control" : "Turn on agent control";
+        parts.Toggle.Icon = new FontIcon { Glyph = enabled ? "\uE711" : GlyphAgent, FontFamily = FluentIconFont };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            parts.Button, enabled ? "Agent control is on" : "Agent control is off");
+        ToolTipService.SetToolTip(
+            parts.Button,
+            enabled ? "Agents can control Tiny Clips. Select to turn it off." : "Agent control is off. Select to turn it on.");
     }
+
+    private sealed record TrayAgentIndicator(
+        Button Button,
+        StackPanel Content,
+        TextBlock Label,
+        MenuFlyoutItem Status,
+        MenuFlyoutItem Toggle);
 
     // -- IAutomationAppActions (UI thread) ----------------------------------------------------
 
