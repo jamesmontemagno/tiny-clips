@@ -239,11 +239,15 @@ struct MenuBarContentView: View {
             .accessibilityHint("Stops AI agents from controlling TinyClips.")
         } else {
             Button {
-                automation.setEnabled(true)
+                if automation.setEnabled(true) {
+                    SettingsWindowManager.shared.selectedTab = .agentControl
+                    openWindow(id: "settings-window")
+                    bringSettingsWindowToFront()
+                }
             } label: {
                 Label("Turn On Agent Control", systemImage: "terminal")
             }
-            .accessibilityHint("Lets paired AI agents control TinyClips.")
+            .accessibilityHint("Lets paired AI agents control TinyClips and opens settings the first time.")
         }
 
         Divider()

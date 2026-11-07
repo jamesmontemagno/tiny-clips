@@ -119,7 +119,11 @@ public partial class App : IAutomationAppActions
         toggle.Click += async (_, _) =>
         {
             _trayPopup?.Hide();
-            await AgentControl.SetEnabledAsync(!AgentControl.IsEnabled);
+            var isFirstEnable = await AgentControl.SetEnabledAsync(!AgentControl.IsEnabled);
+            if (isFirstEnable && AgentControl.IsEnabled)
+            {
+                OpenSettingsWindow(SettingsSectionKind.AgentControl);
+            }
         };
 
         var openSettings = new MenuFlyoutItem
@@ -171,6 +175,11 @@ public partial class App : IAutomationAppActions
         parts.Toggle.Icon = new FontIcon { Glyph = enabled ? "\uE711" : GlyphAgent, FontFamily = FluentIconFont };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
             parts.Button, enabled ? "Agent control is on" : "Agent control is off");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+            parts.Toggle,
+            enabled
+                ? "Stops AI agents from controlling Tiny Clips."
+                : "Allows paired agents to control Tiny Clips and opens settings the first time.");
         ToolTipService.SetToolTip(
             parts.Button,
             enabled ? "Agents can control Tiny Clips. Select to turn it off." : "Agent control is off. Select to turn it on.");
