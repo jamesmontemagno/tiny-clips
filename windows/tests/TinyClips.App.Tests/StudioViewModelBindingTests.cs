@@ -775,7 +775,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     public async Task AClickedSegmentedChoice_HandsBackNoChoiceAndThenTheChoice_WhichIsOneEdit()
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
-        var groups = _controls.Bindings.Where(binding => binding.Control == "Segmented").ToArray();
+        var groups = _controls.Bindings.Where(binding => binding.Control == "StudioSegmented").ToArray();
         Assert.Equal(14, groups.Length);
 
         foreach (var group in groups)
