@@ -66,6 +66,77 @@ public sealed class StudioEditorModelAnnotationTests
     }
 
     [Fact]
+    public void AddingAnArea_FollowsTheScreen_AndLooksTheSameSizeInAZoom()
+    {
+        var zoom = new StudioZoom { Start = 5, End = 15, Scale = 2, Focus = new StudioZoomFocus { X = 0.25, Y = 0.25 }, EaseIn = 0, EaseOut = 0 };
+        var model = Model(zooms: [zoom]);
+
+        model.AddAnnotation(StudioAnnotationKinds.Rectangle, 1, null);
+        model.AddAnnotation(StudioAnnotationKinds.Ellipse, 10, null);
+        model.AddAnnotation(StudioAnnotationKinds.Redact, 10, null);
+
+        var (rectangle, ellipse, redaction) = (List(model)[0], List(model)[1], List(model)[2]);
+        Assert.Equal((StudioAnnotationAttach.Screen, StudioAnnotationStyle.Red, 0.2, 0.15, 0.0, string.Empty), (rectangle.Attach, rectangle.Style, rectangle.Width, rectangle.Height, rectangle.CornerRadius, rectangle.ShapeFill));
+        Assert.Equal((10, 13), (ellipse.Start, ellipse.End));
+
+        // The zoom shows half the recording each way, so the area is half as big in it.
+        Assert.Equal((0.25, 0.25, 0.1, 0.075), (ellipse.X, ellipse.Y, ellipse.Width, ellipse.Height));
+        Assert.Equal((StudioAnnotationAttach.Screen, StudioAnnotationStyle.Dark, StudioRedactStyle.Blur, StudioRedactLevel.Medium), (redaction.Attach, redaction.Style, redaction.RedactStyle, redaction.RedactLevel));
+        Assert.Equal(string.Empty, redaction.Text);
+    }
+
+    [Fact]
+    public void AnAreasSettings_StayInRange_AndEachIsOneUndoStep()
+    {
+        var model = Model([new StudioAnnotation { Kind = StudioAnnotationKinds.Rectangle, End = 20, Style = StudioAnnotationStyle.Blue }]);
+
+        Assert.True(model.SetAnnotationSize(0, 0, 2).Changed);
+        Assert.Equal((StudioEditorModel.MinimumAreaSize, 1.0), (List(model)[0].Width, List(model)[0].Height));
+        Assert.True(model.SetAnnotationCornerRadius(0, 3).Changed);
+        Assert.Equal(0.5, List(model)[0].CornerRadius);
+        Assert.True(model.SetAnnotationShapeFillOpacity(0, -1).Changed);
+        Assert.Equal(0, List(model)[0].ShapeFillOpacity);
+
+        // Filling takes the outline's color, until another one is chosen.
+        Assert.True(model.SetAnnotationShapeFilled(0, true).Changed);
+        Assert.Equal(StudioAnnotationGeometry.GetStyleColors(StudioAnnotationStyle.Blue).Fill, List(model)[0].ShapeFill);
+        Assert.True(model.SetAnnotationShapeFill(0, "#00ff00").Changed);
+        Assert.False(model.SetAnnotationShapeFilled(0, true).Changed);
+        Assert.True(model.SetAnnotationShapeFilled(0, false).Changed);
+        Assert.Equal(string.Empty, List(model)[0].ShapeFill);
+
+        Assert.True(model.SetAnnotationRedactStyle(0, StudioRedactStyle.Solid).Changed);
+        Assert.True(model.SetAnnotationRedactLevel(0, StudioRedactLevel.Heavy).Changed);
+        Assert.False(model.SetAnnotationRedactLevel(0, StudioRedactLevel.Heavy).Changed);
+
+        for (var step = 0; step < 8; step++)
+        {
+            Assert.True(model.CanUndo);
+            model.Undo();
+        }
+
+        Assert.Equal((0.2, 0.15, 0.0, string.Empty), (List(model)[0].Width, List(model)[0].Height, List(model)[0].CornerRadius, List(model)[0].ShapeFill));
+        Assert.False(model.CanUndo);
+    }
+
+    [Fact]
+    public void ChangingWhatAnAreaIsFixedTo_KeepsItsPlaceAndSizeInThePicture()
+    {
+        var zoom = new StudioZoom { Start = 5, End = 15, Scale = 2, Focus = new StudioZoomFocus { X = 0.5, Y = 0.5 }, EaseIn = 0, EaseOut = 0 };
+        var model = Model([new StudioAnnotation { Kind = StudioAnnotationKinds.Redact, End = 20, X = 0.5, Y = 0.5, Width = 0.2, Height = 0.1 }], [zoom]);
+
+        model.SetAnnotationAttach(0, StudioAnnotationAttach.Frame, 10, null);
+        Assert.Equal(0.5, List(model)[0].X, 9);
+        Assert.Equal(0.5, List(model)[0].Y, 9);
+        Assert.Equal(0.4, List(model)[0].Width, 9);
+        Assert.Equal(0.2, List(model)[0].Height, 9);
+
+        model.SetAnnotationAttach(0, StudioAnnotationAttach.Screen, 10, null);
+        Assert.Equal(0.2, List(model)[0].Width, 9);
+        Assert.Equal(0.1, List(model)[0].Height, 9);
+    }
+
+    [Fact]
     public void Adding_WithNoScreenInTheFrame_FixesItToTheFrame()
     {
         var model = new StudioEditorModel(new StudioProject

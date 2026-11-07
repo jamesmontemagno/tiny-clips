@@ -60,7 +60,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "Zooms"
         case .cut: return "Cuts"
         case .speed: return "Speed changes"
-        case .annotate: return "Annotations: arrows, callouts, and text"
+        case .annotate: return "Annotations: arrows, callouts, text, shapes, emoji, and redaction"
         case .captions: return "Captions: import, edit, and export"
         case .audio: return "Audio: mute and volumes"
         case .project: return "Project: save, storage, and delete"
@@ -143,6 +143,10 @@ enum StudioSymbol {
     static let addArrow = "arrow.up.right"
     static let addCallout = "text.bubble"
     static let addText = "textformat"
+    static let addRectangle = "rectangle"
+    static let addEllipse = "oval"
+    static let addRedaction = "eye.slash"
+    static let addEmoji = "face.smiling"
     static let bringForward = "arrow.up"
     static let sendBack = "arrow.down"
     /// The same mark a suggested zoom has on its block.
@@ -170,7 +174,7 @@ enum StudioSymbol {
     /// Every symbol the editor names, the rail's included.
     static var all: [String] {
         StudioInspectorPanel.allCases.map(\.symbolName) + [
-            splitScene, addZoom, addCut, addSpeed, addArrow, addCallout, addText, bringForward, sendBack, suggestZooms, removeSuggestions, delete,
+            splitScene, addZoom, addCut, addSpeed, addArrow, addCallout, addText, addRectangle, addEllipse, addRedaction, addEmoji, bringForward, sendBack, suggestZooms, removeSuggestions, delete,
             trimStart, trimEnd, resetCrop, showScene, saveDefaultLook, saveRecording,
             generateCaptions, noSpeech, importCaptions, exportCaptions, splitCaption, mergeCaption,
             captionProblem, autoFixCaptions, nextCaptionProblem, searchCaptions,

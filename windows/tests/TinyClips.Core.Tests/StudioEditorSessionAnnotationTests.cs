@@ -136,6 +136,10 @@ public sealed class StudioEditorSessionAnnotationTests : StudioEditorSessionTest
     [InlineData(StudioShortcutKey.A, StudioShortcutAction.AddArrow)]
     [InlineData(StudioShortcutKey.C, StudioShortcutAction.AddCallout)]
     [InlineData(StudioShortcutKey.T, StudioShortcutAction.AddText)]
+    [InlineData(StudioShortcutKey.H, StudioShortcutAction.AddRectangle)]
+    [InlineData(StudioShortcutKey.E, StudioShortcutAction.AddEllipse)]
+    [InlineData(StudioShortcutKey.B, StudioShortcutAction.AddRedaction)]
+    [InlineData(StudioShortcutKey.M, StudioShortcutAction.AddEmoji)]
     public void TheToolKeys_AddOnce_AndLeaveTextAlone(StudioShortcutKey key, StudioShortcutAction action)
     {
         StudioShortcutInput Input(bool repeat = false, bool text = false, bool control = false) =>
@@ -144,8 +148,110 @@ public sealed class StudioEditorSessionAnnotationTests : StudioEditorSessionTest
         Assert.Equal(action, StudioShortcuts.Resolve(Input()));
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Input(repeat: true)));
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Input(text: true)));
-        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Input(control: true)));
+        // With Control, E is still Export.
+        Assert.Equal(key == StudioShortcutKey.E ? StudioShortcutAction.Export : StudioShortcutAction.None, StudioShortcuts.Resolve(Input(control: true)));
         Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Input() with { IsDragging = true }));
+    }
+
+    [Fact]
+    public void ControlE_StillExports()
+    {
+        var input = new StudioShortcutInput(StudioShortcutKey.E, IsControlDown: true, IsShiftDown: false, IsAltDown: false, IsRepeat: false, IsTextInputFocused: false, IsReady: true, IsExporting: false);
+
+        Assert.Equal(StudioShortcutAction.Export, StudioShortcuts.Resolve(input));
+    }
+
+    [Fact]
+    public void ControlD_DuplicatesOnlyASelectedAnnotation_AndOnlyWhenFree()
+    {
+        var input = new StudioShortcutInput(StudioShortcutKey.D, IsControlDown: true, IsShiftDown: false, IsAltDown: false, IsRepeat: false, IsTextInputFocused: false, IsReady: true, IsExporting: false) { HasSelectedAnnotation = true };
+
+        Assert.Equal(StudioShortcutAction.DuplicateSelectedAnnotation, StudioShortcuts.Resolve(input));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(input with { HasSelectedAnnotation = false }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(input with { IsDragging = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(input with { IsTextInputFocused = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(input with { IsExporting = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(input with { IsTypeToSearchFocused = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(input with { IsRepeat = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(input with { IsControlDown = false }));
+    }
+
+    [Fact]
+    public async Task Duplicating_CopiesAboveTheOriginal_NudgedAndSelected_AsOneUndoStep()
+    {
+        var session = await OpenAsync(CreateProject());
+        session.Scrub(2);
+        session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Emoji);
+        session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Arrow);
+        session.SelectAnnotation(0);
+        var original = session.SelectedAnnotation!;
+
+        Assert.Equal(new StudioAnnotationEditResult(true, 1), session.DuplicateSelectedAnnotation());
+
+        var annotations = Preview.LastProject!.Overlays.Annotations;
+        Assert.Equal(3, annotations.Length);
+        Assert.Equal(StudioAnnotationKinds.Arrow, annotations[2].Kind);
+        var copy = annotations[1];
+        Assert.Equal(1, session.SelectedAnnotationIndex);
+        Assert.NotEqual(original.Id, copy.Id);
+        Assert.Equal(original.Text, copy.Text);
+        Assert.Equal(original.Start, copy.Start, Precision);
+        Assert.Equal(original.End, copy.End, Precision);
+        Assert.Equal(Math.Clamp(original.X + 0.02, 0, 1), copy.X, Precision);
+        Assert.Equal(Math.Clamp(original.Y + 0.02, 0, 1), copy.Y, Precision);
+
+        session.Undo();
+        Assert.Equal(2, Preview.LastProject!.Overlays.Annotations.Length);
+
+        session.SelectNothing();
+        Assert.Equal(new StudioAnnotationEditResult(false, null), session.DuplicateSelectedAnnotation());
+    }
+
+    [Fact]
+    public async Task ChoosingAnEmoji_IsOneUndoStep_AndABlankOneIsIgnored()
+    {
+        var session = await OpenAsync(CreateProject());
+        session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Emoji);
+        Assert.Equal("\U0001F44D", session.SelectedAnnotation!.Text);
+        Assert.False(session.SelectedAnnotation.Shadow);
+
+        session.SetAnnotationEmoji(0, "\U0001F680");
+        session.SetAnnotationShadow(0, true);
+        session.SetAnnotationSize(0, StudioAnnotationSize.Large);
+        Assert.Equal(new StudioAnnotationEditResult(false, 0), session.SetAnnotationEmoji(0, " "));
+
+        var emoji = session.SelectedAnnotation!;
+        Assert.Equal("\U0001F680", emoji.Text);
+        Assert.True(emoji.Shadow);
+        Assert.Equal(StudioAnnotationSize.Large, emoji.Size);
+
+        session.Undo();
+        session.Undo();
+        Assert.Equal("\U0001F680", session.SelectedAnnotation!.Text);
+        session.Undo();
+        Assert.Equal("\U0001F44D", session.SelectedAnnotation!.Text);
+    }
+
+    [Fact]
+    public async Task AnArea_ShowsItsRect_AndADragOfACornerIsOneUndoStep()
+    {
+        var session = await OpenAsync(CreateProject());
+        session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Rectangle);
+        var handle = Assert.Single(session.GetAnnotationHandles(1920, 1080));
+        Assert.Equal(StudioAnnotationKinds.Rectangle, handle.Kind);
+        var box = handle.Box!.Value;
+        Assert.True(box.Width > 0 && box.Height > 0);
+
+        var start = session.SelectedAnnotation!;
+        session.BeginGesture();
+        session.DragAnnotation(0, start, StudioAnnotationPart.BottomRight, 50, 0, null, 1920, 1080);
+        session.DragAnnotation(0, start, StudioAnnotationPart.BottomRight, 100, 40, null, 1920, 1080);
+        session.EndGesture();
+        Assert.True(session.SelectedAnnotation!.Width > start.Width);
+
+        session.Undo();
+        Assert.Equal(start.Width, session.SelectedAnnotation!.Width, Precision);
+        Assert.Equal(start.X, session.SelectedAnnotation!.X, Precision);
     }
 
     [Fact]

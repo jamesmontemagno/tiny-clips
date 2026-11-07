@@ -194,9 +194,14 @@ preview selects it and shows the panel.
 
 ### Phase 4: later, each decided when it comes up
 
-Drag-to-draw on the preview, inline text editing on the canvas, fade or pop animations, highlight
-boxes and blur for sensitive areas, curved arrows, reusing the screenshot editor's
-presets, and copying and pasting annotations.
+Rectangles, ellipses, redaction (blur, pixelate, or solid), and emoji were pulled forward with the
+owner and are written on both platforms: the `rectangle`, `ellipse`, `redact`, and `emoji` kinds of
+section 6.10 of the project format, tools H, E, B, and M, corner handles to resize areas in the
+preview, and the `areas-*.json` and `emoji.json` fixtures. Like the earlier phases, they still need
+to be seen on real machines.
+
+Still later: drag-to-draw on the preview, inline text editing on the canvas, fade or pop animations,
+curved arrows, reusing the screenshot editor's presets, and copying and pasting annotations.
 
 ## Risks and limits
 

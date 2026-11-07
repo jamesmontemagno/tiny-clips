@@ -46,8 +46,8 @@ internal sealed partial class WindowChecks
         _partErrors.Clear();
         _worstMovingEdge = double.NaN;
         _report.Check(
-            "the window maps the Z key and the Delete key to the editor's keyboard model",
-            StudioWindow.MapKey(VirtualKey.Z) == StudioShortcutKey.Z && StudioWindow.MapKey(VirtualKey.Delete) == StudioShortcutKey.Delete && StudioWindow.MapKey(VirtualKey.Back) == StudioShortcutKey.Other,
+            "the window maps the Z key, and the Delete and Backspace keys, to the editor's keyboard model",
+            StudioWindow.MapKey(VirtualKey.Z) == StudioShortcutKey.Z && StudioWindow.MapKey(VirtualKey.Delete) == StudioShortcutKey.Delete && StudioWindow.MapKey(VirtualKey.Back) == StudioShortcutKey.Delete,
             $"Z is {StudioWindow.MapKey(VirtualKey.Z)}, Delete is {StudioWindow.MapKey(VirtualKey.Delete)}, Backspace is {StudioWindow.MapKey(VirtualKey.Back)}");
 
         AddingZooms();

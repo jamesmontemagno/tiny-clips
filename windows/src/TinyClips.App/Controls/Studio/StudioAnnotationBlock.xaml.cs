@@ -31,6 +31,10 @@ public sealed partial class StudioAnnotationBlock : StudioRangeBlock
             StudioAnnotationKinds.Arrow => StudioGlyphs.AddArrow,
             StudioAnnotationKinds.Callout => StudioGlyphs.AddCallout,
             StudioAnnotationKinds.Text => StudioGlyphs.AddText,
+            StudioAnnotationKinds.Rectangle => StudioGlyphs.AddRectangle,
+            StudioAnnotationKinds.Ellipse => StudioGlyphs.AddEllipse,
+            StudioAnnotationKinds.Redact => StudioGlyphs.AddRedaction,
+            StudioAnnotationKinds.Emoji => StudioGlyphs.AddEmoji,
             _ => StudioInspectorPanels.GetGlyph(StudioInspectorPanel.Annotate),
         };
         KindIcon.Visibility = width >= MarkMinimumWidth ? Visibility.Visible : Visibility.Collapsed;

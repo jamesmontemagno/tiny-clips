@@ -447,13 +447,51 @@ public static class StudioEditorText
     // Annotations
 
     /// <summary>What the Annotate panel says without annotations.</summary>
-    public const string AnnotationEmptyHint = "Press A, C, or T, or use the tools above, to add an arrow, a callout, or text at the playhead.";
+    public const string AnnotationEmptyHint = "Press A, C, T, H, E, B, or M, or use the tools above, to add an arrow, a callout, text, a rectangle, an ellipse, a redaction, or an emoji at the playhead.";
+
+    /// <summary>What the Annotate panel says when the Windows emoji panel cannot be opened for the emoji box.</summary>
+    public const string MoreEmojiHint = "Press Win + . to choose any emoji";
+
+    /// <summary>
+    /// The emoji the Annotate panel offers in a grid, with their CLDR short names for screen
+    /// readers. The same on the Mac (<c>StudioEditorModel.emojiChoices</c>).
+    /// </summary>
+    public static IReadOnlyList<(string Emoji, string Name)> EmojiChoices { get; } =
+    [
+        ("\U0001F44D", "thumbs up"),
+        ("\U0001F44E", "thumbs down"),
+        ("\U0001F44F", "clapping hands"),
+        ("\U0001F64C", "raising hands"),
+        ("\U0001F389", "party popper"),
+        ("\U0001F525", "fire"),
+        ("\u2705", "check mark button"),
+        ("\u274C", "cross mark"),
+        ("\u26A0\uFE0F", "warning"),
+        ("\u2757", "red exclamation mark"),
+        ("\u2753", "red question mark"),
+        ("\U0001F4A1", "light bulb"),
+        ("\u2B50", "star"),
+        ("\u2764\uFE0F", "red heart"),
+        ("\U0001F602", "face with tears of joy"),
+        ("\U0001F62E", "face with open mouth"),
+        ("\U0001F914", "thinking face"),
+        ("\U0001F60E", "smiling face with sunglasses"),
+        ("\U0001F440", "eyes"),
+        ("\U0001F449", "backhand index pointing right"),
+        ("\U0001F448", "backhand index pointing left"),
+        ("\U0001F446", "backhand index pointing up"),
+        ("\U0001F447", "backhand index pointing down"),
+        ("\U0001F680", "rocket"),
+    ];
 
     /// <summary>What the Annotate panel says while there are annotations and none is selected.</summary>
     public const string SelectAnnotationHint = "Select an annotation on the timeline or in the list, or step to one with the arrows above.";
 
     /// <summary>What the Annotate panel says of an annotation of a kind this version does not draw.</summary>
     public const string AnnotationNotDrawnNote = "This annotation comes from a newer version of Tiny Clips, so it is not drawn here. You can still change when it shows, or delete it.";
+
+    /// <summary>What the Annotate panel says of a redaction.</summary>
+    public const string AnnotationRedactNote = "Only Solid reliably hides text. Blurred or pixelated text can sometimes still be read.";
 
     /// <summary>Said when the selected annotation has been deleted.</summary>
     public const string AnnotationDeletedMessage = "Annotation deleted.";
@@ -463,17 +501,24 @@ public static class StudioEditorText
 
     private const int AnnotationLabelLength = 24;
 
-    /// <summary>What a kind of annotation is called: <c>Arrow</c>, <c>Callout</c> or <c>Text</c>. Another kind is an <c>Annotation</c>.</summary>
+    /// <summary>What a kind of annotation is called: <c>Arrow</c>, <c>Callout</c>, <c>Text</c>, <c>Rectangle</c>, <c>Ellipse</c>, <c>Redaction</c> or <c>Emoji</c>. Another kind is an <c>Annotation</c>.</summary>
     public static string GetAnnotationKindName(string kind) => kind switch
     {
         StudioAnnotationKinds.Arrow => "Arrow",
         StudioAnnotationKinds.Callout => "Callout",
         StudioAnnotationKinds.Text => "Text",
+        StudioAnnotationKinds.Rectangle => "Rectangle",
+        StudioAnnotationKinds.Ellipse => "Ellipse",
+        StudioAnnotationKinds.Redact => "Redaction",
+        StudioAnnotationKinds.Emoji => "Emoji",
         _ => "Annotation",
     };
 
     /// <summary>Said when an annotation of a kind has been added: <c>Arrow added.</c></summary>
     public static string GetAnnotationAddedMessage(string kind) => $"{GetAnnotationKindName(kind)} added.";
+
+    /// <summary>Said when an annotation of a kind has been duplicated: <c>Arrow duplicated.</c></summary>
+    public static string GetAnnotationDuplicatedMessage(string kind) => $"{GetAnnotationKindName(kind)} duplicated.";
 
     /// <summary>An annotation in a list: <c>Arrow</c>, or <c>Callout: Billing lives here</c>, with long text shortened and on one line.</summary>
     public static string GetAnnotationLabel(StudioAnnotation annotation)
@@ -481,7 +526,7 @@ public static class StudioEditorText
         ArgumentNullException.ThrowIfNull(annotation);
         var name = GetAnnotationKindName(annotation.Kind);
         var words = string.Join(' ', annotation.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        if (annotation.Kind == StudioAnnotationKinds.Arrow || words.Length == 0)
+        if (annotation.Kind == StudioAnnotationKinds.Arrow || StudioAnnotationKinds.IsArea(annotation.Kind) || words.Length == 0)
         {
             return name;
         }

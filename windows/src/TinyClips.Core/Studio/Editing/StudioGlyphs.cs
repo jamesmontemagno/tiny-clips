@@ -35,6 +35,18 @@ public static class StudioGlyphs
     /// <summary>Text, in the Annotate panel: a letter (Font).</summary>
     public static string AddText => "\uE8D2";
 
+    /// <summary>Rectangle, in the Annotate panel: a square, as in the screenshot editor (Stop).</summary>
+    public static string AddRectangle => "\uE71A";
+
+    /// <summary>Ellipse, in the Annotate panel: a ring, as in the screenshot editor (CircleRing).</summary>
+    public static string AddEllipse => "\uEA3A";
+
+    /// <summary>Redaction, in the Annotate panel: a crossed-out eye, as in the screenshot editor (Hide).</summary>
+    public static string AddRedaction => "\uED1A";
+
+    /// <summary>Emoji, in the Annotate panel: a smiling face (Emoji2).</summary>
+    public static string AddEmoji => "\uE76E";
+
     /// <summary>Bring forward: an arrow up (Up).</summary>
     public static string BringForward => "\uE74A";
 
@@ -87,7 +99,7 @@ public static class StudioGlyphs
     public static IReadOnlyList<string> All =>
     [
         .. StudioInspectorPanels.All.Select(StudioInspectorPanels.GetGlyph),
-        SplitScene, AddZoom, AddCut, AddSpeed, AddArrow, AddCallout, AddText, BringForward, SendBack, SuggestZooms, RemoveSuggestions, Delete, MergeCaptions,
+        SplitScene, AddZoom, AddCut, AddSpeed, AddArrow, AddCallout, AddText, AddRectangle, AddEllipse, AddRedaction, AddEmoji, BringForward, SendBack, SuggestZooms, RemoveSuggestions, Delete, MergeCaptions,
         TrimStart, TrimEnd, ResetCrop, ShowScene, SaveDefaultLook, SaveRecording,
         OpenProject, OpenRecentProject, SaveProject, DeleteProject,
     ];

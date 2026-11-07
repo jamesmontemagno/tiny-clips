@@ -101,8 +101,8 @@ It exits with 0 when every check passed and with 1 when one did not, after print
 
 Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut speed project annotation`.
 
-The `annotation` group (`Checks\Annotations.cs`) adds arrows, callouts and text with the keys and the
-header's tools; follows the lane that comes with the first and goes with the last; types, styles, moves
+The `annotation` group (`Checks\Annotations.cs`) adds arrows, callouts, text, shapes, redactions and
+emoji with the keys and the header's tools; follows the lane that comes with the first and goes with the last; types, styles, moves
 and layers them in the Annotate panel; and deletes and restores them. It opens a project that holds
 values no slider can show and text with `\r\n`, which showing must not edit. It reads UI Automation and
 the project and takes no pictures: what an annotation looks like is `StudioRenderCheck`'s.

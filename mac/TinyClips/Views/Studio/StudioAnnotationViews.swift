@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -145,6 +146,10 @@ struct StudioAnnotationLane: View {
         case StudioAnnotationKind.arrow: return StudioSymbol.addArrow
         case StudioAnnotationKind.callout: return StudioSymbol.addCallout
         case StudioAnnotationKind.text: return StudioSymbol.addText
+        case StudioAnnotationKind.rectangle: return StudioSymbol.addRectangle
+        case StudioAnnotationKind.ellipse: return StudioSymbol.addEllipse
+        case StudioAnnotationKind.redact: return StudioSymbol.addRedaction
+        case StudioAnnotationKind.emoji: return StudioSymbol.addEmoji
         default: return StudioInspectorPanel.annotate.symbolName
         }
     }
@@ -228,6 +233,7 @@ struct StudioAnnotationLane: View {
 struct StudioAnnotationInspectorSection: View {
     @ObservedObject var viewModel: StudioViewModel
     @FocusState private var isTextFocused: Bool
+    @FocusState private var isEmojiFocused: Bool
     @AppStorage("studioAnnotationAdvancedExpanded") private var isAdvancedExpanded = false
 
     var body: some View {
@@ -243,7 +249,7 @@ struct StudioAnnotationInspectorSection: View {
     // MARK: Tools
 
     private var toolGrid: some View {
-        HStack(spacing: 6) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
             StudioAnnotationToolTile(title: "Arrow", name: "Add arrow", help: "Add an arrow at the playhead (A)", symbol: StudioSymbol.addArrow) {
                 viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.arrow)
             }
@@ -252,6 +258,18 @@ struct StudioAnnotationInspectorSection: View {
             }
             StudioAnnotationToolTile(title: "Text", name: "Add text", help: "Add text at the playhead (T)", symbol: StudioSymbol.addText) {
                 viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.text)
+            }
+            StudioAnnotationToolTile(title: "Rectangle", name: "Add rectangle", help: "Add a rectangle at the playhead (H)", symbol: StudioSymbol.addRectangle) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.rectangle)
+            }
+            StudioAnnotationToolTile(title: "Ellipse", name: "Add ellipse", help: "Add an ellipse at the playhead (E)", symbol: StudioSymbol.addEllipse) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.ellipse)
+            }
+            StudioAnnotationToolTile(title: "Redact", name: "Add redaction", help: "Hide part of the picture at the playhead (B)", symbol: StudioSymbol.addRedaction) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.redact)
+            }
+            StudioAnnotationToolTile(title: "Emoji", name: "Add emoji", help: "Add an emoji at the playhead (M)", symbol: StudioSymbol.addEmoji) {
+                viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.emoji)
             }
         }
         .disabled(!viewModel.canAddAnnotation)
@@ -366,14 +384,22 @@ struct StudioAnnotationInspectorSection: View {
     @ViewBuilder
     private var selectedControls: some View {
         if viewModel.selectedAnnotationIndex != nil, let annotation = viewModel.selectedAnnotation {
-            let isKnown = [StudioAnnotationKind.arrow, StudioAnnotationKind.callout, StudioAnnotationKind.text].contains(annotation.kind)
+            let isKnown = StudioAnnotationKind.isKnown(annotation.kind)
             if !isKnown {
                 note(StudioEditorModel.annotationNotDrawnNote)
             }
             if annotation.kind == StudioAnnotationKind.callout || annotation.kind == StudioAnnotationKind.text {
                 textField
             }
-            if isKnown {
+            if annotation.kind == StudioAnnotationKind.redact {
+                redactAppearance(annotation)
+                areaSize(annotation)
+            } else if StudioAnnotationKind.isShape(annotation.kind) {
+                shapeAppearance(annotation)
+                areaSize(annotation)
+            } else if annotation.kind == StudioAnnotationKind.emoji {
+                emojiAppearance(annotation)
+            } else if isKnown {
                 appearance(annotation)
             }
             advanced(annotation, isKnown: isKnown)
@@ -440,6 +466,176 @@ struct StudioAnnotationInspectorSection: View {
         }
     }
 
+    /// A rectangle or an ellipse: its outline, and what fills its inside.
+    private func shapeAppearance(_ annotation: StudioAnnotation) -> some View {
+        let colors = StudioAnnotationGeometry.effectiveColors(annotation)
+        let insideFill = StudioAnnotationGeometry.customColor(annotation.shapeFill)
+        return VStack(alignment: .leading, spacing: 10) {
+            styleChips(annotation)
+            SwatchColorPicker(
+                label: "Outline",
+                color: Binding(get: { Self.color(colors.fill) }, set: { viewModel.setSelectedAnnotationFill($0) }),
+                supportsOpacity: false,
+                colorName: Self.styleName(colors.fill),
+                onClosed: { viewModel.endAnnotationColorChoice() }
+            )
+            slider("Thickness", annotation.scale, StudioAnnotationGeometry.minimumScale...StudioAnnotationGeometry.maximumScale, step: 0.05, accessibilityTitle: "Outline thickness") {
+                viewModel.setSelectedAnnotationScale($0)
+            }
+            Toggle("Fill", isOn: Binding(
+                get: { insideFill != nil },
+                set: { isOn in
+                    viewModel.setSelectedAnnotationShapeFill(isOn ? Self.color(colors.fill) : nil)
+                    viewModel.endAnnotationColorChoice()
+                }
+            ))
+            .help("Fill the inside of this shape with a see-through color")
+            .accessibilityLabel("Fill inside")
+            if let insideFill {
+                SwatchColorPicker(
+                    label: "Fill color",
+                    color: Binding(get: { Self.color(insideFill) }, set: { viewModel.setSelectedAnnotationShapeFill($0) }),
+                    supportsOpacity: false,
+                    colorName: Self.styleName(insideFill),
+                    onClosed: { viewModel.endAnnotationColorChoice() }
+                )
+                slider("Fill opacity", annotation.shapeFillOpacity, 0...1) {
+                    viewModel.setSelectedAnnotationShapeFillOpacity($0)
+                }
+            }
+            if annotation.kind == StudioAnnotationKind.rectangle {
+                slider("Corner radius", annotation.cornerRadius, 0...StudioAnnotationGeometry.maximumCornerRadius, step: 0.005) {
+                    viewModel.setSelectedAnnotationCornerRadius($0)
+                }
+            }
+        }
+    }
+
+    static let redactionNote = "Only Solid reliably hides text. Blur and Pixelate can leave large or bold text readable."
+
+    /// A redaction: how it hides what is under it, and how strongly.
+    private func redactAppearance(_ annotation: StudioAnnotation) -> some View {
+        let colors = StudioAnnotationGeometry.effectiveColors(annotation)
+        return VStack(alignment: .leading, spacing: 10) {
+            Picker("Style", selection: Binding(get: { annotation.redactStyle }, set: { viewModel.setSelectedAnnotationRedactStyle($0) })) {
+                Text("Blur").tag(StudioRedactStyle.blur)
+                Text("Pixelate").tag(StudioRedactStyle.pixelate)
+                Text("Solid").tag(StudioRedactStyle.solid)
+            }
+            .pickerStyle(.segmented)
+            .help("How the redaction hides what is under it")
+            .accessibilityLabel("Redaction style")
+            if annotation.redactStyle == .solid {
+                SwatchColorPicker(
+                    label: "Color",
+                    color: Binding(get: { Self.color(colors.fill) }, set: { viewModel.setSelectedAnnotationFill($0) }),
+                    supportsOpacity: false,
+                    colorName: Self.styleName(colors.fill),
+                    onClosed: { viewModel.endAnnotationColorChoice() }
+                )
+            } else {
+                Picker("Strength", selection: Binding(get: { annotation.redactLevel }, set: { viewModel.setSelectedAnnotationRedactLevel($0) })) {
+                    Text("Light").tag(StudioRedactLevel.light)
+                    Text("Medium").tag(StudioRedactLevel.medium)
+                    Text("Heavy").tag(StudioRedactLevel.heavy)
+                }
+                .pickerStyle(.segmented)
+                .help("How strongly the redaction hides what is under it")
+                .accessibilityLabel("Redaction strength")
+            }
+            note(Self.redactionNote)
+        }
+    }
+
+    /// An emoji: which one, how large, and whether it has a shadow. It is drawn in its own colors.
+    private func emojiAppearance(_ annotation: StudioAnnotation) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Emoji")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 8), spacing: 4) {
+                ForEach(StudioEditorModel.emojiChoices, id: \.emoji) { choice in
+                    emojiButton(choice.emoji, name: choice.name, isSelected: annotation.text == choice.emoji)
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Emoji")
+            HStack(spacing: 8) {
+                // A field of its own for each annotation, as with text.
+                TextField("Type or paste an emoji", text: textBinding)
+                    .id(viewModel.selectedAnnotationIndex)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isEmojiFocused)
+                    .accessibilityLabel("Emoji text")
+                    .help("Type or paste any emoji")
+                    .onChange(of: isEmojiFocused) { _, isFocused in
+                        if !isFocused { viewModel.endAnnotationTyping() }
+                    }
+                Button("More Emoji…") {
+                    // The Character Viewer types into the focused field.
+                    isEmojiFocused = true
+                    DispatchQueue.main.async {
+                        NSApp.orderFrontCharacterPalette(nil)
+                    }
+                }
+                .help("Choose any emoji from the Character Viewer")
+            }
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+                GridRow {
+                    Text("Size")
+                        .foregroundStyle(.secondary)
+                    Picker("Size", selection: Binding(get: { annotation.size }, set: { viewModel.setSelectedAnnotationSize($0) })) {
+                        Text("Small").tag(StudioAnnotationSize.small)
+                        Text("Medium").tag(StudioAnnotationSize.medium)
+                        Text("Large").tag(StudioAnnotationSize.large)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .help("How large the emoji is before its scale")
+                    .accessibilityLabel("Emoji size")
+                }
+            }
+            slider("Scale", annotation.scale, StudioAnnotationGeometry.minimumScale...StudioAnnotationGeometry.maximumScale, step: 0.05, accessibilityTitle: "Emoji scale") {
+                viewModel.setSelectedAnnotationScale($0)
+            }
+            Toggle("Shadow", isOn: Binding(get: { annotation.shadow }, set: { viewModel.setSelectedAnnotationShadow($0) }))
+                .help("A soft shadow under the emoji")
+                .accessibilityLabel("Emoji shadow")
+        }
+    }
+
+    private func emojiButton(_ emoji: String, name: String, isSelected: Bool) -> some View {
+        Button {
+            viewModel.setSelectedAnnotationEmoji(emoji)
+        } label: {
+            Text(emoji)
+                .font(.system(size: 17))
+                .frame(maxWidth: .infinity, minHeight: 30, maxHeight: 30)
+                .background(isSelected ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help(name)
+        .accessibilityLabel(name)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    /// The width and height of an area, for changing it without dragging.
+    private func areaSize(_ annotation: StudioAnnotation) -> some View {
+        StudioInspectorSection(title: "Size") {
+            slider("Width", annotation.width, StudioEditorModel.minimumAreaSize...1, accessibilityTitle: "Area width") {
+                viewModel.setSelectedAnnotationSize(width: $0, height: annotation.height)
+            }
+            slider("Height", annotation.height, StudioEditorModel.minimumAreaSize...1, accessibilityTitle: "Area height") {
+                viewModel.setSelectedAnnotationSize(width: annotation.width, height: $0)
+            }
+        }
+    }
+
     /// The looks to start from, each showing what it gives. Choosing one takes back chosen colors.
     private func styleChips(_ annotation: StudioAnnotation) -> some View {
         let isCustom = StudioAnnotationGeometry.customColor(annotation.fill) != nil
@@ -475,8 +671,8 @@ struct StudioAnnotationInspectorSection: View {
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 6).fill(Self.color(colors.fill))
-                if kind == StudioAnnotationKind.arrow {
-                    Image(systemName: "arrow.up.right")
+                if kind == StudioAnnotationKind.arrow || StudioAnnotationKind.isShape(kind) {
+                    Image(systemName: kind == StudioAnnotationKind.arrow ? "arrow.up.right" : StudioAnnotationLane.symbol(for: kind))
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Self.color(colors.text))
                 } else {
@@ -522,7 +718,7 @@ struct StudioAnnotationInspectorSection: View {
         StudioInspectorSection(title: "Position") {
             slider("Horizontal", annotation.x, 0...1) { viewModel.setSelectedAnnotationPoint(x: $0, y: annotation.y) }
             slider("Vertical", annotation.y, 0...1) { viewModel.setSelectedAnnotationPoint(x: annotation.x, y: $0) }
-            if annotation.kind != StudioAnnotationKind.text {
+            if annotation.kind == StudioAnnotationKind.arrow || annotation.kind == StudioAnnotationKind.callout {
                 let name = annotation.kind == StudioAnnotationKind.callout ? "Box" : "Tail"
                 slider("\(name) horizontal", annotation.offsetX, -1...1) { viewModel.setSelectedAnnotationOffset(x: $0, y: annotation.offsetY) }
                 slider("\(name) vertical", annotation.offsetY, -1...1) { viewModel.setSelectedAnnotationOffset(x: annotation.offsetX, y: $0) }
@@ -530,9 +726,17 @@ struct StudioAnnotationInspectorSection: View {
         }
     }
 
-    private func slider(_ title: String, _ value: Double, _ range: ClosedRange<Double>, step: Double = 0.01, _ onChange: @escaping (Double) -> Void) -> some View {
+    private func slider(
+        _ title: String,
+        _ value: Double,
+        _ range: ClosedRange<Double>,
+        step: Double = 0.01,
+        accessibilityTitle: String? = nil,
+        _ onChange: @escaping (Double) -> Void
+    ) -> some View {
         StudioSliderRow(
             title: title,
+            accessibilityTitle: accessibilityTitle,
             value: value,
             range: range,
             step: step,
@@ -656,6 +860,8 @@ struct StudioAnnotationHandle: Equatable, Identifiable {
     var stroke: Double = 0
     var box: StudioRect?
     var radius: Double = 0
+    /// Where a rectangle, an ellipse, or a redaction is on the canvas.
+    var area: StudioRect?
 
     var id: Int { index }
 }
@@ -740,6 +946,14 @@ struct StudioAnnotationPreviewLayer: View {
                 .contentShape(line)
                 .pointerStyle(.grabIdle)
                 .gesture(dragGesture(handle, part: .body))
+        } else if let area = handle.area {
+            let rect = viewRect(area)
+            Color.clear
+                .contentShape(Rectangle())
+                .frame(width: max(rect.width, Self.shortestHitWidth), height: max(rect.height, Self.shortestHitWidth))
+                .offset(x: rect.midX - max(rect.width, Self.shortestHitWidth) / 2, y: rect.midY - max(rect.height, Self.shortestHitWidth) / 2)
+                .pointerStyle(.grabIdle)
+                .gesture(dragGesture(handle, part: .area))
         } else if let box = handle.box {
             let rect = viewRect(box)
             Color.clear
@@ -753,6 +967,18 @@ struct StudioAnnotationPreviewLayer: View {
 
     @ViewBuilder
     private func selection(_ handle: StudioAnnotationHandle) -> some View {
+        if let area = handle.area {
+            let rect = viewRect(area)
+            Rectangle()
+                .strokeBorder(Color.accentColor, lineWidth: 1.5)
+                .frame(width: rect.width + 4, height: rect.height + 4)
+                .offset(x: rect.minX - 2, y: rect.minY - 2)
+                .allowsHitTesting(false)
+            corner(handle, part: .topLeft, at: CGPoint(x: rect.minX, y: rect.minY))
+            corner(handle, part: .topRight, at: CGPoint(x: rect.maxX, y: rect.minY))
+            corner(handle, part: .bottomLeft, at: CGPoint(x: rect.minX, y: rect.maxY))
+            corner(handle, part: .bottomRight, at: CGPoint(x: rect.maxX, y: rect.maxY))
+        }
         if let box = handle.box {
             let rect = viewRect(box)
             RoundedRectangle(cornerRadius: max(2, CGFloat(handle.radius / max(geometry.canvasPixelsPerViewPoint, 0.0001))) + 2)
@@ -761,12 +987,34 @@ struct StudioAnnotationPreviewLayer: View {
                 .offset(x: rect.minX - 2, y: rect.minY - 2)
                 .allowsHitTesting(false)
         }
-        if handle.kind != StudioAnnotationKind.text {
+        if handle.kind != StudioAnnotationKind.text, handle.kind != StudioAnnotationKind.emoji, handle.area == nil {
             dot(handle, part: .tip, at: handle.tip)
         }
         if let tail = handle.tail {
             dot(handle, part: .tail, at: tail)
         }
+    }
+
+    /// A square on a corner of an area, which resizes it with the opposite corner held still.
+    private func corner(_ handle: StudioAnnotationHandle, part: StudioAnnotationPart, at center: CGPoint) -> some View {
+        let target = Self.handleSize + 10
+        let position: FrameResizePosition
+        switch part {
+        case .topLeft: position = .topLeading
+        case .topRight: position = .topTrailing
+        case .bottomLeft: position = .bottomLeading
+        default: position = .bottomTrailing
+        }
+        return RoundedRectangle(cornerRadius: 2)
+            .fill(Color.white)
+            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color.accentColor, lineWidth: 2))
+            .frame(width: Self.handleSize - 2, height: Self.handleSize - 2)
+            .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+            .frame(width: target, height: target)
+            .contentShape(Rectangle())
+            .offset(x: center.x - target / 2, y: center.y - target / 2)
+            .pointerStyle(.frameResize(position: position))
+            .gesture(dragGesture(handle, part: part))
     }
 
     private func dot(_ handle: StudioAnnotationHandle, part: StudioAnnotationPart, at point: StudioAnnotationPoint) -> some View {

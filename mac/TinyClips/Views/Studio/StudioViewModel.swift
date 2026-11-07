@@ -1810,6 +1810,74 @@ final class StudioViewModel: ObservableObject {
         editAnnotation(at: index) { $0.setAnnotationScale(at: index, to: scale) }
     }
 
+    /// The width and height of the selected rectangle, ellipse, or redaction, normalized.
+    func setSelectedAnnotationSize(width: Double, height: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationSize(at: index, width: width, height: height) }
+    }
+
+    func setSelectedAnnotationCornerRadius(_ radius: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationCornerRadius(at: index, to: radius) }
+    }
+
+    /// Fills the inside of the selected rectangle or ellipse with `color`, or empties it with nil.
+    func setSelectedAnnotationShapeFill(_ color: Color?) {
+        guard let index = selectedAnnotationIndex else { return }
+        let hex = color.map { Self.hexString(for: $0) } ?? ""
+        editAnnotation(at: index) { $0.setAnnotationShapeFill(at: index, to: hex) }
+    }
+
+    func setSelectedAnnotationShapeFillOpacity(_ opacity: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationShapeFillOpacity(at: index, to: opacity) }
+    }
+
+    func setSelectedAnnotationRedactStyle(_ style: StudioRedactStyle) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationRedactStyle(at: index, to: style) }
+    }
+
+    func setSelectedAnnotationRedactLevel(_ level: StudioRedactLevel) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationRedactLevel(at: index, to: level) }
+    }
+
+    /// Small, medium, or large, before the scale.
+    func setSelectedAnnotationSize(_ size: StudioAnnotationSize) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationSize(at: index, to: size) }
+    }
+
+    /// Picks the selected emoji's emoji from the grid, as one undo step.
+    func setSelectedAnnotationEmoji(_ emoji: String) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationEmoji(at: index, to: emoji) }
+    }
+
+    func setSelectedAnnotationShadow(_ shadow: Bool) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationShadow(at: index, to: shadow) }
+    }
+
+    var canDuplicateSelectedAnnotation: Bool { isEditable && selectedAnnotation != nil }
+
+    /// Puts a copy of the selected annotation directly above it, nudged so both show, and selects it.
+    func duplicateSelectedAnnotation() {
+        guard isEditable, let index = selectedAnnotationIndex, let annotation = selectedAnnotation else { return }
+        var result = StudioAnnotationEditResult(changed: false, index: nil)
+        editAndSelect { model in
+            result = model.duplicateAnnotation(at: index)
+            if let copy = result.index {
+                return .annotation(copy)
+            }
+            return .follow
+        }
+        if result.changed {
+            announce("\(StudioEditorModel.annotationKindName(annotation.kind)) duplicated.")
+        }
+    }
+
     /// What is drawn at the playhead on a canvas of `canvasSize`, bottom first, for the preview to
     /// let a pointer take hold of. Nothing while the video plays, when there is nothing to hold still.
     func annotationHandles(canvasSize: CGSize) -> [StudioAnnotationHandle] {
@@ -1820,6 +1888,13 @@ final class StudioViewModel: ObservableObject {
         return StudioAnnotationGeometry.resolveAll(project: project, frame: frame, time: playhead, canvasWidth: width, canvasHeight: height).map { resolved in
             if resolved.isArrow {
                 return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, tail: resolved.tail, stroke: resolved.stroke)
+            }
+            if resolved.isArea {
+                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, radius: resolved.radius, area: resolved.rect)
+            }
+            if resolved.kind == StudioAnnotationKind.emoji {
+                let placed = StudioCompositor.annotationEmojiLayout(resolved, canvasWidth: width, canvasHeight: height)
+                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, box: placed, radius: 0)
             }
             let layout = StudioCompositor.annotationBoxLayout(resolved, canvasWidth: width, canvasHeight: height)
             return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, box: layout.box, radius: resolved.radius)
@@ -2097,6 +2172,27 @@ final class StudioViewModel: ObservableObject {
         guard isReady, !isExporting, let editor else { return }
         pause()
         seek(to: playhead + Double(count) * editor.frameDuration)
+    }
+
+    /// Pauses and moves the playhead whole seconds back (negative) or forward, within the video.
+    func stepSeconds(by count: Int) {
+        guard isReady, !isExporting, let editor else { return }
+        pause()
+        seek(to: editor.sourceTime(steppingSeconds: count, from: playhead))
+    }
+
+    /// Pauses and moves the playhead to the first picture of the trimmed video.
+    func goToTrimStart() {
+        guard isReady, !isExporting, let editor else { return }
+        pause()
+        seek(to: editor.playbackStart)
+    }
+
+    /// Pauses and moves the playhead to the last picture of the trimmed video.
+    func goToTrimEnd() {
+        guard isReady, !isExporting, let editor else { return }
+        pause()
+        seek(to: editor.lastPlaybackFrame)
     }
 
     /// Pauses and moves the playhead, for dragging along the timeline.

@@ -34,12 +34,13 @@ internal sealed partial class WindowChecks
     private static string NameOf(Editor editor, string automationId, double seconds = 2) => Find(editor, automationId, seconds)?.Name ?? string.Empty;
 
     /// <summary>
-    /// Chooses an item of a combo box by setting the control's selected index, on the UI thread.
-    /// The list is never opened: an open list is a window of its own, in front of other windows.
+    /// Chooses an item of a combo box or a segmented control by setting the control's selected
+    /// index, on the UI thread. A list is never opened: an open list is a window of its own, in
+    /// front of other windows.
     /// </summary>
     private bool SetCombo(Editor editor, string automationId, int index) => OnUi(() =>
     {
-        if (Descendant<ComboBox>(editor.Window.Content, automationId) is not { } combo || index >= combo.Items.Count)
+        if (Descendant<Microsoft.UI.Xaml.Controls.Primitives.Selector>(editor.Window.Content, automationId) is not { } combo || index >= combo.Items.Count)
         {
             return false;
         }

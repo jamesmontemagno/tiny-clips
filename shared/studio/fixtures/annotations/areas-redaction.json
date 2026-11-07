@@ -1,0 +1,200 @@
+{
+  "description": "Redactions: each style and level, an unknown style or level read as its default, a solid one in the style's fill, and an area clamped to the canvas",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "redact",
+          "start": 0,
+          "end": 20,
+          "x": 0.5,
+          "y": 0.5,
+          "width": 0.3,
+          "height": 0.2
+        },
+        {
+          "kind": "redact",
+          "attach": "frame",
+          "start": 0,
+          "end": 20,
+          "x": 0.8,
+          "y": 0.8,
+          "width": 0.1,
+          "height": 0.1,
+          "redactStyle": "pixelate",
+          "redactLevel": "heavy"
+        },
+        {
+          "kind": "redact",
+          "attach": "frame",
+          "start": 0,
+          "end": 20,
+          "x": 0.2,
+          "y": 0.8,
+          "width": 0.1,
+          "height": 0.1,
+          "redactStyle": "solid",
+          "style": "dark",
+          "cornerRadius": 0.1,
+          "shapeFill": "#FFFFFF"
+        },
+        {
+          "kind": "redact",
+          "attach": "frame",
+          "start": 0,
+          "end": 20,
+          "x": 0.5,
+          "y": 0.1,
+          "width": 0.1,
+          "height": 0.1,
+          "redactStyle": "smudge",
+          "redactLevel": "light"
+        },
+        {
+          "kind": "redact",
+          "attach": "frame",
+          "start": 0,
+          "end": 20,
+          "x": 1.5,
+          "y": 0.5,
+          "width": 2,
+          "height": 0.1,
+          "redactStyle": "pixelate",
+          "redactLevel": "loud"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "redact",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 540.0
+          },
+          "rect": {
+            "x": 672.0,
+            "y": 432.0,
+            "width": 576.0,
+            "height": 216.0
+          },
+          "redactStyle": "blur",
+          "redactAmount": 12.96
+        },
+        {
+          "index": 1,
+          "kind": "redact",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 1536.0,
+            "y": 864.0
+          },
+          "rect": {
+            "x": 1440.0,
+            "y": 810.0,
+            "width": 192.0,
+            "height": 108.0
+          },
+          "redactStyle": "pixelate",
+          "redactAmount": 30.24
+        },
+        {
+          "index": 2,
+          "kind": "redact",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 384.0,
+            "y": 864.0
+          },
+          "rect": {
+            "x": 288.0,
+            "y": 810.0,
+            "width": 192.0,
+            "height": 108.0
+          },
+          "redactStyle": "solid",
+          "redactAmount": 0
+        },
+        {
+          "index": 3,
+          "kind": "redact",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 108.0
+          },
+          "rect": {
+            "x": 864.0,
+            "y": 54.0,
+            "width": 192.0,
+            "height": 108.0
+          },
+          "redactStyle": "blur",
+          "redactAmount": 6.48
+        },
+        {
+          "index": 4,
+          "kind": "redact",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 1920.0,
+            "y": 540.0
+          },
+          "rect": {
+            "x": 960.0,
+            "y": 486.0,
+            "width": 1920,
+            "height": 108.0
+          },
+          "redactStyle": "pixelate",
+          "redactAmount": 17.28
+        }
+      ]
+    }
+  ]
+}

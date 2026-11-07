@@ -1,0 +1,255 @@
+{
+  "description": "A screen area grows and moves with a zoom, its stroke does not, and it goes only once none of it is in view; a frame area does not move",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "rectangle",
+          "start": 0,
+          "end": 20,
+          "x": 0.3,
+          "y": 0.4,
+          "width": 0.1,
+          "height": 0.1
+        },
+        {
+          "kind": "redact",
+          "start": 0,
+          "end": 20,
+          "x": 0.2,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.1
+        },
+        {
+          "kind": "ellipse",
+          "start": 0,
+          "end": 20,
+          "x": 0.22,
+          "y": 0.5,
+          "width": 0.1,
+          "height": 0.1
+        },
+        {
+          "kind": "rectangle",
+          "attach": "frame",
+          "start": 0,
+          "end": 20,
+          "x": 0.3,
+          "y": 0.4,
+          "width": 0.1,
+          "height": 0.1
+        }
+      ]
+    },
+    "zooms": [
+      {
+        "start": 5,
+        "end": 15,
+        "scale": 2,
+        "focus": {
+          "mode": "point",
+          "x": 0.5,
+          "y": 0.5
+        },
+        "easeIn": 0,
+        "easeOut": 0
+      }
+    ]
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 576.0,
+            "y": 432.0
+          },
+          "rect": {
+            "x": 480.0,
+            "y": 378.0,
+            "width": 192.0,
+            "height": 108.0
+          },
+          "radius": 0,
+          "stroke": 9.72,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        },
+        {
+          "index": 1,
+          "kind": "redact",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 384.0,
+            "y": 540.0
+          },
+          "rect": {
+            "x": 288.0,
+            "y": 486.0,
+            "width": 192.0,
+            "height": 108.0
+          },
+          "redactStyle": "blur",
+          "redactAmount": 12.96
+        },
+        {
+          "index": 2,
+          "kind": "ellipse",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 422.4,
+            "y": 540.0
+          },
+          "rect": {
+            "x": 326.4,
+            "y": 486.0,
+            "width": 192.0,
+            "height": 108.0
+          },
+          "radius": 0,
+          "stroke": 9.72,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        },
+        {
+          "index": 3,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 576.0,
+            "y": 432.0
+          },
+          "rect": {
+            "x": 480.0,
+            "y": 378.0,
+            "width": 192.0,
+            "height": 108.0
+          },
+          "radius": 0,
+          "stroke": 9.72,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        }
+      ]
+    },
+    {
+      "time": 10,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 192.0,
+            "y": 324.0
+          },
+          "rect": {
+            "x": 0.0,
+            "y": 216.0,
+            "width": 384.0,
+            "height": 216.0
+          },
+          "radius": 0,
+          "stroke": 9.72,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        },
+        {
+          "index": 2,
+          "kind": "ellipse",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": -115.2,
+            "y": 540.0
+          },
+          "rect": {
+            "x": -307.2,
+            "y": 432.0,
+            "width": 384.0,
+            "height": 216.0
+          },
+          "radius": 0,
+          "stroke": 9.72,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        },
+        {
+          "index": 3,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 576.0,
+            "y": 432.0
+          },
+          "rect": {
+            "x": 480.0,
+            "y": 378.0,
+            "width": 192.0,
+            "height": 108.0
+          },
+          "radius": 0,
+          "stroke": 9.72,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        }
+      ]
+    }
+  ]
+}

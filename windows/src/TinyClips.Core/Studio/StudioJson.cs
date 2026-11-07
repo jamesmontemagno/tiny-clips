@@ -458,6 +458,14 @@ public static class StudioProjectJson
                 Fill = HasNonNull(element, "fill") ? annotation.Fill : defaults.Fill,
                 TextColor = HasNonNull(element, "textColor") ? annotation.TextColor : defaults.TextColor,
                 Scale = HasNonNull(element, "scale") ? annotation.Scale : defaults.Scale,
+                Width = HasNonNull(element, "width") ? annotation.Width : defaults.Width,
+                Height = HasNonNull(element, "height") ? annotation.Height : defaults.Height,
+                CornerRadius = HasNonNull(element, "cornerRadius") ? annotation.CornerRadius : defaults.CornerRadius,
+                ShapeFill = HasNonNull(element, "shapeFill") ? annotation.ShapeFill : defaults.ShapeFill,
+                ShapeFillOpacity = HasNonNull(element, "shapeFillOpacity") ? annotation.ShapeFillOpacity : defaults.ShapeFillOpacity,
+                RedactStyle = HasNonNull(element, "redactStyle") ? annotation.RedactStyle : defaults.RedactStyle,
+                RedactLevel = HasNonNull(element, "redactLevel") ? annotation.RedactLevel : defaults.RedactLevel,
+                Shadow = HasNonNull(element, "shadow") && annotation.Shadow,
             };
         }
 
@@ -729,6 +737,20 @@ internal sealed class StudioNullAsDefaultBoolJsonConverter : JsonConverter<bool>
 {
     public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         reader.TokenType == JsonTokenType.Null ? false : reader.GetBoolean();
+
+    public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options) =>
+        writer.WriteBooleanValue(value);
+}
+
+/// <summary>A flag that is on only for JSON <c>true</c>. Anything else, a string or a number included, reads as false.</summary>
+internal sealed class StudioTrueOnlyBoolJsonConverter : JsonConverter<bool>
+{
+    public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var isTrue = reader.TokenType == JsonTokenType.True;
+        reader.Skip();
+        return isTrue;
+    }
 
     public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options) =>
         writer.WriteBooleanValue(value);
@@ -1098,6 +1120,42 @@ internal sealed class StudioAnnotationSizeJsonConverter : StudioEnumJsonConverte
     {
         StudioAnnotationSize.Small => "small",
         StudioAnnotationSize.Large => "large",
+        _ => "medium",
+    };
+}
+
+internal sealed class StudioRedactStyleJsonConverter : StudioEnumJsonConverter<StudioRedactStyle>
+{
+    protected override StudioRedactStyle DefaultValue => StudioRedactStyle.Blur;
+    protected override StudioRedactStyle? ReadValue(string value) => value switch
+    {
+        "blur" => StudioRedactStyle.Blur,
+        "pixelate" => StudioRedactStyle.Pixelate,
+        "solid" => StudioRedactStyle.Solid,
+        _ => null,
+    };
+    protected override string Write(StudioRedactStyle value) => value switch
+    {
+        StudioRedactStyle.Pixelate => "pixelate",
+        StudioRedactStyle.Solid => "solid",
+        _ => "blur",
+    };
+}
+
+internal sealed class StudioRedactLevelJsonConverter : StudioEnumJsonConverter<StudioRedactLevel>
+{
+    protected override StudioRedactLevel DefaultValue => StudioRedactLevel.Medium;
+    protected override StudioRedactLevel? ReadValue(string value) => value switch
+    {
+        "light" => StudioRedactLevel.Light,
+        "medium" => StudioRedactLevel.Medium,
+        "heavy" => StudioRedactLevel.Heavy,
+        _ => null,
+    };
+    protected override string Write(StudioRedactLevel value) => value switch
+    {
+        StudioRedactLevel.Light => "light",
+        StudioRedactLevel.Heavy => "heavy",
         _ => "medium",
     };
 }

@@ -64,6 +64,31 @@ public sealed class StudioAnnotationTests
             Assert.True(entry["textColor"]!.GetValue<string>() == item.TextColor, $"{label} textColor");
             Near(label, "opacity", entry["opacity"], item.Opacity);
             NearPoint(label, "anchor", entry["anchor"], item.Anchor);
+            if (item.IsArea)
+            {
+                NearRect(label, "rect", entry["rect"], item.Rect);
+                if (item.Kind == StudioAnnotationKinds.Redact)
+                {
+                    var style = item.RedactStyle switch
+                    {
+                        StudioRedactStyle.Pixelate => "pixelate",
+                        StudioRedactStyle.Solid => "solid",
+                        _ => "blur",
+                    };
+                    Assert.True(entry["redactStyle"]!.GetValue<string>() == style, $"{label} redactStyle");
+                    Near(label, "redactAmount", entry["redactAmount"], item.RedactAmount);
+                }
+                else
+                {
+                    Near(label, "stroke", entry["stroke"], item.Stroke);
+                    Near(label, "radius", entry["radius"], item.Radius);
+                    Assert.True(entry["shapeFill"]!.GetValue<string>() == item.ShapeFill, $"{label} shapeFill");
+                    Near(label, "shapeFillOpacity", entry["shapeFillOpacity"], item.ShapeFillOpacity);
+                }
+
+                continue;
+            }
+
             if (item.IsArrow)
             {
                 Near(label, "stroke", entry["stroke"], item.Stroke);
@@ -75,6 +100,13 @@ public sealed class StudioAnnotationTests
             }
 
             Near(label, "font", entry["font"], item.Font);
+            if (item.IsEmoji)
+            {
+                NearRect(label, "textRect", entry["textRect"], StudioAnnotationGeometry.LayoutEmoji(item, textWidth, textHeight, width, height));
+                Assert.True(entry["shadow"]!.GetValue<bool>() == item.HasShadow, $"{label} shadow");
+                continue;
+            }
+
             Near(label, "maxTextWidth", entry["maxTextWidth"], item.MaxTextWidth);
             Near(label, "radius", entry["radius"], item.Radius);
             var placed = StudioAnnotationGeometry.LayoutBox(item, textWidth, textHeight, width, height);
@@ -167,6 +199,99 @@ public sealed class StudioAnnotationTests
         Assert.False(StudioAnnotationGeometry.ChangesBetween(annotations, 4, 5));
         Assert.True(StudioAnnotationGeometry.ChangesBetween(annotations, 1, 5));
         Assert.False(StudioAnnotationGeometry.ChangesBetween(null, 0, 5));
+    }
+
+    [Fact]
+    public void Areas_RoundTripTheirProperties_AndReadUnknownRedactionsAsTheDefault()
+    {
+        var project = StudioProjectJson.ReadProject(MinimalProject.Replace("OVERLAYS", """
+            { "annotations": [
+              { "id": "r", "kind": "rectangle", "start": 0, "end": 2, "width": 0.3, "height": 0.25, "cornerRadius": 0.04, "shapeFill": "#00ff00", "shapeFillOpacity": 0.6 },
+              { "id": "d", "kind": "redact", "start": 0, "end": 2, "redactStyle": "pixelate", "redactLevel": "heavy" },
+              { "id": "u", "kind": "redact", "start": 0, "end": 2, "redactStyle": "swirl", "redactLevel": "max" },
+              { "id": "e", "kind": "ellipse", "start": 0, "end": 2 }
+            ] }
+            """));
+
+        var again = StudioProjectJson.ReadProject(StudioProjectJson.WriteProject(project)).Overlays.Annotations;
+        Assert.Equal((0.3, 0.25, 0.04, "#00ff00", 0.6), (again[0].Width, again[0].Height, again[0].CornerRadius, again[0].ShapeFill, again[0].ShapeFillOpacity));
+        Assert.Equal((StudioRedactStyle.Pixelate, StudioRedactLevel.Heavy), (again[1].RedactStyle, again[1].RedactLevel));
+        Assert.Equal((StudioRedactStyle.Blur, StudioRedactLevel.Medium), (again[2].RedactStyle, again[2].RedactLevel));
+        Assert.Equal((0.2, 0.15, 0.0, "", 0.35), (again[3].Width, again[3].Height, again[3].CornerRadius, again[3].ShapeFill, again[3].ShapeFillOpacity));
+    }
+
+    [Fact]
+    public void AnAgentPatch_OfAreas_IsReadWrittenAndReadAgain()
+    {
+        // studio.project.edit puts the patch over the project's JSON, reads it as a project, and saves it.
+        var node = JsonNode.Parse(StudioProjectJson.WriteProject(StudioProjectJson.ReadProject(MinimalProject.Replace("OVERLAYS", "{}"))))!.AsObject();
+        node["overlays"] = JsonNode.Parse("""
+            { "annotations": [
+              { "id": "box", "kind": "rectangle", "attach": "screen", "start": 1, "end": 4, "x": 0.4, "y": 0.6, "width": 0.25, "height": 0.1,
+                "style": "blue", "cornerRadius": 0.03, "shapeFill": "#FFCC00", "shapeFillOpacity": 0.5, "future": { "kept": true } },
+              { "id": "hide", "kind": "redact", "start": 0, "end": 2, "x": 0.5, "y": 0.5, "width": 0.3, "height": 0.2, "redactStyle": "solid", "redactLevel": "light" }
+            ] }
+            """);
+
+        var saved = StudioProjectJson.WriteProject(StudioProjectJson.ReadProject(node.ToJsonString()));
+        var annotations = StudioProjectJson.ReadProject(saved).Overlays.Annotations;
+
+        Assert.Equal((StudioAnnotationKinds.Rectangle, StudioAnnotationAttach.Screen, 0.25, 0.1, 0.03, "#FFCC00", 0.5),
+            (annotations[0].Kind, annotations[0].Attach, annotations[0].Width, annotations[0].Height, annotations[0].CornerRadius, annotations[0].ShapeFill, annotations[0].ShapeFillOpacity));
+        Assert.Equal((StudioAnnotationKinds.Redact, 0.3, 0.2, StudioRedactStyle.Solid, StudioRedactLevel.Light),
+            (annotations[1].Kind, annotations[1].Width, annotations[1].Height, annotations[1].RedactStyle, annotations[1].RedactLevel));
+        Assert.True(JsonNode.Parse(saved)!["overlays"]!["annotations"]![0]!["future"]!["kept"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void AnAgentPatch_OfAnEmoji_IsReadWrittenAndReadAgain()
+    {
+        var node = JsonNode.Parse(StudioProjectJson.WriteProject(StudioProjectJson.ReadProject(MinimalProject.Replace("OVERLAYS", "{}"))))!.AsObject();
+        node["overlays"] = JsonNode.Parse("""
+            { "annotations": [
+              { "id": "wow", "kind": "emoji", "attach": "screen", "start": 1, "end": 4, "x": 0.4, "y": 0.6, "text": "🚀", "size": "large", "scale": 1.5, "shadow": true, "future": { "kept": true } },
+              { "id": "meh", "kind": "emoji", "start": 0, "end": 2, "text": "👍", "shadow": "yes" },
+              { "id": "none", "kind": "emoji", "start": 0, "end": 2, "text": "👍" }
+            ] }
+            """);
+
+        var saved = StudioProjectJson.WriteProject(StudioProjectJson.ReadProject(node.ToJsonString()));
+        var annotations = StudioProjectJson.ReadProject(saved).Overlays.Annotations;
+
+        Assert.Equal((StudioAnnotationKinds.Emoji, StudioAnnotationAttach.Screen, "🚀", StudioAnnotationSize.Large, 1.5, true),
+            (annotations[0].Kind, annotations[0].Attach, annotations[0].Text, annotations[0].Size, annotations[0].Scale, annotations[0].Shadow));
+        Assert.False(annotations[1].Shadow);
+        Assert.False(annotations[2].Shadow);
+        Assert.True(JsonNode.Parse(saved)!["overlays"]!["annotations"]![0]!["future"]!["kept"]!.GetValue<bool>());
+        Assert.True(JsonNode.Parse(saved)!["overlays"]!["annotations"]![0]!["shadow"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void AnArea_MovesByItsMiddle_AndResizesByACornerWhileTheOppositeOneStays()
+    {
+        var area = new StudioAnnotation { Kind = StudioAnnotationKinds.Rectangle, Attach = StudioAnnotationAttach.Frame, End = 5, X = 0.25, Y = 0.25, Width = 0.2, Height = 0.2 };
+        var frame = default(StudioResolvedFrame);
+
+        var moved = StudioAnnotationGeometry.GetAreaMoved(area, StudioAnnotationPart.Box, 100, 50, frame, 1000, 500)!.Value;
+        Assert.Equal((0.35, 0.35, 0.2, 0.2), (moved.X, moved.Y, moved.Width!.Value, moved.Height!.Value), new TupleComparer());
+
+        // The bottom right corner goes 100 pixels right; the top left corner (150, 75) stays.
+        var resized = StudioAnnotationGeometry.GetAreaMoved(area, StudioAnnotationPart.BottomRight, 100, 0, frame, 1000, 500)!.Value;
+        Assert.Equal((0.3, 0.25, 0.3, 0.2), (resized.X, resized.Y, resized.Width!.Value, resized.Height!.Value), new TupleComparer());
+
+        // Dragged past the opposite corner, it keeps a size that can be taken hold of again.
+        var smallest = StudioAnnotationGeometry.GetAreaMoved(area, StudioAnnotationPart.TopLeft, 900, 900, frame, 1000, 500)!.Value;
+        Assert.True(smallest.Width > 0 && smallest.Height > 0);
+        Assert.Equal(0.35, smallest.X + (smallest.Width!.Value / 2), 6);
+    }
+
+    private sealed class TupleComparer : IEqualityComparer<(double, double, double, double)>
+    {
+        public bool Equals((double, double, double, double) x, (double, double, double, double) y) =>
+            Math.Abs(x.Item1 - y.Item1) < Tolerance && Math.Abs(x.Item2 - y.Item2) < Tolerance
+            && Math.Abs(x.Item3 - y.Item3) < Tolerance && Math.Abs(x.Item4 - y.Item4) < Tolerance;
+
+        public int GetHashCode((double, double, double, double) obj) => 0;
     }
 
     private static void Near(string label, string field, JsonNode? expected, double actual) =>

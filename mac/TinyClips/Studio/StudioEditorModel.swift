@@ -449,6 +449,17 @@ struct StudioEditorModel: Equatable, Sendable {
     /// start when cuts leave nothing.
     var playbackEnd: Double { timeMap.segments.last?.end ?? trimStart }
 
+    /// The last picture of the video, where End puts the playhead.
+    var lastPlaybackFrame: Double { max(playbackStart, playbackEnd - frameDuration) }
+
+    /// Where a step of whole seconds back (negative) or forward from `sourceTime` lands, kept
+    /// within the trimmed video.
+    func sourceTime(steppingSeconds count: Int, from sourceTime: Double) -> Double {
+        let start = playbackStart
+        let from = sourceTime.isFinite ? sourceTime : start
+        return StudioCanvasMath.clamped(from + Double(count), start, lastPlaybackFrame)
+    }
+
     /// Where playback starts when Play is pressed at `sourceTime`: the same spot, the end of the
     /// cut it is in, or the start of the video when the playhead is outside what the video shows
     /// or already at its end.

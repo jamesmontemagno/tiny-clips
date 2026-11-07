@@ -54,6 +54,31 @@ public sealed partial class StudioViewModel
         nameof(AnnotationEndAccessibleName),
         nameof(CanBringAnnotationForward),
         nameof(CanSendAnnotationBack),
+        nameof(HasAnnotationColor),
+        nameof(HasAnnotationScale),
+        nameof(AnnotationScaleTitle),
+        nameof(HasAnnotationShape),
+        nameof(HasAnnotationArea),
+        nameof(HasAnnotationCornerRadius),
+        nameof(HasAnnotationRedaction),
+        nameof(HasAnnotationRedactLevel),
+        nameof(AnnotationChipGlyph),
+        nameof(AnnotationShapeFilled),
+        nameof(AnnotationShapeFillColor),
+        nameof(AnnotationShapeFillOpacity),
+        nameof(AnnotationShapeFillOpacityText),
+        nameof(AnnotationCornerRadius),
+        nameof(AnnotationCornerRadiusText),
+        nameof(AnnotationWidth),
+        nameof(AnnotationWidthText),
+        nameof(AnnotationHeight),
+        nameof(AnnotationHeightText),
+        nameof(AnnotationRedactStyleIndex),
+        nameof(AnnotationRedactLevelIndex),
+        nameof(HasAnnotationEmoji),
+        nameof(AnnotationEmoji),
+        nameof(AnnotationShadow),
+        nameof(AnnotationSizeIndex),
     ];
 
     private bool _couldSelectPreviousAnnotation;
@@ -113,7 +138,8 @@ public sealed partial class StudioViewModel
     // Which controls the selected annotation has
 
     private bool IsSelectedKnown =>
-        SelectedAnnotation?.Kind is StudioAnnotationKinds.Arrow or StudioAnnotationKinds.Callout or StudioAnnotationKinds.Text;
+        SelectedAnnotation?.Kind is StudioAnnotationKinds.Arrow or StudioAnnotationKinds.Callout or StudioAnnotationKinds.Text
+            or StudioAnnotationKinds.Rectangle or StudioAnnotationKinds.Ellipse or StudioAnnotationKinds.Redact or StudioAnnotationKinds.Emoji;
 
     public bool HasAnnotationStyle => IsSelectedKnown;
 
@@ -122,6 +148,42 @@ public sealed partial class StudioViewModel
     public bool HasAnnotationText => SelectedAnnotation?.Kind is StudioAnnotationKinds.Callout or StudioAnnotationKinds.Text;
 
     public bool HasAnnotationOffset => SelectedAnnotation?.Kind is StudioAnnotationKinds.Arrow or StudioAnnotationKinds.Callout;
+
+    /// <summary>A rectangle or an ellipse: an outline, with an inside that can be filled.</summary>
+    public bool HasAnnotationShape => SelectedAnnotation?.Kind is StudioAnnotationKinds.Rectangle or StudioAnnotationKinds.Ellipse;
+
+    /// <summary>A rectangle, an ellipse or a redaction: it covers an area, which has a width and a height.</summary>
+    public bool HasAnnotationArea => StudioAnnotationKinds.IsArea(SelectedAnnotation?.Kind);
+
+    public bool HasAnnotationCornerRadius => SelectedAnnotation?.Kind == StudioAnnotationKinds.Rectangle;
+
+    public bool HasAnnotationRedaction => SelectedAnnotation?.Kind == StudioAnnotationKinds.Redact;
+
+    /// <summary>A blurred or pixelated redaction has a strength. A solid one hides all of its area.</summary>
+    public bool HasAnnotationRedactLevel => HasAnnotationRedaction && SelectedAnnotation!.RedactStyle != StudioRedactStyle.Solid;
+
+    /// <summary>An emoji: its emoji, its size and its shadow, and no colors of its own.</summary>
+    public bool HasAnnotationEmoji => SelectedAnnotation?.Kind == StudioAnnotationKinds.Emoji;
+
+    /// <summary>A blurred or pixelated redaction shows what is under it, and an emoji has its own colors.</summary>
+    public bool HasAnnotationColor => IsSelectedKnown && !HasAnnotationRedactLevel && !HasAnnotationEmoji;
+
+    /// <summary>A redaction has nothing that the size of the others makes thicker or bigger.</summary>
+    public bool HasAnnotationScale => IsSelectedKnown && !HasAnnotationRedaction;
+
+    public string AnnotationScaleTitle => HasAnnotationShape ? "Outline width" : "Size";
+
+    public string AnnotationRedactNote => StudioEditorText.AnnotationRedactNote;
+
+    /// <summary>What a style chip shows for the selected kind: its tool's glyph, or null for the letters of a box.</summary>
+    public string? AnnotationChipGlyph => SelectedAnnotation?.Kind switch
+    {
+        StudioAnnotationKinds.Arrow => StudioGlyphs.AddArrow,
+        StudioAnnotationKinds.Rectangle => StudioGlyphs.AddRectangle,
+        StudioAnnotationKinds.Ellipse => StudioGlyphs.AddEllipse,
+        StudioAnnotationKinds.Redact => StudioGlyphs.AddRedaction,
+        _ => null,
+    };
 
     public string AnnotationOffsetXTitle => SelectedAnnotation?.Kind == StudioAnnotationKinds.Callout ? "Box horizontal" : "Tail horizontal";
 
@@ -146,6 +208,67 @@ public sealed partial class StudioViewModel
 
     /// <summary>The text box has lost the focus: what is typed from now on is another undo step.</summary>
     public void EndAnnotationTyping() => _session.EndAnnotationTyping();
+
+    /// <summary>The emoji the panel offers, with the names a screen reader says for them.</summary>
+    public IReadOnlyList<(string Emoji, string Name)> EmojiChoices => StudioEditorText.EmojiChoices;
+
+    public string MoreEmojiHint => StudioEditorText.MoreEmojiHint;
+
+    /// <summary>
+    /// The selected emoji's emoji, for the box it can be typed or pasted in. What is typed with no
+    /// other edit in between is one undo step, as in a text box; an empty box is no edit.
+    /// </summary>
+    public string AnnotationEmoji
+    {
+        get => HasAnnotationEmoji ? SelectedAnnotation!.Text : string.Empty;
+        set
+        {
+            var emoji = value.ReplaceLineEndings(string.Empty);
+            if (HasAnnotationEmoji && SelectedAnnotationIndex is { } index && !StudioAnnotationGeometry.IsBlank(emoji) && emoji != AnnotationEmoji)
+            {
+                _session.SetAnnotationText(index, emoji);
+            }
+        }
+    }
+
+    /// <summary>Puts one of <see cref="EmojiChoices"/> on the selected emoji, as one undo step.</summary>
+    public void SetAnnotationEmoji(string emoji)
+    {
+        if (HasAnnotationEmoji && SelectedAnnotationIndex is { } index)
+        {
+            _session.SetAnnotationEmoji(index, emoji);
+        }
+    }
+
+    /// <summary>Whether the selected emoji has a soft shadow under it.</summary>
+    public bool AnnotationShadow
+    {
+        get => SelectedAnnotation?.Shadow ?? false;
+        set
+        {
+            if (SelectedAnnotationIndex is { } index && value != AnnotationShadow)
+            {
+                _session.SetAnnotationShadow(index, value);
+            }
+
+            ResyncIfDifferent(value, AnnotationShadow);
+        }
+    }
+
+    /// <summary>Small, Medium or Large, or -1 with none selected.</summary>
+    public int AnnotationSizeIndex
+    {
+        get => SelectedAnnotation is { } annotation && Enum.IsDefined(annotation.Size) ? (int)annotation.Size : -1;
+        set
+        {
+            if (value >= 0 && value != AnnotationSizeIndex && SelectedAnnotationIndex is { } index && Enum.IsDefined((StudioAnnotationSize)value))
+            {
+                _session.SetAnnotationSize(index, (StudioAnnotationSize)value);
+            }
+
+            ResyncIfDifferent(value, AnnotationSizeIndex);
+        }
+    }
 
     /// <summary>The selected annotation's style, or -1 with none selected.</summary>
     public int AnnotationStyleIndex => SelectedAnnotation is { } annotation ? (int)annotation.Style : -1;
@@ -176,7 +299,12 @@ public sealed partial class StudioViewModel
         }
     }
 
-    public string AnnotationFillTitle => SelectedAnnotation?.Kind == StudioAnnotationKinds.Arrow ? "Color" : "Fill";
+    public string AnnotationFillTitle => SelectedAnnotation?.Kind switch
+    {
+        StudioAnnotationKinds.Arrow or StudioAnnotationKinds.Redact => "Color",
+        StudioAnnotationKinds.Rectangle or StudioAnnotationKinds.Ellipse => "Outline",
+        _ => "Fill",
+    };
 
     public bool HasAnnotationTextColor => SelectedAnnotation?.Kind is StudioAnnotationKinds.Callout or StudioAnnotationKinds.Text;
 
@@ -204,6 +332,123 @@ public sealed partial class StudioViewModel
         if (SelectedAnnotationIndex is { } index)
         {
             _session.SetAnnotationTextColor(index, ToHex(color));
+        }
+    }
+
+    /// <summary>Whether the inside of a rectangle or an ellipse is filled.</summary>
+    public bool AnnotationShapeFilled
+    {
+        get => StudioAnnotationGeometry.GetCustomColor(SelectedAnnotation?.ShapeFill) is not null;
+        set
+        {
+            if (SelectedAnnotationIndex is { } index && value != AnnotationShapeFilled)
+            {
+                _session.SetAnnotationShapeFilled(index, value);
+            }
+
+            ResyncIfDifferent(value, AnnotationShapeFilled);
+        }
+    }
+
+    /// <summary>The color inside, or the outline's while the inside is empty: the color it would be filled with.</summary>
+    public Color AnnotationShapeFillColor =>
+        ParseBackgroundColor(SelectedAnnotation is { } annotation
+            ? StudioAnnotationGeometry.GetCustomColor(annotation.ShapeFill) ?? StudioAnnotationGeometry.GetEffectiveColors(annotation).Fill
+            : "#FFFFFF");
+
+    public void SetAnnotationShapeFillColor(Color color)
+    {
+        if (SelectedAnnotationIndex is { } index)
+        {
+            _session.SetAnnotationShapeFill(index, ToHex(color));
+        }
+    }
+
+    public double AnnotationShapeFillOpacity
+    {
+        get => Math.Clamp(SelectedAnnotation?.ShapeFillOpacity ?? 0, 0, 1);
+        set
+        {
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationShapeFillOpacity))
+            {
+                _session.SetAnnotationShapeFillOpacity(index, value);
+            }
+        }
+    }
+
+    public string AnnotationShapeFillOpacityText => PercentText(AnnotationShapeFillOpacity);
+
+    /// <summary>How round a rectangle's corners are, as a share of the picture's short side.</summary>
+    public double AnnotationCornerRadius
+    {
+        get => Math.Clamp(SelectedAnnotation?.CornerRadius ?? 0, 0, 0.5);
+        set
+        {
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationCornerRadius))
+            {
+                _session.SetAnnotationCornerRadius(index, value);
+            }
+        }
+    }
+
+    public string AnnotationCornerRadiusText => PercentText(AnnotationCornerRadius);
+
+    /// <summary>An area's width, as a share of the picture, or of the screen for one attached to the screen.</summary>
+    public double AnnotationWidth
+    {
+        get => Math.Clamp(SelectedAnnotation?.Width ?? 0, StudioEditorModel.MinimumAreaSize, 1);
+        set
+        {
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationWidth))
+            {
+                _session.SetAnnotationSize(index, value, AnnotationHeight);
+            }
+        }
+    }
+
+    public string AnnotationWidthText => PercentText(AnnotationWidth);
+
+    public double AnnotationHeight
+    {
+        get => Math.Clamp(SelectedAnnotation?.Height ?? 0, StudioEditorModel.MinimumAreaSize, 1);
+        set
+        {
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationHeight))
+            {
+                _session.SetAnnotationSize(index, AnnotationWidth, value);
+            }
+        }
+    }
+
+    public string AnnotationHeightText => PercentText(AnnotationHeight);
+
+    /// <summary>Blur, Pixelate or Solid, or -1 with none selected.</summary>
+    public int AnnotationRedactStyleIndex
+    {
+        get => SelectedAnnotation is { } annotation ? (int)annotation.RedactStyle : -1;
+        set
+        {
+            if (value >= 0 && value != AnnotationRedactStyleIndex && SelectedAnnotationIndex is { } index && Enum.IsDefined((StudioRedactStyle)value))
+            {
+                _session.SetAnnotationRedactStyle(index, (StudioRedactStyle)value);
+            }
+
+            ResyncIfDifferent(value, AnnotationRedactStyleIndex);
+        }
+    }
+
+    /// <summary>Light, Medium or Heavy, or -1 with none selected.</summary>
+    public int AnnotationRedactLevelIndex
+    {
+        get => SelectedAnnotation is { } annotation ? (int)annotation.RedactLevel : -1;
+        set
+        {
+            if (value >= 0 && value != AnnotationRedactLevelIndex && SelectedAnnotationIndex is { } index && Enum.IsDefined((StudioRedactLevel)value))
+            {
+                _session.SetAnnotationRedactLevel(index, (StudioRedactLevel)value);
+            }
+
+            ResyncIfDifferent(value, AnnotationRedactLevelIndex);
         }
     }
 
@@ -356,6 +601,28 @@ public sealed partial class StudioViewModel
     public void AddCalloutAtPlayhead() => AddAnnotationAtPlayhead(StudioAnnotationKinds.Callout);
 
     public void AddTextAtPlayhead() => AddAnnotationAtPlayhead(StudioAnnotationKinds.Text);
+
+    public void AddRectangleAtPlayhead() => AddAnnotationAtPlayhead(StudioAnnotationKinds.Rectangle);
+
+    public void AddEllipseAtPlayhead() => AddAnnotationAtPlayhead(StudioAnnotationKinds.Ellipse);
+
+    public void AddRedactionAtPlayhead() => AddAnnotationAtPlayhead(StudioAnnotationKinds.Redact);
+
+    public void AddEmojiAtPlayhead() => AddAnnotationAtPlayhead(StudioAnnotationKinds.Emoji);
+
+    /// <summary>Copies the selected annotation a little right and down, above it, and selects the copy.</summary>
+    public void DuplicateSelectedAnnotation()
+    {
+        if (!IsEditable || SelectedAnnotation is not { } annotation)
+        {
+            return;
+        }
+
+        if (_session.DuplicateSelectedAnnotation().Changed)
+        {
+            Announce(StudioEditorText.GetAnnotationDuplicatedMessage(annotation.Kind), AnnotationActivityId, StudioAnnouncementKind.Completed);
+        }
+    }
 
     public void RemoveSelectedAnnotation()
     {

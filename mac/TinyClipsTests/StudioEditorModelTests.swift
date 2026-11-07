@@ -469,6 +469,20 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(model.clampedSourceTime(99), 10)
     }
 
+    func testASecondStepStaysInsideTheTrimmedVideo() {
+        var model = StudioEditorModel(project: makeProject(duration: 10))
+        model.setTrim(start: 2, end: 8)
+        let last = 8 - model.frameDuration
+
+        XCTAssertEqual(model.lastPlaybackFrame, last, accuracy: 1e-9)
+        XCTAssertEqual(model.sourceTime(steppingSeconds: 1, from: 4.5), 5.5, accuracy: 1e-9)
+        XCTAssertEqual(model.sourceTime(steppingSeconds: -1, from: 4.5), 3.5, accuracy: 1e-9)
+        XCTAssertEqual(model.sourceTime(steppingSeconds: -1, from: 2.4), 2, accuracy: 1e-9, "Not before the trim start")
+        XCTAssertEqual(model.sourceTime(steppingSeconds: 1, from: 7.5), last, accuracy: 1e-9, "Not past the last picture")
+        XCTAssertEqual(model.sourceTime(steppingSeconds: 1, from: 0.5), 2, accuracy: 1e-9, "From before the trim, into it")
+        XCTAssertEqual(model.sourceTime(steppingSeconds: 1, from: .nan), 3, accuracy: 1e-9)
+    }
+
     func testFormattedTime() {
         XCTAssertEqual(StudioEditorModel.formattedTime(0), "0:00.0")
         XCTAssertEqual(StudioEditorModel.formattedTime(62.39), "1:02.3")

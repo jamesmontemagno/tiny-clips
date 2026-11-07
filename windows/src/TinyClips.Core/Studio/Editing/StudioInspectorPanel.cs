@@ -145,7 +145,7 @@ public static class StudioInspectorPanels
         StudioInspectorPanel.Zoom => "Zooms",
         StudioInspectorPanel.Cut => "Cuts",
         StudioInspectorPanel.Speed => "Speed changes",
-        StudioInspectorPanel.Annotate => "Annotations: arrows, callouts, and text",
+        StudioInspectorPanel.Annotate => "Annotations: arrows, callouts, text, shapes, emoji, and redaction",
         StudioInspectorPanel.Captions => "Captions: import, edit, and export",
         StudioInspectorPanel.Audio => "Audio: mute and volume",
         StudioInspectorPanel.Project => "Project: badge, storage, and default look",

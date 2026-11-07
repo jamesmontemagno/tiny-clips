@@ -1,3 +1,4 @@
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml.Controls;
 using TinyClips.Core.Studio;
 using TinyClips.Tools.StudioWindowCheck.Automation;
@@ -92,14 +93,14 @@ internal sealed partial class WindowChecks
         // The choice as a screen reader is given it, and where it is.
         var group = Find(editor, "StudioCameraCutoutChoice");
         var choices = CutoutIds.Select(id => Find(editor, id, 0.5)).ToArray();
-        var tip = OnUi(() => Descendant<RadioButtons>(editor.Window.Content, "StudioCameraCutoutChoice") is { } buttons ? ToolTipService.GetToolTip(buttons) as string : null);
+        var tip = OnUi(() => Descendant<Segmented>(editor.Window.Content, "StudioCameraCutoutChoice") is { } buttons ? ToolTipService.GetToolTip(buttons) as string : null);
         var kept = Shows(StudioCameraCutout.None);
         var order = TabStops(editor);
         var at = order.IndexOf("StudioCameraCutoutChoice");
         var between = at > 0 && at + 1 < order.Count && order[at - 1] == "StudioCameraMirrorCheckBox" && order[at + 1] == "StudioCameraBorderSlider";
         _report.Check(
-            "where people can be found, the Camera panel has a choice called Camera background between Mirror and Border: Keep, Blur and Remove, each a radio button a screen reader reads by that name, one tab stop together; Keep is the chosen one for a new recording; Remove says before it is chosen that the camera then has no border and no shadow, and the choice's tooltip says what each does",
-            group is { Name: "Camera background", IsEnabled: true } && choices.All(choice => choice is { ControlType: ControlTypeNames.RadioButton, IsEnabled: true } && choice.Patterns.Contains("SelectionItem", StringComparison.Ordinal))
+            "where people can be found, the Camera panel has a choice called Camera background between Mirror and Border: Keep, Blur and Remove, each a segment a screen reader reads by that name, one tab stop together; Keep is the chosen one for a new recording; Remove says before it is chosen that the camera then has no border and no shadow, and the choice's tooltip says what each does",
+            group is { Name: "Camera background", IsEnabled: true } && choices.All(choice => choice is { ControlType: ControlTypeNames.ListItem, IsEnabled: true } && choice.Patterns.Contains("SelectionItem", StringComparison.Ordinal))
                 && choices.Select(choice => choice?.Name).SequenceEqual(["Keep", "Blur", "Remove"]) && Enum.GetValues<StudioCameraCutout>().Select(StudioEditorModel.GetCutoutName).SequenceEqual(["Keep", "Blur", "Remove"])
                 && kept is null && choices[2]?.HelpText == CutoutRemovedText && choices[0]?.HelpText.Length == 0 && choices[1]?.HelpText.Length == 0 && tip == CutoutTip && between && OnUi(() => editor.Window.ViewModel.CanFindPeople),
             kept ?? $"{group}; choices: {string.Join(", ", choices.Select(choice => choice?.ToString() ?? "missing"))}; Remove is described as \"{choices[2]?.HelpText}\"; the tooltip: \"{tip}\"; "

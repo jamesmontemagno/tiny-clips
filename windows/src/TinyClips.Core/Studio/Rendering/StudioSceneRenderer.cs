@@ -260,6 +260,8 @@ public sealed partial class StudioSceneRenderer : IDisposable
                 PrepareCaption(caption, project, width, height);
             }
 
+            PrepareEmojiPictures(project, frame, request.SourceTimeSeconds, width, height);
+
             _context.Target = target;
             var began = false;
             try
@@ -314,7 +316,7 @@ public sealed partial class StudioSceneRenderer : IDisposable
                     }
                 }
 
-                DrawAnnotations(project, frame, request.SourceTimeSeconds, width, height);
+                DrawAnnotations(project, frame, request.SourceTimeSeconds, width, height, target);
 
                 if (project.Overlays.Branding)
                 {

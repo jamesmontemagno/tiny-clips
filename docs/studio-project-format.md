@@ -171,7 +171,7 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `overlays.clicks.opacity` | number | 0.85 | |
 | `overlays.clicks.duration` | number | 0.45 | Seconds |
 | `overlays.branding` | bool | false | |
-| `overlays.annotations` | Annotation[] | `[]` | Arrows, callouts, and text over the picture. The last in the list is on top. See below and section 6.10 |
+| `overlays.annotations` | Annotation[] | `[]` | Arrows, callouts, text, rectangles, ellipses, and redactions over the picture. The last in the list is on top. See below and section 6.10 |
 | `overlays.captions.enabled` | bool | false | Draw the captions into the video (section 15.4) |
 | `overlays.captions.size` | enum | `medium` | `small`, `medium`, `large` |
 | `overlays.captions.position` | enum | `bottom` | `bottom`, `top` |
@@ -185,12 +185,19 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | Property | Type | Default | Clamp | Notes |
 |---|---|---|---|---|
 | `id` | string | `""` | | Names the annotation for an editor between edits. It has no effect on the picture |
-| `kind` | string | `arrow` | | `arrow`, `callout`, or `text`. **A kind the reader does not know is kept as it is and not drawn.** This is the one enumeration that does not read as its default: a later kind drawn and saved as an arrow would be lost |
+| `kind` | string | `arrow` | | `arrow`, `callout`, `text`, `rectangle`, `ellipse`, `redact`, or `emoji`. **A kind the reader does not know is kept as it is and not drawn.** This is the one enumeration that does not read as its default: a later kind drawn and saved as an arrow would be lost |
 | `attach` | enum | `screen` | | `screen`: `x` and `y` are normalized in the screen frame, like a click. `frame`: they are normalized in the canvas |
 | `start`, `end` | number | 0 | | Source time. Shown while `start <= t < end`, so without an `end` it is never shown |
-| `x`, `y` | number | 0.5 | 0 to 1 | What an arrow or a callout points at, or the center of a text box |
-| `offsetX`, `offsetY` | number | -0.12, 0.12 | -1 to 1 | In canvas short sides, from `x`, `y`. Where an arrow's tail is, or the center of a callout's box. Text does not use them |
-| `text` | string | `""` | | What a callout or a text box says, with `\n` for a new line. With nothing but white space it is not drawn. An arrow does not use it |
+| `x`, `y` | number | 0.5 | 0 to 1 | What an arrow or a callout points at, the center of a text box or an emoji, or the center of a rectangle, an ellipse, or a redaction |
+| `offsetX`, `offsetY` | number | -0.12, 0.12 | -1 to 1 | In canvas short sides, from `x`, `y`. Where an arrow's tail is, or the center of a callout's box. Text, emoji, and the area kinds do not use them |
+| `width`, `height` | number | 0.2, 0.15 | 0 to 1 | The size of a rectangle, an ellipse, or a redaction, normalized like `x` and `y`: in the screen frame for `screen`, in the canvas for `frame`. Other kinds do not use them |
+| `cornerRadius` | number | 0 | 0 to 0.5 | A rectangle's corner radius, in canvas short sides. Other kinds do not use it |
+| `shapeFill` | string | `""` | | `#RRGGBB` fills the inside of a rectangle or an ellipse, in either case. Anything else, an empty text included, leaves the inside empty |
+| `shapeFillOpacity` | number | 0.35 | 0 to 1 | How opaque `shapeFill` is |
+| `redactStyle` | enum | `blur` | | `blur`, `pixelate`, or `solid`. Only a redaction uses it |
+| `redactLevel` | enum | `medium` | | `light`, `medium`, or `heavy`: how strongly `blur` and `pixelate` hide. Only a redaction uses it |
+| `text` | string | `""` | | What a callout or a text box says, with `\n` for a new line, or an emoji's emoji. With nothing but white space it is not drawn. An arrow does not use it |
+| `shadow` | boolean | false | | A soft drop shadow under an emoji. Anything but `true` reads as false. Other kinds do not use it |
 | `style` | enum | `red` | | `red`, `blue`, `yellow`, `white`, or `dark` (section 6.10) |
 | `size` | enum | `medium` | | `small`, `medium`, or `large` (section 6.10) |
 | `fill` | string | `""` | | `#RRGGBB` in place of the style's fill, in either case. Anything else, an empty text included, leaves the style's |
@@ -590,7 +597,7 @@ A color with an alpha is not one of these and leaves the style's, so a box and i
 
 - its `kind` is one this section describes;
 - `start <= t < end`;
-- for a `callout` or `text`, `text` has a character in it other than white space (below);
+- for a `callout`, `text`, or `emoji`, `text` has a character in it other than white space (below);
 - it has an anchor (below), and its opacity is above 0.
 
 White space here is exactly U+0009 to U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000 to U+200B, U+2028, U+2029, U+202F, U+205F, and U+3000. A reader goes by this list and not by its platform's own idea of white space, because those differ: one of them counts U+200B and the other does not.
@@ -669,7 +676,62 @@ otherwise: the left edge when anchor.x < box.x, otherwise the right edge
 
 **Opacity and drawing.** An annotation below an opacity of 1 is put together by itself and laid on the frame that much see-through, so its parts do not show through one another (section 6.7). A renderer may let a pointer or a shaft run a pixel or more into the shape it joins, so no seam shows, and may move a box to whole pixels.
 
-Fixtures cover everything here but the measuring of text, which each case gives as `textSize`.
+**Areas: rectangle, ellipse, and redact.** These cover an area instead of pointing at a place. They follow the rules above for which are drawn, except that they have no text, and they have this area in place of an anchor:
+
+```
+c  = (clamp(x, 0, 1), clamp(y, 0, 1))
+s  = (clamp(width, 0, 1), clamp(height, 0, 1))    not drawn when either is 0
+lo = c - s / 2
+hi = c + s / 2
+
+attach frame:
+  rect    = (lo.x * W, lo.y * H, s.x * W, s.y * H)
+  opacity = 1
+
+attach screen:
+  needs a resolved screen with source.width > 0 and source.height > 0,
+  and lo.x < source.x + source.width and hi.x > source.x, and the same for y
+  rect origin = screen.rect origin + ((lo - source origin) / source size) * screen.rect size
+  rect size   = (s / source size) * screen.rect size
+  opacity     = screen.opacity
+```
+
+So a `screen` area grows and moves with a zoom, unlike the sizes of the other kinds, because it covers a part of the recording. It is drawn while any of it is in view, and is not clipped to the screen card. Everything is clipped to the canvas.
+
+A **rectangle** is an outline of width `stroke` in the fill color, centered on the edge of `rect`, with corners of `radius = min(clamp(cornerRadius, 0, 0.5) * m, rect.width / 2, rect.height / 2)`. An **ellipse** is the same outline of the ellipse inside `rect`. When `shapeFill` is `#RRGGBB`, the inside of either is first filled with it at `clamp(shapeFillOpacity, 0, 1)`; otherwise it is left empty. `textColor` is not used.
+
+A **redaction** hides what is under `rect`: everything drawn before it in this frame, from the background up to the annotations below it in the list. It has no outline.
+
+```
+level     blur sigma   pixel cell
+light     m * 0.006    m * 0.008
+medium    m * 0.012    m * 0.016
+heavy     m * 0.022    m * 0.028
+```
+
+- `blur`: a Gaussian blur with that standard deviation of the picture inside `rect`, reading no pixel outside it (its edge pixels are extended), laid over `rect`.
+- `pixelate`: `rect` divided into square cells of that side, starting at its top left. Each cell is filled with one color, the average of the picture under the part of the cell inside `rect`. A renderer may get the average from its own downscaling filter, so cells may differ a little in color between platforms.
+- `solid`: `rect` filled with the fill color. Only this one is sure to hide text: a light blur or large text can stay readable.
+
+The fixtures give each area's `rect`, its `anchor` as the center of `rect`, and `redactAmount`: the sigma for `blur`, the cell for `pixelate`, and 0 for `solid`. A rectangle and an ellipse also give `stroke`, `radius` (0 for an ellipse), `shapeFill` (in capitals, or `""`), and the clamped `shapeFillOpacity`.
+
+**Emoji.** An `emoji` draws its `text` in color, in the platform's color emoji font (Segoe UI Emoji on Windows, Apple Color Emoji on macOS), so the art differs between platforms. It has no box, does not wrap, and draws a `\n` as a new line. `style`, `fill`, and `textColor` do not change it.
+
+```
+size      emoji font
+small     m * 0.06
+medium    m * 0.09
+large     m * 0.13
+
+font     = size's emoji font * clamp(scale, 0.5, 3)
+(tw, th) = the measured size of the text at font
+textRect.x = max(0, min(anchor.x - tw / 2, W - tw))
+textRect.y = max(0, min(anchor.y - th / 2, H - th))
+```
+
+With `shadow` true it has a drop shadow: black at 45 percent, moved down by `font * 0.04`, blurred with a standard deviation of `font * 0.06`. The fixtures give `font`, `textRect`, and `shadow` for each emoji.
+
+Fixtures cover everything here but the measuring of text, which each case gives as `textSize`, and the pixels of a redaction or an emoji.
 
 ## 7. Time map
 

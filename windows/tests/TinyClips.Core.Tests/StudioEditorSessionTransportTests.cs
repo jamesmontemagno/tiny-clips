@@ -253,6 +253,42 @@ public sealed class StudioEditorSessionTransportTests : StudioEditorSessionTestB
     }
 
     [Fact]
+    public async Task StepSeconds_PausesAndMovesASecond_InsideTheRecording()
+    {
+        var session = await OpenTrimmedAsync();
+        session.TogglePlayback();
+
+        session.StepSeconds(1);
+        Assert.False(session.IsPlaying);
+        Assert.Equal(6, session.Playhead, Precision);
+
+        session.StepSeconds(-1);
+        session.StepSeconds(-1);
+        Assert.Equal(4, session.Playhead, Precision);
+
+        session.Scrub(9.5);
+        session.StepSeconds(1);
+        Assert.Equal(10, session.Playhead, Precision);
+        session.Scrub(0.5);
+        session.StepSeconds(-1);
+        Assert.Equal(0, session.Playhead, Precision);
+    }
+
+    [Fact]
+    public async Task HomeAndEnd_GoToTheEndsOfTheTrimmedVideo()
+    {
+        var session = await OpenTrimmedAsync();
+        session.TogglePlayback();
+
+        session.GoToStart();
+        Assert.False(session.IsPlaying);
+        Assert.Equal(2, session.Playhead, Precision);
+
+        session.GoToEnd();
+        Assert.Equal(8 - Frame, session.Playhead, Precision);
+    }
+
+    [Fact]
     public async Task StepAndScrub_StayInsideTheRecording()
     {
         var session = await OpenTrimmedAsync();

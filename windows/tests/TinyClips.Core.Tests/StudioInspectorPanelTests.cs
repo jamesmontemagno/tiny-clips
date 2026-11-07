@@ -157,6 +157,10 @@ public sealed class StudioInspectorPanelTests
     [InlineData(nameof(StudioGlyphs.AddArrow), '\uE72A')]
     [InlineData(nameof(StudioGlyphs.AddCallout), '\uE8BD')]
     [InlineData(nameof(StudioGlyphs.AddText), '\uE8D2')]
+    [InlineData(nameof(StudioGlyphs.AddRectangle), '\uE71A')]
+    [InlineData(nameof(StudioGlyphs.AddEllipse), '\uEA3A')]
+    [InlineData(nameof(StudioGlyphs.AddRedaction), '\uED1A')]
+    [InlineData(nameof(StudioGlyphs.AddEmoji), '\uE76E')]
     [InlineData(nameof(StudioGlyphs.BringForward), '\uE74A')]
     [InlineData(nameof(StudioGlyphs.SendBack), '\uE74B')]
     [InlineData(nameof(StudioGlyphs.ShowScene), '\uE8B2')]
@@ -183,7 +187,7 @@ public sealed class StudioInspectorPanelTests
             .ToDictionary(property => property.Name, property => (string)property.GetValue(null)!);
 
         // Every glyph there is a name for is in the list of all of them, after the rail's eleven.
-        Assert.Equal(23, named.Count);
+        Assert.Equal(27, named.Count);
         Assert.Equal(EveryPanel.Select(StudioInspectorPanels.GetGlyph), StudioGlyphs.All.Take(EveryPanel.Length));
         Assert.Equal(named.Values.Order(StringComparer.Ordinal), StudioGlyphs.All.Skip(EveryPanel.Length).Order(StringComparer.Ordinal));
 
@@ -212,7 +216,7 @@ public sealed class StudioInspectorPanelTests
     [InlineData(StudioInspectorPanel.Screen, "Screen", "Screen: corners, shadow, clicks, and crop")]
     [InlineData(StudioInspectorPanel.Camera, "Camera", "Camera: placement, appearance, and crop")]
     [InlineData(StudioInspectorPanel.Zoom, "Zoom", "Zooms")]
-    [InlineData(StudioInspectorPanel.Annotate, "Annotate", "Annotations: arrows, callouts, and text")]
+    [InlineData(StudioInspectorPanel.Annotate, "Annotate", "Annotations: arrows, callouts, text, shapes, emoji, and redaction")]
     [InlineData(StudioInspectorPanel.Cut, "Cut", "Cuts")]
     [InlineData(StudioInspectorPanel.Speed, "Speed", "Speed changes")]
     [InlineData(StudioInspectorPanel.Captions, "Captions", "Captions: import, edit, and export")]

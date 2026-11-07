@@ -81,6 +81,26 @@ public sealed partial class StudioEditorSession
         return result;
     }
 
+    /// <summary>
+    /// Copies the selected annotation, a little right and down, directly above it, and selects the
+    /// copy. Unchanged, with no index, when no annotation is selected.
+    /// </summary>
+    public StudioAnnotationEditResult DuplicateSelectedAnnotation()
+    {
+        var result = new StudioAnnotationEditResult(false, null);
+        if (SelectedAnnotationIndex is not { } index)
+        {
+            return result;
+        }
+
+        EditAndSelect(model =>
+        {
+            result = model.DuplicateAnnotation(index);
+            return result.Index is { } copy ? EditSelection.Annotation(copy) : null;
+        });
+        return result;
+    }
+
     public StudioAnnotationEditResult RemoveAnnotation(int index) => EditAnnotation(index, model => model.RemoveAnnotation(index));
 
     /// <summary>Deletes the selected annotation. Unchanged, with no index, when none is selected.</summary>
@@ -142,6 +162,36 @@ public sealed partial class StudioEditorSession
     public StudioAnnotationEditResult SetAnnotationScale(int index, double scale) =>
         EditAnnotation(index, model => model.SetAnnotationScale(index, scale));
 
+    public StudioAnnotationEditResult SetAnnotationShapeFill(int index, string color) =>
+        EditAnnotation(index, model => model.SetAnnotationShapeFill(index, color));
+
+    public StudioAnnotationEditResult SetAnnotationShapeFilled(int index, bool isFilled) =>
+        EditAnnotation(index, model => model.SetAnnotationShapeFilled(index, isFilled));
+
+    public StudioAnnotationEditResult SetAnnotationShapeFillOpacity(int index, double opacity) =>
+        EditAnnotation(index, model => model.SetAnnotationShapeFillOpacity(index, opacity));
+
+    public StudioAnnotationEditResult SetAnnotationCornerRadius(int index, double radius) =>
+        EditAnnotation(index, model => model.SetAnnotationCornerRadius(index, radius));
+
+    public StudioAnnotationEditResult SetAnnotationSize(int index, double width, double height) =>
+        EditAnnotation(index, model => model.SetAnnotationSize(index, width, height));
+
+    public StudioAnnotationEditResult SetAnnotationRedactStyle(int index, StudioRedactStyle style) =>
+        EditAnnotation(index, model => model.SetAnnotationRedactStyle(index, style));
+
+    public StudioAnnotationEditResult SetAnnotationRedactLevel(int index, StudioRedactLevel level) =>
+        EditAnnotation(index, model => model.SetAnnotationRedactLevel(index, level));
+
+    public StudioAnnotationEditResult SetAnnotationEmoji(int index, string emoji) =>
+        EditAnnotation(index, model => model.SetAnnotationEmoji(index, emoji));
+
+    public StudioAnnotationEditResult SetAnnotationSize(int index, StudioAnnotationSize size) =>
+        EditAnnotation(index, model => model.SetAnnotationSize(index, size));
+
+    public StudioAnnotationEditResult SetAnnotationShadow(int index, bool hasShadow) =>
+        EditAnnotation(index, model => model.SetAnnotationShadow(index, hasShadow));
+
     /// <summary>
     /// What is drawn at the playhead, bottom first, for the preview to let a pointer take hold of.
     /// Nothing while the video plays, when there is nothing to hold still.
@@ -163,8 +213,12 @@ public sealed partial class StudioEditorSession
                 continue;
             }
 
-            handles.Add(resolved.IsArrow
+            handles.Add(resolved.IsArea
+                ? new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, null, resolved.Stroke, resolved.Rect, resolved.Radius)
+                : resolved.IsArrow
                 ? new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, resolved.Tail, resolved.Stroke, null, 0)
+                : resolved.IsEmoji
+                ? new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, null, 0, StudioAnnotationTextMeasure.LayoutEmoji(resolved, canvasWidth, canvasHeight), 0)
                 : new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, null, 0, StudioAnnotationTextMeasure.LayoutBox(resolved, canvasWidth, canvasHeight).Box, resolved.Radius));
         }
 
@@ -183,7 +237,10 @@ public sealed partial class StudioEditorSession
         }
 
         var frame = StudioLayoutResolver.Resolve(model.Project, _events, Playhead, canvasWidth, canvasHeight);
-        if (StudioAnnotationGeometry.GetMoved(start, part, byX, byY, frame, canvasWidth, canvasHeight, drawnBoxCenter) is not { } move)
+        var moved = StudioAnnotationKinds.IsArea(start.Kind)
+            ? StudioAnnotationGeometry.GetAreaMoved(start, part, byX, byY, frame, canvasWidth, canvasHeight)
+            : StudioAnnotationGeometry.GetMoved(start, part, byX, byY, frame, canvasWidth, canvasHeight, drawnBoxCenter);
+        if (moved is not { } move)
         {
             return null;
         }

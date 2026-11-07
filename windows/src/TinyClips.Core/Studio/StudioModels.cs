@@ -152,6 +152,22 @@ public enum StudioAnnotationSize
     Large,
 }
 
+[JsonConverter(typeof(StudioRedactStyleJsonConverter))]
+public enum StudioRedactStyle
+{
+    Blur,
+    Pixelate,
+    Solid,
+}
+
+[JsonConverter(typeof(StudioRedactLevelJsonConverter))]
+public enum StudioRedactLevel
+{
+    Light,
+    Medium,
+    Heavy,
+}
+
 public sealed record StudioProject
 {
     public const int CurrentSchemaVersion = 1;
@@ -451,7 +467,7 @@ public sealed record StudioCaptionWord
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
 }
 
-/// <summary>An arrow, a callout, or a text box over the picture for a stretch of the recording.</summary>
+/// <summary>An arrow, a callout, a text box, a shape, a redaction, or an emoji over the picture for a stretch of the recording.</summary>
 public sealed record StudioAnnotation
 {
     public string Id { get; init; } = string.Empty;
@@ -481,6 +497,31 @@ public sealed record StudioAnnotation
 
     /// <summary>What <see cref="Size"/> is multiplied by.</summary>
     public double Scale { get; init; } = 1;
+
+    /// <summary>For an area (rectangle, ellipse, redact): its width as a share of the picture, centered on <see cref="X"/>.</summary>
+    public double Width { get; init; } = 0.2;
+
+    /// <summary>For an area (rectangle, ellipse, redact): its height as a share of the picture, centered on <see cref="Y"/>.</summary>
+    public double Height { get; init; } = 0.15;
+
+    /// <summary>For a rectangle: the rounding of its corners as a share of the canvas's short side.</summary>
+    public double CornerRadius { get; init; }
+
+    /// <summary>For a rectangle or an ellipse: <c>#RRGGBB</c> to fill the inside with. Anything else leaves it empty.</summary>
+    public string ShapeFill { get; init; } = string.Empty;
+
+    /// <summary>How opaque <see cref="ShapeFill"/> is.</summary>
+    public double ShapeFillOpacity { get; init; } = 0.35;
+
+    /// <summary>For a redaction: how what is under it is hidden.</summary>
+    public StudioRedactStyle RedactStyle { get; init; } = StudioRedactStyle.Blur;
+
+    /// <summary>For a redaction: how strongly a blur or a pixelation hides.</summary>
+    public StudioRedactLevel RedactLevel { get; init; } = StudioRedactLevel.Medium;
+
+    /// <summary>For an emoji: whether a soft drop shadow is drawn under it. Anything but JSON <c>true</c> reads as false.</summary>
+    [JsonConverter(typeof(StudioTrueOnlyBoolJsonConverter))]
+    public bool Shadow { get; init; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];

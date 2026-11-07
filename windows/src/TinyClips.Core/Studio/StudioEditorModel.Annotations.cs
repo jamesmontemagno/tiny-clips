@@ -7,7 +7,7 @@ namespace TinyClips.Core.Studio;
 /// </summary>
 public readonly record struct StudioAnnotationEditResult(bool Changed, int? Index);
 
-// Annotations: arrows, callouts and text over the picture. They are stored in source time, like
+// Annotations: arrows, callouts, text, rectangles, ellipses, redactions and emoji over the picture. They are stored in source time, like
 // zooms, and may overlap. The list is the order they are drawn in, bottom first, so an edit leaves
 // an annotation at its place in the list and only changing its layer moves it there.
 public sealed partial class StudioEditorModel
@@ -18,8 +18,23 @@ public sealed partial class StudioEditorModel
     /// <summary>How long an annotation lasts when it is added, in seconds, where there is room for it.</summary>
     public const double NewAnnotationDuration = 3;
 
+    /// <summary>How wide a rectangle, an ellipse or a redaction is when it is added, as a share of what is in view.</summary>
+    public const double NewAreaWidth = 0.2;
+
+    /// <summary>How tall a rectangle, an ellipse or a redaction is when it is added, as a share of what is in view.</summary>
+    public const double NewAreaHeight = 0.15;
+
+    /// <summary>The smallest width or height the editor gives an area, as a share of the picture.</summary>
+    public const double MinimumAreaSize = 0.01;
+
     /// <summary>What a callout or a text box says when it is added.</summary>
     public const string NewAnnotationText = "Your text";
+
+    /// <summary>The emoji an emoji annotation has when it is added: thumbs up.</summary>
+    public const string NewAnnotationEmoji = "\U0001F44D";
+
+    /// <summary>How far a copy of an annotation is moved right and down from the original, in the numbers of the project.</summary>
+    public const double DuplicateNudge = 0.02;
 
     // The annotation whose text was last typed in, for as long as nothing else has been edited:
     // what is typed next is part of the same undo step.
@@ -53,6 +68,12 @@ public sealed partial class StudioEditorModel
             ? StudioAnnotationAttach.Screen
             : StudioAnnotationAttach.Frame;
         var point = StudioAnnotationGeometry.GetCenterInView(attach, frame);
+        var isArea = StudioAnnotationKinds.IsArea(kind);
+
+        // An area is the same size on the screen however far it is zoomed in.
+        var (viewWidth, viewHeight) = attach == StudioAnnotationAttach.Screen && frame.Screen is { } screen
+            ? (screen.Source.Width, screen.Source.Height)
+            : (1.0, 1.0);
         var annotation = new StudioAnnotation
         {
             Id = Guid.NewGuid().ToString("D"),
@@ -62,16 +83,46 @@ public sealed partial class StudioEditorModel
             End = end,
             X = point.X,
             Y = point.Y,
-            Text = kind == StudioAnnotationKinds.Arrow ? string.Empty : NewAnnotationText,
+            Text = kind == StudioAnnotationKinds.Emoji ? NewAnnotationEmoji : kind == StudioAnnotationKinds.Arrow || isArea ? string.Empty : NewAnnotationText,
+            Width = NewAreaWidth * viewWidth,
+            Height = NewAreaHeight * viewHeight,
             Style = kind switch
             {
-                StudioAnnotationKinds.Callout => StudioAnnotationStyle.Dark,
+                StudioAnnotationKinds.Callout or StudioAnnotationKinds.Redact => StudioAnnotationStyle.Dark,
                 StudioAnnotationKinds.Text => StudioAnnotationStyle.White,
                 _ => StudioAnnotationStyle.Red,
             },
         };
         Mutate(project => WithAnnotations(project, [.. project.Overlays.Annotations, annotation]));
         return new StudioAnnotationEditResult(true, Project.Overlays.Annotations.Length - 1);
+    }
+
+    /// <summary>
+    /// Copies an annotation, with a new id and the same timing, moved <see cref="DuplicateNudge"/>
+    /// right and down, directly above the original in the list.
+    /// </summary>
+    public StudioAnnotationEditResult DuplicateAnnotation(int index)
+    {
+        if (!HasAnnotation(index))
+        {
+            return new StudioAnnotationEditResult(false, null);
+        }
+
+        var original = Project.Overlays.Annotations[index];
+        var copy = original with
+        {
+            Id = Guid.NewGuid().ToString("D"),
+            X = Math.Clamp(original.X + DuplicateNudge, 0, 1),
+            Y = Math.Clamp(original.Y + DuplicateNudge, 0, 1),
+            ExtensionData = new Dictionary<string, System.Text.Json.JsonElement>(original.ExtensionData),
+        };
+        Mutate(project =>
+        {
+            var list = project.Overlays.Annotations.ToList();
+            list.Insert(index + 1, copy);
+            return WithAnnotations(project, [.. list]);
+        });
+        return new StudioAnnotationEditResult(true, index + 1);
     }
 
     /// <summary>Deletes an annotation.</summary>
@@ -166,6 +217,64 @@ public sealed partial class StudioEditorModel
     public StudioAnnotationEditResult SetAnnotationTextColor(int index, string color) =>
         SetAnnotationColor(index, 1, color, static (annotation, value) => annotation with { TextColor = value });
 
+    /// <summary>The color inside a rectangle or an ellipse, as <c>#RRGGBB</c>, in the same way. It fills the inside if it was empty.</summary>
+    public StudioAnnotationEditResult SetAnnotationShapeFill(int index, string color) =>
+        SetAnnotationColor(index, 2, color, static (annotation, value) => annotation with { ShapeFill = value });
+
+    /// <summary>Fills the inside of a rectangle or an ellipse in the color of its outline, or empties it.</summary>
+    public StudioAnnotationEditResult SetAnnotationShapeFilled(int index, bool isFilled) =>
+        EditAnnotation(index, annotation => isFilled
+            ? StudioAnnotationGeometry.GetCustomColor(annotation.ShapeFill) is null
+                ? annotation with { ShapeFill = StudioAnnotationGeometry.GetEffectiveColors(annotation).Fill }
+                : annotation
+            : annotation with { ShapeFill = string.Empty });
+
+    /// <summary>How opaque the inside of a rectangle or an ellipse is.</summary>
+    public StudioAnnotationEditResult SetAnnotationShapeFillOpacity(int index, double opacity) =>
+        !double.IsFinite(opacity) ? AnnotationUnchanged(index) : EditAnnotation(index, annotation => annotation with
+        {
+            ShapeFillOpacity = Math.Clamp(opacity, 0, 1),
+        });
+
+    /// <summary>How round the corners of a rectangle are, as a share of the canvas's short side.</summary>
+    public StudioAnnotationEditResult SetAnnotationCornerRadius(int index, double radius) =>
+        !double.IsFinite(radius) ? AnnotationUnchanged(index) : EditAnnotation(index, annotation => annotation with
+        {
+            CornerRadius = Math.Clamp(radius, 0, 0.5),
+        });
+
+    /// <summary>The size of a rectangle, an ellipse or a redaction, as shares of the picture, around its middle.</summary>
+    public StudioAnnotationEditResult SetAnnotationSize(int index, double width, double height) =>
+        !double.IsFinite(width) || !double.IsFinite(height) ? AnnotationUnchanged(index) : EditAnnotation(index, annotation => annotation with
+        {
+            Width = Math.Clamp(width, MinimumAreaSize, 1),
+            Height = Math.Clamp(height, MinimumAreaSize, 1),
+        });
+
+    /// <summary>Sets an emoji's emoji, as one undo step of its own.</summary>
+    public StudioAnnotationEditResult SetAnnotationEmoji(int index, string emoji)
+    {
+        ArgumentNullException.ThrowIfNull(emoji);
+        EndAnnotationTyping();
+        return StudioAnnotationGeometry.IsBlank(emoji) ? AnnotationUnchanged(index) : EditAnnotation(index, annotation => annotation with { Text = emoji });
+    }
+
+    /// <summary>Small, medium, or large: the size of an annotation before its scale.</summary>
+    public StudioAnnotationEditResult SetAnnotationSize(int index, StudioAnnotationSize size) =>
+        !Enum.IsDefined(size) ? AnnotationUnchanged(index) : EditAnnotation(index, annotation => annotation with { Size = size });
+
+    /// <summary>Whether an emoji has a drop shadow under it.</summary>
+    public StudioAnnotationEditResult SetAnnotationShadow(int index, bool hasShadow) =>
+        EditAnnotation(index, annotation => annotation with { Shadow = hasShadow });
+
+    /// <summary>How a redaction hides what is under it.</summary>
+    public StudioAnnotationEditResult SetAnnotationRedactStyle(int index, StudioRedactStyle style) =>
+        EditAnnotation(index, annotation => annotation with { RedactStyle = style });
+
+    /// <summary>How strongly a blurred or pixelated redaction hides what is under it.</summary>
+    public StudioAnnotationEditResult SetAnnotationRedactLevel(int index, StudioRedactLevel level) =>
+        EditAnnotation(index, annotation => annotation with { RedactLevel = level });
+
     private StudioAnnotationEditResult SetAnnotationColor(int index, int part, string color, Func<StudioAnnotation, string, StudioAnnotation> apply)
     {
         if (!HasAnnotation(index) || StudioAnnotationGeometry.GetCustomColor(color) is not { } value)
@@ -175,13 +284,19 @@ public sealed partial class StudioEditorModel
 
         // The color it already has: a picker that says what it shows must not turn a style into a custom color.
         var effective = StudioAnnotationGeometry.GetEffectiveColors(Project.Overlays.Annotations[index]);
-        if (value == (part == 0 ? effective.Fill : effective.Text))
+        var current = part switch
+        {
+            0 => effective.Fill,
+            1 => effective.Text,
+            _ => StudioAnnotationGeometry.GetCustomColor(Project.Overlays.Annotations[index].ShapeFill),
+        };
+        if (value == current)
         {
             return AnnotationUnchanged(index);
         }
 
         var after = apply(Project.Overlays.Annotations[index], value);
-        var marker = (index * 2) + part;
+        var marker = (index * 3) + part;
         StudioProject Changed(StudioProject project)
         {
             var list = (StudioAnnotation[])project.Overlays.Annotations.Clone();
@@ -214,7 +329,15 @@ public sealed partial class StudioEditorModel
 
     /// <summary>Where a drag on the preview leaves an annotation.</summary>
     public StudioAnnotationEditResult MoveAnnotation(int index, StudioAnnotationMove move) =>
-        EditAnnotation(index, annotation => annotation with { X = move.X, Y = move.Y, OffsetX = move.OffsetX, OffsetY = move.OffsetY });
+        EditAnnotation(index, annotation => annotation with
+        {
+            X = move.X,
+            Y = move.Y,
+            OffsetX = move.OffsetX,
+            OffsetY = move.OffsetY,
+            Width = move.Width ?? annotation.Width,
+            Height = move.Height ?? annotation.Height,
+        });
 
     /// <summary>
     /// What an annotation is fixed to. It stays where it is in the picture at <paramref name="sourceTime"/>
@@ -226,6 +349,12 @@ public sealed partial class StudioEditorModel
         var frame = StudioLayoutResolver.Resolve(Project, events, sourceTime, canvas.Width, canvas.Height);
         return EditAnnotation(index, annotation =>
         {
+            if (StudioAnnotationKinds.IsArea(annotation.Kind))
+            {
+                var area = StudioAnnotationGeometry.GetAreaWhenAttached(annotation, attach, frame, canvas.Width, canvas.Height);
+                return annotation with { Attach = attach, X = area.X, Y = area.Y, Width = area.Width, Height = area.Height };
+            }
+
             var point = StudioAnnotationGeometry.GetPointWhenAttached(annotation, attach, frame, canvas.Width, canvas.Height);
             return annotation with { Attach = attach, X = point.X, Y = point.Y };
         });

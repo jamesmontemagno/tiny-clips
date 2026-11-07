@@ -191,4 +191,215 @@ internal static partial class RendererChecks
         context.Expect(mixed.Distance(wanted) <= 4, $"a screen annotation at opacity {opacity:0.###}: {mixed}, expected {wanted}");
         ExpectColor(context, fixedBox, x, sampleY, "#FFFFFF", "a frame annotation stays whole");
     }
+
+    /// <summary>
+    /// A rectangle's fill and outline, and redactions over it: a blur smooths the hard edge it
+    /// covers, a pixelation makes square cells of one color each, a solid one is its color, and
+    /// none of them changes anything outside its area.
+    /// </summary>
+    private static void AnnotationAreas(CheckContext context, RenderBench bench)
+    {
+        var baseProject = bench.Base(StudioLayout.Screen);
+
+        // A white rectangle with a blue outline whose right edge, at x = 960, runs through the redactions.
+        var rectangle = new StudioAnnotation
+        {
+            Kind = StudioAnnotationKinds.Rectangle,
+            Attach = StudioAnnotationAttach.Frame,
+            Start = 0,
+            End = 9,
+            X = 0.4,
+            Y = 0.5,
+            Width = 0.2,
+            Height = 0.3,
+            ShapeFill = "#FFFFFF",
+            ShapeFillOpacity = 1,
+            Style = StudioAnnotationStyle.Blue,
+        };
+        var under = WithAnnotations(baseProject, rectangle);
+        var plain = bench.Render(under, time: 1);
+        ExpectColor(context, plain, 576, 540, "#0A84FF", "a rectangle's outline");
+        ExpectColor(context, plain, 660, 540, "#FFFFFF", "a rectangle's fill");
+
+        var redaction = new StudioAnnotation
+        {
+            Kind = StudioAnnotationKinds.Redact,
+            Attach = StudioAnnotationAttach.Frame,
+            Start = 0,
+            End = 9,
+            X = 0.5,
+            Y = 0.5,
+            Width = 0.2,
+            Height = 0.2,
+            RedactLevel = StudioRedactLevel.Heavy,
+        };
+        const int Left = 768, Top = 432, Right = 1152, Bottom = 648;
+        var plainJump = LargestStep(plain, Left + 4, Right - 4, 540);
+        context.Expect(plainJump >= 60, $"the edge under the redactions is not sharp enough to check: {plainJump:0.#}");
+
+        var blurred = bench.Render(WithAnnotations(baseProject, rectangle, redaction), time: 1);
+        var blurredJump = LargestStep(blurred, Left + 4, Right - 4, 540);
+        context.Expect(blurredJump < plainJump * 0.4, $"a blur left the edge sharp: a step of {blurredJump:0.#} against {plainJump:0.#}");
+
+        var pixelated = bench.Render(WithAnnotations(baseProject, rectangle, redaction with { RedactStyle = StudioRedactStyle.Pixelate }), time: 1);
+        var cell = 1080 * 0.028;
+        var changed = false;
+        for (var row = 0; Top + ((row + 1) * cell) <= Bottom; row++)
+        {
+            for (var column = 0; Left + ((column + 1) * cell) <= Right; column++)
+            {
+                var (x0, y0) = (Left + (column * cell) + 3, Top + (row * cell) + 3);
+                var (x1, y1) = (Left + ((column + 1) * cell) - 4, Top + ((row + 1) * cell) - 4);
+                var corner = pixelated.Pixel((int)x0, (int)y0);
+                context.Expect(corner.Distance(pixelated.Pixel((int)x1, (int)y1)) <= 3, $"a pixelation's cell at ({x0:0}, {y0:0}) is not one color");
+                changed |= corner.Distance(plain.Pixel((int)x0, (int)y0)) > 8;
+            }
+        }
+
+        context.Expect(changed, "a pixelation changed nothing");
+
+        var solid = bench.Render(WithAnnotations(baseProject, rectangle, redaction with { RedactStyle = StudioRedactStyle.Solid }), time: 1);
+        ExpectColor(context, solid, 960, 540, StudioAnnotationGeometry.GetEffectiveColors(redaction).Fill, "a solid redaction");
+
+        foreach (var (picture, what) in new[] { (blurred, "a blur"), (pixelated, "a pixelation"), (solid, "a solid redaction") })
+        {
+            ExpectUnchanged(context, picture, plain, Left - 3, 540, $"left of {what}");
+            ExpectUnchanged(context, picture, plain, Right + 3, 540, $"right of {what}");
+            ExpectUnchanged(context, picture, plain, 960, Top - 3, $"above {what}");
+            ExpectUnchanged(context, picture, plain, 960, Bottom + 3, $"below {what}");
+        }
+    }
+
+    private static double LargestStep(Picture picture, int from, int to, int y)
+    {
+        var largest = 0.0;
+        for (var x = from; x < to; x++)
+        {
+            largest = Math.Max(largest, picture.Pixel(x, y).Distance(picture.Pixel(x + 1, y)));
+        }
+
+        return largest;
+    }
+
+    /// <summary>
+    /// An emoji is drawn in its own colors, not as a gray glyph; its shadow darkens what is just
+    /// below it and nothing else gets lighter; and an emoji of white space draws nothing.
+    /// </summary>
+    private static void AnnotationEmoji(CheckContext context, RenderBench bench)
+    {
+        var baseProject = bench.Base(StudioLayout.Screen);
+        var emoji = new StudioAnnotation
+        {
+            Kind = StudioAnnotationKinds.Emoji,
+            Attach = StudioAnnotationAttach.Frame,
+            Start = 0,
+            End = 9,
+            X = 0.5,
+            Y = 0.5,
+            Text = "👍",
+            Size = StudioAnnotationSize.Large,
+        };
+
+        // Large: 13% of the shorter side, about 140 pixels, centered on (960, 540).
+        var font = 1080 * 0.13;
+        var (left, top, right, bottom) = ((int)(960 - font), (int)(540 - font), (int)(960 + font), (int)(540 + font));
+        var plain = bench.Render(baseProject, time: 1);
+        var drawn = bench.Render(WithAnnotations(baseProject, emoji), time: 1);
+        var shadowed = bench.Render(WithAnnotations(baseProject, emoji with { Shadow = true }), time: 1);
+
+        static double Chroma(Rgb color) => Math.Max(color.R, Math.Max(color.G, color.B)) - Math.Min(color.R, Math.Min(color.G, color.B));
+        static double Sum(Rgb color) => color.R + color.G + color.B;
+
+        var colorful = 0;
+        var darker = 0;
+        var darkerBelow = 0;
+        var lighter = 0;
+        for (var y = top; y < bottom; y++)
+        {
+            for (var x = left; x < right; x++)
+            {
+                var (was, now, withShadow) = (plain.Pixel(x, y), drawn.Pixel(x, y), shadowed.Pixel(x, y));
+                if (Chroma(now) > 80 && now.Distance(was) > 40)
+                {
+                    colorful++;
+                }
+
+                var change = Sum(withShadow) - Sum(now);
+                if (change < -15)
+                {
+                    darker++;
+                    darkerBelow += y > 540 ? 1 : 0;
+                }
+                else if (change > 15)
+                {
+                    lighter++;
+                }
+            }
+        }
+
+        context.Expect(colorful > 2000, $"the emoji is not drawn in color: {colorful} colorful pixels changed");
+        context.Expect(darker > 500, $"the shadow darkened only {darker} pixels");
+        context.Expect(darkerBelow > darker / 2, $"the shadow is not below the emoji: {darkerBelow} of {darker} darker pixels are in the lower half");
+        context.Expect(lighter == 0, $"the shadow made {lighter} pixels lighter");
+        ExpectUnchanged(context, drawn, plain, left - 3, 540, "left of the emoji");
+        ExpectUnchanged(context, drawn, plain, right + 3, 540, "right of the emoji");
+
+        var blank = bench.Render(WithAnnotations(baseProject, emoji with { Text = " \n\t" }), time: 1);
+        ExpectUnchanged(context, blank, plain, 960, 540, "an emoji of white space");
+
+        // A plain emoji and two with shadows in one frame, also while they fade in: once broke the
+        // preview with D2DERR_LAYER_ALREADY_IN_USE. The middle one is as it is by itself.
+        var several = WithAnnotations(
+            baseProject,
+            emoji with { X = 0.2 },
+            emoji with { Shadow = true },
+            emoji with { X = 0.8, Shadow = true, Text = "🔥" });
+        bench.Render(several, time: 0.1);
+        var together = bench.Render(several, time: 1);
+        var differing = 0;
+        for (var y = top; y < bottom; y++)
+        {
+            for (var x = left; x < right; x++)
+            {
+                differing += together.Pixel(x, y).Distance(shadowed.Pixel(x, y)) > 10 ? 1 : 0;
+            }
+        }
+
+        context.Expect(differing == 0, $"an emoji and its shadow among others differ from it alone in {differing} pixels");
+    }
+
+    private static void AnnotationManyEmoji(CheckContext context, RenderBench bench)
+    {
+        var baseProject = bench.Base(StudioLayout.Screen);
+        var first = new StudioAnnotation
+        {
+            Kind = StudioAnnotationKinds.Emoji,
+            Attach = StudioAnnotationAttach.Frame,
+            Start = 0,
+            End = 9,
+            X = 0.2,
+            Y = 0.5,
+            Text = "👍0",
+            Size = StudioAnnotationSize.Large,
+            Shadow = true,
+        };
+        var more = Enumerable.Range(1, 32).Select(index => first with { X = 0.8, Text = $"👍{index}" });
+        var alone = bench.Render(WithAnnotations(baseProject, first), time: 1);
+        var project = WithAnnotations(baseProject, [first, .. more]);
+        var together = bench.Render(project, time: 1);
+        var again = bench.Render(project, time: 1);
+        var differing = 0;
+        var differingAgain = 0;
+        for (var y = 330; y < 750; y++)
+        {
+            for (var x = 170; x < 600; x++)
+            {
+                var reference = alone.Pixel(x, y);
+                differing += together.Pixel(x, y).Distance(reference) > 10 ? 1 : 0;
+                differingAgain += again.Pixel(x, y).Distance(reference) > 10 ? 1 : 0;
+            }
+        }
+
+        context.Expect(differing == 0 && differingAgain == 0, $"the first of 33 shadowed emoji differs from it alone in {differing} pixels, then {differingAgain} pixels");
+    }
 }

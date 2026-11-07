@@ -1052,6 +1052,45 @@ public sealed partial class StudioEditorSession
         RaiseChanged(StudioEditorChanges.Playback);
     }
 
+    /// <summary>Pauses and moves the playhead whole seconds back (negative) or on, within the video.</summary>
+    public void StepSeconds(int count)
+    {
+        if (!IsEditable)
+        {
+            return;
+        }
+
+        PausePreview();
+        Seek(Playhead + count);
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    /// <summary>Pauses and moves the playhead to the first picture of the trimmed video.</summary>
+    public void GoToStart()
+    {
+        if (!IsEditable || Model is not { } model)
+        {
+            return;
+        }
+
+        PausePreview();
+        Seek(model.PlaybackStart);
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    /// <summary>Pauses and moves the playhead to the last picture of the trimmed video.</summary>
+    public void GoToEnd()
+    {
+        if (!IsEditable || Model is not { } model)
+        {
+            return;
+        }
+
+        PausePreview();
+        Seek(Math.Max(model.PlaybackStart, model.PlaybackEnd - model.FrameDuration));
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
     /// <summary>Pauses and moves the playhead to a source time, for dragging along the timeline.</summary>
     public void Scrub(double sourceTime)
     {

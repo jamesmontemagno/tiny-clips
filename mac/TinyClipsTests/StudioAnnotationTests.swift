@@ -45,6 +45,32 @@ final class StudioAnnotationTests: XCTestCase {
             XCTAssertEqual(item.textColor, expected.textColor, "\(name) textColor")
             near(item.opacity, expected.opacity, "\(name) opacity")
             near(item.anchor, expected.anchor, "\(name) anchor")
+            if item.kind == StudioAnnotationKind.emoji {
+                near(item.font, expected.font ?? .nan, "\(name) font")
+                let textRect = StudioAnnotationGeometry.layoutEmoji(
+                    item,
+                    textWidth: testCase.textSize.width,
+                    textHeight: testCase.textSize.height,
+                    canvasWidth: width,
+                    canvasHeight: height
+                )
+                near(textRect, expected.textRect, "\(name) textRect")
+                XCTAssertEqual(item.shadow, expected.shadow, "\(name) shadow")
+                continue
+            }
+            if item.isArea {
+                near(item.rect, expected.rect, "\(name) rect")
+                if item.kind == StudioAnnotationKind.redact {
+                    XCTAssertEqual(item.redactStyle.rawValue, expected.redactStyle, "\(name) redactStyle")
+                    near(item.redactAmount, expected.redactAmount ?? .nan, "\(name) redactAmount")
+                } else {
+                    near(item.stroke, expected.stroke ?? .nan, "\(name) stroke")
+                    near(item.radius, expected.radius ?? .nan, "\(name) radius")
+                    XCTAssertEqual(item.shapeFill, expected.shapeFill, "\(name) shapeFill")
+                    near(item.shapeFillOpacity, expected.shapeFillOpacity ?? .nan, "\(name) shapeFillOpacity")
+                }
+                continue
+            }
             if item.isArrow {
                 near(item.stroke, expected.stroke ?? .nan, "\(name) stroke")
                 near(item.halfWidth, expected.halfWidth ?? .nan, "\(name) halfWidth")
@@ -467,6 +493,253 @@ final class StudioAnnotationTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.annotationStepText(index: 1, count: 3, annotation: callout), "Annotation 2 of 3, Callout: Billing lives here, 12.0 to 16.5 seconds")
     }
 
+    // MARK: Areas
+
+    func testAreaPropertiesRoundTripAndTakeTheirDefaults() throws {
+        let project = try project(overlays: #"""
+        { "annotations": [
+          { "kind": "rectangle", "width": 0.4, "height": 0.3, "cornerRadius": 0.05, "shapeFill": "#112233", "shapeFillOpacity": 0.6 },
+          { "kind": "redact", "redactStyle": "pixelate", "redactLevel": "heavy" },
+          { "kind": "redact", "redactStyle": "smudge", "redactLevel": "loud" },
+          { "kind": "ellipse" }
+        ] }
+        """#)
+        let list = project.overlays.annotations
+        XCTAssertEqual([list[0].width, list[0].height, list[0].cornerRadius, list[0].shapeFillOpacity], [0.4, 0.3, 0.05, 0.6])
+        XCTAssertEqual(list[0].shapeFill, "#112233")
+        XCTAssertEqual(list[1].redactStyle, .pixelate)
+        XCTAssertEqual(list[1].redactLevel, .heavy)
+        XCTAssertEqual(list[2].redactStyle, .blur, "An unknown style reads as the default")
+        XCTAssertEqual(list[2].redactLevel, .medium, "An unknown level reads as the default")
+        XCTAssertEqual([list[3].width, list[3].height, list[3].cornerRadius, list[3].shapeFillOpacity], [0.2, 0.15, 0, 0.35])
+        XCTAssertEqual(list[3].shapeFill, "")
+        XCTAssertTrue(list.allSatisfy { $0.extra.isEmpty }, "The new properties are not kept as unknown ones")
+
+        let again = try StudioJSON.makeDecoder().decode(StudioProject.self, from: StudioJSON.makeEncoder().encode(project))
+        XCTAssertEqual(again.overlays.annotations, list)
+    }
+
+    func testAddingAnAreaFillsAShareOfWhatIsInViewAndUndoes() {
+        let zoom = StudioZoom(start: 5, end: 15, scale: 2, focus: StudioZoomFocus(x: 0.25, y: 0.25), easeIn: 0, easeOut: 0)
+        var editor = model(zooms: [zoom])
+        for kind in [StudioAnnotationKind.rectangle, StudioAnnotationKind.ellipse, StudioAnnotationKind.redact] {
+            XCTAssertTrue(editor.addAnnotation(kind: kind, at: 1, events: nil).changed, kind)
+        }
+        XCTAssertTrue(editor.addAnnotation(kind: StudioAnnotationKind.rectangle, at: 10, events: nil).changed)
+
+        let list = editor.project.overlays.annotations
+        XCTAssertEqual(list.map(\.kind), [StudioAnnotationKind.rectangle, StudioAnnotationKind.ellipse, StudioAnnotationKind.redact, StudioAnnotationKind.rectangle])
+        for annotation in list {
+            XCTAssertEqual(annotation.attach, .screen)
+            XCTAssertEqual(annotation.text, "")
+            XCTAssertEqual(annotation.shapeFill, "")
+            XCTAssertEqual(annotation.cornerRadius, 0)
+        }
+        XCTAssertEqual(list[0].style, .red)
+        XCTAssertEqual(list[1].style, .red)
+        XCTAssertEqual(list[2].style, .dark)
+        XCTAssertEqual(list[2].redactStyle, .blur)
+        XCTAssertEqual(list[2].redactLevel, .medium)
+        XCTAssertEqual(list[0].start, 1)
+        XCTAssertEqual(list[0].end, 4)
+        XCTAssertEqual(list[0].width, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(list[0].height, 0.15, accuracy: 1e-9)
+        XCTAssertEqual(list[3].x, 0.25, accuracy: 1e-9, "In the middle of the zoom")
+        XCTAssertEqual(list[3].width, 0.1, accuracy: 1e-9, "A fifth of the half that the zoom shows")
+        XCTAssertEqual(list[3].height, 0.075, accuracy: 1e-9)
+
+        for count in [3, 2, 1, 0] {
+            editor.undo()
+            XCTAssertEqual(editor.project.overlays.annotations.count, count)
+        }
+    }
+
+    func testTheAreaEditsStayInRangeAndAreUndone() {
+        var editor = model([StudioAnnotation(id: "a", kind: StudioAnnotationKind.rectangle, start: 0, end: 5)])
+        XCTAssertTrue(editor.setAnnotationSize(at: 0, width: 3, height: 0).changed)
+        XCTAssertEqual(editor.project.overlays.annotations[0].width, 1)
+        XCTAssertEqual(editor.project.overlays.annotations[0].height, StudioEditorModel.minimumAreaSize)
+        XCTAssertTrue(editor.setAnnotationCornerRadius(at: 0, to: 2).changed)
+        XCTAssertEqual(editor.project.overlays.annotations[0].cornerRadius, 0.5)
+        XCTAssertTrue(editor.setAnnotationShapeFillOpacity(at: 0, to: -1).changed)
+        XCTAssertEqual(editor.project.overlays.annotations[0].shapeFillOpacity, 0)
+
+        // The fill's colors are one undo step, as the other colors are, and taking it away another.
+        XCTAssertTrue(editor.setAnnotationShapeFill(at: 0, to: "#111111").changed)
+        XCTAssertTrue(editor.setAnnotationShapeFill(at: 0, to: "#222222").changed)
+        XCTAssertFalse(editor.setAnnotationShapeFill(at: 0, to: "#222222").changed)
+        XCTAssertTrue(editor.setAnnotationShapeFill(at: 0, to: "").changed)
+        XCTAssertEqual(editor.project.overlays.annotations[0].shapeFill, "")
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations[0].shapeFill, "#222222")
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations[0].shapeFill, "")
+
+        var redaction = model([StudioAnnotation(id: "b", kind: StudioAnnotationKind.redact, start: 0, end: 5)])
+        XCTAssertTrue(redaction.setAnnotationRedactStyle(at: 0, to: .solid).changed)
+        XCTAssertTrue(redaction.setAnnotationRedactLevel(at: 0, to: .light).changed)
+        redaction.undo()
+        XCTAssertEqual(redaction.project.overlays.annotations[0].redactLevel, .medium)
+        XCTAssertEqual(redaction.project.overlays.annotations[0].redactStyle, .solid)
+    }
+
+    func testDraggingAnAreaMovesItAndACornerResizesIt() throws {
+        let area = StudioAnnotation(kind: StudioAnnotationKind.rectangle, attach: .frame, x: 0.3, y: 0.3, width: 0.2, height: 0.2)
+        let whole = try XCTUnwrap(moved(area, .area, 100, 50))
+        XCTAssertEqual(whole.x, 0.4, accuracy: 1e-9)
+        XCTAssertEqual(whole.y, 0.4, accuracy: 1e-9)
+        XCTAssertEqual(whole.width ?? .nan, 0.2, accuracy: 1e-9)
+
+        // The bottom right corner from (400, 200) to (500, 300): the top left stays at (200, 100).
+        let corner = try XCTUnwrap(moved(area, .bottomRight, 100, 100))
+        XCTAssertEqual(corner.width ?? .nan, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(corner.height ?? .nan, 0.4, accuracy: 1e-9)
+        XCTAssertEqual(corner.x, 0.35, accuracy: 1e-9)
+        XCTAssertEqual(corner.y, 0.4, accuracy: 1e-9)
+
+        // Dragged past the opposite corner, it keeps the smallest size.
+        let squashed = try XCTUnwrap(moved(area, .topLeft, 1000, 1000))
+        XCTAssertEqual(squashed.width ?? .nan, 0.01, accuracy: 1e-9, "Two hundredths of the short side of 500")
+        XCTAssertEqual(squashed.x + (squashed.width ?? 0) / 2, 0.4, accuracy: 1e-9, "The right edge stays")
+
+        var editor = model([StudioAnnotation(id: "a", kind: StudioAnnotationKind.rectangle, start: 0, end: 5)])
+        XCTAssertTrue(editor.moveAnnotation(at: 0, to: corner).changed)
+        XCTAssertEqual(editor.project.overlays.annotations[0].width, corner.width)
+    }
+
+    func testAScreenAreaIsDrawnWhileAnyOfItIsInView() throws {
+        let frame = wholeCanvas(source: StudioRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5))
+        func resolved(_ x: Double) -> StudioResolvedAnnotation? {
+            StudioAnnotationGeometry.resolve(
+                StudioAnnotation(kind: StudioAnnotationKind.ellipse, start: 0, end: 5, x: x, y: 0.5, width: 0.1, height: 0.1),
+                index: 0,
+                frame: frame,
+                time: 1,
+                canvasWidth: 1000,
+                canvasHeight: 500
+            )
+        }
+        let inside = try XCTUnwrap(resolved(0.5))
+        near(inside.rect, StudioRect(x: 400, y: 200, width: 200, height: 100), "rect")
+        XCTAssertNotNil(resolved(0.21), "Its right edge is in view")
+        XCTAssertNil(resolved(0.2), "Its right edge only touches the view")
+    }
+
+    func testChangingWhatAnAreaIsFixedToKeepsItWhereItIsInThePicture() {
+        let zoom = StudioZoom(start: 5, end: 15, scale: 2, focus: StudioZoomFocus(x: 0.5, y: 0.5), easeIn: 0, easeOut: 0)
+        var editor = model([StudioAnnotation(kind: StudioAnnotationKind.rectangle, end: 20, x: 0.5, y: 0.5, width: 0.2, height: 0.1)], zooms: [zoom])
+
+        _ = editor.setAnnotationAttach(at: 0, to: .frame, time: 10, events: nil)
+        var annotation = editor.project.overlays.annotations[0]
+        XCTAssertEqual(annotation.attach, .frame)
+        XCTAssertEqual(annotation.width, 0.4, accuracy: 1e-9, "Twice as wide in a zoom of two")
+        XCTAssertEqual(annotation.height, 0.2, accuracy: 1e-9)
+        _ = editor.setAnnotationAttach(at: 0, to: .screen, time: 10, events: nil)
+        annotation = editor.project.overlays.annotations[0]
+        XCTAssertEqual(annotation.width, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(annotation.x, 0.5, accuracy: 1e-9)
+    }
+
+    func testTheWordsNameTheAreas() {
+        XCTAssertEqual(StudioEditorModel.annotationLabel(StudioAnnotation(kind: StudioAnnotationKind.rectangle, text: "ignored")), "Rectangle")
+        XCTAssertEqual(StudioEditorModel.annotationLabel(StudioAnnotation(kind: StudioAnnotationKind.ellipse)), "Ellipse")
+        XCTAssertEqual(StudioEditorModel.annotationLabel(StudioAnnotation(kind: StudioAnnotationKind.redact)), "Redaction")
+    }
+
+    // MARK: Emoji and duplicates
+
+    func testAnEmojisShadowIsOnlyTrueAndRoundTripsWithWhatItDoesNotKnow() throws {
+        let project = try project(overlays: #"""
+        { "annotations": [
+          { "id": "a", "kind": "emoji", "text": "🎉", "shadow": true, "size": "large", "later": [1, 2] },
+          { "kind": "emoji", "text": "🔥", "shadow": "yes" },
+          { "kind": "emoji", "text": "👀", "shadow": 1 },
+          { "kind": "emoji", "text": "🚀" }
+        ] }
+        """#)
+        let list = project.overlays.annotations
+        XCTAssertEqual(list.map(\.shadow), [true, false, false, false])
+        XCTAssertEqual(list[0].text, "🎉")
+        XCTAssertEqual(list[0].size, .large)
+        XCTAssertEqual(list[0].extra["later"], .array([.number(1), .number(2)]))
+        XCTAssertNil(list[1].extra["shadow"], "A shadow that is not true is not kept as an unknown property")
+
+        let again = try StudioJSON.makeDecoder().decode(StudioProject.self, from: StudioJSON.makeEncoder().encode(project))
+        XCTAssertEqual(again.overlays.annotations, list)
+    }
+
+    func testAddingAnEmojiPutsAThumbsUpOnTheScreenForThreeSeconds() {
+        var editor = model()
+        XCTAssertTrue(editor.addAnnotation(kind: StudioAnnotationKind.emoji, at: 2, events: nil).changed)
+
+        let emoji = editor.project.overlays.annotations[0]
+        XCTAssertEqual(emoji.kind, StudioAnnotationKind.emoji)
+        XCTAssertEqual(emoji.text, "👍")
+        XCTAssertEqual(emoji.size, .medium)
+        XCTAssertFalse(emoji.shadow)
+        XCTAssertEqual(emoji.attach, .screen)
+        XCTAssertEqual(emoji.start, 2)
+        XCTAssertEqual(emoji.end, 5)
+        XCTAssertEqual(emoji.x, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(emoji.y, 0.5, accuracy: 1e-9)
+        editor.undo()
+        XCTAssertTrue(editor.project.overlays.annotations.isEmpty)
+    }
+
+    func testPickingAnEmojiAndItsShadowAreEachOneUndoStep() {
+        var editor = model([StudioAnnotation(id: "a", kind: StudioAnnotationKind.emoji, start: 0, end: 5, text: "👍")])
+        XCTAssertTrue(editor.setAnnotationEmoji(at: 0, to: "🔥").changed)
+        XCTAssertTrue(editor.setAnnotationEmoji(at: 0, to: "🚀").changed)
+        XCTAssertTrue(editor.setAnnotationShadow(at: 0, to: true).changed)
+        XCTAssertTrue(editor.project.overlays.annotations[0].shadow)
+        editor.undo()
+        XCTAssertFalse(editor.project.overlays.annotations[0].shadow)
+        XCTAssertEqual(editor.project.overlays.annotations[0].text, "🚀")
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations[0].text, "🔥")
+    }
+
+    func testTheEmojiChoicesAreTheTwentyFourWithTheirNames() {
+        let choices = StudioEditorModel.emojiChoices
+        XCTAssertEqual(choices.count, 24)
+        XCTAssertEqual(Set(choices.map(\.emoji)).count, 24, "Each is offered once")
+        XCTAssertEqual(choices.first?.emoji, "👍")
+        XCTAssertEqual(choices.first?.name, "thumbs up")
+        XCTAssertTrue(choices.allSatisfy { !$0.name.isEmpty })
+    }
+
+    func testADuplicateIsAboveTheOriginalWithItsOwnIdAndNudged() {
+        let original = StudioAnnotation(id: "a", kind: StudioAnnotationKind.callout, attach: .frame, start: 1, end: 4, x: 0.3, y: 0.99, text: "Hi", style: .blue)
+        let other = StudioAnnotation(id: "b", kind: StudioAnnotationKind.arrow, start: 0, end: 2)
+        var editor = model([original, other])
+
+        let result = editor.duplicateAnnotation(at: 0)
+        XCTAssertTrue(result.changed)
+        XCTAssertEqual(result.index, 1)
+        let list = editor.project.overlays.annotations
+        XCTAssertEqual(list.count, 3)
+        XCTAssertEqual(list[0], original)
+        XCTAssertEqual(list[2].id, "b")
+        let copy = list[1]
+        XCTAssertNotEqual(copy.id, "a")
+        XCTAssertFalse(copy.id.isEmpty)
+        XCTAssertEqual(copy.start, 1)
+        XCTAssertEqual(copy.end, 4)
+        XCTAssertEqual(copy.x, 0.32, accuracy: 1e-9)
+        XCTAssertEqual(copy.y, 1, accuracy: 1e-9, "Kept inside what it is fixed to")
+        XCTAssertEqual(copy.text, "Hi")
+        XCTAssertEqual(copy.style, .blue)
+        XCTAssertEqual(copy.attach, .frame)
+
+        let second = editor.duplicateAnnotation(at: 0)
+        XCTAssertEqual(second.index, 1)
+        XCTAssertNotEqual(editor.project.overlays.annotations[1].id, copy.id, "Every copy has an id of its own")
+        editor.undo()
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations, [original, other])
+        XCTAssertFalse(editor.duplicateAnnotation(at: 5).changed)
+    }
+
     // MARK: - Helpers
 
     private func near(_ actual: Double, _ expected: Double, _ message: String) {
@@ -519,6 +792,12 @@ final class StudioAnnotationTests: XCTestCase {
             var box: StudioRect?
             var textRect: StudioRect?
             var pointer: [StudioAnnotationPoint]?
+            var rect: StudioRect?
+            var shapeFill: String?
+            var shapeFillOpacity: Double?
+            var redactStyle: String?
+            var redactAmount: Double?
+            var shadow: Bool?
         }
     }
 }
@@ -675,5 +954,122 @@ final class StudioAnnotationDrawingTests: XCTestCase {
         XCTAssertTrue(row.contains { $0.allSatisfy { $0 > 250 } }, "the box's fill is on the row through its middle")
         XCTAssertTrue(row.contains { $0.allSatisfy { $0 < 60 } }, "the text's ink is on the row through its middle")
         assertColor(drawn, 1000, 500, black, "beside the box")
+    }
+
+    private func emoji(_ text: String, shadow: Bool = false) -> StudioResolvedAnnotation {
+        var emoji = StudioResolvedAnnotation(
+            index: 0,
+            kind: StudioAnnotationKind.emoji,
+            opacity: 1,
+            fill: "#FFFFFF",
+            textColor: "#FFFFFF",
+            anchor: StudioAnnotationPoint(x: 400, y: 300)
+        )
+        emoji.boxCenter = emoji.anchor
+        emoji.font = 120
+        emoji.text = text
+        emoji.shadow = shadow
+        return emoji
+    }
+
+    func testAnEmojiIsDrawnInItsOwnColors() {
+        let drawn = compositor.drawAnnotations([emoji("🔥")], over: background, renderSize: size)
+        var colored = 0
+        for y in stride(from: 240, through: 360, by: 6) {
+            colored += pixels(drawn, x: 300, y: y, width: 200).filter { ($0.max() ?? 0) - ($0.min() ?? 0) > 80 }.count
+        }
+
+        XCTAssertGreaterThan(colored, 20, "A fire in color, not in one color of gray")
+        assertColor(drawn, 400, 619, black, "where an emoji drawn upside down would be")
+        assertColor(drawn, 700, 300, black, "beside it")
+    }
+
+    func testAnEmojisShadowFallsUnderIt() {
+        let paper = CIImage(color: CIColor(red: 1, green: 1, blue: 1)).cropped(to: CGRect(origin: .zero, size: size))
+        let plain = compositor.drawAnnotations([emoji("🟥")], over: paper, renderSize: size)
+        let shaded = compositor.drawAnnotations([emoji("🟥", shadow: true)], over: paper, renderSize: size)
+        var darkerBelow = 0
+        var darkerAbove = 0
+        for y in 230...400 {
+            let before = pixels(plain, x: 400, y: y)[0].reduce(0, +)
+            let after = pixels(shaded, x: 400, y: y)[0].reduce(0, +)
+            if after < before - 30 {
+                if y > 300 { darkerBelow += 1 } else { darkerAbove += 1 }
+            }
+        }
+
+        XCTAssertGreaterThan(darkerBelow, 0, "The shadow shows under the emoji")
+        XCTAssertGreaterThan(darkerBelow, darkerAbove, "More of the shadow is below than above")
+    }
+
+    private func area(_ kind: String, fill: String, rect: StudioRect) -> StudioResolvedAnnotation {
+        var area = StudioResolvedAnnotation(
+            index: 0,
+            kind: kind,
+            opacity: 1,
+            fill: fill,
+            textColor: "#FFFFFF",
+            anchor: StudioAnnotationPoint(x: rect.x + rect.width / 2, y: rect.y + rect.height / 2)
+        )
+        area.rect = rect
+        return area
+    }
+
+    /// White on the left half and black on the right.
+    private var halves: CIImage {
+        CIImage(color: CIColor(red: 1, green: 1, blue: 1))
+            .cropped(to: CGRect(x: 0, y: 0, width: size.width / 2, height: size.height))
+            .composited(over: background)
+    }
+
+    func testARectangleHasItsOutlineOverItsInsideFill() {
+        var rectangle = area(StudioAnnotationKind.rectangle, fill: "#FF0000", rect: StudioRect(x: 100, y: 100, width: 200, height: 100))
+        rectangle.stroke = 10
+        rectangle.shapeFill = "#0000FF"
+        rectangle.shapeFillOpacity = 1
+        let drawn = compositor.drawAnnotations([rectangle], over: background, renderSize: size)
+
+        assertColor(drawn, 100, 150, red, "the outline, on the edge")
+        assertColor(drawn, 200, 150, blue, "the inside fill")
+        assertColor(drawn, 90, 150, black, "past the outline")
+        assertColor(drawn, 200, 619, black, "where a rectangle drawn upside down would be")
+    }
+
+    func testABlurRedactionChangesOnlyWhatIsInsideIt() {
+        var redaction = area(StudioAnnotationKind.redact, fill: "#1C1C1E", rect: StudioRect(x: 540, y: 200, width: 200, height: 200))
+        redaction.redactStyle = .blur
+        redaction.redactAmount = 20
+        let drawn = compositor.drawAnnotations([redaction], over: halves, renderSize: size)
+
+        let middle = pixels(drawn, x: 638, y: 300)[0]
+        XCTAssertTrue(middle.allSatisfy { $0 > 20 && $0 < 235 }, "white and black are mixed where they meet inside it: \(middle)")
+        assertColor(drawn, 539, 300, white, "just left of it")
+        assertColor(drawn, 741, 300, black, "just right of it")
+        assertColor(drawn, 638, 190, white, "just over it")
+        assertColor(drawn, 642, 410, black, "just under it")
+    }
+
+    func testASolidRedactionCoversItsAreaInItsColor() {
+        var redaction = area(StudioAnnotationKind.redact, fill: "#0000FF", rect: StudioRect(x: 540, y: 200, width: 200, height: 200))
+        redaction.redactStyle = .solid
+        let drawn = compositor.drawAnnotations([redaction], over: halves, renderSize: size)
+
+        assertColor(drawn, 560, 300, blue, "inside, over white")
+        assertColor(drawn, 720, 300, blue, "inside, over black")
+        assertColor(drawn, 530, 300, white, "beside it")
+    }
+
+    func testARedactionHidesTheAnnotationsUnderItAndNotThoseOverIt() {
+        // The shaft runs from 94 to 106, away from the middle of the cell it is in.
+        var redaction = area(StudioAnnotationKind.redact, fill: "#1C1C1E", rect: StudioRect(x: 500, y: 60, width: 200, height: 100))
+        redaction.redactStyle = .pixelate
+        redaction.redactAmount = 100
+        let under = compositor.drawAnnotations([flatArrow, redaction], over: background, renderSize: size)
+        let over = compositor.drawAnnotations([redaction, flatArrow], over: background, renderSize: size)
+
+        let hidden = pixels(under, x: 600, y: 100)[0]
+        XCTAssertFalse(zip(hidden, red).allSatisfy { abs($0 - $1) <= 3 }, "the shaft under it is not left as it was: \(hidden)")
+        assertColor(over, 600, 100, red, "the shaft over it")
+        assertColor(under, 400, 100, red, "the shaft beside it")
     }
 }

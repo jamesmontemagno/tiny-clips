@@ -13,7 +13,7 @@ using Windows.Foundation;
 namespace TinyClips.App.Controls.Studio;
 
 // Pressing an annotation on the preview selects it and dragging moves it, and the selected one shows
-// its handles. Only for the pointer, like the camera's handle: the sliders under Advanced in the
+// its handles: an arrow's tip and tail, a callout's tip, and an area's four corners, which resize it. Only for the pointer, like the camera's handle: the sliders under Advanced in the
 // Annotate panel do the same from the keyboard. The same on the Mac (StudioAnnotationPreviewLayer).
 public sealed partial class StudioPreviewOverlay
 {
@@ -103,7 +103,18 @@ public sealed partial class StudioPreviewOverlay
             AnnotationLayer.Children.Add(outline);
         }
 
-        if (handle.Kind != StudioAnnotationKinds.Text)
+        if (StudioAnnotationKinds.IsArea(handle.Kind) && handle.Box is { } area)
+        {
+            // An area is moved by its inside, and each corner resizes it while the opposite one stays.
+            var (left, top, right, bottom) = (area.X, area.Y, area.X + area.Width, area.Y + area.Height);
+            AnnotationLayer.Children.Add(CreateHandle(new StudioPoint(left, top), new AnnotationGrip(handle.Index, StudioAnnotationPart.TopLeft), pixelsPerDip));
+            AnnotationLayer.Children.Add(CreateHandle(new StudioPoint(right, top), new AnnotationGrip(handle.Index, StudioAnnotationPart.TopRight), pixelsPerDip));
+            AnnotationLayer.Children.Add(CreateHandle(new StudioPoint(left, bottom), new AnnotationGrip(handle.Index, StudioAnnotationPart.BottomLeft), pixelsPerDip));
+            AnnotationLayer.Children.Add(CreateHandle(new StudioPoint(right, bottom), new AnnotationGrip(handle.Index, StudioAnnotationPart.BottomRight), pixelsPerDip));
+            return;
+        }
+
+        if (handle.Kind is not (StudioAnnotationKinds.Text or StudioAnnotationKinds.Emoji))
         {
             AnnotationLayer.Children.Add(CreateHandle(handle.Tip, new AnnotationGrip(handle.Index, StudioAnnotationPart.Tip), pixelsPerDip));
         }
@@ -141,7 +152,12 @@ public sealed partial class StudioPreviewOverlay
     }
 
     private void OnAnnotationPointerEntered(object sender, PointerRoutedEventArgs e) =>
-        ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeAll);
+        ProtectedCursor = InputSystemCursor.Create((sender as FrameworkElement)?.Tag is AnnotationGrip grip ? grip.Part switch
+        {
+            StudioAnnotationPart.TopLeft or StudioAnnotationPart.BottomRight => InputSystemCursorShape.SizeNorthwestSoutheast,
+            StudioAnnotationPart.TopRight or StudioAnnotationPart.BottomLeft => InputSystemCursorShape.SizeNortheastSouthwest,
+            _ => InputSystemCursorShape.SizeAll,
+        } : InputSystemCursorShape.SizeAll);
 
     private void OnAnnotationPointerExited(object sender, PointerRoutedEventArgs e)
     {

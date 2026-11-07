@@ -90,7 +90,7 @@ internal sealed partial class WindowChecks
         string[] summaries =
         [
             "Scene: layout, splits, and transitions", "Background and padding", "Screen: corners, shadow, clicks, and crop", "Camera: placement, appearance, and crop",
-            "Zooms", "Annotations: arrows, callouts, and text", "Cuts", "Speed changes", "Captions: import, edit, and export", "Audio: mute and volume", "Project: badge, storage, and default look",
+            "Zooms", "Annotations: arrows, callouts, text, shapes, emoji, and redaction", "Cuts", "Speed changes", "Captions: import, edit, and export", "Audio: mute and volume", "Project: badge, storage, and default look",
         ];
 
         // As it opens.
@@ -115,7 +115,7 @@ internal sealed partial class WindowChecks
             : default);
         _report.Check(
             "the rail is the framework's list with one item selected at a time, whose selection goes with the keyboard focus inside it, and which is one stop for the Tab key: that is what makes the list's own Up, Down, Home and End choose a panel. Those keys are not pressed here",
-            list is { Found: true, SelectionMode: ListViewSelectionMode.Single, SingleSelectionFollowsFocus: true, TabNavigation: KeyboardNavigationMode.Once, IsItemClickEnabled: false, Count: 10, Index: 0 },
+            list is { Found: true, SelectionMode: ListViewSelectionMode.Single, SingleSelectionFollowsFocus: true, TabNavigation: KeyboardNavigationMode.Once, IsItemClickEnabled: false, Index: 0 } && list.Count == titles.Length,
             list.Found
                 ? $"selection {list.SelectionMode}, follows the focus {list.SingleSelectionFollowsFocus}, Tab navigation {list.TabNavigation}, items are pressed like buttons {list.IsItemClickEnabled}, {list.Count} items, item {list.Index} selected"
                 : "the rail is not a ListView");

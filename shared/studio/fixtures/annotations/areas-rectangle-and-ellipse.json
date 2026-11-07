@@ -1,0 +1,338 @@
+{
+  "description": "Rectangles and ellipses: their area in each attach, the corner radius and its limits, the inside fill and its opacity, defaults, and an empty area not drawn",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "rectangle",
+          "attach": "frame",
+          "start": 0,
+          "end": 20,
+          "x": 0.5,
+          "y": 0.5,
+          "width": 0.2,
+          "height": 0.1,
+          "cornerRadius": 0.02
+        },
+        {
+          "kind": "ellipse",
+          "start": 0,
+          "end": 20,
+          "x": 0.25,
+          "y": 0.25,
+          "width": 0.1,
+          "height": 0.1,
+          "style": "blue",
+          "shapeFill": "#ffd60a",
+          "shapeFillOpacity": 0.5
+        },
+        {
+          "kind": "rectangle",
+          "attach": "frame",
+          "start": 0,
+          "end": 20,
+          "x": 0.1,
+          "y": 0.5,
+          "width": 0.05,
+          "height": 0.4,
+          "cornerRadius": 0.9,
+          "size": "large",
+          "scale": 2,
+          "shapeFill": "#12345",
+          "shapeFillOpacity": 4
+        },
+        {
+          "kind": "rectangle",
+          "attach": "frame",
+          "start": 0,
+          "end": 20,
+          "x": 0.5,
+          "y": 0.5,
+          "width": 0,
+          "height": 0.3
+        },
+        {
+          "kind": "ellipse",
+          "attach": "frame",
+          "start": 5,
+          "end": 20,
+          "x": 0.5,
+          "y": 0.5
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 540.0
+          },
+          "rect": {
+            "x": 768,
+            "y": 486,
+            "width": 384,
+            "height": 108
+          },
+          "stroke": 9.72,
+          "radius": 21.6,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        },
+        {
+          "index": 1,
+          "kind": "ellipse",
+          "opacity": 1,
+          "fill": "#0A84FF",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 480.0,
+            "y": 270.0
+          },
+          "rect": {
+            "x": 384,
+            "y": 216,
+            "width": 192,
+            "height": 108
+          },
+          "stroke": 9.72,
+          "radius": 0,
+          "shapeFill": "#FFD60A",
+          "shapeFillOpacity": 0.5
+        },
+        {
+          "index": 2,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 192.0,
+            "y": 540.0
+          },
+          "rect": {
+            "x": 144,
+            "y": 324,
+            "width": 96,
+            "height": 432
+          },
+          "stroke": 28.08,
+          "radius": 48,
+          "shapeFill": "",
+          "shapeFillOpacity": 1
+        }
+      ]
+    },
+    {
+      "time": 6,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 540.0
+          },
+          "rect": {
+            "x": 768,
+            "y": 486,
+            "width": 384,
+            "height": 108
+          },
+          "stroke": 9.72,
+          "radius": 21.6,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        },
+        {
+          "index": 1,
+          "kind": "ellipse",
+          "opacity": 1,
+          "fill": "#0A84FF",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 480.0,
+            "y": 270.0
+          },
+          "rect": {
+            "x": 384,
+            "y": 216,
+            "width": 192,
+            "height": 108
+          },
+          "stroke": 9.72,
+          "radius": 0,
+          "shapeFill": "#FFD60A",
+          "shapeFillOpacity": 0.5
+        },
+        {
+          "index": 2,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 192.0,
+            "y": 540.0
+          },
+          "rect": {
+            "x": 144,
+            "y": 324,
+            "width": 96,
+            "height": 432
+          },
+          "stroke": 28.08,
+          "radius": 48,
+          "shapeFill": "",
+          "shapeFillOpacity": 1
+        },
+        {
+          "index": 4,
+          "kind": "ellipse",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 540.0
+          },
+          "rect": {
+            "x": 768.0,
+            "y": 459.0,
+            "width": 384.0,
+            "height": 162.0
+          },
+          "stroke": 9.72,
+          "radius": 0,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        }
+      ]
+    },
+    {
+      "time": 1,
+      "canvas": {
+        "width": 720,
+        "height": 1280
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 360.0,
+            "y": 640.0
+          },
+          "rect": {
+            "x": 288.0,
+            "y": 576.0,
+            "width": 144.0,
+            "height": 128.0
+          },
+          "stroke": 6.48,
+          "radius": 14.4,
+          "shapeFill": "",
+          "shapeFillOpacity": 0.35
+        },
+        {
+          "index": 1,
+          "kind": "ellipse",
+          "opacity": 1,
+          "fill": "#0A84FF",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 180.0,
+            "y": 538.75
+          },
+          "rect": {
+            "x": 144.0,
+            "y": 518.5,
+            "width": 72.0,
+            "height": 40.5
+          },
+          "stroke": 6.48,
+          "radius": 0,
+          "shapeFill": "#FFD60A",
+          "shapeFillOpacity": 0.5
+        },
+        {
+          "index": 2,
+          "kind": "rectangle",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 72.0,
+            "y": 640.0
+          },
+          "rect": {
+            "x": 54.0,
+            "y": 384.0,
+            "width": 36.0,
+            "height": 512.0
+          },
+          "stroke": 18.72,
+          "radius": 18.0,
+          "shapeFill": "",
+          "shapeFillOpacity": 1
+        }
+      ]
+    }
+  ]
+}

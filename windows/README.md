@@ -275,11 +275,14 @@ With the switch on:
   themselves; undo, redo, the layout keys, playing, and scrubbing leave the panel alone. The
   crop sliders of the screen and of the camera are in a **Crop** group that is closed while
   nothing is cropped and stays open once one of its sliders has been moved.
-  Keys: `Space` play or pause, `Left`/`Right` step a frame, `I`/`O` start and end the video at the
-  playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X` start a cut
-  at the playhead, `R` play the two seconds from the playhead twice as fast, `Delete` remove the
-  selected zoom, cut, or speed change, `1`–`4` layout of the scene the playhead is in,
-  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Ctrl+O` open a saved project, `Ctrl+S` save
+  Keys: `Space` play or pause, `Left`/`Right` step a frame, `Shift+Left`/`Shift+Right` step a
+  second, `Home`/`End` go to the start and the end of the trimmed video, `I`/`O` start and end the
+  video at the playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X`
+  start a cut at the playhead, `R` play the two seconds from the playhead twice as fast, `A` arrow,
+  `C` callout, `T` text, `H` rectangle, `E` ellipse, `B` redaction, `M` emoji at the playhead,
+  `Delete` or `Backspace` remove the selected zoom, cut, speed change, or annotation, `Ctrl+D`
+  duplicate the selected annotation, `1`–`4` layout of the scene the playhead is in,
+  `Ctrl+Z`/`Ctrl+Y` (or `Ctrl+Shift+Z`) undo and redo, `Ctrl+E` export, `Ctrl+O` open a saved project, `Ctrl+S` save
   this project, `Ctrl+Shift+S` save the project as a new name/location (the global Stop recording
   hotkey retains priority while recording), `Esc` stop an export or a save, and otherwise close
   the editor as its close button does: a recording that was never exported asks what to do with

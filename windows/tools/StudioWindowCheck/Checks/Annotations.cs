@@ -35,9 +35,10 @@ internal sealed partial class WindowChecks
     {
         Timeline.Mark("16: annotations");
         _report.Check(
-            "the window maps the A, C and T keys to the editor's keyboard model",
-            StudioWindow.MapKey(VirtualKey.A) == StudioShortcutKey.A && StudioWindow.MapKey(VirtualKey.C) == StudioShortcutKey.C && StudioWindow.MapKey(VirtualKey.T) == StudioShortcutKey.T,
-            $"A is {StudioWindow.MapKey(VirtualKey.A)}, C is {StudioWindow.MapKey(VirtualKey.C)}, T is {StudioWindow.MapKey(VirtualKey.T)}");
+            "the window maps the A, C, T, H, E, B and M keys to the editor's keyboard model",
+            StudioWindow.MapKey(VirtualKey.A) == StudioShortcutKey.A && StudioWindow.MapKey(VirtualKey.C) == StudioShortcutKey.C && StudioWindow.MapKey(VirtualKey.T) == StudioShortcutKey.T
+                && StudioWindow.MapKey(VirtualKey.H) == StudioShortcutKey.H && StudioWindow.MapKey(VirtualKey.E) == StudioShortcutKey.E && StudioWindow.MapKey(VirtualKey.B) == StudioShortcutKey.B && StudioWindow.MapKey(VirtualKey.M) == StudioShortcutKey.M,
+            $"A is {StudioWindow.MapKey(VirtualKey.A)}, C is {StudioWindow.MapKey(VirtualKey.C)}, T is {StudioWindow.MapKey(VirtualKey.T)}, H is {StudioWindow.MapKey(VirtualKey.H)}, E is {StudioWindow.MapKey(VirtualKey.E)}, B is {StudioWindow.MapKey(VirtualKey.B)}, M is {StudioWindow.MapKey(VirtualKey.M)}");
         AddingAnnotations();
         AnnotationsAProjectAlreadyHolds();
     }
@@ -53,11 +54,46 @@ internal sealed partial class WindowChecks
         SetSlider(editor, "StudioPlayhead", 2.0);
 
         _report.Check(
-            "a recording without annotations has no annotation lane, the header offers the three tools, and the Annotate panel says how to add one",
+            "a recording without annotations has no annotation lane, the header offers the seven tools, and the Annotate panel says how to add one",
             Absent(editor, AnnotationLane, 0.5) && Find(editor, "StudioAddArrowButton") is { IsEnabled: true, Name: "Add arrow" }
                 && Find(editor, "StudioAddCalloutButton") is { IsEnabled: true, Name: "Add callout" } && Find(editor, "StudioAddTextButton") is { IsEnabled: true, Name: "Add text" }
+                && Find(editor, "StudioAddRectangleButton") is { IsEnabled: true, Name: "Add rectangle" } && Find(editor, "StudioAddEllipseButton") is { IsEnabled: true, Name: "Add ellipse" }
+                && Find(editor, "StudioAddRedactionButton") is { IsEnabled: true, Name: "Add redaction" } && Find(editor, "StudioAddEmojiButton") is { IsEnabled: true, Name: "Add emoji" }
                 && NameOf(editor, "StudioAnnotationEmptyHint", 1) == StudioEditorText.AnnotationEmptyHint && Absent(editor, "StudioDeleteAnnotationButton", 0.3),
             $"the lane: {LaneText(editor, AnnotationLane)}; the hint: \"{NameOf(editor, "StudioAnnotationEmptyHint", 0.5)}\"");
+
+        var toolLayout = OnUi(() =>
+        {
+            if (Descendant<Grid>(editor.Window.Content, "StudioAnnotationTools") is not { } grid)
+            {
+                return (Width: 0.0, Buttons: Array.Empty<(double X, double Y, double Width, double Height, bool LabelFits)>());
+            }
+
+            grid.UpdateLayout();
+            var buttons = grid.Children.OfType<Button>().Select(button =>
+            {
+                var place = button.TransformToVisual(grid).TransformPoint(default);
+                var label = (button.Content as StackPanel)?.Children.OfType<TextBlock>().SingleOrDefault();
+                var labelLeft = label?.TransformToVisual(button).TransformPoint(default).X ?? -1;
+                var labelFits = label is not null && labelLeft >= -0.5
+                    && labelLeft + label.ActualWidth <= button.ActualWidth + 0.5
+                    && label.DesiredSize.Width <= label.ActualWidth + 0.5;
+                return (X: place.X, Y: place.Y, Width: button.ActualWidth, Height: button.ActualHeight, LabelFits: labelFits);
+            }).ToArray();
+            return (Width: grid.ActualWidth, Buttons: buttons);
+        });
+        var tools = toolLayout.Buttons;
+        var toolsFit = tools.Length == 7
+            && tools.All(tool => tool.Width > 0 && tool.Height > 0 && tool.X >= -0.5 && tool.X + tool.Width <= toolLayout.Width + 0.5 && tool.LabelFits)
+            && tools.Take(4).All(tool => Same(tool.Y, tools[0].Y, 0.5))
+            && tools.Skip(4).All(tool => Same(tool.Y, tools[4].Y, 0.5))
+            && tools[4].Y >= tools[0].Y + tools[0].Height
+            && Enumerable.Range(1, 3).All(index => tools[index].X >= tools[index - 1].X + tools[index - 1].Width - 0.5)
+            && Enumerable.Range(0, 3).All(index => Same(tools[index].X, tools[index + 4].X, 0.5));
+        _report.Check(
+            "the seven annotation tools fit in four columns and two rows with their labels visible",
+            toolsFit,
+            $"grid width {toolLayout.Width:0.#}; " + string.Join("; ", tools.Select(tool => $"{tool.Width:0.#}x{tool.Height:0.#} at ({tool.X:0.#},{tool.Y:0.#}), label fits {tool.LabelFits}")));
 
         // A brings the lane, with the arrow selected and its panel on show.
         Timeline.Mark("16: A adds an arrow at the playhead");
@@ -90,12 +126,12 @@ internal sealed partial class WindowChecks
                 && rows == "*Text: Your text | Callout: Your text | Arrow",
             $"pressed: {pressed}; T ran {keyForText}; {all.Length} annotations, selected {SelectedAnnotationOf(editor)}; rows: {rows}");
 
-        EditingTheSelectedAnnotation(editor);
+        EditingTheSelectedAnnotation(editor, heard);
         DeletingAnnotations(editor, heard);
         CloseQuietly(editor);
     }
 
-    private void EditingTheSelectedAnnotation(Editor editor)
+    private void EditingTheSelectedAnnotation(Editor editor, UiaEvents heard)
     {
         // Typing goes through the real box, whose change notice comes later, and is one undo step.
         Timeline.Mark("16: typing");
@@ -147,6 +183,22 @@ internal sealed partial class WindowChecks
         OnUi(() => Descendant<Expander>(editor.Window.Content, "StudioAnnotationAdvancedGroup")!.IsExpanded = true);
         var opened = Until(() => Find(editor, "StudioAnnotationXSlider", 0.3) is not null, found => found, 1.5);
         _report.Check("Advanced starts closed, and opening it shows the position's sliders", closed && opened, $"closed: {closed}; opened: {opened}");
+        var attach = Find(editor, "StudioAnnotationAttachChoice");
+        var frameChoice = Find(editor, "StudioAnnotationAttachFrame");
+        var screenChoice = Find(editor, "StudioAnnotationAttachScreen");
+        var initiallySelected = frameChoice?.IsSelected;
+        var selectionMark = heard.Mark();
+        var selectedScreen = screenChoice?.Select() == true;
+        var screenAttached = Until(() => AnnotationsOf(editor)[2].Attach, value => value == StudioAnnotationAttach.Screen, 1.5);
+        var selectedEvents = heard.WaitFor(selectionMark, "selected", e => e.Id == "StudioAnnotationAttachScreen", 1.5);
+        var selectedFrame = frameChoice?.Select() == true;
+        var frameAttached = Until(() => AnnotationsOf(editor)[2].Attach, value => value == StudioAnnotationAttach.Frame, 1.5);
+        _report.Check(
+            "the named Attach to control exposes its choices to a screen reader and announces selection changes",
+            attach?.Name == "Attach to" && frameChoice?.Name == "Frame" && screenChoice?.Name == "Screen"
+                && initiallySelected == true && selectedScreen && screenAttached == StudioAnnotationAttach.Screen
+                && selectedEvents.Any(e => e.Id == "StudioAnnotationAttachScreen") && selectedFrame && frameAttached == StudioAnnotationAttach.Frame,
+            $"group: \"{attach?.Name}\"; choices: \"{screenChoice?.Name}\", \"{frameChoice?.Name}\"; frame initially selected: {initiallySelected}; selected screen: {selectedScreen}, attachment: {screenAttached}, events: {string.Join(", ", selectedEvents.Select(e => e.Id))}; selected frame: {selectedFrame}, attachment: {frameAttached}; listener: {heard.Problem ?? "ready"}");
         var moved = SetSlider(editor, "StudioAnnotationXSlider", 0.25);
         var x = Until(() => AnnotationsOf(editor)[2].X, value => Same(value, 0.25, 1e-3), 1.5);
         _report.Check(

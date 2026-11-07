@@ -311,6 +311,10 @@ enum StudioMenuCommands {
         menu.addItem(menuItem("Play/Pause", action: "studioTogglePlayback:"))
         menu.addItem(menuItem("Previous Frame", action: "studioPreviousFrame:"))
         menu.addItem(menuItem("Next Frame", action: "studioNextFrame:"))
+        menu.addItem(menuItem("Back One Second", action: "studioBackOneSecond:"))
+        menu.addItem(menuItem("Forward One Second", action: "studioForwardOneSecond:"))
+        menu.addItem(menuItem("Go to Start", action: "studioGoToStart:"))
+        menu.addItem(menuItem("Go to End", action: "studioGoToEnd:"))
         menu.addItem(.separator())
         menu.addItem(menuItem("Start Here", action: "studioMarkIn:"))
         menu.addItem(menuItem("End Here", action: "studioMarkOut:"))
@@ -339,6 +343,14 @@ enum StudioMenuCommands {
         menu.addItem(menuItem("Add Arrow", action: "studioAddArrow:"))
         menu.addItem(menuItem("Add Callout", action: "studioAddCallout:"))
         menu.addItem(menuItem("Add Text", action: "studioAddText:"))
+        menu.addItem(menuItem("Add Rectangle", action: "studioAddRectangle:"))
+        menu.addItem(menuItem("Add Ellipse", action: "studioAddEllipse:"))
+        menu.addItem(menuItem("Add Redaction", action: "studioAddRedaction:"))
+        menu.addItem(menuItem("Add Emoji", action: "studioAddEmoji:"))
+        let duplicateItem = menuItem("Duplicate Annotation", action: "studioDuplicateAnnotation:")
+        duplicateItem.keyEquivalent = "d"
+        duplicateItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(duplicateItem)
         menu.addItem(menuItem("Delete Annotation", action: "studioDeleteAnnotation:"))
         menu.addItem(menuItem("Previous Annotation", action: "studioPreviousAnnotation:"))
         menu.addItem(menuItem("Next Annotation", action: "studioNextAnnotation:"))
@@ -481,6 +493,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioTogglePlayback(_ sender: Any?) { viewModel.togglePlayback() }
     @objc func studioPreviousFrame(_ sender: Any?) { viewModel.stepFrame(by: -1) }
     @objc func studioNextFrame(_ sender: Any?) { viewModel.stepFrame(by: 1) }
+    @objc func studioBackOneSecond(_ sender: Any?) { viewModel.stepSeconds(by: -1) }
+    @objc func studioForwardOneSecond(_ sender: Any?) { viewModel.stepSeconds(by: 1) }
+    @objc func studioGoToStart(_ sender: Any?) { viewModel.goToTrimStart() }
+    @objc func studioGoToEnd(_ sender: Any?) { viewModel.goToTrimEnd() }
     @objc func studioMarkIn(_ sender: Any?) { viewModel.setTrimStartAtPlayhead() }
     @objc func studioMarkOut(_ sender: Any?) { viewModel.setTrimEndAtPlayhead() }
     @objc func studioAddZoom(_ sender: Any?) { viewModel.addZoomAtPlayhead() }
@@ -503,6 +519,11 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioAddArrow(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.arrow) }
     @objc func studioAddCallout(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.callout) }
     @objc func studioAddText(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.text) }
+    @objc func studioAddRectangle(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.rectangle) }
+    @objc func studioAddEllipse(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.ellipse) }
+    @objc func studioAddRedaction(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.redact) }
+    @objc func studioAddEmoji(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.emoji) }
+    @objc func studioDuplicateAnnotation(_ sender: Any?) { viewModel.duplicateSelectedAnnotation() }
     @objc func studioDeleteAnnotation(_ sender: Any?) { viewModel.removeSelectedAnnotation() }
     @objc func studioPreviousAnnotation(_ sender: Any?) { viewModel.showPreviousAnnotation() }
     @objc func studioNextAnnotation(_ sender: Any?) { viewModel.showNextAnnotation() }
@@ -540,6 +561,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         case #selector(studioTogglePlayback(_:)),
             #selector(studioPreviousFrame(_:)),
             #selector(studioNextFrame(_:)),
+            #selector(studioBackOneSecond(_:)),
+            #selector(studioForwardOneSecond(_:)),
+            #selector(studioGoToStart(_:)),
+            #selector(studioGoToEnd(_:)),
             #selector(studioMarkIn(_:)),
             #selector(studioMarkOut(_:)):
             return viewModel.isEditable
@@ -576,8 +601,15 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return viewModel.isEditable && !viewModel.speedChanges.isEmpty
         case #selector(studioAddArrow(_:)),
             #selector(studioAddCallout(_:)),
-            #selector(studioAddText(_:)):
+            #selector(studioAddText(_:)),
+            #selector(studioAddRectangle(_:)),
+            #selector(studioAddEllipse(_:)),
+            #selector(studioAddRedaction(_:)),
+            #selector(studioAddEmoji(_:)):
             return viewModel.canAddAnnotation
+        case #selector(studioDuplicateAnnotation(_:)):
+            // Not while text is being typed, which Command-D would otherwise leave for a copy.
+            return viewModel.canDuplicateSelectedAnnotation && !(firstResponder is NSText)
         case #selector(studioDeleteAnnotation(_:)):
             return viewModel.isEditable && viewModel.selectedAnnotationIndex != nil
         case #selector(studioPreviousAnnotation(_:)):
@@ -685,18 +717,37 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             if !isMouseButtonHeld { viewModel.export() }
             return true
         }
+        if key == "d", modifiers == [.command], viewModel.canDuplicateSelectedAnnotation {
+            if !isMouseButtonHeld && !event.isARepeat { viewModel.duplicateSelectedAnnotation() }
+            return true
+        }
         return false
     }
 
     private func handleKey(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        guard modifiers.isEmpty, attachedSheet == nil else { return false }
+        guard attachedSheet == nil else { return false }
         guard viewModel.isReady, !viewModel.isExporting, !viewModel.isChoosingExportOptions else { return false }
         let keyCode = Int(event.keyCode)
 
+        // Shift and an arrow steps a whole second, and holding it keeps stepping.
+        if modifiers == [.shift] {
+            switch keyCode {
+            case kVK_LeftArrow:
+                viewModel.stepSeconds(by: -1)
+                return true
+            case kVK_RightArrow:
+                viewModel.stepSeconds(by: 1)
+                return true
+            default:
+                return false
+            }
+        }
+        guard modifiers.isEmpty else { return false }
+
         // Holding an arrow key keeps stepping through frames. The other keys act once per press.
         // Those that change the project are taken and do nothing while a drag is being made;
-        // Space and the arrows only move the playhead, and still do.
+        // Space, the arrows, Home, and End only move the playhead, and still do.
         let isFirstPress = !event.isARepeat
         let changesProject = isFirstPress && !isMouseButtonHeld
         if keyCode == kVK_Delete || keyCode == kVK_ForwardDelete {
@@ -724,6 +775,13 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return true
         case kVK_RightArrow:
             viewModel.stepFrame(by: 1)
+            return true
+        // Fn with Left and Right arrives as Home and End.
+        case kVK_Home:
+            if isFirstPress { viewModel.goToTrimStart() }
+            return true
+        case kVK_End:
+            if isFirstPress { viewModel.goToTrimEnd() }
             return true
         case kVK_Space:
             if isFirstPress { viewModel.togglePlayback() }
@@ -755,6 +813,18 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return true
         case "t":
             if changesProject { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.text) }
+            return true
+        case "h":
+            if changesProject { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.rectangle) }
+            return true
+        case "e":
+            if changesProject { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.ellipse) }
+            return true
+        case "b":
+            if changesProject { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.redact) }
+            return true
+        case "m":
+            if changesProject { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.emoji) }
             return true
         case "i":
             if changesProject { viewModel.setTrimStartAtPlayhead() }

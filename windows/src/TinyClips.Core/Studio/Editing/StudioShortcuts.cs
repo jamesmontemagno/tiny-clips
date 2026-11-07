@@ -19,6 +19,14 @@ public enum StudioShortcutKey
     Z,
     Y,
     E,
+    H,
+    B,
+    M,
+    D,
+    Home,
+    End,
+
+    /// <summary>Delete, and Backspace, which does the same.</summary>
     Delete,
 
     /// <summary>The 1 key of the number row, whatever it types on the current keyboard layout.</summary>
@@ -36,6 +44,18 @@ public enum StudioShortcutAction
     TogglePlayback,
     PreviousFrame,
     NextFrame,
+
+    /// <summary>Moves the playhead one second back, or to the start of the video if that is nearer.</summary>
+    BackOneSecond,
+
+    /// <summary>Moves the playhead one second on, or to the end of the video if that is nearer.</summary>
+    ForwardOneSecond,
+
+    /// <summary>Moves the playhead to the start of the trimmed video.</summary>
+    GoToStart,
+
+    /// <summary>Moves the playhead to the end of the trimmed video.</summary>
+    GoToEnd,
     SetTrimStartAtPlayhead,
     SetTrimEndAtPlayhead,
     ShowScreenLayout,
@@ -53,7 +73,14 @@ public enum StudioShortcutAction
     AddArrow,
     AddCallout,
     AddText,
+    AddRectangle,
+    AddEllipse,
+    AddRedaction,
+    AddEmoji,
     RemoveSelectedAnnotation,
+
+    /// <summary>Copies the selected annotation, a little right and down, and selects the copy. Ctrl+D.</summary>
+    DuplicateSelectedAnnotation,
     Undo,
     Redo,
     Export,
@@ -160,15 +187,24 @@ public readonly record struct StudioShortcutInput(
 }
 
 /// <summary>
-/// The Studio editor's keyboard model, the same as on the Mac: Space plays or pauses, Left and
-/// Right step a frame, I and O set the trim at the playhead, 1 to 4 choose the layout, S splits the
-/// scene at the playhead, Z adds a zoom there, X a cut and R a speed change, A an arrow, C a
-/// callout and T text, Delete removes the selected zoom, cut, speed change or annotation, or the current scene while a scene on the lane has the
-/// focus, and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Ctrl+O opens a
-/// project that was saved as a folder and Ctrl+S saves this one as a folder, where the Mac
-/// has Command-O and Shift-Command-S. Esc stops a running export or a save of the project
-/// that is under way, and otherwise asks the window to close; held down, it does none of
-/// them. While something is being dragged, only Space and the arrow keys act.
+/// The Studio editor's keyboard model, the same as on the Mac, where Ctrl is Command:
+/// <list type="bullet">
+/// <item>Playback: Space plays or pauses, Left and Right step a frame, Shift+Left and
+/// Shift+Right a second, and Home and End go to the start and the end of the trimmed video.</item>
+/// <item>Edits at the playhead: I and O set the trim, S splits the scene, Z adds a zoom, X a cut,
+/// R a speed change, and 1 to 4 choose the layout.</item>
+/// <item>Annotations: A an arrow, C a callout, T text, H a rectangle, E an ellipse, B a redaction
+/// and M an emoji.</item>
+/// <item>Selection: Delete or Backspace removes the selected zoom, cut, speed change or
+/// annotation, or the current scene while a scene on the lane has the focus, and Ctrl+D
+/// duplicates the selected annotation.</item>
+/// <item>Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, and Ctrl+E undo, redo and export. Ctrl+O opens a project
+/// that was saved as a folder and Ctrl+S saves this one as a folder (Ctrl+Shift+S somewhere
+/// else), where the Mac has Command-O and Shift-Command-S.</item>
+/// <item>Esc stops a running export or a save of the project that is under way, and otherwise
+/// asks the window to close; held down, it does none of them.</item>
+/// </list>
+/// While something is being dragged, only the keys that move the playhead act.
 /// </summary>
 /// <remarks>
 /// The window only asks about a key that the focused control did not use, so a focused slider
@@ -248,13 +284,20 @@ public static class StudioShortcuts
     private static bool MovesOnlyThePlayhead(StudioShortcutAction action) => action
         is StudioShortcutAction.TogglePlayback
         or StudioShortcutAction.PreviousFrame
-        or StudioShortcutAction.NextFrame;
+        or StudioShortcutAction.NextFrame
+        or StudioShortcutAction.BackOneSecond
+        or StudioShortcutAction.ForwardOneSecond
+        or StudioShortcutAction.GoToStart
+        or StudioShortcutAction.GoToEnd;
 
     private static StudioShortcutAction ResolveControlKey(StudioShortcutInput input) => input.Key switch
     {
         StudioShortcutKey.Z => input.IsShiftDown ? StudioShortcutAction.Redo : StudioShortcutAction.Undo,
         StudioShortcutKey.Y when !input.IsShiftDown => StudioShortcutAction.Redo,
         StudioShortcutKey.E when !input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.Export,
+
+        // Without an annotation selected Ctrl+D is left for whatever else wants it.
+        StudioShortcutKey.D when !input.IsShiftDown && !input.IsRepeat && input.HasSelectedAnnotation && !input.IsTypeToSearchFocused => StudioShortcutAction.DuplicateSelectedAnnotation,
 
         // Plain O sets the trim end and plain S splits the scene. With Ctrl they are about
         // the project as a whole. Each asks something first, so a key that is held asks once.
@@ -270,18 +313,19 @@ public static class StudioShortcuts
 
     private static StudioShortcutAction ResolvePlainKey(StudioShortcutInput input)
     {
-        if (input.IsShiftDown)
-        {
-            return StudioShortcutAction.None;
-        }
-
-        // Holding an arrow key keeps stepping through frames. The other keys act once per press.
+        // Holding an arrow key keeps stepping, through frames, or seconds with Shift. The other
+        // keys act once per press, and with Shift not at all.
         switch (input.Key)
         {
             case StudioShortcutKey.Left:
-                return StudioShortcutAction.PreviousFrame;
+                return input.IsShiftDown ? StudioShortcutAction.BackOneSecond : StudioShortcutAction.PreviousFrame;
             case StudioShortcutKey.Right:
-                return StudioShortcutAction.NextFrame;
+                return input.IsShiftDown ? StudioShortcutAction.ForwardOneSecond : StudioShortcutAction.NextFrame;
+        }
+
+        if (input.IsShiftDown)
+        {
+            return StudioShortcutAction.None;
         }
 
         if (input.IsRepeat)
@@ -295,6 +339,12 @@ public static class StudioShortcuts
             StudioShortcutKey.A => StudioShortcutAction.AddArrow,
             StudioShortcutKey.C => StudioShortcutAction.AddCallout,
             StudioShortcutKey.T => StudioShortcutAction.AddText,
+            StudioShortcutKey.H => StudioShortcutAction.AddRectangle,
+            StudioShortcutKey.E => StudioShortcutAction.AddEllipse,
+            StudioShortcutKey.B => StudioShortcutAction.AddRedaction,
+            StudioShortcutKey.M => StudioShortcutAction.AddEmoji,
+            StudioShortcutKey.Home => StudioShortcutAction.GoToStart,
+            StudioShortcutKey.End => StudioShortcutAction.GoToEnd,
             StudioShortcutKey.I => StudioShortcutAction.SetTrimStartAtPlayhead,
             StudioShortcutKey.O => StudioShortcutAction.SetTrimEndAtPlayhead,
             StudioShortcutKey.R => StudioShortcutAction.AddSpeed,

@@ -9,6 +9,13 @@ public static class StudioAnnotationKinds
     public const string Arrow = "arrow";
     public const string Callout = "callout";
     public const string Text = "text";
+    public const string Rectangle = "rectangle";
+    public const string Ellipse = "ellipse";
+    public const string Redact = "redact";
+    public const string Emoji = "emoji";
+
+    /// <summary>Whether a kind covers an area (a rectangle, an ellipse or a redaction) instead of pointing at a place.</summary>
+    public static bool IsArea(string? kind) => kind is Rectangle or Ellipse or Redact;
 }
 
 /// <summary>
@@ -37,6 +44,28 @@ public readonly record struct StudioResolvedAnnotation(
     string Text)
 {
     public bool IsArrow => Kind == StudioAnnotationKinds.Arrow;
+
+    /// <summary>Whether it covers <see cref="Rect"/> (a rectangle, an ellipse or a redaction).</summary>
+    public bool IsArea => StudioAnnotationKinds.IsArea(Kind);
+
+    /// <summary>The area a rectangle, an ellipse or a redaction covers.</summary>
+    public StudioFrameRect Rect { get; init; }
+
+    /// <summary>The inside of a rectangle or an ellipse in <c>#RRGGBB</c>, or empty when it has none.</summary>
+    public string ShapeFill { get; init; } = string.Empty;
+
+    public double ShapeFillOpacity { get; init; }
+
+    public StudioRedactStyle RedactStyle { get; init; }
+
+    /// <summary>The blur's standard deviation, or the side of a pixelation's cells, in canvas pixels. 0 for a solid redaction.</summary>
+    public double RedactAmount { get; init; }
+
+    /// <summary>Whether it is an emoji, which is drawn in color with no box around it.</summary>
+    public bool IsEmoji => Kind == StudioAnnotationKinds.Emoji;
+
+    /// <summary>Whether an emoji has a drop shadow under it.</summary>
+    public bool HasShadow { get; init; }
 }
 
 /// <summary>What a pointer can take hold of on an annotation in the preview.</summary>
@@ -51,8 +80,20 @@ public enum StudioAnnotationPart
     /// <summary>A whole arrow, by its shaft.</summary>
     Body,
 
-    /// <summary>The box of a callout or a text.</summary>
+    /// <summary>The box of a callout or a text, or the whole of an area.</summary>
     Box,
+
+    /// <summary>A corner of an area.</summary>
+    TopLeft,
+
+    /// <summary>A corner of an area.</summary>
+    TopRight,
+
+    /// <summary>A corner of an area.</summary>
+    BottomLeft,
+
+    /// <summary>A corner of an area.</summary>
+    BottomRight,
 }
 
 /// <summary>Where a drag leaves an annotation, in the numbers of the project, and whether it has settled on a center line of the canvas.</summary>
@@ -62,7 +103,14 @@ public readonly record struct StudioAnnotationMove(
     double OffsetX,
     double OffsetY,
     bool IsOnVerticalCenter,
-    bool IsOnHorizontalCenter);
+    bool IsOnHorizontalCenter)
+{
+    /// <summary>The width an area has after the drag. Null for any other kind.</summary>
+    public double? Width { get; init; }
+
+    /// <summary>The height an area has after the drag. Null for any other kind.</summary>
+    public double? Height { get; init; }
+}
 
 /// <summary>One annotation on the picture, in canvas pixels, for a pointer to take hold of.</summary>
 /// <param name="Tip">What an arrow or a callout points at, or the center of a text box.</param>
@@ -101,6 +149,7 @@ public static class StudioAnnotationGeometry
     private const double MaxBoxWidthInCanvases = 0.7;
     private const double SnapShareOfShortSide = 0.008;
     private const double ShortestArrowInShortSides = 0.02;
+    private const double SmallestAreaInShortSides = 0.02;
 
     public const double MinimumScale = 0.5;
     public const double MaximumScale = 3;
@@ -118,8 +167,13 @@ public static class StudioAnnotationGeometry
         ArgumentNullException.ThrowIfNull(annotation);
         resolved = default;
         var kind = annotation.Kind;
+        if (StudioAnnotationKinds.IsArea(kind))
+        {
+            return TryResolveArea(annotation, index, frame, time, canvasWidth, canvasHeight, out resolved);
+        }
+
         var isArrow = kind == StudioAnnotationKinds.Arrow;
-        if (!isArrow && kind is not (StudioAnnotationKinds.Callout or StudioAnnotationKinds.Text))
+        if (!isArrow && kind is not (StudioAnnotationKinds.Callout or StudioAnnotationKinds.Text or StudioAnnotationKinds.Emoji))
         {
             return false;
         }
@@ -137,6 +191,17 @@ public static class StudioAnnotationGeometry
         var (fontShare, strokeShare) = Sizes(annotation.Size);
         var scale = Math.Clamp(annotation.Scale, MinimumScale, MaximumScale);
         var font = shortSide * fontShare * scale;
+        if (kind == StudioAnnotationKinds.Emoji)
+        {
+            // An emoji does not wrap, so it has no widest line.
+            var emojiFont = shortSide * EmojiSize(annotation.Size) * scale;
+            resolved = new StudioResolvedAnnotation(
+                index, kind, opacity, fill, textColor, anchor, 0, default, default, 0, false, anchor, emojiFont, double.PositiveInfinity, 0, annotation.Text)
+            {
+                HasShadow = annotation.Shadow,
+            };
+            return true;
+        }
         var offset = new StudioPoint(
             Math.Clamp(annotation.OffsetX, -1, 1) * shortSide,
             Math.Clamp(annotation.OffsetY, -1, 1) * shortSide);
@@ -163,6 +228,230 @@ public static class StudioAnnotationGeometry
         resolved = new StudioResolvedAnnotation(
             index, kind, opacity, fill, textColor, anchor, 0, default, default, 0, false, center, font, maxTextWidth, font * RadiusInFonts, annotation.Text);
         return true;
+    }
+
+    private static bool TryResolveArea(
+        StudioAnnotation annotation,
+        int index,
+        in StudioResolvedFrame frame,
+        double time,
+        double canvasWidth,
+        double canvasHeight,
+        out StudioResolvedAnnotation resolved)
+    {
+        resolved = default;
+        if (!(annotation.Start <= time && time < annotation.End)
+            || !TryGetAreaRect(annotation, frame, canvasWidth, canvasHeight, out var rect, out var opacity)
+            || !(opacity > 0))
+        {
+            return false;
+        }
+
+        var shortSide = Math.Min(canvasWidth, canvasHeight);
+        var (fill, textColor) = GetEffectiveColors(annotation);
+        var center = new StudioPoint(rect.X + (rect.Width / 2), rect.Y + (rect.Height / 2));
+        if (annotation.Kind == StudioAnnotationKinds.Redact)
+        {
+            var style = annotation.RedactStyle;
+            var amount = style switch
+            {
+                StudioRedactStyle.Blur => shortSide * annotation.RedactLevel switch
+                {
+                    StudioRedactLevel.Light => 0.006,
+                    StudioRedactLevel.Heavy => 0.022,
+                    _ => 0.012,
+                },
+                StudioRedactStyle.Pixelate => shortSide * annotation.RedactLevel switch
+                {
+                    StudioRedactLevel.Light => 0.008,
+                    StudioRedactLevel.Heavy => 0.028,
+                    _ => 0.016,
+                },
+                _ => 0,
+            };
+            resolved = new StudioResolvedAnnotation(
+                index, annotation.Kind, opacity, fill, textColor, center, 0, default, default, 0, false, default, 0, 0, 0, string.Empty)
+            {
+                Rect = rect,
+                RedactStyle = style,
+                RedactAmount = amount,
+            };
+            return true;
+        }
+
+        var (_, strokeShare) = Sizes(annotation.Size);
+        var stroke = shortSide * strokeShare * Math.Clamp(annotation.Scale, MinimumScale, MaximumScale);
+        var radius = annotation.Kind == StudioAnnotationKinds.Rectangle
+            ? Math.Min(Math.Min(Math.Clamp(annotation.CornerRadius, 0, 0.5) * shortSide, rect.Width / 2), rect.Height / 2)
+            : 0;
+        resolved = new StudioResolvedAnnotation(
+            index, annotation.Kind, opacity, fill, textColor, center, stroke, default, default, 0, false, default, 0, 0, radius, string.Empty)
+        {
+            Rect = rect,
+            ShapeFill = GetCustomColor(annotation.ShapeFill) ?? string.Empty,
+            ShapeFillOpacity = Math.Clamp(annotation.ShapeFillOpacity, 0, 1),
+        };
+        return true;
+    }
+
+    /// <summary>
+    /// The area a rectangle, an ellipse or a redaction covers in canvas pixels, and how opaque it
+    /// is. False when it has no size, or when it is fixed to the screen and none of it is in view.
+    /// </summary>
+    public static bool TryGetAreaRect(StudioAnnotation annotation, in StudioResolvedFrame frame, double canvasWidth, double canvasHeight, out StudioFrameRect rect, out double opacity)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        rect = default;
+        opacity = 0;
+        var x = Math.Clamp(annotation.X, 0, 1);
+        var y = Math.Clamp(annotation.Y, 0, 1);
+        var width = Math.Clamp(annotation.Width, 0, 1);
+        var height = Math.Clamp(annotation.Height, 0, 1);
+        if (!(width > 0) || !(height > 0))
+        {
+            return false;
+        }
+
+        var loX = x - (width / 2);
+        var loY = y - (height / 2);
+        if (annotation.Attach == StudioAnnotationAttach.Frame)
+        {
+            rect = new StudioFrameRect(loX * canvasWidth, loY * canvasHeight, width * canvasWidth, height * canvasHeight);
+            opacity = 1;
+            return true;
+        }
+
+        if (frame.Screen is not { } screen)
+        {
+            return false;
+        }
+
+        var source = screen.Source;
+        if (!(source.Width > 0) || !(source.Height > 0)
+            || !(loX < source.X + source.Width && loX + width > source.X)
+            || !(loY < source.Y + source.Height && loY + height > source.Y))
+        {
+            return false;
+        }
+
+        rect = new StudioFrameRect(
+            screen.Rect.X + ((loX - source.X) / source.Width * screen.Rect.Width),
+            screen.Rect.Y + ((loY - source.Y) / source.Height * screen.Rect.Height),
+            width / source.Width * screen.Rect.Width,
+            height / source.Height * screen.Rect.Height);
+        opacity = screen.Opacity;
+        return true;
+    }
+
+    /// <summary>
+    /// The numbers a rectangle, an ellipse or a redaction has once it is dragged by some canvas
+    /// pixels from where it was at the start of the drag: moved by <see cref="StudioAnnotationPart.Box"/>,
+    /// or resized by a corner while the opposite corner stays where it is. What is dragged settles
+    /// on the middle of the canvas when it comes close, and the area never grows too small to take
+    /// hold of again. Null when it isn't in the picture.
+    /// </summary>
+    public static StudioAnnotationMove? GetAreaMoved(
+        StudioAnnotation annotation,
+        StudioAnnotationPart part,
+        double byX,
+        double byY,
+        in StudioResolvedFrame frame,
+        double canvasWidth,
+        double canvasHeight)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        if (!double.IsFinite(byX) || !double.IsFinite(byY) || !(canvasWidth > 0) || !(canvasHeight > 0)
+            || !TryGetAreaRect(annotation, frame, canvasWidth, canvasHeight, out var rect, out _))
+        {
+            return null;
+        }
+
+        var shortSide = Math.Min(canvasWidth, canvasHeight);
+        var reach = shortSide * SnapShareOfShortSide;
+        var smallest = shortSide * SmallestAreaInShortSides;
+        var midX = canvasWidth / 2;
+        var midY = canvasHeight / 2;
+        double left = rect.X, top = rect.Y, right = rect.X + rect.Width, bottom = rect.Y + rect.Height;
+        bool isOnVerticalCenter, isOnHorizontalCenter;
+        if (part is StudioAnnotationPart.TopLeft or StudioAnnotationPart.TopRight or StudioAnnotationPart.BottomLeft or StudioAnnotationPart.BottomRight)
+        {
+            var isLeft = part is StudioAnnotationPart.TopLeft or StudioAnnotationPart.BottomLeft;
+            var isTop = part is StudioAnnotationPart.TopLeft or StudioAnnotationPart.TopRight;
+            var x = (isLeft ? left : right) + byX;
+            var y = (isTop ? top : bottom) + byY;
+            isOnVerticalCenter = Math.Abs(x - midX) <= reach;
+            isOnHorizontalCenter = Math.Abs(y - midY) <= reach;
+            x = isOnVerticalCenter ? midX : x;
+            y = isOnHorizontalCenter ? midY : y;
+            if (isLeft)
+            {
+                left = Math.Min(x, right - smallest);
+            }
+            else
+            {
+                right = Math.Max(x, left + smallest);
+            }
+
+            if (isTop)
+            {
+                top = Math.Min(y, bottom - smallest);
+            }
+            else
+            {
+                bottom = Math.Max(y, top + smallest);
+            }
+        }
+        else
+        {
+            var centerX = left + (rect.Width / 2) + byX;
+            var centerY = top + (rect.Height / 2) + byY;
+            isOnVerticalCenter = Math.Abs(centerX - midX) <= reach;
+            isOnHorizontalCenter = Math.Abs(centerY - midY) <= reach;
+            centerX = isOnVerticalCenter ? midX : centerX;
+            centerY = isOnHorizontalCenter ? midY : centerY;
+            left = centerX - (rect.Width / 2);
+            right = centerX + (rect.Width / 2);
+            top = centerY - (rect.Height / 2);
+            bottom = centerY + (rect.Height / 2);
+        }
+
+        // From canvas pixels back to the numbers of the canvas, or of the recording where the frame shows it.
+        double originX = 0, originY = 0, spanX = 1, spanY = 1, pixelsX = canvasWidth, pixelsY = canvasHeight, offsetX = 0, offsetY = 0;
+        if (annotation.Attach == StudioAnnotationAttach.Screen)
+        {
+            if (frame.Screen is not { } screen || !(screen.Rect.Width > 0) || !(screen.Rect.Height > 0))
+            {
+                return null;
+            }
+
+            originX = screen.Source.X;
+            originY = screen.Source.Y;
+            spanX = screen.Source.Width;
+            spanY = screen.Source.Height;
+            pixelsX = screen.Rect.Width;
+            pixelsY = screen.Rect.Height;
+            offsetX = screen.Rect.X;
+            offsetY = screen.Rect.Y;
+        }
+
+        var width = Math.Clamp((right - left) / pixelsX * spanX, 0, 1);
+        var height = Math.Clamp((bottom - top) / pixelsY * spanY, 0, 1);
+        var cx = originX + (((left + right) / 2) - offsetX) / pixelsX * spanX;
+        var cy = originY + (((top + bottom) / 2) - offsetY) / pixelsY * spanY;
+
+        // A screen area keeps its middle in view, so that it is not lost from the picture by a drag.
+        if (annotation.Attach == StudioAnnotationAttach.Screen)
+        {
+            cx = Math.Clamp(cx, originX, originX + spanX);
+            cy = Math.Clamp(cy, originY, originY + spanY);
+        }
+
+        return new StudioAnnotationMove(
+            Math.Clamp(cx, 0, 1), Math.Clamp(cy, 0, 1), annotation.OffsetX, annotation.OffsetY, isOnVerticalCenter, isOnHorizontalCenter)
+        {
+            Width = width,
+            Height = height,
+        };
     }
 
     /// <summary>The box of a callout or a text whose text measures <paramref name="textWidth"/> by <paramref name="textHeight"/>.</summary>
@@ -204,6 +493,17 @@ public static class StudioAnnotationGeometry
         }
     }
 
+    /// <summary>Where an emoji whose text measures <paramref name="textWidth"/> by <paramref name="textHeight"/> goes: centered on its anchor and pushed inside the canvas.</summary>
+    public static StudioFrameRect LayoutEmoji(in StudioResolvedAnnotation resolved, double textWidth, double textHeight, double canvasWidth, double canvasHeight) =>
+        new(
+            Math.Max(0, Math.Min(resolved.Anchor.X - (textWidth / 2), canvasWidth - textWidth)),
+            Math.Max(0, Math.Min(resolved.Anchor.Y - (textHeight / 2), canvasHeight - textHeight)),
+            textWidth,
+            textHeight);
+
+    /// <summary>How far down an emoji's shadow is moved, and its blur's standard deviation, in canvas pixels.</summary>
+    public static (double OffsetY, double Blur) GetEmojiShadow(double font) => (font * 0.04, font * 0.06);
+
     /// <summary>
     /// The numbers of the middle of what is in view: of the part of the recording a frame shows,
     /// or of the canvas. A frame with no screen has the middle of the recording.
@@ -240,6 +540,41 @@ public static class StudioAnnotationGeometry
         var acrossX = Math.Clamp((anchor.X - screen.Rect.X) / screen.Rect.Width, 0, 1);
         var acrossY = Math.Clamp((anchor.Y - screen.Rect.Y) / screen.Rect.Height, 0, 1);
         return new StudioPoint(screen.Source.X + (acrossX * screen.Source.Width), screen.Source.Y + (acrossY * screen.Source.Height));
+    }
+
+    /// <summary>
+    /// The middle and size that keep a rectangle, an ellipse or a redaction where it is in the
+    /// picture once it is fixed to <paramref name="attach"/>. Its own numbers where it is not in the
+    /// picture to begin with, or the frame has no screen to fix it to.
+    /// </summary>
+    public static (double X, double Y, double Width, double Height) GetAreaWhenAttached(StudioAnnotation annotation, StudioAnnotationAttach attach, in StudioResolvedFrame frame, double canvasWidth, double canvasHeight)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        var own = (annotation.X, annotation.Y, annotation.Width, annotation.Height);
+        if (attach == annotation.Attach || !(canvasWidth > 0) || !(canvasHeight > 0)
+            || !TryGetAreaRect(annotation, frame, canvasWidth, canvasHeight, out var rect, out _))
+        {
+            return own;
+        }
+
+        var centerX = rect.X + (rect.Width / 2);
+        var centerY = rect.Y + (rect.Height / 2);
+        if (attach == StudioAnnotationAttach.Frame)
+        {
+            return (Math.Clamp(centerX / canvasWidth, 0, 1), Math.Clamp(centerY / canvasHeight, 0, 1),
+                Math.Clamp(rect.Width / canvasWidth, 0, 1), Math.Clamp(rect.Height / canvasHeight, 0, 1));
+        }
+
+        if (frame.Screen is not { } screen || !(screen.Rect.Width > 0) || !(screen.Rect.Height > 0))
+        {
+            return own;
+        }
+
+        var acrossX = Math.Clamp((centerX - screen.Rect.X) / screen.Rect.Width, 0, 1);
+        var acrossY = Math.Clamp((centerY - screen.Rect.Y) / screen.Rect.Height, 0, 1);
+        return (screen.Source.X + (acrossX * screen.Source.Width), screen.Source.Y + (acrossY * screen.Source.Height),
+            Math.Clamp(rect.Width / screen.Rect.Width * screen.Source.Width, 0, 1),
+            Math.Clamp(rect.Height / screen.Rect.Height * screen.Source.Height, 0, 1));
     }
 
     /// <summary>
@@ -438,6 +773,14 @@ public static class StudioAnnotationGeometry
         StudioAnnotationStyle.White => ("#FFFFFF", "#1C1C1E"),
         StudioAnnotationStyle.Dark => ("#1C1C1E", "#FFFFFF"),
         _ => ("#FF453A", "#FFFFFF"),
+    };
+
+    /// <summary>An emoji's font at a scale of 1, in canvas short sides.</summary>
+    private static double EmojiSize(StudioAnnotationSize size) => size switch
+    {
+        StudioAnnotationSize.Small => 0.06,
+        StudioAnnotationSize.Large => 0.13,
+        _ => 0.09,
     };
 
     private static (double Font, double Stroke) Sizes(StudioAnnotationSize size) => size switch

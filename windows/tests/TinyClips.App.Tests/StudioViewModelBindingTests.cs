@@ -772,11 +772,11 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     }
 
     [Fact]
-    public async Task AClickedRadioButton_HandsBackNoChoiceAndThenTheChoice_WhichIsOneEdit()
+    public async Task AClickedSegmentedChoice_HandsBackNoChoiceAndThenTheChoice_WhichIsOneEdit()
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
-        var groups = _controls.Bindings.Where(binding => binding.Control == "RadioButtons").ToArray();
-        Assert.Equal(6, groups.Length);
+        var groups = _controls.Bindings.Where(binding => binding.Control == "Segmented").ToArray();
+        Assert.Equal(14, groups.Length);
 
         foreach (var group in groups)
         {
@@ -792,8 +792,8 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
                     continue;
                 }
 
-                // The button that was chosen is unchecked first, and the group says so through
-                // its binding. Then the button that was clicked is checked.
+                // A choice can hand back no choice first, as its items are rebuilt or its
+                // template is applied. Then the choice that was clicked.
                 _controls.Move(group, -1);
                 _controls.Move(group, choice);
                 Pump();

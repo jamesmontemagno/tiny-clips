@@ -591,6 +591,12 @@ public sealed partial class StudioWindow : Window
         VirtualKey.A => StudioShortcutKey.A,
         VirtualKey.C => StudioShortcutKey.C,
         VirtualKey.T => StudioShortcutKey.T,
+        VirtualKey.H => StudioShortcutKey.H,
+        VirtualKey.B => StudioShortcutKey.B,
+        VirtualKey.M => StudioShortcutKey.M,
+        VirtualKey.D => StudioShortcutKey.D,
+        VirtualKey.Home => StudioShortcutKey.Home,
+        VirtualKey.End => StudioShortcutKey.End,
         VirtualKey.I => StudioShortcutKey.I,
         VirtualKey.O => StudioShortcutKey.O,
         VirtualKey.R => StudioShortcutKey.R,
@@ -599,7 +605,7 @@ public sealed partial class StudioWindow : Window
         VirtualKey.Z => StudioShortcutKey.Z,
         VirtualKey.Y => StudioShortcutKey.Y,
         VirtualKey.E => StudioShortcutKey.E,
-        VirtualKey.Delete => StudioShortcutKey.Delete,
+        VirtualKey.Delete or VirtualKey.Back => StudioShortcutKey.Delete,
 
         // The number row, not the number pad.
         VirtualKey.Number1 => StudioShortcutKey.Digit1,
