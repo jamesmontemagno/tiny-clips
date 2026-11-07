@@ -285,17 +285,7 @@ class CaptureManager: ObservableObject {
     }
 
     private func bringWindowToFront(_ window: NSWindow) {
-        window.collectionBehavior.insert(.moveToActiveSpace)
-
-        NSRunningApplication.current.activate(options: [.activateAllWindows])
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            NSRunningApplication.current.activate(options: [.activateAllWindows])
-            window.makeKeyAndOrderFront(nil)
-            window.orderFrontRegardless()
-        }
+        WindowPresenter.shared.present(window)
     }
 
     private func configureGlobalHotKeys() {
