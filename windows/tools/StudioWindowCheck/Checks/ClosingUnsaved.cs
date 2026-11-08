@@ -124,10 +124,10 @@ internal sealed partial class WindowChecks
                 edited && bar is not null && texts.Contains(SaveSentence) && ErrorOf(editor) == SaveSentence && whileOpen == 0 && refusedOpen == 1 && Native.Exists(editor.Handle),
                 $"{(bar is null ? "no message bar" : bar.ToString())}: {string.Join(" | ", texts.Select(text => $"\"{text}\""))}; the store refused {refusedOpen} save(s); reported to the app meanwhile: {whileOpen}");
 
-            // Closed by its close button. The project was never exported, so the window asks, and is told to keep the draft.
+            // Closed by its close button. The project has no saved project folder, so the window asks, and is told to keep the draft.
             Timeline.Mark("6: that window is closed");
             var pressed = PressClose(editor);
-            var kept = Dialog(editor)?.Find("SecondaryButton")?.Invoke() ?? false;
+            var kept = Dialog(editor)?.Find("PrimaryButton")?.Invoke() ?? false;
             var gone = WindowGone(editor);
             Release(editor);
             Until(() => _services.Errors().Length, count => count > errorsBefore, 3);

@@ -1,5 +1,6 @@
 import XCTest
 import CoreImage
+import CoreMedia
 @testable import TinyClips
 
 /// Section 6.10 of the project format, against the fixtures Windows is held to as well.
@@ -241,6 +242,50 @@ final class StudioAnnotationTests: XCTestCase {
         project.zooms = zooms
         project.overlays.annotations = annotations
         return StudioEditorModel(project: project)
+    }
+
+    @MainActor
+    func testPreviewFrameTimeUsesTheFrameContainingTheSeekTime() {
+        XCTAssertEqual(StudioPlayback.frameTime(
+            at: 1.017, frameDuration: CMTime(value: 1, timescale: 30)
+        ), 1)
+        XCTAssertEqual(StudioPlayback.frameTime(
+            at: 1.017, frameDuration: CMTime(value: 1, timescale: 60)
+        ), 61.0 / 60)
+        XCTAssertEqual(StudioPlayback.frameTime(
+            at: 7.0 / 30, frameDuration: CMTime(value: 1, timescale: 30)
+        ), 7.0 / 30)
+    }
+
+    @MainActor
+    func testAddingAtThePlayheadIsVisibleOnTheCurrentPreviewFrame() {
+        let kinds = [
+            StudioAnnotationKind.arrow, StudioAnnotationKind.callout, StudioAnnotationKind.text,
+            StudioAnnotationKind.rectangle, StudioAnnotationKind.ellipse,
+            StudioAnnotationKind.redact, StudioAnnotationKind.emoji
+        ]
+        for framesPerSecond: Int32 in [24, 30, 60] {
+            let frameDuration = CMTime(value: 1, timescale: framesPerSecond)
+            for playhead in [0.0, 1.017, 7.0 / 30, 10.019] {
+                let displayedTime = StudioPlayback.frameTime(at: playhead, frameDuration: frameDuration)
+                for kind in kinds {
+                    var editor = model()
+                    let result = editor.addAnnotation(kind: kind, at: displayedTime, events: nil)
+                    XCTAssertTrue(result.changed)
+                    let annotation = editor.project.overlays.annotations[0]
+                    let frame = StudioLayoutResolver.resolve(
+                        project: editor.project, time: displayedTime,
+                        canvasWidth: 1920, canvasHeight: 1080, events: nil
+                    )
+                    XCTAssertLessThanOrEqual(annotation.start, playhead)
+                    XCTAssertLessThan(playhead - annotation.start, frameDuration.seconds + 1.0 / 600)
+                    XCTAssertNotNil(StudioAnnotationGeometry.resolve(
+                        annotation, index: 0, frame: frame, time: displayedTime,
+                        canvasWidth: 1920, canvasHeight: 1080
+                    ), "\(kind) at \(playhead), \(framesPerSecond) fps")
+                }
+            }
+        }
     }
 
     func testAddingPutsItOnTopForThreeSecondsWithTheDefaultsOfItsKind() {

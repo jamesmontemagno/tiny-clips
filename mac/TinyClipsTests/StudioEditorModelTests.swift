@@ -30,6 +30,38 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertFalse(model.canRedo)
     }
 
+    func testRestorePutsBackTheSavedStateAsOneUndoStep() {
+        var model = StudioEditorModel(project: makeProject())
+        model.setCanvasPadding(0.12)
+        let saved = model.editableState
+
+        model.setCanvasPadding(0.3)
+        model.beginEditingGroup()
+        model.setCanvasPadding(0.4)
+        model.restore(saved)
+
+        XCTAssertFalse(model.isGroupingEdits)
+        XCTAssertEqual(model.editableState, saved)
+        model.undo()
+        XCTAssertEqual(model.project.canvas.padding, 0.4, accuracy: 1e-9)
+    }
+
+    func testRestoringTheCurrentStateLeavesNoUndoStep() {
+        var model = StudioEditorModel(project: makeProject())
+
+        model.restore(model.editableState)
+
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testClosePromptAsksAboutDraftsAndOnlyAboutChangesToSavedProjects() {
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: false, hasSavedProjectFolder: false, hasChangesSinceSave: true), .none)
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: true, hasSavedProjectFolder: false, hasChangesSinceSave: false), .draft)
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: true, hasSavedProjectFolder: false, hasChangesSinceSave: true), .draft)
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: true, hasSavedProjectFolder: true, hasChangesSinceSave: true), .unsavedChanges)
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: true, hasSavedProjectFolder: true, hasChangesSinceSave: false), .none)
+    }
+
     func testGestureThatChangesNothingLeavesNoUndoStep() {
         var model = StudioEditorModel(project: makeProject())
 

@@ -74,6 +74,75 @@ public sealed class StudioEditorSessionProjectFolderTests : StudioEditorSessionT
     }
 
     [Fact]
+    public async Task ClosePrompt_ForASavedProject_AsksOnlyAboutChangesSinceTheLastSave()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        Assert.Equal(StudioClosePrompt.Draft, session.GetClosePrompt());
+
+        session.SetCanvasPadding(0.12);
+        Assert.Equal(StudioClosePrompt.Draft, session.GetClosePrompt());
+
+        // Saved, it closes without asking: what it holds is what the folder has.
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved, (await RunToEndAsync(session.SaveProjectFolderAsync(Folder))).Outcome);
+        Assert.True(session.HasSavedProjectFolder);
+        Assert.False(session.HasChangesSinceProjectSave);
+        Assert.Equal(StudioClosePrompt.None, session.GetClosePrompt());
+
+        session.SetCanvasPadding(0.2);
+        Assert.True(session.HasChangesSinceProjectSave);
+        Assert.Equal(StudioClosePrompt.UnsavedChanges, session.GetClosePrompt());
+
+        // Changed back by hand, there is nothing to ask about again.
+        session.SetCanvasPadding(0.12);
+        Assert.Equal(StudioClosePrompt.None, session.GetClosePrompt());
+
+        // A folder that is gone is no saved project: it is a draft again.
+        Directory.Delete(Folder, recursive: true);
+        Assert.False(session.HasSavedProjectFolder);
+        Assert.Equal(StudioClosePrompt.Draft, session.GetClosePrompt());
+    }
+
+    [Fact]
+    public async Task DiscardChanges_PutsTheLastSaveBack_AndTheCloseWritesIt()
+    {
+        var id = CreateProject();
+        var session = await OpenAsync(id);
+        session.SetCanvasPadding(0.12);
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved, (await RunToEndAsync(session.SaveProjectFolderAsync(Folder))).Outcome);
+
+        session.SetCanvasPadding(0.3);
+        session.SetMuted(true);
+        session.SaveNow();
+        Assert.Equal(0.3, Projects.Load(id).Canvas.Padding, Precision);
+
+        session.DiscardChangesSinceProjectSave();
+
+        Assert.Equal(0.12, session.Project!.Canvas.Padding, Precision);
+        Assert.False(session.Project.Audio.Muted);
+        Assert.Equal(StudioClosePrompt.None, session.GetClosePrompt());
+        await session.CloseAsync();
+        Assert.Equal(0.12, Projects.Load(id).Canvas.Padding, Precision);
+        Assert.False(Projects.Load(id).Audio.Muted);
+    }
+
+    [Fact]
+    public async Task ASavedProjectOpenedAgain_StartsWithoutChanges()
+    {
+        var id = CreateProject();
+        var first = await OpenAsync(id);
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved, (await RunToEndAsync(first.SaveProjectFolderAsync(Folder))).Outcome);
+        await first.CloseAsync();
+
+        var session = await OpenAsync(id);
+
+        Assert.True(session.HasSavedProjectFolder);
+        Assert.Equal(StudioClosePrompt.None, session.GetClosePrompt());
+        session.SetCanvasPadding(0.25);
+        Assert.Equal(StudioClosePrompt.UnsavedChanges, session.GetClosePrompt());
+    }
+
+    [Fact]
     public async Task WhileTheProjectIsSaved_TheEditorTakesNoEdits_AndStartsNothingElse()
     {
         var id = CreateProject();

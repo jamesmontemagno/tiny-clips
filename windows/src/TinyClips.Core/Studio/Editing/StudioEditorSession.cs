@@ -65,6 +65,10 @@ public sealed partial class StudioEditorSession
     private Task? _loadTask;
     private Task? _closeTask;
     private bool _hasUnsavedEdits;
+
+    // The composition as it was when the project was opened, or last saved as a folder here.
+    // Closing a saved project asks about changes since then, and Don't save goes back to it.
+    private StudioEditableState? _projectSaveBaseline;
     private bool _isClosed;
     private int? _selectedZoomIndex;
     private double _playhead;
@@ -278,6 +282,7 @@ public sealed partial class StudioEditorSession
 
         _paths = paths;
         Model = model;
+        _projectSaveBaseline = model.EditableState;
         global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: project file read");
 
         if (!File.Exists(paths.ScreenPath))
@@ -1583,7 +1588,58 @@ public sealed partial class StudioEditorSession
             return StudioClosePrompt.ProjectSaveRunning;
         }
 
-        return IsReady && HasNeverExported ? StudioClosePrompt.NeverExported : StudioClosePrompt.None;
+        if (!IsReady)
+        {
+            return StudioClosePrompt.None;
+        }
+
+        if (!HasSavedProjectFolder)
+        {
+            return StudioClosePrompt.Draft;
+        }
+
+        return HasChangesSinceProjectSave ? StudioClosePrompt.UnsavedChanges : StudioClosePrompt.None;
+    }
+
+    /// <summary>
+    /// Whether the project was saved as a folder that is still there. A destination that cannot
+    /// be read counts as none: closing then asks what a draft is asked.
+    /// </summary>
+    public bool HasSavedProjectFolder
+    {
+        get
+        {
+            try
+            {
+                return StudioProjectDestination.Read(_store, ProjectId) is { } file && File.Exists(file);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Studio could not read where {ProjectId} was saved: {ex.Message}");
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the composition differs from what it was when the project was opened, or last
+    /// saved as a folder in this editor.
+    /// </summary>
+    public bool HasChangesSinceProjectSave =>
+        Model is { } model && _projectSaveBaseline is { } baseline && !baseline.ContentEquals(model.EditableState);
+
+    /// <summary>
+    /// Puts the composition back as it was when the project was opened, or last saved as a
+    /// folder in this editor. The window closes next, which writes it into the project.
+    /// </summary>
+    public void DiscardChangesSinceProjectSave()
+    {
+        if (!IsEditable || _projectSaveBaseline is not { } baseline || !HasChangesSinceProjectSave)
+        {
+            return;
+        }
+
+        Edit(model => model.RestoreEditableState(baseline));
     }
 
     /// <summary>

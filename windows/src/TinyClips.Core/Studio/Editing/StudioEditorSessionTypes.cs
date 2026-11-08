@@ -25,8 +25,14 @@ public enum StudioClosePrompt
     /// <summary>The project is being saved as a folder: keep saving, or stop and close.</summary>
     ProjectSaveRunning,
 
-    /// <summary>The project was never exported: export it, keep it as a draft, or delete it.</summary>
-    NeverExported,
+    /// <summary>The project has no saved project folder: keep it as a draft, or delete it.</summary>
+    Draft,
+
+    /// <summary>
+    /// The project was saved as a folder and has changed since: save the folder, discard the
+    /// changes, or keep editing.
+    /// </summary>
+    UnsavedChanges,
 }
 
 /// <summary>How <see cref="StudioEditorSession.ExportAsync"/> ended.</summary>

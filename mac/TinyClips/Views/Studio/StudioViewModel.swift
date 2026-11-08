@@ -128,6 +128,9 @@ final class StudioViewModel: ObservableObject {
     private var isTornDown = false
     private var destinationScope: URL?
     private var isChoosingDestination = false
+    /// What the project folder was last given, in this window: when it opened or was last saved.
+    /// Closing asks about changes since then, and Don't Save puts it back.
+    private var projectSaveBaseline: StudioEditableState?
 
     private func savedProjectFile() throws -> URL? {
         guard let record = try store.savedDestination(id: projectID) else { return nil }
@@ -305,6 +308,7 @@ final class StudioViewModel: ObservableObject {
             let model = StudioEditorModel(project: opened)
             paths = openedPaths
             editor = model
+            projectSaveBaseline = model.editableState
 
             guard FileManager.default.fileExists(atPath: openedPaths.screenURL.path) else {
                 becomeUnavailable(
@@ -1704,8 +1708,8 @@ final class StudioViewModel: ObservableObject {
 
     /// Adds an annotation at the playhead, on top of the others, and selects it. The playhead stays.
     func addAnnotationAtPlayhead(kind: String) {
-        guard isEditable else { return }
-        let time = playhead
+        guard isEditable, let frameDuration = player?.currentItem?.videoComposition?.frameDuration else { return }
+        let time = StudioPlayback.frameTime(at: playhead, frameDuration: frameDuration)
         let recordedEvents = events
         var result = StudioAnnotationEditResult(changed: false, index: nil)
         editAndSelect { model in
@@ -2395,12 +2399,12 @@ final class StudioViewModel: ObservableObject {
 
     /// Asked when Esc is pressed. Returns false to keep the window open.
     ///
-    /// Edits are saved with the project, so there is nothing to lose; the question only guards
-    /// against a stray Esc, and follows the setting shared by the other editors. A project that was
-    /// never exported is not asked here, because closing it asks what to do with it anyway.
+    /// A project saved to its folder with nothing new has nothing to lose; the question only
+    /// guards against a stray Esc, and follows the setting shared by the other editors. Any other
+    /// project is not asked here, because closing it asks what to do with it anyway.
     func confirmEscapeClose() -> Bool {
         guard CaptureSettings.shared.confirmEditorEscape,
-              isReady, let editor, !editor.hasNeverExported
+              isReady, editor != nil, closePrompt == .none
         else {
             return true
         }
@@ -2434,8 +2438,9 @@ final class StudioViewModel: ObservableObject {
     }
 
     /// Updates the linked project folder, or chooses one for the first save and Save As.
-    /// Editing and autosave continue to use Studio's internal working copy.
-    func saveProjectFolder(saveAs: Bool = false) {
+    /// Editing and autosave continue to use Studio's internal working copy. Saved from the close
+    /// prompt, the window closes once the folder has the project, and the folder is not shown.
+    func saveProjectFolder(saveAs: Bool = false, closingAfterward: Bool = false) {
         commitCaptionText()
         guard canSaveProjectFolder, !isChoosingDestination else { return }
         pause()
@@ -2470,6 +2475,8 @@ final class StudioViewModel: ObservableObject {
 
         let store = store
         let id = projectID
+        // Editing waits while the folder is written, so this is what the folder gets.
+        let saving = editor?.editableState
         busyMessage = "Saving project…"
         Task { [weak self] in
             let failure: String? = await Task.detached(priority: .userInitiated) {
@@ -2498,7 +2505,12 @@ final class StudioViewModel: ObservableObject {
             if let failure {
                 SaveService.shared.showError("Studio could not save this project: \(failure)")
             } else {
+                self.projectSaveBaseline = saving
                 SaveService.shared.showNotice("Project saved to the folder \(folder.lastPathComponent).")
+                if closingAfterward {
+                    self.requestClose?()
+                    return
+                }
                 let projectFile = linkedFile ?? folder
                     .appendingPathComponent(folder.lastPathComponent)
                     .appendingPathExtension(StudioProjectStore.projectFileExtension)
@@ -2551,26 +2563,76 @@ final class StudioViewModel: ObservableObject {
             return true
         }
 
-        guard isReady, let editor, editor.hasNeverExported else { return true }
-        pause()
+        switch closePrompt {
+        case .none:
+            return true
+        case .draft:
+            return askAboutDraft()
+        case .unsavedChanges:
+            return askAboutUnsavedChanges()
+        }
+    }
 
+    /// What closing asks, from whether the project has a folder and changes the folder does not.
+    var closePrompt: StudioClosePrompt {
+        guard isReady, let editor else { return .none }
+        let hasFolder = hasSavedProjectFolder
+        return StudioClosePrompt.resolve(
+            isReady: true,
+            hasSavedProjectFolder: hasFolder,
+            hasChangesSinceSave: hasFolder && editor.editableState != projectSaveBaseline
+        )
+    }
+
+    /// Whether the project is linked to a folder whose project file is still there.
+    private var hasSavedProjectFolder: Bool {
+        guard let file = try? savedProjectFile() else { return false }
+        return FileManager.default.fileExists(atPath: file.path)
+    }
+
+    private func askAboutDraft() -> Bool {
+        pause()
         let alert = NSAlert()
-        alert.messageText = "Export this recording before closing?"
-        alert.informativeText = "It has not been exported yet. Export it now, keep it as a draft to finish later, or delete it."
-        alert.addButton(withTitle: "Export")
+        alert.messageText = "Keep this recording?"
+        alert.informativeText = "It has not been saved as a project. Keep it as a draft to finish later from the Clips Library, or delete it."
         alert.addButton(withTitle: "Keep as Draft")
         let deleteButton = alert.addButton(withTitle: "Delete")
         deleteButton.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
 
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            requestExportOptions(closingAfterward: true)
-            return false
-        case .alertThirdButtonReturn:
+            return true
+        case .alertSecondButtonReturn:
             deletesOnClose = true
             return true
         default:
+            return false
+        }
+    }
+
+    private func askAboutUnsavedChanges() -> Bool {
+        pause()
+        let alert = NSAlert()
+        alert.messageText = "Save changes to “\(clipName)”?"
+        alert.informativeText = "This project has changes that are not in its project folder. If you don’t save, the changes you made since it was last saved are lost."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don’t Save")
+        alert.addButton(withTitle: "Cancel")
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            saveProjectFolder(closingAfterward: true)
+            return false
+        case .alertSecondButtonReturn:
+            if let projectSaveBaseline {
+                editor?.restore(projectSaveBaseline)
+                // Written when the window closes.
+                hasUnsavedEdits = true
+            }
             return true
+        default:
+            return false
         }
     }
 
