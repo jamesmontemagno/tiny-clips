@@ -137,6 +137,11 @@ public class ContractTests
             .Select(parameter => parameter!.GetValue<string>()));
         Assert.False(edit["properties"]!["patch"]!["additionalProperties"]!.GetValue<bool>());
         Assert.Equal("object", edit["properties"]!["patch"]!["properties"]!["captions"]!["type"]!.GetValue<string>());
+        var annotations = edit["properties"]!["patch"]!["properties"]!["overlays"]!["properties"]!["annotations"]!;
+        Assert.Equal("number", annotations["items"]!["properties"]!["rotation"]!["type"]!.GetValue<string>());
+        Contract.Validate(contract.Find("studio.project.edit")!, JsonNode.Parse("""
+            {"projectId":"p","expectedModifiedAt":"now","expectedRevision":"rev","patch":{"overlays":{"annotations":[{"kind":"emoji","text":"Hi","rotation":45,"scale":1.5}]}}}
+            """)!.AsObject());
     }
 
     [Theory]

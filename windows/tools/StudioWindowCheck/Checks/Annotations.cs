@@ -40,7 +40,50 @@ internal sealed partial class WindowChecks
                 && StudioWindow.MapKey(VirtualKey.H) == StudioShortcutKey.H && StudioWindow.MapKey(VirtualKey.E) == StudioShortcutKey.E && StudioWindow.MapKey(VirtualKey.B) == StudioShortcutKey.B && StudioWindow.MapKey(VirtualKey.M) == StudioShortcutKey.M,
             $"A is {StudioWindow.MapKey(VirtualKey.A)}, C is {StudioWindow.MapKey(VirtualKey.C)}, T is {StudioWindow.MapKey(VirtualKey.T)}, H is {StudioWindow.MapKey(VirtualKey.H)}, E is {StudioWindow.MapKey(VirtualKey.E)}, B is {StudioWindow.MapKey(VirtualKey.B)}, M is {StudioWindow.MapKey(VirtualKey.M)}");
         AddingAnnotations();
+        AnnotationTransformControls();
         AnnotationsAProjectAlreadyHolds();
+    }
+
+    private void AnnotationTransformControls()
+    {
+        var kinds = new[] { StudioAnnotationKinds.Arrow, StudioAnnotationKinds.Callout, StudioAnnotationKinds.Text,
+            StudioAnnotationKinds.Rectangle, StudioAnnotationKinds.Ellipse, StudioAnnotationKinds.Redact, StudioAnnotationKinds.Emoji };
+        var folder = NewScreenProject("Annotation transforms", project => project with
+        {
+            Overlays = project.Overlays with
+            {
+                Annotations = kinds.Select((kind, index) => new StudioAnnotation
+                {
+                    Id = $"transform-{index}", Kind = kind, Attach = StudioAnnotationAttach.Frame,
+                    Start = 0, End = 5, Text = "Hi",
+                }).ToArray(),
+            },
+        });
+        if (OpenReady(folder, "annotation transforms") is not { } editor)
+        {
+            return;
+        }
+
+        for (var index = 0; index < kinds.Length; index++)
+        {
+            var selected = index;
+            OnUi(() => editor.Window.ViewModel.SelectAnnotation(selected));
+            var grips = Until(() => OnUi(() =>
+                new[] { "TopLeft", "TopRight", "BottomLeft", "BottomRight", "Rotate" }.All(part =>
+                    Descendant<Microsoft.UI.Xaml.FrameworkElement>(editor.Window.Content, $"StudioAnnotation{part}Handle") is not null)),
+                value => value, 2);
+            var slider = SetSlider(editor, "StudioAnnotationRotationSlider", 45);
+            var rotation = Until(() => AnnotationsOf(editor)[selected].Rotation, value => Same(value, 45), 1.5);
+            _report.Check($"{kinds[index]} has four resize grips, a rotation grip, and an accessible Rotation slider",
+                grips && slider && Same(rotation, 45), $"grips {grips}; slider {slider}; rotation {rotation}");
+            Invoke(editor, "StudioUndoButton");
+        }
+
+        _report.Check("emoji has one Size slider and no second size choice",
+            Find(editor, "StudioAnnotationScaleSlider") is { IsEnabled: true } &&
+                OnUi(() => Descendant<Microsoft.UI.Xaml.FrameworkElement>(editor.Window.Content, "StudioAnnotationSizeChoice") is null),
+            "the emoji size preset control is no longer present");
+        CloseQuietly(editor);
     }
 
     private void AddingAnnotations()

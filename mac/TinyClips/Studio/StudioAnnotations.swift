@@ -88,6 +88,7 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
     var textColor: String
     /// What `size` is multiplied by.
     var scale: Double
+    var rotation: Double
     /// The size of an area, normalized like `x` and `y`.
     var width: Double
     var height: Double
@@ -122,6 +123,7 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
         fill: String = "",
         textColor: String = "",
         scale: Double = 1,
+        rotation: Double = 0,
         width: Double = StudioAnnotation.defaultWidth,
         height: Double = StudioAnnotation.defaultHeight,
         cornerRadius: Double = 0,
@@ -147,6 +149,7 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
         self.fill = fill
         self.textColor = textColor
         self.scale = scale
+        self.rotation = rotation
         self.width = width
         self.height = height
         self.cornerRadius = cornerRadius
@@ -175,6 +178,7 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
         fill = try container.decodeString("fill", default: "")
         textColor = try container.decodeString("textColor", default: "")
         scale = try container.decodeDouble("scale", default: 1)
+        rotation = try container.decodeDouble("rotation", default: 0)
         width = try container.decodeDouble("width", default: Self.defaultWidth)
         height = try container.decodeDouble("height", default: Self.defaultHeight)
         cornerRadius = try container.decodeDouble("cornerRadius", default: 0)
@@ -187,7 +191,7 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
         shadow = shadowValue == true
         extra = try StudioJSON.decodeExtra(from: container, excluding: [
             "id", "kind", "attach", "start", "end", "x", "y", "offsetX", "offsetY", "text", "style", "size", "fill", "textColor", "scale",
-            "width", "height", "cornerRadius", "shapeFill", "shapeFillOpacity", "redactStyle", "redactLevel", "shadow",
+            "width", "height", "cornerRadius", "shapeFill", "shapeFillOpacity", "redactStyle", "redactLevel", "shadow", "rotation",
         ])
     }
 
@@ -209,6 +213,7 @@ struct StudioAnnotation: Codable, Equatable, Sendable {
         try container.encode(fill, forKey: StudioJSONKey("fill"))
         try container.encode(textColor, forKey: StudioJSONKey("textColor"))
         try container.encode(scale, forKey: StudioJSONKey("scale"))
+        try container.encode(rotation, forKey: StudioJSONKey("rotation"))
         try container.encode(width, forKey: StudioJSONKey("width"))
         try container.encode(height, forKey: StudioJSONKey("height"))
         try container.encode(cornerRadius, forKey: StudioJSONKey("cornerRadius"))
@@ -260,6 +265,7 @@ struct StudioResolvedAnnotation: Equatable, Sendable {
     var redactAmount: Double = 0
     /// Whether an emoji has a drop shadow.
     var shadow = false
+    var rotation: Double = 0
 
     var isArrow: Bool { kind == StudioAnnotationKind.arrow }
     var isArea: Bool { StudioAnnotationKind.isArea(kind) }
@@ -282,6 +288,7 @@ enum StudioAnnotationPart: Equatable, Sendable {
     case topRight
     case bottomLeft
     case bottomRight
+    case rotate
 
     var isCorner: Bool { self == .topLeft || self == .topRight || self == .bottomLeft || self == .bottomRight }
 }
@@ -298,6 +305,8 @@ struct StudioAnnotationMove: Equatable, Sendable {
     /// The size of an area, which a corner changes. Nil for the other kinds.
     var width: Double? = nil
     var height: Double? = nil
+    var scale: Double? = nil
+    var rotation: Double? = nil
 }
 
 /// Where a box goes once its text has been measured.
@@ -317,6 +326,46 @@ struct StudioAnnotationBox: Equatable, Sendable {
 /// `shared/studio/fixtures/annotations` hold both platforms to. The same on Windows
 /// (`StudioAnnotations.cs`).
 enum StudioAnnotationGeometry {
+    static func normalizeRotation(_ degrees: Double) -> Double {
+        guard degrees.isFinite else { return 0 }
+        var value = degrees.truncatingRemainder(dividingBy: 360)
+        if value <= -180 { value += 360 }
+        if value > 180 { value -= 360 }
+        return value
+    }
+
+    static func rotate(_ point: StudioAnnotationPoint, around center: StudioAnnotationPoint, degrees: Double) -> StudioAnnotationPoint {
+        let radians = normalizeRotation(degrees) * .pi / 180
+        let x = point.x - center.x
+        let y = point.y - center.y
+        return StudioAnnotationPoint(x: center.x + x * cos(radians) - y * sin(radians),
+                                     y: center.y + x * sin(radians) + y * cos(radians))
+    }
+
+    static func transform(_ start: StudioAnnotation, part: StudioAnnotationPart, anchor: StudioAnnotationPoint,
+                          pressed: StudioAnnotationPoint, current: StudioAnnotationPoint) -> StudioAnnotationMove? {
+        let x = pressed.x - anchor.x
+        let y = pressed.y - anchor.y
+        let dx = current.x - anchor.x
+        let dy = current.y - anchor.y
+        let distanceSquared = x * x + y * y
+        guard distanceSquared.isFinite, distanceSquared >= 1, dx.isFinite, dy.isFinite else { return nil }
+        var move = StudioAnnotationMove(x: start.x, y: start.y, offsetX: start.offsetX, offsetY: start.offsetY,
+                                        isOnVerticalCenter: false, isOnHorizontalCenter: false)
+        if part == .rotate {
+            move.rotation = normalizeRotation(start.rotation + (atan2(dy, dx) - atan2(y, x)) * 180 / .pi)
+        } else {
+            let scale = StudioCanvasMath.clamped(start.scale * max(0.01, (x * dx + y * dy) / distanceSquared), minimumScale, maximumScale)
+            let factor = scale / StudioCanvasMath.clamped(start.scale, minimumScale, maximumScale)
+            move.scale = scale
+            if start.kind == StudioAnnotationKind.arrow || start.kind == StudioAnnotationKind.callout {
+                move.offsetX = StudioCanvasMath.clamped(start.offsetX * factor, -1, 1)
+                move.offsetY = StudioCanvasMath.clamped(start.offsetY * factor, -1, 1)
+            }
+        }
+        return move
+    }
+
     private static let headLengthInStrokes = 3.2
     private static let headHalfWidthInLengths = 0.62
     private static let padXInFonts = 0.7
@@ -559,14 +608,15 @@ enum StudioAnnotationGeometry {
             return move
         }
 
+        let delta = rotate(StudioAnnotationPoint(x: byX, y: byY), around: StudioAnnotationPoint(x: 0, y: 0), degrees: -annotation.rotation)
         let movesRight = part == .topRight || part == .bottomRight
         let movesDown = part == .bottomLeft || part == .bottomRight
         let fixedX = movesRight ? rect.x : rect.x + rect.width
         let fixedY = movesDown ? rect.y : rect.y + rect.height
-        var x = (movesRight ? rect.x + rect.width : rect.x) + byX
-        var y = (movesDown ? rect.y + rect.height : rect.y) + byY
-        move.isOnVerticalCenter = abs(x - canvasWidth / 2) <= reach
-        move.isOnHorizontalCenter = abs(y - canvasHeight / 2) <= reach
+        var x = (movesRight ? rect.x + rect.width : rect.x) + delta.x
+        var y = (movesDown ? rect.y + rect.height : rect.y) + delta.y
+        move.isOnVerticalCenter = normalizeRotation(annotation.rotation) == 0 && abs(x - canvasWidth / 2) <= reach
+        move.isOnHorizontalCenter = normalizeRotation(annotation.rotation) == 0 && abs(y - canvasHeight / 2) <= reach
         if move.isOnVerticalCenter { x = canvasWidth / 2 }
         if move.isOnHorizontalCenter { y = canvasHeight / 2 }
         let least = shortSide * smallestAreaInShortSides
@@ -596,6 +646,16 @@ enum StudioAnnotationGeometry {
         move.y = StudioCanvasMath.clamped(newCenterY, 0, 1)
         move.width = newWidth
         move.height = newHeight
+        if normalizeRotation(annotation.rotation) != 0 {
+            let newAnchor = StudioAnnotationPoint(
+                x: rect.x + rect.width / 2 + (move.x - centerX) / sizeX * rect.width,
+                y: rect.y + rect.height / 2 + (move.y - centerY) / sizeY * rect.height)
+            guard let center = unclampedPoint(
+                    at: rotate(newAnchor, around: StudioAnnotationPoint(x: rect.x + rect.width / 2, y: rect.y + rect.height / 2), degrees: annotation.rotation),
+                    attach: annotation.attach, frame: frame, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else { return nil }
+            move.x = StudioCanvasMath.clamped(center.x, 0, 1)
+            move.y = StudioCanvasMath.clamped(center.y, 0, 1)
+        }
         return move
     }
 
@@ -620,6 +680,15 @@ enum StudioAnnotationGeometry {
         time: Double,
         canvasWidth: Double,
         canvasHeight: Double
+    ) -> StudioResolvedAnnotation? {
+        guard var resolved = resolveUnrotated(annotation, index: index, frame: frame, time: time, canvasWidth: canvasWidth, canvasHeight: canvasHeight) else { return nil }
+        resolved.rotation = normalizeRotation(annotation.rotation)
+        return resolved
+    }
+
+    private static func resolveUnrotated(
+        _ annotation: StudioAnnotation, index: Int, frame: StudioResolvedFrame, time: Double,
+        canvasWidth: Double, canvasHeight: Double
     ) -> StudioResolvedAnnotation? {
         let kind = annotation.kind
         let isArrow = kind == StudioAnnotationKind.arrow
@@ -751,20 +820,28 @@ enum StudioAnnotationGeometry {
         }
         guard let screen = frame.screen else { return nil }
         let source = screen.source
-        guard source.width > 0, source.height > 0,
-              lowX < source.x + source.width, highX > source.x,
-              lowY < source.y + source.height, highY > source.y else {
+        let rotation = normalizeRotation(annotation.rotation)
+        guard source.width > 0, source.height > 0 else {
             return nil
         }
-        return (
-            StudioRect(
-                x: screen.rect.x + (lowX - source.x) / source.width * screen.rect.width,
-                y: screen.rect.y + (lowY - source.y) / source.height * screen.rect.height,
-                width: sizeX / source.width * screen.rect.width,
-                height: sizeY / source.height * screen.rect.height
-            ),
-            screen.opacity
+        if rotation == 0 && (!(lowX < source.x + source.width && highX > source.x)
+            || !(lowY < source.y + source.height && highY > source.y)) { return nil }
+        let rect = StudioRect(
+            x: screen.rect.x + (lowX - source.x) / source.width * screen.rect.width,
+            y: screen.rect.y + (lowY - source.y) / source.height * screen.rect.height,
+            width: sizeX / source.width * screen.rect.width,
+            height: sizeY / source.height * screen.rect.height
         )
+        if rotation != 0 {
+            let center = StudioAnnotationPoint(x: rect.x + rect.width / 2, y: rect.y + rect.height / 2)
+            let corners = [
+                StudioAnnotationPoint(x: rect.x, y: rect.y), StudioAnnotationPoint(x: rect.maxX, y: rect.y),
+                StudioAnnotationPoint(x: rect.maxX, y: rect.maxY), StudioAnnotationPoint(x: rect.x, y: rect.maxY),
+            ].map { rotate($0, around: center, degrees: rotation) }
+            if corners.map(\.x).max()! <= screen.rect.x || corners.map(\.x).min()! >= screen.rect.maxX
+                || corners.map(\.y).max()! <= screen.rect.y || corners.map(\.y).min()! >= screen.rect.maxY { return nil }
+        }
+        return (rect, screen.opacity)
     }
 
     /// The center and size that keep an area where it is in the picture once it is fixed to
@@ -1155,6 +1232,11 @@ extension StudioEditorModel {
         return editAnnotation(at: index) {
             $0.scale = StudioCanvasMath.clamped(scale, StudioAnnotationGeometry.minimumScale, StudioAnnotationGeometry.maximumScale)
         }
+
+        mutating func setAnnotationRotation(at index: Int, to rotation: Double) -> StudioAnnotationEditResult {
+            guard rotation.isFinite else { return annotationUnchanged(index) }
+            return editAnnotation(at: index) { $0.rotation = StudioAnnotationGeometry.normalizeRotation(rotation) }
+        }
     }
 
     /// The smallest side the editor gives an area, normalized.
@@ -1222,6 +1304,8 @@ extension StudioEditorModel {
             $0.y = move.y
             $0.offsetX = move.offsetX
             $0.offsetY = move.offsetY
+            if let scale = move.scale { $0.scale = scale }
+            if let rotation = move.rotation { $0.rotation = rotation }
             if let width = move.width { $0.width = width }
             if let height = move.height { $0.height = height }
         }

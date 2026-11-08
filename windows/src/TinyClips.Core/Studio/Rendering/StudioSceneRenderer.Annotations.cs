@@ -54,22 +54,33 @@ public sealed partial class StudioSceneRenderer
             if (resolved.Kind == StudioAnnotationKinds.Redact)
             {
                 DrawRedaction(resolved, target, width, height);
+                continue;
             }
-            else if (resolved.IsArea)
+
+            var transform = _context.Transform;
+            _context.Transform = Matrix3x2.CreateRotation((float)(resolved.Rotation * Math.PI / 180), ToVector(resolved.Anchor)) * transform;
+            try
             {
-                DrawShape(resolved);
+                if (resolved.IsArea)
+                {
+                    DrawShape(resolved);
+                }
+                else if (resolved.IsArrow)
+                {
+                    DrawArrow(resolved);
+                }
+                else if (resolved.IsEmoji)
+                {
+                    DrawEmoji(resolved, width, height);
+                }
+                else
+                {
+                    DrawAnnotationBox(resolved, width, height);
+                }
             }
-            else if (resolved.IsArrow)
+            finally
             {
-                DrawArrow(resolved);
-            }
-            else if (resolved.IsEmoji)
-            {
-                DrawEmoji(resolved, width, height);
-            }
-            else
-            {
-                DrawAnnotationBox(resolved, width, height);
+                _context.Transform = transform;
             }
         }
     }
@@ -361,6 +372,31 @@ public sealed partial class StudioSceneRenderer
     private void DrawRedaction(in StudioResolvedAnnotation redaction, ID2D1Bitmap1 target, int width, int height)
     {
         var rect = redaction.Rect;
+        var anchor = redaction.Anchor;
+        var rotation = redaction.Rotation;
+        var corners = new[]
+        {
+            StudioAnnotationGeometry.Rotate(new(rect.X, rect.Y), anchor, rotation),
+            StudioAnnotationGeometry.Rotate(new(rect.X + rect.Width, rect.Y), anchor, rotation),
+            StudioAnnotationGeometry.Rotate(new(rect.X + rect.Width, rect.Y + rect.Height), anchor, rotation),
+            StudioAnnotationGeometry.Rotate(new(rect.X, rect.Y + rect.Height), anchor, rotation),
+        };
+        using var mask = _factory.CreatePathGeometry();
+        using (var sink = mask.Open())
+        {
+            sink.BeginFigure(ToVector(corners[0]), FigureBegin.Filled);
+            for (var i = 1; i < corners.Length; i++)
+            {
+                sink.AddLine(ToVector(corners[i]));
+            }
+
+            sink.EndFigure(FigureEnd.Closed);
+            sink.Close();
+        }
+
+        var minX = corners.Min(p => p.X);
+        var minY = corners.Min(p => p.Y);
+        rect = new(minX, minY, corners.Max(p => p.X) - minX, corners.Max(p => p.Y) - minY);
         var clip = new RawRectF((float)rect.X, (float)rect.Y, (float)(rect.X + rect.Width), (float)(rect.Y + rect.Height));
         if (redaction.RedactStyle == StudioRedactStyle.Solid || !(redaction.RedactAmount > 0))
         {
@@ -368,7 +404,7 @@ public sealed partial class StudioSceneRenderer
             var solid = BeginFade((float)redaction.Opacity, rect, null);
             try
             {
-                _context.FillRectangle(clip, _brush);
+                _context.FillGeometry(mask, _brush);
             }
             finally
             {
@@ -424,14 +460,22 @@ public sealed partial class StudioSceneRenderer
         var fades = BeginFade((float)redaction.Opacity, rect, null);
         try
         {
-            _context.PushAxisAlignedClip(clip, AntialiasMode.PerPrimitive);
+            _context.PushLayer(new LayerParameters1
+            {
+                ContentBounds = clip,
+                GeometricMask = mask,
+                MaskAntialiasMode = AntialiasMode.PerPrimitive,
+                MaskTransform = Matrix3x2.Identity,
+                Opacity = 1,
+                LayerOptions = LayerOptions1.None,
+            }, null!);
             try
             {
                 _context.DrawImage(output, new Vector2(left, top), new RawRectF(0, 0, areaWidth, areaHeight), InterpolationMode.NearestNeighbor, CompositeMode.SourceOver);
             }
             finally
             {
-                _context.PopAxisAlignedClip();
+                _context.PopLayer();
             }
         }
         finally

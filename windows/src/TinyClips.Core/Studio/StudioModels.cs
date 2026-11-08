@@ -497,6 +497,7 @@ public sealed record StudioAnnotation
 
     /// <summary>What <see cref="Size"/> is multiplied by.</summary>
     public double Scale { get; init; } = 1;
+    public double Rotation { get; init; }
 
     /// <summary>For an area (rectangle, ellipse, redact): its width as a share of the picture, centered on <see cref="X"/>.</summary>
     public double Width { get; init; } = 0.2;

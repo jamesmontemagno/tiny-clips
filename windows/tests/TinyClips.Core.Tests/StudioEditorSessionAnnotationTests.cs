@@ -263,6 +263,28 @@ public sealed class StudioEditorSessionAnnotationTests : StudioEditorSessionTest
     }
 
     [Fact]
+    public async Task TransformDraggingIsOneUndoStepAndTheRotationSliderIsIndependent()
+    {
+        var session = await OpenAsync(CreateProject());
+        session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Emoji);
+        var start = session.SelectedAnnotation!;
+        session.BeginGesture();
+        session.TransformAnnotation(0, start, StudioAnnotationPart.BottomRight, new(500, 250), new(600, 350), new(650, 400));
+        session.TransformAnnotation(0, start, StudioAnnotationPart.BottomRight, new(500, 250), new(600, 350), new(700, 450));
+        session.EndGesture();
+        Assert.Equal(2, session.SelectedAnnotation!.Scale);
+        session.SetAnnotationRotation(0, 45);
+        Assert.Equal(45, Assert.Single(session.GetAnnotationHandles(1920, 1080)).Rotation);
+        session.Undo();
+        Assert.Equal(0, session.SelectedAnnotation!.Rotation);
+        Assert.Equal(2, session.SelectedAnnotation.Scale);
+        session.Undo();
+        Assert.Equal(start, session.SelectedAnnotation);
+        session.Redo();
+        Assert.Equal(2, session.SelectedAnnotation!.Scale);
+    }
+
+    [Fact]
     public void TheWords_NameAnAnnotation_InOneLine()
     {
         var callout = new StudioAnnotation { Kind = StudioAnnotationKinds.Callout, Text = "Billing lives\nhere", Start = 12, End = 16.5 };

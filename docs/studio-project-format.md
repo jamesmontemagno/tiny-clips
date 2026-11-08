@@ -198,6 +198,7 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `redactLevel` | enum | `medium` | | `light`, `medium`, or `heavy`: how strongly `blur` and `pixelate` hide. Only a redaction uses it |
 | `text` | string | `""` | | What a callout or a text box says, with `\n` for a new line, or an emoji's emoji. With nothing but white space it is not drawn. An arrow does not use it |
 | `shadow` | boolean | false | | A soft drop shadow under an emoji. Anything but `true` reads as false. Other kinds do not use it |
+| `rotation` | number | 0 | normalized to (-180, 180] when drawn | Clockwise degrees about the resolved `x`, `y` anchor, after layout. Applies to every kind, in preview and export |
 | `style` | enum | `red` | | `red`, `blue`, `yellow`, `white`, or `dark` (section 6.10) |
 | `size` | enum | `medium` | | `small`, `medium`, or `large` (section 6.10) |
 | `fill` | string | `""` | | `#RRGGBB` in place of the style's fill, in either case. Anything else, an empty text included, leaves the style's |
@@ -568,6 +569,10 @@ A layer that only F has stays exactly as it is in F, with `opacity` `1 - k`. A l
 ### 6.10 Annotations
 
 Annotations are drawn over the camera and under the badge, in the order of the list, so the last is on top. They are not part of the resolved frame of section 6.6: they are worked out from it, for the same `t` and canvas.
+
+Layout below is in unrotated canvas coordinates. `rotation` then turns the complete annotation clockwise about its resolved anchor, including an arrow's tail, a callout's box and pointer, and an emoji's shadow. Omitted rotation is zero, so older projects keep their appearance. The selection outline and grips use the same transform. Corner grips resize areas in their local axes, holding the opposite corner fixed; for arrows, callouts, text and emoji they uniformly change `scale` about the anchor (and multiply an arrow/callout's offsets by the same factor). Every kind has a rotation grip and a keyboard-accessible Rotation slider. Emoji use one Size slider; a legacy `size` preset is still honored without a second control.
+
+A rotated blur or pixelation keeps the underlying image stationary: its sample region is the whole-pixel, canvas-clipped bounding rectangle of the rotated area, and the filtered pixels are composited through only the rotated coverage mask. The pixels themselves are not rotated. An unrotated redaction keeps the sampling rules below.
 
 ```
 W, H = the canvas

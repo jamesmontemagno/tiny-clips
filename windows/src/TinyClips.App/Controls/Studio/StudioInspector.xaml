@@ -1860,19 +1860,6 @@
                                         Text="{x:Bind ViewModel.MoreEmojiHint}"
                                         Visibility="Collapsed" />
                                 </StackPanel>
-                                <StackPanel Spacing="4">
-                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Size" />
-                                    <local:StudioSegmented
-                                        HorizontalAlignment="Stretch"
-                                        local:StudioSegmentedChoice.KeepsLatestChoice="True"
-                                        AutomationProperties.AutomationId="StudioAnnotationSizeChoice"
-                                        AutomationProperties.Name="Emoji size"
-                                        SelectedIndex="{x:Bind ViewModel.AnnotationSizeIndex, Mode=TwoWay}">
-                                        <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationSizeSmall" Content="Small" />
-                                        <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationSizeMedium" Content="Medium" />
-                                        <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationSizeLarge" Content="Large" />
-                                    </local:StudioSegmented>
-                                </StackPanel>
                                 <ToggleSwitch
                                     AutomationProperties.AutomationId="StudioAnnotationShadowToggle"
                                     AutomationProperties.Name="Shadow"
@@ -1965,6 +1952,16 @@
                                     ValueText="{x:Bind ViewModel.AnnotationScaleText, Mode=OneWay}"
                                     Value="{x:Bind ViewModel.AnnotationScale, Mode=TwoWay}"
                                     Visibility="{x:Bind ViewModel.HasAnnotationScale, Mode=OneWay}" />
+                                <local:StudioSliderRow
+                                    Title="Rotation"
+                                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                    Maximum="180"
+                                    Minimum="-180"
+                                    SliderAutomationId="StudioAnnotationRotationSlider"
+                                    Step="1"
+                                    ValueText="{x:Bind ViewModel.AnnotationRotationText, Mode=OneWay}"
+                                    Value="{x:Bind ViewModel.AnnotationRotation, Mode=TwoWay}" />
 
                                 <!--  The inside of a rectangle or an ellipse, under its outline.  -->
                                 <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationShape, Mode=OneWay}">

@@ -66,6 +66,7 @@ public readonly record struct StudioResolvedAnnotation(
 
     /// <summary>Whether an emoji has a drop shadow under it.</summary>
     public bool HasShadow { get; init; }
+    public double Rotation { get; init; }
 }
 
 /// <summary>What a pointer can take hold of on an annotation in the preview.</summary>
@@ -94,6 +95,7 @@ public enum StudioAnnotationPart
 
     /// <summary>A corner of an area.</summary>
     BottomRight,
+    Rotate,
 }
 
 /// <summary>Where a drag leaves an annotation, in the numbers of the project, and whether it has settled on a center line of the canvas.</summary>
@@ -110,6 +112,8 @@ public readonly record struct StudioAnnotationMove(
 
     /// <summary>The height an area has after the drag. Null for any other kind.</summary>
     public double? Height { get; init; }
+    public double? Scale { get; init; }
+    public double? Rotation { get; init; }
 }
 
 /// <summary>One annotation on the picture, in canvas pixels, for a pointer to take hold of.</summary>
@@ -123,7 +127,10 @@ public readonly record struct StudioAnnotationHandle(
     StudioPoint? Tail,
     double Stroke,
     StudioFrameRect? Box,
-    double Radius);
+    double Radius)
+{
+    public double Rotation { get; init; }
+}
 
 /// <summary>Where a box goes once its text has been measured. The pointer is the two points of its base, when it has one.</summary>
 public readonly record struct StudioAnnotationBox(
@@ -154,6 +161,59 @@ public static class StudioAnnotationGeometry
     public const double MinimumScale = 0.5;
     public const double MaximumScale = 3;
 
+    public static double NormalizeRotation(double degrees) =>
+        double.IsFinite(degrees) ? TinyClips.Core.Editing.RotatableAnnotationGeometry.NormalizeDegrees(degrees) : 0;
+
+    public static StudioPoint Rotate(StudioPoint point, StudioPoint center, double degrees)
+    {
+        var result = TinyClips.Core.Editing.RotatableAnnotationGeometry.Rotate(
+            new(point.X, point.Y), new(center.X, center.Y), NormalizeRotation(degrees));
+        return new(result.X, result.Y);
+    }
+
+    public static StudioFrameRect SelectionBounds(in StudioAnnotationHandle handle)
+    {
+        if (handle.Box is { } box)
+        {
+            return box;
+        }
+
+        var tail = handle.Tail ?? handle.Tip;
+        var reach = Math.Max(handle.Stroke * 3, 8);
+        return new(Math.Min(handle.Tip.X, tail.X) - reach, Math.Min(handle.Tip.Y, tail.Y) - reach,
+            Math.Abs(handle.Tip.X - tail.X) + 2 * reach, Math.Abs(handle.Tip.Y - tail.Y) + 2 * reach);
+    }
+
+    public static StudioAnnotationMove? Transform(
+        StudioAnnotation start, StudioAnnotationPart part, StudioPoint anchor, StudioPoint pressed, StudioPoint current)
+    {
+        var x = pressed.X - anchor.X;
+        var y = pressed.Y - anchor.Y;
+        var dx = current.X - anchor.X;
+        var dy = current.Y - anchor.Y;
+        var distanceSquared = x * x + y * y;
+        if (!double.IsFinite(distanceSquared) || distanceSquared < 1 || !double.IsFinite(dx) || !double.IsFinite(dy))
+        {
+            return null;
+        }
+
+        var move = new StudioAnnotationMove(start.X, start.Y, start.OffsetX, start.OffsetY, false, false);
+        if (part == StudioAnnotationPart.Rotate)
+        {
+            return move with { Rotation = NormalizeRotation(start.Rotation + (Math.Atan2(dy, dx) - Math.Atan2(y, x)) * 180 / Math.PI) };
+        }
+
+        var scale = Math.Clamp(start.Scale * Math.Max(0.01, (x * dx + y * dy) / distanceSquared), MinimumScale, MaximumScale);
+        var factor = scale / Math.Clamp(start.Scale, MinimumScale, MaximumScale);
+        var hasOffset = start.Kind is StudioAnnotationKinds.Arrow or StudioAnnotationKinds.Callout;
+        return move with
+        {
+            Scale = scale,
+            OffsetX = hasOffset ? Math.Clamp(start.OffsetX * factor, -1, 1) : start.OffsetX,
+            OffsetY = hasOffset ? Math.Clamp(start.OffsetY * factor, -1, 1) : start.OffsetY,
+        };
+    }
+
     /// <summary>What <paramref name="annotation"/> draws at <paramref name="time"/>. False when it draws nothing then.</summary>
     public static bool TryResolve(
         StudioAnnotation annotation,
@@ -163,6 +223,19 @@ public static class StudioAnnotationGeometry
         double canvasWidth,
         double canvasHeight,
         out StudioResolvedAnnotation resolved)
+    {
+        if (!TryResolveUnrotated(annotation, index, frame, time, canvasWidth, canvasHeight, out resolved))
+        {
+            return false;
+        }
+
+        resolved = resolved with { Rotation = NormalizeRotation(annotation.Rotation) };
+        return true;
+    }
+
+    private static bool TryResolveUnrotated(
+        StudioAnnotation annotation, int index, in StudioResolvedFrame frame, double time,
+        double canvasWidth, double canvasHeight, out StudioResolvedAnnotation resolved)
     {
         ArgumentNullException.ThrowIfNull(annotation);
         resolved = default;
@@ -327,9 +400,10 @@ public static class StudioAnnotationGeometry
         }
 
         var source = screen.Source;
+        var rotation = NormalizeRotation(annotation.Rotation);
         if (!(source.Width > 0) || !(source.Height > 0)
-            || !(loX < source.X + source.Width && loX + width > source.X)
-            || !(loY < source.Y + source.Height && loY + height > source.Y))
+            || (rotation == 0 && (!(loX < source.X + source.Width && loX + width > source.X)
+                || !(loY < source.Y + source.Height && loY + height > source.Y))))
         {
             return false;
         }
@@ -339,6 +413,16 @@ public static class StudioAnnotationGeometry
             screen.Rect.Y + ((loY - source.Y) / source.Height * screen.Rect.Height),
             width / source.Width * screen.Rect.Width,
             height / source.Height * screen.Rect.Height);
+        if (rotation != 0)
+        {
+            var corners = TinyClips.Core.Editing.RotatableAnnotationGeometry.Corners(new(rect.X, rect.Y, rect.Width, rect.Height), rotation);
+            var screenRect = screen.Rect;
+            if (corners.Max(p => p.X) <= screenRect.X || corners.Min(p => p.X) >= screenRect.X + screenRect.Width
+                || corners.Max(p => p.Y) <= screenRect.Y || corners.Min(p => p.Y) >= screenRect.Y + screenRect.Height)
+            {
+                return false;
+            }
+        }
         opacity = screen.Opacity;
         return true;
     }
@@ -368,6 +452,12 @@ public static class StudioAnnotationGeometry
 
         var shortSide = Math.Min(canvasWidth, canvasHeight);
         var reach = shortSide * SnapShareOfShortSide;
+        if (NormalizeRotation(annotation.Rotation) != 0 &&
+            part is StudioAnnotationPart.TopLeft or StudioAnnotationPart.TopRight or StudioAnnotationPart.BottomLeft or StudioAnnotationPart.BottomRight)
+        {
+            reach = 0;
+        }
+
         var smallest = shortSide * SmallestAreaInShortSides;
         var midX = canvasWidth / 2;
         var midY = canvasHeight / 2;
@@ -375,6 +465,9 @@ public static class StudioAnnotationGeometry
         bool isOnVerticalCenter, isOnHorizontalCenter;
         if (part is StudioAnnotationPart.TopLeft or StudioAnnotationPart.TopRight or StudioAnnotationPart.BottomLeft or StudioAnnotationPart.BottomRight)
         {
+            var delta = Rotate(new(byX, byY), default, -annotation.Rotation);
+            byX = delta.X;
+            byY = delta.Y;
             var isLeft = part is StudioAnnotationPart.TopLeft or StudioAnnotationPart.BottomLeft;
             var isTop = part is StudioAnnotationPart.TopLeft or StudioAnnotationPart.TopRight;
             var x = (isLeft ? left : right) + byX;
@@ -413,6 +506,23 @@ public static class StudioAnnotationGeometry
             right = centerX + (rect.Width / 2);
             top = centerY - (rect.Height / 2);
             bottom = centerY + (rect.Height / 2);
+        }
+
+        if (part is StudioAnnotationPart.TopLeft or StudioAnnotationPart.TopRight or StudioAnnotationPart.BottomLeft or StudioAnnotationPart.BottomRight)
+        {
+            var center = new StudioPoint(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
+            var movedCenter = Rotate(new((left + right) / 2, (top + bottom) / 2), center, annotation.Rotation);
+            var shiftX = movedCenter.X - (left + right) / 2;
+            var shiftY = movedCenter.Y - (top + bottom) / 2;
+            left += shiftX;
+            right += shiftX;
+            top += shiftY;
+            bottom += shiftY;
+            if (NormalizeRotation(annotation.Rotation) != 0)
+            {
+                isOnVerticalCenter = false;
+                isOnHorizontalCenter = false;
+            }
         }
 
         // From canvas pixels back to the numbers of the canvas, or of the recording where the frame shows it.

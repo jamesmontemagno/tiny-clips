@@ -672,11 +672,20 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 drawn = annotationBoxImage(annotation, renderSize: renderSize)
             }
             guard let drawn else { continue }
+            let rotated = drawn.transformed(by: Self.annotationRotation(annotation, renderSize: renderSize))
 
             // Put together whole first, so that its parts do not show through one another.
-            output = (annotation.opacity < 1 ? faded(drawn, opacity: annotation.opacity) : drawn).composited(over: output)
+            output = (annotation.opacity < 1 ? faded(rotated, opacity: annotation.opacity) : rotated).composited(over: output)
         }
         return output
+    }
+
+    private static func annotationRotation(_ annotation: StudioResolvedAnnotation, renderSize: CGSize) -> CGAffineTransform {
+        let x = annotation.anchor.x
+        let y = Double(renderSize.height) - annotation.anchor.y
+        return CGAffineTransform(translationX: x, y: y)
+            .rotated(by: -annotation.rotation * .pi / 180)
+            .translatedBy(x: -x, y: -y)
     }
 
     /// The area of a redaction on whole pixels, in Core Image's coordinates, y up.
@@ -693,7 +702,18 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     /// `image` with the area of a blur or a pixelate redaction hidden. Only the pixels within the
     /// area are read, its edge pixels standing in for what is past them.
     private func redacted(_ image: CIImage, _ area: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage {
-        guard area.redactAmount > 0, let region = Self.redactionRegion(area.rect, renderSize: renderSize) else { return image }
+        let originalRegion = StudioRenderGeometry.ciRect(forTopLeftRect: area.rect, renderSize: renderSize)
+        let mask = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 1))
+            .cropped(to: originalRegion)
+            .transformed(by: Self.annotationRotation(area, renderSize: renderSize))
+        let region: CGRect
+        if area.rotation == 0 {
+            guard let oldRegion = Self.redactionRegion(area.rect, renderSize: renderSize) else { return image }
+            region = oldRegion
+        } else {
+            region = mask.extent.integral.intersection(CGRect(origin: .zero, size: renderSize))
+        }
+        guard area.redactAmount > 0, !region.isEmpty else { return image }
         let inside = image.cropped(to: region).clampedToExtent()
         let hidden: CIImage
         switch area.redactStyle {
@@ -709,7 +729,14 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             return image
         }
         let patch = hidden.cropped(to: region)
-        return (area.opacity < 1 ? faded(patch, opacity: area.opacity) : patch).composited(over: image)
+        let fadedPatch = area.opacity < 1 ? faded(patch, opacity: area.opacity) : patch
+        if area.rotation == 0 {
+            return fadedPatch.composited(over: image)
+        }
+        return fadedPatch.composited(over: image).applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputBackgroundImageKey: image,
+            kCIInputMaskImageKey: mask.composited(over: clearImage(extent: image.extent)),
+        ])
     }
 
     /// A rectangle or an ellipse, its inside fill under its outline, or a solid redaction.
@@ -721,7 +748,8 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             minY: area.rect.y - reach,
             maxX: area.rect.maxX + reach,
             maxY: area.rect.maxY + reach,
-            renderSize: renderSize
+            renderSize: renderSize,
+            annotation: area
         ) else {
             return nil
         }
@@ -775,17 +803,30 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         let width: Double
         let height: Double
 
-        init?(minX: Double, minY: Double, maxX: Double, maxY: Double, renderSize: CGSize) {
-            guard let bounds = StudioAnnotationGeometry.bitmapBounds(
-                minX: minX,
-                minY: minY,
-                maxX: maxX,
-                maxY: maxY,
-                canvasWidth: Double(renderSize.width),
-                canvasHeight: Double(renderSize.height)
-            ), bounds.width <= 16384, bounds.height <= 16384 else {
-                return nil
+        init?(minX: Double, minY: Double, maxX: Double, maxY: Double, renderSize: CGSize, annotation: StudioResolvedAnnotation) {
+            let bounds: StudioRect
+            if annotation.rotation == 0 {
+                guard let clipped = StudioAnnotationGeometry.bitmapBounds(
+                    minX: minX, minY: minY, maxX: maxX, maxY: maxY,
+                    canvasWidth: Double(renderSize.width), canvasHeight: Double(renderSize.height)
+                ) else { return nil }
+                bounds = clipped
+            } else {
+                // Clip in local space: art outside the unrotated canvas may rotate into view.
+                let corners = [
+                    StudioAnnotationPoint(x: 0, y: 0),
+                    StudioAnnotationPoint(x: Double(renderSize.width), y: 0),
+                    StudioAnnotationPoint(x: Double(renderSize.width), y: Double(renderSize.height)),
+                    StudioAnnotationPoint(x: 0, y: Double(renderSize.height)),
+                ].map { StudioAnnotationGeometry.rotate($0, around: annotation.anchor, degrees: -annotation.rotation) }
+                let left = max((minX - 2).rounded(.down), corners.map(\.x).min()!.rounded(.down) - 2)
+                let top = max((minY - 2).rounded(.down), corners.map(\.y).min()!.rounded(.down) - 2)
+                let right = min((maxX + 2).rounded(.up), corners.map(\.x).max()!.rounded(.up) + 2)
+                let bottom = min((maxY + 2).rounded(.up), corners.map(\.y).max()!.rounded(.up) + 2)
+                guard right - left >= 1, bottom - top >= 1 else { return nil }
+                bounds = StudioRect(x: left, y: top, width: right - left, height: bottom - top)
             }
+            guard bounds.width <= 16384, bounds.height <= 16384 else { return nil }
             originX = bounds.x
             originY = bounds.y
             width = bounds.width
@@ -838,7 +879,8 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             minY: min(arrow.anchor.y, arrow.tail.y) - reach,
             maxX: max(arrow.anchor.x, arrow.tail.x) + reach,
             maxY: max(arrow.anchor.y, arrow.tail.y) + reach,
-            renderSize: renderSize
+            renderSize: renderSize,
+            annotation: arrow
         ) else {
             return nil
         }
@@ -917,7 +959,8 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             minY: hasPointer ? min(box.y, annotation.anchor.y) : box.y,
             maxX: hasPointer ? max(box.maxX, annotation.anchor.x) : box.maxX,
             maxY: hasPointer ? max(box.maxY, annotation.anchor.y) : box.maxY,
-            renderSize: renderSize
+            renderSize: renderSize,
+            annotation: annotation
         ) else {
             return nil
         }
@@ -1020,7 +1063,8 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             minY: placed.y - reach,
             maxX: placed.maxX + reach,
             maxY: placed.maxY + offset + reach,
-            renderSize: renderSize
+            renderSize: renderSize,
+            annotation: annotation
         ) else {
             return nil
         }

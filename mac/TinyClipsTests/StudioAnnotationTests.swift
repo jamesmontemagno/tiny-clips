@@ -4,6 +4,60 @@ import CoreImage
 
 /// Section 6.10 of the project format, against the fixtures Windows is held to as well.
 final class StudioAnnotationTests: XCTestCase {
+    func testRotationRoundTripsAndResolvesAroundTheAnchorForEveryKind() throws {
+        for kind in StudioAnnotationKind.known {
+            let annotation = StudioAnnotation(kind: kind, attach: .frame, end: 5, text: "Hi", rotation: 450)
+            let again = try StudioJSON.makeDecoder().decode(StudioAnnotation.self, from: StudioJSON.makeEncoder().encode(annotation))
+            XCTAssertEqual(again.rotation, 450)
+            let input = try project(overlays: "{}")
+            let frame = StudioLayoutResolver.resolve(project: input, time: 1, canvasWidth: 1000, canvasHeight: 500, events: nil)
+            let resolved = try XCTUnwrap(StudioAnnotationGeometry.resolve(again, index: 0, frame: frame, time: 1, canvasWidth: 1000, canvasHeight: 500))
+            XCTAssertEqual(resolved.rotation, 90)
+            XCTAssertEqual(resolved.anchor, StudioAnnotationPoint(x: 500, y: 250))
+        }
+    }
+
+    func testResizeAndRotationUseThePressSnapshot() throws {
+        for kind in [StudioAnnotationKind.arrow, StudioAnnotationKind.callout, StudioAnnotationKind.text, StudioAnnotationKind.emoji] {
+            let start = StudioAnnotation(kind: kind, offsetX: 0.1, offsetY: 0.2, rotation: 170)
+            let anchor = StudioAnnotationPoint(x: 500, y: 250)
+            let resized = try XCTUnwrap(StudioAnnotationGeometry.transform(start, part: .bottomRight, anchor: anchor,
+                pressed: StudioAnnotationPoint(x: 500, y: 350), current: StudioAnnotationPoint(x: 500, y: 450)))
+            XCTAssertEqual(resized.scale, 2)
+            XCTAssertEqual(resized.x, start.x)
+            XCTAssertEqual(resized.offsetX, kind == StudioAnnotationKind.arrow || kind == StudioAnnotationKind.callout ? 0.2 : 0.1, accuracy: 1e-6)
+            let rotated = try XCTUnwrap(StudioAnnotationGeometry.transform(start, part: .rotate, anchor: anchor,
+                pressed: StudioAnnotationPoint(x: 500, y: 150), current: StudioAnnotationPoint(x: 600, y: 250)))
+            XCTAssertEqual(rotated.rotation, -100)
+            XCTAssertNil(rotated.scale)
+        }
+    }
+
+    func testRotatedAreaResizeKeepsTheOppositeCorner() throws {
+        let input = try project(overlays: "{}")
+        let frame = StudioLayoutResolver.resolve(project: input, time: 1, canvasWidth: 1000, canvasHeight: 500, events: nil)
+        for kind in [StudioAnnotationKind.rectangle, StudioAnnotationKind.ellipse, StudioAnnotationKind.redact] {
+            let start = StudioAnnotation(kind: kind, attach: .frame, end: 5, rotation: 90, width: 0.2, height: 0.2)
+            let move = try XCTUnwrap(StudioAnnotationGeometry.moved(start, part: .bottomRight, byX: 0, byY: 100,
+                drawnBoxCenter: nil, frame: frame, canvasWidth: 1000, canvasHeight: 500))
+            XCTAssertEqual(try XCTUnwrap(move.width), 0.3, accuracy: 1e-6)
+            XCTAssertEqual(move.x, 0.5, accuracy: 1e-6)
+            XCTAssertEqual(move.y, 0.6, accuracy: 1e-6)
+        }
+    }
+
+    func testRotatedAreaCanEnterTheCropWithItsCenterOutsideIt() throws {
+        let frame = StudioResolvedFrame(sceneIndex: 0, layout: .screen,
+            screen: StudioResolvedScreen(rect: StudioRect(x: 0, y: 0, width: 1000, height: 500),
+                source: StudioRect(x: 0.4, y: 0, width: 0.6, height: 1), cornerRadius: 0,
+                shadow: StudioResolvedShadow(blur: 0, offsetY: 0, opacity: 0)), camera: nil)
+        var start = StudioAnnotation(kind: StudioAnnotationKind.rectangle, end: 5, x: 0.35, rotation: 90, width: 0.04, height: 0.6)
+        XCTAssertNotNil(StudioAnnotationGeometry.resolve(start, index: 0, frame: frame, time: 1, canvasWidth: 1000, canvasHeight: 500))
+        XCTAssertNotNil(StudioAnnotationGeometry.moved(start, part: .bottomRight, byX: 0, byY: 100, drawnBoxCenter: nil,
+            frame: frame, canvasWidth: 1000, canvasHeight: 500))
+        start.rotation = 0
+        XCTAssertNil(StudioAnnotationGeometry.resolve(start, index: 0, frame: frame, time: 1, canvasWidth: 1000, canvasHeight: 500))
+    }
     private func project(overlays: String) throws -> StudioProject {
         let json = """
         { "id": "00000000-0000-0000-0000-000000000001", "sources": { "screen": { "width": 1920, "height": 1080, "duration": 10 } }, "overlays": \(overlays) }
@@ -1057,6 +1111,33 @@ final class StudioAnnotationDrawingTests: XCTestCase {
         assertColor(drawn, 560, 300, blue, "inside, over white")
         assertColor(drawn, 720, 300, blue, "inside, over black")
         assertColor(drawn, 530, 300, white, "beside it")
+    }
+
+    func testRotationChangesAreaCoverageWithoutRotatingRedactedPixels() {
+        var rectangle = area(StudioAnnotationKind.rectangle, fill: "#FFFFFF", rect: StudioRect(x: 540, y: 280, width: 200, height: 40))
+        rectangle.shapeFill = "#FFFFFF"
+        rectangle.shapeFillOpacity = 1
+        rectangle.rotation = 90
+        let shape = compositor.drawAnnotations([rectangle], over: background, renderSize: size)
+        assertColor(shape, 640, 380, white, "the rotated rectangle's vertical extent")
+        assertColor(shape, 720, 300, black, "outside the rotated rectangle")
+
+        var redaction = area(StudioAnnotationKind.redact, fill: "#0000FF", rect: StudioRect(x: 540, y: 250, width: 200, height: 100))
+        redaction.redactStyle = .blur
+        redaction.redactAmount = 10
+        redaction.rotation = 90
+        let blurred = compositor.drawAnnotations([redaction], over: halves, renderSize: size)
+        assertColor(blurred, 610, 230, white, "the source's left half stays on the left")
+        assertColor(blurred, 670, 370, black, "the source's right half stays on the right")
+        let upper = pixels(blurred, x: 630, y: 230)[0]
+        let lower = pixels(blurred, x: 630, y: 370)[0]
+        XCTAssertTrue(zip(upper, lower).allSatisfy { abs($0 - $1) <= 3 }, "the blurred vertical edge stays vertical")
+
+        redaction.rotation = 45
+        redaction.redactStyle = .solid
+        let diagonal = compositor.drawAnnotations([redaction], over: halves, renderSize: size)
+        assertColor(diagonal, 640, 300, blue, "inside the diagonal mask")
+        assertColor(diagonal, 740, 390, black, "in its bounding box but outside the mask")
     }
 
     func testARedactionHidesTheAnnotationsUnderItAndNotThoseOverIt() {

@@ -281,6 +281,46 @@ internal static partial class RendererChecks
         return largest;
     }
 
+    private static void AnnotationRotation(CheckContext context, RenderBench bench)
+    {
+        var project = bench.Base(StudioLayout.Screen);
+        var plain = bench.Render(project, time: 1);
+        var area = new StudioAnnotation
+        {
+            Kind = StudioAnnotationKinds.Rectangle, Attach = StudioAnnotationAttach.Frame,
+            Start = 0, End = 9, X = 0.5, Y = 0.5, Width = 0.2, Height = 0.08,
+            ShapeFill = "#FFFFFF", ShapeFillOpacity = 1, Fill = "#FFFFFF", Rotation = 90,
+        };
+        foreach (var kind in new[] { StudioAnnotationKinds.Rectangle, StudioAnnotationKinds.Ellipse, StudioAnnotationKinds.Redact })
+        {
+            var rotated = bench.Render(WithAnnotations(project, area with { Kind = kind, RedactStyle = StudioRedactStyle.Solid }), time: 1);
+            ExpectColor(context, rotated, 960, 680, "#FFFFFF", $"{kind} rotated into its vertical extent");
+            ExpectUnchanged(context, rotated, plain, 1100, 540, $"{kind} no longer covers its old horizontal extent");
+        }
+
+        var arrow = area with { Kind = StudioAnnotationKinds.Arrow, OffsetX = 0.2, OffsetY = 0 };
+        var rotatedArrow = bench.Render(WithAnnotations(project, arrow), time: 1);
+        ExpectColor(context, rotatedArrow, 960, 650, "#FFFFFF", "the rotated arrow's shaft");
+        ExpectUnchanged(context, rotatedArrow, plain, 1070, 540, "the arrow's old shaft");
+
+        var white = area with { X = 0.4, Width = 0.2, Height = 0.3, Rotation = 0 };
+        var under = bench.Render(WithAnnotations(project, white), time: 1);
+        var redaction = area with
+        {
+            Kind = StudioAnnotationKinds.Redact, Width = 0.2, Height = 0.2,
+            RedactStyle = StudioRedactStyle.Blur, RedactLevel = StudioRedactLevel.Heavy,
+        };
+        var blurred = bench.Render(WithAnnotations(project, white, redaction), time: 1);
+        context.Expect(LargestStep(blurred, 880, 1040, 540) < LargestStep(under, 880, 1040, 540) * 0.4,
+            "a rotated blur must still soften the stationary vertical edge");
+        context.Expect(blurred.Pixel(900, 450).Distance(blurred.Pixel(900, 630)) <= 4,
+            "rotating a redaction must not rotate the pixels under it");
+
+        var diagonal = bench.Render(WithAnnotations(project, white, redaction with { Rotation = 45, RedactStyle = StudioRedactStyle.Solid }), time: 1);
+        ExpectColor(context, diagonal, 960, 540, "#FFFFFF", "inside the diagonal redaction");
+        ExpectUnchanged(context, diagonal, under, 1160, 680, "inside its bounding box but outside the diagonal mask");
+    }
+
     /// <summary>
     /// An emoji is drawn in its own colors, not as a gray glyph; its shadow darkens what is just
     /// below it and nothing else gets lighter; and an emoji of white space draws nothing.

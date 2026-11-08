@@ -39,6 +39,8 @@ public sealed partial class StudioViewModel
         nameof(HasCustomAnnotationColors),
         nameof(AnnotationScale),
         nameof(AnnotationScaleText),
+        nameof(AnnotationRotation),
+        nameof(AnnotationRotationText),
         nameof(AnnotationAttachIndex),
         nameof(AnnotationX),
         nameof(AnnotationXText),
@@ -465,6 +467,23 @@ public sealed partial class StudioViewModel
     }
 
     public string AnnotationScaleText => PercentText(AnnotationScale);
+
+    public double AnnotationRotation
+    {
+        get => StudioAnnotationGeometry.NormalizeRotation(SelectedAnnotation?.Rotation ?? 0);
+        set
+        {
+            if (SelectedAnnotationIndex is { } index && IsRequest(value, AnnotationRotation))
+            {
+                _session.SetAnnotationRotation(index, value);
+            }
+        }
+    }
+
+    public string AnnotationRotationText => string.Create(CultureInfo.InvariantCulture, $"{AnnotationRotation:0} degrees");
+
+    public void TransformAnnotation(int index, StudioAnnotation start, StudioAnnotationPart part, StudioPoint anchor, StudioPoint pressed, StudioPoint current) =>
+        _session.TransformAnnotation(index, start, part, anchor, pressed, current);
 
     public int AnnotationAttachIndex
     {

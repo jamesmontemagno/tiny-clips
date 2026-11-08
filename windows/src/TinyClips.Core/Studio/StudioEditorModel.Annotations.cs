@@ -327,6 +327,12 @@ public sealed partial class StudioEditorModel
             Scale = Math.Clamp(scale, StudioAnnotationGeometry.MinimumScale, StudioAnnotationGeometry.MaximumScale),
         });
 
+    public StudioAnnotationEditResult SetAnnotationRotation(int index, double rotation) =>
+        !double.IsFinite(rotation) ? AnnotationUnchanged(index) : EditAnnotation(index, annotation => annotation with
+        {
+            Rotation = StudioAnnotationGeometry.NormalizeRotation(rotation),
+        });
+
     /// <summary>Where a drag on the preview leaves an annotation.</summary>
     public StudioAnnotationEditResult MoveAnnotation(int index, StudioAnnotationMove move) =>
         EditAnnotation(index, annotation => annotation with
@@ -337,6 +343,8 @@ public sealed partial class StudioEditorModel
             OffsetY = move.OffsetY,
             Width = move.Width ?? annotation.Width,
             Height = move.Height ?? annotation.Height,
+            Scale = move.Scale ?? annotation.Scale,
+            Rotation = move.Rotation ?? annotation.Rotation,
         });
 
     /// <summary>

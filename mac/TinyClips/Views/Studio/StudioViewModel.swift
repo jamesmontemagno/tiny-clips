@@ -1810,6 +1810,17 @@ final class StudioViewModel: ObservableObject {
         editAnnotation(at: index) { $0.setAnnotationScale(at: index, to: scale) }
     }
 
+    func setSelectedAnnotationRotation(_ rotation: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationRotation(at: index, to: rotation) }
+    }
+
+    func transformAnnotation(at index: Int, from start: StudioAnnotation, part: StudioAnnotationPart,
+                             anchor: StudioAnnotationPoint, pressed: StudioAnnotationPoint, current: StudioAnnotationPoint) {
+        guard let move = StudioAnnotationGeometry.transform(start, part: part, anchor: anchor, pressed: pressed, current: current) else { return }
+        editAnnotation(at: index) { $0.moveAnnotation(at: index, to: move) }
+    }
+
     /// The width and height of the selected rectangle, ellipse, or redaction, normalized.
     func setSelectedAnnotationSize(width: Double, height: Double) {
         guard let index = selectedAnnotationIndex else { return }
@@ -1887,17 +1898,17 @@ final class StudioViewModel: ObservableObject {
         let frame = StudioLayoutResolver.resolve(project: project, time: playhead, canvasWidth: width, canvasHeight: height, events: events)
         return StudioAnnotationGeometry.resolveAll(project: project, frame: frame, time: playhead, canvasWidth: width, canvasHeight: height).map { resolved in
             if resolved.isArrow {
-                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, tail: resolved.tail, stroke: resolved.stroke)
+                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, tail: resolved.tail, stroke: resolved.stroke, rotation: resolved.rotation)
             }
             if resolved.isArea {
-                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, radius: resolved.radius, area: resolved.rect)
+                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, radius: resolved.radius, area: resolved.rect, rotation: resolved.rotation)
             }
             if resolved.kind == StudioAnnotationKind.emoji {
                 let placed = StudioCompositor.annotationEmojiLayout(resolved, canvasWidth: width, canvasHeight: height)
-                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, box: placed, radius: 0)
+                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, box: placed, radius: 0, rotation: resolved.rotation)
             }
             let layout = StudioCompositor.annotationBoxLayout(resolved, canvasWidth: width, canvasHeight: height)
-            return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, box: layout.box, radius: resolved.radius)
+            return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, box: layout.box, radius: resolved.radius, rotation: resolved.rotation)
         }
     }
 

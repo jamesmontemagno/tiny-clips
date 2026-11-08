@@ -402,6 +402,11 @@ struct StudioAnnotationInspectorSection: View {
             } else if isKnown {
                 appearance(annotation)
             }
+            if isKnown {
+                slider("Rotation", StudioAnnotationGeometry.normalizeRotation(annotation.rotation), -180...180, step: 1, accessibilityTitle: "Annotation rotation") {
+                    viewModel.setSelectedAnnotationRotation($0)
+                }
+            }
             advanced(annotation, isKnown: isKnown)
             Button("Delete Annotation", systemImage: StudioSymbol.delete, role: .destructive) {
                 viewModel.removeSelectedAnnotation()
@@ -580,22 +585,7 @@ struct StudioAnnotationInspectorSection: View {
                 }
                 .help("Choose any emoji from the Character Viewer")
             }
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
-                GridRow {
-                    Text("Size")
-                        .foregroundStyle(.secondary)
-                    Picker("Size", selection: Binding(get: { annotation.size }, set: { viewModel.setSelectedAnnotationSize($0) })) {
-                        Text("Small").tag(StudioAnnotationSize.small)
-                        Text("Medium").tag(StudioAnnotationSize.medium)
-                        Text("Large").tag(StudioAnnotationSize.large)
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .help("How large the emoji is before its scale")
-                    .accessibilityLabel("Emoji size")
-                }
-            }
-            slider("Scale", annotation.scale, StudioAnnotationGeometry.minimumScale...StudioAnnotationGeometry.maximumScale, step: 0.05, accessibilityTitle: "Emoji scale") {
+            slider("Size", annotation.scale, StudioAnnotationGeometry.minimumScale...StudioAnnotationGeometry.maximumScale, step: 0.05, accessibilityTitle: "Emoji size") {
                 viewModel.setSelectedAnnotationScale($0)
             }
             Toggle("Shadow", isOn: Binding(get: { annotation.shadow }, set: { viewModel.setSelectedAnnotationShadow($0) }))
@@ -862,6 +852,20 @@ struct StudioAnnotationHandle: Equatable, Identifiable {
     var radius: Double = 0
     /// Where a rectangle, an ellipse, or a redaction is on the canvas.
     var area: StudioRect?
+    var rotation: Double = 0
+
+    var selectionBounds: StudioRect {
+        if let area { return area }
+        if let box { return box }
+        let end = tail ?? tip
+        let reach = max(stroke * 3, 8)
+        return StudioRect(x: min(tip.x, end.x) - reach, y: min(tip.y, end.y) - reach,
+                          width: abs(tip.x - end.x) + 2 * reach, height: abs(tip.y - end.y) + 2 * reach)
+    }
+
+    func rotated(_ point: StudioAnnotationPoint) -> StudioAnnotationPoint {
+        StudioAnnotationGeometry.rotate(point, around: tip, degrees: rotation)
+    }
 
     var id: Int { index }
 }
@@ -882,6 +886,8 @@ struct StudioAnnotationPreviewLayer: View {
         var index: Int
         var start: StudioAnnotation
         var drawnBoxCenter: StudioAnnotationPoint?
+        var anchor: StudioAnnotationPoint
+        var gripPoint: StudioAnnotationPoint?
         var isMoving = false
     }
 
@@ -939,64 +945,58 @@ struct StudioAnnotationPreviewLayer: View {
             let scale = max(geometry.canvasPixelsPerViewPoint, 0.0001)
             let width = max(Self.shortestHitWidth, CGFloat(handle.stroke * 3 / scale))
             let line = Path { path in
-                path.move(to: view(tail))
+                path.move(to: view(handle.rotated(tail)))
                 path.addLine(to: view(handle.tip))
             }.strokedPath(StrokeStyle(lineWidth: width, lineCap: .round))
             Color.clear
                 .contentShape(line)
                 .pointerStyle(.grabIdle)
                 .gesture(dragGesture(handle, part: .body))
-        } else if let area = handle.area {
-            let rect = viewRect(area)
+        } else {
             Color.clear
-                .contentShape(Rectangle())
-                .frame(width: max(rect.width, Self.shortestHitWidth), height: max(rect.height, Self.shortestHitWidth))
-                .offset(x: rect.midX - max(rect.width, Self.shortestHitWidth) / 2, y: rect.midY - max(rect.height, Self.shortestHitWidth) / 2)
+                .contentShape(selectionPath(handle))
                 .pointerStyle(.grabIdle)
-                .gesture(dragGesture(handle, part: .area))
-        } else if let box = handle.box {
-            let rect = viewRect(box)
-            Color.clear
-                .contentShape(Rectangle())
-                .frame(width: rect.width, height: rect.height)
-                .offset(x: rect.minX, y: rect.minY)
-                .pointerStyle(.grabIdle)
-                .gesture(dragGesture(handle, part: .box))
+                .gesture(dragGesture(handle, part: handle.area == nil ? .box : .area))
+        }
+    }
+
+    private func selectionPath(_ handle: StudioAnnotationHandle) -> Path {
+        let rect = handle.selectionBounds
+        return Path { path in
+            path.move(to: view(handle.rotated(StudioAnnotationPoint(x: rect.x, y: rect.y))))
+            path.addLine(to: view(handle.rotated(StudioAnnotationPoint(x: rect.maxX, y: rect.y))))
+            path.addLine(to: view(handle.rotated(StudioAnnotationPoint(x: rect.maxX, y: rect.maxY))))
+            path.addLine(to: view(handle.rotated(StudioAnnotationPoint(x: rect.x, y: rect.maxY))))
+            path.closeSubpath()
         }
     }
 
     @ViewBuilder
     private func selection(_ handle: StudioAnnotationHandle) -> some View {
-        if let area = handle.area {
-            let rect = viewRect(area)
-            Rectangle()
-                .strokeBorder(Color.accentColor, lineWidth: 1.5)
-                .frame(width: rect.width + 4, height: rect.height + 4)
-                .offset(x: rect.minX - 2, y: rect.minY - 2)
-                .allowsHitTesting(false)
-            corner(handle, part: .topLeft, at: CGPoint(x: rect.minX, y: rect.minY))
-            corner(handle, part: .topRight, at: CGPoint(x: rect.maxX, y: rect.minY))
-            corner(handle, part: .bottomLeft, at: CGPoint(x: rect.minX, y: rect.maxY))
-            corner(handle, part: .bottomRight, at: CGPoint(x: rect.maxX, y: rect.maxY))
-        }
-        if let box = handle.box {
-            let rect = viewRect(box)
-            RoundedRectangle(cornerRadius: max(2, CGFloat(handle.radius / max(geometry.canvasPixelsPerViewPoint, 0.0001))) + 2)
-                .strokeBorder(Color.accentColor, lineWidth: 1.5)
-                .frame(width: rect.width + 4, height: rect.height + 4)
-                .offset(x: rect.minX - 2, y: rect.minY - 2)
-                .allowsHitTesting(false)
-        }
+        let rect = handle.selectionBounds
+        selectionPath(handle).stroke(Color.accentColor, lineWidth: 1.5).allowsHitTesting(false)
+        corner(handle, part: .topLeft, at: handle.rotated(StudioAnnotationPoint(x: rect.x, y: rect.y)))
+        corner(handle, part: .topRight, at: handle.rotated(StudioAnnotationPoint(x: rect.maxX, y: rect.y)))
+        corner(handle, part: .bottomLeft, at: handle.rotated(StudioAnnotationPoint(x: rect.x, y: rect.maxY)))
+        corner(handle, part: .bottomRight, at: handle.rotated(StudioAnnotationPoint(x: rect.maxX, y: rect.maxY)))
+        let top = handle.rotated(StudioAnnotationPoint(x: rect.x + rect.width / 2, y: rect.y))
+        let rotate = handle.rotated(StudioAnnotationPoint(x: rect.x + rect.width / 2, y: rect.y - 28 * geometry.canvasPixelsPerViewPoint))
+        Path { path in
+            path.move(to: view(top))
+            path.addLine(to: view(rotate))
+        }.stroke(Color.accentColor, lineWidth: 1.5).allowsHitTesting(false)
+        dot(handle, part: .rotate, at: rotate)
         if handle.kind != StudioAnnotationKind.text, handle.kind != StudioAnnotationKind.emoji, handle.area == nil {
             dot(handle, part: .tip, at: handle.tip)
         }
         if let tail = handle.tail {
-            dot(handle, part: .tail, at: tail)
+            dot(handle, part: .tail, at: handle.rotated(tail))
         }
     }
 
     /// A square on a corner of an area, which resizes it with the opposite corner held still.
-    private func corner(_ handle: StudioAnnotationHandle, part: StudioAnnotationPart, at center: CGPoint) -> some View {
+    private func corner(_ handle: StudioAnnotationHandle, part: StudioAnnotationPart, at point: StudioAnnotationPoint) -> some View {
+        let center = view(point)
         let target = Self.handleSize + 10
         let position: FrameResizePosition
         switch part {
@@ -1014,7 +1014,7 @@ struct StudioAnnotationPreviewLayer: View {
             .contentShape(Rectangle())
             .offset(x: center.x - target / 2, y: center.y - target / 2)
             .pointerStyle(.frameResize(position: position))
-            .gesture(dragGesture(handle, part: part))
+            .gesture(dragGesture(handle, part: part, gripPoint: point))
     }
 
     private func dot(_ handle: StudioAnnotationHandle, part: StudioAnnotationPart, at point: StudioAnnotationPoint) -> some View {
@@ -1029,7 +1029,7 @@ struct StudioAnnotationPreviewLayer: View {
             .contentShape(Circle())
             .offset(x: center.x - target / 2, y: center.y - target / 2)
             .pointerStyle(.grabIdle)
-            .gesture(dragGesture(handle, part: part))
+            .gesture(dragGesture(handle, part: part, gripPoint: part == .rotate ? point : nil))
     }
 
     /// The center lines of the canvas, while what is dragged has settled on one.
@@ -1053,7 +1053,7 @@ struct StudioAnnotationPreviewLayer: View {
     }
 
     /// A press selects. Moving a little further starts a drag, which is one undo step.
-    private func dragGesture(_ handle: StudioAnnotationHandle, part: StudioAnnotationPart) -> some Gesture {
+    private func dragGesture(_ handle: StudioAnnotationHandle, part: StudioAnnotationPart, gripPoint: StudioAnnotationPoint? = nil) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(space))
             .onChanged { value in
                 if drag == nil, viewModel.annotations.indices.contains(handle.index) {
@@ -1061,7 +1061,9 @@ struct StudioAnnotationPreviewLayer: View {
                     drag = Drag(
                         index: handle.index,
                         start: viewModel.annotations[handle.index],
-                        drawnBoxCenter: handle.box.map { StudioAnnotationPoint(x: $0.x + $0.width / 2, y: $0.y + $0.height / 2) }
+                        drawnBoxCenter: handle.box.map { StudioAnnotationPoint(x: $0.x + $0.width / 2, y: $0.y + $0.height / 2) },
+                        anchor: handle.tip,
+                        gripPoint: gripPoint
                     )
                 }
                 guard var current = drag else { return }
@@ -1072,16 +1074,28 @@ struct StudioAnnotationPreviewLayer: View {
                     viewModel.beginGesture()
                 }
                 let scale = geometry.canvasPixelsPerViewPoint
+                if let gripPoint = current.gripPoint, part == .rotate || !StudioAnnotationKind.isArea(current.start.kind) {
+                    viewModel.transformAnnotation(at: current.index, from: current.start, part: part, anchor: current.anchor,
+                                                  pressed: gripPoint, current: StudioAnnotationPoint(
+                                                    x: gripPoint.x + Double(value.translation.width) * scale,
+                                                    y: gripPoint.y + Double(value.translation.height) * scale))
+                    guides = Guides()
+                    return
+                }
+                var delta = StudioAnnotationPoint(x: Double(value.translation.width) * scale, y: Double(value.translation.height) * scale)
+                if part == .tail || (part == .box && handle.area == nil) {
+                    delta = StudioAnnotationGeometry.rotate(delta, around: StudioAnnotationPoint(x: 0, y: 0), degrees: -current.start.rotation)
+                }
                 if let move = viewModel.moveAnnotation(
                     at: current.index,
                     from: current.start,
                     part: part,
-                    byX: Double(value.translation.width) * scale,
-                    byY: Double(value.translation.height) * scale,
+                    byX: delta.x,
+                    byY: delta.y,
                     drawnBoxCenter: current.drawnBoxCenter,
                     canvasSize: canvasSize
                 ) {
-                    guides = Guides(vertical: move.isOnVerticalCenter, horizontal: move.isOnHorizontalCenter)
+                    guides = Guides(vertical: current.start.rotation == 0 && move.isOnVerticalCenter, horizontal: current.start.rotation == 0 && move.isOnHorizontalCenter)
                 }
             }
             .onEnded { _ in endDrag() }

@@ -458,6 +458,7 @@ public static class StudioProjectJson
                 Fill = HasNonNull(element, "fill") ? annotation.Fill : defaults.Fill,
                 TextColor = HasNonNull(element, "textColor") ? annotation.TextColor : defaults.TextColor,
                 Scale = HasNonNull(element, "scale") ? annotation.Scale : defaults.Scale,
+                Rotation = HasNonNull(element, "rotation") ? annotation.Rotation : 0,
                 Width = HasNonNull(element, "width") ? annotation.Width : defaults.Width,
                 Height = HasNonNull(element, "height") ? annotation.Height : defaults.Height,
                 CornerRadius = HasNonNull(element, "cornerRadius") ? annotation.CornerRadius : defaults.CornerRadius,

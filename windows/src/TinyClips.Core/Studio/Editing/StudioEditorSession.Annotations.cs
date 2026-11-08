@@ -162,6 +162,17 @@ public sealed partial class StudioEditorSession
     public StudioAnnotationEditResult SetAnnotationScale(int index, double scale) =>
         EditAnnotation(index, model => model.SetAnnotationScale(index, scale));
 
+    public StudioAnnotationEditResult SetAnnotationRotation(int index, double rotation) =>
+        EditAnnotation(index, model => model.SetAnnotationRotation(index, rotation));
+
+    public void TransformAnnotation(int index, StudioAnnotation start, StudioAnnotationPart part, StudioPoint anchor, StudioPoint pressed, StudioPoint current)
+    {
+        if (IsEditable && StudioAnnotationGeometry.Transform(start, part, anchor, pressed, current) is { } move)
+        {
+            EditAnnotation(index, model => model.MoveAnnotation(index, move));
+        }
+    }
+
     public StudioAnnotationEditResult SetAnnotationShapeFill(int index, string color) =>
         EditAnnotation(index, model => model.SetAnnotationShapeFill(index, color));
 
@@ -213,13 +224,14 @@ public sealed partial class StudioEditorSession
                 continue;
             }
 
-            handles.Add(resolved.IsArea
+            var handle = resolved.IsArea
                 ? new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, null, resolved.Stroke, resolved.Rect, resolved.Radius)
                 : resolved.IsArrow
                 ? new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, resolved.Tail, resolved.Stroke, null, 0)
                 : resolved.IsEmoji
                 ? new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, null, 0, StudioAnnotationTextMeasure.LayoutEmoji(resolved, canvasWidth, canvasHeight), 0)
-                : new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, null, 0, StudioAnnotationTextMeasure.LayoutBox(resolved, canvasWidth, canvasHeight).Box, resolved.Radius));
+                : new StudioAnnotationHandle(index, resolved.Kind, resolved.Anchor, null, 0, StudioAnnotationTextMeasure.LayoutBox(resolved, canvasWidth, canvasHeight).Box, resolved.Radius);
+            handles.Add(handle with { Rotation = resolved.Rotation });
         }
 
         return handles;

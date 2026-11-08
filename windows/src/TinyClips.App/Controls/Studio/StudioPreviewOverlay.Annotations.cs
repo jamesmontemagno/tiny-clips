@@ -30,7 +30,8 @@ public sealed partial class StudioPreviewOverlay
     private bool _isDraggingAnnotation;
 
     /// <summary>What a pointer has taken hold of. The layer is filled again as the project changes, so it holds on to this and not to the element.</summary>
-    private sealed record AnnotationGrip(int Index, StudioAnnotationPart Part, StudioPoint? DrawnBoxCenter = null);
+    private sealed record AnnotationGrip(int Index, StudioAnnotationPart Part, StudioPoint? DrawnBoxCenter = null,
+        StudioPoint? Anchor = null, StudioPoint? HandlePoint = null, double Rotation = 0);
 
     private void UpdateAnnotations()
     {
@@ -62,6 +63,7 @@ public sealed partial class StudioPreviewOverlay
         FrameworkElement area;
         if (handle.Tail is { } tail)
         {
+            tail = StudioAnnotationGeometry.Rotate(tail, handle.Tip, handle.Rotation);
             area = new Line
             {
                 X1 = tail.X / pixelsPerDip,
@@ -80,48 +82,55 @@ public sealed partial class StudioPreviewOverlay
         area = new Rectangle { Width = box.Width / pixelsPerDip, Height = box.Height / pixelsPerDip, Fill = _hitBrush };
         Canvas.SetLeft(area, box.X / pixelsPerDip);
         Canvas.SetTop(area, box.Y / pixelsPerDip);
+        area.RenderTransform = new RotateTransform
+        {
+            Angle = handle.Rotation,
+            CenterX = (handle.Tip.X - box.X) / pixelsPerDip,
+            CenterY = (handle.Tip.Y - box.Y) / pixelsPerDip,
+        };
         var center = new StudioPoint(box.X + (box.Width / 2), box.Y + (box.Height / 2));
-        return Grip(area, new AnnotationGrip(handle.Index, StudioAnnotationPart.Box, center));
+        return Grip(area, new AnnotationGrip(handle.Index, StudioAnnotationPart.Box, center, Rotation: handle.Rotation));
     }
 
     private void AddSelection(StudioAnnotationHandle handle, double pixelsPerDip)
     {
-        if (handle.Box is { } box)
+        var box = StudioAnnotationGeometry.SelectionBounds(handle);
+        var corners = new[]
         {
-            var outline = new Rectangle
-            {
-                Width = (box.Width / pixelsPerDip) + 4,
-                Height = (box.Height / pixelsPerDip) + 4,
-                RadiusX = (handle.Radius / pixelsPerDip) + 2,
-                RadiusY = (handle.Radius / pixelsPerDip) + 2,
-                Stroke = AnnotationGuideVertical.Fill,
-                StrokeThickness = 1.5,
-                IsHitTestVisible = false,
-            };
-            Canvas.SetLeft(outline, (box.X / pixelsPerDip) - 2);
-            Canvas.SetTop(outline, (box.Y / pixelsPerDip) - 2);
-            AnnotationLayer.Children.Add(outline);
+            new StudioPoint(box.X, box.Y), new StudioPoint(box.X + box.Width, box.Y),
+            new StudioPoint(box.X + box.Width, box.Y + box.Height), new StudioPoint(box.X, box.Y + box.Height),
+        };
+        var parts = new[] { StudioAnnotationPart.TopLeft, StudioAnnotationPart.TopRight, StudioAnnotationPart.BottomRight, StudioAnnotationPart.BottomLeft };
+        var outline = new Polygon { Stroke = AnnotationGuideVertical.Fill, StrokeThickness = 1.5, IsHitTestVisible = false };
+        for (var i = 0; i < corners.Length; i++)
+        {
+            var point = StudioAnnotationGeometry.Rotate(corners[i], handle.Tip, handle.Rotation);
+            outline.Points.Add(new Point(point.X / pixelsPerDip, point.Y / pixelsPerDip));
+            AnnotationLayer.Children.Add(CreateHandle(point, new AnnotationGrip(handle.Index, parts[i],
+                Anchor: handle.Tip, HandlePoint: point, Rotation: handle.Rotation), pixelsPerDip));
         }
 
-        if (StudioAnnotationKinds.IsArea(handle.Kind) && handle.Box is { } area)
+        AnnotationLayer.Children.Add(outline);
+        var top = StudioAnnotationGeometry.Rotate(new(box.X + box.Width / 2, box.Y), handle.Tip, handle.Rotation);
+        var rotate = StudioAnnotationGeometry.Rotate(new(box.X + box.Width / 2, box.Y - 28 * pixelsPerDip), handle.Tip, handle.Rotation);
+        AnnotationLayer.Children.Add(new Line
         {
-            // An area is moved by its inside, and each corner resizes it while the opposite one stays.
-            var (left, top, right, bottom) = (area.X, area.Y, area.X + area.Width, area.Y + area.Height);
-            AnnotationLayer.Children.Add(CreateHandle(new StudioPoint(left, top), new AnnotationGrip(handle.Index, StudioAnnotationPart.TopLeft), pixelsPerDip));
-            AnnotationLayer.Children.Add(CreateHandle(new StudioPoint(right, top), new AnnotationGrip(handle.Index, StudioAnnotationPart.TopRight), pixelsPerDip));
-            AnnotationLayer.Children.Add(CreateHandle(new StudioPoint(left, bottom), new AnnotationGrip(handle.Index, StudioAnnotationPart.BottomLeft), pixelsPerDip));
-            AnnotationLayer.Children.Add(CreateHandle(new StudioPoint(right, bottom), new AnnotationGrip(handle.Index, StudioAnnotationPart.BottomRight), pixelsPerDip));
-            return;
-        }
+            X1 = top.X / pixelsPerDip, Y1 = top.Y / pixelsPerDip,
+            X2 = rotate.X / pixelsPerDip, Y2 = rotate.Y / pixelsPerDip,
+            Stroke = AnnotationGuideVertical.Fill, StrokeThickness = 1.5, IsHitTestVisible = false,
+        });
+        AnnotationLayer.Children.Add(CreateHandle(rotate, new AnnotationGrip(handle.Index, StudioAnnotationPart.Rotate,
+            Anchor: handle.Tip, HandlePoint: rotate), pixelsPerDip));
 
-        if (handle.Kind is not (StudioAnnotationKinds.Text or StudioAnnotationKinds.Emoji))
+        if (handle.Kind is StudioAnnotationKinds.Arrow or StudioAnnotationKinds.Callout)
         {
             AnnotationLayer.Children.Add(CreateHandle(handle.Tip, new AnnotationGrip(handle.Index, StudioAnnotationPart.Tip), pixelsPerDip));
         }
 
         if (handle.Tail is { } tail)
         {
-            AnnotationLayer.Children.Add(CreateHandle(tail, new AnnotationGrip(handle.Index, StudioAnnotationPart.Tail), pixelsPerDip));
+            tail = StudioAnnotationGeometry.Rotate(tail, handle.Tip, handle.Rotation);
+            AnnotationLayer.Children.Add(CreateHandle(tail, new AnnotationGrip(handle.Index, StudioAnnotationPart.Tail, Rotation: handle.Rotation), pixelsPerDip));
         }
     }
 
@@ -139,6 +148,10 @@ public sealed partial class StudioPreviewOverlay
         });
         Canvas.SetLeft(target, (point.X / pixelsPerDip) - (AnnotationHandleTarget / 2));
         Canvas.SetTop(target, (point.Y / pixelsPerDip) - (AnnotationHandleTarget / 2));
+        AutomationProperties.SetAutomationId(target, $"StudioAnnotation{grip.Part}Handle");
+        ToolTipService.SetToolTip(target, grip.Part == StudioAnnotationPart.Rotate ? "Drag to rotate" :
+            grip.Part is StudioAnnotationPart.TopLeft or StudioAnnotationPart.TopRight or StudioAnnotationPart.BottomLeft or StudioAnnotationPart.BottomRight
+                ? "Drag to resize" : "Drag to move");
         return (Grid)Grip(target, grip);
     }
 
@@ -156,6 +169,7 @@ public sealed partial class StudioPreviewOverlay
         {
             StudioAnnotationPart.TopLeft or StudioAnnotationPart.BottomRight => InputSystemCursorShape.SizeNorthwestSoutheast,
             StudioAnnotationPart.TopRight or StudioAnnotationPart.BottomLeft => InputSystemCursorShape.SizeNortheastSouthwest,
+            StudioAnnotationPart.Rotate => InputSystemCursorShape.Cross,
             _ => InputSystemCursorShape.SizeAll,
         } : InputSystemCursorShape.SizeAll);
 
@@ -207,9 +221,25 @@ public sealed partial class StudioPreviewOverlay
         }
 
         var pixelsPerDip = CanvasPixelsPerDip;
-        if (_viewModel.DragAnnotation(grip.Index, start, grip.Part, deltaX * pixelsPerDip, deltaY * pixelsPerDip, grip.DrawnBoxCenter) is { } move)
+        if (grip.Anchor is { } anchor && grip.HandlePoint is { } pressed &&
+            (grip.Part == StudioAnnotationPart.Rotate || !StudioAnnotationKinds.IsArea(start.Kind)))
         {
-            ShowAnnotationGuides(move.IsOnVerticalCenter, move.IsOnHorizontalCenter);
+            _viewModel.TransformAnnotation(grip.Index, start, grip.Part, anchor, pressed,
+                new(pressed.X + deltaX * pixelsPerDip, pressed.Y + deltaY * pixelsPerDip));
+            ShowAnnotationGuides(false, false);
+            e.Handled = true;
+            return;
+        }
+
+        var delta = new StudioPoint(deltaX * pixelsPerDip, deltaY * pixelsPerDip);
+        if (grip.Part == StudioAnnotationPart.Tail || (grip.Part == StudioAnnotationPart.Box && !StudioAnnotationKinds.IsArea(start.Kind)))
+        {
+            delta = StudioAnnotationGeometry.Rotate(delta, default, -grip.Rotation);
+        }
+
+        if (_viewModel.DragAnnotation(grip.Index, start, grip.Part, delta.X, delta.Y, grip.DrawnBoxCenter) is { } move)
+        {
+            ShowAnnotationGuides(grip.Rotation == 0 && move.IsOnVerticalCenter, grip.Rotation == 0 && move.IsOnHorizontalCenter);
         }
 
         e.Handled = true;

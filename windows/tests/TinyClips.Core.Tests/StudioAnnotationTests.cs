@@ -8,6 +8,84 @@ public sealed class StudioAnnotationTests
 {
     private const double Tolerance = 1e-6;
 
+    [Theory]
+    [InlineData("arrow")]
+    [InlineData("callout")]
+    [InlineData("text")]
+    [InlineData("emoji")]
+    [InlineData("rectangle")]
+    [InlineData("ellipse")]
+    [InlineData("redact")]
+    public void RotationRoundTripsAndResolvesWithoutMovingItsPivot(string kind)
+    {
+        var project = StudioProjectJson.ReadProject(MinimalProject.Replace("OVERLAYS", "{}")) with
+        {
+            Overlays = new StudioOverlays
+            {
+                Annotations = [new StudioAnnotation { Kind = kind, Attach = StudioAnnotationAttach.Frame, End = 5, Text = "Hi", Rotation = 450 }],
+            },
+        };
+        var again = StudioProjectJson.ReadProject(StudioProjectJson.WriteProject(project)).Overlays.Annotations[0];
+        Assert.Equal(450, again.Rotation);
+        Assert.True(StudioAnnotationGeometry.TryResolve(again, 0, default, 1, 1000, 500, out var resolved));
+        Assert.Equal(90, resolved.Rotation);
+        Assert.Equal(new StudioPoint(500, 250), resolved.Anchor);
+    }
+
+    [Theory]
+    [InlineData("arrow")]
+    [InlineData("callout")]
+    [InlineData("text")]
+    [InlineData("emoji")]
+    public void ACornerScalesFromThePressSnapshotAroundTheAnchor(string kind)
+    {
+        var start = new StudioAnnotation { Kind = kind, OffsetX = 0.1, OffsetY = 0.2, Rotation = 90 };
+        var moved = StudioAnnotationGeometry.Transform(start, StudioAnnotationPart.BottomRight,
+            new(500, 250), new(500, 350), new(500, 450))!.Value;
+        Assert.Equal(2, moved.Scale);
+        Assert.Equal(0.5, moved.X);
+        Assert.Equal(kind is "arrow" or "callout" ? 0.2 : 0.1, moved.OffsetX, 6);
+        Assert.Null(moved.Rotation);
+    }
+
+    [Fact]
+    public void RotationTracksThePointerAcrossTheAngleBoundary()
+    {
+        var start = new StudioAnnotation { Rotation = 170 };
+        var moved = StudioAnnotationGeometry.Transform(start, StudioAnnotationPart.Rotate,
+            new(500, 250), new(500, 150), new(600, 250))!.Value;
+        Assert.Equal(-100, moved.Rotation);
+        Assert.Null(moved.Scale);
+        Assert.Null(StudioAnnotationGeometry.Transform(start, StudioAnnotationPart.Rotate, new(500, 250), new(500, 250), new(600, 250)));
+    }
+
+    [Theory]
+    [InlineData("rectangle")]
+    [InlineData("ellipse")]
+    [InlineData("redact")]
+    public void ARotatedCornerKeepsTheOppositeCornerFixed(string kind)
+    {
+        var start = new StudioAnnotation { Kind = kind, Attach = StudioAnnotationAttach.Frame, End = 5, Width = 0.2, Height = 0.2, Rotation = 90 };
+        var move = StudioAnnotationGeometry.GetAreaMoved(start, StudioAnnotationPart.BottomRight, 0, 100, default, 1000, 500)!.Value;
+        Assert.Equal(0.3, move.Width!.Value, 6);
+        Assert.Equal(0.2, move.Height!.Value, 6);
+        var fixedCorner = StudioAnnotationGeometry.Rotate(new(400, 200), new(500, 250), 90);
+        var center = new StudioPoint(move.X * 1000, move.Y * 500);
+        var after = StudioAnnotationGeometry.Rotate(new(center.X - move.Width.Value * 500, center.Y - move.Height.Value * 250), center, 90);
+        Assert.Equal(fixedCorner.X, after.X, 6);
+        Assert.Equal(fixedCorner.Y, after.Y, 6);
+    }
+
+    [Fact]
+    public void ARotatedScreenAreaCanEnterTheCropEvenWhenItsUnrotatedBoundsAreOutside()
+    {
+        var frame = new StudioResolvedFrame(0, StudioLayout.Screen,
+            new StudioResolvedScreen(new(0, 0, 1000, 500), new(0.4, 0, 0.6, 1), 0, default), null);
+        var start = new StudioAnnotation { Kind = StudioAnnotationKinds.Rectangle, End = 5, X = 0.35, Width = 0.04, Height = 0.6, Rotation = 90 };
+        Assert.True(StudioAnnotationGeometry.TryResolve(start, 0, frame, 1, 1000, 500, out _));
+        Assert.False(StudioAnnotationGeometry.TryResolve(start with { Rotation = 0 }, 0, frame, 1, 1000, 500, out _));
+    }
+
     private const string MinimalProject = """
         { "id": "p", "sources": { "screen": { "width": 1920, "height": 1080, "duration": 10 } }, "overlays": OVERLAYS }
         """;
