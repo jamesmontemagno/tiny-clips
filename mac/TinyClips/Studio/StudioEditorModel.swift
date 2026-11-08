@@ -43,6 +43,23 @@ enum StudioLaneBlockPart: Equatable, Sendable {
 
 // MARK: - Editable State
 
+/// What closing Studio asks. A project saved to a folder asks only when it has changes the folder
+/// does not have; any other project is a draft, and is asked whether to keep it or delete it.
+enum StudioClosePrompt: Equatable {
+    /// Closes without asking.
+    case none
+    /// Keep as Draft, Delete, or Cancel.
+    case draft
+    /// Save, Don't Save, or Cancel.
+    case unsavedChanges
+
+    static func resolve(isReady: Bool, hasSavedProjectFolder: Bool, hasChangesSinceSave: Bool) -> StudioClosePrompt {
+        guard isReady else { return .none }
+        guard hasSavedProjectFolder else { return .draft }
+        return hasChangesSinceSave ? .unsavedChanges : .none
+    }
+}
+
 /// The parts of a project the editor changes. Undo, redo, and "changed since export" work on this
 /// value, so they never touch the project's bookkeeping (exports, dates, name, sources).
 struct StudioEditableState: Equatable, Sendable {
@@ -501,6 +518,18 @@ struct StudioEditorModel: Equatable, Sendable {
         guard let snapshot = groupedSnapshot else { return }
         groupedSnapshot = nil
         project = snapshot.applied(to: project)
+    }
+
+    /// Puts back an earlier state, such as the one last saved to the project folder. It is one
+    /// step that can be undone.
+    mutating func restore(_ state: StudioEditableState) {
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
+        commitEditingGroup()
+        let current = editableState
+        guard state != current else { return }
+        project = state.applied(to: project)
+        pushUndo(current)
     }
 
     /// Takes back the last step. In the middle of a gesture, what the gesture has done so far is

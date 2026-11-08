@@ -54,7 +54,7 @@ public sealed partial class StudioEditorSession
         // What a close waits for. It is there before anything of the save is done.
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _projectFolderSave = finished.Task;
-        return SaveProjectFolderCoreAsync(folder, replaceSavedProject, finished, projectFile);
+        return SaveProjectFolderCoreAsync(folder, replaceSavedProject, finished, projectFile, Model.EditableState);
     }
 
     /// <summary>Stops the save that is under way. Nothing is left of it, and nothing is reported.</summary>
@@ -64,7 +64,8 @@ public sealed partial class StudioEditorSession
         string folder,
         bool replaceSavedProject,
         TaskCompletionSource finished,
-        string? projectFile)
+        string? projectFile,
+        StudioEditableState saving)
     {
         try
         {
@@ -107,7 +108,15 @@ public sealed partial class StudioEditorSession
             }
 
             var result = new StudioProjectFolderSaveResult(StudioProjectFolderSaveOutcome.Cancelled);
-            await PostAsync(() => result = FinishProjectFolderSave(cancellation, folder, isCancelled, failure)).ConfigureAwait(false);
+            await PostAsync(() =>
+            {
+                result = FinishProjectFolderSave(cancellation, folder, isCancelled, failure);
+                if (result.Outcome == StudioProjectFolderSaveOutcome.Saved)
+                {
+                    // The editor took no edits while the folder was written: it holds this.
+                    _projectSaveBaseline = saving;
+                }
+            }).ConfigureAwait(false);
             return result.Outcome == StudioProjectFolderSaveOutcome.Saved && projectFile is not null
                 ? result with { ProjectFilePath = projectFile }
                 : result;

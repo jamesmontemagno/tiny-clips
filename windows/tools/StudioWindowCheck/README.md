@@ -425,8 +425,11 @@ Someone may be working on the machine while the tool runs, so:
   compared with the preview's picture of it at a grid of points. Then an export whose name is
   taken by another file while it runs (`Checks\ExportName.cs`): see "An export whose name is
   taken".
-- `close`: the question on a project that was never exported and each of its four answers, the
-  draft opened again, and an exported project. After an answer the tool waits 0.7 s before it
+- `close`: the question on a project without a saved project folder ("Keep this recording?")
+  and each of its answers (Keep as draft, Cancel, Delete recording), the draft opened again, an
+  exported project without a saved folder (the same question), and a project saved as a
+  folder: closed without a question while unchanged, and with a change "Save changes to
+  “name”?" with Cancel, Don't save and Save. After an answer the tool waits 0.7 s before it
   presses the close button again: the window asks one question at a time, and passes over its
   close button until the last question has finished closing. Then the close button after an
   export has ended behind the question about it: see "The close button while a question is
@@ -1003,22 +1006,24 @@ leave the other file intact, register no export, and never silently choose anoth
 
 ### Esc closes the window
 
-In `Checks\ClosingByEscape.cs`, in the `close` group, after the question on a recording that
-was never exported and before a save that fails. It was written while no check tool could be
+In `Checks\ClosingByEscape.cs`, in the `close` group, after the question on a recording
+without a saved project folder and before a save that fails. It was written while no check tool could be
 run, like the section before this one, and is to be read the same way: it compiles, the two
 rules behind it pass their unit tests (what the key means, `StudioEditorSessionShortcutTests`;
 what the window asks before it closes, `StudioCloseQuestionsTests`; the words,
 `EditorEscapeTests`), and not one check below has run. If nothing ends a part early, the
-`close` group has 25 checks more, 21 for Esc and 4 for an export that ends behind the
+`close` group has 27 checks more, 23 for Esc and 4 for an export that ends behind the
 question about it; the `export` group has 2 more, for the focus while the question about a
 running export is open and after it; and the `open` group has 2 more, for a window that is
 closed while its recording is being saved. Those eight are in the two sections after this
 one.
 
 Esc asks the window to close as its close button does, by the rule the Mac's window has.
-Where closing asks a question of its own, that question is asked. Where a project is open
-and closing asks nothing, which is a project that was exported, Esc asks whether it was
-meant, with the question the screenshot editor and the trimmers ask
+Where closing asks a question of its own, that question is asked: the draft question of a
+project without a saved project folder, whether it was exported or not, and the question
+about unsaved changes of a project saved as a folder that has changed since. Where a project
+is open and closing asks nothing, which is a project saved as a folder with no change since
+it was opened or last saved, Esc asks whether it was meant, with the question the screenshot editor and the trimmers ask
 (`EditorEscapeConfirmation`) in Studio's words, while the setting "Confirm before closing
 editors with Esc" is on, and closes the window at once while it is off. A window whose
 project is not open, because it cannot be shown or is still being opened, closes at once
@@ -1029,9 +1034,12 @@ the checks switch the real setting, and put it back.
 The key is not pressed: each check hands `StudioWindow.RunShortcut` the key, its modifiers and
 whether it is held, and reads what the window then shows. That the window maps the Esc key is
 checked on `StudioWindow.MapKey`, like the other keys. A project that "was exported" lists an
-export in its file, written there by the tool; no export is run for it.
+export in its file, written there by the tool; no export is run for it. A project "saved as a
+folder" is such a project that the tool also saves as a project folder, with a store of its
+own on the same root, and links to that folder as Save project does (`saved-project.json`),
+before the window opens it.
 
-- **A project that was exported, with the setting on.** While the video plays: the question
+- **A project saved as a folder, without changes, with the setting on.** While the video plays: the question
   has to be there, with the automation id the other editors' question has, the title "Close
   Studio?", Studio's sentence, Close Studio and Cancel and no third answer, and the focus on
   Close Studio; and the video has to stop. While it is open, what the window runs for Esc,
@@ -1040,9 +1048,13 @@ export in its file, written there by the tool; no export is run for it.
   project file is byte for byte as it was, and Next frame steps a frame on. Esc again and
   Close Studio: the window closes, and the project stays with its export listed.
 - **The same with the setting off:** the window has to be gone, and no question asked.
-- **A recording that was never exported.** With the setting off: the question its close
-  button asks (Export, Keep as draft, Cancel, Delete recording), as the one question, and the
-  video stops. With the setting on: that question again, and after Keep as draft the tool
+- **A project saved as a folder, with a change**, with the setting on: Esc has to ask what
+  the close button asks, "Save changes to “name”?" with Save, Don't save and Cancel, as the
+  one question, and not "Close Studio?". Cancel keeps the window, and nothing is written into
+  the saved folder.
+- **A recording without a saved project folder.** With the setting off: the question its
+  close button asks ("Keep this recording?", with Keep as draft, Cancel and Delete recording,
+  and no second answer), as the one question, and the video stops. With the setting on: that question again, and after Keep as draft the tool
   looks, until the window is gone, for a question with the other one's automation id or
   title. There must be none.
 - **While an export runs**, with the real exporter. A key that is being held does nothing at
@@ -1087,9 +1099,12 @@ export in its file, written there by the tool; no export is run for it.
   be asked. The tool looks for a question for as long as the window is there.
 
 That the close button still does what it did is judged by the checks that were there. In
-`close`: the question on a recording that was never exported, where the focus is in it,
-Cancel, Keep as draft, the draft opened again, Delete, Export as the answer (cancelled, and
-left to finish), and an exported project that closes without a question. In `export`: the
+`close`: the question on a recording without a saved project folder, where the focus is in
+it (Keep as draft), Cancel, Keep as draft, the draft opened again, Delete; an exported project
+without a saved folder, which asks the same question; and a project saved as a folder, which
+closes without a question while unchanged, and with a change asks whether to save it: Cancel,
+Don't save (the project is put back and the folder is not written) and Save (the folder is
+written, and not shown, and the window closes). In `export`: the
 close button while an export runs, Keep exporting, and Stop and close. In `open`: the close
 button of a window that cannot show its project. And the three of a save that fails as a
 window closes.
@@ -1113,7 +1128,7 @@ anything this tool calls. It has no check, and no fault was written for it. It i
 person to try: with a question open, Space, Ctrl+E, Ctrl+Z and Delete must do nothing under
 it, and the question must still be there.
 
-`--memory` has two windows more, both on a project that was exported: one that is asked by
+`--memory` has two windows more, both on a project saved as a folder: one that is asked by
 Esc and told to stay, and one that is closed by Esc and Close Studio. The question is a
 dialog that the window does not make itself.
 
@@ -1122,8 +1137,8 @@ dialog that the window does not make itself.
 In `Checks\Closing.cs`, in the `close` group, before the checks of Esc. No window closes from
 under a question, and nothing under a question is given the keyboard. While a question is
 open, the close button waits for its answer. That was so already wherever closing still had
-its question to ask. It was not so in one place, where closing has come to ask nothing while
-its question is open: the question about a running export, with the export ending behind it.
+its question to ask. It was not so in one place, where what closing asks changes while its
+question is open: the question about a running export, with the export ending behind it.
 The close button, pressed again then, used to close the window from under that question.
 Since 6 October it waits there too, and with Esc's question, which is asked only where
 closing asks nothing, it would otherwise have been the usual case. The same place is where
@@ -1142,7 +1157,8 @@ focus waits until the question has been answered.
 - **The close button**, pressed again then: the window and the one question have to stay.
 - **Keep exporting**, which is the answer that leaves the window: the question goes and the
   window stays, and **the focus that waited** for the answer has to be on Export. The close
-  button then closes the window at once, because the recording has been exported.
+  button then asks the draft question, because the recording has been exported but has no
+  saved project folder, and Keep as draft closes the window.
 
 If the export has ended before the question could be asked, one check fails and says so, and
 the four are not made.

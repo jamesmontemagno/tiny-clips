@@ -40,6 +40,16 @@ public sealed partial class StudioViewModel
 
     public string? SavedProjectFile => StudioProjectDestination.Read(_store, ProjectId);
 
+    /// <summary>
+    /// Puts the composition back as it was when the project was opened or last saved as a
+    /// folder, for Don't save. The window closes next.
+    /// </summary>
+    public void DiscardChangesSinceProjectSave()
+    {
+        CommitCaptionText();
+        _session.DiscardChangesSinceProjectSave();
+    }
+
     /// <summary>Raised when Delete project was asked for, while the project can be deleted.</summary>
     public event EventHandler? DeleteProjectRequested;
 

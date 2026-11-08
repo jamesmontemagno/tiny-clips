@@ -335,7 +335,7 @@ public sealed class StudioEditorSessionExportTests : StudioEditorSessionTestBase
         Assert.True(session.HasNeverExported);
         Assert.Empty(ExportedPaths);
         Assert.Empty(Exporter.Posters);
-        Assert.Equal(StudioClosePrompt.NeverExported, session.GetClosePrompt());
+        Assert.Equal(StudioClosePrompt.Draft, session.GetClosePrompt());
     }
 
     [Fact]

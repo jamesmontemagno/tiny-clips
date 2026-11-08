@@ -54,6 +54,9 @@ public sealed partial class StudioWindow : Window
     private bool _isPromptOpen;
     private bool _closeConfirmed;
     private bool _deleteOnClose;
+
+    // True while Save from the closing question writes the folder, so the folder is not shown.
+    private bool _isSavingToClose;
     private bool _isClosed;
 
     /// <param name="viewModel">The editor for the project this window shows.</param>
@@ -634,6 +637,7 @@ public sealed partial class StudioWindow : Window
         StudioCloseQuestion.RunningExport => AskAboutRunningExportAsync(),
         StudioCloseQuestion.RunningProjectSave => AskAboutRunningProjectSaveAsync(),
         StudioCloseQuestion.Draft => AskAboutDraftAsync(),
+        StudioCloseQuestion.UnsavedChanges => AskAboutUnsavedChangesAsync(),
         StudioCloseQuestion.Escape => AskWhetherEscapeWasMeantAsync(),
         _ => Task.CompletedTask,
     };
@@ -770,7 +774,7 @@ public sealed partial class StudioWindow : Window
     private async Task AskAboutDraftAsync()
     {
         ViewModel.Pause();
-        var dialog = new StudioClosePromptDialog(ViewModel.CanExport);
+        var dialog = new StudioClosePromptDialog();
         await ShowPromptAsync(dialog);
         if (_isClosed)
         {
@@ -779,15 +783,6 @@ public sealed partial class StudioWindow : Window
 
         switch (dialog.Choice)
         {
-            case StudioClosePromptChoice.Export:
-                // The window closes once the video is written. If the export fails or is
-                // cancelled, it stays open.
-                if (await ViewModel.ExportAsync() == StudioExportOutcome.Exported && !_isClosed)
-                {
-                    CloseWithoutAsking();
-                }
-
-                break;
             case StudioClosePromptChoice.KeepAsDraft:
                 CloseWithoutAsking();
                 break;
@@ -795,6 +790,74 @@ public sealed partial class StudioWindow : Window
                 _deleteOnClose = true;
                 CloseWithoutAsking();
                 break;
+        }
+    }
+
+    /// <summary>
+    /// A saved project that has changed since its last save: Save writes the folder and closes
+    /// once that has worked, Don't save puts the composition back and closes, Cancel stays.
+    /// </summary>
+    private async Task AskAboutUnsavedChangesAsync()
+    {
+        ViewModel.Pause();
+        var dialog = new ContentDialog
+        {
+            Title = $"Save changes to “{ViewModel.ClipName}”?",
+            Content = "If you don't save, your changes since the last save are discarded.",
+            PrimaryButtonText = "Save",
+            SecondaryButtonText = "Don't save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        var answer = await ShowPromptAsync(dialog);
+        if (_isClosed)
+        {
+            return;
+        }
+
+        switch (answer)
+        {
+            case ContentDialogResult.Primary:
+                await SaveAndCloseAsync();
+                break;
+            case ContentDialogResult.Secondary:
+                ViewModel.DiscardChangesSinceProjectSave();
+                CloseWithoutAsking();
+                break;
+        }
+    }
+
+    /// <summary>Saves the project into its folder, and closes the window once that has worked.</summary>
+    private async Task SaveAndCloseAsync()
+    {
+        string? projectFile;
+        try
+        {
+            projectFile = ViewModel.SavedProjectFile;
+        }
+        catch (Exception ex)
+        {
+            Say($"Studio could not save this project: {ex.Message}");
+            return;
+        }
+
+        if (projectFile is null)
+        {
+            return;
+        }
+
+        _isSavingToClose = true;
+        try
+        {
+            if (await ViewModel.SaveLinkedProjectAsync(projectFile) == StudioProjectFolderSaveOutcome.Saved && !_isClosed)
+            {
+                CloseWithoutAsking();
+            }
+        }
+        finally
+        {
+            _isSavingToClose = false;
         }
     }
 
