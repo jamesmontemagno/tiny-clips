@@ -1708,8 +1708,8 @@ final class StudioViewModel: ObservableObject {
 
     /// Adds an annotation at the playhead, on top of the others, and selects it. The playhead stays.
     func addAnnotationAtPlayhead(kind: String) {
-        guard isEditable else { return }
-        let time = playhead
+        guard isEditable, let frameDuration = player?.currentItem?.videoComposition?.frameDuration else { return }
+        let time = StudioPlayback.frameTime(at: playhead, frameDuration: frameDuration)
         let recordedEvents = events
         var result = StudioAnnotationEditResult(changed: false, index: nil)
         editAndSelect { model in
