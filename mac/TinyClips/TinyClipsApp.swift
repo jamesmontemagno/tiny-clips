@@ -119,6 +119,7 @@ struct TinyClipsApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuBarContentView(captureManager: captureManager, sparkleController: sparkleController)
+                .labelStyle(.titleAndIcon)
         } label: {
             MenuBarLabelView(captureManager: captureManager)
                 .background(
