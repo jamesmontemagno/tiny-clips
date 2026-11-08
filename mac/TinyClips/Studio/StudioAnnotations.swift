@@ -1232,11 +1232,11 @@ extension StudioEditorModel {
         return editAnnotation(at: index) {
             $0.scale = StudioCanvasMath.clamped(scale, StudioAnnotationGeometry.minimumScale, StudioAnnotationGeometry.maximumScale)
         }
+    }
 
-        mutating func setAnnotationRotation(at index: Int, to rotation: Double) -> StudioAnnotationEditResult {
-            guard rotation.isFinite else { return annotationUnchanged(index) }
-            return editAnnotation(at: index) { $0.rotation = StudioAnnotationGeometry.normalizeRotation(rotation) }
-        }
+    mutating func setAnnotationRotation(at index: Int, to rotation: Double) -> StudioAnnotationEditResult {
+        guard rotation.isFinite else { return annotationUnchanged(index) }
+        return editAnnotation(at: index) { $0.rotation = StudioAnnotationGeometry.normalizeRotation(rotation) }
     }
 
     /// The smallest side the editor gives an area, normalized.
