@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - macOS Studio annotations appear immediately on the current preview frame when added, without needing to step the timeline forward.
+- macOS menu bar dropdown icons and recent-capture thumbnails remain visible on macOS 27, which hides menu images by default.
 - The menu bar menu now offers **Turn On Agent Control** when it is off, instead of hiding the Agent Control items until it is turned on in Settings. The first time it is enabled from the menu, Settings opens to the Agent Control setup instructions.
 - macOS screenshot, video, GIF, and Studio editors now use consistent window activation to come forward more reliably after capture or when opened from the Clips Library, without a delayed retry reopening a closed window or taking focus back from another app.
 - macOS Studio caption generation now measures speech progress from finalized audio, including silence, instead of transcript timestamps. Preparation and caption creation show an activity indicator, and late updates cannot send progress backward. Background completion uses the normal macOS notification, respecting notification settings without showing a custom popup.

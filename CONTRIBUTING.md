@@ -226,6 +226,7 @@ Two build targets share one codebase. Use `#if APPSTORE` compilation conditions 
 
 - **Menu bar app** using SwiftUI `MenuBarExtra` with no Dock icon (`LSUIElement = true`).
 - **Mixed SwiftUI + AppKit**: SwiftUI for the menu, settings, and Clips Library; AppKit `NSWindow`/`NSPanel` subclasses for capture-time overlays.
+- The `MenuBarExtra` dropdown explicitly uses `.labelStyle(.titleAndIcon)` so its action icons and recent-capture thumbnails stay visible. macOS 27 hides menu images by default; [Apple's release notes](https://developer.apple.com/documentation/macos-release-notes/macos-27-release-notes) document this SwiftUI opt-in. Keep the style scoped to the dropdown, not other app menus or the status bar label.
 - **`CaptureManager`** (in `TinyClipsApp.swift`) is the central coordinator that owns recorders and capture window lifecycles.
 - Singleton services: `CaptureSettings.shared`, `SaveService.shared`, `PermissionManager.shared`, `SparkleController.shared`.
 
