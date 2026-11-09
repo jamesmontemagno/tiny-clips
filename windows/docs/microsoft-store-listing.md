@@ -46,6 +46,9 @@ Built for speed and focus:
 Tiny Clips is designed for developers, creators, and anyone who needs to quickly create and share
 visual context without a complicated workflow.
 
+Every feature is free. Optional supporter plans (monthly, yearly, or one-time) help fund independent
+development and add a Supporter badge in Settings; they do not unlock anything else.
+
 ### Search terms
 
 screen capture,screen recorder,screenshot,video recorder,gif recorder,screen recording,productivity
@@ -92,6 +95,8 @@ The Store listing screenshots are separate from the package tile assets.
 - Studio captions are made on the device, and sound is not sent anywhere. The speech model is
   downloaded from Hugging Face the first time someone chooses to generate with it. Nothing else is
   sent or fetched for captions.
+- Supporter plans are processed entirely by the Microsoft Store. Tiny Clips reads only which plan
+  the signed-in Microsoft account holds, and never sees or stores payment details.
 
 Recheck these statements whenever analytics, account, cloud, or crash-reporting behavior changes.
 
@@ -112,9 +117,41 @@ only when the user enables the webcam for a video capture.
 - Complete the IARC questionnaire truthfully. Tiny Clips has no user-generated public content,
   advertising, gambling, mature content, or unrestricted web browsing.
 - The app starts in the system tray and has no main window at launch.
-- No account, login, or in-app purchase is required.
+- No account or login is required. In-app purchases are optional and unlock no features: the
+  Settings → Support page offers supporter plans that add a Supporter badge in Settings.
 - Reviewers should test Screenshot, Record Video, and Record GIF from the tray popup. Screen
   capture permissions are requested by Windows when required; microphone and webcam are optional.
+
+## Supporter add-ons
+
+Settings → Support finds its plans by product ID, so create these add-ons in Partner Center with
+exactly these IDs. They match the Mac App Store products.
+
+| Product ID | Plan | Product type | Properties |
+| --- | --- | --- | --- |
+| `com.refractored.tinyclips.pro.monthly` | Monthly supporter | Subscription | 1 month, no trial |
+| `com.refractored.tinyclips.pro.yearly` | Yearly supporter | Subscription | 1 year, no trial |
+| `com.refractored.tinyclips.pro.lifetime` | One-time supporter | Durable | Product lifetime: Forever |
+
+Before publishing, note what Partner Center will not let you change later:
+
+- A product ID and product type are permanent once published.
+- A subscription's billing period and trial are permanent, and its price can be lowered but never
+  raised. New add-ons start at **Free**, so set the price first.
+
+Use the supporter wording in each add-on's Store listing: say it adds a Supporter badge and unlocks
+no features, and do not call it a donation. Store policy 10.8.2 treats pure donations separately
+from Store purchases, and 10.8.4 requires being clear about what is sold.
+
+Publish the add-ons before the app update that shows them; until then the page reports that plans
+aren't available. `Windows.Services.Store` has no simulator, so test real purchases through the
+`Internal Testing` flight, with a Store-installed copy of the app, covering:
+
+- Buying each plan, and the supporter state and message afterward.
+- Canceling the Store dialog, which should say nothing.
+- Restoring on a second device or after reinstalling, with the same Microsoft account.
+- **Manage subscription**, shown only for monthly and yearly.
+- A canceled subscription returning to the plans after its billing period ends.
 
 ## First submission and CI/CD setup
 

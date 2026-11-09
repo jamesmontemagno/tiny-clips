@@ -10,7 +10,7 @@ struct ProSettingsSection: View {
             Section {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Pro Supporter")
+                        Text("Supporter")
                             .font(.headline)
                         if let plan = storeService.activeProPlan {
                             Text("Plan: \(plan.label) — thank you for your support!")
@@ -23,7 +23,7 @@ struct ProSettingsSection: View {
                         }
                     }
                     Spacer()
-                    Label("Pro", systemImage: "star.fill")
+                    Label("Supporter", systemImage: "star.fill")
                         .foregroundStyle(.orange)
                         .font(.callout)
                 }

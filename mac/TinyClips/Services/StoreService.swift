@@ -15,9 +15,9 @@ enum ProPlan: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .monthly: return "Monthly Tip"
-        case .yearly: return "Yearly Tip"
-        case .lifetime: return "One-Time Tip"
+        case .monthly: return "Monthly Supporter"
+        case .yearly: return "Yearly Supporter"
+        case .lifetime: return "One-Time Supporter"
         }
     }
 
@@ -168,7 +168,7 @@ class StoreService: ObservableObject {
     private func showNoPurchasesRestoredAlert() {
         let alert = NSAlert()
         alert.messageText = "No Purchases Found"
-        alert.informativeText = "We couldn't find any Tiny Clips supporter tips to restore for this App Store account. If you tipped with a different Apple Account, sign in with that account and try again."
+        alert.informativeText = "We couldn't find a Tiny Clips supporter purchase to restore for this App Store account. If you purchased with a different Apple Account, sign in with that account and try again."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
