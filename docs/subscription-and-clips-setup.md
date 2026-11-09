@@ -106,3 +106,5 @@ TinyClips does not ship with Uploadcare credentials. Users configure their own U
 | Clips Library | `mac/TinyClips/Views/ClipsManagerWindow.swift` |
 | Settings Pro tab | `mac/TinyClips/Views/SettingsView.swift` (`ProSettingsSection`) |
 | Uploadcare client | `mac/TinyClips/Services/SaveService.swift` (`UploadcareService`) |
+| Windows supporter plans | `windows/src/TinyClips.Core/Support/`, `windows/src/TinyClips.App/Services/Support/` |
+| Windows Support page and add-on setup | `windows/src/TinyClips.App/Controls/Settings/SupportSettingsSection.xaml`, [Microsoft Store listing](../windows/docs/microsoft-store-listing.md#supporter-add-ons) |

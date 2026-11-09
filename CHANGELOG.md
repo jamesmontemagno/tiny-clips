@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - Rectangles and circles in the macOS screenshot editor have a **Stroke position** option to draw the border inside, centered on, or outside the shape's edge. Centered is the default, as before.
 - Translucent arrows and lines in the macOS screenshot editor no longer draw darker where the shaft meets the head or a cap.
 - macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrow.
+- The Recent Captures menu on macOS and Windows now shows the 10 newest items instead of 5.
 
 ## v2.1.0.1-mac - 2026-11-08
 
@@ -39,7 +40,8 @@ All notable changes to this project will be documented in this file.
 - Studio has a Captions panel: import an SRT or WebVTT file, timed to the recording or to the edited video; correct or delete a caption; check for readability problems and fix what is safe to fix; and export the video's captions as SRT or WebVTT. Agents can do the same with `studio.captions.import`, `studio.captions.check`, `studio.captions.fix`, and `studio.captions.export`.
 
 ### Changed
-- Agent Control on macOS does not require a supporter tip. The shared agent API no longer lists an unused Pro-required error.
+- The Mac App Store build's Support page now describes its plans as supporter plans instead of tips: **Monthly Supporter**, **Yearly Supporter**, and **One-Time Supporter**, with a **Supporter** badge. The products, prices, and existing purchases are unchanged, and every feature stays free.
+- Agent Control on macOS does not require a supporter plan. The shared agent API no longer lists an unused Pro-required error.
 - Closing Studio asks a clearer question, on macOS and Windows. A recording that has not been saved as a project asks **Keep this recording?** with Keep as Draft, Delete, and Cancel. A project saved to a folder closes without a question unless it has changes, and then asks **Save changes?** with Save, Don't Save (which puts back the project as it was last saved), and Cancel. Export is no longer offered when closing.
 - Studio's short choices, such as layout, transition, zoom focus, camera shape and background, and an annotation's size and attachment, are now segmented controls like the Captions panel's, on macOS and Windows. The rectangle annotation's key is now H, for a highlight box.
 - Studio **Export** on macOS now opens a popover to choose the resolution (Source, 4K, 1440p, 1080p, 720p or 480p) and quality (Best, High, Standard or Small File), and shows the pixel size and estimated file size they come to. It starts at 1080p and High, and offers your last choice next time. A video keeps its canvas's shape and is never scaled up. Source exports the canvas at its own size, even past 4K; above 4K the Mac checks its encoder first, uses H.264 where HEVC cannot make the size, and otherwise says to choose 4K or smaller. Exports now use an explicit bitrate instead of the system's "highest quality" preset, so file sizes follow the chosen quality; above 4K the bitrate grows with the pixel count instead of stopping at the 4K ceiling.

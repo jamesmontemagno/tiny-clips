@@ -394,7 +394,9 @@ automation review does not replace the documented hands-on results.
   background and on launch; winget installs update with `winget upgrade`. Both operate on the same
   package family. Fully free.
 - **Microsoft Store:** Store-managed updates only. Store packages do not include the direct
-  `.appinstaller` update channel. Feature set matches Direct; no Windows Pro tier.
+  `.appinstaller` update channel. Feature set matches Direct; no Windows Pro tier. Settings adds an
+  optional **Support** page with monthly, yearly, and one-time supporter plans, which unlock no
+  features. Direct and winget builds do not show it.
 
 See the plan for the full phased roadmap, packaging, and signing details.
 

@@ -115,6 +115,17 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
+                <!--  Store purchases only work in the Microsoft Store build, which shows this item.  -->
+                <NavigationViewItem
+                    x:Name="SupportNavigationItem"
+                    AutomationProperties.AutomationId="SupportNavigationItem"
+                    Content="Support"
+                    Tag="Support"
+                    Visibility="Collapsed">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xEB51;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem
                     AutomationProperties.AutomationId="AboutNavigationItem"
                     Content="About"
