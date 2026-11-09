@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- The Microsoft Store build has a **Support** page in Settings with three optional supporter plans, the same as the Mac App Store build: monthly, yearly, and one-time, at the prices the Store shows. Every feature stays free for everyone; a plan adds a Supporter badge in Settings as a thank-you. A heart in the tray popup opens the page. Direct and winget builds don't show the page or the heart, and supporter purchases aren't available to agents.
 - Every Studio annotation has selection-based resize and rotation handles, plus a keyboard-accessible Rotation slider. Emoji sizing uses one Size slider, preserving existing projects' appearance. Agents use `scale`, area dimensions, and `rotation` through `studio.project.edit`.
 - Studio annotations can be emoji: add one with the Annotate panel's Emoji tool or M, pick one of 24 common emoji in the panel, type or paste any other (**More emoji…** points to `Win + .`), and set its size and an optional soft shadow. Emoji are drawn in color in the preview and the export, and dragged to move. Agents add them with `studio.project.edit` (`kind` `emoji`, with `shadow`).
 - Studio has new keys: `Shift+Left`/`Shift+Right` step the playhead a second, `Home`/`End` go to the start and the end of the trimmed video, and `Ctrl+D` duplicates the selected annotation, nudged a little and placed just above it.

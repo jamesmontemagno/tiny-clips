@@ -18,6 +18,8 @@
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioDraftItem.cs" Link="Studio\StudioDraftItem.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\Studio\StudioProjectCleanupService.cs" Link="Studio\StudioProjectCleanupService.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\Studio\StudioProjectTracker.cs" Link="Studio\StudioProjectTracker.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\SupportSettingsViewModel.cs" Link="SupportSettingsViewModel.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Models\Support\SupporterOfferItem.cs" Link="SupporterOfferItem.cs" />
     <Compile Include="..\..\src\TinyClips.App\Settings\SettingsSectionKind.cs" Link="SettingsSectionKind.cs" />
     <Compile Include="..\..\src\TinyClips.App\Settings\TeleprompterTranscriptSaveScheduler.cs" Link="TeleprompterTranscriptSaveScheduler.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\ClipboardService.cs" Link="ClipboardService.cs" />

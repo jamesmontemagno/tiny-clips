@@ -5,6 +5,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TinyClips.App.Services.Studio;
+using TinyClips.App.Services.Support;
 using TinyClips.App.Settings;
 using TinyClips.App.Settings.Sections;
 using TinyClips.App.ViewModels;
@@ -75,6 +76,8 @@ public sealed partial class SettingsWindow : Window
             InitializeComponent();
             WindowCaptureVisibility.Register(this);
         }
+
+        SupportNavigationItem.Visibility = BuildFlavor.IsStoreBuild ? Visibility.Visible : Visibility.Collapsed;
 
         WindowOpenDiagnostics.Observe(this, RootGrid, _openTrace);
         using (_openTrace?.Measure(WindowOpenPhase.ChromeAndPlacement))
@@ -232,6 +235,8 @@ public sealed partial class SettingsWindow : Window
             SettingsSectionKind.Hotkeys => new HotkeysSettingsSection(ViewModel),
             SettingsSectionKind.ClipsLibrary => new ClipsLibrarySettingsSection(
                 new ClipsLibrarySettingsViewModel(App.Services.GetRequiredService<IClipsLibrarySettings>(), ViewModel.NotifyClipsLibrarySettingsChanged)),
+            SettingsSectionKind.Support => new SupportSettingsSection(
+                new SupportSettingsViewModel(new MicrosoftStoreSupporterStore(WinRT.Interop.WindowNative.GetWindowHandle(this)))),
             SettingsSectionKind.About => new AboutSettingsSection(ViewModel),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, message: null),
         };

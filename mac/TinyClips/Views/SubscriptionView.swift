@@ -47,7 +47,7 @@ struct ProSubscriptionView: View {
             Text("Support")
                 .font(.largeTitle.bold())
 
-            Text("Tiny Clips is always free. Consider tipping to support independent development.")
+            Text("Tiny Clips is always free. Become a supporter to help fund independent development.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -64,7 +64,7 @@ struct ProSubscriptionView: View {
                     .font(.headline)
                     .foregroundStyle(.green)
 
-                Text("Every feature in Tiny Clips is completely free and available to all users. Your tip simply shows your support and appreciation for the work that goes into keeping Tiny Clips great.")
+                Text("Every feature is free for everyone. Becoming a supporter adds a Supporter badge in Settings as a thank-you, and doesn't unlock anything else.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -122,7 +122,7 @@ struct ProSubscriptionView: View {
                 .controlSize(.large)
                 .disabled(storeService.isPurchasing)
             } else {
-                Button("Leave a Tip") {}
+                Button("Become a Supporter") {}
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .disabled(true)
@@ -132,9 +132,9 @@ struct ProSubscriptionView: View {
 
     private func purchaseButtonTitle(for product: Product) -> String {
         if selectedPlan == .lifetime {
-            return "Leave a Tip — \(product.displayPrice)"
+            return "Become a Supporter — \(product.displayPrice)"
         }
-        return "Tip — \(product.displayPrice)/\(selectedPlan == .yearly ? "year" : "month")"
+        return "Support — \(product.displayPrice)/\(selectedPlan == .yearly ? "year" : "month")"
     }
 
     // MARK: - Restore
@@ -230,6 +230,8 @@ private struct PlanCard: View {
 
             Text(plan.label)
                 .font(.headline)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             if let product {
                 Text(product.displayPrice)
@@ -279,7 +281,7 @@ struct ProActiveView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Label("Pro Supporter", systemImage: "star.fill")
+            Label("Supporter", systemImage: "star.fill")
                 .font(.headline)
                 .foregroundStyle(.orange)
 

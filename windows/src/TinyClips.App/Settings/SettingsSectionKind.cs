@@ -20,5 +20,6 @@ public enum SettingsSectionKind
     Teleprompter,
     Hotkeys,
     ClipsLibrary,
+    Support,
     About,
 }

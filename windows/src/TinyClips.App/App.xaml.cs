@@ -54,6 +54,7 @@ public partial class App : Application
     private const string GlyphTextRecognition = "\uE8D2";
     private const string GlyphBug = "\uEBE8";
     private const string GlyphSettings = "\uE713";
+    private const string GlyphHeart = "\uEB51";
     private const string GlyphExit = "\uE7E8";
     private const string GlyphStudio = "\uE81E";
     private const uint MonitorDefaultToNearest = 2;
@@ -1012,6 +1013,13 @@ public partial class App : Application
             "Check for updates",
             "TrayCheckForUpdatesButton",
             new AsyncRelayCommand(CheckForUpdatesFromTrayAsync),
+            Dismiss));
+#else
+        footerActions.Children.Add(CreateFooterButton(
+            GlyphHeart,
+            "Support Tiny Clips",
+            "TraySupportButton",
+            new RelayCommand(() => OpenSettingsWindow(SettingsSectionKind.Support)),
             Dismiss));
 #endif
 
