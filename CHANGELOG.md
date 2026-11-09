@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v2.1.0.1-mac - 2026-11-08
+
 ### Fixed
 - The Release Hub suggests the next fourth component for macOS release tags such as `v2.1.0.1-mac`, instead of changing the app version's patch component. Empty Unreleased notes block preparation with an actionable message; failed note validation and dry runs leave the changelog unchanged in both tagging scripts.
 
