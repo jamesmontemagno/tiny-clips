@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v2.1.0.0-mac - 2026-11-08
+
 ### Added
 - Every Studio annotation on macOS and Windows has selection-based resize and rotation handles, plus a keyboard-accessible Rotation slider. Emoji sizing uses one Size slider, preserving existing projects' appearance. Agents use `scale`, area dimensions, and `rotation` through `studio.project.edit`.
 - Studio annotations can now be rectangles, ellipses, and redactions, on macOS and Windows. Rectangles and ellipses are outlines in the annotation's color, with rounded corners and an optional see-through fill; a redaction hides an area with a blur, pixelation, or a solid color, in three strengths. Add them from the Annotate panel (H, E, and B), move and resize them in the preview, and attach them to the recording so they stay on what they cover through zooms. Agents add them through `overlays.annotations` in `studio.project.edit`.
