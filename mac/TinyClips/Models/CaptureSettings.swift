@@ -339,7 +339,7 @@ extension NSColor {
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
     // Bump when release highlights change, independently of the app version.
-    static let whatsNewContentRevision = 2
+    static let whatsNewContentRevision = 3
     static let lastSeenWhatsNewRevisionKey = "lastSeenWhatsNewRevision"
 
     static func shouldShowWhatsNew(in defaults: UserDefaults = .standard) -> Bool {

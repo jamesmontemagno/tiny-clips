@@ -35,15 +35,162 @@
                         Style="{StaticResource CaptionTextBlockStyle}" />
                     <TextBlock
                         Style="{StaticResource TitleTextBlockStyle}"
-                        Text="Meet Tiny Clips Studio"
+                        AutomationProperties.HeadingLevel="Level1"
+                        Text="Your AI agent can now use Tiny Clips"
                         TextAlignment="Center"
                         TextWrapping="Wrap" />
                     <TextBlock
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Your recording. Your finishing touches."
+                        Text="Screenshots, recordings, and Studio edits, with you in control."
                         TextAlignment="Center"
                         TextWrapping="Wrap" />
                 </StackPanel>
+
+                <local:AccessibleFigure
+                    AutomationProperties.AutomationId="WhatsNewAgentDiagram"
+                    AutomationProperties.Name="Diagram: your AI agent connects through Agent control, with the permissions you choose, to screenshots, recordings, Studio, captions, and annotations.">
+                    <Border
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="12">
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border
+                                Padding="10,14"
+                                VerticalAlignment="Center"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="8">
+                                <StackPanel Spacing="6">
+                                    <FontIcon FontFamily="Segoe Fluent Icons" FontSize="22" Glyph="&#xE77B;" />
+                                    <TextBlock
+                                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                                        Text="Your agent"
+                                        TextAlignment="Center"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="Plugin, MCP, or CLI"
+                                        TextAlignment="Center"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <FontIcon
+                                Grid.Column="1"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="14"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Glyph="&#xE72A;" />
+
+                            <Border
+                                Grid.Column="2"
+                                Padding="10,14"
+                                VerticalAlignment="Center"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                CornerRadius="8">
+                                <StackPanel Spacing="6">
+                                    <FontIcon
+                                        FontFamily="Segoe Fluent Icons"
+                                        FontSize="22"
+                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                        Glyph="&#xE99A;" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                                        Text="Agent control"
+                                        TextAlignment="Center"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="Permissions you choose"
+                                        TextAlignment="Center"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <FontIcon
+                                Grid.Column="3"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="14"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Glyph="&#xE72A;" />
+
+                            <Border
+                                Grid.Column="4"
+                                Padding="12,10"
+                                VerticalAlignment="Center"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="8">
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE722;" />
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Screenshots" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE714;" />
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Recordings" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE8B2;" />
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Studio" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE7F0;" />
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Captions" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE70F;" />
+                                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Annotations" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </local:AccessibleFigure>
+
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Turn on Agent control and AI agents on this PC can take screenshots, record, edit Studio projects, add captions and annotations, and export the result. Bring your own agent; Tiny Clips provides the tools."
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+
+                <Border
+                    Padding="18"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Off until you turn it on" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Each agent needs your approval once and only gets the permissions you choose. Deleting, uploading, and discarding always ask first, and every request is logged on this PC. You'll find the setup steps in Settings &gt; Agent control."
+                            TextWrapping="Wrap" />
+                        <Button
+                            AutomationProperties.AutomationId="WhatsNewOpenAgentSettingsButton"
+                            AutomationProperties.HelpText="Opens Settings to Agent control. This does not turn it on."
+                            Click="OnOpenAgentSettingsClicked"
+                            Content="Set up Agent control" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock
+                    Margin="0,12,0,0"
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Tiny Clips Studio" />
 
                 <Border
                     Padding="20"
@@ -52,7 +199,7 @@
                     BorderThickness="1"
                     CornerRadius="20">
                     <Image
-                        Height="230"
+                        Height="150"
                         AutomationProperties.Name="Studio illustration: a screen recording and camera bubble above a colorful editing timeline"
                         Stretch="Uniform">
                         <Image.Source>
@@ -64,23 +211,7 @@
                 <TextBlock
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="Record your screen and camera as separate layers. Shape the story afterward with layouts, backgrounds and a timeline, then export an MP4. Your project stays editable."
-                    TextAlignment="Center"
                     TextWrapping="Wrap" />
-
-                <StackPanel Spacing="14">
-                    <local:GuideRow
-                        Glyph="&#xF16F;"
-                        Title="Give every recording a look"
-                        Subtitle="Frame your screen with a background, padding and rounded corners. Move your camera bubble or switch to side by side." />
-                    <local:GuideRow
-                        Glyph="&#xE8B2;"
-                        Title="Keep the good parts"
-                        Subtitle="Trim, cut, add zooms and change the layout with scenes. Adjust the volume before you export." />
-                    <local:GuideRow
-                        Glyph="&#xE8A7;"
-                        Title="Export a video. Keep the possibilities."
-                        Subtitle="Share an MP4, reopen your project, or save a project folder to carry on editing on another computer." />
-                </StackPanel>
 
                 <Border
                     Padding="18"
@@ -106,7 +237,7 @@
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Studio is an early preview, now on by default if you haven't saved a preference. Your previous choice is kept. You can turn it off here or in Settings &gt; Studio at any time; your projects are kept."
+                            Text="Studio is on by default unless you turned it off. Your choice is kept, and you can change it here or in Settings &gt; Studio at any time. Your projects are kept."
                             TextWrapping="Wrap" />
                         <HyperlinkButton
                             HorizontalAlignment="Left"
@@ -115,6 +246,46 @@
                             Content="Explore Studio settings" />
                     </StackPanel>
                 </Border>
+
+                <TextBlock
+                    Margin="0,12,0,0"
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="New in Studio" />
+                <StackPanel Spacing="14">
+                    <local:GuideRow
+                        Glyph="&#xE7F0;"
+                        Title="Captions"
+                        Subtitle="Generate captions on this PC, correct them, draw them on the video, or export SRT and WebVTT. Speech models download the first time you use them." />
+                    <local:GuideRow
+                        Glyph="&#xE70F;"
+                        Title="Annotations"
+                        Subtitle="Add arrows, callouts, text, shapes, emoji, and redactions that can follow your zooms." />
+                    <local:GuideRow
+                        Glyph="&#xEDE1;"
+                        Title="Export your way"
+                        Subtitle="Choose the resolution and quality, and see the estimated file size first." />
+                    <local:GuideRow
+                        Glyph="&#xE714;"
+                        Title="Open any video"
+                        Subtitle="Bring a video into Studio from the trimmer or the Clips Library to add zooms, backgrounds, cuts, and speed changes." />
+                </StackPanel>
+
+                <TextBlock
+                    Margin="0,12,0,0"
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="More to try" />
+                <StackPanel Spacing="14">
+                    <local:GuideRow
+                        Glyph="&#xE721;"
+                        Title="Find sensitive text"
+                        Subtitle="The screenshot editor can suggest emails, phone numbers, and IP addresses to black out. Approve each one and check the image yourself, because it can miss things." />
+                    <local:GuideRow
+                        Glyph="&#xE945;"
+                        Title="A faster Tiny Clips"
+                        Subtitle="Tiny Clips no longer runs in Efficiency Mode, so the tray, shortcuts, and recordings respond sooner. The capture picker now appears right away." />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
 

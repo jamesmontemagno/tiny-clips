@@ -7,8 +7,8 @@ using TinyClips.Core.Services;
 namespace TinyClips.App;
 
 /// <summary>
-/// Shown once per content revision to introduce Studio and offer its saved preview switch.
-/// New installations see onboarding instead. Closing by any route marks this revision as seen.
+/// Shown once per content revision to introduce the release's highlights. It offers Studio's saved
+/// preview switch and a way to Agent control settings, but never turns Agent control on. New installations see onboarding instead. Closing by any route marks this revision as seen.
 /// </summary>
 public sealed partial class WhatsNewWindow : Window
 {
@@ -93,6 +93,12 @@ public sealed partial class WhatsNewWindow : Window
     private void MarkSeen() => MarkSeenForCurrentVersion(_settings);
 
     private void OnDoneClicked(object sender, RoutedEventArgs e) => Close();
+
+    private void OnOpenAgentSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        ((App)Application.Current).OpenSettingsWindow(SettingsSectionKind.AgentControl);
+        Close();
+    }
 
     private void OnOpenStudioSettingsClicked(object sender, RoutedEventArgs e)
     {

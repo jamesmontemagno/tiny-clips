@@ -11,8 +11,9 @@ public sealed class WhatsNewTests
     [InlineData("rev1;1.8.0", true)]
     [InlineData("rev2", true)]
     [InlineData("rev2;1.8.0", true)]
-    [InlineData("rev3;1.9.0", false)]
+    [InlineData("rev3;2.0.0", true)]
     [InlineData("rev4;2.1.0", false)]
+    [InlineData("rev5;2.2.0", false)]
     [InlineData("revnot-a-number", true)]
     [InlineData("rev-1", true)]
     public void ContentRevision_NotPackageVersion_DecidesWhetherToShow(string seen, bool shouldShow)
@@ -126,6 +127,24 @@ public sealed class WhatsNewTests
         Assert.False(string.IsNullOrWhiteSpace(illustration.Attr("AutomationProperties.Name")));
         Assert.Contains(elements, element => element.Name.LocalName == "SvgImageSource"
             && element.Attr("UriSource") == "ms-appx:///Assets/Studio/whats-new-studio.svg");
+    }
+
+    [Fact]
+    public void Markup_LeadsWithAgentControl_WithADescribedDiagramAndAWayToSettings()
+    {
+        const string markup = "WhatsNewWindow.xaml";
+        var elements = SettingsMarkup.Elements(markup).ToList();
+
+        var diagram = Assert.Single(elements, element => element.Attr("AutomationProperties.AutomationId") == "WhatsNewAgentDiagram");
+        Assert.Equal("AccessibleFigure", diagram.Name.LocalName);
+        Assert.Contains("Agent control", diagram.Attr("AutomationProperties.Name"));
+
+        var settingsButton = Assert.Single(elements, element => element.Attr("AutomationProperties.AutomationId") == "WhatsNewOpenAgentSettingsButton");
+        Assert.Equal("OnOpenAgentSettingsClicked", settingsButton.Attr("Click"));
+
+        var studioToggle = Assert.Single(elements, element => element.Attr("AutomationProperties.AutomationId") == "WhatsNewStudioToggle");
+        Assert.True(elements.IndexOf(diagram) < elements.IndexOf(studioToggle));
+        Assert.True(elements.IndexOf(settingsButton) < elements.IndexOf(studioToggle));
     }
 
     private sealed class MemorySettings : ISettingsService

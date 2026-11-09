@@ -6,7 +6,7 @@ namespace TinyClips.App;
 public sealed class WhatsNewViewModel : ObservableObject
 {
     // Bump when release highlights change, independently of the package version.
-    internal const int ContentRevision = 3;
+    internal const int ContentRevision = 4;
 
     private readonly ICaptureSettings _settings;
     private bool _isStudioEnabled;

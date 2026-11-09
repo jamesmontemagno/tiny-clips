@@ -19,6 +19,7 @@ own `CHANGELOG.md` at the repository root.
 - Studio has a Captions panel: import an SRT or WebVTT file, timed to the recording or to the edited video; correct or delete a caption; check for readability problems and fix what is safe to fix; and export the video's captions as SRT or WebVTT. Agents can do the same with `studio.captions.import`, `studio.captions.check`, `studio.captions.fix`, and `studio.captions.export`.
 
 ### Changed
+- The What's New window now introduces 2.1: Agent control first, with a diagram of what it lets agents use, a reminder that it is off until you turn it on, and a button to its settings. Studio follows with its existing switch, which keeps your saved choice, then what's new in Studio and more to try. It appears once for returning users.
 - Closing Studio asks a clearer question. A recording that has not been saved as a project asks **Keep this recording?** with **Keep as draft** (the default), **Delete recording**, and **Cancel**. A project saved to a folder closes without a question unless it has changes, and then asks **Save changes?** with **Save**, **Don't save** (which puts back the project as it was last saved), and **Cancel**. Export is no longer offered when closing, and Esc asks **Close Studio?** only of a saved project without changes.
 - Studio's annotation tools now fit in four columns and two rows, matching macOS.
 - Studio's rectangle tool key is now H (was U), matching the macOS app.
