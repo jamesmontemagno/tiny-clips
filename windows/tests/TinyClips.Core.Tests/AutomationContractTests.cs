@@ -133,8 +133,10 @@ public sealed class AutomationContractTests
         var contract = AutomationContract.Default;
         var constants = typeof(AutomationErrorCodes)
             .GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Select(f => (string)f.GetValue(null)!);
-        Assert.All(constants, code => Assert.True(contract.Errors.ContainsKey(code), code));
+            .Select(f => (string)f.GetValue(null)!)
+            .ToHashSet();
+        Assert.True(constants.SetEquals(contract.Errors.Keys));
+        Assert.DoesNotContain("pro_required", contract.Errors.Keys);
     }
 
     [Fact]
