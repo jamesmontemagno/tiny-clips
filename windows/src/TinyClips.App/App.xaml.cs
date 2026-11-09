@@ -179,6 +179,10 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // This is a tray app: closing its last window must not end the process. The only way out is
+        // ExitApplicationAsync, which exits explicitly.
+        DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
         // Nothing may escape OnLaunched: XAML treats an exception here as fatal and terminates the
