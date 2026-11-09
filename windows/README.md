@@ -230,8 +230,9 @@ for fresh installs and returning users with no saved `studioPreviewEnabled` pref
 Every saved on/off choice is preserved, including false from an older reset, which cannot be
 distinguished from an intentional opt-out. Resetting settings restores the new on default.
 You can switch it off or on in **Settings › Studio › Tiny Clips Studio (Preview)** or in the
-illustrated **What's New** introduction. Existing users see the refreshed 2.0 introduction
-once per content revision; opening or dismissing it never changes the preference.
+illustrated **What's New** window. Existing users see the 2.1 What's New, which leads with Agent
+control and never turns it on, once per content revision; opening or dismissing it never changes
+the Studio preference.
 New installs get the onboarding tour instead. To replace the highlights in a future release,
 bump `WhatsNewViewModel.ContentRevision`, not the package version. With the switch off
 the page shows nothing else, nothing else of Studio is shown anywhere, and a recording is made
