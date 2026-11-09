@@ -35,6 +35,9 @@ public abstract class StudioViewModelTestBase : IDisposable
         ((CountingStore)_store).Inner = Projects;
     }
 
+    /// <summary>The clock of the view models a test opens, which moves only when the test moves it.</summary>
+    private protected ManualTimeProvider Time => _time;
+
     /// <summary>The store itself, for writing the project a test opens and for reading it afterwards.</summary>
     protected StudioProjectStore Projects { get; }
 
@@ -79,23 +82,30 @@ public abstract class StudioViewModelTestBase : IDisposable
         return paths.ProjectId;
     }
 
+    /// <summary>The settings of the view models a test opens.</summary>
+    protected CaptureSettings Settings { get; } = new(new StudioTestSettings());
+
+    /// <summary>What a view model a test opens generates captions with. Without it, it cannot.</summary>
+    protected TinyClips.Core.Studio.Transcription.IStudioCaptionGenerator? CaptionGenerator { get; set; }
+
     /// <summary>
     /// Opens a project as the Studio window does: the view model is made, the window's controls
     /// are bound to it while it still says it is loading, and then the project is read. A test
     /// that opens a project which cannot be shown says so.
     /// </summary>
-    protected async Task<StudioViewModel> OpenAsync(string projectId, StudioBoundControls? controls = null, bool expectReady = true)
+    protected async Task<StudioViewModel> OpenAsync(string projectId, StudioBoundControls? controls = null, bool expectReady = true, CaptureSettings? settings = null)
     {
         var viewModel = new StudioViewModel(
             projectId,
             _store,
             _previews,
             new StudioTestExporter(),
-            new CaptureSettings(new StudioTestSettings()),
+            settings ?? Settings,
             new StudioTestVideoNames(Path.Combine(_directory, "Videos")),
             Post,
             canFindPeople: true,
-            _time);
+            _time,
+            CaptionGenerator);
         viewModel.Announced += (_, e) => Announcements.Add(e.Message);
         controls?.Attach(viewModel);
 
@@ -106,6 +116,9 @@ public abstract class StudioViewModelTestBase : IDisposable
         Assert.True(viewModel.IsReady == expectReady, expectReady ? viewModel.UnavailableMessage : "the project opened");
         return viewModel;
     }
+
+    /// <summary>Settings for editors that are to share them, as the app's editors do.</summary>
+    protected static CaptureSettings CreateSettings() => new(new StudioTestSettings());
 
     /// <summary>Closes the editor as its window does, which saves what is not saved yet.</summary>
     protected async Task CloseAsync(StudioViewModel viewModel)
@@ -203,6 +216,7 @@ public abstract class StudioViewModelTestBase : IDisposable
             StudioProjectPaths paths,
             string outputPath,
             VideoCodec codec,
+            StudioExportChoice choice,
             IProgress<double>? progress,
             CancellationToken cancellationToken)
         {

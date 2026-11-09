@@ -22,6 +22,7 @@ public sealed class StudioEditableState
         Edits = project.Edits;
         Audio = project.Audio;
         Overlays = project.Overlays;
+        Captions = project.Captions;
     }
 
     public StudioCanvas Canvas { get; }
@@ -39,6 +40,8 @@ public sealed class StudioEditableState
     public StudioAudio Audio { get; }
 
     public StudioOverlays Overlays { get; }
+
+    public StudioCaptions Captions { get; }
 
     public static StudioEditableState From(StudioProject project)
     {
@@ -60,6 +63,7 @@ public sealed class StudioEditableState
             Edits = Edits,
             Audio = Audio,
             Overlays = Overlays,
+            Captions = Captions,
         };
     }
 
@@ -87,7 +91,8 @@ public sealed class StudioEditableState
             && ReferenceEquals(Zooms, other.Zooms)
             && Edits == other.Edits
             && Audio == other.Audio
-            && Overlays == other.Overlays)
+            && Overlays == other.Overlays
+            && Captions == other.Captions)
         {
             return true;
         }
@@ -399,6 +404,23 @@ public sealed partial class StudioEditorModel
         PushUndo(snapshot);
     }
 
+    /// <summary>Puts the composition back to <paramref name="state"/>, as one step that can be undone.</summary>
+    public void RestoreEditableState(StudioEditableState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
+        CommitEditingGroup();
+        if (state.ContentEquals(EditableState))
+        {
+            return;
+        }
+
+        var current = EditableState;
+        Project = state.ApplyTo(Project);
+        PushUndo(current);
+    }
+
     public void CancelEditingGroup()
     {
         if (_groupedSnapshot is not { } snapshot)
@@ -417,6 +439,8 @@ public sealed partial class StudioEditorModel
     /// </summary>
     public void Undo()
     {
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
         var wasGrouping = IsGroupingEdits;
         CommitEditingGroup();
         if (_undoStack.Count > 0)
@@ -439,6 +463,8 @@ public sealed partial class StudioEditorModel
     /// </summary>
     public void Redo()
     {
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
         var wasGrouping = IsGroupingEdits;
         CommitEditingGroup();
         if (_redoStack.Count > 0)
@@ -1199,6 +1225,29 @@ public sealed partial class StudioEditorModel
         _exportedState = exported;
     }
 
+    /// <summary>Replaces editable project fields from a validated agent update as one undo step.</summary>
+    public void ApplyAutomationProject(StudioProject updated)
+    {
+        ArgumentNullException.ThrowIfNull(updated);
+        if (!string.Equals(updated.Id, Project.Id, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The update belongs to another Studio project.", nameof(updated));
+        }
+
+        Mutate(project => project with
+        {
+            Canvas = updated.Canvas,
+            Screen = updated.Screen,
+            Camera = updated.Camera,
+            Scenes = updated.Scenes,
+            Zooms = updated.Zooms,
+            Edits = updated.Edits,
+            Audio = updated.Audio,
+            Overlays = updated.Overlays,
+            Captions = updated.Captions,
+        });
+    }
+
     /// <summary>Takes the fields the store or other windows own from the saved project, leaving edits alone.</summary>
     public void RefreshBookkeeping(StudioProject saved)
     {
@@ -1340,6 +1389,8 @@ public sealed partial class StudioEditorModel
 
     private void Mutate(Func<StudioProject, StudioProject> change)
     {
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
         var before = EditableState;
         var candidate = change(Project);
         if (before.ContentEquals(StudioEditableState.From(candidate)))

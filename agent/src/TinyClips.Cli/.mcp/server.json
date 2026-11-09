@@ -1,0 +1,16 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.jamesmontemagno/tinyclips",
+  "description": "Control the Tiny Clips screen capture app: screenshots, recordings, GIFs, editors, and the clips library.",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "nuget",
+      "identifier": "TinyClips",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "packageArguments": [ { "type": "positional", "value": "mcp" } ]
+    }
+  ],
+  "repository": { "url": "https://github.com/jamesmontemagno/tiny-clips", "source": "github" }
+}

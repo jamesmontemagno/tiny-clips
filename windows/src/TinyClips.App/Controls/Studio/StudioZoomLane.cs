@@ -11,7 +11,7 @@ namespace TinyClips.App.Controls.Studio;
 public sealed partial class StudioZoomLane : StudioRangeLane
 {
     public StudioZoomLane(StudioViewModel viewModel)
-        : base(viewModel, "StudioZoomLane", "Zooms", "No zooms. Press Z to add one at the playhead.", height: 26)
+        : base(viewModel, "StudioZoomLane", "Zooms", height: 26)
     {
     }
 

@@ -34,12 +34,13 @@ internal sealed partial class WindowChecks
     private static string NameOf(Editor editor, string automationId, double seconds = 2) => Find(editor, automationId, seconds)?.Name ?? string.Empty;
 
     /// <summary>
-    /// Chooses an item of a combo box by setting the control's selected index, on the UI thread.
-    /// The list is never opened: an open list is a window of its own, in front of other windows.
+    /// Chooses an item of a combo box or a segmented control by setting the control's selected
+    /// index, on the UI thread. A list is never opened: an open list is a window of its own, in
+    /// front of other windows.
     /// </summary>
     private bool SetCombo(Editor editor, string automationId, int index) => OnUi(() =>
     {
-        if (Descendant<ComboBox>(editor.Window.Content, automationId) is not { } combo || index >= combo.Items.Count)
+        if (Descendant<Microsoft.UI.Xaml.Controls.Primitives.Selector>(editor.Window.Content, automationId) is not { } combo || index >= combo.Items.Count)
         {
             return false;
         }
@@ -187,6 +188,10 @@ internal sealed partial class WindowChecks
 
     /// <summary>How often the process asked for the keyboard focus or for activation since a moment, and was refused.</summary>
     private static int FocusRequestsSince(double moment) => ForegroundGuard.Events().Count(e => e.At >= moment);
+
+    /// <summary>The size an export of the project comes to at the resolution the tool's settings save, which the header names.</summary>
+    private StudioSize ExportedSize(StudioProject project) =>
+        StudioExportPresets.GetSize(StudioCanvasMath.NaturalSize(project), _services.Settings.StudioExportResolution);
 
     // ---------------------------------------------------------------------------------------
     // The window's own elements, read on the UI thread

@@ -122,6 +122,27 @@ public sealed class StudioPreviewStillnessTests
     }
 
     [Fact]
+    public void ACaptionThatComesOrGoes_ChangesTheScene_AndOneThatStaysDoesNot()
+    {
+        // From 3 s to 5 s: the frames 90 to 149, whose middles are inside it.
+        var cues = new StudioCaptions { Cues = [new StudioCaptionCue { Id = "cue", Start = 3, End = 5, Text = "Caption" }] };
+        var project = Project() with
+        {
+            Captions = cues,
+            Overlays = new StudioOverlays { Captions = new StudioCaptionOverlay { Enabled = true } },
+        };
+
+        Assert.True(Same(project, 100, 112));
+        Assert.True(Same(project, 70, 80));
+        Assert.False(Same(project, 89, 90));
+        Assert.False(Same(project, 149, 150));
+        Assert.False(Same(project, 85, 95));
+
+        // With burn-in switched off nothing is drawn for it.
+        Assert.True(Same(Project() with { Captions = cues }, 89, 90));
+    }
+
+    [Fact]
     public void TheRingOfAClick_ChangesTheSceneForAsLongAsItShows()
     {
         // A click at 5 s; its ring shows for 0.45 s: in the frames 150 to 162, whose middles
@@ -138,6 +159,23 @@ public sealed class StudioPreviewStillnessTests
         // With the rings switched off nothing is drawn for it.
         var without = project with { Overlays = new StudioOverlays { Clicks = new StudioClickOverlay { Enabled = false } } };
         Assert.True(Same(without, 148, 156, events));
+    }
+
+    [Fact]
+    public void AnAnnotationStartingOrEnding_ChangesTheScene()
+    {
+        // An annotation from 5 s to 6 s at 30 frames a second: frame 150 is the first whose
+        // middle is inside it, and frame 180 the first after it.
+        var project = Project() with
+        {
+            Overlays = new StudioOverlays { Annotations = [new StudioAnnotation { Start = 5, End = 6 }] },
+        };
+
+        Assert.True(Same(project, 140, 149));
+        Assert.False(Same(project, 149, 150));
+        Assert.True(Same(project, 150, 160));
+        Assert.False(Same(project, 179, 180));
+        Assert.True(Same(project, 180, 190));
     }
 
     [Fact]

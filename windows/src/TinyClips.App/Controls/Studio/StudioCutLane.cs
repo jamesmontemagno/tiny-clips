@@ -12,7 +12,7 @@ namespace TinyClips.App.Controls.Studio;
 public sealed partial class StudioCutLane : StudioRangeLane
 {
     public StudioCutLane(StudioViewModel viewModel)
-        : base(viewModel, "StudioCutLane", "Cuts", StudioEditorText.NoCutsHint, height: 24)
+        : base(viewModel, "StudioCutLane", "Cuts", height: 24)
     {
     }
 

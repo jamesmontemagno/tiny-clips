@@ -230,6 +230,11 @@ struct ScreenshotCapture {
     }
 
     static func captureWindow(_ window: SCWindow, outputURL: URL) async throws -> URL {
+        let (image, scaleFactor) = try await captureWindowImage(window)
+        return try saveImage(image, to: outputURL, scaleFactor: scaleFactor)
+    }
+
+    static func captureWindowImage(_ window: SCWindow) async throws -> (image: CGImage, scaleFactor: CGFloat) {
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let config = SCStreamConfiguration()
         let scaleFactor = pixelScale(for: window, filter: filter)
@@ -244,7 +249,7 @@ struct ScreenshotCapture {
         config.showsCursor = false
 
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-        return try saveImage(image, to: outputURL, scaleFactor: scaleFactor)
+        return (image, scaleFactor)
     }
 
     // MARK: - Helpers

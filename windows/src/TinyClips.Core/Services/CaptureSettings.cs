@@ -195,6 +195,32 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("videoCodec", value == VideoCodec.Hevc ? "hevc" : "h264");
     }
 
+    public StudioExportResolution StudioExportResolution
+    {
+        get => StudioExportPresets.TryParseResolution(_settings.Get("studioExportResolution", string.Empty), out var resolution)
+            ? resolution
+            : StudioExportChoice.Default.Resolution;
+        set
+        {
+            var changed = StudioExportResolution != value;
+            _settings.Set("studioExportResolution", StudioExportPresets.Id(value));
+            if (changed)
+            {
+                StudioExportResolutionChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public event EventHandler? StudioExportResolutionChanged;
+
+    public StudioExportQuality StudioExportQuality
+    {
+        get => StudioExportPresets.TryParseQuality(_settings.Get("studioExportQuality", string.Empty), out var quality)
+            ? quality
+            : StudioExportChoice.Default.Quality;
+        set => _settings.Set("studioExportQuality", StudioExportPresets.Id(value));
+    }
+
     /// <summary>Version string (e.g. "1.8.0.0") of the last "What's new" the user has seen; empty if never.</summary>
     public string LastSeenWhatsNewVersion
     {
@@ -307,6 +333,13 @@ public sealed class CaptureSettings : ICaptureSettings
     }
 
     public event EventHandler? StudioPreviewEnabledChanged;
+
+    public string StudioCaptionModelId
+    {
+        get => (TinyClips.Core.Studio.Transcription.StudioCaptionModels.Find(_settings.Get("studioCaptionModel", string.Empty))
+            ?? TinyClips.Core.Studio.Transcription.StudioCaptionModels.Default).Id;
+        set => _settings.Set("studioCaptionModel", value);
+    }
 
     public const int DefaultStudioSourceRetentionDays = 30;
     public const int MinStudioSourceRetentionDays = 0;
@@ -636,8 +669,18 @@ public sealed class CaptureSettings : ICaptureSettings
     public bool IncludeTinyClipsInCapture
     {
         get => _settings.Get("includeTinyClipsInCapture", false);
-        set => _settings.Set("includeTinyClipsInCapture", value);
+        set
+        {
+            var changed = IncludeTinyClipsInCapture != value;
+            _settings.Set("includeTinyClipsInCapture", value);
+            if (changed)
+            {
+                IncludeTinyClipsInCaptureChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
+
+    public event EventHandler? IncludeTinyClipsInCaptureChanged;
 
     public bool ShowBrandingOverlay
     {
@@ -896,6 +939,8 @@ public sealed class CaptureSettings : ICaptureSettings
         UseGpuRecordingPipeline = true;
         VideoEncoderBackend = VideoEncoderBackend.SinkWriter;
         VideoCodec = VideoCodec.H264;
+        StudioExportResolution = StudioExportChoice.Default.Resolution;
+        StudioExportQuality = StudioExportChoice.Default.Quality;
         KeepDisplayAwakeWhileRecording = true;
         ShowMouseClickVisualsInVideo = false;
         ShowMouseClickVisualsInGif = false;
@@ -913,6 +958,7 @@ public sealed class CaptureSettings : ICaptureSettings
         ShowTrimmer = true;
         StudioPreviewEnabled = true;
         StudioSourceRetentionDays = DefaultStudioSourceRetentionDays;
+        StudioCaptionModelId = TinyClips.Core.Studio.Transcription.StudioCaptionModels.Default.Id;
         StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;
         StudioDefaultLook = null;
         StudioProjectSaveFolder = string.Empty;

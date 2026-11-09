@@ -80,18 +80,15 @@ public abstract partial class StudioLane : UserControl
     private uint _pointerId;
     private bool _isPointerDown;
 
-    /// <param name="automationId">The lane's automation id. The text of an empty lane gets the same with "EmptyText" after it.</param>
+    /// <param name="automationId">The lane's automation id.</param>
     /// <param name="name">What the list is called to a screen reader.</param>
-    /// <param name="emptyText">What the lane says while it has no blocks, or an empty text for a lane that always has one.</param>
-    protected StudioLane(StudioViewModel viewModel, string automationId, string name, string emptyText, double height)
+    protected StudioLane(StudioViewModel viewModel, string automationId, string name, double height)
     {
         ViewModel = viewModel;
         InitializeComponent();
         Height = height;
         AutomationProperties.SetAutomationId(this, automationId);
         AutomationProperties.SetName(this, name);
-        EmptyText.Text = emptyText;
-        AutomationProperties.SetAutomationId(EmptyText, automationId + "EmptyText");
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         IsEnabledChanged += OnIsEnabledChanged;
@@ -390,10 +387,6 @@ public abstract partial class StudioLane : UserControl
                 Blocks.Children.Add(block);
             }
 
-            // A list without items says why, also to a screen reader that lands on the list.
-            var isEmpty = count == 0 && EmptyText.Text.Length > 0;
-            EmptyText.Visibility = isEmpty ? Visibility.Visible : Visibility.Collapsed;
-            AutomationProperties.SetHelpText(this, isEmpty ? EmptyText.Text : string.Empty);
             PlaceBlocks();
         }
         else

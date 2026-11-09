@@ -1,0 +1,50 @@
+{
+  "description": "Fast speech in cues back to back leaves nothing to borrow and is too much to join, so it is only reported.",
+  "sourceDuration": 2,
+  "cues": [
+    {
+      "id": "cue-0",
+      "start": 0,
+      "end": 1,
+      "text": "Every word here comes out fast."
+    },
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 2,
+      "text": "and the next one is just as quick."
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "readingSpeed",
+      "canFix": false
+    },
+    {
+      "cue": 1,
+      "kind": "readingSpeed",
+      "canFix": false
+    }
+  ],
+  "summary": "2 too fast to read",
+  "fixed": [
+    {
+      "start": 0,
+      "end": 1,
+      "text": "Every word here comes out fast.",
+      "wordCount": 0
+    },
+    {
+      "start": 1,
+      "end": 2,
+      "text": "and the next one is just as quick.",
+      "wordCount": 0
+    }
+  ],
+  "applied": 0,
+  "after": [
+    "readingSpeed",
+    "readingSpeed"
+  ]
+}

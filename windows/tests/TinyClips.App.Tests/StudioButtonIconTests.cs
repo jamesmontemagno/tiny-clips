@@ -42,6 +42,9 @@ public sealed class StudioButtonIconTests
 
         // The inspector's panels.
         ("StudioInspector.xaml", "StudioSceneSectionSplitButton", nameof(StudioGlyphs.SplitScene), "Split scene", "Split scene"),
+        ("StudioInspector.xaml", "StudioBringAnnotationForwardButton", nameof(StudioGlyphs.BringForward), "Bring forward", "Bring forward"),
+        ("StudioInspector.xaml", "StudioSendAnnotationBackButton", nameof(StudioGlyphs.SendBack), "Send back", "Send back"),
+        ("StudioInspector.xaml", "StudioDeleteAnnotationButton", nameof(StudioGlyphs.Delete), "Delete annotation", "Delete annotation"),
         ("StudioInspector.xaml", "StudioDeleteSceneButton", nameof(StudioGlyphs.Delete), "Delete scene", "Delete scene"),
         ("StudioInspector.xaml", "StudioScreenCropResetButton", nameof(StudioGlyphs.ResetCrop), "Reset crop", "Reset crop"),
         ("StudioInspector.xaml", "StudioShowSceneButton", nameof(StudioGlyphs.ShowScene), "Show scene", "Show scene"),
@@ -54,6 +57,9 @@ public sealed class StudioButtonIconTests
         ("StudioInspector.xaml", "StudioDeleteCutButton", nameof(StudioGlyphs.Delete), "Delete cut", "Delete cut"),
         ("StudioInspector.xaml", "StudioSpeedSectionAddButton", nameof(StudioGlyphs.AddSpeed), "Add speed change", "Add speed change"),
         ("StudioInspector.xaml", "StudioDeleteSpeedButton", nameof(StudioGlyphs.Delete), "Delete speed change", "Delete speed change"),
+        ("StudioInspector.xaml", "StudioCaptionSplitButton", nameof(StudioGlyphs.SplitScene), "Split", "Split caption"),
+        ("StudioInspector.xaml", "StudioCaptionMergeButton", nameof(StudioGlyphs.MergeCaptions), "Merge", "Merge with next caption"),
+        ("StudioInspector.xaml", "StudioCaptionDeleteButton", nameof(StudioGlyphs.Delete), "Delete", "Delete caption"),
         ("StudioInspector.xaml", "StudioSaveDefaultLookButton", nameof(StudioGlyphs.SaveDefaultLook), "Save as default look", "Save as default look"),
 
         // The project as a whole (#429): at the end of the Project panel, and under the message

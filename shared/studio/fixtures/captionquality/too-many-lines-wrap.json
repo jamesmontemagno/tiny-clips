@@ -1,0 +1,30 @@
+{
+  "description": "Three short lines fit on two.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 6,
+      "text": "One\nTwo\nThree"
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "tooManyLines",
+      "canFix": true
+    }
+  ],
+  "summary": "1 with too many lines",
+  "fixed": [
+    {
+      "start": 1,
+      "end": 6,
+      "text": "One Two Three",
+      "wordCount": 0
+    }
+  ],
+  "applied": 1,
+  "after": []
+}

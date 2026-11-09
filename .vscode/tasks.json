@@ -66,6 +66,56 @@
             ],
             "dependsOn": "Build TinyClipsMAS",
             "problemMatcher": []
+        },
+        {
+            "label": "Restore dependencies",
+            "type": "shell",
+            "command": "dotnet restore windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -p:EnableWindowsTargeting=true && dotnet restore agent/TinyClips.Agent.slnx",
+            "windows": {
+                "command": "dotnet restore windows/TinyClips.Windows.slnx"
+            },
+            "osx": {
+                "command": "xcodebuild -resolvePackageDependencies -project mac/TinyClips.xcodeproj -scheme TinyClips"
+            },
+            "inAgents": true,
+            "runOptions": { "runOn": "worktreeCreated" },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run app",
+            "type": "shell",
+            "command": "echo \"Tiny Clips only runs on Windows and macOS.\"",
+            "windows": {
+                "command": "dotnet run --project windows/src/TinyClips.App/TinyClips.App.csproj -c Debug -p:Platform=x64"
+            },
+            "osx": {
+                "command": "xcodebuild build -project mac/TinyClips.xcodeproj -scheme TinyClips -destination generic/platform=macOS -configuration Debug SYMROOT=\"${workspaceFolder}/build\" CODE_SIGN_IDENTITY=\"\" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO && { killall TinyClips 2>/dev/null || true; open \"${workspaceFolder}/build/Debug/TinyClips.app\"; }"
+            },
+            "inAgents": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Run tests",
+            "type": "shell",
+            "command": "echo \"This host runs the agent tests and only compiles the Windows tests.\" && dotnet test agent/TinyClips.Agent.slnx && dotnet build windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c Debug -p:EnableWindowsTargeting=true",
+            "windows": {
+                "command": "dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c Debug"
+            },
+            "osx": {
+                "command": "xcodebuild test -project mac/TinyClips.xcodeproj -scheme TinyClips -configuration Debug CODE_SIGN_IDENTITY=\"\" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO"
+            },
+            "inAgents": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Studio render checks",
+            "type": "shell",
+            "command": "echo \"Studio render checks only run on Windows.\"",
+            "windows": {
+                "command": "dotnet run --project windows/tools/StudioRenderCheck/StudioRenderCheck.csproj -c Release -p:Platform=x64 -- --only renderer"
+            },
+            "inAgents": true,
+            "problemMatcher": []
         }
     ]
 }

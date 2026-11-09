@@ -84,6 +84,19 @@ public sealed class CaptureVisibilityPolicyTests
     }
 
     [Fact]
+    public void UnchangedAffinity_IsNotReapplied()
+    {
+        var calls = new List<bool>();
+        var policy = new CaptureVisibilityPolicy((_, excluded) => calls.Add(excluded));
+        policy.Register(1);
+        policy.BeginCapture(false, recordingActive: false);
+        policy.BeginCapture(true, recordingActive: false);
+        policy.BeginCapture(true, recordingActive: false);
+
+        Assert.Equal([true, false], calls);
+    }
+
+    [Fact]
     public void NativeFailure_AbortsCapture_AndNextCaptureRetries()
     {
         var fail = false;

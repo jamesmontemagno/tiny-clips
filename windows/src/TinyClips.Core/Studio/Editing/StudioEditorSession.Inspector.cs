@@ -100,6 +100,9 @@ public sealed partial class StudioEditorSession
             case EditSelectionKind.Speed when SelectedSpeedIndex is not null:
                 ShowInspectorPanel(StudioInspectorPanel.Speed);
                 break;
+            case EditSelectionKind.Annotation when SelectedAnnotationIndex is not null:
+                ShowInspectorPanel(StudioInspectorPanel.Annotate);
+                break;
         }
     }
 }

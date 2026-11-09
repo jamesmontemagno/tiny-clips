@@ -194,15 +194,9 @@ struct ScreenshotEditorCanvasView: View {
 
                     // Image annotations layer
                     Canvas { context, _ in
-                        for annotation in viewModel.annotations where !annotation.isOpaqueRedaction {
+                        for annotation in viewModel.previewAnnotationsInDrawOrder where !annotation.isOpaqueRedaction {
                             let scaledRect = viewModel.scaledRect(annotation.rect, imageSize: imageSize, origin: .zero)
                             drawAnnotation(annotation, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage)
-                        }
-
-                        // Draw in-progress annotation
-                        if let current = viewModel.currentAnnotation {
-                            let scaledRect = viewModel.scaledRect(current.rect, imageSize: imageSize, origin: .zero)
-                            drawAnnotation(current, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage)
                         }
                     }
 
@@ -245,7 +239,7 @@ struct ScreenshotEditorCanvasView: View {
 
                     // Opaque redactions stay above text and all other annotations, just as in export.
                     Canvas { context, _ in
-                        for annotation in viewModel.annotations where annotation.isOpaqueRedaction {
+                        for annotation in viewModel.previewAnnotationsInDrawOrder where annotation.isOpaqueRedaction {
                             let rect = viewModel.scaledRect(annotation.rect, imageSize: imageSize, origin: .zero)
                             context.fill(Path(rect), with: .color(.black))
                         }
@@ -684,10 +678,11 @@ struct ScreenshotEditorCanvasView: View {
             }
 
         case .blur:
-            if annotation.isOpaqueRedaction {
-                context.fill(Path(scaledRect), with: .color(.black))
+            if !annotation.isOpaqueRedaction, let patch = viewModel.redactionPatch(for: annotation) {
+                let rect = viewModel.scaledRect(patch.normalizedRect, imageSize: imageSize, origin: origin)
+                context.draw(Image(decorative: patch.image, scale: 1), in: rect)
             } else {
-                drawCheckerboardRedaction(in: context, rect: scaledRect, preset: annotation.redactionBlurPreset)
+                context.fill(Path(scaledRect), with: .color(.black))
             }
 
         case .number:

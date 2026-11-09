@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  # Manual runs share the selected branch's push group; PRs keep their own group.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +19,8 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
-      windows: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.windows }}
+      # A superseding push must validate code from earlier cancelled pushes too.
+      windows: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || steps.filter.outputs.windows }}
 
     steps:
       - name: Checkout code
@@ -28,6 +30,7 @@ jobs:
 
       - name: Filter changed files
         id: filter
+        if: ${{ github.event_name != 'push' }}
         uses: dorny/paths-filter@v4
         with:
           predicate-quantifier: some-with-excludes
@@ -42,6 +45,12 @@ jobs:
               - 'windows/packaging/Assert-DirectPackage.ps1'
               - 'shared/studio/fixtures/**'
               - 'shared/screenshot/fixtures/**'
+              - 'shared/automation/**'
+              - 'global.json'
+              - '[Nn]u[Gg]et.[Cc]onfig'
+              - 'Directory.Build.props'
+              - 'Directory.Build.targets'
+              - 'Directory.Packages.props'
               - '.github/workflows/windows-build.yml'
               - '!**/*.md'
           base: ${{ github.ref }}

@@ -20,6 +20,13 @@
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
     <PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The agent automation contract shared with the macOS app and the tinyclips CLI. -->
+    <EmbeddedResource Include="..\..\..\shared\automation\commands.json" Link="Automation\commands.json" LogicalName="TinyClips.Core.Automation.commands.json" />
   </ItemGroup>
 
 </Project>

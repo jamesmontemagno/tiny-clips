@@ -8,7 +8,7 @@ to 6.9 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineS
 - `StudioGraphicsDevice`: one Direct3D 11 device (graphics hardware, or WARP where there is none),
   its immediate context, and `Gate`, the lock for both. `CreateRenderTexture`, `ReadTexture`.
 - `StudioSceneRenderer`: draws one frame with Direct2D into a `B8G8R8A8_UNorm` render target:
-  background, screen shadow, screen, click rings, camera shadow, camera, border, badge. Layer edges
+  background, screen shadow, screen, click rings, camera shadow, camera, border, annotations, badge. Layer edges
   sit on whole pixels. `StudioRenderQuality.Preview` samples linearly; `Export` uses high-quality
   cubic sampling, which keeps a picture drawn at a quarter of its size from aliasing. It draws the
   layers the resolved frame has and does not ask the layout: while a scene is being entered a
@@ -19,7 +19,8 @@ to 6.9 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineS
 - `StudioExporter`: `ExportAsync` writes an MP4 (H.264 or HEVC), `WritePosterAsync` a JPEG.
   `StudioExportService` adapts it to `IStudioExportService`.
 - Internal: `StudioVideoSource`, `StudioAudioSource`, `StudioAudioMixSource`, `StudioSinkWriterEncoder`, `StudioAudioPump`,
-  `StudioPcmGain`, `StudioBackgroundImage`. `StudioRenderingMath` holds the unit-tested rules, and
+  `StudioPcmGain`, `StudioBackgroundImage`. `StudioRenderingMath` and, for annotations,
+  `StudioAnnotationGeometry` hold the unit-tested rules, and
   `DeleteStaleTemporaryFiles(folder, age)` for what an export that was killed leaves behind.
 
 ## How an export runs

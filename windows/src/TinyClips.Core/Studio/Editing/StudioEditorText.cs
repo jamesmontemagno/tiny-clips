@@ -59,9 +59,6 @@ public static class StudioEditorText
     /// <summary>What the Scene section says while the recording is one scene: what scenes are for.</summary>
     public const string OneSceneExplanation = "Split the recording into scenes to change the layout partway through.";
 
-    /// <summary>What the cut lane says while there are no cuts.</summary>
-    public const string NoCutsHint = "No cuts. Press X to cut a second out at the playhead.";
-
     /// <summary>What the Cut section says while there are cuts and none is selected.</summary>
     public const string SelectCutHint = "Select a cut on the timeline, or step to one with the arrows above.";
 
@@ -76,9 +73,6 @@ public static class StudioEditorText
 
     /// <summary>Said when the selected cut has been deleted.</summary>
     public const string CutDeletedMessage = "Cut deleted.";
-
-    /// <summary>What the speed lane says while no stretch plays at another speed.</summary>
-    public const string NoSpeedHint = "No speed changes. Press R to speed up two seconds from the playhead.";
 
     /// <summary>What the Speed section says while there are speed changes and none is selected.</summary>
     public const string SelectSpeedHint = "Select a speed change on the timeline, or step to one with the arrows above.";
@@ -449,4 +443,117 @@ public static class StudioEditorText
         double.IsFinite(fraction) ? (long)Math.Round(fraction * 100, MidpointRounding.AwayFromZero) : 0;
 
     private static long WholeNumber(double value) => double.IsFinite(value) ? (long)value : 0;
+
+    // Annotations
+
+    /// <summary>What the Annotate panel says without annotations.</summary>
+    public const string AnnotationEmptyHint = "Press A, C, T, H, E, B, or M, or use the tools above, to add an arrow, a callout, text, a rectangle, an ellipse, a redaction, or an emoji at the playhead.";
+
+    /// <summary>What the Annotate panel says when the Windows emoji panel cannot be opened for the emoji box.</summary>
+    public const string MoreEmojiHint = "Press Win + . to choose any emoji";
+
+    /// <summary>
+    /// The emoji the Annotate panel offers in a grid, with their CLDR short names for screen
+    /// readers. The same on the Mac (<c>StudioEditorModel.emojiChoices</c>).
+    /// </summary>
+    public static IReadOnlyList<(string Emoji, string Name)> EmojiChoices { get; } =
+    [
+        ("\U0001F44D", "thumbs up"),
+        ("\U0001F44E", "thumbs down"),
+        ("\U0001F44F", "clapping hands"),
+        ("\U0001F64C", "raising hands"),
+        ("\U0001F389", "party popper"),
+        ("\U0001F525", "fire"),
+        ("\u2705", "check mark button"),
+        ("\u274C", "cross mark"),
+        ("\u26A0\uFE0F", "warning"),
+        ("\u2757", "red exclamation mark"),
+        ("\u2753", "red question mark"),
+        ("\U0001F4A1", "light bulb"),
+        ("\u2B50", "star"),
+        ("\u2764\uFE0F", "red heart"),
+        ("\U0001F602", "face with tears of joy"),
+        ("\U0001F62E", "face with open mouth"),
+        ("\U0001F914", "thinking face"),
+        ("\U0001F60E", "smiling face with sunglasses"),
+        ("\U0001F440", "eyes"),
+        ("\U0001F449", "backhand index pointing right"),
+        ("\U0001F448", "backhand index pointing left"),
+        ("\U0001F446", "backhand index pointing up"),
+        ("\U0001F447", "backhand index pointing down"),
+        ("\U0001F680", "rocket"),
+    ];
+
+    /// <summary>What the Annotate panel says while there are annotations and none is selected.</summary>
+    public const string SelectAnnotationHint = "Select an annotation on the timeline or in the list, or step to one with the arrows above.";
+
+    /// <summary>What the Annotate panel says of an annotation of a kind this version does not draw.</summary>
+    public const string AnnotationNotDrawnNote = "This annotation comes from a newer version of Tiny Clips, so it is not drawn here. You can still change when it shows, or delete it.";
+
+    /// <summary>What the Annotate panel says of a redaction.</summary>
+    public const string AnnotationRedactNote = "Only Solid reliably hides text. Blurred or pixelated text can sometimes still be read.";
+
+    /// <summary>Said when the selected annotation has been deleted.</summary>
+    public const string AnnotationDeletedMessage = "Annotation deleted.";
+
+    /// <summary>Said when the recording is too short to have an annotation.</summary>
+    public const string NoRoomForAnnotationMessage = "There is no room for an annotation here.";
+
+    private const int AnnotationLabelLength = 24;
+
+    /// <summary>What a kind of annotation is called: <c>Arrow</c>, <c>Callout</c>, <c>Text</c>, <c>Rectangle</c>, <c>Ellipse</c>, <c>Redaction</c> or <c>Emoji</c>. Another kind is an <c>Annotation</c>.</summary>
+    public static string GetAnnotationKindName(string kind) => kind switch
+    {
+        StudioAnnotationKinds.Arrow => "Arrow",
+        StudioAnnotationKinds.Callout => "Callout",
+        StudioAnnotationKinds.Text => "Text",
+        StudioAnnotationKinds.Rectangle => "Rectangle",
+        StudioAnnotationKinds.Ellipse => "Ellipse",
+        StudioAnnotationKinds.Redact => "Redaction",
+        StudioAnnotationKinds.Emoji => "Emoji",
+        _ => "Annotation",
+    };
+
+    /// <summary>Said when an annotation of a kind has been added: <c>Arrow added.</c></summary>
+    public static string GetAnnotationAddedMessage(string kind) => $"{GetAnnotationKindName(kind)} added.";
+
+    /// <summary>Said when an annotation of a kind has been duplicated: <c>Arrow duplicated.</c></summary>
+    public static string GetAnnotationDuplicatedMessage(string kind) => $"{GetAnnotationKindName(kind)} duplicated.";
+
+    /// <summary>An annotation in a list: <c>Arrow</c>, or <c>Callout: Billing lives here</c>, with long text shortened and on one line.</summary>
+    public static string GetAnnotationLabel(StudioAnnotation annotation)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        var name = GetAnnotationKindName(annotation.Kind);
+        var words = string.Join(' ', annotation.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (annotation.Kind == StudioAnnotationKinds.Arrow || StudioAnnotationKinds.IsArea(annotation.Kind) || words.Length == 0)
+        {
+            return name;
+        }
+
+        // Counted in what a reader sees, as on the Mac, so that an emoji is never cut in two.
+        var letters = new StringInfo(words);
+        return $"{name}: {(letters.LengthInTextElements > AnnotationLabelLength ? letters.SubstringByTextElements(0, AnnotationLabelLength).TrimEnd() + "\u2026" : words)}";
+    }
+
+    /// <summary>When an annotation starts and ends: <c>12.0 to 16.5 seconds</c>.</summary>
+    public static string GetAnnotationRangeText(StudioAnnotation annotation)
+    {
+        ArgumentNullException.ThrowIfNull(annotation);
+        var start = double.IsFinite(annotation.Start) ? annotation.Start : 0;
+        var end = double.IsFinite(annotation.End) ? annotation.End : 0;
+        return string.Create(CultureInfo.InvariantCulture, $"{start:0.0} to {end:0.0} seconds");
+    }
+
+    /// <summary>An annotation for screen readers: <c>Callout: Billing lives here, 12.0 to 16.5 seconds</c>.</summary>
+    public static string GetAnnotationDescription(StudioAnnotation annotation) =>
+        $"{GetAnnotationLabel(annotation)}, {GetAnnotationRangeText(annotation)}";
+
+    /// <summary>Which annotation is selected, counting from one: <c>Annotation 2 of 3</c>.</summary>
+    public static string GetAnnotationPositionText(int index, int count) =>
+        string.Create(CultureInfo.InvariantCulture, $"Annotation {index + 1} of {count}");
+
+    /// <summary>What is read out when an annotation is stepped to with Previous or Next: <c>Annotation 2 of 3, Arrow, 12.0 to 16.5 seconds</c>.</summary>
+    public static string GetAnnotationStepText(int index, int count, StudioAnnotation annotation) =>
+        $"{GetAnnotationPositionText(index, count)}, {GetAnnotationDescription(annotation)}";
 }

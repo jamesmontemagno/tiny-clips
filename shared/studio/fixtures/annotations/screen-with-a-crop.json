@@ -1,0 +1,146 @@
+{
+  "description": "A point on the edge of the crop is in view, and one outside it is not",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0,
+      "crop": {
+        "x": 0.25,
+        "y": 0.25,
+        "width": 0.5,
+        "height": 0.5
+      }
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "arrow",
+          "start": 0,
+          "end": 20,
+          "x": 0.5,
+          "y": 0.5
+        },
+        {
+          "kind": "arrow",
+          "start": 0,
+          "end": 20,
+          "x": 0.25,
+          "y": 0.25
+        },
+        {
+          "kind": "arrow",
+          "start": 0,
+          "end": 20,
+          "x": 0.75,
+          "y": 0.75
+        },
+        {
+          "kind": "arrow",
+          "start": 0,
+          "end": 20,
+          "x": 0.1,
+          "y": 0.5
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 960,
+        "height": 540
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 480.0,
+            "y": 270.0
+          },
+          "stroke": 4.86,
+          "tail": {
+            "x": 415.2,
+            "y": 334.8
+          },
+          "headBase": {
+            "x": 469.003075339,
+            "y": 280.996924661
+          },
+          "halfWidth": 9.64224,
+          "hasShaft": true
+        },
+        {
+          "index": 1,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "stroke": 4.86,
+          "tail": {
+            "x": -64.8,
+            "y": 64.8
+          },
+          "headBase": {
+            "x": -10.996924661,
+            "y": 10.996924661
+          },
+          "halfWidth": 9.64224,
+          "hasShaft": true
+        },
+        {
+          "index": 2,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 540.0
+          },
+          "stroke": 4.86,
+          "tail": {
+            "x": 895.2,
+            "y": 604.8
+          },
+          "headBase": {
+            "x": 949.003075339,
+            "y": 550.996924661
+          },
+          "halfWidth": 9.64224,
+          "hasShaft": true
+        }
+      ]
+    }
+  ]
+}

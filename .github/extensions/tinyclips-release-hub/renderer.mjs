@@ -240,7 +240,7 @@ export function renderHtml({ instanceId, token }) {
       <div>
         <div class="eyebrow">TinyClips delivery</div>
         <h1>Release Hub</h1>
-        <div class="muted">Tags, release notes, GitHub Actions, Homebrew, Sparkle, MSIX, and winget.</div>
+        <div class="muted">Tags, release notes, GitHub Actions, Homebrew, Sparkle, MSIX, winget, and NuGet.</div>
       </div>
       <button class="refresh" id="refresh" type="button">Refresh</button>
     </header>
@@ -257,6 +257,7 @@ export function renderHtml({ instanceId, token }) {
     <div class="tabs" role="tablist" aria-label="Release and automation">
       <button class="tab" id="tab-mac" role="tab" aria-controls="dashboard" aria-selected="true" data-platform="mac">macOS</button>
       <button class="tab" id="tab-windows" role="tab" aria-controls="dashboard" aria-selected="false" data-platform="windows">Windows</button>
+      <button class="tab" id="tab-agent" role="tab" aria-controls="dashboard" aria-selected="false" data-platform="agent">Agent</button>
       <button class="tab" id="tab-actions" role="tab" aria-controls="dashboard" aria-selected="false" data-platform="actions">Actions</button>
       <button class="tab" id="tab-settings" role="tab" aria-controls="dashboard" aria-selected="false" data-platform="settings">Settings</button>
     </div>
@@ -280,11 +281,12 @@ export function renderHtml({ instanceId, token }) {
     const TOKEN = ${JSON.stringify(token)};
     const INSTANCE_ID = ${JSON.stringify(escapeInline(instanceId))};
     let snapshot;
-    let platform = "mac";
+    const requestedPlatform = new URLSearchParams(window.location.search).get("platform");
+    let platform = ["mac", "windows", "agent"].includes(requestedPlatform) ? requestedPlatform : "mac";
     let generatedNotes = {};
-    let notesViews = { mac: "preview", windows: "preview" };
-    let historyViews = { mac: false, windows: false };
-    let releaseTags = { mac: null, windows: null };
+    let notesViews = { mac: "preview", windows: "preview", agent: "preview" };
+    let historyViews = { mac: false, windows: false, agent: false };
+    let releaseTags = { mac: null, windows: null, agent: null };
     let activeActionsWorkflow = null;
     let demoProgress = {};
     let pendingAction;
@@ -440,6 +442,9 @@ export function renderHtml({ instanceId, token }) {
       if (action === "run_release_workflow") {
         return ["Dispatching release workflow", "Requesting a GitHub Actions run for " + tag + "."];
       }
+      if (action === "publish_agent_release") {
+        return ["Publishing " + tag, "Creating the annotated agent tag and pushing it to trigger NuGet publication."];
+      }
       if (action === "merge_release_metadata_pr") {
         return ["Merging metadata PR", "Merging the generated appcast and Homebrew metadata update."];
       }
@@ -456,7 +461,7 @@ export function renderHtml({ instanceId, token }) {
       workflowTracking = true;
       const workflowLabel = kind === "winget"
         ? "winget submission"
-        : (targetPlatform === "mac" ? "macOS release" : "Windows release");
+        : (targetPlatform === "mac" ? "macOS release" : (targetPlatform === "windows" ? "Windows release" : "Agent release"));
       let failures = 0;
       setOperationProgress("Waiting for " + workflowLabel, "GitHub Actions has not queued the run yet.");
 
@@ -508,6 +513,7 @@ export function renderHtml({ instanceId, token }) {
       const candidates = [
         { platform: "mac", kind: "release", run: snapshot.platforms.mac.workflow?.run },
         { platform: "windows", kind: "release", run: snapshot.platforms.windows.workflow?.run },
+        { platform: "agent", kind: "release", run: snapshot.platforms.agent.workflow?.run },
         { platform: "windows", kind: "winget", run: snapshot.platforms.windows.wingetWorkflow?.run },
       ].filter((candidate) => candidate.run && candidate.run.status !== "completed")
         .sort((left, right) => Date.parse(right.run.createdAt) - Date.parse(left.run.createdAt));
@@ -598,6 +604,7 @@ export function renderHtml({ instanceId, token }) {
     function renderSummary() {
       const mac = snapshot.platforms.mac;
       const windows = snapshot.platforms.windows;
+      const agent = snapshot.platforms.agent;
       document.getElementById("summary").innerHTML = [
         { label: "Branch", value: snapshot.git.branch },
         { label: "Working tree", value: snapshot.git.clean ? "Clean" : snapshot.git.changeCount + " changes" },
@@ -610,6 +617,11 @@ export function renderHtml({ instanceId, token }) {
           label: "Latest Windows release",
           value: windows.latestRelease?.tagName || "No release",
           url: windows.latestRelease ? repositoryUrl("/releases/tag/" + encodeURIComponent(windows.latestRelease.tagName)) : null
+        },
+        {
+          label: "Latest Agent release",
+          value: agent.latestRelease?.tagName || "No release",
+          url: agent.latestRelease ? repositoryUrl("/releases/tag/" + encodeURIComponent(agent.latestRelease.tagName)) : null
         },
       ].map((item) =>
         (item.url ? '<a class="metric metric-link" href="' + escapeHtml(item.url) + '" target="_blank" rel="noreferrer">'
@@ -783,6 +795,90 @@ export function renderHtml({ instanceId, token }) {
         (disabled ? " disabled" : "") + '>' + escapeHtml(label) + '</button></div>';
     }
 
+    function bindDashboardActions() {
+      dashboard.querySelectorAll("[data-action]").forEach((button) => {
+        button.addEventListener("click", () => handleButton(button.dataset.action));
+      });
+      document.getElementById("version")?.addEventListener("input", (event) => {
+        releaseTags[platform] = event.target.value;
+      });
+    }
+
+    function renderAgentDashboard() {
+      const data = snapshot.platforms.agent;
+      const version = releaseTags.agent || data.suggestedTag;
+      releaseTags.agent = version;
+      const demoMode = snapshot.settings?.demoMode === true;
+      const demo = demoMode ? demoProgress.agent : null;
+      const actualTagPushed = data.remoteTags?.includes(version);
+      const tagPushed = actualTagPushed || (demo?.tag === version && demo.pushed);
+      const published = data.latestRelease?.tagName === version || (demo?.tag === version && demo.published);
+      const metadataConsistent = data.packageVersionsConsistent === true;
+      const ready = demoMode || (snapshot.git.canPrepareRelease && metadataConsistent && !tagPushed);
+      const readinessBadge = tagPushed
+        ? '<span class="badge good">' + (published ? "Published" : "Tag pushed") + '</span>'
+        : (ready
+          ? '<span class="badge good">Ready to publish</span>'
+          : (!snapshot.git.atMainTip
+            ? '<span class="badge warn">Latest main required</span>'
+            : (!metadataConsistent
+              ? '<span class="badge bad">Version mismatch</span>'
+              : '<span class="badge warn">Commit changes first</span>')));
+      const metadataRows = Object.entries(data.packageVersions || {}).map(([source, value]) =>
+        '<div class="workflow-row"><span>' + escapeHtml(source) + '</span><strong>' +
+        escapeHtml(value || "Missing") + '</strong></div>'
+      ).join("");
+      const notes = currentNotes();
+      const notesView = notesViews.agent;
+      dashboard.innerHTML =
+        '<article class="panel"><div class="panel-head"><div><h2>Agent release path</h2>' +
+        '<div class="muted">NuGet tool, MCP server, and Agent Plugin</div></div>' + readinessBadge + '</div>' +
+        '<label for="version">Release tag</label><div class="version-row"><input id="version" value="' +
+        escapeHtml(version) + '" spellcheck="false" /><button class="action" data-action="generate_notes" type="button">Generate notes</button>' +
+        (actualTagPushed ? '<a class="action" href="' + escapeHtml(repositoryUrl("/tree/" + encodeURIComponent(version))) +
+          '" target="_blank" rel="noreferrer">Open tag</a>' : '') +
+        (data.latestRelease?.tagName === version ? '<a class="action" href="' +
+          escapeHtml(repositoryUrl("/releases/tag/" + encodeURIComponent(version))) +
+          '" target="_blank" rel="noreferrer">Open release</a>' : '') + '</div>' +
+        '<div class="steps">' +
+        step(1, "Verify committed versions", metadataConsistent
+          ? "The CLI, plugin, MCP registry, and NuGet package metadata all match " + escapeHtml(data.packageVersion) + "."
+          : "The committed agent version files do not match. Update all four values before publishing.",
+          null, metadataConsistent ? "Matched" : "Fix versions", !metadataConsistent) +
+        step(2, "Configure NuGet Trusted Publishing",
+          "NuGet.org policy: owner jamesmontemagno, repository tiny-clips, workflow agent-release.yml, blank environment, package TinyClips.",
+          null, "Configured externally", true) +
+        step(3, "Publish annotated release tag",
+          tagPushed
+            ? "The tag is on origin and the agent release workflow runs automatically."
+            : (ready
+              ? "Creates an annotated tag on the latest clean main commit and pushes it to origin."
+              : "Use a clean checkout at the latest origin/main with matching package metadata."),
+          "publish_agent_release", tagPushed ? "Published" : "Publish tag", !ready || tagPushed,
+          "primary") +
+        '</div><div class="workflow"><div class="workflow-head"><h2>Package metadata</h2></div>' +
+        metadataRows +
+        '<div class="workflow-row"><span>Latest remote tag</span><strong>' +
+        linkedValue(data.latestRemoteTag || "Not found",
+          data.latestRemoteTag ? repositoryUrl("/tree/" + encodeURIComponent(data.latestRemoteTag)) : null) +
+        '</strong></div>' +
+        '<div class="workflow-row"><span>Latest GitHub release</span><strong>' +
+        linkedValue(data.latestRelease?.tagName || "Not found",
+          data.latestRelease ? repositoryUrl("/releases/tag/" + encodeURIComponent(data.latestRelease.tagName)) : null) +
+        '</strong></div>' + workflowRow("Agent release", data.workflow) +
+        renderWorkflowHistory(data) + '</div></article>' +
+        '<article class="panel"><div class="panel-head"><div><h2>Release notes</h2><div class="muted">' +
+        escapeHtml(generatedNotes.agent?.source || data.changelog) + '</div></div><div class="inline-actions">' +
+        '<div class="view-switch" role="group" aria-label="Release notes view">' +
+        '<button class="action" data-action="show_preview" type="button" aria-pressed="' + (notesView === "preview") + '">Preview</button>' +
+        '<button class="action" data-action="show_markdown" type="button" aria-pressed="' + (notesView === "markdown") + '">Markdown</button></div>' +
+        '<button class="action" data-action="copy_notes" type="button">Copy notes</button></div></div>' +
+        (notesView === "preview"
+          ? '<div class="notes">' + renderMarkdown(notes) + '</div>'
+          : '<pre class="notes-source">' + escapeHtml(notes) + '</pre>') + '</article>';
+      bindDashboardActions();
+    }
+
     function renderDashboard() {
       if (platform === "settings") {
         renderSettingsDashboard();
@@ -790,6 +886,10 @@ export function renderHtml({ instanceId, token }) {
       }
       if (platform === "actions") {
         renderActionsDashboard();
+        return;
+      }
+      if (platform === "agent") {
+        renderAgentDashboard();
         return;
       }
       const data = snapshot.platforms[platform];
@@ -804,7 +904,8 @@ export function renderHtml({ instanceId, token }) {
       const actualReleasePublished = data.latestRelease?.tagName === version;
       const tagPushed = actualTagPushed || (demo?.tag === version && demo.pushed);
       const releasePublished = actualReleasePublished || (demo?.tag === version && demo.published);
-      const canPrepareRelease = demoMode || snapshot.git.canPrepareRelease;
+      const hasReleaseNotes = data.unreleasedCount > 0;
+      const canPrepareRelease = demoMode || (snapshot.git.canPrepareRelease && hasReleaseNotes);
       const canCreateReleasePr = demoMode || snapshot.git.canCreateReleasePr;
       const releasePullRequest = data.releasePullRequest?.pullRequest;
       const releasePrExists = Boolean(releasePullRequest) || demo?.prCreated === true;
@@ -819,16 +920,20 @@ export function renderHtml({ instanceId, token }) {
           ? '<span class="badge warn">Demo Mode</span>'
           : (!snapshot.git.atMainTip
           ? '<span class="badge warn">Latest main required</span>'
-          : (snapshot.git.clean
-            ? '<span class="badge good">Ready to prepare</span>'
-            : '<span class="badge warn">Commit changes first</span>')));
+          : (!snapshot.git.clean
+            ? '<span class="badge warn">Commit changes first</span>'
+            : (hasReleaseNotes
+              ? '<span class="badge good">Ready to prepare</span>'
+              : '<span class="badge warn">Add release notes</span>'))));
       const prepareDetail = preparedLocally
         ? "Prepared locally. Create a release PR to send the changelog commit for review."
         : (demoMode
           ? "Simulates the changelog commit and release tag without changing Git."
           : (!snapshot.git.atMainTip
           ? "Start from the latest origin/main with no additional commits."
-          : "Moves Unreleased notes into a dated section, commits, and creates an annotated tag."));
+          : (!hasReleaseNotes
+            ? "Add bullet points under Unreleased in " + data.changelog + " and commit them before preparing."
+            : "Moves Unreleased notes into a dated section, commits, and creates an annotated tag.")));
       const createPrDetail = demoMode
         ? (tagPushed ? "PR and tag publication simulated. No branch or tag was sent to origin." : "Simulates creating a release pull request.")
         : (tagPushed
@@ -947,12 +1052,7 @@ export function renderHtml({ instanceId, token }) {
           : '<pre class="notes-source" id="notes-source">' + escapeHtml(notes) + '</pre>') +
         '</article>';
 
-      dashboard.querySelectorAll("[data-action]").forEach((button) => {
-        button.addEventListener("click", () => handleButton(button.dataset.action));
-      });
-      document.getElementById("version")?.addEventListener("input", (event) => {
-        releaseTags[platform] = event.target.value;
-      });
+      bindDashboardActions();
     }
 
     async function updateDemoMode(enabled) {
@@ -1066,6 +1166,9 @@ export function renderHtml({ instanceId, token }) {
       if (result.action === "merge_release_metadata_pr") {
         return "Merged the release metadata PR for " + result.tag + ".";
       }
+      if (result.action === "publish_agent_release") {
+        return "Published " + result.tag + ". The NuGet release workflow should start automatically.";
+      }
       if (result.action === "submit_winget") {
         return "Dispatched winget submission for " + result.tag + ".";
       }
@@ -1077,7 +1180,9 @@ export function renderHtml({ instanceId, token }) {
 
     function recordDemoAction(result, body) {
       if (!result.demo) return;
-      const targetPlatform = body.platform || (result.tag?.endsWith("-windows") ? "windows" : "mac");
+      const targetPlatform = body.platform || (result.tag?.startsWith("agent-v")
+        ? "agent"
+        : (result.tag?.endsWith("-windows") ? "windows" : "mac"));
       if (result.action === "dispatch_workflow") return;
       if (result.action === "prepare_release") {
         demoProgress[targetPlatform] = { tag: result.tag, prepared: true };
@@ -1088,6 +1193,10 @@ export function renderHtml({ instanceId, token }) {
         progress.tag = result.tag;
         if (result.action === "create_release_pr") progress.prCreated = true;
         if (result.action === "merge_release_pr") progress.pushed = true;
+        if (result.action === "publish_agent_release") {
+          progress.pushed = true;
+          progress.published = true;
+        }
         if (result.action === "run_release_workflow") {
           progress.published = true;
           if (targetPlatform === "mac") progress.metadataPrCreated = true;
@@ -1144,6 +1253,9 @@ export function renderHtml({ instanceId, token }) {
       } else if (action === "run_release_workflow") {
         openConfirmation(action, { platform, tag }, "RUN " + tag,
           "This manually dispatches the platform release workflow.");
+      } else if (action === "publish_agent_release") {
+        openConfirmation(action, { tag }, "PUBLISH " + tag,
+          "This creates an annotated agent tag on the latest main commit and pushes it, immediately triggering NuGet publishing.");
       } else if (action === "merge_release_metadata_pr") {
         openConfirmation(action, { tag }, "MERGE METADATA " + tag,
           "This merges the generated appcast and Homebrew metadata pull request.");
@@ -1171,6 +1283,8 @@ export function renderHtml({ instanceId, token }) {
         const payload = await response.json();
         if (!response.ok || payload.error) throw new Error(payload.error || "Refresh failed.");
         snapshot = payload;
+        document.querySelectorAll("[role=tab]").forEach((tab) =>
+          tab.setAttribute("aria-selected", String(tab.dataset.platform === platform)));
         renderSummary(); renderDemoStatus(); renderDashboard();
         const resumed = resumeActiveWorkflow();
         if (showProgress && !resumed) {

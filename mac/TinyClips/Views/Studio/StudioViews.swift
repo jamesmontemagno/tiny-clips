@@ -109,6 +109,11 @@ private struct StudioEditorView: View {
 private struct StudioHeaderView: View {
     @ObservedObject var viewModel: StudioViewModel
 
+    /// The resolution Export offers first. The view holds it so that a choice made in another
+    /// window, or by an agent, reaches the header, which otherwise follows only its view model.
+    @AppStorage(CaptureSettings.studioExportResolutionKey)
+    private var exportResolution = StudioExportChoice.default.resolution.rawValue
+
     private static let aspects: [StudioCanvasAspect] = [
         .auto, .square, .landscape4x3, .landscape16x9, .portrait3x4, .portrait9x16
     ]
@@ -163,7 +168,14 @@ private struct StudioHeaderView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!viewModel.canExport)
-            .help("Export the video (Command-E)")
+            .help("Choose a resolution and quality, and export the video (Command-E)")
+            .popover(isPresented: exportOptionsBinding, arrowEdge: .bottom) {
+                if let options = viewModel.makeExportOptions() {
+                    StudioExportOptionsView(options: options, onCancel: viewModel.cancelExportOptions) { answered in
+                        viewModel.confirmExportOptions(answered)
+                    }
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -218,8 +230,18 @@ private struct StudioHeaderView: View {
     }
 
     private var exportSizeText: String {
-        let size = viewModel.exportRenderSize
+        let size = viewModel.exportRenderSize(for: StudioExportResolution(stored: exportResolution))
         return "Exports at \(Int(size.width)) × \(Int(size.height))"
+    }
+
+    private var exportOptionsBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.isChoosingExportOptions },
+            set: { isShowing in
+                // A click elsewhere or Esc takes the popover away.
+                if !isShowing, viewModel.isChoosingExportOptions { viewModel.cancelExportOptions() }
+            }
+        )
     }
 
     private var aspectBinding: Binding<StudioCanvasAspect> {
@@ -258,6 +280,8 @@ private struct StudioPreviewView: View {
                 if let bubble = viewModel.bubbleRect(canvasSize: canvasSize) {
                     bubbleHandle(bubble: bubble, geometry: geometry, canvasSize: canvasSize)
                 }
+
+                StudioAnnotationPreviewLayer(viewModel: viewModel, geometry: geometry, canvasSize: canvasSize, space: Self.space)
             }
             .coordinateSpace(.named(Self.space))
         }
@@ -435,6 +459,10 @@ private struct StudioInspectorView: View {
             StudioCutInspectorSection(viewModel: viewModel)
         case .speed:
             StudioSpeedInspectorSection(viewModel: viewModel)
+        case .annotate:
+            StudioAnnotationInspectorSection(viewModel: viewModel)
+        case .captions:
+            StudioCaptionsInspectorSection(viewModel: viewModel)
         case .audio:
             audioPanel
         case .project:
@@ -611,10 +639,18 @@ private struct StudioInspectorView: View {
 
     @ViewBuilder
     private var bubbleShapeControls: some View {
-        Picker("Shape", selection: shapeBinding) {
-            ForEach(Self.shapes, id: \.self) { shape in
-                Text(StudioEditorModel.shapeName(shape)).tag(shape)
+        // Above its choices, not beside them: four segments need the whole width.
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Shape")
+                .foregroundStyle(.secondary)
+            Picker("Shape", selection: shapeBinding) {
+                ForEach(Self.shapes, id: \.self) { shape in
+                    Text(shape == .roundedRectangle ? "Rounded" : StudioEditorModel.shapeName(shape)).tag(shape)
+                }
             }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .help("The camera's shape: circle, rounded rectangle, squircle, or rectangle")
         }
         if camera.shape == .roundedRectangle {
             StudioSliderRow(
@@ -631,9 +667,18 @@ private struct StudioInspectorView: View {
 
     @ViewBuilder
     private var sideBySideControls: some View {
-        Picker("Camera side", selection: sideBinding) {
-            Text("Left or top").tag(StudioCameraSide.leading)
-            Text("Right or bottom").tag(StudioCameraSide.trailing)
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+            GridRow {
+                Text("Side")
+                    .foregroundStyle(.secondary)
+                Picker("Camera side", selection: sideBinding) {
+                    Text("Left or top").tag(StudioCameraSide.leading)
+                    Text("Right or bottom").tag(StudioCameraSide.trailing)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .help("Which side of the video the camera takes")
+            }
         }
         StudioSliderRow(
             title: "Camera size",
@@ -651,12 +696,20 @@ private struct StudioInspectorView: View {
     private var cameraStyleControls: some View {
         Toggle("Mirror", isOn: mirrorBinding)
             .toggleStyle(.checkbox)
-        Picker("Camera background", selection: cutoutBinding) {
-            ForEach(Self.cutouts, id: \.self) { cutout in
-                Text(StudioEditorModel.cutoutName(cutout)).tag(cutout)
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+            GridRow {
+                Text("Background")
+                    .foregroundStyle(.secondary)
+                Picker("Camera background", selection: cutoutBinding) {
+                    ForEach(Self.cutouts, id: \.self) { cutout in
+                        Text(StudioEditorModel.cutoutName(cutout)).tag(cutout)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .help("Keeps, blurs, or removes what is behind you in the camera picture")
             }
         }
-        .help("Keeps, blurs, or removes what is behind you in the camera picture")
         if camera.cutout == .remove {
             Text("With the background removed, the camera has no border and no shadow.")
                 .font(.caption)
@@ -1287,7 +1340,7 @@ private struct StudioTimelineView: View {
                     Image(systemName: "backward.frame.fill")
                 }
                 .accessibilityLabel("Previous frame")
-                .help("Previous frame (Left Arrow)")
+                .help("Previous frame (Left Arrow). Shift-Left goes back one second, Home to the start.")
 
                 Button {
                     viewModel.stepFrame(by: 1)
@@ -1295,7 +1348,7 @@ private struct StudioTimelineView: View {
                     Image(systemName: "forward.frame.fill")
                 }
                 .accessibilityLabel("Next frame")
-                .help("Next frame (Right Arrow)")
+                .help("Next frame (Right Arrow). Shift-Right goes forward one second, End to the end.")
 
                 Text(viewModel.timeText)
                     .font(.callout.monospacedDigit())
@@ -1345,25 +1398,43 @@ private struct StudioTimelineView: View {
                 .help("End the video at the playhead (O)")
             }
 
-            if viewModel.hasCamera {
-                StudioSceneLane(viewModel: viewModel)
-                    .frame(height: 24)
+            // A lane shows only with something on it, so the timeline stays low until then.
+            VStack(spacing: 4) {
+                if isLaneShown(.scene) {
+                    StudioSceneLane(viewModel: viewModel)
+                        .frame(height: 24)
+                }
+
+                if isLaneShown(.zoom) {
+                    StudioZoomLane(viewModel: viewModel)
+                        .frame(height: 26)
+                }
+
+                if isLaneShown(.cut) {
+                    StudioCutLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                if isLaneShown(.speed) {
+                    StudioSpeedLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                if isLaneShown(.annotate) {
+                    StudioAnnotationLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                StudioTrimBar(viewModel: viewModel)
+                    .frame(height: 36)
             }
-
-            StudioZoomLane(viewModel: viewModel)
-                .frame(height: 26)
-
-            StudioCutLane(viewModel: viewModel)
-                .frame(height: 22)
-
-            StudioSpeedLane(viewModel: viewModel)
-                .frame(height: 22)
-
-            StudioTrimBar(viewModel: viewModel)
-                .frame(height: 36)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    private func isLaneShown(_ lane: StudioTimelineLane) -> Bool {
+        viewModel.project.map(lane.isShown(in:)) ?? false
     }
 }
 
@@ -1530,6 +1601,76 @@ private struct StudioBusyOverlay: View {
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .combine)
         }
+    }
+}
+
+// MARK: - Export Options
+
+/// What the Export button's popover holds: the resolution and the quality of the video, and what
+/// they come to. Return exports with what is showing, so Command-E and Return export as last time.
+private struct StudioExportOptionsView: View {
+    @State private var options: StudioExportOptionsModel
+    let onCancel: () -> Void
+    let onConfirm: (StudioExportOptionsModel) -> Void
+
+    init(
+        options: StudioExportOptionsModel,
+        onCancel: @escaping () -> Void,
+        onConfirm: @escaping (StudioExportOptionsModel) -> Void
+    ) {
+        _options = State(initialValue: options)
+        self.onCancel = onCancel
+        self.onConfirm = onConfirm
+    }
+
+    private var estimateText: String {
+        let bytes = ByteCountFormatter.string(fromByteCount: options.estimatedBytes, countStyle: .file)
+        return "About \(bytes)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Export Video")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+
+            Picker("Resolution", selection: $options.choice.resolution) {
+                ForEach(options.resolutions, id: \.resolution) { option in
+                    Text("\(option.resolution.label) – \(Int(option.width)) × \(Int(option.height))")
+                        .tag(option.resolution)
+                }
+            }
+            .help("A video keeps the shape of its canvas and is never made larger than it")
+
+            Picker("Quality", selection: $options.choice.quality) {
+                ForEach(StudioExportQuality.allCases, id: \.self) { quality in
+                    Text(quality.label).tag(quality)
+                }
+            }
+            .help("Higher quality keeps text sharper and makes the file larger")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(estimateText)
+                    .font(.body.weight(.semibold))
+                Text(options.detailsText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+            .accessibilityElement(children: .combine)
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Export…") { onConfirm(options) }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
     }
 }
 

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using TinyClips.App.Models.Studio;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.App.Views.Studio;
 using TinyClips.Core.Services;
@@ -8,6 +9,7 @@ using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
 using TinyClips.Core.Studio.Rendering;
+using TinyClips.Core.Studio.Transcription;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -38,6 +40,15 @@ public interface IStudioProjectHost
     Task<string?> ChooseSaveFolderAsync(Window owner);
     Task<string?> ChooseExportFileAsync(Window owner, string folder, string filename);
 
+    /// <summary>Asks for an SRT or WebVTT file to read. Null when none was chosen.</summary>
+    Task<string?> ChooseCaptionFileAsync(Window owner);
+
+    /// <summary>Asks where to write captions. Null when nowhere was chosen.</summary>
+    Task<string?> ChooseCaptionExportFileAsync(Window owner, string folder, string filename, StudioCaptionFormat format);
+
+    /// <summary>Whether Export asks for a resolution and quality, or uses the saved ones.</summary>
+    bool AsksForExportOptions { get; }
+
     /// <summary>Copies a saved project into the store as a new draft and opens the editor on the copy.</summary>
     Task<StudioProjectOpenResult> OpenProjectFileAsync(string path);
 
@@ -65,6 +76,7 @@ public sealed class StudioWindowService : IStudioProjectHost
     private readonly IStudioProjectStore _store;
     private readonly IStudioPreviewFactory _previews;
     private readonly IStudioExportService _exporter;
+    private readonly IStudioCaptionGenerator _captionGenerator;
     private readonly IStudioPreviewViewFactory _previewViews;
     private readonly ICaptureSettings _settings;
     private readonly IClipStorageService _storage;
@@ -86,9 +98,11 @@ public sealed class StudioWindowService : IStudioProjectHost
         ICaptureSettings settings,
         IClipStorageService storage,
         StudioProjectTracker tracker,
-        StudioProjectCleanupService cleanup)
+        StudioProjectCleanupService cleanup,
+        IStudioCaptionGenerator captionGenerator)
     {
         _store = store;
+        _captionGenerator = captionGenerator;
         _previews = previews;
         _exporter = exporter;
         _previewViews = previewViews;
@@ -118,6 +132,12 @@ public sealed class StudioWindowService : IStudioProjectHost
     public event EventHandler<StudioEditorErrorEventArgs>? ErrorReported;
 
     /// <summary>
+    /// Raised when an editor that is not in front has finished something with its captions, such
+    /// as generating them, so the app can say so in a notification that opens the editor.
+    /// </summary>
+    public event EventHandler<StudioProjectNotificationEventArgs>? CaptionNotificationRequested;
+
+    /// <summary>
     /// How a window is shown and brought to the front. The app replaces this with the way it
     /// activates its other windows.
     /// </summary>
@@ -144,6 +164,9 @@ public sealed class StudioWindowService : IStudioProjectHost
     public Func<Window, Task<string?>> ChooseSaveFolder { get; set; } = PickFolderAsync;
     public Func<Window, string, string, Task<string?>> ChooseExportFile { get; set; } = PickExportFileAsync;
 
+    /// <summary>Whether Export asks for a resolution and quality, or uses the saved ones.</summary>
+    public bool AsksForExportOptions { get; set; } = true;
+
     public bool SaveAsForForegroundWindow()
     {
         var foreground = GetForegroundWindow();
@@ -158,6 +181,38 @@ public sealed class StudioWindowService : IStudioProjectHost
 
     Task<string?> IStudioProjectHost.ChooseExportFileAsync(Window owner, string folder, string filename) =>
         ChooseExportFile(owner, folder, filename);
+
+    Task<string?> IStudioProjectHost.ChooseCaptionFileAsync(Window owner) => PickCaptionFileAsync(owner);
+
+    Task<string?> IStudioProjectHost.ChooseCaptionExportFileAsync(Window owner, string folder, string filename, StudioCaptionFormat format) =>
+        PickCaptionExportFileAsync(owner, folder, filename, format);
+
+    private static async Task<string?> PickCaptionFileAsync(Window owner)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            ViewMode = PickerViewMode.List,
+        };
+        picker.FileTypeFilter.Add(".srt");
+        picker.FileTypeFilter.Add(".vtt");
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(owner));
+        return (await picker.PickSingleFileAsync())?.Path;
+    }
+
+    private static async Task<string?> PickCaptionExportFileAsync(Window owner, string folder, string filename, StudioCaptionFormat format)
+    {
+        var extension = StudioCaptionFiles.GetExtension(format);
+        var picker = new Microsoft.Windows.Storage.Pickers.FileSavePicker(owner.AppWindow.Id)
+        {
+            SuggestedFolder = folder,
+            SuggestedFileName = filename,
+            DefaultFileExtension = extension,
+            CommitButtonText = "Export",
+        };
+        picker.FileTypeChoices.Add(format == StudioCaptionFormat.Vtt ? "WebVTT captions" : "SubRip captions", [extension]);
+        return (await picker.PickSaveFileAsync())?.Path;
+    }
 
     private static async Task<string?> PickExportFileAsync(Window owner, string folder, string filename)
     {
@@ -209,10 +264,12 @@ public sealed class StudioWindowService : IStudioProjectHost
                 _settings,
                 _storage,
                 DispatcherQueue.GetForCurrentThread(),
-                CanFindPeople());
+                CanFindPeople(),
+                _captionGenerator);
             viewModel.Exported += OnExported;
             viewModel.ScreenRecordingSaved += OnScreenRecordingSaved;
             viewModel.ErrorReported += OnErrorReported;
+            viewModel.CaptionNotificationRequested += OnCaptionNotificationRequested;
             viewModel.StateChanged += OnEditorStateChanged;
             global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio window: view model created");
 
@@ -230,6 +287,10 @@ public sealed class StudioWindowService : IStudioProjectHost
         global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio window: activated");
         return window;
     }
+
+    /// <summary>Returns the live editor for agent reads and undoable edits, if one is open.</summary>
+    internal StudioViewModel? FindOpenViewModel(string projectId) =>
+        _windows.TryGetValue(projectId, out var window) ? window.ViewModel : null;
 
     /// <summary>
     /// Opens a project that was saved as a folder, from its <c>.tinyclips</c> file or from the
@@ -418,6 +479,9 @@ public sealed class StudioWindowService : IStudioProjectHost
 
     private void OnScreenRecordingSaved(object? sender, StudioExportedEventArgs e) => ScreenRecordingSaved?.Invoke(this, e);
 
+    private void OnCaptionNotificationRequested(object? sender, StudioProjectNotificationEventArgs e) =>
+        CaptionNotificationRequested?.Invoke(this, e);
+
     private void OnErrorReported(object? sender, StudioEditorErrorEventArgs e)
     {
         // A window that is still open shows the message itself. One that is closing does not:
@@ -478,6 +542,7 @@ public sealed class StudioWindowService : IStudioProjectHost
         window.ViewModel.Exported -= OnExported;
         window.ViewModel.ScreenRecordingSaved -= OnScreenRecordingSaved;
         window.ViewModel.ErrorReported -= OnErrorReported;
+        window.ViewModel.CaptionNotificationRequested -= OnCaptionNotificationRequested;
         window.ViewModel.StateChanged -= OnEditorStateChanged;
         _deletingProjectIds.Remove(projectId);
 

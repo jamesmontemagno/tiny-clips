@@ -200,6 +200,35 @@ struct ScreenshotEditorScene: Scene {
     }
 }
 
+private final class ScreenshotEditorWindowObserverView: NSView {
+    var onAttach: ((NSWindow) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self, let window, self.window === window else { return }
+            self.onAttach?(window)
+        }
+    }
+}
+
+private struct ScreenshotEditorWindowObserver: NSViewRepresentable {
+    let sessionID: UUID
+
+    func makeNSView(context: Context) -> ScreenshotEditorWindowObserverView {
+        let view = ScreenshotEditorWindowObserverView()
+        updateNSView(view, context: context)
+        return view
+    }
+
+    func updateNSView(_ view: ScreenshotEditorWindowObserverView, context: Context) {
+        view.onAttach = { window in
+            ScreenshotEditorRegistry.shared.windowDidAttach(window, for: sessionID)
+        }
+    }
+}
+
 private struct ScreenshotEditorSceneRoot: View {
     let sessionID: UUID?
     @Environment(\.dismissWindow) private var dismissWindow
@@ -224,6 +253,12 @@ private struct ScreenshotEditorSceneRoot: View {
             } else {
                 Color(NSColor.windowBackgroundColor)
                     .frame(minWidth: 700, minHeight: 520)
+            }
+        }
+        .background {
+            if let sessionID {
+                ScreenshotEditorWindowObserver(sessionID: sessionID)
+                    .allowsHitTesting(false)
             }
         }
         .onAppear {
@@ -255,7 +290,18 @@ final class ScreenshotEditorRegistry {
 
     private var sessions: [UUID: Session] = [:]
     private var pendingOpens: [UUID] = []
+    private var pendingWindowPresentations: Set<UUID> = []
     private var opener: ((UUID) -> Void)?
+    private let presentWindow: @MainActor (any WindowPresentationTarget) -> Void
+    private let applyActivationPolicy: @MainActor () -> Void
+
+    init(
+        presentWindow: @escaping @MainActor (any WindowPresentationTarget) -> Void = { WindowPresenter.shared.present($0) },
+        applyActivationPolicy: @escaping @MainActor () -> Void = { TinyClipsActivationPolicy.applyCurrent() }
+    ) {
+        self.presentWindow = presentWindow
+        self.applyActivationPolicy = applyActivationPolicy
+    }
 
     var hasOpenSessions: Bool {
         !sessions.isEmpty
@@ -283,7 +329,8 @@ final class ScreenshotEditorRegistry {
             deleteSourceAfterSave: deleteSourceAfterSave,
             onComplete: onComplete
         )
-        updateActivationPolicy()
+        pendingWindowPresentations.insert(id)
+        applyActivationPolicy()
         if let opener {
             opener(id)
         } else {
@@ -295,13 +342,15 @@ final class ScreenshotEditorRegistry {
         sessions[id]
     }
 
-    func finish(_ id: UUID, result: URL?) {
-        guard let session = sessions.removeValue(forKey: id) else { return }
-        session.onComplete(result)
-        updateActivationPolicy()
+    func windowDidAttach(_ window: any WindowPresentationTarget, for id: UUID) {
+        guard sessions[id] != nil, pendingWindowPresentations.remove(id) != nil else { return }
+        presentWindow(window)
     }
 
-    private func updateActivationPolicy() {
-        TinyClipsActivationPolicy.applyCurrent()
+    func finish(_ id: UUID, result: URL?) {
+        guard let session = sessions.removeValue(forKey: id) else { return }
+        pendingWindowPresentations.remove(id)
+        session.onComplete(result)
+        applyActivationPolicy()
     }
 }

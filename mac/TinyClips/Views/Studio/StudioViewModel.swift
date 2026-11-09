@@ -18,7 +18,6 @@ final class StudioViewModel: ObservableObject {
     }
 
     static let previewLongSide = 1600.0
-    static let exportLongSide = 3840.0
     static let posterLongSide = 640.0
 
     let projectID: String
@@ -33,6 +32,8 @@ final class StudioViewModel: ObservableObject {
     @Published private(set) var isExporting = false
     @Published private(set) var exportProgress: Double = 0
 
+    /// Whether the Export popover is showing, asking for the resolution and quality.
+    @Published private(set) var isChoosingExportOptions = false
     /// The zoom the inspector shows, as its place in the project's zooms, or nil. It stays on its
     /// zoom while edits, undo, and redo change the list around it.
     @Published private(set) var selectedZoomIndex: Int?
@@ -44,9 +45,39 @@ final class StudioViewModel: ObservableObject {
     /// The speed change the inspector shows, as its place in the project's speed changes, or nil.
     @Published private(set) var selectedSpeedIndex: Int?
 
+    /// The annotation the inspector shows, as its place in the project's annotations, or nil.
+    @Published private(set) var selectedAnnotationIndex: Int?
+
     /// The inspector panel on show. Taking hold of a zoom, a cut, a speed change, a scene, or the
     /// camera shows the panel that edits it.
     @Published private(set) var inspectorPanel: StudioInspectorPanel = .background
+
+    /// The cue whose text the Captions panel shows, as its place in `project.captions.cues`. Apart
+    /// from the timeline's selection: captions have no lane.
+    @Published private(set) var selectedCaptionIndex: Int?
+
+    /// Whether captions are being made from the recording's sound. Editing goes on meanwhile,
+    /// because what comes of it is in source time.
+    @Published private(set) var isGeneratingCaptions = false
+
+    /// Whether generating was asked to stop and has not yet. Speech recognition stops between
+    /// stretches of work, so this can last for seconds.
+    @Published private(set) var isStoppingCaptionGeneration = false
+
+    @Published private(set) var captionGenerationProgress = StudioCaptionProgress(stage: .readingSound)
+
+    /// What the Captions panel says about the last thing done to the captions, or nil.
+    @Published private(set) var captionNotice: StudioCaptionNotice?
+
+    /// Takes a notice away when it has been on show long enough. A notice that asks for something
+    /// to be done stays until it is closed.
+    private var captionNoticeTimer: Task<Void, Never>?
+
+    /// The language captions were last asked for in, to name it when no speech was found.
+    private var captionLanguageAsked: String?
+
+    /// What is typed for the selected cue, until the box is left. So typing is one undo step.
+    private var pendingCaptionText: String?
 
     /// The size the preview is drawn at. It follows the project, except during a drag, when a new
     /// size waits for the drag to end so the player is not rebuilt for every step of it.
@@ -74,6 +105,10 @@ final class StudioViewModel: ObservableObject {
     /// Set by the window. Called to close it once an export started from the close prompt is done.
     var requestClose: (() -> Void)?
 
+    /// Set by the window. Whether it is in front of someone, so that what they would otherwise
+    /// miss can be sent as a notification instead.
+    var isWindowInFront: (() -> Bool)?
+
     private let store: StudioProjectStore
     private var events = StudioEvents()
     private var paths: StudioProjectPaths?
@@ -88,10 +123,14 @@ final class StudioViewModel: ObservableObject {
     private var exportTask: Task<Void, Never>?
     private var hasUnsavedEdits = false
     private var closesAfterExport = false
+    private var closesAfterChoosingExportOptions = false
     private var deletesOnClose = false
     private var isTornDown = false
     private var destinationScope: URL?
     private var isChoosingDestination = false
+    /// What the project folder was last given, in this window: when it opened or was last saved.
+    /// Closing asks about changes since then, and Don't Save puts it back.
+    private var projectSaveBaseline: StudioEditableState?
 
     private func savedProjectFile() throws -> URL? {
         guard let record = try store.savedDestination(id: projectID) else { return nil }
@@ -136,20 +175,60 @@ final class StudioViewModel: ObservableObject {
     /// When the playhead was last moved by the playing player, on the system's clock.
     private var lastPlayheadMove: TimeInterval = 0
 
-    init(projectID: String, store: StudioProjectStore = .shared) {
+    private let captionGenerator: StudioCaptionGenerating
+    private var captionGenerationTask: Task<Void, Never>?
+
+    /// Which generation the progress that comes in belongs to. Some can arrive after the end.
+    private var captionGenerationNumber = 0
+
+    init(
+        projectID: String,
+        store: StudioProjectStore = .shared,
+        captionGenerator: StudioCaptionGenerating = StudioAppleSpeechCaptionGenerator()
+    ) {
         self.projectID = projectID
         self.store = store
+        self.captionGenerator = captionGenerator
     }
 
     // MARK: - Derived State
 
     var project: StudioProject? { editor?.project }
+    func automationProjectSnapshot() -> StudioProject? {
+        guard isEditable else { return nil }
+        return project
+    }
+
+    @discardableResult
+    func applyAutomationProject(_ updated: StudioProject, expectedModifiedAt: Date) -> Bool {
+        guard isEditable, !isInGesture else { return false }
+        // What is being typed goes into the project first, so an agent's edit cannot drop it. When
+        // that changes the project, the agent's edit was made without it and is refused as a
+        // conflict: the agent reads the project again.
+        let typed = editor?.editableState
+        commitCaptionText()
+        guard editor?.editableState == typed, project?.modifiedAt == expectedModifiedAt, saveNow() else { return false }
+        selectedCaptionIndex = nil
+        edit { $0.applyAutomationProject(updated) }
+        guard saveNow() else {
+            undo()
+            return false
+        }
+        return true
+    }
+
+    func prepareAutomationExport() -> (StudioProject, StudioEvents)? {
+        commitCaptionText()
+        guard isEditable, saveNow(), let project else { return nil }
+        return (project, events)
+    }
+
     var isReady: Bool { state == .ready }
     var isEditable: Bool { state == .ready && !isExporting && busyMessage == nil }
     var isBusy: Bool { busyMessage != nil }
 
     /// Whether the project can be saved as a folder now.
-    var canSaveProjectFolder: Bool { isEditable && editor?.project.sources.screen.external == false }
+    var canSaveProjectFolder: Bool { isEditable && !isGeneratingCaptions && editor?.project.sources.screen.external == false }
     var projectFolderHelp: String {
         editor?.project.sources.screen.external == true
             ? "Imported video edits are saved automatically in Studio. Saving a portable project folder is unavailable because the source video is stored externally. Keep the original video."
@@ -161,7 +240,7 @@ final class StudioViewModel: ObservableObject {
     var canDeleteProject: Bool { state != .loading && !isBusy }
     var canUndo: Bool { isEditable && (editor?.canUndo ?? false) }
     var canRedo: Bool { isEditable && (editor?.canRedo ?? false) }
-    var canExport: Bool { isEditable && (editor?.outputDuration ?? 0) > 0 }
+    var canExport: Bool { isEditable && !isGeneratingCaptions && (editor?.outputDuration ?? 0) > 0 }
     var hasCamera: Bool { editor?.hasCamera ?? false }
 
     var clipName: String {
@@ -179,9 +258,11 @@ final class StudioViewModel: ObservableObject {
         return Self.renderSize(for: project, longSide: Self.previewLongSide)
     }
 
-    var exportRenderSize: CGSize {
+    /// The size the next export comes to at `resolution`.
+    func exportRenderSize(for resolution: StudioExportResolution) -> CGSize {
         guard let project else { return CGSize(width: 1920, height: 1080) }
-        return Self.renderSize(for: project, longSide: Self.exportLongSide)
+        let size = StudioExportPresets.size(project: project, resolution: resolution)
+        return CGSize(width: size.width, height: size.height)
     }
 
     var timeText: String {
@@ -227,6 +308,7 @@ final class StudioViewModel: ObservableObject {
             let model = StudioEditorModel(project: opened)
             paths = openedPaths
             editor = model
+            projectSaveBaseline = model.editableState
 
             guard FileManager.default.fileExists(atPath: openedPaths.screenURL.path) else {
                 becomeUnavailable(
@@ -335,11 +417,451 @@ final class StudioViewModel: ObservableObject {
     }
 
     func undo() {
+        selectedCaptionIndex = nil
+        pendingCaptionText = nil
         edit { $0.undo() }
     }
 
     func redo() {
+        selectedCaptionIndex = nil
+        pendingCaptionText = nil
         edit { $0.redo() }
+    }
+
+    // MARK: - Captions
+
+    /// What the Captions panel shows of the cues. The panel is drawn again each time the playhead
+    /// moves, and checking hundreds of cues takes longer than a frame, so this is worked out again
+    /// only when the cues, the edits, or the recording's length change.
+    private struct CaptionOverview {
+        var cues: [StudioCaptionCue]
+        var edits: StudioEdits
+        var sourceDuration: Double
+        var rows: [StudioCaptionRow]
+        var findings: [StudioCaptionFinding]
+        /// What the checks found in each cue, by its place in `project.captions.cues`.
+        var problems: [Int: [StudioCaptionFindingKind]]
+        var canExport: Bool
+    }
+
+    private var cachedCaptionOverview: CaptionOverview?
+
+    private var captionOverview: CaptionOverview? {
+        guard let project else { return nil }
+        let cues = project.captions.cues
+        let duration = project.sources.screen.duration
+        if let cached = cachedCaptionOverview,
+           cached.cues == cues, cached.edits == project.edits, cached.sourceDuration == duration {
+            return cached
+        }
+        let rows = cues.indexesInTimeOrder().map { StudioCaptionRow(index: $0, cue: cues[$0]) }
+        let findings = StudioCaptionQuality.check(cues, sourceDuration: duration)
+        var problems: [Int: [StudioCaptionFindingKind]] = [:]
+        // A finding counts the cue's place in time order, which is its row.
+        for finding in findings where rows.indices.contains(finding.cue) {
+            let index = rows[finding.cue].index
+            if !(problems[index]?.contains(finding.kind) ?? false) {
+                problems[index, default: []].append(finding.kind)
+            }
+        }
+        let overview = CaptionOverview(
+            cues: cues,
+            edits: project.edits,
+            sourceDuration: duration,
+            rows: rows,
+            findings: findings,
+            problems: problems,
+            canExport: !StudioCaptionResolver.resolve(project: project).isEmpty
+        )
+        cachedCaptionOverview = overview
+        return overview
+    }
+
+    /// The cues, in time order, with their places in `project.captions.cues`.
+    var captionRows: [StudioCaptionRow] { captionOverview?.rows ?? [] }
+
+    private var cachedCaptionSearch: (query: String, cues: [StudioCaptionCue], rows: [StudioCaptionRow])?
+
+    /// The rows whose text has `query` in it, ignoring case and accents. All of them for an empty
+    /// query. The panel asks each time the playhead moves, so the last answer is kept.
+    func captionRows(matching query: String) -> [StudioCaptionRow] {
+        let rows = captionRows
+        let query = StudioCaptionSearch.normalized(query)
+        guard !query.isEmpty, let cues = captionOverview?.cues else { return rows }
+        if let cached = cachedCaptionSearch, cached.query == query, cached.cues == cues {
+            return cached.rows
+        }
+        let found = rows.filter { StudioCaptionSearch.matches(StudioCaptionText.rowText($0.cue), query: query) }
+        cachedCaptionSearch = (query, cues, found)
+        return found
+    }
+
+    /// What the checks found in a cue, by its place in `project.captions.cues`.
+    func captionProblems(at index: Int) -> [StudioCaptionFindingKind] {
+        captionOverview?.problems[index] ?? []
+    }
+
+    /// The cue the video shows at the playhead, as its place in `project.captions.cues`.
+    var captionIndexAtPlayhead: Int? {
+        let rows = captionRows
+        return StudioCaptionEditing.position(at: playhead, in: rows).map { rows[$0].index }
+    }
+
+    var selectedCaption: StudioCaptionCue? {
+        guard let index = selectedCaptionIndex, let cues = project?.captions.cues, cues.indices.contains(index) else { return nil }
+        return cues[index]
+    }
+
+    var captionFindings: [StudioCaptionFinding] { captionOverview?.findings ?? [] }
+
+    var canExportCaptions: Bool { captionOverview?.canExport ?? false }
+
+    // MARK: - Generating Captions
+
+    var canGenerateCaptions: Bool { isEditable && !isGeneratingCaptions }
+
+    var canCancelCaptionGeneration: Bool { isGeneratingCaptions && !isStoppingCaptionGeneration }
+
+    var captionProgressText: String {
+        isStoppingCaptionGeneration
+            ? StudioCaptionText.stoppingMessage
+            : StudioCaptionText.progressText(captionGenerationProgress)
+    }
+
+    /// Makes captions from the recording's sound. They replace the ones there are when they are
+    /// ready, as one edit, so Undo brings those back.
+    func generateCaptions(language: String?) {
+        guard canGenerateCaptions, let project, let paths else { return }
+        commitCaptionText()
+        dismissCaptionNotice()
+        captionLanguageAsked = language
+        captionGenerationNumber += 1
+        let generation = captionGenerationNumber
+        isGeneratingCaptions = true
+        isStoppingCaptionGeneration = false
+        captionGenerationProgress = StudioCaptionProgress(stage: .readingSound)
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+            .announcement: StudioCaptionText.generatingMessage,
+        ])
+
+        let generator = captionGenerator
+        let report: @Sendable (StudioCaptionProgress) -> Void = { [weak self] progress in
+            guard let self else { return }
+            Task { @MainActor in
+                self.reportCaptionProgress(progress, generation: generation)
+            }
+        }
+        captionGenerationTask = Task { [weak self] in
+            let outcome: Result<StudioGeneratedCaptions, Error>
+            do {
+                outcome = .success(try await generator.generate(project: project, paths: paths, language: language, progress: report))
+            } catch {
+                outcome = .failure(error)
+            }
+            self?.finishGeneratingCaptions(outcome)
+        }
+    }
+
+    private func reportCaptionProgress(_ progress: StudioCaptionProgress, generation: Int) {
+        guard captionGenerationNumber == generation, isGeneratingCaptions else { return }
+        let next = captionGenerationProgress.advanced(to: progress)
+        if next != captionGenerationProgress {
+            captionGenerationProgress = next
+        }
+    }
+
+    func cancelCaptionGeneration() {
+        guard canCancelCaptionGeneration else { return }
+        isStoppingCaptionGeneration = true
+        captionGenerationTask?.cancel()
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+            .announcement: StudioCaptionText.stoppingMessage,
+        ])
+    }
+
+    private func finishGeneratingCaptions(_ outcome: Result<StudioGeneratedCaptions, Error>) {
+        let wasStopped = isStoppingCaptionGeneration
+        isGeneratingCaptions = false
+        isStoppingCaptionGeneration = false
+        captionGenerationTask = nil
+        guard state == .ready else { return }
+
+        let notice: StudioCaptionNotice
+        switch outcome {
+        case .success where wasStopped:
+            notice = StudioCaptionNotice(.info, StudioCaptionText.cancelledMessage)
+        case .success(let heard) where heard.cues.isEmpty:
+            notice = noSpeechNotice()
+        case .success(let heard):
+            guard isEditable else {
+                notice = StudioCaptionNotice(.problem, "The captions could not be put in the project. Try again.")
+                break
+            }
+            // What was being typed goes in first, so Undo brings it back with the old captions.
+            commitCaptionText()
+            selectedCaptionIndex = nil
+            edit { $0.setGeneratedCaptions(language: heard.language, cues: heard.cues) }
+            notice = StudioCaptionNotice(.done, StudioCaptionText.generatedMessage(heard.cues.count))
+        case .failure(let error) where error is CancellationError || wasStopped:
+            notice = StudioCaptionNotice(.info, StudioCaptionText.cancelledMessage)
+        case .failure(let error as StudioCaptionGenerationError) where error == .noSpeech:
+            notice = noSpeechNotice()
+        case .failure(let error):
+            notice = StudioCaptionNotice(.problem, error.localizedDescription)
+        }
+        showCaptionNotice(notice)
+
+        // Generating can take minutes, and whoever asked may have gone to another window. They
+        // are told how it went unless they stopped it themselves.
+        if notice.kind != .info, isWindowInFront?() == false {
+            SaveService.shared.showNotice(
+                StudioCaptionPanelText.notificationMessage(for: notice, clipName: clipName),
+                title: StudioCaptionPanelText.notificationTitle(for: notice),
+                studioProjectID: projectID,
+                allowsInAppFallback: false
+            )
+        } else {
+            announce(notice.spokenText)
+        }
+    }
+
+    private func noSpeechNotice() -> StudioCaptionNotice {
+        StudioCaptionNotice(
+            .noSpeech,
+            StudioCaptionPanelText.noSpeechMessage(
+                languageName: captionLanguageAsked.flatMap { Locale.current.localizedString(forIdentifier: $0) },
+                hasCaptions: !(project?.captions.cues.isEmpty ?? true)
+            ),
+            title: StudioCaptionPanelText.noSpeechTitle
+        )
+    }
+
+    /// Shows `notice` in the Captions panel. One that says something went well goes after a while.
+    private func showCaptionNotice(_ notice: StudioCaptionNotice) {
+        captionNoticeTimer?.cancel()
+        captionNotice = notice
+        guard notice.kind == .done || notice.kind == .info else { return }
+        let id = notice.id
+        captionNoticeTimer = Task { [weak self] in
+            try? await Task.sleep(for: StudioCaptionNotice.shownFor)
+            guard !Task.isCancelled, let self, self.captionNotice?.id == id else { return }
+            self.captionNotice = nil
+        }
+    }
+
+    func dismissCaptionNotice() {
+        captionNoticeTimer?.cancel()
+        captionNoticeTimer = nil
+        captionNotice = nil
+    }
+
+    /// Selects a cue and moves the playhead to where it starts, or lets go with nil. A selected
+    /// zoom, cut, or speed change is let go, so that Delete does not take away what is not on show.
+    func selectCaption(at index: Int?) {
+        commitCaptionText()
+        guard let index, let cues = project?.captions.cues, cues.indices.contains(index) else {
+            selectedCaptionIndex = nil
+            return
+        }
+        selectedCaptionIndex = index
+        selectNothing()
+        seek(to: cues[index].start)
+    }
+
+    func setPendingCaptionText(_ text: String) {
+        pendingCaptionText = text
+    }
+
+    /// Puts what was typed for the selected cue into the project.
+    func commitCaptionText() {
+        guard let text = pendingCaptionText else { return }
+        pendingCaptionText = nil
+        guard let index = selectedCaptionIndex else { return }
+        edit { $0.setCaptionText(at: index, to: text) }
+    }
+
+    func removeSelectedCaption() {
+        pendingCaptionText = nil
+        guard let index = selectedCaptionIndex else { return }
+        selectedCaptionIndex = nil
+        edit { $0.removeCaption(at: index) }
+        announce(StudioCaptionPanelText.deletedMessage)
+    }
+
+    /// Whether the selected cue can be split: at the playhead, or in its middle when the playhead
+    /// is not inside it.
+    var canSplitSelectedCaption: Bool {
+        guard isEditable, let cue = selectedCaption else { return false }
+        return StudioCaptionEditing.splitTime(of: cue, playhead: playhead) != nil
+    }
+
+    /// Whether the selected cue has one after it to be put together with.
+    var canMergeSelectedCaption: Bool {
+        guard isEditable, let index = selectedCaptionIndex, let cues = project?.captions.cues else { return false }
+        return StudioCaptionEditing.canMergeWithNext(cues, at: index)
+    }
+
+    /// Splits the selected cue at the playhead, or in its middle when the playhead is not inside
+    /// it, and selects the second part.
+    func splitSelectedCaptionAtPlayhead() {
+        commitCaptionText()
+        guard isEditable, let index = selectedCaptionIndex, let cue = selectedCaption,
+              let time = StudioCaptionEditing.splitTime(of: cue, playhead: playhead) else { return }
+        var second: Int?
+        edit { second = $0.splitCaption(at: index, sourceTime: time) }
+        guard let second else { return }
+        selectedCaptionIndex = second
+        announce(StudioCaptionPanelText.splitMessage)
+    }
+
+    /// Puts the selected cue together with the one after it, and selects what they make.
+    func mergeSelectedCaptionWithNext() {
+        commitCaptionText()
+        guard isEditable, let index = selectedCaptionIndex else { return }
+        var merged: Int?
+        edit { merged = $0.mergeCaptionWithNext(at: index) }
+        guard let merged else { return }
+        selectedCaptionIndex = merged
+        announce(StudioCaptionPanelText.mergedMessage)
+    }
+
+    /// Moves one end of the selected cue by `seconds`, for the panel's step buttons.
+    func nudgeSelectedCaption(_ edge: StudioCaptionEdge, by seconds: Double) {
+        guard let cue = selectedCaption else { return }
+        retimeSelectedCaption(edge, to: (edge == .start ? cue.start : cue.end) + seconds)
+    }
+
+    /// Puts one end of the selected cue at the playhead. The playhead stays where it is.
+    func setSelectedCaptionAtPlayhead(_ edge: StudioCaptionEdge) {
+        retimeSelectedCaption(edge, to: playhead)
+    }
+
+    private func retimeSelectedCaption(_ edge: StudioCaptionEdge, to time: Double) {
+        commitCaptionText()
+        guard isEditable, let index = selectedCaptionIndex else { return }
+        var moved: Int?
+        edit { moved = $0.retimeCaption(at: index, edge: edge, to: time) }
+        guard let moved else { return }
+        selectedCaptionIndex = moved
+        if let cue = selectedCaption {
+            announce(StudioCaptionText.rangeText(cue))
+        }
+    }
+
+    /// Makes the safe fixes, and says what came of them and how many problems are left.
+    func fixCaptions() {
+        commitCaptionText()
+        selectedCaptionIndex = nil
+        var applied = 0
+        edit { applied = $0.fixCaptions() }
+        reportCaptions(StudioCaptionText.fixedMessage(applied, left: captionFindings.count))
+    }
+
+    /// Where the selected cue is among the rows, in time order.
+    var selectedCaptionRowPosition: Int? {
+        guard let index = selectedCaptionIndex else { return nil }
+        return captionRows.firstIndex { $0.index == index }
+    }
+
+    /// Whether there is a cue `step` rows from the selected one, in time order.
+    func canSelectCaption(by step: Int) -> Bool {
+        guard let position = selectedCaptionRowPosition else { return false }
+        return captionRows.indices.contains(position + step)
+    }
+
+    /// Selects the cue `step` rows from the selected one, in time order: -1 for the one before.
+    func selectCaption(by step: Int) {
+        guard let position = selectedCaptionRowPosition else { return }
+        let rows = captionRows
+        guard rows.indices.contains(position + step) else { return }
+        selectCaption(at: rows[position + step].index)
+    }
+
+    /// Whether the checks found a problem that Next Problem can go to.
+    var hasCaptionProblems: Bool { !(captionOverview?.problems.isEmpty ?? true) }
+
+    /// Selects the next cue, in time order, that the checks found a problem in: after the selected
+    /// one, or the first when none is selected, going round after the last.
+    func selectNextCaptionProblem() {
+        guard let overview = captionOverview else { return }
+        let rows = overview.rows
+        let next = StudioCaptionEditing.nextProblem(count: rows.count, after: selectedCaptionRowPosition) {
+            overview.problems[rows[$0].index] != nil
+        }
+        guard let next else { return }
+        selectCaption(at: rows[next].index)
+    }
+
+    /// Asks for a caption file and puts its cues in place of the captions.
+    func importCaptions(timing: StudioCaptionTiming) {
+        guard isEditable, let editor else { return }
+        commitCaptionText()
+        pause()
+        let panel = NSOpenPanel()
+        panel.title = "Import Captions"
+        panel.prompt = "Import"
+        panel.allowedContentTypes = ["srt", "vtt"].compactMap { UTType(filenameExtension: $0) }
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let hasAccess = url.startAccessingSecurityScopedResource()
+        defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let contents = StudioCaptionFiles.read(
+                try StudioCaptionFiles.readFile(url),
+                timing: timing,
+                timeMap: editor.timeMap
+            )
+            guard !contents.cues.isEmpty else {
+                reportCaptionProblem(StudioCaptionText.nothingToImport)
+                return
+            }
+            selectedCaptionIndex = nil
+            edit { $0.replaceCaptions(contents.cues) }
+            reportCaptions(StudioCaptionText.importedMessage(count: contents.cues.count, skipped: contents.skippedBlocks))
+        } catch {
+            reportCaptionProblem("The captions could not be read: \(error.localizedDescription)")
+        }
+    }
+
+    /// Asks where to write the captions the video has, and writes them there.
+    func exportCaptions(_ format: StudioCaptionFormat) {
+        commitCaptionText()
+        guard let project else { return }
+        let captions = StudioCaptionResolver.resolve(project: project)
+        guard !captions.isEmpty else { return }
+        pause()
+
+        let savedFolder = (try? savedProjectFile())?.deletingLastPathComponent()
+        let panel = NSSavePanel()
+        panel.title = "Export Captions"
+        panel.prompt = "Export"
+        panel.allowedContentTypes = [UTType(filenameExtension: format.fileExtension)].compactMap { $0 }
+        panel.canCreateDirectories = true
+        panel.directoryURL = savedFolder.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+            ?? SaveService.shared.outputDirectoryURL(for: .video)
+        panel.nameFieldStringValue = StudioProjectStore.folderName(for: clipName) + "." + format.fileExtension
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let hasAccess = url.startAccessingSecurityScopedResource()
+        defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let chosen = StudioCaptionFormat(path: url.path) ?? format
+            try Data(StudioCaptionFiles.write(chosen, captions).utf8).write(to: url, options: .atomic)
+            reportCaptions(StudioCaptionText.exportedMessage)
+        } catch {
+            reportCaptionProblem("The captions could not be written: \(error.localizedDescription)")
+        }
+    }
+
+    private func reportCaptions(_ message: String) {
+        showCaptionNotice(StudioCaptionNotice(.done, message))
+        announce(message)
+    }
+
+    private func reportCaptionProblem(_ message: String) {
+        showCaptionNotice(StudioCaptionNotice(.problem, message))
+        AccessibilityAnnouncementService.shared.announce(message, priority: .high)
     }
 
     func setLayout(_ layout: StudioLayout) {
@@ -522,6 +1044,22 @@ final class StudioViewModel: ObservableObject {
         edit { $0.setMicrophoneVolume(value) }
     }
 
+    func setCaptionsDrawn(_ value: Bool) {
+        edit { $0.setCaptionsDrawn(value) }
+    }
+
+    func setCaptionSize(_ value: StudioCaptionSize) {
+        edit { $0.setCaptionSize(value) }
+    }
+
+    func setCaptionPosition(_ value: StudioCaptionPosition) {
+        edit { $0.setCaptionPosition(value) }
+    }
+
+    func setCaptionAppearance(_ value: StudioCaptionAppearance) {
+        edit { $0.setCaptionAppearance(value) }
+    }
+
     func setClickRingsEnabled(_ value: Bool) {
         edit { $0.setClickRingsEnabled(value) }
     }
@@ -562,6 +1100,7 @@ final class StudioViewModel: ObservableObject {
         if selectedZoomIndex != nil {
             setSelectedCutIndex(nil)
             setSelectedSpeedIndex(nil)
+            setSelectedAnnotationIndex(nil)
             showInspectorPanel(.zoom)
         }
     }
@@ -575,13 +1114,14 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
-    /// Lets go of whatever is selected: a zoom, a cut, or a speed change. The playhead stays. A
+    /// Lets go of whatever is selected: a zoom, a cut, a speed change, or an annotation. The playhead stays. A
     /// press on an empty part of a lane does this: selecting no zoom alone would leave a selected
     /// cut as it is.
     func selectNothing() {
         setSelectedZoomIndex(nil)
         setSelectedCutIndex(nil)
         setSelectedSpeedIndex(nil)
+        setSelectedAnnotationIndex(nil)
     }
 
     /// Selects a zoom and moves the playhead to where it has moved in.
@@ -785,6 +1325,7 @@ final class StudioViewModel: ObservableObject {
         if selectedCutIndex != nil {
             setSelectedZoomIndex(nil)
             setSelectedSpeedIndex(nil)
+            setSelectedAnnotationIndex(nil)
             showInspectorPanel(.cut)
         }
     }
@@ -947,6 +1488,7 @@ final class StudioViewModel: ObservableObject {
     func selectSpeed(_ index: Int?) {
         setSelectedSpeedIndex(index)
         if selectedSpeedIndex != nil {
+            setSelectedAnnotationIndex(nil)
             setSelectedZoomIndex(nil)
             setSelectedCutIndex(nil)
             showInspectorPanel(.speed)
@@ -1088,6 +1630,357 @@ final class StudioViewModel: ObservableObject {
     func nudgeSelectedSpeedEnd(by seconds: Double) {
         guard let index = selectedSpeedIndex, let speed = selectedSpeed else { return }
         setSpeedEnd(at: index, to: speed.end + seconds)
+    }
+
+    // MARK: - Annotations
+    //
+    // An index is an annotation's place in `project.overlays.annotations`, the order they are drawn
+    // in. One can be selected, in place of a zoom, a cut, or a speed change. Through an edit that
+    // does not say, and undo and redo, the selection follows its annotation by its id.
+
+    var annotations: [StudioAnnotation] { project?.overlays.annotations ?? [] }
+
+    var selectedAnnotation: StudioAnnotation? {
+        guard let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return nil }
+        return annotations[index]
+    }
+
+    var canAddAnnotation: Bool { isEditable && (editor?.canAddAnnotation ?? false) }
+
+    var canSelectPreviousAnnotation: Bool {
+        isEditable && editor?.annotationIndex(before: selectedAnnotationIndex, sourceTime: playhead) != nil
+    }
+
+    var canSelectNextAnnotation: Bool {
+        isEditable && editor?.annotationIndex(after: selectedAnnotationIndex, sourceTime: playhead) != nil
+    }
+
+    /// Selects an annotation, or none with nil. The playhead stays. What else was selected is let
+    /// go, and the inspector shows the Annotate panel.
+    func selectAnnotation(_ index: Int?) {
+        if index != selectedAnnotationIndex { endAnnotationColorChoice() }
+        setSelectedAnnotationIndex(index)
+        if selectedAnnotationIndex != nil {
+            setSelectedZoomIndex(nil)
+            setSelectedCutIndex(nil)
+            setSelectedSpeedIndex(nil)
+            showInspectorPanel(.annotate)
+        }
+    }
+
+    /// Selects an annotation and moves the playhead to where it starts.
+    @discardableResult
+    func selectAndShowAnnotation(_ index: Int?) -> Bool {
+        guard isEditable, let index, annotations.indices.contains(index) else { return false }
+        selectAnnotation(index)
+        scrub(to: annotations[index].start)
+        return true
+    }
+
+    /// Selects an annotation from the panel's list, and moves the playhead to where it starts when
+    /// it would not be on the picture otherwise.
+    func selectAnnotationInView(_ index: Int) {
+        guard annotations.indices.contains(index) else { return }
+        let annotation = annotations[index]
+        if annotation.start <= playhead, playhead < annotation.end {
+            selectAnnotation(index)
+        } else {
+            selectAndShowAnnotation(index)
+        }
+    }
+
+    func showPreviousAnnotation() {
+        if selectAndShowAnnotation(editor?.annotationIndex(before: selectedAnnotationIndex, sourceTime: playhead)) {
+            announceSelectedAnnotation()
+        }
+    }
+
+    func showNextAnnotation() {
+        if selectAndShowAnnotation(editor?.annotationIndex(after: selectedAnnotationIndex, sourceTime: playhead)) {
+            announceSelectedAnnotation()
+        }
+    }
+
+    private func announceSelectedAnnotation() {
+        guard let index = selectedAnnotationIndex, let annotation = selectedAnnotation else { return }
+        announce(StudioEditorModel.annotationStepText(index: index, count: annotations.count, annotation: annotation))
+    }
+
+    /// Adds an annotation at the playhead, on top of the others, and selects it. The playhead stays.
+    func addAnnotationAtPlayhead(kind: String) {
+        guard isEditable, let frameDuration = player?.currentItem?.videoComposition?.frameDuration else { return }
+        let time = StudioPlayback.frameTime(at: playhead, frameDuration: frameDuration)
+        let recordedEvents = events
+        var result = StudioAnnotationEditResult(changed: false, index: nil)
+        editAndSelect { model in
+            result = model.addAnnotation(kind: kind, at: time, events: recordedEvents)
+            if let index = result.index {
+                return .annotation(index)
+            }
+            return .follow
+        }
+        announce(result.changed ? StudioEditorModel.annotationAddedMessage(kind) : StudioEditorModel.noRoomForAnnotationMessage)
+    }
+
+    func removeSelectedAnnotation() {
+        guard let index = selectedAnnotationIndex else { return }
+        if editAnnotation(at: index, { $0.removeAnnotation(at: index) }).changed {
+            announce(StudioEditorModel.annotationDeletedMessage)
+        }
+    }
+
+    /// Moves when an annotation starts, and shows the first picture that has it.
+    @discardableResult
+    func setAnnotationStart(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editAnnotation(at: index) { $0.setAnnotationStart(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, annotations.indices.contains(place) {
+            scrub(to: annotations[place].start)
+        }
+        return result.index
+    }
+
+    /// Moves when an annotation ends, and shows the last picture that has it.
+    @discardableResult
+    func setAnnotationEnd(at index: Int, to sourceTime: Double) -> Int? {
+        let result = editAnnotation(at: index) { $0.setAnnotationEnd(at: index, to: sourceTime) }
+        if isEditable, let place = result.index, annotations.indices.contains(place), let editor {
+            scrub(to: max(annotations[place].start, annotations[place].end - editor.frameDuration))
+        }
+        return result.index
+    }
+
+    /// Moves a whole annotation so it starts at `sourceTime`. The playhead stays.
+    @discardableResult
+    func moveAnnotation(at index: Int, to sourceTime: Double) -> Int? {
+        editAnnotation(at: index) { $0.moveAnnotation(at: index, to: sourceTime) }.index
+    }
+
+    func nudgeSelectedAnnotationStart(by seconds: Double) {
+        guard let index = selectedAnnotationIndex, let annotation = selectedAnnotation else { return }
+        setAnnotationStart(at: index, to: annotation.start + seconds)
+    }
+
+    func nudgeSelectedAnnotationEnd(by seconds: Double) {
+        guard let index = selectedAnnotationIndex, let annotation = selectedAnnotation else { return }
+        setAnnotationEnd(at: index, to: annotation.end + seconds)
+    }
+
+    func setSelectedAnnotationStartAtPlayhead() {
+        guard let index = selectedAnnotationIndex else { return }
+        let time = playhead
+        editAnnotation(at: index) { $0.setAnnotationStart(at: index, to: time) }
+    }
+
+    func setSelectedAnnotationEndAtPlayhead() {
+        guard let index = selectedAnnotationIndex else { return }
+        let time = playhead
+        editAnnotation(at: index) { $0.setAnnotationEnd(at: index, to: time) }
+    }
+
+    func setSelectedAnnotationText(_ text: String) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationText(at: index, to: text) }
+    }
+
+    /// The text field has lost the focus: what is typed from now on is another undo step.
+    func endAnnotationTyping() {
+        editor?.endAnnotationTyping()
+    }
+
+    func setSelectedAnnotationStyle(_ style: StudioAnnotationStyle) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationStyle(at: index, to: style) }
+    }
+
+    /// A color has been chosen: the next one is another undo step.
+    func endAnnotationColorChoice() {
+        editor?.endAnnotationColorChoice()
+    }
+
+    func setSelectedAnnotationFill(_ color: Color) {
+        guard let index = selectedAnnotationIndex else { return }
+        let hex = Self.hexString(for: color)
+        editAnnotation(at: index) { $0.setAnnotationFill(at: index, to: hex) }
+    }
+
+    func setSelectedAnnotationTextColor(_ color: Color) {
+        guard let index = selectedAnnotationIndex else { return }
+        let hex = Self.hexString(for: color)
+        editAnnotation(at: index) { $0.setAnnotationTextColor(at: index, to: hex) }
+    }
+
+    func setSelectedAnnotationScale(_ scale: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationScale(at: index, to: scale) }
+    }
+
+    func setSelectedAnnotationRotation(_ rotation: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationRotation(at: index, to: rotation) }
+    }
+
+    func transformAnnotation(at index: Int, from start: StudioAnnotation, part: StudioAnnotationPart,
+                             anchor: StudioAnnotationPoint, pressed: StudioAnnotationPoint, current: StudioAnnotationPoint) {
+        guard let move = StudioAnnotationGeometry.transform(start, part: part, anchor: anchor, pressed: pressed, current: current) else { return }
+        editAnnotation(at: index) { $0.moveAnnotation(at: index, to: move) }
+    }
+
+    /// The width and height of the selected rectangle, ellipse, or redaction, normalized.
+    func setSelectedAnnotationSize(width: Double, height: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationSize(at: index, width: width, height: height) }
+    }
+
+    func setSelectedAnnotationCornerRadius(_ radius: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationCornerRadius(at: index, to: radius) }
+    }
+
+    /// Fills the inside of the selected rectangle or ellipse with `color`, or empties it with nil.
+    func setSelectedAnnotationShapeFill(_ color: Color?) {
+        guard let index = selectedAnnotationIndex else { return }
+        let hex = color.map { Self.hexString(for: $0) } ?? ""
+        editAnnotation(at: index) { $0.setAnnotationShapeFill(at: index, to: hex) }
+    }
+
+    func setSelectedAnnotationShapeFillOpacity(_ opacity: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationShapeFillOpacity(at: index, to: opacity) }
+    }
+
+    func setSelectedAnnotationRedactStyle(_ style: StudioRedactStyle) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationRedactStyle(at: index, to: style) }
+    }
+
+    func setSelectedAnnotationRedactLevel(_ level: StudioRedactLevel) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationRedactLevel(at: index, to: level) }
+    }
+
+    /// Small, medium, or large, before the scale.
+    func setSelectedAnnotationSize(_ size: StudioAnnotationSize) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationSize(at: index, to: size) }
+    }
+
+    /// Picks the selected emoji's emoji from the grid, as one undo step.
+    func setSelectedAnnotationEmoji(_ emoji: String) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationEmoji(at: index, to: emoji) }
+    }
+
+    func setSelectedAnnotationShadow(_ shadow: Bool) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationShadow(at: index, to: shadow) }
+    }
+
+    var canDuplicateSelectedAnnotation: Bool { isEditable && selectedAnnotation != nil }
+
+    /// Puts a copy of the selected annotation directly above it, nudged so both show, and selects it.
+    func duplicateSelectedAnnotation() {
+        guard isEditable, let index = selectedAnnotationIndex, let annotation = selectedAnnotation else { return }
+        var result = StudioAnnotationEditResult(changed: false, index: nil)
+        editAndSelect { model in
+            result = model.duplicateAnnotation(at: index)
+            if let copy = result.index {
+                return .annotation(copy)
+            }
+            return .follow
+        }
+        if result.changed {
+            announce("\(StudioEditorModel.annotationKindName(annotation.kind)) duplicated.")
+        }
+    }
+
+    /// What is drawn at the playhead on a canvas of `canvasSize`, bottom first, for the preview to
+    /// let a pointer take hold of. Nothing while the video plays, when there is nothing to hold still.
+    func annotationHandles(canvasSize: CGSize) -> [StudioAnnotationHandle] {
+        guard isEditable, !isPlaying, let project, canvasSize.width > 0, canvasSize.height > 0 else { return [] }
+        let width = Double(canvasSize.width)
+        let height = Double(canvasSize.height)
+        let frame = StudioLayoutResolver.resolve(project: project, time: playhead, canvasWidth: width, canvasHeight: height, events: events)
+        return StudioAnnotationGeometry.resolveAll(project: project, frame: frame, time: playhead, canvasWidth: width, canvasHeight: height).map { resolved in
+            if resolved.isArrow {
+                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, tail: resolved.tail, stroke: resolved.stroke, rotation: resolved.rotation)
+            }
+            if resolved.isArea {
+                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, radius: resolved.radius, area: resolved.rect, rotation: resolved.rotation)
+            }
+            if resolved.kind == StudioAnnotationKind.emoji {
+                let placed = StudioCompositor.annotationEmojiLayout(resolved, canvasWidth: width, canvasHeight: height)
+                return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, box: placed, radius: 0, rotation: resolved.rotation)
+            }
+            let layout = StudioCompositor.annotationBoxLayout(resolved, canvasWidth: width, canvasHeight: height)
+            return StudioAnnotationHandle(index: resolved.index, kind: resolved.kind, tip: resolved.anchor, box: layout.box, radius: resolved.radius, rotation: resolved.rotation)
+        }
+    }
+
+    /// Where a drag on the preview leaves an annotation that was `start` when it began. What the
+    /// move did is handed back so that the preview can show a center line it settled on.
+    @discardableResult
+    func moveAnnotation(
+        at index: Int,
+        from start: StudioAnnotation,
+        part: StudioAnnotationPart,
+        byX: Double,
+        byY: Double,
+        drawnBoxCenter: StudioAnnotationPoint?,
+        canvasSize: CGSize
+    ) -> StudioAnnotationMove? {
+        guard let project else { return nil }
+        let width = Double(canvasSize.width)
+        let height = Double(canvasSize.height)
+        let frame = StudioLayoutResolver.resolve(project: project, time: playhead, canvasWidth: width, canvasHeight: height, events: events)
+        guard let move = StudioAnnotationGeometry.moved(start, part: part, byX: byX, byY: byY, drawnBoxCenter: drawnBoxCenter, frame: frame, canvasWidth: width, canvasHeight: height) else {
+            return nil
+        }
+        editAnnotation(at: index) { $0.moveAnnotation(at: index, to: move) }
+        return move
+    }
+
+    /// What the selected annotation is fixed to. It stays where it is in the picture where it can.
+    func setSelectedAnnotationAttach(_ attach: StudioAnnotationAttach) {
+        guard let index = selectedAnnotationIndex else { return }
+        let time = playhead
+        let recordedEvents = events
+        editAnnotation(at: index) { $0.setAnnotationAttach(at: index, to: attach, time: time, events: recordedEvents) }
+    }
+
+    func setSelectedAnnotationPoint(x: Double, y: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationPoint(at: index, x: x, y: y) }
+    }
+
+    func setSelectedAnnotationOffset(x: Double, y: Double) {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.setAnnotationOffset(at: index, x: x, y: y) }
+    }
+
+    func bringSelectedAnnotationForward() {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.moveAnnotationLayer(at: index, by: 1) }
+    }
+
+    func sendSelectedAnnotationBack() {
+        guard let index = selectedAnnotationIndex else { return }
+        editAnnotation(at: index) { $0.moveAnnotationLayer(at: index, by: -1) }
+    }
+
+    /// An edit to one annotation. The selection goes with it when it is the selected one. An edit
+    /// that changes nothing shows no panel.
+    @discardableResult
+    private func editAnnotation(
+        at index: Int,
+        _ change: (inout StudioEditorModel) -> StudioAnnotationEditResult
+    ) -> StudioAnnotationEditResult {
+        var result = StudioAnnotationEditResult(changed: false, index: index)
+        let isSelected = selectedAnnotationIndex == index
+        editAndSelect { model in
+            result = change(&model)
+            return isSelected && result.changed ? .annotation(result.index) : .follow
+        }
+        return result
     }
 
     // MARK: - Scenes
@@ -1296,6 +2189,27 @@ final class StudioViewModel: ObservableObject {
         seek(to: playhead + Double(count) * editor.frameDuration)
     }
 
+    /// Pauses and moves the playhead whole seconds back (negative) or forward, within the video.
+    func stepSeconds(by count: Int) {
+        guard isReady, !isExporting, let editor else { return }
+        pause()
+        seek(to: editor.sourceTime(steppingSeconds: count, from: playhead))
+    }
+
+    /// Pauses and moves the playhead to the first picture of the trimmed video.
+    func goToTrimStart() {
+        guard isReady, !isExporting, let editor else { return }
+        pause()
+        seek(to: editor.playbackStart)
+    }
+
+    /// Pauses and moves the playhead to the last picture of the trimmed video.
+    func goToTrimEnd() {
+        guard isReady, !isExporting, let editor else { return }
+        pause()
+        seek(to: editor.lastPlaybackFrame)
+    }
+
     /// Pauses and moves the playhead, for dragging along the timeline.
     func scrub(to sourceTime: Double) {
         guard isReady, !isExporting else { return }
@@ -1306,14 +2220,51 @@ final class StudioViewModel: ObservableObject {
     // MARK: - Export
 
     func export() {
-        startExport(closingAfterward: false)
+        requestExportOptions(closingAfterward: false)
+    }
+
+    /// The Export popover's content, starting from the choice last made there.
+    func makeExportOptions() -> StudioExportOptionsModel? {
+        guard let project else { return nil }
+        let settings = CaptureSettings.shared
+        return StudioExportOptionsModel(
+            project: project,
+            isHEVC: settings.videoCodec == .hevc,
+            saved: settings.studioExportChoice
+        )
+    }
+
+    /// The popover answered: the choices are kept, and the save panel comes up once the popover
+    /// has gone. A modal panel opened from its button would run with the popover still on screen.
+    func confirmExportOptions(_ options: StudioExportOptionsModel) {
+        CaptureSettings.shared.studioExportChoice = options.choiceToRemember
+        let closingAfterward = closesAfterChoosingExportOptions
+        closesAfterChoosingExportOptions = false
+        isChoosingExportOptions = false
+        DispatchQueue.main.async { [weak self] in
+            self?.startExport(closingAfterward: closingAfterward, choice: options.choice)
+        }
+    }
+
+    /// The popover went away without an answer. A window waiting on it stays open.
+    func cancelExportOptions() {
+        closesAfterChoosingExportOptions = false
+        isChoosingExportOptions = false
+    }
+
+    private func requestExportOptions(closingAfterward: Bool) {
+        guard canExport, !isChoosingDestination, !isChoosingExportOptions else { return }
+        pause()
+        closesAfterChoosingExportOptions = closingAfterward
+        isChoosingExportOptions = true
     }
 
     func cancelExport() {
         exportTask?.cancel()
     }
 
-    private func startExport(closingAfterward: Bool) {
+    private func startExport(closingAfterward: Bool, choice: StudioExportChoice) {
+        commitCaptionText()
         guard canExport, !isChoosingDestination, let paths else { return }
         pause()
         let outputURL: URL
@@ -1380,7 +2331,9 @@ final class StudioViewModel: ObservableObject {
         let rendered = editor.editableState
         let projectEvents = events
         let projectStore = store
-        let renderSize = Self.renderSize(for: project, longSide: Self.exportLongSide)
+        let exportedSize = StudioExportPresets.size(project: project, resolution: choice.resolution)
+        let renderSize = CGSize(width: exportedSize.width, height: exportedSize.height)
+        let quality = choice.quality
         let posterSize = Self.renderSize(for: project, longSide: Self.posterLongSide)
         let codec = CaptureSettings.shared.videoCodec
         let reportProgress: @Sendable (Double) -> Void = { [weak self] progress in
@@ -1400,9 +2353,10 @@ final class StudioViewModel: ObservableObject {
                     outputURL: outputURL,
                     renderSize: renderSize,
                     codec: codec,
+                    quality: quality,
                     onProgress: reportProgress,
                     destination: target
-                )
+                ).url
                 try? await StudioExporter.writePoster(
                     project: project,
                     events: projectEvents,
@@ -1445,12 +2399,12 @@ final class StudioViewModel: ObservableObject {
 
     /// Asked when Esc is pressed. Returns false to keep the window open.
     ///
-    /// Edits are saved with the project, so there is nothing to lose; the question only guards
-    /// against a stray Esc, and follows the setting shared by the other editors. A project that was
-    /// never exported is not asked here, because closing it asks what to do with it anyway.
+    /// A project saved to its folder with nothing new has nothing to lose; the question only
+    /// guards against a stray Esc, and follows the setting shared by the other editors. Any other
+    /// project is not asked here, because closing it asks what to do with it anyway.
     func confirmEscapeClose() -> Bool {
         guard CaptureSettings.shared.confirmEditorEscape,
-              isReady, let editor, !editor.hasNeverExported
+              isReady, editor != nil, closePrompt == .none
         else {
             return true
         }
@@ -1484,8 +2438,10 @@ final class StudioViewModel: ObservableObject {
     }
 
     /// Updates the linked project folder, or chooses one for the first save and Save As.
-    /// Editing and autosave continue to use Studio's internal working copy.
-    func saveProjectFolder(saveAs: Bool = false) {
+    /// Editing and autosave continue to use Studio's internal working copy. Saved from the close
+    /// prompt, the window closes once the folder has the project, and the folder is not shown.
+    func saveProjectFolder(saveAs: Bool = false, closingAfterward: Bool = false) {
+        commitCaptionText()
         guard canSaveProjectFolder, !isChoosingDestination else { return }
         pause()
         // The folder gets the project as it is saved, so the edits have to be on disk first.
@@ -1519,6 +2475,8 @@ final class StudioViewModel: ObservableObject {
 
         let store = store
         let id = projectID
+        // Editing waits while the folder is written, so this is what the folder gets.
+        let saving = editor?.editableState
         busyMessage = "Saving project…"
         Task { [weak self] in
             let failure: String? = await Task.detached(priority: .userInitiated) {
@@ -1547,7 +2505,12 @@ final class StudioViewModel: ObservableObject {
             if let failure {
                 SaveService.shared.showError("Studio could not save this project: \(failure)")
             } else {
+                self.projectSaveBaseline = saving
                 SaveService.shared.showNotice("Project saved to the folder \(folder.lastPathComponent).")
+                if closingAfterward {
+                    self.requestClose?()
+                    return
+                }
                 let projectFile = linkedFile ?? folder
                     .appendingPathComponent(folder.lastPathComponent)
                     .appendingPathExtension(StudioProjectStore.projectFileExtension)
@@ -1580,6 +2543,7 @@ final class StudioViewModel: ObservableObject {
 
     /// Asked when the user closes the window. Returns false to keep it open.
     func shouldClose() -> Bool {
+        commitCaptionText()
         if isChoosingDestination { return false }
         if isBusy {
             // The copy runs to its end either way; the window stays to say how it went.
@@ -1599,26 +2563,76 @@ final class StudioViewModel: ObservableObject {
             return true
         }
 
-        guard isReady, let editor, editor.hasNeverExported else { return true }
-        pause()
+        switch closePrompt {
+        case .none:
+            return true
+        case .draft:
+            return askAboutDraft()
+        case .unsavedChanges:
+            return askAboutUnsavedChanges()
+        }
+    }
 
+    /// What closing asks, from whether the project has a folder and changes the folder does not.
+    var closePrompt: StudioClosePrompt {
+        guard isReady, let editor else { return .none }
+        let hasFolder = hasSavedProjectFolder
+        return StudioClosePrompt.resolve(
+            isReady: true,
+            hasSavedProjectFolder: hasFolder,
+            hasChangesSinceSave: hasFolder && editor.editableState != projectSaveBaseline
+        )
+    }
+
+    /// Whether the project is linked to a folder whose project file is still there.
+    private var hasSavedProjectFolder: Bool {
+        guard let file = try? savedProjectFile() else { return false }
+        return FileManager.default.fileExists(atPath: file.path)
+    }
+
+    private func askAboutDraft() -> Bool {
+        pause()
         let alert = NSAlert()
-        alert.messageText = "Export this recording before closing?"
-        alert.informativeText = "It has not been exported yet. Export it now, keep it as a draft to finish later, or delete it."
-        alert.addButton(withTitle: "Export")
+        alert.messageText = "Keep this recording?"
+        alert.informativeText = "It has not been saved as a project. Keep it as a draft to finish later from the Clips Library, or delete it."
         alert.addButton(withTitle: "Keep as Draft")
         let deleteButton = alert.addButton(withTitle: "Delete")
         deleteButton.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
 
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            startExport(closingAfterward: true)
-            return false
-        case .alertThirdButtonReturn:
+            return true
+        case .alertSecondButtonReturn:
             deletesOnClose = true
             return true
         default:
+            return false
+        }
+    }
+
+    private func askAboutUnsavedChanges() -> Bool {
+        pause()
+        let alert = NSAlert()
+        alert.messageText = "Save changes to “\(clipName)”?"
+        alert.informativeText = "This project has changes that are not in its project folder. If you don’t save, the changes you made since it was last saved are lost."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don’t Save")
+        alert.addButton(withTitle: "Cancel")
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            saveProjectFolder(closingAfterward: true)
+            return false
+        case .alertSecondButtonReturn:
+            if let projectSaveBaseline {
+                editor?.restore(projectSaveBaseline)
+                // Written when the window closes.
+                hasUnsavedEdits = true
+            }
             return true
+        default:
+            return false
         }
     }
 
@@ -1631,6 +2645,7 @@ final class StudioViewModel: ObservableObject {
         saveTask?.cancel()
         previewTask?.cancel()
         exportTask?.cancel()
+        captionGenerationTask?.cancel()
         rateObservation?.invalidate()
         rateObservation = nil
         if let timeObserver, let player {
@@ -1681,6 +2696,9 @@ final class StudioViewModel: ObservableObject {
 
         /// The edit knows where its speed change went, or that it is gone.
         case speed(Int?)
+
+        /// The edit knows where its annotation went, or that it is gone.
+        case annotation(Int?)
     }
 
     private func edit(_ change: (inout StudioEditorModel) -> Void) {
@@ -1763,6 +2781,7 @@ final class StudioViewModel: ObservableObject {
         let zoomsBefore = model.project.zooms
         let cutsBefore = model.project.edits.cuts
         let speedBefore = model.project.edits.speed
+        let annotationsBefore = model.project.overlays.annotations
         let selection = change(&model)
         editor = model
         let isChanged = model.editableState != before
@@ -1772,6 +2791,7 @@ final class StudioViewModel: ObservableObject {
         var zoomIndex = selectedZoomIndex
         var cutIndex = selectedCutIndex
         var speedIndex = selectedSpeedIndex
+        var annotationIndex = selectedAnnotationIndex
         if isChanged, let selected = zoomIndex {
             zoomIndex = StudioEditorModel.zoomIndex(following: selected, from: zoomsBefore, to: model.project.zooms)
         }
@@ -1780,6 +2800,10 @@ final class StudioViewModel: ObservableObject {
         }
         if isChanged, let selected = speedIndex {
             speedIndex = StudioEditorModel.speedIndex(following: selected, from: speedBefore, to: model.project.edits.speed)
+        }
+
+        if isChanged, let selected = annotationIndex {
+            annotationIndex = StudioEditorModel.annotationIndex(following: selected, from: annotationsBefore, to: model.project.overlays.annotations)
         }
 
         // One selection: an edit that says where a zoom is lets go of a cut and a speed change,
@@ -1792,18 +2816,27 @@ final class StudioViewModel: ObservableObject {
             zoomIndex = index
             cutIndex = nil
             speedIndex = nil
+            annotationIndex = nil
         case .cut(let index):
             cutIndex = index
             zoomIndex = nil
             speedIndex = nil
+            annotationIndex = nil
         case .speed(let index):
             speedIndex = index
             zoomIndex = nil
             cutIndex = nil
+            annotationIndex = nil
+        case .annotation(let index):
+            annotationIndex = index
+            zoomIndex = nil
+            cutIndex = nil
+            speedIndex = nil
         }
         setSelectedZoomIndex(zoomIndex)
         setSelectedCutIndex(cutIndex)
         setSelectedSpeedIndex(speedIndex)
+        setSelectedAnnotationIndex(annotationIndex)
 
         // An edit that says which zoom, cut, or speed change it left selected shows its panel.
         // Adding one does, from the timeline, the menu, or the keyboard.
@@ -1816,6 +2849,8 @@ final class StudioViewModel: ObservableObject {
             if selectedCutIndex != nil { showInspectorPanel(.cut) }
         case .speed:
             if selectedSpeedIndex != nil { showInspectorPanel(.speed) }
+        case .annotation:
+            if selectedAnnotationIndex != nil { showInspectorPanel(.annotate) }
         }
 
         guard isChanged else { return }
@@ -1860,6 +2895,18 @@ final class StudioViewModel: ObservableObject {
         }
         if selectedSpeedIndex != valid {
             selectedSpeedIndex = valid
+        }
+    }
+
+    /// Sets the selection to an annotation that exists, or to none. It is published only when it
+    /// changes.
+    private func setSelectedAnnotationIndex(_ index: Int?) {
+        var valid: Int?
+        if let index, annotations.indices.contains(index) {
+            valid = index
+        }
+        if selectedAnnotationIndex != valid {
+            selectedAnnotationIndex = valid
         }
     }
 
@@ -2075,7 +3122,7 @@ final class StudioViewModel: ObservableObject {
         return CGSize(width: max(2, size.width), height: max(2, size.height))
     }
 
-    private static func hexString(for color: Color) -> String {
+    static func hexString(for color: Color) -> String {
         let nsColor = NSColor(color)
         guard let resolved = nsColor.usingColorSpace(.sRGB) ?? nsColor.usingColorSpace(.deviceRGB) else {
             return "#000000"

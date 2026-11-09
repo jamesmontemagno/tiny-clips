@@ -1,0 +1,36 @@
+{
+  "description": "Nothing to find and nothing to fix.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 3,
+      "text": "A short caption."
+    },
+    {
+      "id": "cue-3",
+      "start": 3,
+      "end": 5,
+      "text": "Two lines\nof text."
+    }
+  ],
+  "findings": [],
+  "summary": "",
+  "fixed": [
+    {
+      "start": 1,
+      "end": 3,
+      "text": "A short caption.",
+      "wordCount": 0
+    },
+    {
+      "start": 3,
+      "end": 5,
+      "text": "Two lines\nof text.",
+      "wordCount": 0
+    }
+  ],
+  "applied": 0,
+  "after": []
+}

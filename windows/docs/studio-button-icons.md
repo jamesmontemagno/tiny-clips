@@ -30,6 +30,9 @@ Every button keeps its words and gains a symbol in front of them. The names are 
 | Show Scene | Camera panel, when the camera is hidden | the Scene panel's |
 | Save as Default Look | Project panel | `paintpalette` |
 | Save Screen Recording | a project that cannot be shown | `square.and.arrow.down` |
+| Arrow, Callout, Text | editor header, annotation blocks | `arrow.up.right`, `text.bubble`, `textformat`; on Windows `\uE72A`, `\uE8BD`, `\uE8D2` |
+| Rectangle, Ellipse, Redaction | Annotate panel, annotation blocks | on Windows `\uE71A`, `\uEA3A`, `\uED1A`, the screenshot editor's |
+| Emoji | Annotate panel, annotation blocks | on Windows `\uE76E` || Bring Forward, Send Back | Annotate panel | `arrow.up`, `arrow.down`; on Windows `\uE74A`, `\uE74B` |
 
 **The one rule:** a button that adds what a panel edits has that panel's symbol, so the rail,
 the timeline row, and the panel's own button show one picture for one thing. A test holds it.
@@ -78,6 +81,7 @@ as well, as the rail's are.
 | Suggest zooms | Zoom panel | U+E794 Effects, the mark a suggested zoom has on its block | `sparkles` | `SuggestZooms` |
 | Remove suggestions | Zoom panel | U+EA39 ErrorBadge, a cross in a ring | `xmark.circle` | `RemoveSuggestions` |
 | Delete scene, zoom, cut, speed change | their panels | U+E74D Delete, a bin | `trash` | `Delete` |
+| Split, Merge, Delete on the selected caption | Captions panel | Split's U+E90C and Delete's bin; Merge U+E71B Link, the caption joined to the next | `scissors`, `arrow.triangle.merge`, `trash` | `SplitScene`, `MergeCaptions`, `Delete` |
 | Reset crop | Screen and Camera panels | U+E777 UpdateRestore, an arrow going round against the clock | `arrow.counterclockwise` | `ResetCrop` |
 | Show scene | Camera panel, when the camera is hidden | the Scene panel's, U+E8B2 Movies | the Scene panel's | `ShowScene` |
 | Save as default look | Project panel | U+E790 Color, a palette | `paintpalette` | `SaveDefaultLook` |

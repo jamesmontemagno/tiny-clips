@@ -29,7 +29,7 @@ public sealed class StudioCloseQuestionsTests
     public void EveryState_AgainstTheRuleWrittenOutAgain()
     {
         var states = EveryState();
-        Assert.Equal(32, states.Length);
+        Assert.Equal(40, states.Length);
 
         foreach (var state in states)
         {
@@ -37,7 +37,8 @@ public sealed class StudioCloseQuestionsTests
                 // What closing asks of itself comes first, however it was asked for.
                 state.Prompt == StudioClosePrompt.ExportRunning ? StudioCloseQuestion.RunningExport
                 : state.Prompt == StudioClosePrompt.ProjectSaveRunning ? StudioCloseQuestion.RunningProjectSave
-                : state.Prompt == StudioClosePrompt.NeverExported ? StudioCloseQuestion.Draft
+                : state.Prompt == StudioClosePrompt.Draft ? StudioCloseQuestion.Draft
+                : state.Prompt == StudioClosePrompt.UnsavedChanges ? StudioCloseQuestion.UnsavedChanges
 
                 // Where closing asks nothing, the close button asks nothing.
                 : state.Request == StudioCloseRequest.CloseButton ? StudioCloseQuestion.None
@@ -51,22 +52,27 @@ public sealed class StudioCloseQuestionsTests
     }
 
     [Fact]
-    public void TheSetting_NeverTakesTheDraftsQuestionAway()
+    public void TheSetting_NeverTakesTheDraftOrUnsavedChangesQuestionAway()
     {
         // The question decides what happens to a recording. Switching the confirmation off
-        // must not let Esc, or the close button, close a recording that was never exported.
-        foreach (var state in EveryState().Where(state => state.Prompt == StudioClosePrompt.NeverExported))
+        // must not let Esc, or the close button, close a draft or a saved project with changes.
+        foreach (var state in EveryState().Where(state => state.Prompt == StudioClosePrompt.Draft))
         {
             Assert.True(state.Question == StudioCloseQuestion.Draft, $"{state}: {state.Question}");
+        }
+
+        foreach (var state in EveryState().Where(state => state.Prompt == StudioClosePrompt.UnsavedChanges))
+        {
+            Assert.True(state.Question == StudioCloseQuestion.UnsavedChanges, $"{state}: {state.Question}");
         }
     }
 
     [Fact]
-    public void Escape_NeverAsksItsOwnQuestion_OfARecordingThatWasNeverExported()
+    public void Escape_NeverAsksItsOwnQuestion_OfADraftOrUnsavedChanges()
     {
         // Its question says that the edits are saved and asks nothing about the recording: asked
-        // there, with the setting on, it would stand where the draft's question has to.
-        foreach (var state in EveryState().Where(state => state.Prompt == StudioClosePrompt.NeverExported))
+        // there, with the setting on, it would stand where the closing question has to.
+        foreach (var state in EveryState().Where(state => state.Prompt is StudioClosePrompt.Draft or StudioClosePrompt.UnsavedChanges))
         {
             Assert.True(state.Question != StudioCloseQuestion.Escape, $"{state}: {state.Question}");
         }
@@ -107,7 +113,8 @@ public sealed class StudioCloseQuestionsTests
             {
                 StudioClosePrompt.ExportRunning => StudioCloseQuestion.RunningExport,
                 StudioClosePrompt.ProjectSaveRunning => StudioCloseQuestion.RunningProjectSave,
-                StudioClosePrompt.NeverExported => StudioCloseQuestion.Draft,
+                StudioClosePrompt.Draft => StudioCloseQuestion.Draft,
+                StudioClosePrompt.UnsavedChanges => StudioCloseQuestion.UnsavedChanges,
                 _ => StudioCloseQuestion.None,
             };
 
@@ -156,8 +163,8 @@ public sealed class StudioCloseQuestionsTests
     [Fact]
     public void Escape_AsksWhetherItWasMeant_InExactlyOneCase()
     {
-        // The project is open, closing asks nothing of itself, which is a project that has been
-        // exported, and the setting is on.
+        // The project is open, closing asks nothing of itself, which is a saved project without
+        // changes, and the setting is on.
         var asked = EveryState().Where(state => state.Question == StudioCloseQuestion.Escape).ToArray();
 
         Assert.Equal(

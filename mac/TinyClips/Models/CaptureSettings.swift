@@ -301,6 +301,8 @@ extension MouseClickOverlayStyle {
 private enum CaptureSettingsDefaultsKey {
     static let videoCodec = "videoCodec"
     static let confirmEditorEscape = "confirmEditorEscape"
+    static let studioExportResolution = "studioExportResolution"
+    static let studioExportQuality = "studioExportQuality"
 }
 
 extension NSColor {
@@ -337,7 +339,7 @@ extension NSColor {
 class CaptureSettings: ObservableObject {
     static let shared = CaptureSettings()
     // Bump when release highlights change, independently of the app version.
-    static let whatsNewContentRevision = 2
+    static let whatsNewContentRevision = 3
     static let lastSeenWhatsNewRevisionKey = "lastSeenWhatsNewRevision"
 
     static func shouldShowWhatsNew(in defaults: UserDefaults = .standard) -> Bool {
@@ -351,7 +353,11 @@ class CaptureSettings: ObservableObject {
 
     static let videoCodecKey = CaptureSettingsDefaultsKey.videoCodec
     static let confirmEditorEscapeKey = CaptureSettingsDefaultsKey.confirmEditorEscape
+    static let studioExportResolutionKey = CaptureSettingsDefaultsKey.studioExportResolution
     static let screenshotEditorNativeSizeKey = "screenshotEditorNativeSize"
+    /// Where the Captions panel keeps the language captions are generated in, as a BCP 47 tag, or
+    /// empty for the system's.
+    static let studioCaptionLanguageKey = "studioCaptionLanguage"
     static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
     private let defaults: UserDefaults
 
@@ -436,6 +442,22 @@ class CaptureSettings: ObservableObject {
     /// The most disk space the Studio projects that cleanup may remove can use before the ones
     /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
     @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
+    @AppStorage(CaptureSettingsDefaultsKey.studioExportResolution) var studioExportResolution: String = StudioExportChoice.default.resolution.rawValue
+    @AppStorage(CaptureSettingsDefaultsKey.studioExportQuality) var studioExportQuality: String = StudioExportChoice.default.quality.rawValue
+
+    /// What the Export popover offers first: the last choice made there.
+    var studioExportChoice: StudioExportChoice {
+        get {
+            StudioExportChoice(
+                resolution: StudioExportResolution(stored: studioExportResolution),
+                quality: StudioExportQuality(stored: studioExportQuality)
+            )
+        }
+        set {
+            studioExportResolution = newValue.resolution.rawValue
+            studioExportQuality = newValue.quality.rawValue
+        }
+    }
     var studioCleanupOptions: StudioCleanupOptions {
         StudioCleanupOptions(retentionDays: studioSourceRetentionDays, sizeCapGigabytes: studioStorageCapGigabytes)
     }
@@ -870,7 +892,8 @@ class CaptureSettings: ObservableObject {
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
-        "studioSourceRetentionDays", "studioStorageCapGigabytes",
+        "studioSourceRetentionDays", "studioStorageCapGigabytes", studioCaptionLanguageKey,
+        studioExportResolutionKey, CaptureSettingsDefaultsKey.studioExportQuality,
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",

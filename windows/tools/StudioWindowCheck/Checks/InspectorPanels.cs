@@ -1,3 +1,4 @@
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -44,7 +45,12 @@ internal sealed partial class WindowChecks
     [
         ("StudioSwatch_", StudioInspectorPanel.Background),
         ("StudioCameraCutout_", StudioInspectorPanel.Camera),
+        ("StudioCameraShape_", StudioInspectorPanel.Camera),
         ("StudioSpeedRate_", StudioInspectorPanel.Speed),
+        ("StudioAnnotationLayer_", StudioInspectorPanel.Annotate),
+        ("StudioAnnotationStyle_", StudioInspectorPanel.Annotate),
+        ("StudioAnnotationEmoji_", StudioInspectorPanel.Annotate),
+        ("StudioCaptions", StudioInspectorPanel.Captions),
     ];
 
     private static Dictionary<string, (StudioInspectorPanel Panel, CropGroup Group)> BuildPlaces()
@@ -66,7 +72,7 @@ internal sealed partial class WindowChecks
             "StudioSceneStartLaterButton", "StudioSceneStartAtPlayheadButton", "StudioDeleteSceneButton");
         Add(StudioInspectorPanel.Background, CropGroup.None,
             "StudioShowBackgroundCheckBox", "StudioSolidSwatches", "StudioGradientSwatches", "StudioPaddingSlider",
-            "StudioBackgroundStyleChoice", "StudioBackgroundPrimaryColorPicker", "StudioBackgroundSecondaryColorPicker",
+            "StudioBackgroundStyleChoice", "StudioBackgroundStyleSolid", "StudioBackgroundStyleGradient", "StudioBackgroundPrimaryColorPicker", "StudioBackgroundSecondaryColorPicker",
             "StudioGradientDirectionSlider");
         Add(StudioInspectorPanel.Screen, CropGroup.None,
             "StudioNoCameraNote", "StudioScreenCornerRadiusSlider", "StudioScreenShadowSlider", "StudioClickRingsCheckBox", "StudioScreenCropGroup",
@@ -76,7 +82,7 @@ internal sealed partial class WindowChecks
             "StudioScreenCropResetButton");
         Add(StudioInspectorPanel.Camera, CropGroup.None,
             "StudioCameraHiddenNote", "StudioShowSceneButton", "StudioCameraSizeSlider", "StudioCameraPositionComboBox", "StudioCameraOffsetXSlider",
-            "StudioCameraOffsetYSlider", "StudioCameraSideComboBox", "StudioCameraShareSlider", "StudioCameraPlacementNote",
+            "StudioCameraOffsetYSlider", "StudioCameraSideComboBox", "StudioCameraSideLeft", "StudioCameraSideRight", "StudioCameraShareSlider", "StudioCameraPlacementNote",
             "StudioCameraShapeComboBox", "StudioCameraCornerRadiusSlider", "StudioCameraMirrorCheckBox", "StudioCameraCutoutChoice",
             "StudioCameraCutoutRemovedNote", "StudioCameraBorderSlider", "StudioCameraShadowSlider", "StudioCameraCropGroup",
             "StudioCameraCroppedText");
@@ -100,6 +106,21 @@ internal sealed partial class WindowChecks
             "StudioSpeedEmptyHint", "StudioSpeedHint", "StudioSpeedRateChoice", "StudioSpeedStartText", "StudioSpeedStartEarlierButton",
             "StudioSpeedStartLaterButton", "StudioSpeedStartAtPlayheadButton", "StudioSpeedEndText", "StudioSpeedEndEarlierButton",
             "StudioSpeedEndLaterButton", "StudioSpeedEndAtPlayheadButton", "StudioSpeedLengthText", "StudioSpeedSilentNote", "StudioDeleteSpeedButton");
+        Add(StudioInspectorPanel.Annotate, CropGroup.None,
+            "StudioAnnotationTools", "StudioAddArrowButton", "StudioAddCalloutButton", "StudioAddTextButton", "StudioAddRectangleButton", "StudioAddEllipseButton", "StudioAddRedactionButton", "StudioAddEmojiButton",
+            "StudioPreviousAnnotationButton", "StudioAnnotationPositionText", "StudioAnnotationDetailText", "StudioNextAnnotationButton",
+            "StudioAnnotationEmptyHint", "StudioAnnotationHint", "StudioAnnotationLayerList", "StudioAnnotationNotDrawnNote", "StudioAnnotationTextBox",
+            "StudioAnnotationEmojiChoice", "StudioAnnotationEmojiTextBox", "StudioAnnotationMoreEmojiButton", "StudioAnnotationMoreEmojiHint", "StudioAnnotationShadowToggle",
+            "StudioAnnotationStyleChoice", "StudioAnnotationCustomNote", "StudioAnnotationFillColorPicker", "StudioAnnotationTextColorPicker", "StudioAnnotationScaleSlider", "StudioAnnotationRotationSlider",
+            "StudioAnnotationRedactStyleChoice", "StudioAnnotationRedactStyleBlur", "StudioAnnotationRedactStylePixelate", "StudioAnnotationRedactStyleSolid",
+            "StudioAnnotationRedactLevelChoice", "StudioAnnotationRedactLevelLight", "StudioAnnotationRedactLevelMedium", "StudioAnnotationRedactLevelHeavy",
+            "StudioAnnotationRedactNote", "StudioAnnotationShapeFillCheckBox",
+            "StudioAnnotationShapeFillColorPicker", "StudioAnnotationShapeFillOpacitySlider", "StudioAnnotationCornerRadiusSlider", "StudioAnnotationWidthSlider", "StudioAnnotationHeightSlider",
+            "StudioAnnotationAdvancedGroup", "StudioAnnotationAttachChoice", "StudioAnnotationAttachScreen", "StudioAnnotationAttachFrame", "StudioAnnotationXSlider", "StudioAnnotationYSlider",
+            "StudioAnnotationOffsetXSlider", "StudioAnnotationOffsetYSlider", "StudioAnnotationStartText", "StudioAnnotationStartEarlierButton",
+            "StudioAnnotationStartLaterButton", "StudioAnnotationStartAtPlayheadButton", "StudioAnnotationEndText", "StudioAnnotationEndEarlierButton",
+            "StudioAnnotationEndLaterButton", "StudioAnnotationEndAtPlayheadButton", "StudioBringAnnotationForwardButton", "StudioSendAnnotationBackButton",
+            "StudioDeleteAnnotationButton");
         Add(StudioInspectorPanel.Audio, CropGroup.None,
             "StudioMuteCheckBox", "StudioVolumeSlider");
         Add(StudioInspectorPanel.Project, CropGroup.None,
@@ -390,11 +411,11 @@ internal sealed partial class WindowChecks
     {
         var named = focused;
         var isCropHeader = focused is ToggleButton { Name: "ExpanderHeader" };
-        if (focused is RadioButton or ListViewItem || isCropHeader)
+        if (focused is ListViewItem || isCropHeader)
         {
             for (var parent = VisualTreeHelper.GetParent(focused); parent is not null; parent = VisualTreeHelper.GetParent(parent))
             {
-                if ((focused is RadioButton && parent is RadioButtons)
+                if ((focused is SegmentedItem && parent is Segmented)
                     || (focused is ListViewItem && parent is ListView && AutomationProperties.GetAutomationId(parent) == InspectorRailId)
                     || (isCropHeader && parent is Expander))
                 {

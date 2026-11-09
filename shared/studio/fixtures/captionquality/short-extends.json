@@ -1,0 +1,59 @@
+{
+  "description": "A short cue lasts a second when there is room, and only as long as it needs when there is less.",
+  "sourceDuration": 60,
+  "cues": [
+    {
+      "id": "cue-1",
+      "start": 1,
+      "end": 1.5,
+      "text": "Hi."
+    },
+    {
+      "id": "cue-5",
+      "start": 5,
+      "end": 5.5,
+      "text": "Tight."
+    },
+    {
+      "id": "cue-5.75",
+      "start": 5.75,
+      "end": 8,
+      "text": "Next."
+    }
+  ],
+  "findings": [
+    {
+      "cue": 0,
+      "kind": "shortDuration",
+      "canFix": true
+    },
+    {
+      "cue": 1,
+      "kind": "shortDuration",
+      "canFix": true
+    }
+  ],
+  "summary": "2 too short",
+  "fixed": [
+    {
+      "start": 1,
+      "end": 2,
+      "text": "Hi.",
+      "wordCount": 0
+    },
+    {
+      "start": 5,
+      "end": 5.701,
+      "text": "Tight.",
+      "wordCount": 0
+    },
+    {
+      "start": 5.75,
+      "end": 8,
+      "text": "Next.",
+      "wordCount": 0
+    }
+  ],
+  "applied": 2,
+  "after": []
+}

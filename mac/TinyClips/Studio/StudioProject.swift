@@ -39,6 +39,30 @@ enum StudioCameraCutout: String, StudioStringEnum {
     static let defaultValue: StudioCameraCutout = .none
 }
 
+enum StudioCaptionSize: String, StudioStringEnum {
+    case small
+    case medium
+    case large
+
+    static let defaultValue: StudioCaptionSize = .medium
+}
+
+enum StudioCaptionPosition: String, StudioStringEnum {
+    case bottom
+    case top
+
+    static let defaultValue: StudioCaptionPosition = .bottom
+}
+
+enum StudioCaptionAppearance: String, StudioStringEnum {
+    case classicOutline
+    case contrastPanel
+    case boldImpact
+    case cleanShadow
+
+    static let defaultValue: StudioCaptionAppearance = .classicOutline
+}
+
 enum StudioLayout: String, StudioStringEnum {
     case screen
     case bubble
@@ -105,6 +129,7 @@ struct StudioProject: Codable, Equatable, Sendable {
     var edits: StudioEdits
     var audio: StudioAudio
     var overlays: StudioOverlays
+    var captions: StudioCaptions
     var exports: [StudioExport]
     var extra: [String: StudioJSONValue]
 
@@ -126,6 +151,7 @@ struct StudioProject: Codable, Equatable, Sendable {
         edits: StudioEdits = StudioEdits(),
         audio: StudioAudio = StudioAudio(),
         overlays: StudioOverlays = StudioOverlays(),
+        captions: StudioCaptions = StudioCaptions(),
         exports: [StudioExport] = [],
         extra: [String: StudioJSONValue] = [:]
     ) {
@@ -146,6 +172,7 @@ struct StudioProject: Codable, Equatable, Sendable {
         self.edits = edits
         self.audio = audio
         self.overlays = overlays
+        self.captions = captions
         self.exports = exports
         self.extra = extra
     }
@@ -179,6 +206,7 @@ struct StudioProject: Codable, Equatable, Sendable {
         edits = try container.decodeIfPresent(StudioEdits.self, forKey: StudioJSONKey("edits")) ?? StudioEdits()
         audio = try container.decodeIfPresent(StudioAudio.self, forKey: StudioJSONKey("audio")) ?? StudioAudio()
         overlays = try container.decodeIfPresent(StudioOverlays.self, forKey: StudioJSONKey("overlays")) ?? StudioOverlays()
+        captions = try container.decodeIfPresent(StudioCaptions.self, forKey: StudioJSONKey("captions")) ?? StudioCaptions()
         exports = try container.decodeCompactArray("exports", default: [])
         extra = try StudioJSON.decodeExtra(from: container, excluding: Self.knownKeys)
     }
@@ -203,13 +231,14 @@ struct StudioProject: Codable, Equatable, Sendable {
         try container.encode(edits, forKey: StudioJSONKey("edits"))
         try container.encode(audio, forKey: StudioJSONKey("audio"))
         try container.encode(overlays, forKey: StudioJSONKey("overlays"))
+        try container.encode(captions, forKey: StudioJSONKey("captions"))
         try container.encode(exports, forKey: StudioJSONKey("exports"))
     }
 
     private static let knownKeys: Set<String> = [
         "schemaVersion", "id", "name", "createdAt", "modifiedAt", "lastOpenedAt", "app",
         "keepSources", "sources", "canvas", "screen", "camera", "scenes", "zooms",
-        "edits", "audio", "overlays", "exports"
+        "edits", "audio", "overlays", "captions", "exports"
     ]
 }
 
@@ -911,11 +940,22 @@ struct StudioAudio: Codable, Equatable, Sendable {
 struct StudioOverlays: Codable, Equatable, Sendable {
     var clicks: StudioClickOverlay
     var branding: Bool
+    /// What is drawn over the picture, bottom first (section 6.10 of the project format).
+    var annotations: [StudioAnnotation]
+    var captions: StudioCaptionOverlay
     var extra: [String: StudioJSONValue]
 
-    init(clicks: StudioClickOverlay = StudioClickOverlay(), branding: Bool = false, extra: [String: StudioJSONValue] = [:]) {
+    init(
+        clicks: StudioClickOverlay = StudioClickOverlay(),
+        branding: Bool = false,
+        annotations: [StudioAnnotation] = [],
+        captions: StudioCaptionOverlay = StudioCaptionOverlay(),
+        extra: [String: StudioJSONValue] = [:]
+    ) {
         self.clicks = clicks
         self.branding = branding
+        self.annotations = annotations
+        self.captions = captions
         self.extra = extra
     }
 
@@ -923,7 +963,9 @@ struct StudioOverlays: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: StudioJSONKey.self)
         clicks = try container.decodeIfPresent(StudioClickOverlay.self, forKey: StudioJSONKey("clicks")) ?? StudioClickOverlay()
         branding = try container.decodeBool("branding", default: false)
-        extra = try StudioJSON.decodeExtra(from: container, excluding: ["clicks", "branding"])
+        annotations = try container.decodeCompactArray("annotations", default: [])
+        captions = try container.decodeIfPresent(StudioCaptionOverlay.self, forKey: StudioJSONKey("captions")) ?? StudioCaptionOverlay()
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["clicks", "branding", "annotations", "captions"])
     }
 
     func encode(to encoder: Encoder) throws {
@@ -931,6 +973,158 @@ struct StudioOverlays: Codable, Equatable, Sendable {
         try StudioJSON.encodeExtra(extra, to: &container)
         try container.encode(clicks, forKey: StudioJSONKey("clicks"))
         try container.encode(branding, forKey: StudioJSONKey("branding"))
+        try container.encode(annotations, forKey: StudioJSONKey("annotations"))
+        try container.encode(captions, forKey: StudioJSONKey("captions"))
+    }
+}
+
+/// How captions are drawn into the video (section 15.4 of the project format).
+struct StudioCaptionOverlay: Codable, Equatable, Sendable {
+    var enabled: Bool
+    var size: StudioCaptionSize
+    var position: StudioCaptionPosition
+    var appearance: StudioCaptionAppearance
+    var extra: [String: StudioJSONValue]
+
+    init(
+        enabled: Bool = false,
+        size: StudioCaptionSize = .medium,
+        position: StudioCaptionPosition = .bottom,
+        appearance: StudioCaptionAppearance = .classicOutline,
+        extra: [String: StudioJSONValue] = [:]
+    ) {
+        self.enabled = enabled
+        self.size = size
+        self.position = position
+        self.appearance = appearance
+        self.extra = extra
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: StudioJSONKey.self)
+        enabled = try container.decodeBool("enabled", default: false)
+        size = try container.decodeEnum("size", default: .medium)
+        position = try container.decodeEnum("position", default: .bottom)
+        appearance = try container.decodeEnum("appearance", default: .classicOutline)
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["enabled", "size", "position", "appearance"])
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: StudioJSONKey.self)
+        try StudioJSON.encodeExtra(extra, to: &container)
+        try container.encode(enabled, forKey: StudioJSONKey("enabled"))
+        try container.encode(size, forKey: StudioJSONKey("size"))
+        try container.encode(position, forKey: StudioJSONKey("position"))
+        try container.encode(appearance, forKey: StudioJSONKey("appearance"))
+    }
+}
+
+// MARK: - Captions
+
+/// The words of a project, in source time (section 15 of the project format).
+struct StudioCaptions: Codable, Equatable, Sendable {
+    /// The language of the cues as a BCP 47 tag, or nil when that is not known.
+    var language: String?
+    var cues: [StudioCaptionCue]
+    var extra: [String: StudioJSONValue]
+
+    init(language: String? = nil, cues: [StudioCaptionCue] = [], extra: [String: StudioJSONValue] = [:]) {
+        self.language = language
+        self.cues = cues
+        self.extra = extra
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: StudioJSONKey.self)
+        language = try container.decodeNullableString("language", default: nil)
+        cues = try container.decodeCompactArray("cues", default: [])
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["language", "cues"])
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: StudioJSONKey.self)
+        try StudioJSON.encodeExtra(extra, to: &container)
+        // Left out where it is not known.
+        try container.encodeIfPresent(language, forKey: StudioJSONKey("language"))
+        try container.encode(cues, forKey: StudioJSONKey("cues"))
+    }
+}
+
+struct StudioCaptionCue: Codable, Equatable, Sendable {
+    var id: String
+    var start: Double
+    var end: Double
+    var text: String
+
+    /// When each word of `text` is said. Whoever changes the text empties this, because the words
+    /// no longer match it.
+    var words: [StudioCaptionWord]
+    var extra: [String: StudioJSONValue]
+
+    init(
+        id: String = "",
+        start: Double = 0,
+        end: Double = 0,
+        text: String = "",
+        words: [StudioCaptionWord] = [],
+        extra: [String: StudioJSONValue] = [:]
+    ) {
+        self.id = id
+        self.start = start
+        self.end = end
+        self.text = text
+        self.words = words
+        self.extra = extra
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: StudioJSONKey.self)
+        id = try container.decodeString("id", default: "")
+        start = try container.decodeDouble("start", default: 0)
+        end = try container.decodeDouble("end", default: 0)
+        text = try container.decodeString("text", default: "")
+        words = try container.decodeCompactArray("words", default: [])
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["id", "start", "end", "text", "words"])
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: StudioJSONKey.self)
+        try StudioJSON.encodeExtra(extra, to: &container)
+        try container.encode(id, forKey: StudioJSONKey("id"))
+        try container.encode(start, forKey: StudioJSONKey("start"))
+        try container.encode(end, forKey: StudioJSONKey("end"))
+        try container.encode(text, forKey: StudioJSONKey("text"))
+        try container.encode(words, forKey: StudioJSONKey("words"))
+    }
+}
+
+struct StudioCaptionWord: Codable, Equatable, Sendable {
+    var start: Double
+    var end: Double
+    var text: String
+    var extra: [String: StudioJSONValue]
+
+    init(start: Double = 0, end: Double = 0, text: String = "", extra: [String: StudioJSONValue] = [:]) {
+        self.start = start
+        self.end = end
+        self.text = text
+        self.extra = extra
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: StudioJSONKey.self)
+        start = try container.decodeDouble("start", default: 0)
+        end = try container.decodeDouble("end", default: 0)
+        text = try container.decodeString("text", default: "")
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["start", "end", "text"])
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: StudioJSONKey.self)
+        try StudioJSON.encodeExtra(extra, to: &container)
+        try container.encode(start, forKey: StudioJSONKey("start"))
+        try container.encode(end, forKey: StudioJSONKey("end"))
+        try container.encode(text, forKey: StudioJSONKey("text"))
     }
 }
 

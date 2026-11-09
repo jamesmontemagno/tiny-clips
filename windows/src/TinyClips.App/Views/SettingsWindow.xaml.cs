@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.Settings.Sections;
+using TinyClips.App.ViewModels;
 using TinyClips.App.ViewModels.ClipsLibrary;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
@@ -15,6 +16,7 @@ using TinyClips.Core.Studio;
 using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App;
 
@@ -62,7 +64,10 @@ public sealed partial class SettingsWindow : Window
                 App.Services.GetRequiredService<IUploadcareCredentialStore>(),
                 App.Services.GetRequiredService<IStudioProjectStore>(),
                 App.Services.GetRequiredService<StudioProjectCleanupService>(),
-                App.Services.GetRequiredService<StudioProjectTracker>());
+                App.Services.GetRequiredService<StudioProjectTracker>())
+            {
+                StudioCaptionModelStore = App.Services.GetRequiredService<StudioCaptionModelStore>(),
+            };
         }
 
         using (_openTrace?.Measure(WindowOpenPhase.Xaml))
@@ -213,6 +218,8 @@ public sealed partial class SettingsWindow : Window
         {
             SettingsSectionKind.General => CreateGeneralSection(),
             SettingsSectionKind.Uploadcare => new UploadcareSettingsSection(ViewModel),
+            SettingsSectionKind.AgentControl => new AgentControlSettingsSection(
+                new AgentControlSettingsViewModel(((App)Application.Current).AgentControl)),
             SettingsSectionKind.Analytics => new AnalyticsSettingsSection(
                 ViewModel,
                 WinRT.Interop.WindowNative.GetWindowHandle(this)),

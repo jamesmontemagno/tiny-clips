@@ -442,15 +442,19 @@ internal sealed partial class WindowChecks
         // panels after it, in the order of the rail: Show background, Click highlights, the
         // three buttons that add a zoom, a cut and a speed change, and Mute with the volume
         // after it. And the timeline:
-        // its row from left to right, then the four lanes from top to bottom, each one stop,
+        // its row from left to right, then the lanes that show from top to bottom, each one stop,
         // and the trim bar.
+        string[] timeline =
+        [
+            "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
+            .. LanesShown(editor), "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
+        ];
         string[] wanted =
         [
             InspectorRailId, "StudioPreviousSceneButton", "StudioNextSceneButton", "StudioLayoutChoice", "StudioSceneSectionSplitButton", "StudioSceneEntryChoice", "StudioSceneMoveSlider",
             "StudioSceneStartEarlierButton", "StudioSceneStartLaterButton", "StudioSceneStartAtPlayheadButton", "StudioDeleteSceneButton",
             "StudioShowBackgroundCheckBox", "StudioClickRingsCheckBox", "StudioZoomSectionAddButton", "StudioCutSectionAddButton", "StudioSpeedSectionAddButton", "StudioMuteCheckBox", "StudioVolumeSlider",
-            "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
-            SceneLane, ZoomLane, CutLane, SpeedLane, "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
+            .. timeline,
         ];
         var places = wanted.Select(id => order.IndexOf(id)).ToArray();
         var missing = wanted.Where((_, index) => places[index] < 0).ToArray();
@@ -458,7 +462,7 @@ internal sealed partial class WindowChecks
 
         // The timeline's stops come one right after the other, with nothing between them.
         var row = order.IndexOf("StudioPlayPauseButton");
-        var together = row >= 0 && order.Skip(row).Take(16).SequenceEqual(wanted[^16..]);
+        var together = row >= 0 && order.Skip(row).Take(timeline.Length).SequenceEqual(timeline);
         var blocks = order.Where(id => id.StartsWith("StudioScene_", StringComparison.Ordinal) || id.StartsWith("StudioCut_", StringComparison.Ordinal) || id.StartsWith("StudioZoom_", StringComparison.Ordinal) || id.StartsWith("StudioSpeed_", StringComparison.Ordinal)
             || id.StartsWith(InspectorRailId + "_", StringComparison.Ordinal)).ToArray();
         var rails = order.Count(id => id == InspectorRailId);

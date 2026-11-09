@@ -4,14 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-### Added
-- Any video can now be opened in Studio from the video trimmer or the Clips Manager (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
-
-### Fixed
-- macOS Studio window recordings now save cursor and click events for click-driven zoom suggestions, whether started normally or through Agent Control.
-- Imported Studio videos respect rotation metadata, retain edits when their source is archived or temporarily offline, and reopen linked projects rather than creating flattened duplicates. The trimmer protects pending edits during handoff; portable project saving is explicitly unavailable for external videos.
-- Windows CI now reports both required architecture checks for changes that do not need Windows builds, avoiding permanently pending checks without allocating Windows runners.
-
 ### Changed
 - The macOS screenshot editor can now change the color, fill, and stroke width of a selected rectangle, circle, arrow, line, or pencil stroke, with undo. Stroke width is a 1–40 px slider measured in image pixels, like Windows; the starting width scales with the capture so large screenshots keep their previous look.
 - macOS screenshot rectangles, circles, lines, and arrows can be **Hand-drawn**, with a **Roughness** slider. Each annotation keeps its own wobble as it moves or redraws, and arrows keep their taper.
@@ -22,6 +14,77 @@ All notable changes to this project will be documented in this file.
 - Rectangles and circles in the macOS screenshot editor have a **Stroke position** option to draw the border inside, centered on, or outside the shape's edge. Centered is the default, as before.
 - Translucent arrows and lines in the macOS screenshot editor no longer draw darker where the shaft meets the head or a cap.
 - macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrow.
+
+## v2.1.0.1-mac - 2026-11-08
+
+### Fixed
+- The Release Hub suggests the next fourth component for macOS release tags such as `v2.1.0.1-mac`, instead of changing the app version's patch component. Empty Unreleased notes block preparation with an actionable message; failed note validation and dry runs leave the changelog unchanged in both tagging scripts.
+
+### Changed
+- The What's New window now introduces 2.1 on macOS: Agent Control first, with a diagram of what it lets agents use, a reminder that it is off until you turn it on, and a button to its settings. Studio follows with its existing switch, which keeps your saved choice, then what's new in Studio and more to try. It appears once for returning users.
+
+## v2.1.0.0-mac - 2026-11-08
+
+### Added
+- Every Studio annotation on macOS and Windows has selection-based resize and rotation handles, plus a keyboard-accessible Rotation slider. Emoji sizing uses one Size slider, preserving existing projects' appearance. Agents use `scale`, area dimensions, and `rotation` through `studio.project.edit`.
+- Studio annotations can now be rectangles, ellipses, and redactions, on macOS and Windows. Rectangles and ellipses are outlines in the annotation's color, with rounded corners and an optional see-through fill; a redaction hides an area with a blur, pixelation, or a solid color, in three strengths. Add them from the Annotate panel (H, E, and B), move and resize them in the preview, and attach them to the recording so they stay on what they cover through zooms. Agents add them through `overlays.annotations` in `studio.project.edit`.
+- Studio annotations can be emoji, on macOS and Windows: pick from a grid of common emoji, open the system emoji picker, or type any emoji, with a Size slider and an optional drop shadow. Add one with M. Agents use the `emoji` kind with the emoji in `text`.
+- Studio has more keyboard shortcuts on both platforms: Shift+Left and Shift+Right move the playhead a second, Home and End go to the start and end of the video, and Ctrl+D (Command-D on the Mac) duplicates the selected annotation.
+- macOS Studio's Captions panel is redesigned: a clearer header with the caption count and language, picture tiles for the four caption looks, segmented Size and Position controls, and a searchable transcript list. The caption at the playhead is highlighted and the list follows it; rows show the problems the checks found. A selected caption opens in a card above the list, with Previous and Next to move between captions, to edit its text, nudge its start and end or set them at the playhead, split it at the playhead (or in the middle, between words, when the playhead is not inside it, such as right after selecting it), merge it with the next one, or delete it, each as one undo step. Agents do the same by replacing `captions.cues` with `studio.project.edit`.
+- Studio's Auto Fix now fixes captions that are too short or too fast to read even when they run back to back, as generated captions do: it borrows spare time from the captions around them, or joins one to its neighbor when there is none to borrow. The Checks card says which problems need a manual edit, **Next Problem** opens each one, and Auto Fix says how many problems are left. Agents get the same fixes from `studio.captions.fix`.
+- macOS Studio tells you when generating captions hears no speech, keeping the captions as they were and offering to try another language, and sends a notification when generating ends while Studio is in the background. Agents get an error from `studio.captions.generate` instead of an empty set of captions.
+- Studio can draw captions on the video: in the preview and in the picture of an export, in four looks, three sizes, and at the top or bottom. They are drawn over everything else and stay put during a zoom. It is off by default. Agents can set it through `overlays.captions` in `studio.project.edit`.
+- Studio can generate captions from a recording's sound, on macOS 26 or later where the Mac supports it: **Generate** in the Captions panel, with a choice of language. It uses Apple's built-in speech recognition and listens to the microphone track when there is one. The sound stays on the Mac, it can be stopped, and Undo brings back what was there. Other Macs can still import, edit, export, and draw captions. Agents can use `studio.captions.models` and `studio.captions.generate`.
+- Studio projects can hold captions, shared with the Windows app: cues in source time, a reader and writer for SRT and WebVTT, and burn-in style settings. Agents can read and change them with `studio.project.get` and `studio.project.edit`.
+- Studio has a Captions panel: import an SRT or WebVTT file, timed to the recording or to the edited video; correct or delete a caption; check for readability problems and fix what is safe to fix; and export the video's captions as SRT or WebVTT. Agents can do the same with `studio.captions.import`, `studio.captions.check`, `studio.captions.fix`, and `studio.captions.export`.
+
+### Changed
+- Agent Control on macOS does not require a supporter tip. The shared agent API no longer lists an unused Pro-required error.
+- Closing Studio asks a clearer question, on macOS and Windows. A recording that has not been saved as a project asks **Keep this recording?** with Keep as Draft, Delete, and Cancel. A project saved to a folder closes without a question unless it has changes, and then asks **Save changes?** with Save, Don't Save (which puts back the project as it was last saved), and Cancel. Export is no longer offered when closing.
+- Studio's short choices, such as layout, transition, zoom focus, camera shape and background, and an annotation's size and attachment, are now segmented controls like the Captions panel's, on macOS and Windows. The rectangle annotation's key is now H, for a highlight box.
+- Studio **Export** on macOS now opens a popover to choose the resolution (Source, 4K, 1440p, 1080p, 720p or 480p) and quality (Best, High, Standard or Small File), and shows the pixel size and estimated file size they come to. It starts at 1080p and High, and offers your last choice next time. A video keeps its canvas's shape and is never scaled up. Source exports the canvas at its own size, even past 4K; above 4K the Mac checks its encoder first, uses H.264 where HEVC cannot make the size, and otherwise says to choose 4K or smaller. Exports now use an explicit bitrate instead of the system's "highest quality" preset, so file sizes follow the chosen quality; above 4K the bitrate grows with the pixel count instead of stopping at the 4K ceiling.
+- Agents can pass `resolution` and `quality` to `studio.export`, list what is on offer with `studio.export.options`, and read or set the remembered choice as the `studioExportResolution` and `studioExportQuality` settings. Omitted or null values now use that choice rather than the largest size, and the result reports the video `codec` written.
+
+### Fixed
+- macOS Studio annotations appear immediately on the current preview frame when added, without needing to step the timeline forward.
+- macOS menu bar dropdown icons and recent-capture thumbnails remain visible on macOS 27, which hides menu images by default.
+- The menu bar menu now offers **Turn On Agent Control** when it is off, instead of hiding the Agent Control items until it is turned on in Settings. The first time it is enabled from the menu, Settings opens to the Agent Control setup instructions.
+- macOS screenshot, video, GIF, and Studio editors now use consistent window activation to come forward more reliably after capture or when opened from the Clips Library, without a delayed retry reopening a closed window or taking focus back from another app.
+- macOS Studio caption generation now measures speech progress from finalized audio, including silence, instead of transcript timestamps. Preparation and caption creation show an activity indicator, and late updates cannot send progress backward. Background completion uses the normal macOS notification, respecting notification settings without showing a custom popup.
+- macOS Studio captions: the Captions panel no longer re-checks every caption on each frame during playback; generating captions streams the sound to disk instead of holding it all in memory; long captions with accented letters keep their words through Auto Fix; generated captions get lowercase ids; and a caption being typed is kept when generation or an agent edit lands. Agent `studio.captions.import` refuses an unknown `timing`, and `studio.captions.generate` keeps unsaved edits in an open editor.
+- Overlapping macOS screenshot redactions preserve the stronger level in preview and export, including while drawing a new redaction.
+- Resolved macOS Swift concurrency warnings in webcam composition, recent-capture thumbnails, and automation contract tests.
+- macOS Studio window recordings now save cursor and click events for click-driven zoom suggestions, whether started normally or through Agent Control.
+- Imported Studio videos respect rotation metadata, retain edits when their source is archived or temporarily offline, and reopen linked projects rather than creating flattened duplicates. The trimmer protects pending edits during handoff; portable project saving is explicitly unavailable for external videos.
+- Windows CI now reports both required architecture checks for changes that do not need Windows builds, avoiding permanently pending checks without allocating Windows runners.
+- The agent CLI accepts relative pairing configuration paths and falls back between macOS app endpoints. Studio automation no longer interrupts an active edit, and pending sensitive-action approvals close when an agent disconnects.
+- Revoking an agent cancels its pending approvals; macOS no longer approves requests with an accidental Return, and the CLI verifies Windows pipe ownership before sending a token.
+- GIF trim and frame export select the correct frames at fractional boundaries. CLI and MCP media exports support longer, configurable request deadlines.
+
+### Added
+- Studio can add arrows, callouts, and text over a video, from the tools in the new Annotate panel or with A, C, and T. Drag one on the preview to move it, or by a handle to move its tip, tail, or point, and it settles on the canvas's center lines. The panel sets their text, a style to start from, exact colors, a size slider, and drawing order, with what is attached to, exact position, and timing under Advanced, and a lane on the timeline moves and resizes them. A screen annotation follows zooms and crops; a frame annotation stays where it is. Agents edit the same list through `overlays.annotations` in `studio.project.edit`.
+- The Studio timeline shows a lane only when it has something on it, including the existing scene, zoom, cut, and speed lanes, so a new project starts with just the trim bar. The buttons, keys, and inspector add the first of each.
+- macOS Settings → General now shows system notification permission, with **Enable Notifications** or **Open Notification Settings** actions separate from the after-save preference. Agent Control exposes notification status and permission/settings actions without bypassing macOS permission or delivery choices.
+- Agent Control settings now show both plugin install paths and a separate CLI-only setup with `dnx` and global tool commands on macOS and Windows.
+- Agent permissions are now yours to choose: the pairing prompt lists every scope with the agent's request pre-checked, so you can remove or add permissions before approving, and each paired agent has a **Permissions** control in Settings → Agent Control that applies changes immediately without re-pairing. Sensitive scopes still ask every time.
+- Moved the portable Agent Plugin to the repository root so VS Code can install it directly from the repository URL without a manual clone or marketplace; updated installation guidance, CI, and release packaging.
+- Any video can now be opened in Studio from the video trimmer or the Clips Manager (when Studio is on) to add zooms, backgrounds, cuts, and speed changes. Camera layouts and cursor-based auto-zoom are unavailable for videos without Studio data.
+- Agents can trim videos and GIFs (`editor.trim`, with optional audio removal) and save single frames (`editor.saveFrame`) without opening a trimmer; results are new library items and the source is unchanged. Stale Studio edits now return a distinct `conflict` error instead of `busy`.
+- The MCP server now uses the official C# SDK for stdio transport, lifecycle, protocol negotiation, and cancellation while preserving contract-driven tools and app permissions.
+- Added cross-platform agent CLI CI, isolated NuGet/dnx MCP smoke tests, and a dedicated `agent-v*` NuGet Trusted Publishing release workflow; shared automation changes now trigger both app builds.
+- The Release Hub now tracks Agent package versions, tags, releases, and workflows, and can publish a confirmed version-matched `agent-v*` tag to trigger NuGet Trusted Publishing.
+- Added the `tinyclips` [Agent Plugin](https://agent-plugins.org/), bundling the MCP server and agent Skills in one installable package.
+- MCP setup uses a portable `dotnet dnx` launch with quiet restore to keep first-run NuGet messages off the protocol stream.
+- Agent Control settings and the in-app Guide recommend the Agent Plugin with copyable installation and pairing steps; manual MCP setup remains available for agents without plugin support.
+- Added a shared .NET 10 agent CLI and stdio MCP server, packaged as the `TinyClips` NuGet tool for `dnx`, plus Skills for pairing, capture, recording demos, and library workflows on macOS and Windows.
+- Agents can discover displays and windows, capture explicit screen regions or windows, run OCR without a picker, and annotate screenshots through structured commands without opening the editor. Annotated output is saved as a new capture; the source remains unchanged.
+- Agents can start targeted video/GIF recordings and scrolling screenshots without pickers; recordings save without opening a trimmer, and scrolling is controlled by the agent's own UI tools.
+- Agents can list and inspect Studio projects, apply revision-checked edits to the look and timeline (undoable in an open editor), request zoom suggestions, and export a new MP4 into the configured video folder without overwriting existing files.
+- macOS adds opt-in **Agent Control** (Settings → Agent Control, off by default) so AI agents and scripts on your Mac can drive TinyClips over a private local socket: screenshots, OCR, video and GIF recording, editors, the clips library, and selected settings. Each agent pairs once with your approval and only gets the permissions you grant. Deleting, uploading, and discarding always ask first, every request is written to a local audit log, and you can revoke agents or turn it off from Settings or the menu bar.
+
+### Changed
+- macOS screenshot editor's Redact tool now applies a real blur from your screenshot instead of a gray checkerboard, with **Light**, **Medium**, and **Heavy** levels plus **Solid** black. The preview matches copied and exported images. Medium and Heavy discard detail rather than only softening it, but Light can stay readable; use Solid for passwords, keys, and other secrets. Agent `redact` annotations follow the same levels, and `pixelate` now produces real blocks.
+- Contributor instructions now require new and changed app capabilities to include agent API coverage on supported platforms.
 - Upgraded GitHub Agentic Workflows to v1.0.1 and refreshed the agent and routing skill. The weekly parity workflow still runs on Sundays around 09:00 with the Copilot auto model and a five-issue limit.
 
 ## v2.0.0-mac - 2026-10-31

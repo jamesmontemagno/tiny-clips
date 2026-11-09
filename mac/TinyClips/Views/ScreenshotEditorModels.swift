@@ -376,6 +376,7 @@ struct ScreenshotAnnotation: Identifiable {
     var textBoxStyle: TextBoxStyle = .plain
     var redactionBlurPreset: RedactionBlurPreset = .medium
     var isOpaqueRedaction = false
+    var isPixelatedRedaction = false
     var arrow: ArrowShapeOptions = .classic
     var startCap: StrokeCap = .round
     var endCap: StrokeCap = .round
@@ -399,13 +400,33 @@ struct ScreenshotAnnotation: Identifiable {
     var isRotated: Bool {
         tool.storesRotation && abs(rotation) > 0.0001
     }
+
+    var redactionStrength: RedactionStrength {
+        get { isOpaqueRedaction ? .solid : RedactionStrength(blurPreset: redactionBlurPreset) }
+        set {
+            isOpaqueRedaction = newValue == .solid
+            if let preset = newValue.blurPreset {
+                redactionBlurPreset = preset
+            }
+        }
+    }
 }
 
 extension Array where Element == ScreenshotAnnotation {
-    /// Indices in back-to-front drawing order: opaque redactions always render above every
-    /// other annotation. Drawing, export, and hit-testing (reversed) must all use this order.
+    /// Stronger redactions occupy later redaction slots; other annotation slots stay unchanged.
+    /// Opaque redactions stay on top. Preview, export, and hit-testing share this order.
     var drawOrderIndices: [Int] {
-        indices.filter { !self[$0].isOpaqueRedaction } + indices.filter { self[$0].isOpaqueRedaction }
+        var order = indices.filter { !self[$0].isOpaqueRedaction }
+        let redactionSlots = order.indices.filter { self[order[$0]].tool == .blur }
+        let redactions = redactionSlots.map { order[$0] }.sorted {
+            let lhs = self[$0].redactionBlurPreset.drawingPriority
+            let rhs = self[$1].redactionBlurPreset.drawingPriority
+            return lhs == rhs ? $0 < $1 : lhs < rhs
+        }
+        for (slot, index) in zip(redactionSlots, redactions) {
+            order[slot] = index
+        }
+        return order + indices.filter { self[$0].isOpaqueRedaction }
     }
 }
 
@@ -565,6 +586,14 @@ enum RedactionBlurPreset: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
+    var drawingPriority: Int {
+        switch self {
+        case .light: return 0
+        case .medium: return 1
+        case .heavy: return 2
+        }
+    }
+
     var label: String {
         switch self {
         case .light: return "Light"
@@ -573,43 +602,62 @@ enum RedactionBlurPreset: String, CaseIterable, Identifiable {
         }
     }
 
-    var previewBlockSize: CGFloat {
+    /// Size, in image pixels, of the grid that discards detail. It is also the blur's standard
+    /// deviation. It follows the display density and grows with tight boxes around large text.
+    func cellSize(forRegion regionSize: CGSize, pixelDensity: CGFloat) -> CGFloat {
+        let tuning: (base: CGFloat, regionFraction: CGFloat, maximum: CGFloat)
         switch self {
-        case .light: return 8
-        case .medium: return 10
-        case .heavy: return 14
+        case .light: tuning = (2, 0.08, 4)
+        case .medium: tuning = (5, 0.2, 10)
+        case .heavy: tuning = (10, 0.4, 20)
+        }
+        let density = max(pixelDensity, 1)
+        let regionCell = min(tuning.regionFraction * min(regionSize.width, regionSize.height), tuning.maximum * density)
+        return max(tuning.base * density, regionCell)
+    }
+}
+
+/// The levels offered by the Redact tool: three blur levels plus a solid black cover.
+enum RedactionStrength: String, CaseIterable, Identifiable {
+    case light
+    case medium
+    case heavy
+    case solid
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .light: return "Light"
+        case .medium: return "Medium"
+        case .heavy: return "Heavy"
+        case .solid: return "Solid"
         }
     }
 
-    var exportBlockSize: CGFloat {
+    var guidance: String {
         switch self {
-        case .light: return 10
-        case .medium: return 12
-        case .heavy: return 16
+        case .light: return "Softens detail. Text may stay readable, so don't use it for secrets."
+        case .medium: return "Hides normal-sized text. Good for names and everyday details."
+        case .heavy: return "Leaves only soft color. Good for large text and private details."
+        case .solid: return "Covers the area in black. Use it for passwords, keys, and other secrets."
         }
     }
 
-    var baseBrightness: Double {
+    var blurPreset: RedactionBlurPreset? {
         switch self {
-        case .light: return 0.34
-        case .medium: return 0.29
-        case .heavy: return 0.24
+        case .light: return .light
+        case .medium: return .medium
+        case .heavy: return .heavy
+        case .solid: return nil
         }
     }
 
-    var contrastStep: Double {
-        switch self {
-        case .light: return 0.08
-        case .medium: return 0.12
-        case .heavy: return 0.16
-        }
-    }
-
-    var cycleLength: Int {
-        switch self {
-        case .light: return 2
-        case .medium: return 3
-        case .heavy: return 4
+    init(blurPreset: RedactionBlurPreset) {
+        switch blurPreset {
+        case .light: self = .light
+        case .medium: self = .medium
+        case .heavy: self = .heavy
         }
     }
 }
@@ -1230,67 +1278,18 @@ let annotationColorPresets: [AnnotationColorPreset] = [
     AnnotationColorPreset(id: "brown", name: "Brown", color: Color(red: 0.60, green: 0.40, blue: 0.24)),
 ]
 
+/// Whether two colors are the same in 8 bits of sRGB, which is what a saved color keeps of them.
 func annotationColorsEqual(_ lhs: Color, _ rhs: Color) -> Bool {
-    guard let left = NSColor(lhs).usingColorSpace(.deviceRGB),
-          let right = NSColor(rhs).usingColorSpace(.deviceRGB) else {
+    guard let left = NSColor(lhs).usingColorSpace(.sRGB),
+          let right = NSColor(rhs).usingColorSpace(.sRGB) else {
         return false
     }
 
-    var lr: CGFloat = 0, lg: CGFloat = 0, lb: CGFloat = 0, la: CGFloat = 0
-    var rr: CGFloat = 0, rg: CGFloat = 0, rb: CGFloat = 0, ra: CGFloat = 0
-    left.getRed(&lr, green: &lg, blue: &lb, alpha: &la)
-    right.getRed(&rr, green: &rg, blue: &rb, alpha: &ra)
-
-    return abs(lr - rr) < 0.0001 &&
-        abs(lg - rg) < 0.0001 &&
-        abs(lb - rb) < 0.0001 &&
-        abs(la - ra) < 0.0001
-}
-
-private func redactionBrightness(for row: Int, column: Int, preset: RedactionBlurPreset) -> Double {
-    let phase = Double((row + column) % preset.cycleLength)
-    return min(0.82, preset.baseBrightness + phase * preset.contrastStep)
-}
-
-func drawCheckerboardRedaction(in context: GraphicsContext, rect: CGRect, preset: RedactionBlurPreset) {
-    let blockSize = preset.previewBlockSize
-    let cols = max(1, Int(ceil(rect.width / blockSize)))
-    let rows = max(1, Int(ceil(rect.height / blockSize)))
-
-    for row in 0..<rows {
-        for col in 0..<cols {
-            let blockRect = CGRect(
-                x: rect.minX + CGFloat(col) * blockSize,
-                y: rect.minY + CGFloat(row) * blockSize,
-                width: min(blockSize, rect.maxX - (rect.minX + CGFloat(col) * blockSize)),
-                height: min(blockSize, rect.maxY - (rect.minY + CGFloat(row) * blockSize))
-            )
-            guard blockRect.width > 0, blockRect.height > 0 else { continue }
-            let brightness = redactionBrightness(for: row, column: col, preset: preset)
-            context.fill(Path(blockRect), with: .color(Color(white: brightness, opacity: 1.0)))
-        }
+    func bytes(_ color: NSColor) -> [Int] {
+        [color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent]
+            .map { Int(($0 * 255).rounded()) }
     }
-}
-
-func drawCheckerboardRedaction(in context: CGContext, rect: CGRect, preset: RedactionBlurPreset) {
-    let blockSize = preset.exportBlockSize
-    let cols = max(1, Int(ceil(rect.width / blockSize)))
-    let rows = max(1, Int(ceil(rect.height / blockSize)))
-
-    for row in 0..<rows {
-        for col in 0..<cols {
-            let blockRect = CGRect(
-                x: rect.minX + CGFloat(col) * blockSize,
-                y: rect.minY + CGFloat(row) * blockSize,
-                width: min(blockSize, rect.maxX - (rect.minX + CGFloat(col) * blockSize)),
-                height: min(blockSize, rect.maxY - (rect.minY + CGFloat(row) * blockSize))
-            )
-            guard blockRect.width > 0, blockRect.height > 0 else { continue }
-            let brightness = redactionBrightness(for: row, column: col, preset: preset)
-            context.setFillColor(CGColor(gray: brightness, alpha: 1.0))
-            context.fill(blockRect)
-        }
-    }
+    return bytes(left) == bytes(right)
 }
 
 /// The arrow's shape, which stays in sync with the bend and size sliders.

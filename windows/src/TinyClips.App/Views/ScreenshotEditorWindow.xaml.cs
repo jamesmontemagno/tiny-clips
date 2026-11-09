@@ -861,7 +861,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         }
     }
 
-    private static async Task EncodeBitmapToFileAsync(
+    internal static async Task EncodeBitmapToFileAsync(
         string path, string temporaryPath, SoftwareBitmap bitmap, double quality, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();

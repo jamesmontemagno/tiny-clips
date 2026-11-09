@@ -95,8 +95,8 @@ function Build-TagMessage {
         }
     }
 
-    if (-not ($body | Where-Object { $_ -match '^.+:\s*$' -or $_ -match '^\-\s+' })) {
-        throw "Release notes for $TagVersion are missing after changelog update."
+    if (-not ($body | Where-Object { $_ -match '^\-\s+' })) {
+        throw "Unreleased contains no release notes. Add bullet points before preparing $TagVersion."
     }
 
     $messageLines = New-Object System.Collections.Generic.List[string]

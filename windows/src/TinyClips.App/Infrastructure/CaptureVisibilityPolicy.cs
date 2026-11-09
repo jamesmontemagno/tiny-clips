@@ -4,6 +4,10 @@ internal sealed class CaptureVisibilityPolicy(Action<nint, bool> setExcluded)
 {
     private readonly Dictionary<nint, bool> _windows = [];
 
+    // Last affinity successfully applied per window. Re-applying an unchanged affinity makes DWM
+    // re-render the window; on a just-hidden backdrop window that leaves a stale white surface.
+    private readonly Dictionary<nint, bool> _applied = [];
+
     public bool IncludeTinyClips { get; private set; }
 
     public void Register(nint hwnd, bool alwaysExcluded = false)
@@ -12,11 +16,15 @@ internal sealed class CaptureVisibilityPolicy(Action<nint, bool> setExcluded)
         // Private overlays apply exclusion themselves before showing, with fail-closed handling.
         if (!alwaysExcluded)
         {
-            setExcluded(hwnd, !IncludeTinyClips);
+            Apply(hwnd, !IncludeTinyClips);
         }
     }
 
-    public void Unregister(nint hwnd) => _windows.Remove(hwnd);
+    public void Unregister(nint hwnd)
+    {
+        _windows.Remove(hwnd);
+        _applied.Remove(hwnd);
+    }
 
     public bool CanSelectWindow(bool isOwnProcess, nint hwnd, nint pickerHwnd) =>
         hwnd != pickerHwnd
@@ -33,7 +41,20 @@ internal sealed class CaptureVisibilityPolicy(Action<nint, bool> setExcluded)
         IncludeTinyClips = includeTinyClips;
         foreach (var (hwnd, alwaysExcluded) in _windows)
         {
-            setExcluded(hwnd, alwaysExcluded || !includeTinyClips);
+            Apply(hwnd, alwaysExcluded || !includeTinyClips);
         }
+    }
+
+    private void Apply(nint hwnd, bool excluded)
+    {
+        if (_applied.TryGetValue(hwnd, out var current) && current == excluded)
+        {
+            return;
+        }
+
+        // Forget the state first so a failed call is retried on the next capture.
+        _applied.Remove(hwnd);
+        setExcluded(hwnd, excluded);
+        _applied[hwnd] = excluded;
     }
 }

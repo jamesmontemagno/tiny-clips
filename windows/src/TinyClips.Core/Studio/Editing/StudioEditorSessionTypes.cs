@@ -25,8 +25,14 @@ public enum StudioClosePrompt
     /// <summary>The project is being saved as a folder: keep saving, or stop and close.</summary>
     ProjectSaveRunning,
 
-    /// <summary>The project was never exported: export it, keep it as a draft, or delete it.</summary>
-    NeverExported,
+    /// <summary>The project has no saved project folder: keep it as a draft, or delete it.</summary>
+    Draft,
+
+    /// <summary>
+    /// The project was saved as a folder and has changed since: save the folder, discard the
+    /// changes, or keep editing.
+    /// </summary>
+    UnsavedChanges,
 }
 
 /// <summary>How <see cref="StudioEditorSession.ExportAsync"/> ended.</summary>
@@ -132,7 +138,10 @@ public enum StudioEditorChanges
     /// <summary>How far the save of the project as a folder is. That one starts or ends changes everything.</summary>
     ProjectFolder = 256,
 
-    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording | Inspector | ProjectFolder,
+    /// <summary>Whether captions are being generated, and how far that is.</summary>
+    Captions = 512,
+
+    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording | Inspector | ProjectFolder | Captions,
 }
 
 public sealed class StudioEditorChangedEventArgs(StudioEditorChanges changes) : EventArgs

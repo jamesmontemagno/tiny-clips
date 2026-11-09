@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreGraphics
 import CoreImage
+import CoreText
 import Foundation
 import ImageIO
 import Vision
@@ -65,6 +66,8 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
         case border
         case background
         case branding
+        case annotation
+        case caption
     }
 
     static let shared = StudioCompositorImageCache()
@@ -75,14 +78,41 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
         let capacity: Int
     }
 
+    private static let textSizeCapacity = 32
+
     private let lock = NSLock()
+    private var textSizes: [String: CGSize] = [:]
     private var buckets: [Kind: Bucket] = [
         .mask: Bucket(capacity: 6),
         .shadow: Bucket(capacity: 6),
         .border: Bucket(capacity: 6),
         .background: Bucket(capacity: 2),
         .branding: Bucket(capacity: 2),
+        .annotation: Bucket(capacity: 16),
+        .caption: Bucket(capacity: 3),
     ]
+
+    /// The measured size of an annotation's text. Shaping text is far slower than drawing it, and
+    /// the size stays the same for as long as the annotation shows. `measure` runs outside the
+    /// lock, as `make` does below.
+    func textSize(for key: String, measure: () -> CGSize) -> CGSize {
+        lock.lock()
+        if let cached = textSizes[key] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let size = measure()
+
+        lock.lock()
+        if textSizes.count >= Self.textSizeCapacity {
+            textSizes.removeAll()
+        }
+        textSizes[key] = size
+        lock.unlock()
+        return size
+    }
 
     /// Returns the cached image for `key`, or makes, stores, and returns it. `make` runs outside the
     /// lock, so two threads may build the same image once; the result is the same either way.
@@ -351,9 +381,27 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             output = whole ? layer : faded(layer, opacity: camera.opacity).composited(over: output)
         }
 
+        output = drawAnnotations(
+            StudioAnnotationGeometry.resolveAll(
+                project: snapshot.project,
+                frame: frame,
+                time: sourceTime,
+                canvasWidth: Double(renderSize.width),
+                canvasHeight: Double(renderSize.height)
+            ),
+            over: output,
+            renderSize: renderSize
+        )
+
         if snapshot.project.overlays.branding {
             output = brandingLayer(renderSize: renderSize)
                 .composited(over: output)
+        }
+
+        // On the canvas, over everything, and in no layer that fades (section 15.4).
+        if let index = StudioCaptionResolver.index(in: snapshot.captions, at: request.compositionTime.seconds),
+           let caption = captionLayer(snapshot.captions[index].text, project: snapshot.project, renderSize: renderSize) {
+            output = caption.composited(over: output)
         }
 
         output = output.cropped(to: outputExtent)
@@ -598,6 +646,475 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             .composited(over: image)
     }
 
+    // MARK: - Annotations
+
+    /// Section 6.10 of the project format: over the camera and under the badge, last on top.
+    func drawAnnotations(
+        _ annotations: [StudioResolvedAnnotation],
+        over image: CIImage,
+        renderSize: CGSize
+    ) -> CIImage {
+        var output = image
+        for annotation in annotations {
+            // A blur or a pixelate redaction hides what is drawn under it so far.
+            if annotation.kind == StudioAnnotationKind.redact, annotation.redactStyle != .solid {
+                output = redacted(output, annotation, renderSize: renderSize)
+                continue
+            }
+            let drawn: CIImage?
+            if annotation.isArea {
+                drawn = areaImage(annotation, renderSize: renderSize)
+            } else if annotation.isArrow {
+                drawn = arrowImage(annotation, renderSize: renderSize)
+            } else if annotation.kind == StudioAnnotationKind.emoji {
+                drawn = emojiImage(annotation, renderSize: renderSize)
+            } else {
+                drawn = annotationBoxImage(annotation, renderSize: renderSize)
+            }
+            guard let drawn else { continue }
+            let rotated = drawn.transformed(by: Self.annotationRotation(annotation, renderSize: renderSize))
+
+            // Put together whole first, so that its parts do not show through one another.
+            output = (annotation.opacity < 1 ? faded(rotated, opacity: annotation.opacity) : rotated).composited(over: output)
+        }
+        return output
+    }
+
+    private static func annotationRotation(_ annotation: StudioResolvedAnnotation, renderSize: CGSize) -> CGAffineTransform {
+        let x = annotation.anchor.x
+        let y = Double(renderSize.height) - annotation.anchor.y
+        return CGAffineTransform(translationX: x, y: y)
+            .rotated(by: -annotation.rotation * .pi / 180)
+            .translatedBy(x: -x, y: -y)
+    }
+
+    /// The area of a redaction on whole pixels, in Core Image's coordinates, y up.
+    private static func redactionRegion(_ rect: StudioRect, renderSize: CGSize) -> CGRect? {
+        let ci = StudioRenderGeometry.ciRect(forTopLeftRect: rect, renderSize: renderSize)
+        let minX = max(0, ci.minX.rounded())
+        let minY = max(0, ci.minY.rounded())
+        let maxX = min(renderSize.width, ci.maxX.rounded())
+        let maxY = min(renderSize.height, ci.maxY.rounded())
+        guard maxX - minX >= 1, maxY - minY >= 1 else { return nil }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    /// `image` with the area of a blur or a pixelate redaction hidden. Only the pixels within the
+    /// area are read, its edge pixels standing in for what is past them.
+    private func redacted(_ image: CIImage, _ area: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage {
+        let originalRegion = StudioRenderGeometry.ciRect(forTopLeftRect: area.rect, renderSize: renderSize)
+        let mask = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 1))
+            .cropped(to: originalRegion)
+            .transformed(by: Self.annotationRotation(area, renderSize: renderSize))
+        let region: CGRect
+        if area.rotation == 0 {
+            guard let oldRegion = Self.redactionRegion(area.rect, renderSize: renderSize) else { return image }
+            region = oldRegion
+        } else {
+            region = mask.extent.integral.intersection(CGRect(origin: .zero, size: renderSize))
+        }
+        guard area.redactAmount > 0, !region.isEmpty else { return image }
+        let inside = image.cropped(to: region).clampedToExtent()
+        let hidden: CIImage
+        switch area.redactStyle {
+        case .blur:
+            hidden = inside.applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: area.redactAmount])
+        case .pixelate:
+            // Cells from the area's top left corner, which is its top in Core Image's coordinates.
+            hidden = inside.applyingFilter("CIPixellate", parameters: [
+                kCIInputCenterKey: CIVector(x: region.minX, y: region.maxY),
+                kCIInputScaleKey: area.redactAmount,
+            ])
+        case .solid:
+            return image
+        }
+        let patch = hidden.cropped(to: region)
+        let fadedPatch = area.opacity < 1 ? faded(patch, opacity: area.opacity) : patch
+        if area.rotation == 0 {
+            return fadedPatch.composited(over: image)
+        }
+        return fadedPatch.composited(over: image).applyingFilter("CIBlendWithAlphaMask", parameters: [
+            kCIInputBackgroundImageKey: image,
+            kCIInputMaskImageKey: mask.composited(over: clearImage(extent: image.extent)),
+        ])
+    }
+
+    /// A rectangle or an ellipse, its inside fill under its outline, or a solid redaction.
+    private func areaImage(_ area: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage? {
+        let isRedaction = area.kind == StudioAnnotationKind.redact
+        let reach = isRedaction ? 0 : area.stroke / 2
+        guard area.rect.width > 0, area.rect.height > 0, let bitmap = AnnotationBitmap(
+            minX: area.rect.x - reach,
+            minY: area.rect.y - reach,
+            maxX: area.rect.maxX + reach,
+            maxY: area.rect.maxY + reach,
+            renderSize: renderSize,
+            annotation: area
+        ) else {
+            return nil
+        }
+
+        let rect = bitmap.rect(area.rect)
+        let key = [
+            "area", area.kind, area.fill, area.shapeFill, bitmap.key(area.shapeFillOpacity),
+            "\(Int(bitmap.width))x\(Int(bitmap.height))",
+            bitmap.key(Double(rect.minX)), bitmap.key(Double(rect.minY)), bitmap.key(Double(rect.width)), bitmap.key(Double(rect.height)),
+            bitmap.key(area.stroke), bitmap.key(area.radius),
+        ].joined(separator: "|")
+        let image = StudioCompositorImageCache.shared.image(for: key, in: .annotation) {
+            guard let context = bitmap.makeContext() else { return nil }
+            let color = Self.annotationColor(area.fill)
+            if isRedaction {
+                context.setFillColor(color)
+                context.fill(rect)
+                return context.makeImage().map { CIImage(cgImage: $0) }
+            }
+
+            let path: CGPath
+            if area.kind == StudioAnnotationKind.ellipse {
+                path = CGPath(ellipseIn: rect, transform: nil)
+            } else {
+                // Core Graphics will not take a corner rounder than half a side.
+                let radius = max(0, min(CGFloat(area.radius), rect.width / 2, rect.height / 2))
+                path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+            }
+            if !area.shapeFill.isEmpty, area.shapeFillOpacity > 0,
+               let inside = Self.annotationColor(area.shapeFill).copy(alpha: CGFloat(area.shapeFillOpacity)) {
+                context.setFillColor(inside)
+                context.addPath(path)
+                context.fillPath()
+            }
+            if area.stroke > 0 {
+                context.setStrokeColor(color)
+                context.setLineWidth(CGFloat(area.stroke))
+                context.addPath(path)
+                context.strokePath()
+            }
+            return context.makeImage().map { CIImage(cgImage: $0) }
+        }
+        return image.map { bitmap.placed($0, renderSize: renderSize) }
+    }
+
+    /// A transparent bitmap for the part of one annotation on the canvas, on whole pixels so that
+    /// a still annotation is not resampled. What it draws may reach past its edges.
+    private struct AnnotationBitmap {
+        let originX: Double
+        let originY: Double
+        let width: Double
+        let height: Double
+
+        init?(minX: Double, minY: Double, maxX: Double, maxY: Double, renderSize: CGSize, annotation: StudioResolvedAnnotation) {
+            let bounds: StudioRect
+            if annotation.rotation == 0 {
+                guard let clipped = StudioAnnotationGeometry.bitmapBounds(
+                    minX: minX, minY: minY, maxX: maxX, maxY: maxY,
+                    canvasWidth: Double(renderSize.width), canvasHeight: Double(renderSize.height)
+                ) else { return nil }
+                bounds = clipped
+            } else {
+                // Clip in local space: art outside the unrotated canvas may rotate into view.
+                let corners = [
+                    StudioAnnotationPoint(x: 0, y: 0),
+                    StudioAnnotationPoint(x: Double(renderSize.width), y: 0),
+                    StudioAnnotationPoint(x: Double(renderSize.width), y: Double(renderSize.height)),
+                    StudioAnnotationPoint(x: 0, y: Double(renderSize.height)),
+                ].map { StudioAnnotationGeometry.rotate($0, around: annotation.anchor, degrees: -annotation.rotation) }
+                let left = max((minX - 2).rounded(.down), corners.map(\.x).min()!.rounded(.down) - 2)
+                let top = max((minY - 2).rounded(.down), corners.map(\.y).min()!.rounded(.down) - 2)
+                let right = min((maxX + 2).rounded(.up), corners.map(\.x).max()!.rounded(.up) + 2)
+                let bottom = min((maxY + 2).rounded(.up), corners.map(\.y).max()!.rounded(.up) + 2)
+                guard right - left >= 1, bottom - top >= 1 else { return nil }
+                bounds = StudioRect(x: left, y: top, width: right - left, height: bottom - top)
+            }
+            guard bounds.width <= 16384, bounds.height <= 16384 else { return nil }
+            originX = bounds.x
+            originY = bounds.y
+            width = bounds.width
+            height = bounds.height
+        }
+
+        /// From the canvas, y down, to the bitmap, y up.
+        func point(_ x: Double, _ y: Double) -> CGPoint {
+            CGPoint(x: x - originX, y: height - (y - originY))
+        }
+
+        func point(_ point: StudioAnnotationPoint) -> CGPoint {
+            self.point(point.x, point.y)
+        }
+
+        func rect(_ rect: StudioRect) -> CGRect {
+            CGRect(x: rect.x - originX, y: height - (rect.y - originY) - rect.height, width: rect.width, height: rect.height)
+        }
+
+        func makeContext() -> CGContext? {
+            CGContext(
+                data: nil,
+                width: Int(width),
+                height: Int(height),
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                // The format's colors are sRGB, as annotationColor(_:) makes them, so they stay as written.
+                space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+            )
+        }
+
+        func placed(_ image: CIImage, renderSize: CGSize) -> CIImage {
+            image.transformed(by: CGAffineTransform(
+                translationX: CGFloat(originX),
+                y: CGFloat(Double(renderSize.height) - originY - height)
+            ))
+        }
+
+        /// What is drawn depends on where it lies within its pixels, and not on which pixels.
+        func key(_ value: Double) -> String {
+            String(format: "%.2f", value)
+        }
+    }
+
+    private func arrowImage(_ arrow: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage? {
+        let reach = arrow.stroke + arrow.halfWidth
+        guard let bitmap = AnnotationBitmap(
+            minX: min(arrow.anchor.x, arrow.tail.x) - reach,
+            minY: min(arrow.anchor.y, arrow.tail.y) - reach,
+            maxX: max(arrow.anchor.x, arrow.tail.x) + reach,
+            maxY: max(arrow.anchor.y, arrow.tail.y) + reach,
+            renderSize: renderSize,
+            annotation: arrow
+        ) else {
+            return nil
+        }
+
+        let tip = bitmap.point(arrow.anchor)
+        let tail = bitmap.point(arrow.tail)
+        let headBase = bitmap.point(arrow.headBase)
+        let key = [
+            "arrow", arrow.fill, "\(Int(bitmap.width))x\(Int(bitmap.height))",
+            bitmap.key(Double(tip.x)), bitmap.key(Double(tip.y)), bitmap.key(Double(tail.x)), bitmap.key(Double(tail.y)),
+            bitmap.key(arrow.stroke), bitmap.key(arrow.halfWidth), bitmap.key(Double(headBase.x)), bitmap.key(Double(headBase.y)),
+            "\(arrow.hasShaft)",
+        ].joined(separator: "|")
+        let image = StudioCompositorImageCache.shared.image(for: key, in: .annotation) {
+            guard let context = bitmap.makeContext() else { return nil }
+            let color = Self.annotationColor(arrow.fill)
+            let alongX = Double(headBase.x - tip.x)
+            let alongY = Double(headBase.y - tip.y)
+            let head = (alongX * alongX + alongY * alongY).squareRoot()
+            guard head > 0 else { return nil }
+
+            // Into the middle of the head, which hides the end of the line.
+            if arrow.hasShaft {
+                context.setStrokeColor(color)
+                context.setLineWidth(CGFloat(arrow.stroke))
+                context.setLineCap(.round)
+                context.move(to: tail)
+                context.addLine(to: CGPoint(x: (tip.x + headBase.x) / 2, y: (tip.y + headBase.y) / 2))
+                context.strokePath()
+            }
+
+            let acrossX = CGFloat(-alongY / head * arrow.halfWidth)
+            let acrossY = CGFloat(alongX / head * arrow.halfWidth)
+            context.setFillColor(color)
+            context.move(to: tip)
+            context.addLine(to: CGPoint(x: headBase.x + acrossX, y: headBase.y + acrossY))
+            context.addLine(to: CGPoint(x: headBase.x - acrossX, y: headBase.y - acrossY))
+            context.closePath()
+            context.fillPath()
+            return context.makeImage().map { CIImage(cgImage: $0) }
+        }
+        return image.map { bitmap.placed($0, renderSize: renderSize) }
+    }
+
+    /// Where the box of a callout or a text goes on the canvas, measured as it is drawn. The preview
+    /// asks too, so that what can be taken hold of is what is on the picture.
+    static func annotationBoxLayout(_ annotation: StudioResolvedAnnotation, canvasWidth: Double, canvasHeight: Double) -> StudioAnnotationBox {
+        let measured = StudioCompositorImageCache.shared.textSize(
+            for: "\(annotation.font)|\(annotation.maxTextWidth)|\(annotation.text)"
+        ) {
+            CTFramesetterSuggestFrameSizeWithConstraints(
+                annotationFramesetter(annotation),
+                CFRange(location: 0, length: 0),
+                nil,
+                CGSize(width: annotation.maxTextWidth, height: .greatestFiniteMagnitude),
+                nil
+            )
+        }
+
+        // A pixel of room, so that the frame does not wrap what was measured to fit.
+        return StudioAnnotationGeometry.layoutBox(
+            annotation,
+            textWidth: Double(measured.width).rounded(.up) + 1,
+            textHeight: Double(measured.height).rounded(.up) + 1,
+            canvasWidth: canvasWidth,
+            canvasHeight: canvasHeight
+        )
+    }
+
+    private func annotationBoxImage(_ annotation: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage? {
+        let placed = Self.annotationBoxLayout(annotation, canvasWidth: Double(renderSize.width), canvasHeight: Double(renderSize.height))
+        let box = placed.box
+        let hasPointer = placed.pointer != nil
+        guard let bitmap = AnnotationBitmap(
+            minX: hasPointer ? min(box.x, annotation.anchor.x) : box.x,
+            minY: hasPointer ? min(box.y, annotation.anchor.y) : box.y,
+            maxX: hasPointer ? max(box.maxX, annotation.anchor.x) : box.maxX,
+            maxY: hasPointer ? max(box.maxY, annotation.anchor.y) : box.maxY,
+            renderSize: renderSize,
+            annotation: annotation
+        ) else {
+            return nil
+        }
+
+        let boxRect = bitmap.rect(box)
+        let textRect = bitmap.rect(placed.textRect)
+        var key = [
+            "box", annotation.fill, annotation.textColor, annotation.text, bitmap.key(annotation.font), bitmap.key(annotation.radius),
+            "\(Int(bitmap.width))x\(Int(bitmap.height))",
+            bitmap.key(Double(boxRect.minX)), bitmap.key(Double(boxRect.minY)),
+            bitmap.key(Double(boxRect.width)), bitmap.key(Double(boxRect.height)),
+        ]
+        var triangle: [CGPoint]?
+        if let pointer = placed.pointer {
+            let tip = bitmap.point(annotation.anchor)
+            let a = bitmap.point(pointer.a)
+            let b = bitmap.point(pointer.b)
+
+            // A pixel into the box, so that no seam shows between the two.
+            let middleX = Double(a.x + b.x) / 2 - Double(tip.x)
+            let middleY = Double(a.y + b.y) / 2 - Double(tip.y)
+            let length = max(1, (middleX * middleX + middleY * middleY).squareRoot())
+            let inX = CGFloat(middleX / length)
+            let inY = CGFloat(middleY / length)
+            triangle = [tip, CGPoint(x: a.x + inX, y: a.y + inY), CGPoint(x: b.x + inX, y: b.y + inY)]
+            key += [tip, a, b].flatMap { [bitmap.key(Double($0.x)), bitmap.key(Double($0.y))] }
+        }
+
+        let image = StudioCompositorImageCache.shared.image(for: key.joined(separator: "|"), in: .annotation) {
+            guard let context = bitmap.makeContext() else { return nil }
+            context.setFillColor(Self.annotationColor(annotation.fill))
+            if let triangle, let first = triangle.first {
+                context.move(to: first)
+                triangle.dropFirst().forEach { context.addLine(to: $0) }
+                context.closePath()
+                context.fillPath()
+            }
+            context.addPath(cgPath(for: boxRect, radius: annotation.radius, shape: .roundedRectangle))
+            context.fillPath()
+
+            context.textMatrix = .identity
+            let frame = CTFramesetterCreateFrame(
+                Self.annotationFramesetter(annotation),
+                CFRange(location: 0, length: 0),
+                CGPath(rect: textRect, transform: nil),
+                nil
+            )
+            CTFrameDraw(frame, context)
+            return context.makeImage().map { CIImage(cgImage: $0) }
+        }
+        return image.map { bitmap.placed($0, renderSize: renderSize) }
+    }
+
+    private static func annotationFramesetter(_ annotation: StudioResolvedAnnotation) -> CTFramesetter {
+        let size = CGFloat(annotation.font)
+        let font = CTFontCreateUIFontForLanguage(.emphasizedSystem, size, nil)
+            ?? CTFontCreateWithName("Helvetica-Bold" as CFString, size, nil)
+        var alignment = CTTextAlignment.center
+        let paragraph = withUnsafeBytes(of: &alignment) { bytes -> CTParagraphStyle in
+            var setting = CTParagraphStyleSetting(spec: .alignment, valueSize: bytes.count, value: bytes.baseAddress!)
+            return CTParagraphStyleCreate(&setting, 1)
+        }
+        let attributes: [NSAttributedString.Key: Any] = [
+            kCTFontAttributeName as NSAttributedString.Key: font,
+            kCTForegroundColorAttributeName as NSAttributedString.Key: annotationColor(annotation.textColor),
+            kCTParagraphStyleAttributeName as NSAttributedString.Key: paragraph,
+        ]
+        return CTFramesetterCreateWithAttributedString(NSAttributedString(string: annotation.text, attributes: attributes))
+    }
+
+    /// Where an emoji's text goes on the canvas, measured as it is drawn. The preview asks too.
+    static func annotationEmojiLayout(_ annotation: StudioResolvedAnnotation, canvasWidth: Double, canvasHeight: Double) -> StudioRect {
+        let measured = StudioCompositorImageCache.shared.textSize(for: "emoji|\(annotation.font)|\(annotation.text)") {
+            CTFramesetterSuggestFrameSizeWithConstraints(
+                emojiFramesetter(annotation),
+                CFRange(location: 0, length: 0),
+                nil,
+                CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude),
+                nil
+            )
+        }
+        // A pixel of room, so that the frame does not wrap what was measured to fit.
+        return StudioAnnotationGeometry.layoutEmoji(
+            annotation,
+            textWidth: Double(measured.width).rounded(.up) + 1,
+            textHeight: Double(measured.height).rounded(.up) + 1,
+            canvasWidth: canvasWidth,
+            canvasHeight: canvasHeight
+        )
+    }
+
+    /// An emoji in the color emoji font, with its soft shadow under it when it has one.
+    private func emojiImage(_ annotation: StudioResolvedAnnotation, renderSize: CGSize) -> CIImage? {
+        let placed = Self.annotationEmojiLayout(annotation, canvasWidth: Double(renderSize.width), canvasHeight: Double(renderSize.height))
+        let offset = annotation.shadow ? StudioAnnotationGeometry.emojiShadowOffset(font: annotation.font) : 0
+        let sigma = annotation.shadow ? StudioAnnotationGeometry.emojiShadowSigma(font: annotation.font) : 0
+        let reach = sigma * 3
+        guard placed.width > 0, placed.height > 0, let bitmap = AnnotationBitmap(
+            minX: placed.x - reach,
+            minY: placed.y - reach,
+            maxX: placed.maxX + reach,
+            maxY: placed.maxY + offset + reach,
+            renderSize: renderSize,
+            annotation: annotation
+        ) else {
+            return nil
+        }
+
+        let textRect = bitmap.rect(placed)
+        let key = [
+            "emoji", annotation.text, bitmap.key(annotation.font), "\(annotation.shadow)",
+            "\(Int(bitmap.width))x\(Int(bitmap.height))",
+            bitmap.key(Double(textRect.minX)), bitmap.key(Double(textRect.minY)),
+            bitmap.key(Double(textRect.width)), bitmap.key(Double(textRect.height)),
+        ].joined(separator: "|")
+        let image = StudioCompositorImageCache.shared.image(for: key, in: .annotation) {
+            guard let context = bitmap.makeContext() else { return nil }
+            if annotation.shadow {
+                // Core Graphics blurs a shadow by about twice its standard deviation, and its y is up.
+                context.setShadow(
+                    offset: CGSize(width: 0, height: -CGFloat(offset)),
+                    blur: CGFloat(sigma * 2),
+                    color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: CGFloat(StudioAnnotationGeometry.emojiShadowOpacity))
+                )
+            }
+            context.textMatrix = .identity
+            let frame = CTFramesetterCreateFrame(
+                Self.emojiFramesetter(annotation),
+                CFRange(location: 0, length: 0),
+                CGPath(rect: textRect, transform: nil),
+                nil
+            )
+            CTFrameDraw(frame, context)
+            return context.makeImage().map { CIImage(cgImage: $0) }
+        }
+        return image.map { bitmap.placed($0, renderSize: renderSize) }
+    }
+
+    private static func emojiFramesetter(_ annotation: StudioResolvedAnnotation) -> CTFramesetter {
+        // Apple Color Emoji draws its glyphs in color; what it lacks comes from the system's fallback fonts.
+        let font = CTFontCreateWithName("AppleColorEmoji" as CFString, CGFloat(annotation.font), nil)
+        var alignment = CTTextAlignment.center
+        let paragraph = withUnsafeBytes(of: &alignment) { bytes -> CTParagraphStyle in
+            var setting = CTParagraphStyleSetting(spec: .alignment, valueSize: bytes.count, value: bytes.baseAddress!)
+            return CTParagraphStyleCreate(&setting, 1)
+        }
+        let attributes: [NSAttributedString.Key: Any] = [
+            kCTFontAttributeName as NSAttributedString.Key: font,
+            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1),
+            kCTParagraphStyleAttributeName as NSAttributedString.Key: paragraph,
+        ]
+        return CTFramesetterCreateWithAttributedString(NSAttributedString(string: annotation.text, attributes: attributes))
+    }
+
     // MARK: - Cached Images
 
     /// The shape mask moved onto `rect`, or nil for a plain rectangle, which needs no mask.
@@ -673,6 +1190,32 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             BrandingOverlayProcessor.applyBranding(to: transparent, renderSize: renderSize).cropped(to: extent)
         }
         return branded ?? transparent
+    }
+
+    /// A caption's picture, in its place. A caption shows for many frames, and is drawn once.
+    private func captionLayer(_ text: String, project: StudioProject, renderSize: CGSize) -> CIImage? {
+        let overlay = project.overlays.captions
+        let language = project.captions.language
+        let key = [
+            cacheSizeKey(renderSize),
+            overlay.size.rawValue,
+            overlay.position.rawValue,
+            overlay.appearance.rawValue,
+            language ?? "",
+            text,
+        ].joined(separator: "|")
+        return StudioCompositorImageCache.shared.image(for: key, in: .caption) {
+            StudioCaptionPainter.picture(
+                text: text,
+                overlay: overlay,
+                language: language,
+                canvasWidth: Int(renderSize.width),
+                canvasHeight: Int(renderSize.height)
+            ).map { picture in
+                CIImage(cgImage: picture.image)
+                    .transformed(by: CGAffineTransform(translationX: 0, y: CGFloat(picture.originY)))
+            }
+        }
     }
 
     /// Decodes the background image once, upright and no larger than a 4K canvas needs. The file's
@@ -825,12 +1368,24 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     // MARK: - Colors and Sizes
 
     private func ciColor(_ hex: String, fallback: CIColor) -> CIColor {
-        guard let components = colorComponents(hex) else { return fallback }
+        guard let components = Self.colorComponents(hex) else { return fallback }
         return CIColor(red: components.r, green: components.g, blue: components.b, alpha: components.a)
     }
 
+    /// A color of an annotation, which the format says is sRGB. `cgColor(_:alpha:)` makes Generic RGB
+    /// colors, which come out shifted: #FF0000 draws as #FF2600.
+    private static func annotationColor(_ hex: String) -> CGColor {
+        let components = Self.colorComponents(hex)
+        return CGColor(
+            srgbRed: components?.r ?? 1,
+            green: components?.g ?? 1,
+            blue: components?.b ?? 1,
+            alpha: components?.a ?? 1
+        )
+    }
+
     private func cgColor(_ hex: String, alpha: CGFloat) -> CGColor {
-        let components = colorComponents(hex)
+        let components = Self.colorComponents(hex)
         return CGColor(
             red: components?.r ?? 1,
             green: components?.g ?? 1,
@@ -840,7 +1395,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
     }
 
     /// Parses `#RRGGBB` or `#RRGGBBAA`.
-    private func colorComponents(_ hex: String) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat)? {
+    private static func colorComponents(_ hex: String) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat)? {
         var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.hasPrefix("#") {
             value.removeFirst()

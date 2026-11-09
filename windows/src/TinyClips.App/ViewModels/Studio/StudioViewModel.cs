@@ -5,6 +5,7 @@ using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using TinyClips.Core.Studio.Preview;
+using TinyClips.Core.Studio.Transcription;
 
 namespace TinyClips.App.ViewModels.Studio;
 
@@ -77,6 +78,7 @@ public sealed partial class StudioViewModel : ObservableObject
 
     // Runs something on the UI thread, a moment later.
     private readonly Action<Action> _post;
+    private readonly TimeProvider _timeProvider;
     private StudioEditorLoadState _lastState = StudioEditorLoadState.Loading;
     private string _errorMessage = string.Empty;
     private bool _isSaveErrorShown;
@@ -90,7 +92,8 @@ public sealed partial class StudioViewModel : ObservableObject
         ICaptureSettings settings,
         IClipStorageService storage,
         DispatcherQueue dispatcher,
-        bool canFindPeople)
+        bool canFindPeople,
+        IStudioCaptionGenerator captionGenerator)
         : this(
             projectId,
             store,
@@ -99,7 +102,8 @@ public sealed partial class StudioViewModel : ObservableObject
             settings,
             storage,
             action => dispatcher.TryEnqueue(() => action()),
-            canFindPeople)
+            canFindPeople,
+            captionGenerator: captionGenerator)
     {
     }
 
@@ -116,12 +120,14 @@ public sealed partial class StudioViewModel : ObservableObject
         IClipStorageService storage,
         Action<Action> post,
         bool canFindPeople,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IStudioCaptionGenerator? captionGenerator = null)
     {
         _store = store;
         _settings = settings;
         _storage = storage;
         _post = post;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         CanFindPeople = canFindPeople;
         _session = new StudioEditorSession(
             projectId,
@@ -130,11 +136,13 @@ public sealed partial class StudioViewModel : ObservableObject
             exporter,
             settings,
             post,
-            timeProvider);
+            timeProvider,
+            captionGenerator);
         _session.Changed += OnSessionChanged;
         _session.Exported += OnSessionExported;
         _session.ScreenRecordingSaved += OnSessionScreenRecordingSaved;
         _session.ErrorReported += OnSessionErrorReported;
+        _settings.StudioExportResolutionChanged += OnExportResolutionChanged;
     }
 
     /// <summary>Raised when the editor goes from loading to ready or unavailable, or stops being ready.</summary>
@@ -160,6 +168,19 @@ public sealed partial class StudioViewModel : ObservableObject
     public event EventHandler<StudioEditorErrorEventArgs>? ErrorReported;
 
     public string ProjectId => _session.ProjectId;
+
+    public StudioProject? Project => _session.Project;
+
+    // What is being typed goes in first, so that it is not put on top of the agent's edit later.
+    // When it changed the project, the agent edited one that is no longer there, and is told so.
+    internal bool ApplyAutomationProject(StudioProject updated, DateTimeOffset expectedModifiedAt)
+    {
+        var read = _session.Project;
+        CommitCaptionText();
+        return ReferenceEquals(read, _session.Project) && _session.ApplyAutomationProject(updated, expectedModifiedAt);
+    }
+
+    internal bool SaveForAutomationExport() => _session.SaveNow();
 
     // State
 
@@ -295,7 +316,10 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public string ClipName => _session.ClipName;
 
-    public string ExportSizeText => _session.ExportSizeText;
+    /// <summary>The size the next export comes to with the resolution Export offers first.</summary>
+    public string ExportSizeText => _session.Project is { } project
+        ? StudioEditorText.GetExportSizeText(StudioExportPresets.GetSize(StudioCanvasMath.NaturalSize(project), _settings.StudioExportResolution))
+        : StudioEditorText.GetExportSizeText(_session.CanvasSize);
 
     public bool CanUndo => _session.CanUndo;
 
@@ -322,10 +346,10 @@ public sealed partial class StudioViewModel : ObservableObject
     /// <summary>The live preview, once the project is open.</summary>
     public IStudioPreview? Preview => _session.Preview;
 
-    /// <summary>The size of the exported video, which is the canvas everything is laid out on.</summary>
-    public double CanvasWidth => _session.ExportSize.Width;
+    /// <summary>The size of the canvas everything is laid out on in the editor.</summary>
+    public double CanvasWidth => _session.CanvasSize.Width;
 
-    public double CanvasHeight => _session.ExportSize.Height;
+    public double CanvasHeight => _session.CanvasSize.Height;
 
     /// <summary>Canvas width over height. 16:9 until a project is open.</summary>
     public double CanvasAspectRatio =>
@@ -370,8 +394,6 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public string PlayheadText => _session.Model?.GetPlayheadText(Playhead) ?? string.Empty;
 
-    private StudioProject? Project => _session.Project;
-
     private StudioScene Scene => _session.Model?.CurrentScene ?? new StudioScene();
 
     // Loading
@@ -399,6 +421,14 @@ public sealed partial class StudioViewModel : ObservableObject
     public void StepPreviousFrame() => _session.StepFrames(-1);
 
     public void StepNextFrame() => _session.StepFrames(1);
+
+    public void StepBackOneSecond() => _session.StepSeconds(-1);
+
+    public void StepForwardOneSecond() => _session.StepSeconds(1);
+
+    public void GoToStart() => _session.GoToStart();
+
+    public void GoToEnd() => _session.GoToEnd();
 
     public void Scrub(double sourceTime) => _session.Scrub(sourceTime);
 
@@ -432,6 +462,18 @@ public sealed partial class StudioViewModel : ObservableObject
                 break;
             case StudioShortcutAction.NextFrame:
                 StepNextFrame();
+                break;
+            case StudioShortcutAction.BackOneSecond:
+                StepBackOneSecond();
+                break;
+            case StudioShortcutAction.ForwardOneSecond:
+                StepForwardOneSecond();
+                break;
+            case StudioShortcutAction.GoToStart:
+                GoToStart();
+                break;
+            case StudioShortcutAction.GoToEnd:
+                GoToEnd();
                 break;
             case StudioShortcutAction.SetTrimStartAtPlayhead:
                 SetTrimStartAtPlayhead();
@@ -475,6 +517,33 @@ public sealed partial class StudioViewModel : ObservableObject
             case StudioShortcutAction.RemoveSelectedSpeed:
                 RemoveSelectedSpeed();
                 break;
+            case StudioShortcutAction.AddArrow:
+                AddArrowAtPlayhead();
+                break;
+            case StudioShortcutAction.AddCallout:
+                AddCalloutAtPlayhead();
+                break;
+            case StudioShortcutAction.AddText:
+                AddTextAtPlayhead();
+                break;
+            case StudioShortcutAction.AddRectangle:
+                AddRectangleAtPlayhead();
+                break;
+            case StudioShortcutAction.AddEllipse:
+                AddEllipseAtPlayhead();
+                break;
+            case StudioShortcutAction.AddRedaction:
+                AddRedactionAtPlayhead();
+                break;
+            case StudioShortcutAction.AddEmoji:
+                AddEmojiAtPlayhead();
+                break;
+            case StudioShortcutAction.DuplicateSelectedAnnotation:
+                DuplicateSelectedAnnotation();
+                break;
+            case StudioShortcutAction.RemoveSelectedAnnotation:
+                RemoveSelectedAnnotation();
+                break;
             case StudioShortcutAction.Undo:
                 Undo();
                 break;
@@ -505,19 +574,33 @@ public sealed partial class StudioViewModel : ObservableObject
     // Export
 
     public Func<string, string, Task<string?>>? ChooseExportFile { get; set; }
+
+    /// <summary>
+    /// Asks for the resolution and quality, and answers whether to go on. The choices are read
+    /// from the options it is given. Without one, the saved choice is used without asking.
+    /// </summary>
+    public Func<StudioExportOptionsModel, Task<bool>>? ChooseExportOptions { get; set; }
+
     private bool _isChoosingExport;
 
     /// <summary>
-    /// Asks for the video filename and folder, then renders using the codec chosen in settings.
+    /// Asks for the resolution and quality, then for the video filename and folder, and renders
+    /// using the codec chosen in settings.
     /// </summary>
     public async Task<StudioExportOutcome> ExportAsync()
     {
+        CommitCaptionText();
         if (_isChoosingExport || !_session.CanExport) return StudioExportOutcome.NotStarted;
         StudioExportTarget target;
+        StudioExportChoice choice;
         _isChoosingExport = true;
         try
         {
             Pause();
+            var chosen = await ChooseExportChoiceAsync();
+            if (!_session.CanExport) return StudioExportOutcome.NotStarted;
+            if (chosen is not { } answered) return StudioExportOutcome.Cancelled;
+            choice = answered;
             var saved = SavedProjectFile;
             var folder = saved is not null ? Path.GetDirectoryName(saved)! : _storage.OutputDirectory(CaptureType.Video);
             if (saved is not null && !Directory.Exists(folder))
@@ -547,7 +630,7 @@ public sealed partial class StudioViewModel : ObservableObject
         }
 
         var wasExporting = _session.IsExporting;
-        var export = _session.ExportAsync(() => target.Path, _settings.VideoCodec, target);
+        var export = _session.ExportAsync(() => target.Path, _settings.VideoCodec, target, choice);
         if (!wasExporting && _session.IsExporting)
         {
             Announce("Export started.", "StudioExportStarted", StudioAnnouncementKind.Information);
@@ -566,10 +649,35 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public void CancelExport() => _session.CancelExport();
 
+    // The saved choice is what Export offers first. Null when the user decided against exporting.
+    private async Task<StudioExportChoice?> ChooseExportChoiceAsync()
+    {
+        var saved = new StudioExportChoice(_settings.StudioExportResolution, _settings.StudioExportQuality);
+        if (ChooseExportOptions is not { } ask || _session.Project is not { } project)
+        {
+            return saved;
+        }
+
+        var options = StudioExportPresets.CreateOptions(project, _settings.VideoCodec, saved);
+        if (!await ask(options))
+        {
+            return null;
+        }
+
+        var remembered = options.ChoiceToRemember;
+        _settings.StudioExportResolution = remembered.Resolution;
+        _settings.StudioExportQuality = remembered.Quality;
+        return options.Choice;
+    }
+
     // Closing
 
     /// <summary>What to ask before the window closes.</summary>
-    public StudioClosePrompt GetClosePrompt() => _session.GetClosePrompt();
+    public StudioClosePrompt GetClosePrompt()
+    {
+        CommitCaptionText();
+        return _session.GetClosePrompt();
+    }
 
     /// <summary>
     /// Ends the editor when its window is closing for good. The edits are saved by the time this
@@ -578,7 +686,25 @@ public sealed partial class StudioViewModel : ObservableObject
     /// saved at that moment (<see cref="SaveScreenRecordingAsync"/>) is waited for as well, so
     /// that the editor has not closed before it has been said what came of that save.
     /// </summary>
-    public Task CloseAsync(bool deleteProject) => _session.CloseAsync(deleteProject);
+    public Task CloseAsync(bool deleteProject)
+    {
+        _captionNoticeTimer?.Dispose();
+        _captionNoticeTimer = null;
+        // The settings outlive every editor, and would keep this one in memory.
+        _settings.StudioExportResolutionChanged -= OnExportResolutionChanged;
+        return _session.CloseAsync(deleteProject);
+    }
+
+    // The header says what the next export comes to, and the resolution can be chosen in another
+    // editor or by an agent.
+    private void OnExportResolutionChanged(object? sender, EventArgs e) =>
+        _post(() =>
+        {
+            if (!_session.IsClosed)
+            {
+                OnPropertyChanged(nameof(ExportSizeText));
+            }
+        });
 
     // Session events
 
@@ -591,7 +717,9 @@ public sealed partial class StudioViewModel : ObservableObject
             RememberZoomStateAtPlayhead();
             RememberCutStateAtPlayhead();
             RememberSpeedStateAtPlayhead();
+            RememberAnnotationStateAtPlayhead();
             RememberSceneStateAtPlayhead();
+            RememberCaptionStateAtPlayhead();
             OnPropertyChanged(string.Empty);
         }
         else
@@ -613,7 +741,9 @@ public sealed partial class StudioViewModel : ObservableObject
                 RaiseZoomStateAtPlayhead();
                 RaiseCutStateAtPlayhead();
                 RaiseSpeedStateAtPlayhead();
+                RaiseAnnotationStateAtPlayhead();
                 RaiseSceneStateAtPlayhead();
+                RaiseCaptionStateAtPlayhead();
             }
 
             if (e.Includes(StudioEditorChanges.Export))
@@ -629,6 +759,11 @@ public sealed partial class StudioViewModel : ObservableObject
             if (e.Includes(StudioEditorChanges.Inspector))
             {
                 Raise(InspectorPropertyNames);
+            }
+
+            if (e.Includes(StudioEditorChanges.Captions))
+            {
+                Raise(CaptionGenerationPropertyNames);
             }
 
             if (e.Includes(StudioEditorChanges.ProjectFolder))

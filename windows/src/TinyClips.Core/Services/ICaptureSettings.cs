@@ -40,6 +40,15 @@ public interface ICaptureSettings
     /// <summary>H.264 (default, universally playable) or HEVC (smaller files, needs an HEVC decoder to play).</summary>
     VideoCodec VideoCodec { get; set; }
 
+    /// <summary>The resolution Studio's Export popup offers first: the last one chosen there.</summary>
+    StudioExportResolution StudioExportResolution { get; set; }
+
+    /// <summary>Raised when <see cref="StudioExportResolution"/> changes value, on the thread that changed it.</summary>
+    event EventHandler? StudioExportResolutionChanged;
+
+    /// <summary>The quality Studio's Export popup offers first: the last one chosen there.</summary>
+    StudioExportQuality StudioExportQuality { get; set; }
+
     /// <summary>
     /// Marker for the last "What's new" the user dismissed: <c>rev{N};{version}</c>, where N is the
     /// window's content revision. Empty = never shown.
@@ -69,6 +78,9 @@ public interface ICaptureSettings
     /// <see cref="TinyClips.Core.Capture.StudioRecordingIntent"/>.
     /// </summary>
     bool StudioPreviewEnabled { get; set; }
+
+    /// <summary>The id of the Whisper model captions are generated with. See <see cref="TinyClips.Core.Studio.Transcription.StudioCaptionModels"/>.</summary>
+    string StudioCaptionModelId { get; set; }
 
     /// <summary>Raised when <see cref="StudioPreviewEnabled"/> changes value, on the thread that changed it.</summary>
     event EventHandler? StudioPreviewEnabledChanged;
@@ -157,6 +169,9 @@ public interface ICaptureSettings
     MultiMonitorCaptureMode MultiMonitorCaptureMode { get; set; }
     bool ShowRegionIndicator { get; set; }
     bool IncludeTinyClipsInCapture { get; set; }
+
+    /// <summary>Raised when <see cref="IncludeTinyClipsInCapture"/> changes value, on the thread that changed it.</summary>
+    event EventHandler? IncludeTinyClipsInCaptureChanged;
     bool ShowBrandingOverlay { get; set; }
     bool TeleprompterEnabled { get; set; }
     string TeleprompterTranscript { get; set; }

@@ -150,13 +150,17 @@ internal sealed partial class WindowChecks
         var target = Path.Combine(saveRoot, folderName);
         var projectFile = Path.Combine(target, folderName + ".tinyclips");
 
-        // One that lists an export, so that closing it asks nothing, and whose video is there
-        // to be found again after the project is deleted.
+        // One that lists an export, whose video is there to be found again after the project is
+        // deleted. Once it has been saved as a folder below, closing it asks nothing while it
+        // has no changes since that save.
         var folder = NewExportedProject(Name);
         var exported = Path.Combine(_services.ExportDirectory, Name.Replace(':', '-') + ".mp4");
         File.WriteAllText(exported, "an exported video");
         _services.Store.Save(_services.Store.Load(folder.Paths.ProjectId) with { Exports = [new StudioExport { Path = exported, ExportedAt = DateTimeOffset.UtcNow }] });
         var other = NewExportedProject("Another project");
+
+        // Other groups may have saved projects as folders before this one: saves are counted from here.
+        var savesAtStart = _services.Store.ProjectSavesBegun;
         if (OpenReady(folder, "the project as a whole") is not { } editor)
         {
             return;
@@ -265,8 +269,8 @@ internal sealed partial class WindowChecks
         _report.Check(
             "Choose folder\u2026 asks the folder picker, and the folder that was chosen is the place; a picker that is closed without a choice leaves the place as it was; Cancel saves nothing and remembers nothing",
             chose && placeAfter == $"In {elsewhere}" && cancelledPick && placeKept == placeAfter && !HasDialog(editor)
-                && NamesIn(elsewhere).Length == 0 && _services.Store.ProjectSavesBegun == 0 && _services.Settings.StudioProjectSaveFolder == saveRoot,
-            $"after the picker answered {elsewhere} the place read \"{placeAfter}\", and after it answered nothing \"{placeKept}\"; saves begun {_services.Store.ProjectSavesBegun}; the place a save starts in is {_services.Settings.StudioProjectSaveFolder}");
+                && NamesIn(elsewhere).Length == 0 && _services.Store.ProjectSavesBegun == savesAtStart && _services.Settings.StudioProjectSaveFolder == saveRoot,
+            $"after the picker answered {elsewhere} the place read \"{placeAfter}\", and after it answered nothing \"{placeKept}\"; saves begun {_services.Store.ProjectSavesBegun - savesAtStart}; the place a save starts in is {_services.Settings.StudioProjectSaveFolder}");
 
         // The save itself, held before anything is copied so that the editor can be looked at.
         Timeline.Mark("15: while the project is saved");
@@ -310,7 +314,7 @@ internal sealed partial class WindowChecks
             Key(editor, StudioShortcutKey.Space), Key(editor, StudioShortcutKey.Z), Key(editor, StudioShortcutKey.Z, control: true), Key(editor, StudioShortcutKey.E, control: true),
             Key(editor, StudioShortcutKey.O, control: true), Key(editor, StudioShortcutKey.S, control: true), Key(editor, StudioShortcutKey.Delete),
         ];
-        var savesBegun = _services.Store.ProjectSavesBegun;
+        var savesBegun = _services.Store.ProjectSavesBegun - savesAtStart;
         var after = Describe(OnUi(() => _services.Store.Load(editor.Id)));
         _report.Check(
             "while the project is saved the editor takes no edit: a value written to what the controls are bound to changes nothing, Undo undoes nothing, and no key of the window runs anything, a second save among them",

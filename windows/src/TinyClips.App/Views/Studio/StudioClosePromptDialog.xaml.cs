@@ -5,14 +5,11 @@ using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.Views.Studio;
 
-/// <summary>What the user decided about a recording that was never exported.</summary>
+/// <summary>What the user decided about a recording that has no saved project folder.</summary>
 public enum StudioClosePromptChoice
 {
     /// <summary>Keep the window open. Esc and the Cancel button mean this.</summary>
     Cancel,
-
-    /// <summary>Export the recording, and close the window when that has worked.</summary>
-    Export,
 
     /// <summary>Close the window and keep the project to finish later.</summary>
     KeepAsDraft,
@@ -22,8 +19,8 @@ public enum StudioClosePromptChoice
 }
 
 /// <summary>
-/// Asked when a Studio window closes on a recording that was never exported: export it, keep it as
-/// a draft, delete it, or cancel and keep editing. Export is the default; Delete never is.
+/// Asked when a Studio window closes on a project that has no saved project folder: keep it as
+/// a draft, delete it, or cancel and keep editing. Keep as draft is the default; Delete never is.
 /// </summary>
 /// <remarks>
 /// A dialog gives its first focus to the first control in its content that can take it, and only
@@ -33,20 +30,12 @@ public enum StudioClosePromptChoice
 /// </remarks>
 public sealed partial class StudioClosePromptDialog : ContentDialog
 {
-    /// <param name="canExport">False when there is nothing to export, which takes that choice away.</param>
-    public StudioClosePromptDialog(bool canExport)
+    public StudioClosePromptDialog()
     {
         InitializeComponent();
         DeleteIcon.Glyph = StudioGlyphs.Delete;
 
-        if (!canExport)
-        {
-            IsPrimaryButtonEnabled = false;
-            DefaultButton = ContentDialogButton.Secondary;
-        }
-
-        PrimaryButtonClick += (_, _) => Choice = StudioClosePromptChoice.Export;
-        SecondaryButtonClick += (_, _) => Choice = StudioClosePromptChoice.KeepAsDraft;
+        PrimaryButtonClick += (_, _) => Choice = StudioClosePromptChoice.KeepAsDraft;
         DeleteButton.Loaded += OnDeleteButtonLoaded;
     }
 

@@ -17,6 +17,7 @@ public sealed class StudioExportService : IStudioExportService
         StudioProjectPaths paths,
         string outputPath,
         VideoCodec codec,
+        StudioExportChoice choice,
         IProgress<double>? progress,
         CancellationToken cancellationToken) =>
         _exporter.ExportAsync(
@@ -24,7 +25,7 @@ public sealed class StudioExportService : IStudioExportService
             events,
             paths,
             outputPath,
-            new StudioExportOptions(StudioExportLimits.LongSide, codec),
+            new StudioExportOptions(Codec: codec, Resolution: choice.Resolution, Quality: choice.Quality),
             progress,
             cancellationToken);
 

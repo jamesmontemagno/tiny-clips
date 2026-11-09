@@ -1,0 +1,52 @@
+{
+  "description": "A cue without words cannot be divided, so each side of a cut shows all of its text.",
+  "sourceDuration": 20,
+  "edits": {
+    "trimStart": 0,
+    "trimEnd": null,
+    "cuts": [
+      {
+        "start": 4,
+        "end": 6
+      }
+    ],
+    "speed": []
+  },
+  "captions": {
+    "language": "en",
+    "cues": [
+      {
+        "id": "cue-3",
+        "start": 3,
+        "end": 8,
+        "text": "All of it, twice."
+      },
+      {
+        "id": "cue-9",
+        "start": 9,
+        "end": 10,
+        "text": "Moved earlier."
+      }
+    ]
+  },
+  "expected": [
+    {
+      "start": 3,
+      "end": 4,
+      "text": "All of it, twice."
+    },
+    {
+      "start": 4,
+      "end": 6,
+      "text": "All of it, twice."
+    },
+    {
+      "start": 7,
+      "end": 8,
+      "text": "Moved earlier."
+    }
+  ],
+  "at": [],
+  "srt": "1\n00:00:03,000 --> 00:00:04,000\nAll of it, twice.\n\n2\n00:00:04,000 --> 00:00:06,000\nAll of it, twice.\n\n3\n00:00:07,000 --> 00:00:08,000\nMoved earlier.\n",
+  "vtt": "WEBVTT\n\n00:00:03.000 --> 00:00:04.000\nAll of it, twice.\n\n00:00:04.000 --> 00:00:06.000\nAll of it, twice.\n\n00:00:07.000 --> 00:00:08.000\nMoved earlier.\n"
+}

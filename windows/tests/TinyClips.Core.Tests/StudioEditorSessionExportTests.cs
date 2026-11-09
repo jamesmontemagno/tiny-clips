@@ -93,7 +93,8 @@ public sealed class StudioEditorSessionExportTests : StudioEditorSessionTestBase
         var session = await OpenAsync(id);
         Changes.Clear();
 
-        var export = session.ExportAsync(() => ExportPath, VideoCodec.Hevc);
+        var chosen = new StudioExportChoice(StudioExportResolution.P720, StudioExportQuality.Best);
+        var export = session.ExportAsync(() => ExportPath, VideoCodec.Hevc, choice: chosen);
 
         Assert.True(session.IsExporting);
         Assert.Equal(0, session.ExportProgress, Precision);
@@ -105,6 +106,7 @@ public sealed class StudioEditorSessionExportTests : StudioEditorSessionTestBase
         Assert.Equal(Path.GetDirectoryName(ExportPath), Path.GetDirectoryName(request.OutputPath));
         Assert.EndsWith(".tcexport", request.OutputPath, StringComparison.Ordinal);
         Assert.Equal(VideoCodec.Hevc, request.Codec);
+        Assert.Equal(chosen, request.Choice);
         Assert.Equal(Projects.GetPaths(id).ScreenPath, request.Paths.ScreenPath);
         Assert.False(export.IsCompleted);
 
@@ -333,7 +335,7 @@ public sealed class StudioEditorSessionExportTests : StudioEditorSessionTestBase
         Assert.True(session.HasNeverExported);
         Assert.Empty(ExportedPaths);
         Assert.Empty(Exporter.Posters);
-        Assert.Equal(StudioClosePrompt.NeverExported, session.GetClosePrompt());
+        Assert.Equal(StudioClosePrompt.Draft, session.GetClosePrompt());
     }
 
     [Fact]

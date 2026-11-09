@@ -49,7 +49,7 @@
                 Glyph="&#xE70D;" />
         </Grid>
         <Button.Flyout>
-            <Flyout>
+            <Flyout Closed="OnOptionsClosed">
                 <StackPanel MinWidth="224" Spacing="10">
                     <VariableSizedWrapGrid
                         x:Name="PART_Swatches"

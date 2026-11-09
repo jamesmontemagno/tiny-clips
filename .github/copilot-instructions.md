@@ -12,6 +12,7 @@ Use this file for repo-wide rules and platform selection. Keep behavior platform
 
 - For mac architecture, capture flows, and contribution workflow, read [CONTRIBUTING.md](../CONTRIBUTING.md).
 - For Windows app status, structure, and commands, read [windows/README.md](../windows/README.md).
+- For agent control, read the [shared automation contract](../shared/automation/README.md) and [agent integration guide](../docs/agent-integration.md).
 - For deeper platform details, link to docs instead of re-embedding:
   - [docs/retina-display-capture.md](../docs/retina-display-capture.md)
   - [windows/docs/dpi-and-coordinates.md](../windows/docs/dpi-and-coordinates.md)
@@ -28,6 +29,14 @@ Use this file for repo-wide rules and platform selection. Keep behavior platform
 Do not mix platform-specific implementation patterns:
 - mac: Swift/SwiftUI/AppKit, `#if APPSTORE`, `#if canImport(Sparkle)`
 - windows: C#/XAML/WinUI 3, `TinyClipsStoreBuild` MSBuild property for Store flavor
+
+## Agent API Coverage
+
+- Treat agent access as part of every new or changed user-facing capability on both platforms. In the same change, expose its meaningful actions and state through Agent Control so agents can use it autonomously without relying on UI interaction.
+- Add or update commands and schemas in `shared/automation/commands.json`, then implement and advertise them in the macOS and Windows automation handlers wherever the feature exists. Do not invent cross-platform feature parity: an unsupported platform must return `not_supported` and must not advertise the command.
+- Ensure the shared CLI and MCP server expose the capability with the correct schema. Update relevant Skills, `docs/agent-integration.md`, and examples when workflows change; test the contract, platform behavior, errors, and CLI/MCP exposure as appropriate.
+- Preserve opt-in Agent Control, pairing, least-privilege scopes, sensitive-action approvals, audit logging, path restrictions, OS permissions, and Pro/Store requirements. Never bypass these protections to make a feature autonomous.
+- If a capability cannot be safely or meaningfully exposed, explain the limitation and get user direction rather than silently omitting agent support.
 
 ## Build and Validate
 
@@ -89,3 +98,4 @@ dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c De
 - Preserve accessibility quality gates:
   - mac: VoiceOver + keyboard for affected flows
   - windows: keyboard navigation and accessible names for new/changed controls
+- Confirm new and changed capabilities have agent API coverage, tests, and relevant documentation on each supported platform.

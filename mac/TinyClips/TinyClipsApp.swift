@@ -67,6 +67,7 @@ final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
         // Quitting closes no window, so an editor's last edit would otherwise be lost.
         MainActor.assumeIsolated {
             StudioWindowRegistry.shared.saveAllBeforeQuitting()
+            AutomationController.shared.shutdown()
         }
         SingleInstanceCoordinator.shared.release()
     }
@@ -110,12 +111,15 @@ struct TinyClipsApp: App {
             exit(EXIT_FAILURE)
         }
 
-        _captureManager = StateObject(wrappedValue: CaptureManager())
+        let captureManager = CaptureManager()
+        AutomationController.shared.activate(captureManager: captureManager)
+        _captureManager = StateObject(wrappedValue: captureManager)
     }
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarContentView(captureManager: captureManager, sparkleController: sparkleController)
+                .labelStyle(.titleAndIcon)
         } label: {
             MenuBarLabelView(captureManager: captureManager)
                 .background(

@@ -38,7 +38,7 @@ public readonly record struct StudioGpuVideoFrame(ID3D11Texture2D Texture, uint 
 
 /// <summary>What to draw for one Studio frame, and where.</summary>
 /// <param name="ProjectDirectory">The project folder, where a background image is looked for.</param>
-/// <param name="SourceTimeSeconds">The source time of the frame: it picks the scene and the click rings.</param>
+/// <param name="SourceTimeSeconds">The source time of the frame: it picks the scene, the click rings and the annotations.</param>
 /// <param name="Screen">The screen picture for that time, or null when it is not there yet; the screen card and its shadow are then left out.</param>
 /// <param name="Camera">The camera picture, or null. It is drawn only when the resolved frame has a camera that is showing at that time.</param>
 /// <param name="Target">
@@ -71,8 +71,8 @@ public enum StudioRenderQuality
 
 /// <summary>
 /// Draws one Tiny Clips Studio frame with Direct2D on the caller's Direct3D 11 device, following
-/// sections 6.5 and 6.7 of the project format: background, screen shadow, screen, click rings,
-/// camera shadow, camera, camera border, branding. A camera whose background is to be blurred or
+/// sections 6.5, 6.7 and 6.10 of the project format: background, screen shadow, screen, click rings,
+/// camera shadow, camera, camera border, annotations, branding. A camera whose background is to be blurred or
 /// removed is drawn that way when the renderer has something that finds the people in it
 /// (<see cref="IStudioPersonFinder"/>), and with its background kept when it has not.
 /// </summary>
@@ -161,6 +161,9 @@ public sealed partial class StudioSceneRenderer : IDisposable
             _context = _device.CreateDeviceContext(DeviceContextOptions.None);
             _context.AntialiasMode = AntialiasMode.PerPrimitive;
             _context.UnitMode = UnitMode.Pixels;
+
+            // A video is looked at on any screen, so its text cannot be fitted to one's subpixels.
+            _context.TextAntialiasMode = TextAntialiasMode.Grayscale;
             _brush = _context.CreateSolidColorBrush(Black);
         }
         catch (Exception ex)
@@ -251,6 +254,14 @@ public sealed partial class StudioSceneRenderer : IDisposable
             var cameraFramed = cameraCutout != StudioCameraCutout.Remove;
             var cameraShadow = cameraBrush is null || !cameraFramed ? null : EnsureShadow(_cameraShadow, cameraRect.Width, cameraRect.Height, camera.CornerRadius, camera.Shape, camera.Shadow);
 
+            var caption = StudioCaptionTrack.DrawnTextAt(project, request.SourceTimeSeconds);
+            if (caption is not null)
+            {
+                PrepareCaption(caption, project, width, height);
+            }
+
+            PrepareEmojiPictures(project, frame, request.SourceTimeSeconds, width, height);
+
             _context.Target = target;
             var began = false;
             try
@@ -305,9 +316,16 @@ public sealed partial class StudioSceneRenderer : IDisposable
                     }
                 }
 
+                DrawAnnotations(project, frame, request.SourceTimeSeconds, width, height, target);
+
                 if (project.Overlays.Branding)
                 {
                     DrawBranding(width, height);
+                }
+
+                if (caption is not null)
+                {
+                    DrawCaption();
                 }
 
                 _context.EndDraw().CheckError();
@@ -381,6 +399,8 @@ public sealed partial class StudioSceneRenderer : IDisposable
         _screenShadow.Dispose();
         _cameraShadow.Dispose();
         DisposePeople();
+        DisposeAnnotations();
+        DisposeCaption();
         _badge?.Dispose();
         _underlay?.Dispose();
         _backgroundImage?.Dispose();

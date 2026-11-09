@@ -10,6 +10,7 @@ public enum SettingsSectionKind
 {
     General,
     Uploadcare,
+    AgentControl,
     Analytics,
     Screenshot,
     Video,

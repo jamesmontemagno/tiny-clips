@@ -74,6 +74,7 @@ public sealed class ScreenshotBackgroundTests
         var decoded = ScreenshotBackgroundDecoder.Decode(path, TestContext.Current.CancellationToken);
         Assert.Equal(3, decoded.Width);
         Assert.Equal(2, decoded.Height);
+        Assert.Equal((3, 2), ScreenshotBackgroundDecoder.ReadDimensions(path, TestContext.Current.CancellationToken));
         Assert.Equal(24, decoded.BgraPixels.Length);
         File.Delete(path);
         Assert.False(File.Exists(path));
@@ -113,9 +114,11 @@ public sealed class ScreenshotBackgroundTests
             (byte)orientation, 0, 0, 0, 0, 0, 0, 0];
         byte[] oriented = [0xff, 0xd8, 0xff, 0xe1, 0, (byte)(exif.Length + 8),
             (byte)'E', (byte)'x', (byte)'i', (byte)'f', 0, 0, .. exif, .. jpeg.AsSpan(2)];
-        var decoded = ScreenshotBackgroundDecoder.Decode(folder.Write(oriented), TestContext.Current.CancellationToken);
+        var path = folder.Write(oriented);
+        var decoded = ScreenshotBackgroundDecoder.Decode(path, TestContext.Current.CancellationToken);
         Assert.Equal(orientation >= 5 ? 2 : 3, decoded.Width);
         Assert.Equal(orientation >= 5 ? 3 : 2, decoded.Height);
+        Assert.Equal((decoded.Width, decoded.Height), ScreenshotBackgroundDecoder.ReadDimensions(path, TestContext.Current.CancellationToken));
         var offset = (redY * decoded.Width + redX) * 4;
         Assert.Equal(original.BgraPixels[..4], decoded.BgraPixels[offset..(offset + 4)]);
     }

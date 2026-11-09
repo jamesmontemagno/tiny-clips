@@ -87,7 +87,9 @@ internal sealed partial class WindowChecks
 
     /// <summary>The scene lane as it should read, from the project the checks expect, with a star before the scene the playhead is in.</summary>
     private static string SceneLaneWanted(Editor editor, int current) =>
-        string.Join(" | ", Enumerable.Range(0, editor.Expected.Scenes.Length).Select(index => (index == current ? "*" : string.Empty) + SceneName(editor, index)));
+        editor.Expected.Scenes.Length < 2
+            ? "empty"
+            : string.Join(" | ", Enumerable.Range(0, editor.Expected.Scenes.Length).Select(index => (index == current ? "*" : string.Empty) + SceneName(editor, index)));
 
     /// <summary>Whether an element is gone from what a screen reader is given, waited for.</summary>
     private static bool Absent(Editor editor, string automationId, double seconds = 1) =>
@@ -142,9 +144,9 @@ internal sealed partial class WindowChecks
 
         using var heard = UiaEvents.Listen(_uia, editor.Root);
         SetSlider(editor, "StudioPlayhead", 4.0);
-        string[] scenes = [SceneLane, "StudioScene_0", "StudioSplitSceneButton", "StudioPreviousSceneButton", "StudioNextSceneButton", "StudioScenePositionText", "StudioSceneSectionSplitButton", "StudioSplitSceneNote", "StudioOneSceneNote", "StudioFirstSceneNote", "StudioDeleteSceneButton"];
-        var there = scenes.Where(id => editor.Root.Find(id) is not null).ToArray();
-        string[] others = ["StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", ZoomLane, CutLane, SpeedLane, "StudioTrimBar", "StudioNoCameraNote", "StudioPreviousZoomButton", "StudioPreviousCutButton", "StudioPreviousSpeedButton"];
+        string[] notThere = [SceneLane, ZoomLane, CutLane, SpeedLane, "StudioScene_0", "StudioSplitSceneButton", "StudioPreviousSceneButton", "StudioNextSceneButton", "StudioScenePositionText", "StudioSceneSectionSplitButton", "StudioSplitSceneNote", "StudioOneSceneNote", "StudioFirstSceneNote", "StudioDeleteSceneButton"];
+        var there = notThere.Where(id => editor.Root.Find(id) is not null).ToArray();
+        string[] others = ["StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioTrimBar", "StudioNoCameraNote", "StudioPreviousZoomButton", "StudioPreviousCutButton", "StudioPreviousSpeedButton"];
         var missing = others.Where(id => editor.Root.Find(id) is null).ToArray();
 
         // S says why nothing happens, and nothing does.
@@ -154,9 +156,9 @@ internal sealed partial class WindowChecks
         var held = ScenesOf(editor);
         var canUndo = Find(editor, "StudioUndoButton", 0.5)?.IsEnabled;
         _report.Check(
-            "a recording without a camera has no scene lane, no Scene panel and no Split button, and everything else of the timeline and the inspector; what S runs changes nothing and tells a screen reader that there is no camera to arrange differently",
+            "a recording without a camera, with nothing added, has no lanes, no Scene panel and no Split button, and everything else of the timeline and the inspector; what S runs changes nothing and tells a screen reader that there is no camera to arrange differently",
             there.Length == 0 && missing.Length == 0 && key == StudioShortcutAction.SplitScene && said.Said && held.Length == 1 && canUndo == false,
-            $"{(there.Length == 0 ? "none of the scene controls is there" : "there: " + string.Join(", ", there))}; {(missing.Length == 0 ? "the zoom, cut and speed controls are" : "missing: " + string.Join(", ", missing))}; S ran {key}; sent: {said.Heard}; the editor holds {held.Length} scene(s); Undo enabled {canUndo}");
+            $"{(there.Length == 0 ? "no lane and none of the scene controls is there" : "there: " + string.Join(", ", there))}; {(missing.Length == 0 ? "the zoom, cut and speed controls are" : "missing: " + string.Join(", ", missing))}; S ran {key}; sent: {said.Heard}; the editor holds {held.Length} scene(s); Undo enabled {canUndo}");
         CloseQuietly(editor);
     }
 
@@ -176,17 +178,12 @@ internal sealed partial class WindowChecks
         string TimeFor(double playhead) => StudioEditorText.GetTimeText(playhead - CameraOffset, RecordingLength - CameraOffset);
         LookForLayout(editor, FrameOf(CameraOffset), 5);
 
-        // One scene: a list of one item, which is the selected one, and a panel that says so.
-        const string OnlyName = "Scene 1 of 1, Screen with camera bubble, 0.0 to 12.0 seconds";
-        var list = Find(editor, SceneLane);
-        var item = Find(editor, "StudioScene_0");
+        // One scene: nothing to choose between, so no lane, and a panel that says so.
         var lane = LaneText(editor, SceneLane);
         _report.Check(
-            "a recording with a camera and one scene: the lane is a list called Scenes with one item, named as the editor words the scene, which is the selected one and stays so; the list can take the keyboard focus, and its item cannot",
-            list is { ControlType: ControlTypeNames.List, Name: "Scenes", IsKeyboardFocusable: true, IsEnabled: true, HelpText: "" } && list.IsSelectionRequired == true && list.SelectedNames.SequenceEqual([OnlyName])
-                && lane == "*" + OnlyName && OnlyName == SceneName(editor, 0)
-                && item is { ControlType: ControlTypeNames.ListItem, IsKeyboardFocusable: false, Patterns: "Invoke,SelectionItem" } && item.Children().Count == 0 && Absent(editor, "StudioSceneLaneEmptyText", 0.2),
-            $"{list}, one item is always selected: {list?.IsSelectionRequired}, described as \"{list?.HelpText}\"; the lane: {lane}; {item} patterns({item?.Patterns})");
+            "a recording with a camera, one scene and nothing added shows no lanes: a lane takes room only with something on it",
+            lane == "empty" && LanesShown(editor).Length == 0 && new[] { SceneLane, ZoomLane, CutLane, SpeedLane }.All(id => Absent(editor, id, 0.2)),
+            $"the scene lane: {lane}; lanes held: {string.Join(", ", LanesShown(editor))}");
         var oneScene = NameOf(editor, "StudioOneSceneNote", 1);
         var section = SceneSectionShows(editor, "Scene 1 of 1", "0.0 to 12.0 seconds", canGoBack: false, canGoOn: false, start: null, isMoving: null, moveTakes: null, canDelete: false);
         _report.Check(
@@ -238,6 +235,13 @@ internal sealed partial class WindowChecks
                 && Find(editor, SceneLane)?.SelectedNames.SequenceEqual([SceneName(editor, 1)]) == true && CurrentSceneOf(editor) == 1,
             $"the key ran {key} with the playhead at {Seconds(at)} s; the editor holds {held}; the lane: {lane}");
         _report.Check("a screen reader is told \"Scene split.\"", split.Said, $"sent: {split.Heard}");
+        var list = Find(editor, SceneLane);
+        var item = Find(editor, "StudioScene_0");
+        _report.Check(
+            "the lane that a second scene brings is a list called Scenes, one of whose items is always selected; the list can take the keyboard focus, and its items cannot",
+            list is { ControlType: ControlTypeNames.List, Name: "Scenes", IsKeyboardFocusable: true, IsEnabled: true, HelpText: "" } && list.IsSelectionRequired == true
+                && item is { ControlType: ControlTypeNames.ListItem, IsKeyboardFocusable: false, Patterns: "Invoke,SelectionItem" } && item.Children().Count == 0,
+            $"{list}, one item is always selected: {list?.IsSelectionRequired}, described as \"{list?.HelpText}\"; {item} patterns({item?.Patterns})");
         _report.Check(
             "the paused playhead moves to where the new scene has been entered, 0.35 seconds after its start, and the time follows",
             Same(head, 4.35) && time == TimeFor(head),

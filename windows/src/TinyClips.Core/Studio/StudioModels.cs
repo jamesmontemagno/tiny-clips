@@ -95,12 +95,77 @@ public enum StudioMouseButton
     Other,
 }
 
+[JsonConverter(typeof(StudioCaptionSizeJsonConverter))]
+public enum StudioCaptionSize
+{
+    Small,
+    Medium,
+    Large,
+}
+
+[JsonConverter(typeof(StudioCaptionPositionJsonConverter))]
+public enum StudioCaptionPosition
+{
+    Bottom,
+    Top,
+}
+
+[JsonConverter(typeof(StudioCaptionAppearanceJsonConverter))]
+public enum StudioCaptionAppearance
+{
+    ClassicOutline,
+    ContrastPanel,
+    BoldImpact,
+    CleanShadow,
+}
+
 [JsonConverter(typeof(StudioCaptureKindJsonConverter))]
 public enum StudioCaptureKind
 {
     Display,
     Region,
     Window,
+}
+
+[JsonConverter(typeof(StudioAnnotationAttachJsonConverter))]
+public enum StudioAnnotationAttach
+{
+    Screen,
+    Frame,
+}
+
+[JsonConverter(typeof(StudioAnnotationStyleJsonConverter))]
+public enum StudioAnnotationStyle
+{
+    Red,
+    Blue,
+    Yellow,
+    White,
+    Dark,
+}
+
+[JsonConverter(typeof(StudioAnnotationSizeJsonConverter))]
+public enum StudioAnnotationSize
+{
+    Small,
+    Medium,
+    Large,
+}
+
+[JsonConverter(typeof(StudioRedactStyleJsonConverter))]
+public enum StudioRedactStyle
+{
+    Blur,
+    Pixelate,
+    Solid,
+}
+
+[JsonConverter(typeof(StudioRedactLevelJsonConverter))]
+public enum StudioRedactLevel
+{
+    Light,
+    Medium,
+    Heavy,
 }
 
 public sealed record StudioProject
@@ -123,6 +188,7 @@ public sealed record StudioProject
     public StudioEdits Edits { get; init; } = new();
     public StudioAudio Audio { get; init; } = new();
     public StudioOverlays Overlays { get; init; } = new();
+    public StudioCaptions Captions { get; init; } = new();
     public StudioExport[] Exports { get; init; } = [];
 
     [JsonExtensionData]
@@ -339,6 +405,124 @@ public sealed record StudioOverlays
 {
     public StudioClickOverlay Clicks { get; init; } = new();
     public bool Branding { get; init; }
+
+    /// <summary>What is drawn over the picture, bottom first (section 6.10 of the project format).</summary>
+    public StudioAnnotation[] Annotations { get; init; } = [];
+
+    public StudioCaptionOverlay Captions { get; init; } = new();
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+/// <summary>How captions are drawn into the video (section 15.4 of the project format).</summary>
+public sealed record StudioCaptionOverlay
+{
+    public bool Enabled { get; init; }
+    public StudioCaptionSize Size { get; init; } = StudioCaptionSize.Medium;
+    public StudioCaptionPosition Position { get; init; } = StudioCaptionPosition.Bottom;
+    public StudioCaptionAppearance Appearance { get; init; } = StudioCaptionAppearance.ClassicOutline;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+/// <summary>The words of a project, in source time (section 15 of the project format).</summary>
+public sealed record StudioCaptions
+{
+    /// <summary>The language of the cues as a BCP 47 tag, or null when that is not known.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Language { get; init; }
+
+    public StudioCaptionCue[] Cues { get; init; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+public sealed record StudioCaptionCue
+{
+    public string Id { get; init; } = string.Empty;
+    public double Start { get; init; }
+    public double End { get; init; }
+    public string Text { get; init; } = string.Empty;
+
+    /// <summary>
+    /// When each word of <see cref="Text"/> is said. Whoever changes the text empties this, because
+    /// the words no longer match it.
+    /// </summary>
+    public StudioCaptionWord[] Words { get; init; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+public sealed record StudioCaptionWord
+{
+    public double Start { get; init; }
+    public double End { get; init; }
+    public string Text { get; init; } = string.Empty;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+/// <summary>An arrow, a callout, a text box, a shape, a redaction, or an emoji over the picture for a stretch of the recording.</summary>
+public sealed record StudioAnnotation
+{
+    public string Id { get; init; } = string.Empty;
+
+    /// <summary>
+    /// One of <see cref="StudioAnnotationKinds"/>. It is text and not an enumeration so that a
+    /// kind from a later version stays what it is through a save, and is not drawn as another.
+    /// </summary>
+    public string Kind { get; init; } = StudioAnnotationKinds.Arrow;
+
+    public StudioAnnotationAttach Attach { get; init; } = StudioAnnotationAttach.Screen;
+    public double Start { get; init; }
+    public double End { get; init; }
+    public double X { get; init; } = 0.5;
+    public double Y { get; init; } = 0.5;
+    public double OffsetX { get; init; } = -0.12;
+    public double OffsetY { get; init; } = 0.12;
+    public string Text { get; init; } = string.Empty;
+    public StudioAnnotationStyle Style { get; init; } = StudioAnnotationStyle.Red;
+    public StudioAnnotationSize Size { get; init; } = StudioAnnotationSize.Medium;
+
+    /// <summary><c>#RRGGBB</c> in place of the style's fill. Anything else leaves the style's.</summary>
+    public string Fill { get; init; } = string.Empty;
+
+    /// <summary><c>#RRGGBB</c> in place of the style's text color. Anything else leaves the style's.</summary>
+    public string TextColor { get; init; } = string.Empty;
+
+    /// <summary>What <see cref="Size"/> is multiplied by.</summary>
+    public double Scale { get; init; } = 1;
+    public double Rotation { get; init; }
+
+    /// <summary>For an area (rectangle, ellipse, redact): its width as a share of the picture, centered on <see cref="X"/>.</summary>
+    public double Width { get; init; } = 0.2;
+
+    /// <summary>For an area (rectangle, ellipse, redact): its height as a share of the picture, centered on <see cref="Y"/>.</summary>
+    public double Height { get; init; } = 0.15;
+
+    /// <summary>For a rectangle: the rounding of its corners as a share of the canvas's short side.</summary>
+    public double CornerRadius { get; init; }
+
+    /// <summary>For a rectangle or an ellipse: <c>#RRGGBB</c> to fill the inside with. Anything else leaves it empty.</summary>
+    public string ShapeFill { get; init; } = string.Empty;
+
+    /// <summary>How opaque <see cref="ShapeFill"/> is.</summary>
+    public double ShapeFillOpacity { get; init; } = 0.35;
+
+    /// <summary>For a redaction: how what is under it is hidden.</summary>
+    public StudioRedactStyle RedactStyle { get; init; } = StudioRedactStyle.Blur;
+
+    /// <summary>For a redaction: how strongly a blur or a pixelation hides.</summary>
+    public StudioRedactLevel RedactLevel { get; init; } = StudioRedactLevel.Medium;
+
+    /// <summary>For an emoji: whether a soft drop shadow is drawn under it. Anything but JSON <c>true</c> reads as false.</summary>
+    [JsonConverter(typeof(StudioTrueOnlyBoolJsonConverter))]
+    public bool Shadow { get; init; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];

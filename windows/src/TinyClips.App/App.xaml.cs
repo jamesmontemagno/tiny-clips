@@ -15,10 +15,12 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
+using TinyClips.App.Models.Studio;
 using TinyClips.App.Services.ClipsLibrary;
 using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.Views.ClipsLibrary;
+using TinyClips.Core.Automation;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
@@ -35,6 +37,9 @@ public partial class App : Application
 {
     private static readonly FontFamily FluentIconFont = new("Segoe Fluent Icons");
     private static readonly object NotificationRegistrationGate = new();
+    private const string NotificationActionArgument = "action";
+    private const string NotificationProjectArgument = "projectId";
+    private const string OpenStudioProjectAction = "openStudioProject";
 
     // Segoe Fluent Icons glyphs.
     private const string GlyphScreenshot = "\uE722";
@@ -73,7 +78,9 @@ public partial class App : Application
     private ScrollingCaptureWindow? _scrollingPanel;
     private RegionIndicatorWindow? _scrollingRegionIndicator;
     private bool _scrollingWasPickerInitiated;
+    private bool _scrollingWasAutomation;
     private bool _scrollingStopping;
+    private int _scrollingFrameCount;
     private Action<int>? _scrollingProgressHandler;
     private Action<PanoramaCaptureLimitReason>? _scrollingLimitHandler;
     private Action<Exception>? _scrollingFailedHandler;
@@ -85,6 +92,7 @@ public partial class App : Application
     private CaptureType? _activeRecordingType;
     private VideoRecordingOptions _activeVideoRecordingOptions = VideoRecordingOptions.Default;
     private bool _activeRecordingWasPickerInitiated;
+    private bool _activeRecordingWasStartedByAutomation;
 
     // Whether the video recording being set up was asked for with Studio recording. Kept from
     // one recording to the next, so that a capture picker that comes back by itself is for the
@@ -163,6 +171,7 @@ public partial class App : Application
             .AddSingleton<IStudioPreviewViewFactory, StudioPreviewViewFactory>()
             .AddSingleton<StudioWindowService>()
             .AddSingleton<StudioRecentDrafts>()
+            .AddSingleton<AgentControlService>(CreateAgentControlService)
             .BuildServiceProvider();
 
         ApplyTheme();
@@ -170,6 +179,10 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // This is a tray app: closing its last window must not end the process. The only way out is
+        // ExitApplicationAsync, which exits explicitly.
+        DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
+
         _dispatcher = DispatcherQueue.GetForCurrentThread();
 
         // Nothing may escape OnLaunched: XAML treats an exception here as fatal and terminates the
@@ -193,6 +206,7 @@ public partial class App : Application
 #endif
         RunStartupStep(nameof(ScheduleStudioProjectCleanup), ScheduleStudioProjectCleanup);
         RunStartupStep(nameof(WatchStudioDrafts), WatchStudioDrafts);
+        RunStartupStep(nameof(StartAgentControl), StartAgentControl);
         RunStartupStep(nameof(EndStartupPhaseAfterFirstDispatcherPass), EndStartupPhaseAfterFirstDispatcherPass);
     }
 
@@ -319,6 +333,27 @@ public partial class App : Application
 
     private void OnTrayStudioPreviewChanged(object? sender, EventArgs args) =>
         _dispatcher?.TryEnqueue(() => _trayStudioInvalidation?.Request());
+
+    private void OnIncludeTinyClipsInCaptureChanged(object? sender, EventArgs args) =>
+        _dispatcher?.TryEnqueue(() =>
+        {
+            if (!_isExiting)
+            {
+                SyncCaptureVisibility(Services.GetRequiredService<ICaptureSettings>().IncludeTinyClipsInCapture);
+            }
+        });
+
+    private void SyncCaptureVisibility(bool includeTinyClips)
+    {
+        try
+        {
+            WindowCaptureVisibility.Policy.BeginCapture(includeTinyClips, IsAnyRecordingActive());
+        }
+        catch (CaptureVisibilityException ex)
+        {
+            CrashDiagnostics.Log("SyncCaptureVisibility", ex, handled: true);
+        }
+    }
 
     private void OnTrayTextScaleChanged(Windows.UI.ViewManagement.UISettings sender, object args) =>
         _dispatcher?.TryEnqueue(() => _trayWidthInvalidation?.Request());
@@ -617,7 +652,13 @@ public partial class App : Application
             callback => _dispatcher!.TryEnqueue(DispatcherQueuePriority.Low, () => callback()),
             UpdateTrayPopupWidth);
         _trayLayout = BuildTrayPopupContent(hotKeys);
-        _trayPopup = new TrayPopupWindow(_trayLayout);
+
+        // Apply the saved setting before the tray exists, and keep it applied as it changes, so a
+        // capture never flips display affinity on the just-hidden tray (that leaves a white box).
+        var captureSettings = Services.GetRequiredService<ICaptureSettings>();
+        SyncCaptureVisibility(captureSettings.IncludeTinyClipsInCapture);
+        captureSettings.IncludeTinyClipsInCaptureChanged += OnIncludeTinyClipsInCaptureChanged;
+
         RefreshTrayTiles();
 
         _taskbarIcon = new TaskbarIcon
@@ -660,7 +701,9 @@ public partial class App : Application
 
         try
         {
-            _taskbarIcon.ForceCreate();
+            // The default also puts the whole process in Efficiency Mode (idle priority + EcoQoS)
+            // and nothing restores it, which delays every hotkey, overlay, editor and recording.
+            _taskbarIcon.ForceCreate(enablesEfficiencyMode: false);
             return true;
         }
         catch (Exception ex)
@@ -756,13 +799,14 @@ public partial class App : Application
 
     private void ShowTrayPopup()
     {
-        if (_trayPopup is null)
+        if (_isExiting || _trayLayout is null)
         {
             return;
         }
 
-        // All content, state and dimensions are maintained ahead of time. In particular,
-        // opening this window never touches storage, starts thumbnails or resolves services.
+        // Prepare the content ahead of time, but create no window until it is requested.
+        // A hidden acrylic window can otherwise leave an empty surface at startup.
+        _trayPopup ??= new TrayPopupWindow(_trayLayout);
         _trayPopup.ShowNearCursor(_trayPopupWidth, TrayPopupHeight);
         ResumeTrayRefresh();
     }
@@ -861,12 +905,12 @@ public partial class App : Application
             Spacing = 12,
         };
 
-        content.Children.Add(new TextBlock
+        content.Children.Add(BuildTrayHeader(new TextBlock
         {
             Text = "Tiny Clips",
             Margin = new Thickness(0, 0, 0, 2),
             Style = ResourceStyle("BodyStrongTextBlockStyle"),
-        });
+        }));
 
         _screenshotTile = CreateCaptureTile(
             "Screenshot",
@@ -1299,7 +1343,8 @@ public partial class App : Application
         CaptureType type,
         CapturePickerMode? forcedMode = null,
         bool abortIfRecording = false,
-        VideoRecordingCommand? videoCommand = null)
+        VideoRecordingCommand? videoCommand = null,
+        TargetSelection? automationSelection = null)
     {
         if (_captureFlowCts is not null || _scrollingPanel is not null)
         {
@@ -1315,9 +1360,6 @@ public partial class App : Application
 
         var captureFlowCts = new CancellationTokenSource();
         _captureFlowCts = captureFlowCts;
-        IReadOnlyList<Task<CapturedFrame?>>? earlyBackdrops = null;
-        IReadOnlyList<MonitorInfo>? earlyBackdropMonitors = null;
-        long earlyBackdropStarted = 0;
         Task? recorderPrepare = null;
         try
         {
@@ -1335,27 +1377,19 @@ public partial class App : Application
             var settings = Services.GetRequiredService<ICaptureSettings>();
             WindowCaptureVisibility.Policy.BeginCapture(settings.IncludeTinyClipsInCapture, IsAnyRecordingActive());
             var (cdEnabled, cdDuration) = GetCountdown(settings, type);
-            var wasPickerInitiated = forcedMode is null && settings.ShouldShowCapturePicker(type);
-            if (wasPickerInitiated)
-            {
-                // Start grabbing the region-overlay backdrop while the user reads the picker bar,
-                // so choosing "Region" shows the overlay immediately. If the user dawdles the
-                // frame is refreshed on selection (see ResolveTargetAsync) so it never goes stale.
-                earlyBackdropMonitors = ResolveBackdropMonitors(settings);
-                if (earlyBackdropMonitors.Count > 0)
-                {
-                    earlyBackdropStarted = Stopwatch.GetTimestamp();
-                    earlyBackdrops = RegionSelectController.CaptureBackdropsAsync(earlyBackdropMonitors);
-                }
-            }
+            var wasPickerInitiated = automationSelection is null
+                && forcedMode is null
+                && settings.ShouldShowCapturePicker(type);
 
-            var pick = wasPickerInitiated
-                ? await CapturePickerWindow.RunAsync(StudioRecording.GetPickerIntent(type), cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
-                : new CapturePickerResult(
-                    forcedMode ?? CapturePickerMode.Region,
-                    cdEnabled,
-                    cdDuration,
-                    settings.VideoRecordingTimeLimitMinutes);
+            var pick = automationSelection is not null
+                ? new CapturePickerResult(CapturePickerMode.Screen, cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
+                : wasPickerInitiated
+                    ? await CapturePickerWindow.RunAsync(StudioRecording.GetPickerIntent(type), cdEnabled, cdDuration, settings.VideoRecordingTimeLimitMinutes)
+                    : new CapturePickerResult(
+                        forcedMode ?? CapturePickerMode.Region,
+                        cdEnabled,
+                        cdDuration,
+                        settings.VideoRecordingTimeLimitMinutes);
             CaptureFlowTrace.Mark($"picker: result {(pick is null ? "cancelled" : pick.Mode.ToString())}");
             if (pick is null)
             {
@@ -1364,13 +1398,11 @@ public partial class App : Application
 
             var isTextRecognition = pick.Mode == CapturePickerMode.RecognizeText;
             var isScrolling = type == CaptureType.Screenshot && pick.Mode == CapturePickerMode.Scrolling;
-            var earlyBackdrop = earlyBackdrops is null
-                ? null
-                : new EarlyBackdrop(earlyBackdropMonitors!, earlyBackdrops, earlyBackdropStarted);
-            var resolved = await ResolveTargetAsync(
-                isTextRecognition || isScrolling ? CapturePickerMode.Region : pick.Mode,
-                earlyBackdrop,
-                captureFlowCts.Token);
+            var resolved = automationSelection is { } selected
+                ? selected
+                : await ResolveTargetAsync(
+                    isTextRecognition || isScrolling ? CapturePickerMode.Region : pick.Mode,
+                    captureFlowCts.Token);
             CaptureFlowTrace.Mark($"target: {(resolved is null ? "cancelled" : "resolved")}");
             if (resolved is not { } selection)
             {
@@ -1381,17 +1413,20 @@ public partial class App : Application
             var videoOptions = VideoRecordingOptions.Default;
             if (type is CaptureType.Video or CaptureType.Gif)
             {
-                // Asked here, when the recording is set up, and again before it starts.
-                var isStudioRecording = type == CaptureType.Video && StudioRecording.IsForStudio;
-                recordingSetup = await ShowRecordingSetupAsync(type, selection, settings, isStudioRecording);
-                CaptureFlowTrace.Mark($"setup: {(recordingSetup is null ? "cancelled" : "confirmed")}");
-                if (recordingSetup is null)
+                if (automationSelection is null)
                 {
-                    CloseRecordingRegionIndicator();
-                    return;
-                }
+                    // Asked here, when the recording is set up, and again before it starts.
+                    var isStudioRecording = type == CaptureType.Video && StudioRecording.IsForStudio;
+                    recordingSetup = await ShowRecordingSetupAsync(type, selection, settings, isStudioRecording);
+                    CaptureFlowTrace.Mark($"setup: {(recordingSetup is null ? "cancelled" : "confirmed")}");
+                    if (recordingSetup is null)
+                    {
+                        CloseRecordingRegionIndicator();
+                        return;
+                    }
 
-                ApplyRecordingSetup(type, recordingSetup, settings);
+                    ApplyRecordingSetup(type, recordingSetup, settings);
+                }
 
                 // The pre-warm below and the start after the countdown get this same value: the
                 // recorder only reuses a prepared pipeline for a start with matching options.
@@ -1480,6 +1515,7 @@ public partial class App : Application
                     _activeRecordingType = CaptureType.Video;
                     _activeVideoRecordingOptions = videoOptions;
                     _activeRecordingWasPickerInitiated = wasPickerInitiated;
+                    _activeRecordingWasStartedByAutomation = automationSelection is not null;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
                     {
@@ -1499,6 +1535,7 @@ public partial class App : Application
                     _activeRecordingSelection = selection with { Backdrop = null };
                     _activeRecordingType = CaptureType.Gif;
                     _activeRecordingWasPickerInitiated = wasPickerInitiated;
+                    _activeRecordingWasStartedByAutomation = automationSelection is not null;
                     ShowRecordingRegionIndicator(selection);
                     if (!showDisabledStopDuringCountdown)
                     {
@@ -1528,11 +1565,16 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             _activeRecordingWasPickerInitiated = false;
+            _activeRecordingWasStartedByAutomation = false;
             if (!IsAnyRecordingActive())
             {
                 ReleaseDisplaySleepAssertion();
             }
             UpdateRecordingState();
+            if (automationSelection is not null)
+            {
+                throw;
+            }
         }
         catch (Exception ex)
         {
@@ -1557,11 +1599,17 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             _activeRecordingWasPickerInitiated = false;
+            _activeRecordingWasStartedByAutomation = false;
             if (!IsAnyRecordingActive())
             {
                 ReleaseDisplaySleepAssertion();
             }
             HideRecordingIndicatorIfNotRecording();
+            if (automationSelection is not null)
+            {
+                throw new AutomationException(AutomationErrorCodes.Internal,
+                    $"Recording failed to start: {ex.Message}");
+            }
         }
         finally
         {
@@ -1572,31 +1620,6 @@ public partial class App : Application
 
             captureFlowCts.Dispose();
         }
-    }
-
-    /// <summary>Monitor(s) the region overlay will cover, mirroring <see cref="ResolveTargetAsync"/>.</summary>
-    private static IReadOnlyList<MonitorInfo> ResolveBackdropMonitors(ICaptureSettings settings)
-    {
-        var monitors = Services.GetRequiredService<IMonitorService>();
-        var all = monitors.GetMonitors();
-        if (all.Count == 0)
-        {
-            return all;
-        }
-
-        var preferred = ResolvePreferredMonitor(monitors, settings.MultiMonitorCaptureMode);
-        return preferred is { } single ? new[] { single } : all;
-    }
-
-    // A backdrop captured while the picker was showing; refreshed if older than this on use.
-    private static readonly TimeSpan EarlyBackdropMaxAge = TimeSpan.FromMilliseconds(600);
-
-    private sealed record EarlyBackdrop(IReadOnlyList<MonitorInfo> Monitors, IReadOnlyList<Task<CapturedFrame?>> Frames, long StartedTimestamp)
-    {
-        public bool IsFreshFor(IReadOnlyList<MonitorInfo> monitors) =>
-            Stopwatch.GetElapsedTime(StartedTimestamp) <= EarlyBackdropMaxAge
-            && monitors.Count == Monitors.Count
-            && monitors.Zip(Monitors).All(pair => pair.First.HMonitor == pair.Second.HMonitor);
     }
 
     /// <summary>
@@ -1769,9 +1792,10 @@ public partial class App : Application
         ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
     }
 
-    private async Task<string> SaveScreenshotFrameAsync(IScreenshotService screenshots, CapturedFrame frame, bool alreadyBranded)
+    private async Task<string> SaveScreenshotFrameAsync(
+        IScreenshotService screenshots, CapturedFrame frame, bool alreadyBranded, CancellationToken cancellationToken = default)
     {
-        var path = await screenshots.SaveFrameAsync(frame, applyBranding: !alreadyBranded);
+        var path = await screenshots.SaveFrameAsync(frame, applyBranding: !alreadyBranded, cancellationToken);
         Services.GetRequiredService<IRecentCaptureService>().Record(path, CaptureType.Screenshot);
         await CopyToClipboardAsync(path, CaptureType.Screenshot);
         CaptureFlowTrace.Mark("screenshot: saved + clipboard");
@@ -1788,7 +1812,8 @@ public partial class App : Application
         TargetSelection selection,
         ICaptureSettings settings,
         bool wasPickerInitiated,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isAutomation = false)
     {
         var service = Services.GetRequiredService<IScrollingCaptureService>();
         if (service.IsActive || _scrollingPanel is not null)
@@ -1800,15 +1825,27 @@ public partial class App : Application
 
         // The editor renders through Win2D/XAML textures, which cap at 16 384 px; only let the
         // panorama grow past that when it will be saved straight to disk.
-        var limits = settings.ShowScreenshotEditor
+        var limits = !isAutomation && settings.ShowScreenshotEditor
             ? PanoramaCaptureLimits.ForEditor
             : PanoramaCaptureLimits.Default;
 
         var panel = new ScrollingCaptureWindow();
         _scrollingPanel = panel;
         _scrollingWasPickerInitiated = wasPickerInitiated;
+        _scrollingWasAutomation = isAutomation;
+        _scrollingFrameCount = 0;
         _scrollingStopping = false;
-        panel.StopRequested = () => _ = StopScrollingCaptureAsync();
+        panel.StopRequested = () =>
+        {
+            if (isAutomation)
+            {
+                _ = StopAutomationScrollingCaptureFromUiAsync();
+            }
+            else
+            {
+                _ = StopScrollingCaptureAsync();
+            }
+        };
         panel.CancelRequested = CancelScrollingCapture;
 
         _scrollingProgressHandler = count => _dispatcher?.TryEnqueue(() =>
@@ -1816,6 +1853,7 @@ public partial class App : Application
             if (ReferenceEquals(_scrollingPanel, panel))
             {
                 panel.UpdateFrameCount(count);
+                _scrollingFrameCount = count;
             }
         });
         _scrollingLimitHandler = reason => _dispatcher?.TryEnqueue(() =>
@@ -1832,7 +1870,14 @@ public partial class App : Application
                 AutomationNotificationProcessing.ImportantMostRecent,
                 message,
                 "ScrollingCaptureLimit");
-            _ = StopScrollingCaptureAsync();
+            if (isAutomation)
+            {
+                _ = StopAutomationScrollingCaptureFromUiAsync();
+            }
+            else
+            {
+                _ = StopScrollingCaptureAsync();
+            }
         });
         _scrollingFailedHandler = error => _dispatcher?.TryEnqueue(() =>
         {
@@ -1871,7 +1916,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             FinishScrollingCapture(ex);
-            if (ex is OperationCanceledException)
+            if (ex is OperationCanceledException || isAutomation)
             {
                 throw;
             }
@@ -1974,6 +2019,8 @@ public partial class App : Application
 
         var wasPickerInitiated = _scrollingWasPickerInitiated;
         _scrollingWasPickerInitiated = false;
+        _scrollingWasAutomation = false;
+        _scrollingFrameCount = 0;
         _scrollingStopping = false;
 
         if (error is null)
@@ -2093,7 +2140,6 @@ public partial class App : Application
 
     private async Task<TargetSelection?> ResolveTargetAsync(
         CapturePickerMode mode,
-        EarlyBackdrop? earlyBackdrop = null,
         CancellationToken cancellationToken = default)
     {
         var monitors = Services.GetRequiredService<IMonitorService>();
@@ -2113,14 +2159,8 @@ public partial class App : Application
                 var preferredMonitor = ResolvePreferredMonitor(monitors, settings.MultiMonitorCaptureMode);
                 var overlayMonitors = preferredMonitor is { } single ? new[] { single } : all;
 
-                // Reuse the backdrop grabbed while the picker was up if it is still fresh;
-                // otherwise the controller captures a new one (in parallel with window creation).
-                var backdrops = earlyBackdrop is { } early && early.IsFreshFor(overlayMonitors)
-                    ? early.Frames
-                    : null;
-                CaptureFlowTrace.Mark(backdrops is null ? "region: capturing fresh backdrop" : "region: reusing early backdrop");
-
-                var result = await RegionSelectController.RunAsync(overlayMonitors, backdrops, cancellationToken);
+                CaptureFlowTrace.Mark("region: starting overlay");
+                var result = await RegionSelectController.RunAsync(overlayMonitors, cancellationToken);
                 if (result is not { } selection)
                 {
                     return null;
@@ -2156,10 +2196,7 @@ public partial class App : Application
             {
                 // The window picker always spans every monitor so any window can be chosen.
                 var all = monitors.GetMonitors();
-                var backdrops = earlyBackdrop is { } early && early.IsFreshFor(all)
-                    ? early.Frames
-                    : null;
-                var hwnd = await WindowPickerController.RunAsync(all, backdrops, cancellationToken);
+                var hwnd = await WindowPickerController.RunAsync(all, cancellationToken);
                 return hwnd is { } h
                     ? new TargetSelection(CaptureTarget.Window(h), null, null)
                     : null;
@@ -2429,7 +2466,9 @@ public partial class App : Application
             _activeRecordingSelection = null;
             _activeRecordingType = null;
             var wasPickerInitiated = _activeRecordingWasPickerInitiated;
+            var wasStartedByAutomation = _activeRecordingWasStartedByAutomation;
             _activeRecordingWasPickerInitiated = false;
+            _activeRecordingWasStartedByAutomation = false;
             _completedRecordingWasPickerInitiated = wasPickerInitiated;
             if (_isExiting)
             {
@@ -2460,7 +2499,7 @@ public partial class App : Application
 
             var settings = Services.GetRequiredService<ICaptureSettings>();
             var showTrimmer = type == CaptureType.Gif ? settings.ShowGifTrimmer : settings.ShowTrimmer;
-            if (showTrimmer)
+            if (showTrimmer && !wasStartedByAutomation)
             {
                 OpenTrimmer(path, type, pickerInitiated: wasPickerInitiated);
             }
@@ -2599,6 +2638,7 @@ public partial class App : Application
             _studioWindows.Exported += OnStudioExported;
             _studioWindows.ScreenRecordingSaved += OnStudioExported;
             _studioWindows.ErrorReported += (_, e) => ShowMessageNotification(e.Message);
+            _studioWindows.CaptionNotificationRequested += (_, e) => ShowStudioProjectNotification(e);
         }
 
         return _studioWindows;
@@ -2630,7 +2670,7 @@ public partial class App : Application
         });
     }
 
-    private async Task StopActiveRecordingAsync()
+    private async Task StopActiveRecordingAsync(bool throwOnFailure = false)
     {
         CaptureType? stoppedType = null;
 
@@ -2669,6 +2709,11 @@ public partial class App : Application
             if (stoppedType is { } type)
             {
                 ShowSaveFailureNotification(CaptureOutputDescription(type));
+            }
+
+            if (throwOnFailure)
+            {
+                throw new AutomationException(AutomationErrorCodes.Internal, $"Recording failed to stop: {ex.Message}");
             }
         }
         finally
@@ -3292,8 +3337,8 @@ public partial class App : Application
 
         if (_taskbarIcon is { } icon)
         {
-            icon.ToolTipText = video.IsRecording ? "Tiny Clips — Recording video"
-                : gif.IsRecording ? "Tiny Clips — Recording GIF" : "Tiny Clips";
+            icon.ToolTipText = TrayToolTipWithAgentState(video.IsRecording ? "Tiny Clips — Recording video"
+                : gif.IsRecording ? "Tiny Clips — Recording GIF" : "Tiny Clips");
         }
 
         if (_videoTile is not null)
@@ -3346,13 +3391,51 @@ public partial class App : Application
 
             try
             {
+                // A click on a toast is told only to a handler that was there before Register.
+                AppNotificationManager.Default.NotificationInvoked += OnNotificationInvoked;
                 AppNotificationManager.Default.Register();
                 _notificationsRegistered = true;
             }
             catch (Exception ex)
             {
+                AppNotificationManager.Default.NotificationInvoked -= OnNotificationInvoked;
                 Debug.WriteLine($"Notification registration failed: {ex}");
             }
+        }
+    }
+
+    // Comes on a worker thread. Only a toast about a Studio project does something when clicked:
+    // it brings that project's editor to the front, or opens it again.
+    private static void OnNotificationInvoked(AppNotificationManager sender, AppNotificationActivatedEventArgs args)
+    {
+        if (args.Arguments.TryGetValue(NotificationActionArgument, out var action)
+            && action == OpenStudioProjectAction
+            && args.Arguments.TryGetValue(NotificationProjectArgument, out var projectId)
+            && !string.IsNullOrEmpty(projectId)
+            && Current is App app)
+        {
+            app._dispatcher?.TryEnqueue(() => app.OpenStudioWindow(projectId));
+        }
+    }
+
+    /// <summary>Shows a toast about a Studio project, which opens its editor when it is clicked.</summary>
+    private static void ShowStudioProjectNotification(StudioProjectNotificationEventArgs e)
+    {
+        try
+        {
+            EnsureNotificationsRegistered();
+            var notification = new AppNotificationBuilder()
+                .AddArgument(NotificationActionArgument, OpenStudioProjectAction)
+                .AddArgument(NotificationProjectArgument, e.ProjectId)
+                .AddText(e.Title)
+                .AddText(e.Message)
+                .BuildNotification();
+
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to show Studio notification '{e.Title}': {ex}");
         }
     }
 
@@ -4163,7 +4246,9 @@ public partial class App : Application
         }
 
         Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabledChanged -= OnTrayStudioPreviewChanged;
+        Services.GetRequiredService<ICaptureSettings>().IncludeTinyClipsInCaptureChanged -= OnIncludeTinyClipsInCaptureChanged;
 
+        await StopAgentControlForExitAsync();
         CancelCaptureFlow();
         try
         {

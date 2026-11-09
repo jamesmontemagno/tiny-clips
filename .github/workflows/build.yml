@@ -5,9 +5,11 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  # Manual runs share the selected branch's push group; PRs keep their own group.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -20,7 +22,8 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
-      mac: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.mac }}
+      # A superseding push must validate code from earlier cancelled pushes too.
+      mac: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || steps.filter.outputs.mac }}
 
     steps:
       - name: Checkout code
@@ -30,6 +33,7 @@ jobs:
 
       - name: Filter changed files
         id: filter
+        if: ${{ github.event_name != 'push' }}
         uses: dorny/paths-filter@v4
         with:
           predicate-quantifier: some-with-excludes
@@ -38,6 +42,7 @@ jobs:
               - 'mac/**'
               - 'shared/studio/fixtures/**'
               - 'shared/screenshot/fixtures/**'
+              - 'shared/automation/**'
               - '.github/workflows/build.yml'
               - '!**/*.md'
           base: ${{ github.ref }}

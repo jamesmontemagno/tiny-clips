@@ -99,7 +99,13 @@ It exits with 0 when every check passed and with 1 when one did not, after print
 | `--as-before` | judge the three checks that failed on 5 October 2026 as they did then, and say what the tool's way would have read: see "Three checks on a smaller preview". (`--as-prepared`, which asked for the tool's way before it was that, is taken and does nothing) |
 | `--memory` | run none of the groups: open and close windows with one thing done to each, and say which are still in memory afterwards: see "A closed window that stays in memory" |
 
-Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut speed project`.
+Groups: `open transport inspector trim export close windows accessibility themes zoom crop scene cut speed project annotation`.
+
+The `annotation` group (`Checks\Annotations.cs`) adds arrows, callouts, text, shapes, redactions and
+emoji with the keys and the header's tools; follows the lane that comes with the first and goes with the last; types, styles, moves
+and layers them in the Annotate panel; and deletes and restores them. It opens a project that holds
+values no slider can show and text with `\r\n`, which showing must not edit. It reads UI Automation and
+the project and takes no pictures: what an annotation looks like is `StudioRenderCheck`'s.
 
 ## What it leaves behind
 
@@ -419,8 +425,11 @@ Someone may be working on the machine while the tool runs, so:
   compared with the preview's picture of it at a grid of points. Then an export whose name is
   taken by another file while it runs (`Checks\ExportName.cs`): see "An export whose name is
   taken".
-- `close`: the question on a project that was never exported and each of its four answers, the
-  draft opened again, and an exported project. After an answer the tool waits 0.7 s before it
+- `close`: the question on a project without a saved project folder ("Keep this recording?")
+  and each of its answers (Keep as draft, Cancel, Delete recording), the draft opened again, an
+  exported project without a saved folder (the same question), and a project saved as a
+  folder: closed without a question while unchanged, and with a change "Save changes to
+  “name”?" with Cancel, Don't save and Save. After an answer the tool waits 0.7 s before it
   presses the close button again: the window asks one question at a time, and passes over its
   close button until the last question has finished closing. Then the close button after an
   export has ended behind the question about it: see "The close button while a question is
@@ -460,7 +469,7 @@ Someone may be working on the machine while the tool runs, so:
   handle on the camera, which is the current scene's; names, tab order, and undo and redo; and
   what is dragged while the preview plays (`Checks\SceneDragging.cs`): see "Something dragged
   while the preview plays".
-- `cut`: the empty lane; Cut by X and by both buttons, where a cut is already and where none
+- `cut`: no lane until there is a cut; Cut by X and by both buttons, where a cut is already and where none
   fits; the lane's keys and its blocks as list items; Previous and Next; the six buttons of
   Start and End; that a zoom or a cut is selected and never both; Delete and Delete cut; undo
   and redo; names and tab order; presses and drags on the lane; what a press on each row of the
@@ -675,7 +684,7 @@ tried.
 
 What the group checks, in `Checks\Speed.cs`, `SpeedLane.cs` and `SpeedPlaying.cs`:
 
-- **Adding.** The empty lane; R, Speed in the transport row and Add speed change in the
+- **Adding.** No lane until there is a speed change; R, Speed in the transport row and Add speed change in the
   Speed panel; where a speed change already is, and where the shortest does not fit; what is read
   out; the block's name; the panel for the selected one; and the time, which counts the video
   and so gets shorter for a faster stretch.
@@ -997,22 +1006,24 @@ leave the other file intact, register no export, and never silently choose anoth
 
 ### Esc closes the window
 
-In `Checks\ClosingByEscape.cs`, in the `close` group, after the question on a recording that
-was never exported and before a save that fails. It was written while no check tool could be
+In `Checks\ClosingByEscape.cs`, in the `close` group, after the question on a recording
+without a saved project folder and before a save that fails. It was written while no check tool could be
 run, like the section before this one, and is to be read the same way: it compiles, the two
 rules behind it pass their unit tests (what the key means, `StudioEditorSessionShortcutTests`;
 what the window asks before it closes, `StudioCloseQuestionsTests`; the words,
 `EditorEscapeTests`), and not one check below has run. If nothing ends a part early, the
-`close` group has 25 checks more, 21 for Esc and 4 for an export that ends behind the
+`close` group has 27 checks more, 23 for Esc and 4 for an export that ends behind the
 question about it; the `export` group has 2 more, for the focus while the question about a
 running export is open and after it; and the `open` group has 2 more, for a window that is
 closed while its recording is being saved. Those eight are in the two sections after this
 one.
 
 Esc asks the window to close as its close button does, by the rule the Mac's window has.
-Where closing asks a question of its own, that question is asked. Where a project is open
-and closing asks nothing, which is a project that was exported, Esc asks whether it was
-meant, with the question the screenshot editor and the trimmers ask
+Where closing asks a question of its own, that question is asked: the draft question of a
+project without a saved project folder, whether it was exported or not, and the question
+about unsaved changes of a project saved as a folder that has changed since. Where a project
+is open and closing asks nothing, which is a project saved as a folder with no change since
+it was opened or last saved, Esc asks whether it was meant, with the question the screenshot editor and the trimmers ask
 (`EditorEscapeConfirmation`) in Studio's words, while the setting "Confirm before closing
 editors with Esc" is on, and closes the window at once while it is off. A window whose
 project is not open, because it cannot be shown or is still being opened, closes at once
@@ -1023,9 +1034,12 @@ the checks switch the real setting, and put it back.
 The key is not pressed: each check hands `StudioWindow.RunShortcut` the key, its modifiers and
 whether it is held, and reads what the window then shows. That the window maps the Esc key is
 checked on `StudioWindow.MapKey`, like the other keys. A project that "was exported" lists an
-export in its file, written there by the tool; no export is run for it.
+export in its file, written there by the tool; no export is run for it. A project "saved as a
+folder" is such a project that the tool also saves as a project folder, with a store of its
+own on the same root, and links to that folder as Save project does (`saved-project.json`),
+before the window opens it.
 
-- **A project that was exported, with the setting on.** While the video plays: the question
+- **A project saved as a folder, without changes, with the setting on.** While the video plays: the question
   has to be there, with the automation id the other editors' question has, the title "Close
   Studio?", Studio's sentence, Close Studio and Cancel and no third answer, and the focus on
   Close Studio; and the video has to stop. While it is open, what the window runs for Esc,
@@ -1034,9 +1048,13 @@ export in its file, written there by the tool; no export is run for it.
   project file is byte for byte as it was, and Next frame steps a frame on. Esc again and
   Close Studio: the window closes, and the project stays with its export listed.
 - **The same with the setting off:** the window has to be gone, and no question asked.
-- **A recording that was never exported.** With the setting off: the question its close
-  button asks (Export, Keep as draft, Cancel, Delete recording), as the one question, and the
-  video stops. With the setting on: that question again, and after Keep as draft the tool
+- **A project saved as a folder, with a change**, with the setting on: Esc has to ask what
+  the close button asks, "Save changes to “name”?" with Save, Don't save and Cancel, as the
+  one question, and not "Close Studio?". Cancel keeps the window, and nothing is written into
+  the saved folder.
+- **A recording without a saved project folder.** With the setting off: the question its
+  close button asks ("Keep this recording?", with Keep as draft, Cancel and Delete recording,
+  and no second answer), as the one question, and the video stops. With the setting on: that question again, and after Keep as draft the tool
   looks, until the window is gone, for a question with the other one's automation id or
   title. There must be none.
 - **While an export runs**, with the real exporter. A key that is being held does nothing at
@@ -1081,9 +1099,12 @@ export in its file, written there by the tool; no export is run for it.
   be asked. The tool looks for a question for as long as the window is there.
 
 That the close button still does what it did is judged by the checks that were there. In
-`close`: the question on a recording that was never exported, where the focus is in it,
-Cancel, Keep as draft, the draft opened again, Delete, Export as the answer (cancelled, and
-left to finish), and an exported project that closes without a question. In `export`: the
+`close`: the question on a recording without a saved project folder, where the focus is in
+it (Keep as draft), Cancel, Keep as draft, the draft opened again, Delete; an exported project
+without a saved folder, which asks the same question; and a project saved as a folder, which
+closes without a question while unchanged, and with a change asks whether to save it: Cancel,
+Don't save (the project is put back and the folder is not written) and Save (the folder is
+written, and not shown, and the window closes). In `export`: the
 close button while an export runs, Keep exporting, and Stop and close. In `open`: the close
 button of a window that cannot show its project. And the three of a save that fails as a
 window closes.
@@ -1107,7 +1128,7 @@ anything this tool calls. It has no check, and no fault was written for it. It i
 person to try: with a question open, Space, Ctrl+E, Ctrl+Z and Delete must do nothing under
 it, and the question must still be there.
 
-`--memory` has two windows more, both on a project that was exported: one that is asked by
+`--memory` has two windows more, both on a project saved as a folder: one that is asked by
 Esc and told to stay, and one that is closed by Esc and Close Studio. The question is a
 dialog that the window does not make itself.
 
@@ -1116,8 +1137,8 @@ dialog that the window does not make itself.
 In `Checks\Closing.cs`, in the `close` group, before the checks of Esc. No window closes from
 under a question, and nothing under a question is given the keyboard. While a question is
 open, the close button waits for its answer. That was so already wherever closing still had
-its question to ask. It was not so in one place, where closing has come to ask nothing while
-its question is open: the question about a running export, with the export ending behind it.
+its question to ask. It was not so in one place, where what closing asks changes while its
+question is open: the question about a running export, with the export ending behind it.
 The close button, pressed again then, used to close the window from under that question.
 Since 6 October it waits there too, and with Esc's question, which is asked only where
 closing asks nothing, it would otherwise have been the usual case. The same place is where
@@ -1136,7 +1157,8 @@ focus waits until the question has been answered.
 - **The close button**, pressed again then: the window and the one question have to stay.
 - **Keep exporting**, which is the answer that leaves the window: the question goes and the
   window stays, and **the focus that waited** for the answer has to be on Export. The close
-  button then closes the window at once, because the recording has been exported.
+  button then asks the draft question, because the recording has been exported but has no
+  saved project folder, and Keep as draft closes the window.
 
 If the export has ended before the question could be asked, one check fails and says so, and
 the four are not made.
@@ -1358,7 +1380,7 @@ walked as it is.
 **New, 31 checks, all in `inspector`** (`Checks\InspectorRail.cs`):
 
 - *The rail of a recording with a camera* (7). It opens on Scene; the rail is a list called
-  Inspector panels with nine items in their order, each a list item with the panel's name,
+  Inspector panels with ten items in their order, each a list item with the panel's name,
   what the panel holds as its description and an automation id, one of them selected. The
   list is the framework's, with one selection that goes with the focus and one stop for the
   Tab key. Each item, selected through UI Automation, shows its panel: the name over the
@@ -1391,7 +1413,7 @@ walked as it is.
   and another scene, a press on an empty part of three lanes, an item taken out of the
   selection, the focus put on a lane, and the selected zoom deleted. The Project panel, which
   nothing in the table shows, has to stay through each.
-- *A recording without a camera* (3): it opens on Background with seven items; asked for
+- *A recording without a camera* (3): it opens on Background with eight items; asked for
   Camera it shows Screen and asked for Scene it shows Background, and so does what S runs;
   through all seven panels there is no control of the Scene or of the Camera panel.
 - *The crop groups by themselves* (7), in a project that comes with a cropped screen: the
@@ -1422,7 +1444,7 @@ person to hear. Nothing judges what the rail looks like: that the chosen item is
 light, in dark and in high contrast, the two lines between its groups, its labels at a
 larger text size (the rail is 88 wide and is meant to grow with its longest label, which
 is "Background", so that none is cut; the panel then has that much less), and the rail
-scrolling in a window too low for nine items. That the panel's
+scrolling in a window too low for ten items. That the panel's
 name is a heading is not read, because the tool does not read heading levels. A group that
 opens or closes moves for a third of a second, which nothing looks at.
 
@@ -1527,7 +1549,7 @@ nothing to do with what they are about, and each was the check's:
   bring up another panel either. The check says so if the export has ended before the
   reading has, and which item the rail has selected is read from the list itself. What a
   screen reader is told of the rail while an export runs is therefore: a disabled list of
-  nine items, none of them selected. That is the framework's doing for a disabled list.
+  ten items, none of them selected. That is the framework's doing for a disabled list.
 - *Play: the picture, the playhead and the time move on together* (`transport`). The
   playhead was 18 frames ahead of the picture, where 6 are allowed. The tool takes the
   picture and reads the playhead right after, and in that run its three looks were 16 and
@@ -2184,3 +2206,16 @@ tree, and it follows Mute in the lists of tab stops.
 Not checked here, because it cannot be without sound: that the preview is quieter. The
 recordings of this tool have no sound, and its players are at volume zero whatever the
 project says. `StudioRenderCheck` measures an export at 100%, 50% and 0%.
+
+## Caption warnings
+
+The group `captions` opens a project with two saved captions, one of them too short and with
+extra spaces, and checks the Captions panel: the list shows both, with the warning mark only on
+the row with problems; there is no separate Checks section; the list's header has **Next
+problem**, with the count of captions that need attention, and **Auto fix**; Next problem opens
+the caption with the warning; and after Auto fix no row is marked and both header buttons are
+gone. Run alone (`--only captions`) on 6 November 2026: 13 of 13 passed.
+
+The tool needs `CommunityToolkit.WinUI.Controls.Segmented`, which the inspector's caption size
+and position use, with the 1.6 Windows App SDK metapackage referenced without assets, as in the
+app.

@@ -63,6 +63,16 @@ try {
     $null = Require-File 'hostfxr.dll'
     $null = Require-File 'hostpolicy.dll'
 
+    # Whisper.net looks for its native libraries in runtimes/<rid> beside the app, and a package
+    # without them still builds and runs until someone generates captions.
+    $whisperRid = if ($Architecture -eq 'arm64') { 'win-arm64' } else { 'win-x64' }
+    foreach ($name in @('whisper.dll', 'ggml-whisper.dll', 'ggml-base-whisper.dll', 'ggml-cpu-whisper.dll')) {
+        $whisperLibrary = Join-Path $appExecutable.DirectoryName "runtimes/$whisperRid/$name"
+        if (-not (Test-Path -LiteralPath $whisperLibrary)) {
+            throw "Direct package is missing the speech recognition library 'runtimes/$whisperRid/$name'."
+        }
+    }
+
     Add-Type -AssemblyName System.Reflection.Metadata
     $expectedMachine = if ($Architecture -eq 'arm64') { 'Arm64' } else { 'Amd64' }
     foreach ($nativeFile in @($appExecutable, $coreClr)) {

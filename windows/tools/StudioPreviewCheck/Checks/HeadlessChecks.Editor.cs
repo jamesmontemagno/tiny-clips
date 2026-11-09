@@ -757,7 +757,7 @@ internal sealed class CountingStore(IStudioProjectStore inner) : IStudioProjectS
 /// <summary>An exporter that renders nothing. The session writes a poster through it when it closes.</summary>
 internal sealed class NoExporter : IStudioExportService
 {
-    public Task ExportAsync(StudioProject project, StudioEvents events, StudioProjectPaths paths, string outputPath, VideoCodec codec, IProgress<double>? progress, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task ExportAsync(StudioProject project, StudioEvents events, StudioProjectPaths paths, string outputPath, VideoCodec codec, StudioExportChoice choice, IProgress<double>? progress, CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task WritePosterAsync(StudioProject project, StudioEvents events, StudioProjectPaths paths, CancellationToken cancellationToken) => Task.CompletedTask;
 }

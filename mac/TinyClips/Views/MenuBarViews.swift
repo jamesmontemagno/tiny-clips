@@ -36,6 +36,7 @@ struct MenuBarContentView: View {
     @ObservedObject private var settings = CaptureSettings.shared
     @ObservedObject private var recentCaptures = RecentCaptureStore.shared
     @ObservedObject private var studioDrafts = StudioRecentDrafts.shared
+    @ObservedObject private var automation = AutomationController.shared
     @Environment(\.openWindow) private var openWindow
 #if APPSTORE
     @Environment(\.requestReview) private var requestReview
@@ -225,6 +226,32 @@ struct MenuBarContentView: View {
 
         Divider()
 
+        if automation.isEnabled {
+            Label("Agent Control On", systemImage: "terminal")
+                .disabled(true)
+                .accessibilityLabel("Agent control is on")
+
+            Button {
+                automation.setEnabled(false)
+            } label: {
+                Label("Turn Off Agent Control", systemImage: "xmark.circle")
+            }
+            .accessibilityHint("Stops AI agents from controlling TinyClips.")
+        } else {
+            Button {
+                if automation.setEnabled(true) {
+                    SettingsWindowManager.shared.selectedTab = .agentControl
+                    openWindow(id: "settings-window")
+                    bringSettingsWindowToFront()
+                }
+            } label: {
+                Label("Turn On Agent Control", systemImage: "terminal")
+            }
+            .accessibilityHint("Lets paired AI agents control TinyClips and opens settings the first time.")
+        }
+
+        Divider()
+
         Button {
             NSApplication.shared.terminate(nil)
         } label: {
@@ -378,6 +405,9 @@ struct MenuBarLabelView: View {
             .onAppear {
                 ScreenshotEditorRegistry.shared.installOpener { sessionID in
                     openWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
+                }
+                AutomationWindowOpener.shared.install { windowID in
+                    openWindow(id: windowID)
                 }
             }
     }

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/TinyClips.Cli/TinyClips.Cli.csproj" />
+  <Project Path="tests/TinyClips.Cli.Tests/TinyClips.Cli.Tests.csproj" />
+</Solution>

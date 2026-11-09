@@ -3,6 +3,48 @@ import AVFoundation
 import ScreenCaptureKit
 import UserNotifications
 
+struct NotificationPermissionState {
+    let authorizationStatus: UNAuthorizationStatus
+    let alertSetting: UNNotificationSetting
+    let alertStyle: UNAlertStyle
+
+    var canRequest: Bool { authorizationStatus == .notDetermined }
+
+    var alertsEnabled: Bool {
+        switch authorizationStatus {
+        case .authorized, .ephemeral:
+            return alertSetting == .enabled && alertStyle != .none
+        case .notDetermined, .denied, .provisional:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    var status: String {
+        switch authorizationStatus {
+        case .notDetermined: return "notDetermined"
+        case .denied: return "denied"
+        case .authorized: return "authorized"
+        case .provisional: return "provisional"
+        case .ephemeral: return "ephemeral"
+        @unknown default: return "unknown"
+        }
+    }
+
+    var summary: String {
+        switch authorizationStatus {
+        case .notDetermined: return "Not requested"
+        case .denied: return "Disabled in macOS"
+        case .provisional: return "Delivered quietly"
+        case .authorized, .ephemeral:
+            if alertSetting != .enabled { return "Enabled without alerts" }
+            return alertStyle == .none ? "Enabled without banners" : "Enabled"
+        @unknown default: return "Unknown"
+        }
+    }
+}
+
 @MainActor
 class PermissionManager: ObservableObject {
     static let shared = PermissionManager()
@@ -106,9 +148,10 @@ class PermissionManager: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    func openNotificationSettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") else { return }
-        NSWorkspace.shared.open(url)
+    @discardableResult
+    func openNotificationSettings() -> Bool {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") else { return false }
+        return NSWorkspace.shared.open(url)
     }
 
     // MARK: - Internal
@@ -141,12 +184,20 @@ class PermissionManager: ObservableObject {
         return false
     }
 
-    private func notificationPermissionStatus() async -> UNAuthorizationStatus {
+    func notificationPermissionState() async -> NotificationPermissionState {
         await withCheckedContinuation { continuation in
             UNUserNotificationCenter.current().getNotificationSettings { settings in
-                continuation.resume(returning: settings.authorizationStatus)
+                continuation.resume(returning: NotificationPermissionState(
+                    authorizationStatus: settings.authorizationStatus,
+                    alertSetting: settings.alertSetting,
+                    alertStyle: settings.alertStyle
+                ))
             }
         }
+    }
+
+    private func notificationPermissionStatus() async -> UNAuthorizationStatus {
+        await notificationPermissionState().authorizationStatus
     }
 
 }

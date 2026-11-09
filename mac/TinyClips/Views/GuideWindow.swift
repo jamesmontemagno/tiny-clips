@@ -155,6 +155,10 @@ private struct GuideWindowView: View {
                     bullet(text: "For video/GIF, pick Region, Screen, or Window directly from the recording picker.")
                 }
             }
+        case .agents:
+            sectionCard(title: "Agent Control", icon: "terminal") {
+                AgentControlSetupView()
+            }
         }
     }
 
@@ -213,6 +217,7 @@ private enum GuideSection: String, CaseIterable, Identifiable {
     case howItWorks
     case shortcuts
     case quickTips
+    case agents
 
     var id: String { rawValue }
 
@@ -226,6 +231,8 @@ private enum GuideSection: String, CaseIterable, Identifiable {
             return "Shortcuts"
         case .quickTips:
             return "Tips"
+        case .agents:
+            return "Agents"
         }
     }
 }

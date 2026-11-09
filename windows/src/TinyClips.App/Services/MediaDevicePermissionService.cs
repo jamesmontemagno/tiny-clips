@@ -26,6 +26,12 @@ public sealed class MediaDevicePermissionService : IMediaDevicePermissionService
     public Task<bool> RequestMicrophoneAccessAsync() =>
         RequestAccessAsync(DeviceClass.AudioCapture, StreamingCaptureMode.Audio, _microphoneRequestGate);
 
+    public bool HasCameraAccess =>
+        DeviceAccessInformation.CreateFromDeviceClass(DeviceClass.VideoCapture).CurrentStatus == DeviceAccessStatus.Allowed;
+
+    public bool HasMicrophoneAccess =>
+        DeviceAccessInformation.CreateFromDeviceClass(DeviceClass.AudioCapture).CurrentStatus == DeviceAccessStatus.Allowed;
+
     private async Task<bool> RequestAccessAsync(
         DeviceClass deviceClass,
         StreamingCaptureMode captureMode,

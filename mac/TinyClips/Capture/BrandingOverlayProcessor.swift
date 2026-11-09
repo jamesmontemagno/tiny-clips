@@ -641,13 +641,13 @@ enum BrandingOverlayProcessor {
         private var renderContext: AVVideoCompositionRenderContext?
         private let lock = NSLock()
 
-        var sourcePixelBufferAttributes: [String: Any]? {
+        var sourcePixelBufferAttributes: [String: any Sendable]? {
             [
                 kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
             ]
         }
 
-        var requiredPixelBufferAttributesForRenderContext: [String: Any] {
+        var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] {
             [
                 kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
             ]

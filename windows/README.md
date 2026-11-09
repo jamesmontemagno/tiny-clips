@@ -41,7 +41,8 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   for the screen and the camera, cuts, speed changes, trim, and MP4 export.
   The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
 - **Region outline** — a red outline frames the selected region during the countdown.
-- **Onboarding & Guide** — a first-run welcome wizard and an in-app help reference.
+- **Onboarding & Guide** — a first-run welcome wizard, including an optional launch-at-login
+  choice, and an in-app help reference.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
   **Smart Collections** (All, Recent, This Week, This Month, Large Files, Favorites, Screenshots,
   Videos, GIFs), your **Collections**, and **Tags**; search across names, tags and notes; a
@@ -58,12 +59,14 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   Stop recording `Ctrl+Shift+S`. The Video hotkey always makes an ordinary recording; Studio
   recording has no hotkey. Optional Recognize Text (OCR) and direct Screenshot region, screen,
   and window shortcuts can be set in Settings → Keyboard shortcuts; they are unbound by default.
-- **Launch at login** — optionally start TinyClips when you sign in to Windows.
+- **Launch at login** — optionally start TinyClips when you sign in to Windows, from the welcome
+  wizard or Settings.
 - **Pre-capture countdown** and **save toast notifications** (both opt-in via Settings).
 - **Include Tiny Clips in captures** (Settings → General → Capture behavior) lets app windows
   and capture controls appear in screenshots and recordings for demos, and makes eligible
-  app windows available in window selection. Off by default. Changes apply on the next capture
-  after any active recording ends; captures taken during that recording share its setting.
+  app windows available in window selection. Off by default. The saved setting applies at startup,
+  and changes apply immediately unless a recording is active. During a recording, captures share
+  its setting; pending changes apply on the next capture after that recording ends.
   The teleprompter and live webcam preview always stay excluded, while the separately recorded
   camera is unchanged. This is independent of the branding watermark. Windows window-level
   exclusion also affects capture by other apps.
@@ -227,8 +230,9 @@ for fresh installs and returning users with no saved `studioPreviewEnabled` pref
 Every saved on/off choice is preserved, including false from an older reset, which cannot be
 distinguished from an intentional opt-out. Resetting settings restores the new on default.
 You can switch it off or on in **Settings › Studio › Tiny Clips Studio (Preview)** or in the
-illustrated **What's New** introduction. Existing users see the refreshed 2.0 introduction
-once per content revision; opening or dismissing it never changes the preference.
+illustrated **What's New** window. Existing users see the 2.1 What's New, which leads with Agent
+control and never turns it on, once per content revision; opening or dismissing it never changes
+the Studio preference.
 New installs get the onboarding tour instead. To replace the highlights in a future release,
 bump `WhatsNewViewModel.ContentRevision`, not the package version. With the switch off
 the page shows nothing else, nothing else of Studio is shown anywhere, and a recording is made
@@ -251,23 +255,35 @@ With the switch on:
   recording is asked for again. If Studio is switched off before the recording starts, it is
   made as an ordinary recording. A Studio recording that cannot be saved as a project is kept
   as an ordinary video, which then opens the trimmer or is saved, as the trimmer switch says.
+- **Captions** can be generated from a recording's sound with **Generate** in the Captions
+  panel. It runs on this computer with [Whisper.net](https://github.com/sandrohanea/whisper.net),
+  on the CPU, in the language it detects; the sound does not leave it. The flyout chooses a
+  speech model and says its size. A model is downloaded the first time it is used, and
+  **Settings > Studio > Speech models for captions** says how much room they take and deletes
+  them. Generating replaces the captions as one step that Undo reverses; the editor stays usable
+  while it runs, except Export and saving a project copy. **Draw captions on the video** puts them
+  into the preview and the picture of an export, in a choice of look, size, and position. It is off
+  by default, and SRT and WebVTT files can be exported either way.
 - **The editor** has a live preview, an inspector, a scene lane, a zoom lane, a cut lane, and a
   speed lane above a trim bar, a Project menu, undo and redo, and Export. A recording without a
   camera has no scenes.
   The inspector shows one panel at a time, chosen on the rail down its outer edge: **Scene**,
-  **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**, **Audio**, and
-  **Project** (no Scene and no Camera without a camera). The rail is one stop for `Tab`, and
+  **Background**, **Screen**, **Camera**, **Zoom**, **Cut**, **Speed**, **Audio**,
+  **Captions**, and **Project** (no Scene and no Camera without a camera). The rail is one stop for `Tab`, and
   `Up`/`Down`/`Home`/`End` choose a panel; `Space` plays and pauses from its chosen item as it
   does from a slider. Selecting or adding a zoom, a cut, or a speed change,
   splitting or going to a scene, and dragging the camera in the preview show that panel by
   themselves; undo, redo, the layout keys, playing, and scrubbing leave the panel alone. The
   crop sliders of the screen and of the camera are in a **Crop** group that is closed while
   nothing is cropped and stays open once one of its sliders has been moved.
-  Keys: `Space` play or pause, `Left`/`Right` step a frame, `I`/`O` start and end the video at the
-  playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X` start a cut
-  at the playhead, `R` play the two seconds from the playhead twice as fast, `Delete` remove the
-  selected zoom, cut, or speed change, `1`–`4` layout of the scene the playhead is in,
-  `Ctrl+Z`/`Ctrl+Y` undo and redo, `Ctrl+E` export, `Ctrl+O` open a saved project, `Ctrl+S` save
+  Keys: `Space` play or pause, `Left`/`Right` step a frame, `Shift+Left`/`Shift+Right` step a
+  second, `Home`/`End` go to the start and the end of the trimmed video, `I`/`O` start and end the
+  video at the playhead, `S` split the scene at the playhead, `Z` add a zoom at the playhead, `X`
+  start a cut at the playhead, `R` play the two seconds from the playhead twice as fast, `A` arrow,
+  `C` callout, `T` text, `H` rectangle, `E` ellipse, `B` redaction, `M` emoji at the playhead,
+  `Delete` or `Backspace` remove the selected zoom, cut, speed change, or annotation, `Ctrl+D`
+  duplicate the selected annotation, `1`–`4` layout of the scene the playhead is in,
+  `Ctrl+Z`/`Ctrl+Y` (or `Ctrl+Shift+Z`) undo and redo, `Ctrl+E` export, `Ctrl+O` open a saved project, `Ctrl+S` save
   this project, `Ctrl+Shift+S` save the project as a new name/location (the global Stop recording
   hotkey retains priority while recording), `Esc` stop an export or a save, and otherwise close
   the editor as its close button does: a recording that was never exported asks what to do with
@@ -299,7 +315,11 @@ With the switch on:
   **Open project…**, or a `.tinyclips` file opened from File Explorer, copies
   the project into Studio as a new draft and opens that; opening and internal autosave only read the original folder, while explicit Save updates it. **Delete
   project…** asks first, and leaves exported videos and saved folders alone.
-  **Export** (Ctrl+E), including Export when closing, always asks for an MP4 filename and folder.
+  **Export** (Ctrl+E), including Export when closing, first opens a flyout for the resolution
+  (Source, 4K, 1440p, 1080p, 720p or 480p, starting at 1080p) and quality (Best, High, Standard or
+  Small file, starting at High), and shows the size and estimated file size they come to. Source is
+  the canvas at its own size, even past 4K; a size the PC's encoders cannot make fails with a
+  message to choose 4K or smaller. The last choice is offered next time. It then always asks for an MP4 filename and folder.
   The picker starts inside the saved project folder, or the configured video-save folder before a project is saved.
   Existing videos require overwrite confirmation and stay intact if rendering fails or is cancelled.
   Saving the project again preserves exported videos and unrelated content beside it.

@@ -8,8 +8,10 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
     case screen
     case camera
     case zoom
+    case annotate
     case cut
     case speed
+    case captions
     case audio
     case project
 
@@ -24,6 +26,8 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "Zoom"
         case .cut: return "Cut"
         case .speed: return "Speed"
+        case .annotate: return "Annotate"
+        case .captions: return "Captions"
         case .audio: return "Audio"
         case .project: return "Project"
         }
@@ -39,6 +43,8 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "plus.magnifyingglass"
         case .cut: return "scissors"
         case .speed: return "gauge.with.needle"
+        case .annotate: return "pencil"
+        case .captions: return "captions.bubble"
         case .audio: return "speaker.wave.2"
         case .project: return "folder"
         }
@@ -54,6 +60,8 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         case .zoom: return "Zooms"
         case .cut: return "Cuts"
         case .speed: return "Speed changes"
+        case .annotate: return "Annotations: arrows, callouts, text, shapes, emoji, and redaction"
+        case .captions: return "Captions: import, edit, and export"
         case .audio: return "Audio: mute and volumes"
         case .project: return "Project: save, storage, and delete"
         }
@@ -66,7 +74,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
         let look: [StudioInspectorPanel] = hasCamera
             ? [.scene, .background, .screen, .camera]
             : [.background, .screen]
-        return [look, [.zoom, .cut, .speed], [.audio, .project]]
+        return [look, [.zoom, .annotate, .cut, .speed, .captions], [.audio, .project]]
     }
 
     static func available(hasCamera: Bool) -> [StudioInspectorPanel] {
@@ -90,6 +98,40 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
     }
 }
 
+/// The lanes of the timeline that can come and go. The trim bar under them always shows. A lane
+/// takes room only when it has something on it; the buttons, the keys, and the inspector add the
+/// first zoom, cut, speed change, or annotation without one. The same on Windows
+/// (`StudioTimelineLanes.cs`).
+enum StudioTimelineLane: CaseIterable {
+    case scene
+    case zoom
+    case cut
+    case speed
+    case annotate
+
+    /// Whether the lane shows. The scene lane needs a camera and more than one scene: one scene
+    /// has nothing to choose between, and its panel still edits it.
+    func isShown(in project: StudioProject) -> Bool {
+        switch self {
+        case .scene:
+            return project.sources.camera != nil && StudioLayoutResolver.normalizeScenes(project.scenes).count > 1
+        case .zoom:
+            return !project.zooms.isEmpty
+        case .cut:
+            return !project.edits.cuts.isEmpty
+        case .speed:
+            return !project.edits.speed.isEmpty
+        case .annotate:
+            return !project.overlays.annotations.isEmpty
+        }
+    }
+
+    /// The lanes a project shows, from the top down.
+    static func shown(in project: StudioProject) -> [StudioTimelineLane] {
+        allCases.filter { $0.isShown(in: project) }
+    }
+}
+
 /// The SF Symbols on the editor's buttons, by what the button does. A button that adds what a
 /// panel edits has that panel's symbol, so the rail, the timeline's buttons, and the panel's own
 /// button show one picture for one thing.
@@ -98,6 +140,15 @@ enum StudioSymbol {
     static let addZoom = StudioInspectorPanel.zoom.symbolName
     static let addCut = StudioInspectorPanel.cut.symbolName
     static let addSpeed = StudioInspectorPanel.speed.symbolName
+    static let addArrow = "arrow.up.right"
+    static let addCallout = "text.bubble"
+    static let addText = "textformat"
+    static let addRectangle = "rectangle"
+    static let addEllipse = "oval"
+    static let addRedaction = "eye.slash"
+    static let addEmoji = "face.smiling"
+    static let bringForward = "arrow.up"
+    static let sendBack = "arrow.down"
     /// The same mark a suggested zoom has on its block.
     static let suggestZooms = "sparkles"
     static let removeSuggestions = "xmark.circle"
@@ -109,12 +160,24 @@ enum StudioSymbol {
     static let showScene = StudioInspectorPanel.scene.symbolName
     static let saveDefaultLook = "paintpalette"
     static let saveRecording = "square.and.arrow.down"
+    static let generateCaptions = "waveform"
+    static let noSpeech = "waveform.slash"
+    static let importCaptions = "square.and.arrow.down"
+    static let exportCaptions = "square.and.arrow.up"
+    static let splitCaption = "scissors"
+    static let mergeCaption = "arrow.triangle.merge"
+    static let captionProblem = "exclamationmark.triangle.fill"
+    static let autoFixCaptions = "wand.and.stars"
+    static let nextCaptionProblem = "arrow.down.circle"
+    static let searchCaptions = "magnifyingglass"
 
     /// Every symbol the editor names, the rail's included.
     static var all: [String] {
         StudioInspectorPanel.allCases.map(\.symbolName) + [
-            splitScene, addZoom, addCut, addSpeed, suggestZooms, removeSuggestions, delete,
+            splitScene, addZoom, addCut, addSpeed, addArrow, addCallout, addText, addRectangle, addEllipse, addRedaction, addEmoji, bringForward, sendBack, suggestZooms, removeSuggestions, delete,
             trimStart, trimEnd, resetCrop, showScene, saveDefaultLook, saveRecording,
+            generateCaptions, noSpeech, importCaptions, exportCaptions, splitCaption, mergeCaption,
+            captionProblem, autoFixCaptions, nextCaptionProblem, searchCaptions,
         ]
     }
 }

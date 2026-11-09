@@ -119,7 +119,7 @@ final class RecentCaptureStore: ObservableObject {
             Task.detached(priority: .utility) { [weak self] in
                 let image = await Self.generateThumbnail(url: url, type: type)
                 guard let image else { return }
-                await MainActor.run {
+                await MainActor.run { [weak self] in
                     guard let self,
                           self.items.prefix(Self.menuDisplayLimit).contains(where: {
                               $0.id == itemID && $0.type == type && $0.capturedAt == capturedAt
@@ -331,6 +331,7 @@ private final class WeakSaveService: @unchecked Sendable {
 class SaveService: NSObject, UNUserNotificationCenterDelegate {
     static let shared = SaveService()
     private let notificationURLKey = "savedFileURL"
+    private let notificationStudioProjectKey = "studioProjectID"
     @MainActor private var noticePanel: NSPanel?
 
     override init() {
@@ -776,7 +777,17 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     ) {
         defer { completionHandler() }
 
-        guard let savedFilePath = response.notification.request.content.userInfo[notificationURLKey] as? String else {
+        let userInfo = response.notification.request.content.userInfo
+        if let studioProjectID = userInfo[notificationStudioProjectKey] as? String {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    StudioWindowRegistry.shared.open(projectID: studioProjectID)
+                }
+            }
+            return
+        }
+
+        guard let savedFilePath = userInfo[notificationURLKey] as? String else {
             return
         }
 
@@ -798,25 +809,39 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         alert.runModal()
     }
 
+    /// Tells the person something with a notification, or a panel when notifications are off.
+    /// With `studioProjectID`, clicking the notification brings that project's editor forward.
+    /// Background work can leave presentation entirely to the system by disallowing the panel.
     @MainActor
-    func showNotice(_ message: String) {
+    func showNotice(
+        _ message: String,
+        title: String = "TinyClips",
+        studioProjectID: String? = nil,
+        allowsInAppFallback: Bool = true
+    ) {
         AccessibilityAnnouncementService.shared.announce(message, priority: .medium)
 
         let service = WeakSaveService(self)
+        let studioProjectKey = notificationStudioProjectKey
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized ||
                     settings.authorizationStatus == .provisional else {
-                Task { @MainActor in service.value?.showInAppNotice(message) }
+                if allowsInAppFallback {
+                    Task { @MainActor in service.value?.showInAppNotice(message) }
+                }
                 return
             }
             let showsBanner = settings.authorizationStatus == .authorized && settings.alertStyle != .none
-            if !showsBanner {
+            if !showsBanner && allowsInAppFallback {
                 Task { @MainActor in service.value?.showInAppNotice(message) }
             }
 
             let content = UNMutableNotificationContent()
-            content.title = "TinyClips"
+            content.title = title
             content.body = message
+            if let studioProjectID {
+                content.userInfo = [studioProjectKey: studioProjectID]
+            }
 
             let request = UNNotificationRequest(
                 identifier: UUID().uuidString,
@@ -824,8 +849,11 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
                 trigger: nil
             )
             UNUserNotificationCenter.current().add(request) { error in
-                if error != nil && showsBanner {
-                    Task { @MainActor in service.value?.showInAppNotice(message) }
+                if let error {
+                    NSLog("Unable to deliver TinyClips notification: %@", error.localizedDescription)
+                    if showsBanner && allowsInAppFallback {
+                        Task { @MainActor in service.value?.showInAppNotice(message) }
+                    }
                 }
             }
         }

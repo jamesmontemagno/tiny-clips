@@ -43,6 +43,23 @@ enum StudioLaneBlockPart: Equatable, Sendable {
 
 // MARK: - Editable State
 
+/// What closing Studio asks. A project saved to a folder asks only when it has changes the folder
+/// does not have; any other project is a draft, and is asked whether to keep it or delete it.
+enum StudioClosePrompt: Equatable {
+    /// Closes without asking.
+    case none
+    /// Keep as Draft, Delete, or Cancel.
+    case draft
+    /// Save, Don't Save, or Cancel.
+    case unsavedChanges
+
+    static func resolve(isReady: Bool, hasSavedProjectFolder: Bool, hasChangesSinceSave: Bool) -> StudioClosePrompt {
+        guard isReady else { return .none }
+        guard hasSavedProjectFolder else { return .draft }
+        return hasChangesSinceSave ? .unsavedChanges : .none
+    }
+}
+
 /// The parts of a project the editor changes. Undo, redo, and "changed since export" work on this
 /// value, so they never touch the project's bookkeeping (exports, dates, name, sources).
 struct StudioEditableState: Equatable, Sendable {
@@ -54,6 +71,7 @@ struct StudioEditableState: Equatable, Sendable {
     var edits: StudioEdits
     var audio: StudioAudio
     var overlays: StudioOverlays
+    var captions: StudioCaptions
 
     init(project: StudioProject) {
         canvas = project.canvas
@@ -64,6 +82,7 @@ struct StudioEditableState: Equatable, Sendable {
         edits = project.edits
         audio = project.audio
         overlays = project.overlays
+        captions = project.captions
     }
 
     func applied(to project: StudioProject) -> StudioProject {
@@ -76,6 +95,7 @@ struct StudioEditableState: Equatable, Sendable {
         copy.edits = edits
         copy.audio = audio
         copy.overlays = overlays
+        copy.captions = captions
         return copy
     }
 }
@@ -324,9 +344,6 @@ struct StudioEditorModel: Equatable, Sendable {
     /// `StudioTimeMap.slowestRate` to `StudioTimeMap.fastestRate`.
     static let speedRates: [Double] = [0.25, 0.5, 1.5, 2, 4, 8]
 
-    /// What the speed lane says while no stretch plays at another speed.
-    static let noSpeedHint = "No speed changes. Press R to speed up two seconds from the playhead."
-
     /// What the Speed section says while there are speed changes and none is selected.
     static let selectSpeedHint = "Select a speed change on the timeline, or step to one with the arrows above."
 
@@ -357,6 +374,12 @@ struct StudioEditorModel: Equatable, Sendable {
     private var undoStack: [StudioEditableState] = []
     private var redoStack: [StudioEditableState] = []
     private var groupedSnapshot: StudioEditableState?
+
+    /// The annotation whose text was last typed in, for as long as nothing else has been edited:
+    /// what is typed next is part of the same undo step.
+    var typingInAnnotation: Int?
+    /// The color of an annotation that is being chosen, in the same way.
+    var choosingColorInAnnotation: Int?
     private var exportedState: StudioEditableState?
 
     init(project: StudioProject) {
@@ -443,6 +466,17 @@ struct StudioEditorModel: Equatable, Sendable {
     /// start when cuts leave nothing.
     var playbackEnd: Double { timeMap.segments.last?.end ?? trimStart }
 
+    /// The last picture of the video, where End puts the playhead.
+    var lastPlaybackFrame: Double { max(playbackStart, playbackEnd - frameDuration) }
+
+    /// Where a step of whole seconds back (negative) or forward from `sourceTime` lands, kept
+    /// within the trimmed video.
+    func sourceTime(steppingSeconds count: Int, from sourceTime: Double) -> Double {
+        let start = playbackStart
+        let from = sourceTime.isFinite ? sourceTime : start
+        return StudioCanvasMath.clamped(from + Double(count), start, lastPlaybackFrame)
+    }
+
     /// Where playback starts when Play is pressed at `sourceTime`: the same spot, the end of the
     /// cut it is in, or the start of the video when the playhead is outside what the video shows
     /// or already at its end.
@@ -486,10 +520,24 @@ struct StudioEditorModel: Equatable, Sendable {
         project = snapshot.applied(to: project)
     }
 
+    /// Puts back an earlier state, such as the one last saved to the project folder. It is one
+    /// step that can be undone.
+    mutating func restore(_ state: StudioEditableState) {
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
+        commitEditingGroup()
+        let current = editableState
+        guard state != current else { return }
+        project = state.applied(to: project)
+        pushUndo(current)
+    }
+
     /// Takes back the last step. In the middle of a gesture, what the gesture has done so far is
     /// the step that is taken back, and the gesture goes on: whatever it does next is one step
     /// again, and not a step for every move of the pointer.
     mutating func undo() {
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
         let wasGrouping = isGroupingEdits
         commitEditingGroup()
         if let previous = undoStack.popLast() {
@@ -504,6 +552,8 @@ struct StudioEditorModel: Equatable, Sendable {
     /// Does the step that was last taken back again. A gesture goes on afterwards, as it does
     /// after `undo()`.
     mutating func redo() {
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
         let wasGrouping = isGroupingEdits
         commitEditingGroup()
         if let next = redoStack.popLast() {
@@ -1080,6 +1130,22 @@ struct StudioEditorModel: Equatable, Sendable {
         return project.zooms != before
     }
 
+    /// Applies the editable fields from a validated automation project as one undoable edit.
+    mutating func applyAutomationProject(_ updated: StudioProject) {
+        guard updated.id == project.id else { return }
+        mutate {
+            $0.canvas = updated.canvas
+            $0.screen = updated.screen
+            $0.camera = updated.camera
+            $0.scenes = updated.scenes
+            $0.zooms = updated.zooms
+            $0.edits = updated.edits
+            $0.audio = updated.audio
+            $0.overlays = updated.overlays
+            $0.captions = updated.captions
+        }
+    }
+
     // MARK: - Cuts
     //
     // Stretches of the recording the video leaves out. They are stored in source time, so a cut
@@ -1595,12 +1661,118 @@ struct StudioEditorModel: Equatable, Sendable {
         project.sources.screen.audioTracks?.contains(kind.rawValue) ?? false
     }
 
+    /// Whether the captions are drawn into the picture (section 15.4 of the project format).
+    mutating func setCaptionsDrawn(_ isDrawn: Bool) {
+        mutate { $0.overlays.captions.enabled = isDrawn }
+    }
+
+    mutating func setCaptionSize(_ size: StudioCaptionSize) {
+        mutate { $0.overlays.captions.size = size }
+    }
+
+    mutating func setCaptionPosition(_ position: StudioCaptionPosition) {
+        mutate { $0.overlays.captions.position = position }
+    }
+
+    mutating func setCaptionAppearance(_ appearance: StudioCaptionAppearance) {
+        mutate { $0.overlays.captions.appearance = appearance }
+    }
+
     mutating func setClickRingsEnabled(_ isEnabled: Bool) {
         mutate { $0.overlays.clicks.enabled = isEnabled }
     }
 
     mutating func setBrandingEnabled(_ isEnabled: Bool) {
         mutate { $0.overlays.branding = isEnabled }
+    }
+
+    // MARK: - Captions
+    //
+    // An index is a cue's place in `project.captions.cues`. What this app writes there is in time
+    // order, and what an agent or another app wrote need not be. Each edit is one undo step.
+
+    /// Puts `cues` in place of the captions: section 15.5 of the project format.
+    mutating func replaceCaptions(_ cues: [StudioCaptionCue]) {
+        let ordered = cues.inTimeOrder()
+        mutate {
+            $0.captions.language = nil
+            $0.captions.cues = ordered
+        }
+    }
+
+    /// Puts what speech recognition heard in place of the captions: section 15.7 of the project
+    /// format.
+    mutating func setGeneratedCaptions(language: String?, cues: [StudioCaptionCue]) {
+        let ordered = cues.inTimeOrder()
+        mutate {
+            $0.captions.language = language
+            $0.captions.cues = ordered
+        }
+    }
+
+    /// Changes what a cue says. Its words go with the text they were of. Text that cleans to what
+    /// the cue already says changes nothing.
+    @discardableResult
+    mutating func setCaptionText(at index: Int, to text: String) -> Bool {
+        guard project.captions.cues.indices.contains(index) else { return false }
+        let cleaned = StudioCaptionResolver.cleanText(text)
+        guard cleaned != StudioCaptionResolver.cleanText(project.captions.cues[index].text) else { return false }
+        mutate {
+            $0.captions.cues[index].text = cleaned
+            $0.captions.cues[index].words = []
+        }
+        return true
+    }
+
+    /// Takes a cue out. False when there is no such cue.
+    @discardableResult
+    mutating func removeCaption(at index: Int) -> Bool {
+        guard project.captions.cues.indices.contains(index) else { return false }
+        mutate { $0.captions.cues.remove(at: index) }
+        return true
+    }
+
+    /// Moves one end of a cue toward `sourceTime`. Returns where the cue is now, or nil when
+    /// nothing changed.
+    @discardableResult
+    mutating func retimeCaption(at index: Int, edge: StudioCaptionEdge, to sourceTime: Double) -> Int? {
+        guard let result = StudioCaptionEditing.retime(
+            project.captions.cues,
+            at: index,
+            edge: edge,
+            to: sourceTime,
+            sourceDuration: sourceDuration
+        ) else { return nil }
+        mutate { $0.captions.cues = result.cues }
+        return result.index
+    }
+
+    /// Splits a cue in two at `sourceTime`. Returns where the second part is, or nil when the cue
+    /// cannot be split there.
+    @discardableResult
+    mutating func splitCaption(at index: Int, sourceTime: Double) -> Int? {
+        guard let result = StudioCaptionEditing.split(project.captions.cues, at: index, time: sourceTime) else { return nil }
+        mutate { $0.captions.cues = result.cues }
+        return result.index
+    }
+
+    /// Puts a cue together with the one after it. Returns where the merged cue is, or nil when
+    /// there is no cue after it.
+    @discardableResult
+    mutating func mergeCaptionWithNext(at index: Int) -> Int? {
+        guard let result = StudioCaptionEditing.mergeWithNext(project.captions.cues, at: index) else { return nil }
+        mutate { $0.captions.cues = result.cues }
+        return result.index
+    }
+
+    /// Makes the safe fixes of section 15.6, and says how many things changed.
+    @discardableResult
+    mutating func fixCaptions() -> Int {
+        let result = StudioCaptionQuality.fix(project.captions.cues, sourceDuration: sourceDuration)
+        if result.applied > 0 {
+            mutate { $0.captions.cues = result.cues }
+        }
+        return result.applied
     }
 
     // MARK: - Looks
@@ -1950,7 +2122,14 @@ struct StudioEditorModel: Equatable, Sendable {
 
     // MARK: - Private
 
-    private mutating func mutate(_ body: (inout StudioProject) -> Void) {
+    /// Changes the project as part of the undo step before it, for text that is being typed.
+    mutating func applyWithoutUndoStep(_ body: (inout StudioProject) -> Void) {
+        body(&project)
+    }
+
+    mutating func mutate(_ body: (inout StudioProject) -> Void) {
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
         let before = editableState
         body(&project)
         guard before != editableState else { return }

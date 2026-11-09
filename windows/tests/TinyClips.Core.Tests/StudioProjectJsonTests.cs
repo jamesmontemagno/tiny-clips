@@ -496,6 +496,29 @@ public sealed class StudioProjectJsonTests
             {
                 Clicks = new StudioClickOverlay { Enabled = false, Color = "#123456", Size = 20, StrokeWidth = 4, Opacity = 0.4, Duration = 0.2 },
                 Branding = true,
+                Annotations = [new StudioAnnotation { Id = "a", Kind = StudioAnnotationKinds.Callout, Attach = StudioAnnotationAttach.Frame, Start = 1, End = 2, X = 0.2, Y = 0.3, OffsetX = 0.1, OffsetY = 0.2, Text = "Note", Style = StudioAnnotationStyle.Dark, Size = StudioAnnotationSize.Large }],
+                Captions = new StudioCaptionOverlay
+                {
+                    Enabled = true,
+                    Size = StudioCaptionSize.Large,
+                    Position = StudioCaptionPosition.Top,
+                    Appearance = StudioCaptionAppearance.BoldImpact,
+                },
+            },
+            Captions = new StudioCaptions
+            {
+                Language = "en",
+                Cues =
+                [
+                    new StudioCaptionCue
+                    {
+                        Id = "00000000-0000-0000-0000-000000000002",
+                        Start = 1,
+                        End = 2,
+                        Text = "Hi",
+                        Words = [new StudioCaptionWord { Start = 1, End = 2, Text = "Hi" }],
+                    },
+                ],
             },
             Exports = [new StudioExport { Path = "C:\\exports\\clip.mp4", ExportedAt = new DateTimeOffset(2026, 10, 2, 22, 44, 0, TimeSpan.Zero) }],
         };

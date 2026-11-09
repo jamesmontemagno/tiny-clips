@@ -28,6 +28,18 @@ video (MP4), and animated GIFs of a selected screen region — on **macOS** and 
 
 > macOS uses Sparkle for auto-updates. On Windows, installs made through the `.appinstaller` update automatically with MSIX App Installer, **winget** installs update with `winget upgrade`, and Microsoft Store installs update through the Store.
 
+## Agent Plugin
+
+Connect an AI agent to Tiny Clips on macOS or Windows with bundled MCP tools and workflow Skills. In VS Code, run **Chat: Install Plugin from Source** and enter:
+
+```text
+https://github.com/jamesmontemagno/tiny-clips.git
+```
+
+No manual clone or marketplace is required. With GitHub Copilot CLI, run `copilot plugin install jamesmontemagno/tiny-clips`.
+
+Install the .NET 10 SDK, enable **Settings → Agent Control** in Tiny Clips, then pair once with `dnx TinyClips --yes -- pair` and approve in the app. See the [plugin installation guide](docs/agent-plugin.md) and [agent integration guide](docs/agent-integration.md) for setup, permissions, and examples.
+
 ## macOS
 
 ### Requirements

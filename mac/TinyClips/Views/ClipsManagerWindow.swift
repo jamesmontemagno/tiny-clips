@@ -1000,8 +1000,7 @@ private class ClipsViewModel: ObservableObject {
     private func retainEditorWindow(_ window: NSWindow) {
         editorWindows.append(window)
         DispatchQueue.main.async {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            WindowPresenter.shared.present(window)
         }
     }
 

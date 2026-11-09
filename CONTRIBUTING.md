@@ -89,15 +89,28 @@ detection so checks can report a successful skip without leaving required checks
 pending. Platform build/test jobs only allocate macOS or Windows runners when their
 inputs change:
 
-- macOS: files under `mac/`, shared Studio fixtures, or `.github/workflows/build.yml`.
+- macOS: files under `mac/`, shared Studio fixtures, shared automation contracts/fixtures,
+  or `.github/workflows/build.yml`.
 - Windows: files under `windows/src/` or `windows/tests/`, top-level Windows MSBuild
   properties/targets and solutions, the direct-package validation script, shared
-  Studio fixtures, or `.github/workflows/windows-build.yml`.
+  Studio fixtures, shared automation contracts/fixtures, root .NET/NuGet/MSBuild
+  configuration, or `.github/workflows/windows-build.yml`.
 
 Markdown-only changes do not trigger either platform's builds. Documentation,
 Copilot app configuration, extensions, and standalone tooling outside those inputs
-also skip platform builds. Manually dispatching **Windows Build** still forces its
-builds and tests. Release/tag and other manually triggered workflows are unchanged.
+also skip platform builds. Manually dispatching **Build** or **Windows Build** forces
+its platform's builds and tests. Existing app release/tag workflows are unchanged.
+
+The separate **Agent CLI** workflow validates `agent/`, the root plugin manifest,
+MCP configuration, `skills/`, plugin documentation and license, shared
+automation inputs, root .NET/NuGet/MSBuild configuration, and its build/release
+workflows on Linux, Windows, Apple silicon macOS, and Intel macOS. It includes
+Markdown under agent/plugin paths because the NuGet README and Skills ship to users.
+Unrelated docs still skip these jobs. Its **Agent CLI result** check reports a
+successful skip only after successful change detection. It tests the actual
+NuGet-installed tool and the plugin's MCP launch command, without driving a real
+app or requiring capture permissions. See [agent development and releases](agent/README.md#ci-and-nuget-releases)
+for local smoke commands and the `agent-release.yml` NuGet Trusted Publishing setup.
 
 The Windows direct-build matrix always expands to report both required architecture
 checks. With no Windows changes, its entries run only a build-decision check on
@@ -213,6 +226,7 @@ Two build targets share one codebase. Use `#if APPSTORE` compilation conditions 
 
 - **Menu bar app** using SwiftUI `MenuBarExtra` with no Dock icon (`LSUIElement = true`).
 - **Mixed SwiftUI + AppKit**: SwiftUI for the menu, settings, and Clips Library; AppKit `NSWindow`/`NSPanel` subclasses for capture-time overlays.
+- The `MenuBarExtra` dropdown explicitly uses `.labelStyle(.titleAndIcon)` so its action icons and recent-capture thumbnails stay visible. macOS 27 hides menu images by default; [Apple's release notes](https://developer.apple.com/documentation/macos-release-notes/macos-27-release-notes) document this SwiftUI opt-in. Keep the style scoped to the dropdown, not other app menus or the status bar label.
 - **`CaptureManager`** (in `TinyClipsApp.swift`) is the central coordinator that owns recorders and capture window lifecycles.
 - Singleton services: `CaptureSettings.shared`, `SaveService.shared`, `PermissionManager.shared`, `SparkleController.shared`.
 
@@ -241,7 +255,7 @@ Accessibility is treated as a release gate. When adding or changing UI:
 ### Tiny Clips Studio
 
 - Studio defaults on for new installs and returning users without a saved `studioPreviewEnabled` preference. Every saved boolean is preserved, including false from an older reset, because it cannot be distinguished from an intentional opt-out. Resetting settings restores the new on default. Record Video and its shortcut remain ordinary recordings.
-- Existing users get the refreshed 2.0 Studio introduction once per content revision, with the same saved preview switch as Settings; opening or dismissing it never changes the preference. New installs get onboarding instead. Bump `CaptureSettings.whatsNewContentRevision` when replacing the content of `Views/WhatsNewWindow.swift`; app version changes alone do not replay it. The illustration in `Assets.xcassets/WhatsNewStudio.imageset` is a transparent raster of the Windows app's original `Assets/Studio/whats-new-studio.svg`.
+- Existing users get the 2.1 What's New once per content revision. It leads with Agent Control, which it never turns on, and keeps the same saved Studio preview switch as Settings; opening or dismissing it never changes the preference. New installs get onboarding instead. Bump `CaptureSettings.whatsNewContentRevision` when replacing the content of `Views/WhatsNewWindow.swift`; app version changes alone do not replay it. The illustration in `Assets.xcassets/WhatsNewStudio.imageset` is a transparent raster of the Windows app's original `Assets/Studio/whats-new-studio.svg`.
 - The project format is shared with the Windows app and specified in [docs/studio-project-format.md](docs/studio-project-format.md). The fixtures in `shared/studio/fixtures/` are run by both platforms' tests, so change the spec, the fixtures, and both implementations together.
 - Files directly inside `Studio/` use Foundation only (no AppKit, AVFoundation, or SwiftUI) so their logic is covered by plain unit tests. Rendering lives in `Studio/Rendering/` and UI in `Views/Studio/`.
 - The editor's inspector shows one panel at a time, chosen from a rail. `Studio/StudioInspectorPanel.swift` lists the panels; a control that edits something new goes in the panel it belongs to, and whatever selects that thing calls `StudioViewModel.showInspectorPanel(_:)`. The Windows brief for the same arrangement is [windows/docs/studio-inspector-rail.md](windows/docs/studio-inspector-rail.md).
