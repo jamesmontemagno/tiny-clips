@@ -48,7 +48,7 @@ final class RecentCaptureStore: ObservableObject {
     static let shared = RecentCaptureStore()
 
     /// Only the newest captures get a thumbnail generated; the menu itself also only shows this many.
-    static let menuDisplayLimit = 5
+    static let menuDisplayLimit = 10
 
     @Published private(set) var items: [RecentCaptureItem] = []
     @Published private(set) var thumbnails: [String: NSImage] = [:]

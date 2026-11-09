@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Changed
+- The tray's Recent menu now shows the 10 newest items instead of 5.
+
 ### Added
 - The Microsoft Store build has a **Support** page in Settings with three optional supporter plans, the same as the Mac App Store build: monthly, yearly, and one-time, at the prices the Store shows. Every feature stays free for everyone; a plan adds a Supporter badge in Settings as a thank-you. A heart in the tray popup opens the page. Direct and winget builds don't show the page or the heart, and supporter purchases aren't available to agents.
 - Every Studio annotation has selection-based resize and rotation handles, plus a keyboard-accessible Rotation slider. Emoji sizing uses one Size slider, preserving existing projects' appearance. Agents use `scale`, area dimensions, and `rotation` through `studio.project.edit`.
