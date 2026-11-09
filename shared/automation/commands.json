@@ -68,7 +68,6 @@
     "busy": "The app cannot run the command in its current state.",
     "conflict": "The target changed since it was read; fetch it again and retry.",
     "permission_required": "An OS permission (Screen Recording, Microphone, Camera) is missing.",
-    "pro_required": "The command needs TinyClips Pro.",
     "not_found": "The file or item does not exist.",
     "internal": "Unexpected failure."
   }

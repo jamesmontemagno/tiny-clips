@@ -83,7 +83,6 @@ enum AutomationErrorCode: String, Error, CaseIterable {
     case busy
     case conflict
     case permissionRequired = "permission_required"
-    case proRequired = "pro_required"
     case notFound = "not_found"
     case `internal`
 }

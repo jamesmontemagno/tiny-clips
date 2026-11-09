@@ -110,7 +110,7 @@ Give these to an agent with Tiny Clips CLI or MCP access. Tell it which app or p
 **Find recent clips**
 > List my ten most recent Tiny Clips screenshots and reveal the one I choose. Do not delete or upload anything.
 
-An agent needs its own browser/desktop tools to click, type, or scroll in other apps; Tiny Clips does not provide those actions. Studio must be enabled for Studio commands. OS permissions and Pro requirements still apply, and sensitive commands still ask for approval.
+An agent needs its own browser/desktop tools to click, type, or scroll in other apps; Tiny Clips does not provide those actions. Studio must be enabled for Studio commands. On macOS, Agent Control does not require a supporter tip. OS permissions still apply, and sensitive commands still ask for approval.
 
 ## Troubleshooting setup
 
@@ -121,7 +121,7 @@ An agent needs its own browser/desktop tools to click, type, or scroll in other 
 | `unauthorized` or revoked access | Run `tinyclips pair` again as the same OS account/environment used by the agent and approve it in Tiny Clips. |
 | `missing_scope` | Grant the scope to that agent in **Settings → Agent Control → Paired Agents → Permissions** (it applies immediately), or pair again requesting it with `--scopes`. |
 | `permission_required` | Grant the relevant OS screen/audio/camera permission. On macOS, follow System Settings → Privacy & Security and restart Tiny Clips if required. |
-| `pro_required` or `not_supported` | Check your app's Pro access, version, and feature settings; enable Studio for Studio commands. |
+| `not_supported` | Check your app's version and feature settings; enable Studio for Studio commands. |
 | MCP connects but calls fail | Verify the server runs locally under the same account, can find the CLI/SDK, and shares the pairing configuration. Restart or reload the MCP connection. |
 | Studio edit returns `conflict` | Read the project again and reconcile changes with its latest `modifiedAt` and `revision`; do not blindly resend the old patch. |
 
@@ -133,7 +133,7 @@ Change what an individual agent may do with **Permissions**, or revoke it, in **
 2. **Pairing.** A client calls `session.pair` with a name and the scopes it wants. The app shows an approval prompt listing every scope, with the requested ones pre-checked; you choose the scopes actually granted (at least one). If you approve, the client receives a token once (`session.pairStatus`), and `scopes` reports what you granted, which can differ from the request. The app stores only a SHA-256 hash of the token. Change a client's scopes or revoke it any time in Settings; scope changes keep the token and take effect on the next request, and a sensitive action approved after its scope was removed still fails with `missing_scope`.
 3. **Scopes.** `read`, `capture`, `record`, `edit`, `export`, `settings` run unattended once granted. Capture targets, regions, OCR, annotations, video/GIF recording, and scrolling captures use structured commands; they do not depend on a human-operated picker or simulated mouse input.
 4. **Sensitive scopes.** `delete`, `upload`, and `discard` (discarding or restarting a recording, discarding unsaved work) always show an in-app approval prompt, even when granted. No answer within 120 seconds returns `approval_denied`. A pending sensitive-action approval is dismissed when its client disconnects.
-5. **No bypasses.** OS permissions (Screen Recording, Microphone, Camera) and Pro/Store gating still apply. Commands return `permission_required` or `pro_required` instead of prompting around them.
+5. **No bypasses.** OS permissions (Screen Recording, Microphone, Camera) and platform-specific feature availability still apply. Commands return `permission_required` when an OS permission is missing.
 6. **Visibility.** The menu bar / tray menu shows when agent control is on, and **Turn off agent control** stops it immediately. Every command is written to an audit log (`automation-audit.jsonl` next to the app's settings).
 
 ## Transport
