@@ -96,9 +96,8 @@ final class AutomationPolicyTests: XCTestCase {
 
     func testErrorCodesMatchContract() throws {
         let contract = try loadContract()
-        for code in AutomationErrorCode.allCases {
-            XCTAssertNotNil(contract.errors[code.rawValue], "\(code.rawValue) is not a contract error")
-        }
+        XCTAssertEqual(Set(AutomationErrorCode.allCases.map(\.rawValue)), Set(contract.errors.keys))
+        XCTAssertNil(contract.errors["pro_required"])
     }
 
     @MainActor
