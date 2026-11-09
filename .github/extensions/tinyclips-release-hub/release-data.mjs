@@ -93,13 +93,15 @@ function compareTags(left, right) {
     return 0;
 }
 
-function nextPatchTag(platform, latestTag, appVersion) {
+export function nextPatchTag(platform, latestTag, appVersion) {
     if (platform === "agent") {
         return appVersion ? `agent-v${appVersion}` : "agent-v0.1.0";
     }
     if (platform === "mac" && appVersion) {
         const prefix = `v${appVersion}.`;
-        const matchingPatch = latestTag?.startsWith(prefix) ? parseReleaseTagVersion(latestTag)[2] : -1;
+        const component = appVersion.split(".").length === 3 ? 3 : 2;
+        const matchesAppVersion = latestTag?.startsWith(prefix) || latestTag === `v${appVersion}-mac`;
+        const matchingPatch = matchesAppVersion ? parseReleaseTagVersion(latestTag)[component] : -1;
         return `${prefix}${matchingPatch + 1}-mac`;
     }
     const [major, minor, patch] = parseReleaseTagVersion(latestTag ?? "");
@@ -633,6 +635,9 @@ export async function generateReleaseNotes(platform, version) {
         ? extractReleaseSection(markdown, platform, version) || extractSection(markdown, config.unreleasedHeading)
         : extractSection(markdown, config.unreleasedHeading);
     const tag = version || "NEXT_VERSION";
+    if (platform !== "agent" && countNotes(body) === 0) {
+        throw new Error(`No release notes found for ${version || "Unreleased"} in ${config.changelog}. Add bullet points under ${config.unreleasedHeading} before preparing.`);
+    }
     const install = platform === "mac"
         ? [
             "## Install",

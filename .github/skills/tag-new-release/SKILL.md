@@ -52,6 +52,8 @@ When asked to tag a new release:
    - macOS: root `CHANGELOG.md`
    - Windows: `windows/CHANGELOG.md`
 4. **Update changelog** - Insert the release heading with today's date below Unreleased.
+   - Unreleased must contain at least one release-note bullet. Previously released sections are not reused automatically.
+   - Both scripts validate notes before writing the changelog; missing-note failures and dry runs leave the working tree unchanged.
 5. **Verify the working directory** - Ensure there are no uncommitted changes before creating commit/tag.
 6. **Create commit** - Commit the changelog release marker.
 7. **Create an annotated git tag** with:
@@ -85,8 +87,19 @@ The tag message should include cleanly formatted release notes from the selected
 - Do not push tags without explicit user approval.
 - If the requested version conflicts with existing tags, stop and ask the user how to proceed.
 - When the version is provided explicitly by the user, honor that value even if it differs from the app's current `Info.plist` version.
+- The Release Hub suggests the next fourth component for three-part macOS app versions: app version `2.1.0` and latest tag `v2.1.0.0-mac` suggest `v2.1.0.1-mac`. Two-part app versions retain third-component increments.
 
 ## Files included
 
 - `tag-new-release.sh` - Script that automates changelog release marking, commit creation, and annotated tagging for macOS or Windows.
 - `tag-new-release.ps1` - PowerShell equivalent for running the same release-tag workflow natively on Windows.
+
+## Validation
+
+With Node.js, Git, Bash, and PowerShell available, run:
+
+```bash
+node --test .github/extensions/tinyclips-release-hub/tests/release-hub.test.mjs
+```
+
+The tests use disposable repositories for missing notes, mutation-free previews, and annotated tag creation on both platforms. Bash macOS cases require macOS and PlistBuddy.
