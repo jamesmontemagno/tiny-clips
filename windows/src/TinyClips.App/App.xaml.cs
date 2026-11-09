@@ -1093,7 +1093,7 @@ public partial class App : Application
         return button;
     }
 
-    private const int RecentCapturesDisplayCount = 5;
+    private const int RecentCapturesDisplayCount = 10;
 
     private DropDownButton? _recentCapturesButton;
     private readonly TrayRecentItems<MenuFlyoutItem> _recentTrayItems = new();

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- The Recent Captures menu on macOS and Windows now shows the 10 newest items instead of 5.
+
 ## v2.1.0.1-mac - 2026-11-08
 
 ### Fixed
