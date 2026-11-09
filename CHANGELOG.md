@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- The Release Hub suggests the next fourth component for macOS release tags such as `v2.1.0.1-mac`, instead of changing the app version's patch component. Empty Unreleased notes block preparation with an actionable message; failed note validation and dry runs leave the changelog unchanged in both tagging scripts.
+
+### Changed
+- The What's New window now introduces 2.1 on macOS: Agent Control first, with a diagram of what it lets agents use, a reminder that it is off until you turn it on, and a button to its settings. Studio follows with its existing switch, which keeps your saved choice, then what's new in Studio and more to try. It appears once for returning users.
+
 ## v2.1.0.0-mac - 2026-11-08
 
 ### Added
@@ -20,7 +26,6 @@ All notable changes to this project will be documented in this file.
 - Studio has a Captions panel: import an SRT or WebVTT file, timed to the recording or to the edited video; correct or delete a caption; check for readability problems and fix what is safe to fix; and export the video's captions as SRT or WebVTT. Agents can do the same with `studio.captions.import`, `studio.captions.check`, `studio.captions.fix`, and `studio.captions.export`.
 
 ### Changed
-- The What's New window now introduces 2.1 on macOS: Agent Control first, with a diagram of what it lets agents use, a reminder that it is off until you turn it on, and a button to its settings. Studio follows with its existing switch, which keeps your saved choice, then what's new in Studio and more to try. It appears once for returning users.
 - Agent Control on macOS does not require a supporter tip. The shared agent API no longer lists an unused Pro-required error.
 - Closing Studio asks a clearer question, on macOS and Windows. A recording that has not been saved as a project asks **Keep this recording?** with Keep as Draft, Delete, and Cancel. A project saved to a folder closes without a question unless it has changes, and then asks **Save changes?** with Save, Don't Save (which puts back the project as it was last saved), and Cancel. Export is no longer offered when closing.
 - Studio's short choices, such as layout, transition, zoom focus, camera shape and background, and an annotation's size and attachment, are now segmented controls like the Captions panel's, on macOS and Windows. The rectangle annotation's key is now H, for a highlight box.

@@ -187,20 +187,18 @@ END {
     exit 1
 }
 
-cp "$TMP_CHANGELOG" "$CHANGELOG_FILE"
-
 if ! awk -v heading="$RELEASE_HEADING" '
 BEGIN { cap=0; found=0; hasNotes=0 }
 $0 == heading { cap=1; found=1; next }
 /^## / && cap { exit }
 cap {
-    if ($0 ~ /^### / || $0 ~ /^- /) {
+    if ($0 ~ /^- /) {
         hasNotes=1
     }
 }
 END { if (!found || !hasNotes) exit 1 }
-' "$CHANGELOG_FILE"; then
-    echo "❌ Release notes for ${VERSION} are missing after changelog update." >&2
+' "$TMP_CHANGELOG"; then
+    echo "❌ Unreleased in ${CHANGELOG_FILE} contains no release notes. Add bullet points before preparing ${VERSION}." >&2
     exit 1
 fi
 
@@ -218,7 +216,7 @@ fi
             print $0
         }
     }
-    ' "$CHANGELOG_FILE"
+    ' "$TMP_CHANGELOG"
 } > "$TMP_TAG_MSG"
 
 if [[ "$DRY_RUN" == "true" ]]; then
@@ -229,10 +227,10 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo ""
     echo "Tag message preview:"
     cat "$TMP_TAG_MSG"
-    git checkout -- "$CHANGELOG_FILE"
     exit 0
 fi
 
+cp "$TMP_CHANGELOG" "$CHANGELOG_FILE"
 git add "$CHANGELOG_FILE"
 git commit -m "Mark ${VERSION} release
 

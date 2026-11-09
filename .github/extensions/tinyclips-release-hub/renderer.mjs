@@ -904,7 +904,8 @@ export function renderHtml({ instanceId, token }) {
       const actualReleasePublished = data.latestRelease?.tagName === version;
       const tagPushed = actualTagPushed || (demo?.tag === version && demo.pushed);
       const releasePublished = actualReleasePublished || (demo?.tag === version && demo.published);
-      const canPrepareRelease = demoMode || snapshot.git.canPrepareRelease;
+      const hasReleaseNotes = data.unreleasedCount > 0;
+      const canPrepareRelease = demoMode || (snapshot.git.canPrepareRelease && hasReleaseNotes);
       const canCreateReleasePr = demoMode || snapshot.git.canCreateReleasePr;
       const releasePullRequest = data.releasePullRequest?.pullRequest;
       const releasePrExists = Boolean(releasePullRequest) || demo?.prCreated === true;
@@ -919,16 +920,20 @@ export function renderHtml({ instanceId, token }) {
           ? '<span class="badge warn">Demo Mode</span>'
           : (!snapshot.git.atMainTip
           ? '<span class="badge warn">Latest main required</span>'
-          : (snapshot.git.clean
-            ? '<span class="badge good">Ready to prepare</span>'
-            : '<span class="badge warn">Commit changes first</span>')));
+          : (!snapshot.git.clean
+            ? '<span class="badge warn">Commit changes first</span>'
+            : (hasReleaseNotes
+              ? '<span class="badge good">Ready to prepare</span>'
+              : '<span class="badge warn">Add release notes</span>'))));
       const prepareDetail = preparedLocally
         ? "Prepared locally. Create a release PR to send the changelog commit for review."
         : (demoMode
           ? "Simulates the changelog commit and release tag without changing Git."
           : (!snapshot.git.atMainTip
           ? "Start from the latest origin/main with no additional commits."
-          : "Moves Unreleased notes into a dated section, commits, and creates an annotated tag."));
+          : (!hasReleaseNotes
+            ? "Add bullet points under Unreleased in " + data.changelog + " and commit them before preparing."
+            : "Moves Unreleased notes into a dated section, commits, and creates an annotated tag.")));
       const createPrDetail = demoMode
         ? (tagPushed ? "PR and tag publication simulated. No branch or tag was sent to origin." : "Simulates creating a release pull request.")
         : (tagPushed
