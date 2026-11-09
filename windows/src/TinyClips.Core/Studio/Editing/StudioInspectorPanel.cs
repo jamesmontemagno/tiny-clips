@@ -22,12 +22,14 @@ public enum StudioInspectorPanel
     /// <summary>The zooms, and the selected one.</summary>
     Zoom,
 
+    /// <summary>The arrows, callouts and text over the picture, and the selected one.</summary>
+    Annotate,
+
     /// <summary>The cuts, and the selected one.</summary>
     Cut,
 
     /// <summary>The speed changes, and the selected one.</summary>
     Speed,
-
     /// <summary>The words of the video: their list, importing and exporting them, and what the checks find.</summary>
     Captions,
 
@@ -54,6 +56,7 @@ public static class StudioInspectorPanels
     private const string ZoomInGlyph = "\uE8A3";
     private const string CutGlyph = "\uE8C6";
     private const string SpeedHighGlyph = "\uEC4A";
+    private const string EditGlyph = "\uE70F";
     private const string CaptionsGlyph = "\uE7F0";
     private const string VolumeGlyph = "\uE767";
     private const string FolderGlyph = "\uE8B7";
@@ -75,6 +78,7 @@ public static class StudioInspectorPanels
     private static readonly StudioInspectorPanel[] TimelineEdits =
     [
         StudioInspectorPanel.Zoom,
+        StudioInspectorPanel.Annotate,
         StudioInspectorPanel.Cut,
         StudioInspectorPanel.Speed,
         StudioInspectorPanel.Captions,
@@ -104,6 +108,7 @@ public static class StudioInspectorPanels
         StudioInspectorPanel.Zoom => "Zoom",
         StudioInspectorPanel.Cut => "Cut",
         StudioInspectorPanel.Speed => "Speed",
+        StudioInspectorPanel.Annotate => "Annotate",
         StudioInspectorPanel.Captions => "Captions",
         StudioInspectorPanel.Audio => "Audio",
         StudioInspectorPanel.Project => "Project",
@@ -120,6 +125,7 @@ public static class StudioInspectorPanels
         StudioInspectorPanel.Zoom => ZoomInGlyph,
         StudioInspectorPanel.Cut => CutGlyph,
         StudioInspectorPanel.Speed => SpeedHighGlyph,
+        StudioInspectorPanel.Annotate => EditGlyph,
         StudioInspectorPanel.Captions => CaptionsGlyph,
         StudioInspectorPanel.Audio => VolumeGlyph,
         StudioInspectorPanel.Project => FolderGlyph,
@@ -139,6 +145,7 @@ public static class StudioInspectorPanels
         StudioInspectorPanel.Zoom => "Zooms",
         StudioInspectorPanel.Cut => "Cuts",
         StudioInspectorPanel.Speed => "Speed changes",
+        StudioInspectorPanel.Annotate => "Annotations: arrows, callouts, text, shapes, emoji, and redaction",
         StudioInspectorPanel.Captions => "Captions: import, edit, and export",
         StudioInspectorPanel.Audio => "Audio: mute and volume",
         StudioInspectorPanel.Project => "Project: badge, storage, and default look",

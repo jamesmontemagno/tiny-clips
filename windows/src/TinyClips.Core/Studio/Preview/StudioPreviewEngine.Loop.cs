@@ -885,6 +885,9 @@ public sealed partial class StudioPreviewEngine
             return;
         }
 
+        // The editor shows only the message; the exception is what explains it afterwards.
+        global::TinyClips.Core.Services.CrashDiagnostics.Log($"Studio preview failed: {message}", exception, handled: true);
+
         var wasPlaying = false;
         try
         {

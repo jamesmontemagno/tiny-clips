@@ -109,4 +109,17 @@ final class StudioPlayback {
             item.videoComposition = videoComposition
         }
     }
+
+    /// Seeks use a 600 Hz clock, while the compositor draws whole frames. An annotation added
+    /// between frame boundaries must start on the frame already in view, not the next one.
+    static func frameTime(at seconds: Double, frameDuration: CMTime) -> Double {
+        let seekTime = CMTime(seconds: seconds, preferredTimescale: 600)
+        let ticks = CMTimeConvertScale(
+            seekTime,
+            timescale: frameDuration.timescale,
+            method: .roundTowardNegativeInfinity
+        )
+        let frame = ticks.value / frameDuration.value
+        return CMTime(value: frame * frameDuration.value, timescale: frameDuration.timescale).seconds
+    }
 }

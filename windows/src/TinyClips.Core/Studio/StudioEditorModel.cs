@@ -404,6 +404,23 @@ public sealed partial class StudioEditorModel
         PushUndo(snapshot);
     }
 
+    /// <summary>Puts the composition back to <paramref name="state"/>, as one step that can be undone.</summary>
+    public void RestoreEditableState(StudioEditableState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
+        CommitEditingGroup();
+        if (state.ContentEquals(EditableState))
+        {
+            return;
+        }
+
+        var current = EditableState;
+        Project = state.ApplyTo(Project);
+        PushUndo(current);
+    }
+
     public void CancelEditingGroup()
     {
         if (_groupedSnapshot is not { } snapshot)
@@ -422,6 +439,8 @@ public sealed partial class StudioEditorModel
     /// </summary>
     public void Undo()
     {
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
         var wasGrouping = IsGroupingEdits;
         CommitEditingGroup();
         if (_undoStack.Count > 0)
@@ -444,6 +463,8 @@ public sealed partial class StudioEditorModel
     /// </summary>
     public void Redo()
     {
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
         var wasGrouping = IsGroupingEdits;
         CommitEditingGroup();
         if (_redoStack.Count > 0)
@@ -1368,6 +1389,8 @@ public sealed partial class StudioEditorModel
 
     private void Mutate(Func<StudioProject, StudioProject> change)
     {
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
         var before = EditableState;
         var candidate = change(Project);
         if (before.ContentEquals(StudioEditableState.From(candidate)))

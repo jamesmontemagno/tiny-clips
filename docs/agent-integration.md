@@ -200,6 +200,37 @@ Studio commands work on both platforms when Studio is enabled. `studio.projects.
 
 `studio.project.edit` accepts a partial `patch` with any of `canvas`, `screen`, `camera`, `scenes`, `zooms`, `edits`, `audio`, `overlays`, and `captions`. Object values merge recursively; arrays replace their whole field. Send both the current project's `modifiedAt` as `expectedModifiedAt` and the opaque `revision` returned by `studio.project.get` as `expectedRevision`. Identity, name, source recordings, cleanup pinning, and export bookkeeping are protected. Edits to an open Studio window use its undo history; edits to a closed project are saved directly. A stale revision is rejected, so fetch the project again before retrying.
 
+Arrows, callouts, text boxes, emoji, rectangles, ellipses, and redactions are in `overlays.annotations`, bottom first, on both platforms. They are drawn in the preview and the export, over the camera and under the badge. The array replaces the whole list, so read the current one and send it back with your change:
+
+```json
+{
+  "overlays": {
+    "annotations": [
+      { "id": "upgrade-arrow", "kind": "arrow", "attach": "screen", "start": 55.2, "end": 58.2, "x": 0.71, "y": 0.22, "offsetX": -0.25, "offsetY": 0.2, "style": "red", "size": "medium" },
+      { "id": "billing-note", "kind": "callout", "attach": "screen", "start": 55.2, "end": 58.2, "x": 0.1, "y": 0.3, "offsetX": 0.2, "offsetY": 0.15, "text": "Billing lives here now", "style": "dark" },
+      { "id": "title", "kind": "text", "attach": "frame", "start": 50, "end": 60, "x": 0.5, "y": 0.9, "text": "Upgrading your plan", "style": "white", "size": "large" },
+      { "id": "plan-box", "kind": "rectangle", "attach": "screen", "start": 55.2, "end": 58.2, "x": 0.71, "y": 0.22, "width": 0.18, "height": 0.08, "cornerRadius": 0.01, "shapeFill": "#FFD60A", "shapeFillOpacity": 0.3 },
+      { "id": "hide-email", "kind": "redact", "attach": "screen", "start": 40, "end": 60, "x": 0.85, "y": 0.06, "width": 0.2, "height": 0.04, "redactStyle": "solid", "style": "dark" },
+      { "id": "done", "kind": "emoji", "attach": "screen", "start": 58.2, "end": 60, "x": 0.8, "y": 0.3, "text": "🎉", "size": "large", "shadow": true }
+    ]
+  }
+}
+```
+
+- `start` and `end` are seconds on the source recording. Without an `end` an annotation is never shown.
+- With `attach` `screen`, `x` and `y` are normalized in the screen recording, like a zoom's focus: the annotation follows zooms and crops, keeps its size, and is hidden while that point is out of view. With `frame` they are normalized in the canvas, and it stays where it is.
+- `x`, `y` are what an arrow or a callout points at, or the center of a text box, an emoji, a rectangle, an ellipse, or a redaction. `offsetX`, `offsetY` are in canvas short sides and place an arrow's tail or a callout's box. Text, emoji, and the area kinds ignore them.
+- An `emoji` draws its `text` in color, with no box, at `size` and `scale`; `shadow` `true` adds a soft drop shadow. `style` and the colors do not change it, and the emoji art is each platform's own.
+- Every annotation accepts `rotation`, clockwise degrees about its resolved `x`, `y` anchor; omitted rotation is zero. For example, `"rotation":45` turns an emoji, shape, or redaction diagonally. Resize areas with `width`/`height`; resize arrows, callouts, text, or emoji with `scale` (multiply arrow/callout offsets too to reproduce the uniform preview resize). The same properties are available through the shared CLI and MCP `studio.project.edit` tool.
+- `rectangle`, `ellipse`, and `redact` cover an area `width` by `height`, normalized like `x` and `y`. With `attach` `screen` the area grows with a zoom, so it keeps covering the same part of the recording, and it shows while any of it is in view. A rectangle or an ellipse is an outline in the style's color; `cornerRadius` (canvas short sides, 0 to 0.5) rounds a rectangle, and `shapeFill` (`#RRGGBB`) with `shapeFillOpacity` (0 to 1, default 0.35) fills the inside.
+- A `redact` hides what is under it: `redactStyle` is `blur`, `pixelate`, or `solid` (filled with the style's color), and `redactLevel` is `light`, `medium`, or `heavy`. Use `solid` for passwords, keys, and other secrets: blur and pixelate can leave large text readable. Put a redaction on `screen` so it stays on what it hides through zooms, and give it a margin around the secret.
+- `style` is `red`, `blue`, `yellow`, `white`, or `dark`. `size` is `small`, `medium`, or `large`.
+- Keep any entry you do not understand as it is: a `kind` this version does not draw is stored and left out of the picture.
+- `fill` and `textColor` are `#RRGGBB` and stand in for the colors of `style`, and `scale`, 0.5 to 3, multiplies `size`. Leave them out for the style's look.
+- The Annotate panel and the preview edit this same list, so anything a person can do there an agent can do through the patch: text, emoji, shadow, style, colors, size, area, corners, fill, redaction style and strength, what it is attached to, position, timing, drawing order (the order of the list), and deleting (leaving it out). Give an annotation a stable `id`: an open editor keeps its selection on an annotation by its `id` through an edit.
+
+The full rules are in section 6.10 of [`studio-project-format.md`](studio-project-format.md).
+
 `studio.zoom.suggest` returns proposed automatic zooms without changing the project. To apply them, combine the suggestions with the project's manual zooms and send the resulting `zooms` array through `studio.project.edit`; suggested automatic zooms are replaced, not accumulated.
 
 `studio.captions.check` reports readability and timing problems without changing anything, naming each cue by its place in time order. `studio.captions.fix` makes the safe fixes as one edit and reports what is left. To give a caption that is too short or too fast more time, it uses free time after or before it, borrows spare time from its neighbors, or joins it to a neighbor, as section 15.6 of the [project format](studio-project-format.md) describes; joining removes a cue, so get the project again before naming a cue by its place. `studio.captions.import` replaces the cues with those of SRT or WebVTT `text`, which you pass in rather than a path; set `timing` to `editedVideo` when its times count from the edited video, such as a file made from an exported video. Both edits take `expectedModifiedAt` and `expectedRevision`, like `studio.project.edit`, and return the new `revision`. To correct a caption, use `studio.project.edit` to replace `captions.cues`, emptying the `words` of what you change. Splitting, merging, and retiming cues, which the Captions panel offers on both platforms, have no commands of their own: replace `captions.cues` the same way, following section 15.5 of the [project format](studio-project-format.md). `studio.captions.export` writes the captions the video has, timed to the edited video, to a new `.srt` or `.vtt` directly inside the configured video-save folder, and the extension chooses the format. It never overwrites a file. Captions in cut or sped-up parts of the video are left out, because those parts have no sound.

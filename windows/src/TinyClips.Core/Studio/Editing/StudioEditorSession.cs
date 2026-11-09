@@ -65,6 +65,10 @@ public sealed partial class StudioEditorSession
     private Task? _loadTask;
     private Task? _closeTask;
     private bool _hasUnsavedEdits;
+
+    // The composition as it was when the project was opened, or last saved as a folder here.
+    // Closing a saved project asks about changes since then, and Don't save goes back to it.
+    private StudioEditableState? _projectSaveBaseline;
     private bool _isClosed;
     private int? _selectedZoomIndex;
     private double _playhead;
@@ -278,6 +282,7 @@ public sealed partial class StudioEditorSession
 
         _paths = paths;
         Model = model;
+        _projectSaveBaseline = model.EditableState;
         global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: project file read");
 
         if (!File.Exists(paths.ScreenPath))
@@ -572,8 +577,8 @@ public sealed partial class StudioEditorSession
     // edit, and undo and redo, the selection follows its zoom as StudioEditorModel.FindZoomFollowing
     // finds it, or lets go when the zoom is gone.
 
-    // What is selected. At most one of the three is not null.
-    private (int? Zoom, int? Cut, int? Speed) Selection => (SelectedZoomIndex, SelectedCutIndex, SelectedSpeedIndex);
+    // What is selected. At most one of the four is not null.
+    private (int? Zoom, int? Cut, int? Speed, int? Annotation) Selection => (SelectedZoomIndex, SelectedCutIndex, SelectedSpeedIndex, SelectedAnnotationIndex);
 
     /// <summary>The zoom that contains a source time, or null.</summary>
     public int? GetZoomIndexAt(double sourceTime) => Model?.GetZoomIndexAt(sourceTime);
@@ -593,6 +598,7 @@ public sealed partial class StudioEditorSession
         {
             _selectedCutIndex = null;
             _selectedSpeedIndex = null;
+            _selectedAnnotationIndex = null;
             ShowInspectorPanel(StudioInspectorPanel.Zoom);
         }
 
@@ -603,7 +609,7 @@ public sealed partial class StudioEditorSession
     }
 
     /// <summary>
-    /// Lets go of whatever is selected: a zoom, a cut, or a speed change. The playhead stays. A
+    /// Lets go of whatever is selected: a zoom, a cut, a speed change, or an annotation. The playhead stays. A
     /// press on an empty part of a lane does this: selecting no zoom alone would leave a selected
     /// cut as it is.
     /// </summary>
@@ -613,6 +619,7 @@ public sealed partial class StudioEditorSession
         _selectedZoomIndex = null;
         _selectedCutIndex = null;
         _selectedSpeedIndex = null;
+        _selectedAnnotationIndex = null;
         if (Selection != before)
         {
             RaiseChanged(StudioEditorChanges.Selection);
@@ -835,6 +842,7 @@ public sealed partial class StudioEditorSession
         var zoomsBefore = model.Project.Zooms;
         var cutsBefore = model.Project.Edits.Cuts;
         var speedBefore = model.Project.Edits.Speed;
+        var annotationsBefore = model.Project.Overlays.Annotations;
         var selected = Selection;
         var selection = change(model);
         var isChanged = !model.EditableState.ContentEquals(before);
@@ -866,6 +874,15 @@ public sealed partial class StudioEditorSession
             _selectedSpeedIndex = StudioEditorModel.FindSpeedFollowing(speedBefore, speedIndex, model.Project.Edits.Speed);
         }
 
+        if (selection is { Kind: EditSelectionKind.Annotation } annotationChosen)
+        {
+            _selectedAnnotationIndex = annotationChosen.Index;
+        }
+        else if (isChanged && selected.Annotation is { } annotationIndex)
+        {
+            _selectedAnnotationIndex = StudioEditorModel.FindAnnotationFollowing(annotationsBefore, annotationIndex, model.Project.Overlays.Annotations);
+        }
+
         // One selection: an edit that says where a zoom is lets go of a cut and a speed change,
         // and so on. An edit to the selected zoom finds nothing else selected, so only adding one
         // does.
@@ -885,11 +902,17 @@ public sealed partial class StudioEditorSession
             {
                 _selectedSpeedIndex = null;
             }
+
+            if (chosen.Kind != EditSelectionKind.Annotation)
+            {
+                _selectedAnnotationIndex = null;
+            }
         }
 
         _selectedZoomIndex = SelectedZoomIndex;
         _selectedCutIndex = SelectedCutIndex;
         _selectedSpeedIndex = SelectedSpeedIndex;
+        _selectedAnnotationIndex = SelectedAnnotationIndex;
         var selectionChange = Selection != selected
             ? StudioEditorChanges.Selection
             : StudioEditorChanges.None;
@@ -962,6 +985,7 @@ public sealed partial class StudioEditorSession
         Zoom,
         Cut,
         Speed,
+        Annotation,
     }
 
     // Where the selection goes after an edit that knows: to a zoom, a cut or a speed change, or
@@ -973,6 +997,8 @@ public sealed partial class StudioEditorSession
         public static EditSelection Cut(int? index) => new(EditSelectionKind.Cut, index);
 
         public static EditSelection Speed(int? index) => new(EditSelectionKind.Speed, index);
+
+        public static EditSelection Annotation(int? index) => new(EditSelectionKind.Annotation, index);
     }
 
     // Transport
@@ -1028,6 +1054,45 @@ public sealed partial class StudioEditorSession
 
         PausePreview();
         Seek(Playhead + count * model.FrameDuration);
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    /// <summary>Pauses and moves the playhead whole seconds back (negative) or on, within the video.</summary>
+    public void StepSeconds(int count)
+    {
+        if (!IsEditable)
+        {
+            return;
+        }
+
+        PausePreview();
+        Seek(Playhead + count);
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    /// <summary>Pauses and moves the playhead to the first picture of the trimmed video.</summary>
+    public void GoToStart()
+    {
+        if (!IsEditable || Model is not { } model)
+        {
+            return;
+        }
+
+        PausePreview();
+        Seek(model.PlaybackStart);
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    /// <summary>Pauses and moves the playhead to the last picture of the trimmed video.</summary>
+    public void GoToEnd()
+    {
+        if (!IsEditable || Model is not { } model)
+        {
+            return;
+        }
+
+        PausePreview();
+        Seek(Math.Max(model.PlaybackStart, model.PlaybackEnd - model.FrameDuration));
         RaiseChanged(StudioEditorChanges.Playback);
     }
 
@@ -1523,7 +1588,58 @@ public sealed partial class StudioEditorSession
             return StudioClosePrompt.ProjectSaveRunning;
         }
 
-        return IsReady && HasNeverExported ? StudioClosePrompt.NeverExported : StudioClosePrompt.None;
+        if (!IsReady)
+        {
+            return StudioClosePrompt.None;
+        }
+
+        if (!HasSavedProjectFolder)
+        {
+            return StudioClosePrompt.Draft;
+        }
+
+        return HasChangesSinceProjectSave ? StudioClosePrompt.UnsavedChanges : StudioClosePrompt.None;
+    }
+
+    /// <summary>
+    /// Whether the project was saved as a folder that is still there. A destination that cannot
+    /// be read counts as none: closing then asks what a draft is asked.
+    /// </summary>
+    public bool HasSavedProjectFolder
+    {
+        get
+        {
+            try
+            {
+                return StudioProjectDestination.Read(_store, ProjectId) is { } file && File.Exists(file);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Studio could not read where {ProjectId} was saved: {ex.Message}");
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the composition differs from what it was when the project was opened, or last
+    /// saved as a folder in this editor.
+    /// </summary>
+    public bool HasChangesSinceProjectSave =>
+        Model is { } model && _projectSaveBaseline is { } baseline && !baseline.ContentEquals(model.EditableState);
+
+    /// <summary>
+    /// Puts the composition back as it was when the project was opened, or last saved as a
+    /// folder in this editor. The window closes next, which writes it into the project.
+    /// </summary>
+    public void DiscardChangesSinceProjectSave()
+    {
+        if (!IsEditable || _projectSaveBaseline is not { } baseline || !HasChangesSinceProjectSave)
+        {
+            return;
+        }
+
+        Edit(model => model.RestoreEditableState(baseline));
     }
 
     /// <summary>

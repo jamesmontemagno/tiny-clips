@@ -1,0 +1,289 @@
+{
+  "description": "A text box is centered on its point, ignores its offset, and is not drawn with nothing but the listed white space",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "text",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.8,
+          "offsetX": 0.3,
+          "offsetY": 0.3,
+          "text": "Upgrading your plan",
+          "style": "white",
+          "size": "large"
+        },
+        {
+          "kind": "text",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "text": ""
+        },
+        {
+          "kind": "text",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "text": "  \n\t "
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "text": "   "
+        },
+        {
+          "kind": "text",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "text": "\u200b"
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "text": "\u00a0\u2003\u3000\u0085"
+        },
+        {
+          "kind": "text",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.1,
+          "text": "\u200cx",
+          "style": "dark"
+        },
+        {
+          "kind": "text",
+          "start": 0,
+          "end": 9,
+          "x": 0.25,
+          "y": 0.25,
+          "text": "Follows the screen",
+          "size": "small",
+          "style": "blue"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#FFFFFF",
+          "textColor": "#1C1C1E",
+          "anchor": {
+            "x": 960.0,
+            "y": 864.0
+          },
+          "font": 54.0,
+          "maxTextWidth": 1268.4,
+          "radius": 21.6,
+          "box": {
+            "x": 772.2,
+            "y": 819.7,
+            "width": 375.6,
+            "height": 88.6
+          },
+          "textRect": {
+            "x": 810.0,
+            "y": 844.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        },
+        {
+          "index": 6,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 108.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 782.784,
+            "y": 70.504,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 810.0,
+            "y": 88.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        },
+        {
+          "index": 7,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#0A84FF",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 480.0,
+            "y": 270.0
+          },
+          "font": 30.24,
+          "maxTextWidth": 1301.664,
+          "radius": 12.096,
+          "box": {
+            "x": 308.832,
+            "y": 236.392,
+            "width": 342.336,
+            "height": 67.216
+          },
+          "textRect": {
+            "x": 330.0,
+            "y": 250.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        }
+      ]
+    },
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1080,
+        "height": 1920
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#FFFFFF",
+          "textColor": "#1C1C1E",
+          "anchor": {
+            "x": 540.0,
+            "y": 1536.0
+          },
+          "font": 54.0,
+          "maxTextWidth": 680.4,
+          "radius": 21.6,
+          "box": {
+            "x": 352.2,
+            "y": 1491.7,
+            "width": 375.6,
+            "height": 88.6
+          },
+          "textRect": {
+            "x": 390.0,
+            "y": 1516.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        },
+        {
+          "index": 6,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 540.0,
+            "y": 192.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 701.568,
+          "radius": 15.552,
+          "box": {
+            "x": 362.784,
+            "y": 154.504,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 390.0,
+            "y": 172.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        },
+        {
+          "index": 7,
+          "kind": "text",
+          "opacity": 1,
+          "fill": "#0A84FF",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 270.0,
+            "y": 808.125
+          },
+          "font": 30.24,
+          "maxTextWidth": 713.664,
+          "radius": 12.096,
+          "box": {
+            "x": 98.832,
+            "y": 774.517,
+            "width": 342.336,
+            "height": 67.216
+          },
+          "textRect": {
+            "x": 120.0,
+            "y": 788.125,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        }
+      ]
+    }
+  ]
+}

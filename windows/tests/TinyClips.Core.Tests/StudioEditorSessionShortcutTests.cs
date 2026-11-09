@@ -16,9 +16,14 @@ public sealed class StudioEditorSessionShortcutTests
     [InlineData(StudioShortcutKey.Digit3, StudioShortcutAction.ShowSideBySideLayout)]
     [InlineData(StudioShortcutKey.Digit4, StudioShortcutAction.ShowCameraLayout)]
     [InlineData(StudioShortcutKey.Z, StudioShortcutAction.AddZoom)]
+    [InlineData(StudioShortcutKey.Home, StudioShortcutAction.GoToStart)]
+    [InlineData(StudioShortcutKey.End, StudioShortcutAction.GoToEnd)]
+    [InlineData(StudioShortcutKey.H, StudioShortcutAction.AddRectangle)]
+    [InlineData(StudioShortcutKey.M, StudioShortcutAction.AddEmoji)]
+    [InlineData(StudioShortcutKey.D, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Delete, StudioShortcutAction.None)]
     [InlineData(StudioShortcutKey.Y, StudioShortcutAction.None)]
-    [InlineData(StudioShortcutKey.E, StudioShortcutAction.None)]
+    [InlineData(StudioShortcutKey.E, StudioShortcutAction.AddEllipse)]
     [InlineData(StudioShortcutKey.Escape, StudioShortcutAction.RequestClose)]
     [InlineData(StudioShortcutKey.Other, StudioShortcutAction.None)]
     public void PlainKeys(StudioShortcutKey key, StudioShortcutAction expected)
@@ -48,8 +53,38 @@ public sealed class StudioEditorSessionShortcutTests
     }
 
     [Theory]
+    [InlineData(StudioShortcutKey.Left, StudioShortcutAction.BackOneSecond)]
+    [InlineData(StudioShortcutKey.Right, StudioShortcutAction.ForwardOneSecond)]
+    public void ShiftArrows_StepASecond_HeldOrDragging_ButNotWithAlt(StudioShortcutKey key, StudioShortcutAction expected)
+    {
+        var press = Press(key) with { IsShiftDown = true };
+
+        Assert.Equal(expected, StudioShortcuts.Resolve(press));
+        Assert.Equal(expected, StudioShortcuts.Resolve(press with { IsRepeat = true }));
+        Assert.Equal(expected, StudioShortcuts.Resolve(press with { IsDragging = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(press with { IsAltDown = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(press with { IsTextInputFocused = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(key) with { IsAltDown = true }));
+    }
+
+    [Theory]
+    [InlineData(StudioShortcutKey.Home, StudioShortcutAction.GoToStart)]
+    [InlineData(StudioShortcutKey.End, StudioShortcutAction.GoToEnd)]
+    public void HomeAndEnd_MoveThePlayhead_EvenWhileDragging(StudioShortcutKey key, StudioShortcutAction expected)
+    {
+        Assert.Equal(expected, StudioShortcuts.Resolve(Press(key) with { IsDragging = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(key) with { IsTextInputFocused = true }));
+        Assert.Equal(StudioShortcutAction.None, StudioShortcuts.Resolve(Press(key) with { IsShiftDown = true }));
+    }
+
+    [Fact]
+    public void U_NoLongerAddsARectangle()
+    {
+        Assert.False(Enum.TryParse<StudioShortcutKey>("U", out _));
+    }
+
+    [Theory]
     [InlineData(StudioShortcutKey.Space)]
-    [InlineData(StudioShortcutKey.Left)]
     [InlineData(StudioShortcutKey.I)]
     [InlineData(StudioShortcutKey.Z)]
     [InlineData(StudioShortcutKey.Digit2)]
@@ -550,6 +585,10 @@ public sealed class StudioEditorSessionShortcutTests
             StudioShortcutAction.TogglePlayback,
             StudioShortcutAction.PreviousFrame,
             StudioShortcutAction.NextFrame,
+            StudioShortcutAction.BackOneSecond,
+            StudioShortcutAction.ForwardOneSecond,
+            StudioShortcutAction.GoToStart,
+            StudioShortcutAction.GoToEnd,
         ];
         bool[] either = [false, true];
         var presses =

@@ -1,0 +1,325 @@
+{
+  "description": "The pointer leaves the edge facing the point, and stays on the straight part of it",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.1,
+          "offsetX": 0,
+          "offsetY": 0.2,
+          "text": "Billing lives here",
+          "style": "dark"
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.9,
+          "offsetX": 0,
+          "offsetY": -0.2,
+          "text": "Billing lives here",
+          "style": "dark"
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.1,
+          "y": 0.5,
+          "offsetX": 0.4,
+          "offsetY": 0,
+          "text": "Billing lives here",
+          "style": "dark"
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.9,
+          "y": 0.5,
+          "offsetX": -0.4,
+          "offsetY": 0,
+          "text": "Billing lives here",
+          "style": "dark"
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.3,
+          "y": 0.1,
+          "offsetX": 0.1,
+          "offsetY": 0.3,
+          "text": "Billing lives here",
+          "style": "dark"
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.42,
+          "y": 0.5,
+          "offsetX": 0.1,
+          "offsetY": 0.003,
+          "text": "Billing lives here",
+          "style": "dark"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 108.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 782.784,
+            "y": 286.504,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 810.0,
+            "y": 304.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": [
+            {
+              "x": 942.504,
+              "y": 286.504
+            },
+            {
+              "x": 977.496,
+              "y": 286.504
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 972.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 782.784,
+            "y": 718.504,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 810.0,
+            "y": 736.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": [
+            {
+              "x": 942.504,
+              "y": 793.496
+            },
+            {
+              "x": 977.496,
+              "y": 793.496
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 192.0,
+            "y": 540.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 446.784,
+            "y": 502.504,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 474.0,
+            "y": 520.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": [
+            {
+              "x": 446.784,
+              "y": 522.504
+            },
+            {
+              "x": 446.784,
+              "y": 557.496
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 1728.0,
+            "y": 540.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 1118.784,
+            "y": 502.504,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 1146.0,
+            "y": 520.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": [
+            {
+              "x": 1473.216,
+              "y": 522.504
+            },
+            {
+              "x": 1473.216,
+              "y": 557.496
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 576.0,
+            "y": 108.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 506.784,
+            "y": 394.504,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 534.0,
+            "y": 412.0,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": [
+            {
+              "x": 558.504,
+              "y": 394.504
+            },
+            {
+              "x": 593.496,
+              "y": 394.504
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 806.4,
+            "y": 540.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 737.184,
+            "y": 505.744,
+            "width": 354.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 764.4,
+            "y": 523.24,
+            "width": 300,
+            "height": 40
+          },
+          "pointer": null
+        }
+      ]
+    }
+  ]
+}

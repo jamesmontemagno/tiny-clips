@@ -162,6 +162,23 @@ public sealed class StudioPreviewStillnessTests
     }
 
     [Fact]
+    public void AnAnnotationStartingOrEnding_ChangesTheScene()
+    {
+        // An annotation from 5 s to 6 s at 30 frames a second: frame 150 is the first whose
+        // middle is inside it, and frame 180 the first after it.
+        var project = Project() with
+        {
+            Overlays = new StudioOverlays { Annotations = [new StudioAnnotation { Start = 5, End = 6 }] },
+        };
+
+        Assert.True(Same(project, 140, 149));
+        Assert.False(Same(project, 149, 150));
+        Assert.True(Same(project, 150, 160));
+        Assert.False(Same(project, 179, 180));
+        Assert.True(Same(project, 180, 190));
+    }
+
+    [Fact]
     public void MoreFramesThanAPictureCanBeInDoubtOver_AreNotLookedAt()
     {
         var project = Project();

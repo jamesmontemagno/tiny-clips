@@ -26,6 +26,33 @@ public static class StudioGlyphs
     /// <summary>Speed and Add speed change: the Speed panel's glyph.</summary>
     public static string AddSpeed => StudioInspectorPanels.GetGlyph(StudioInspectorPanel.Speed);
 
+    /// <summary>Arrow, in the Annotate panel: an arrow (Forward).</summary>
+    public static string AddArrow => "\uE72A";
+
+    /// <summary>Callout, in the Annotate panel: a speech bubble (Message).</summary>
+    public static string AddCallout => "\uE8BD";
+
+    /// <summary>Text, in the Annotate panel: a letter (Font).</summary>
+    public static string AddText => "\uE8D2";
+
+    /// <summary>Rectangle, in the Annotate panel: a square, as in the screenshot editor (Stop).</summary>
+    public static string AddRectangle => "\uE71A";
+
+    /// <summary>Ellipse, in the Annotate panel: a ring, as in the screenshot editor (CircleRing).</summary>
+    public static string AddEllipse => "\uEA3A";
+
+    /// <summary>Redaction, in the Annotate panel: a crossed-out eye, as in the screenshot editor (Hide).</summary>
+    public static string AddRedaction => "\uED1A";
+
+    /// <summary>Emoji, in the Annotate panel: a smiling face (Emoji2).</summary>
+    public static string AddEmoji => "\uE76E";
+
+    /// <summary>Bring forward: an arrow up (Up).</summary>
+    public static string BringForward => "\uE74A";
+
+    /// <summary>Send back: an arrow down (Down).</summary>
+    public static string SendBack => "\uE74B";
+
     /// <summary>Suggest zooms: the mark a suggested zoom has on its block (Effects).</summary>
     public static string SuggestZooms => "\uE794";
 
@@ -72,7 +99,7 @@ public static class StudioGlyphs
     public static IReadOnlyList<string> All =>
     [
         .. StudioInspectorPanels.All.Select(StudioInspectorPanels.GetGlyph),
-        SplitScene, AddZoom, AddCut, AddSpeed, SuggestZooms, RemoveSuggestions, Delete, MergeCaptions,
+        SplitScene, AddZoom, AddCut, AddSpeed, AddArrow, AddCallout, AddText, AddRectangle, AddEllipse, AddRedaction, AddEmoji, BringForward, SendBack, SuggestZooms, RemoveSuggestions, Delete, MergeCaptions,
         TrimStart, TrimEnd, ResetCrop, ShowScene, SaveDefaultLook, SaveRecording,
         OpenProject, OpenRecentProject, SaveProject, DeleteProject,
     ];

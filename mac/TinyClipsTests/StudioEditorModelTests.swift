@@ -30,6 +30,38 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertFalse(model.canRedo)
     }
 
+    func testRestorePutsBackTheSavedStateAsOneUndoStep() {
+        var model = StudioEditorModel(project: makeProject())
+        model.setCanvasPadding(0.12)
+        let saved = model.editableState
+
+        model.setCanvasPadding(0.3)
+        model.beginEditingGroup()
+        model.setCanvasPadding(0.4)
+        model.restore(saved)
+
+        XCTAssertFalse(model.isGroupingEdits)
+        XCTAssertEqual(model.editableState, saved)
+        model.undo()
+        XCTAssertEqual(model.project.canvas.padding, 0.4, accuracy: 1e-9)
+    }
+
+    func testRestoringTheCurrentStateLeavesNoUndoStep() {
+        var model = StudioEditorModel(project: makeProject())
+
+        model.restore(model.editableState)
+
+        XCTAssertFalse(model.canUndo)
+    }
+
+    func testClosePromptAsksAboutDraftsAndOnlyAboutChangesToSavedProjects() {
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: false, hasSavedProjectFolder: false, hasChangesSinceSave: true), .none)
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: true, hasSavedProjectFolder: false, hasChangesSinceSave: false), .draft)
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: true, hasSavedProjectFolder: false, hasChangesSinceSave: true), .draft)
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: true, hasSavedProjectFolder: true, hasChangesSinceSave: true), .unsavedChanges)
+        XCTAssertEqual(StudioClosePrompt.resolve(isReady: true, hasSavedProjectFolder: true, hasChangesSinceSave: false), .none)
+    }
+
     func testGestureThatChangesNothingLeavesNoUndoStep() {
         var model = StudioEditorModel(project: makeProject())
 
@@ -467,6 +499,20 @@ final class StudioEditorModelTests: XCTestCase {
 
         XCTAssertEqual(model.clampedSourceTime(-1), 0)
         XCTAssertEqual(model.clampedSourceTime(99), 10)
+    }
+
+    func testASecondStepStaysInsideTheTrimmedVideo() {
+        var model = StudioEditorModel(project: makeProject(duration: 10))
+        model.setTrim(start: 2, end: 8)
+        let last = 8 - model.frameDuration
+
+        XCTAssertEqual(model.lastPlaybackFrame, last, accuracy: 1e-9)
+        XCTAssertEqual(model.sourceTime(steppingSeconds: 1, from: 4.5), 5.5, accuracy: 1e-9)
+        XCTAssertEqual(model.sourceTime(steppingSeconds: -1, from: 4.5), 3.5, accuracy: 1e-9)
+        XCTAssertEqual(model.sourceTime(steppingSeconds: -1, from: 2.4), 2, accuracy: 1e-9, "Not before the trim start")
+        XCTAssertEqual(model.sourceTime(steppingSeconds: 1, from: 7.5), last, accuracy: 1e-9, "Not past the last picture")
+        XCTAssertEqual(model.sourceTime(steppingSeconds: 1, from: 0.5), 2, accuracy: 1e-9, "From before the trim, into it")
+        XCTAssertEqual(model.sourceTime(steppingSeconds: 1, from: .nan), 3, accuracy: 1e-9)
     }
 
     func testFormattedTime() {

@@ -36,7 +36,6 @@ struct StudioZoomLane: View {
 
             ZStack(alignment: .topLeading) {
                 track(usable: usable, duration: duration)
-                emptyText
                 zoomBlocks(width: width, height: proxy.size.height, usable: usable, duration: duration)
                 playheadLine(usable: usable, duration: duration)
             }
@@ -62,17 +61,6 @@ struct StudioZoomLane: View {
                     }
             )
             .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var emptyText: some View {
-        if viewModel.zooms.isEmpty {
-            Text("No zooms. Press Z to add one at the playhead.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-        }
     }
 
     private func zoomBlocks(width: CGFloat, height: CGFloat, usable: CGFloat, duration: Double) -> some View {

@@ -577,9 +577,11 @@ public sealed partial class StudioViewModel
         Raise(ZoomSelectionPropertyNames);
         Raise(CutSelectionPropertyNames);
         Raise(SpeedSelectionPropertyNames);
+        Raise(AnnotationSelectionPropertyNames);
         RaiseZoomStateAtPlayhead();
         RaiseCutStateAtPlayhead();
         RaiseSpeedStateAtPlayhead();
+        RaiseAnnotationStateAtPlayhead();
         _couldSplitSelectedCaption = CanSplitSelectedCaption;
     }
 

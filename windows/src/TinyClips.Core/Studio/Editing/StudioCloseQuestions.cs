@@ -24,8 +24,11 @@ public enum StudioCloseQuestion
     /// <summary>The project is being saved as a folder: keep saving, or stop and close.</summary>
     RunningProjectSave,
 
-    /// <summary>The recording was never exported: export it, keep it as a draft, or delete it.</summary>
+    /// <summary>The project has no saved project folder: keep it as a draft, or delete it.</summary>
     Draft,
+
+    /// <summary>The saved project has changed since its last save: save, don't save, or cancel.</summary>
+    UnsavedChanges,
 
     /// <summary>Whether Esc was meant. Only Esc asks this, and only of a project that is open, where nothing else is asked.</summary>
     Escape,
@@ -42,14 +45,13 @@ public static class StudioCloseQuestions
     /// Each request takes the first of these that applies. What closing asks of itself is asked,
     /// however the close was asked for and whatever the setting says: while an export runs, the
     /// question about the export, while the project is being saved as a folder, the question
-    /// about that save, and of a recording that was never exported, what to do with
-    /// it. That question is the confirmation, and Esc adds none to it. Where closing asks
-    /// nothing, the close button asks nothing. Esc asks whether it was meant, as it does in the
-    /// other editors and behind the same setting, of a project that is open, which is then one
-    /// that has been exported. A window whose project is not open, because it is still being
-    /// opened or cannot be shown, closes on Esc as it does by its close button, whatever the
-    /// setting says: the question says that the edits are saved, which is no sentence for a
-    /// window that opened nothing.
+    /// about that save, of a project without a saved folder, whether to keep it as a draft or
+    /// delete it, and of a saved project that has changed, whether to save the changes. That
+    /// question is the confirmation, and Esc adds none to it. Where closing asks nothing, the
+    /// close button asks nothing. Esc asks whether it was meant, as it does in the other editors
+    /// and behind the same setting, of a project that is open, which is then a saved project
+    /// without changes. A window whose project is not open, because it is still being opened or
+    /// cannot be shown, closes on Esc as it does by its close button, whatever the setting says.
     /// </summary>
     /// <param name="request">How the close was asked for.</param>
     /// <param name="prompt">What closing asks of itself (<see cref="StudioEditorSession.GetClosePrompt"/>).</param>
@@ -67,11 +69,13 @@ public static class StudioCloseQuestions
                 return StudioCloseQuestion.RunningExport;
             case StudioClosePrompt.ProjectSaveRunning:
                 return StudioCloseQuestion.RunningProjectSave;
-            case StudioClosePrompt.NeverExported:
+            case StudioClosePrompt.Draft:
                 return StudioCloseQuestion.Draft;
+            case StudioClosePrompt.UnsavedChanges:
+                return StudioCloseQuestion.UnsavedChanges;
         }
 
-        // Studio saves every edit as it is made, so there is never anything unsaved to ask about.
+        // A saved project without changes has nothing to ask about.
         return request == StudioCloseRequest.Escape
             && isProjectOpen
             && EditorEscape.ResolvePrompt(confirmEscape, hasUnsavedChanges: false) is not null

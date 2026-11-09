@@ -31,5 +31,27 @@
                 StrokeDashArray="3,2"
                 StrokeThickness="2" />
         </Grid>
+
+        <!--  Over the camera, as annotations are in the picture. Filled in code, and only what is in it can be pressed.  -->
+        <Canvas
+            x:Name="AnnotationLayer"
+            AutomationProperties.AccessibilityView="Raw"
+            PointerCanceled="OnAnnotationLayerPointerEnded"
+            PointerCaptureLost="OnAnnotationLayerPointerEnded"
+            PointerMoved="OnAnnotationLayerPointerMoved"
+            PointerPressed="OnAnnotationLayerPointerPressed"
+            PointerReleased="OnAnnotationLayerPointerEnded" />
+        <Rectangle
+            x:Name="AnnotationGuideVertical"
+            Width="1"
+            Fill="{ThemeResource AccentFillColorDefaultBrush}"
+            IsHitTestVisible="False"
+            Visibility="Collapsed" />
+        <Rectangle
+            x:Name="AnnotationGuideHorizontal"
+            Height="1"
+            Fill="{ThemeResource AccentFillColorDefaultBrush}"
+            IsHitTestVisible="False"
+            Visibility="Collapsed" />
     </Canvas>
 </UserControl>

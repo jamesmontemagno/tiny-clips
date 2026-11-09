@@ -36,6 +36,19 @@ public sealed partial class StudioViewModel
 
     public bool HasCamera => _session.HasCamera;
 
+    // Which lanes of the timeline show. A lane shows only with something on it.
+    public bool IsSceneLaneShown => IsLaneShown(StudioTimelineLane.Scene);
+
+    public bool IsZoomLaneShown => IsLaneShown(StudioTimelineLane.Zoom);
+
+    public bool IsCutLaneShown => IsLaneShown(StudioTimelineLane.Cut);
+
+    public bool IsSpeedLaneShown => IsLaneShown(StudioTimelineLane.Speed);
+
+    public bool IsAnnotationLaneShown => IsLaneShown(StudioTimelineLane.Annotate);
+
+    private bool IsLaneShown(StudioTimelineLane lane) => Project is { } project && StudioTimelineLanes.IsShown(lane, project);
+
     /// <summary>True when the project is open and was recorded without a camera.</summary>
     public bool HasNoCamera => IsReady && !HasCamera;
 

@@ -940,17 +940,21 @@ struct StudioAudio: Codable, Equatable, Sendable {
 struct StudioOverlays: Codable, Equatable, Sendable {
     var clicks: StudioClickOverlay
     var branding: Bool
+    /// What is drawn over the picture, bottom first (section 6.10 of the project format).
+    var annotations: [StudioAnnotation]
     var captions: StudioCaptionOverlay
     var extra: [String: StudioJSONValue]
 
     init(
         clicks: StudioClickOverlay = StudioClickOverlay(),
         branding: Bool = false,
+        annotations: [StudioAnnotation] = [],
         captions: StudioCaptionOverlay = StudioCaptionOverlay(),
         extra: [String: StudioJSONValue] = [:]
     ) {
         self.clicks = clicks
         self.branding = branding
+        self.annotations = annotations
         self.captions = captions
         self.extra = extra
     }
@@ -959,8 +963,9 @@ struct StudioOverlays: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: StudioJSONKey.self)
         clicks = try container.decodeIfPresent(StudioClickOverlay.self, forKey: StudioJSONKey("clicks")) ?? StudioClickOverlay()
         branding = try container.decodeBool("branding", default: false)
+        annotations = try container.decodeCompactArray("annotations", default: [])
         captions = try container.decodeIfPresent(StudioCaptionOverlay.self, forKey: StudioJSONKey("captions")) ?? StudioCaptionOverlay()
-        extra = try StudioJSON.decodeExtra(from: container, excluding: ["clicks", "branding", "captions"])
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["clicks", "branding", "annotations", "captions"])
     }
 
     func encode(to encoder: Encoder) throws {
@@ -968,6 +973,7 @@ struct StudioOverlays: Codable, Equatable, Sendable {
         try StudioJSON.encodeExtra(extra, to: &container)
         try container.encode(clicks, forKey: StudioJSONKey("clicks"))
         try container.encode(branding, forKey: StudioJSONKey("branding"))
+        try container.encode(annotations, forKey: StudioJSONKey("annotations"))
         try container.encode(captions, forKey: StudioJSONKey("captions"))
     }
 }

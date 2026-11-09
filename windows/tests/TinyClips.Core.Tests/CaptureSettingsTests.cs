@@ -20,6 +20,19 @@ public sealed class CaptureSettingsTests
     }
 
     [Fact]
+    public void IncludeTinyClipsNotifiesOnlyActualChangesIncludingReset()
+    {
+        var settings = new CaptureSettings(new TestSettingsService());
+        var observed = new List<bool>();
+        settings.IncludeTinyClipsInCaptureChanged += (_, _) => observed.Add(settings.IncludeTinyClipsInCapture);
+        settings.IncludeTinyClipsInCapture = false; // Default, not a change.
+        settings.IncludeTinyClipsInCapture = true;
+        settings.IncludeTinyClipsInCapture = true;
+        settings.ResetToDefaults();
+        Assert.Equal([true, false], observed);
+    }
+
+    [Fact]
     public void IncludeTinyClips_DefaultsOff_PersistsAcrossInstances_AndResets()
     {
         var store = new TestSettingsService();

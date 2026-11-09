@@ -43,6 +43,23 @@ enum StudioLaneBlockPart: Equatable, Sendable {
 
 // MARK: - Editable State
 
+/// What closing Studio asks. A project saved to a folder asks only when it has changes the folder
+/// does not have; any other project is a draft, and is asked whether to keep it or delete it.
+enum StudioClosePrompt: Equatable {
+    /// Closes without asking.
+    case none
+    /// Keep as Draft, Delete, or Cancel.
+    case draft
+    /// Save, Don't Save, or Cancel.
+    case unsavedChanges
+
+    static func resolve(isReady: Bool, hasSavedProjectFolder: Bool, hasChangesSinceSave: Bool) -> StudioClosePrompt {
+        guard isReady else { return .none }
+        guard hasSavedProjectFolder else { return .draft }
+        return hasChangesSinceSave ? .unsavedChanges : .none
+    }
+}
+
 /// The parts of a project the editor changes. Undo, redo, and "changed since export" work on this
 /// value, so they never touch the project's bookkeeping (exports, dates, name, sources).
 struct StudioEditableState: Equatable, Sendable {
@@ -327,9 +344,6 @@ struct StudioEditorModel: Equatable, Sendable {
     /// `StudioTimeMap.slowestRate` to `StudioTimeMap.fastestRate`.
     static let speedRates: [Double] = [0.25, 0.5, 1.5, 2, 4, 8]
 
-    /// What the speed lane says while no stretch plays at another speed.
-    static let noSpeedHint = "No speed changes. Press R to speed up two seconds from the playhead."
-
     /// What the Speed section says while there are speed changes and none is selected.
     static let selectSpeedHint = "Select a speed change on the timeline, or step to one with the arrows above."
 
@@ -360,6 +374,12 @@ struct StudioEditorModel: Equatable, Sendable {
     private var undoStack: [StudioEditableState] = []
     private var redoStack: [StudioEditableState] = []
     private var groupedSnapshot: StudioEditableState?
+
+    /// The annotation whose text was last typed in, for as long as nothing else has been edited:
+    /// what is typed next is part of the same undo step.
+    var typingInAnnotation: Int?
+    /// The color of an annotation that is being chosen, in the same way.
+    var choosingColorInAnnotation: Int?
     private var exportedState: StudioEditableState?
 
     init(project: StudioProject) {
@@ -446,6 +466,17 @@ struct StudioEditorModel: Equatable, Sendable {
     /// start when cuts leave nothing.
     var playbackEnd: Double { timeMap.segments.last?.end ?? trimStart }
 
+    /// The last picture of the video, where End puts the playhead.
+    var lastPlaybackFrame: Double { max(playbackStart, playbackEnd - frameDuration) }
+
+    /// Where a step of whole seconds back (negative) or forward from `sourceTime` lands, kept
+    /// within the trimmed video.
+    func sourceTime(steppingSeconds count: Int, from sourceTime: Double) -> Double {
+        let start = playbackStart
+        let from = sourceTime.isFinite ? sourceTime : start
+        return StudioCanvasMath.clamped(from + Double(count), start, lastPlaybackFrame)
+    }
+
     /// Where playback starts when Play is pressed at `sourceTime`: the same spot, the end of the
     /// cut it is in, or the start of the video when the playhead is outside what the video shows
     /// or already at its end.
@@ -489,10 +520,24 @@ struct StudioEditorModel: Equatable, Sendable {
         project = snapshot.applied(to: project)
     }
 
+    /// Puts back an earlier state, such as the one last saved to the project folder. It is one
+    /// step that can be undone.
+    mutating func restore(_ state: StudioEditableState) {
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
+        commitEditingGroup()
+        let current = editableState
+        guard state != current else { return }
+        project = state.applied(to: project)
+        pushUndo(current)
+    }
+
     /// Takes back the last step. In the middle of a gesture, what the gesture has done so far is
     /// the step that is taken back, and the gesture goes on: whatever it does next is one step
     /// again, and not a step for every move of the pointer.
     mutating func undo() {
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
         let wasGrouping = isGroupingEdits
         commitEditingGroup()
         if let previous = undoStack.popLast() {
@@ -507,6 +552,8 @@ struct StudioEditorModel: Equatable, Sendable {
     /// Does the step that was last taken back again. A gesture goes on afterwards, as it does
     /// after `undo()`.
     mutating func redo() {
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
         let wasGrouping = isGroupingEdits
         commitEditingGroup()
         if let next = redoStack.popLast() {
@@ -2075,7 +2122,14 @@ struct StudioEditorModel: Equatable, Sendable {
 
     // MARK: - Private
 
-    private mutating func mutate(_ body: (inout StudioProject) -> Void) {
+    /// Changes the project as part of the undo step before it, for text that is being typed.
+    mutating func applyWithoutUndoStep(_ body: (inout StudioProject) -> Void) {
+        body(&project)
+    }
+
+    mutating func mutate(_ body: (inout StudioProject) -> Void) {
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
         let before = editableState
         body(&project)
         guard before != editableState else { return }

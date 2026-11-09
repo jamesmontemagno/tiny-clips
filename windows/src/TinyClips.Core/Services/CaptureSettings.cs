@@ -669,8 +669,18 @@ public sealed class CaptureSettings : ICaptureSettings
     public bool IncludeTinyClipsInCapture
     {
         get => _settings.Get("includeTinyClipsInCapture", false);
-        set => _settings.Set("includeTinyClipsInCapture", value);
+        set
+        {
+            var changed = IncludeTinyClipsInCapture != value;
+            _settings.Set("includeTinyClipsInCapture", value);
+            if (changed)
+            {
+                IncludeTinyClipsInCaptureChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
+
+    public event EventHandler? IncludeTinyClipsInCaptureChanged;
 
     public bool ShowBrandingOverlay
     {

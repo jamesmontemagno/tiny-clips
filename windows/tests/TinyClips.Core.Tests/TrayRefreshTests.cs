@@ -9,7 +9,7 @@ namespace TinyClips.Core.Tests;
 public sealed class TrayRefreshTests
 {
     [Fact]
-    public void ClickOnlyShowsRetainedContentAndCachedDimensions()
+    public void ClickLazilyCreatesWindowWithRetainedContentAndCachedDimensions()
     {
         using var stream = typeof(TrayRefreshTests).Assembly.GetManifestResourceStream("Tray.App.cs")!;
         using var reader = new StreamReader(stream);
@@ -18,7 +18,9 @@ public sealed class TrayRefreshTests
         var end = source.IndexOf("private void RefreshTrayTiles()", start, StringComparison.Ordinal);
         var body = Regex.Replace(source[start..end], @"//[^\r\n]*", "");
         var calls = Regex.Matches(body, @"\b(\w+)\s*\(").Select(match => match.Groups[1].Value);
-        Assert.Equal(["ShowTrayPopup", "if", "ShowNearCursor", "ResumeTrayRefresh"], calls);
+        Assert.Equal(["ShowTrayPopup", "if", "TrayPopupWindow", "ShowNearCursor", "ResumeTrayRefresh"], calls);
+        Assert.Contains("_trayPopup ??= new TrayPopupWindow(_trayLayout)", body);
+        Assert.Single(Regex.Matches(source, @"\bnew TrayPopupWindow\("));
         Assert.Contains("_trayPopup.ShowNearCursor(_trayPopupWidth, TrayPopupHeight)", body);
 
         // Resuming the poll only touches the timer; its catch-up probe is queued, not run inline.

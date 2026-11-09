@@ -228,7 +228,7 @@ public sealed partial class StudioWindow
 
     /// <summary>
     /// Shows the resolution and quality in a flyout on Export, whatever asked for the export: the
-    /// button, Ctrl+E, or the question when a draft is closed. It counts as a question while it is
+    /// button or Ctrl+E. It counts as a question while it is
     /// open, so no key of the editor acts under it. The answer is given once the flyout has gone.
     /// </summary>
     private async Task<bool> ChooseExportOptionsAsync(StudioExportOptionsModel options)
@@ -303,7 +303,8 @@ public sealed partial class StudioWindow
 
     private void OnProjectSaved(object? sender, StudioProjectSavedEventArgs e)
     {
-        if (!_isClosed)
+        // Saved on the way out, the folder is not shown: the window is about to close.
+        if (!_isClosed && !_isSavingToClose)
         {
             _projects.Reveal(e.ProjectFilePath);
         }
@@ -332,7 +333,7 @@ public sealed partial class StudioWindow
     /// <summary>
     /// Delete project asks first, with the project's name, and says what is not deleted. On
     /// yes the window closes, which stops an export that runs and deletes the project in the
-    /// store, as choosing Delete does when a recording that was never exported is closed.
+    /// store, as choosing Delete does when a draft is closed.
     /// </summary>
     private async void OnDeleteProjectRequested(object? sender, EventArgs e)
     {

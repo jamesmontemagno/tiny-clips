@@ -30,6 +30,7 @@ internal sealed partial class WindowChecks
         (StudioInspectorPanel.Screen, "StudioScreenCornerRadiusSlider"),
         (StudioInspectorPanel.Camera, "StudioCameraMirrorCheckBox"),
         (StudioInspectorPanel.Zoom, "StudioZoomSectionAddButton"),
+        (StudioInspectorPanel.Annotate, "StudioAddArrowButton"),
         (StudioInspectorPanel.Cut, "StudioCutSectionAddButton"),
         (StudioInspectorPanel.Speed, "StudioSpeedSectionAddButton"),
         (StudioInspectorPanel.Captions, "StudioCaptionsImportButton"),
@@ -76,6 +77,7 @@ internal sealed partial class WindowChecks
         var folder = NewCameraProject("Inspector rail", p => p with
         {
             Scenes = [p.Scenes[0], p.Scenes[0] with { Start = 6.0, Transition = new StudioTransition { Kind = StudioTransitionKind.Morph } }],
+            Overlays = p.Overlays with { Annotations = [new StudioAnnotation { Id = "rail", Kind = StudioAnnotationKinds.Arrow, Start = 9, End = 10 }] },
         });
         if (OpenReady(folder, "inspector rail") is not { } editor)
         {
@@ -84,11 +86,11 @@ internal sealed partial class WindowChecks
 
         using var heard = UiaEvents.Listen(_uia, editor.Root);
         var all = StudioInspectorPanels.All;
-        string[] titles = ["Scene", "Background", "Screen", "Camera", "Zoom", "Cut", "Speed", "Captions", "Audio", "Project"];
+        string[] titles = ["Scene", "Background", "Screen", "Camera", "Zoom", "Annotate", "Cut", "Speed", "Captions", "Audio", "Project"];
         string[] summaries =
         [
             "Scene: layout, splits, and transitions", "Background and padding", "Screen: corners, shadow, clicks, and crop", "Camera: placement, appearance, and crop",
-            "Zooms", "Cuts", "Speed changes", "Captions: import, edit, and export", "Audio: mute and volume", "Project: badge, storage, and default look",
+            "Zooms", "Annotations: arrows, callouts, text, shapes, emoji, and redaction", "Cuts", "Speed changes", "Captions: import, edit, and export", "Audio: mute and volume", "Project: badge, storage, and default look",
         ];
 
         // As it opens.
@@ -96,7 +98,7 @@ internal sealed partial class WindowChecks
         var (rail, items) = RailOf(editor);
         var title = editor.Root.FindAsItIs(InspectorTitleId);
         _report.Check(
-            "a recording with a camera opens on the Scene panel: its name is over the inspector as a text, and the rail is a list called Inspector panels with ten items in the order Scene, Background, Screen, Camera, Zoom, Cut, Speed, Captions, Audio, Project; each is a list item that can be selected and can take the keyboard focus, is called by its panel's name, says what the panel holds as its description, and has an automation id; Scene is the selected one and no other is",
+            "a recording with a camera opens on the Scene panel: its name is over the inspector as a text, and the rail is a list called Inspector panels with eleven items in the order Scene, Background, Screen, Camera, Zoom, Annotate, Cut, Speed, Captions, Audio, Project; each is a list item that can be selected and can take the keyboard focus, is called by its panel's name, says what the panel holds as its description, and has an automation id; Scene is the selected one and no other is",
             rail is { ControlType: ControlTypeNames.List, Name: "Inspector panels", IsEnabled: true } && rail.Patterns.Contains("Selection", StringComparison.Ordinal)
                 && title is { ControlType: ControlTypeNames.Text, Name: "Scene" }
                 && items.Select(item => item.Name).SequenceEqual(titles) && items.Select(item => item.HelpText).SequenceEqual(summaries)
@@ -113,7 +115,7 @@ internal sealed partial class WindowChecks
             : default);
         _report.Check(
             "the rail is the framework's list with one item selected at a time, whose selection goes with the keyboard focus inside it, and which is one stop for the Tab key: that is what makes the list's own Up, Down, Home and End choose a panel. Those keys are not pressed here",
-            list is { Found: true, SelectionMode: ListViewSelectionMode.Single, SingleSelectionFollowsFocus: true, TabNavigation: KeyboardNavigationMode.Once, IsItemClickEnabled: false, Count: 9, Index: 0 },
+            list is { Found: true, SelectionMode: ListViewSelectionMode.Single, SingleSelectionFollowsFocus: true, TabNavigation: KeyboardNavigationMode.Once, IsItemClickEnabled: false, Index: 0 } && list.Count == titles.Length,
             list.Found
                 ? $"selection {list.SelectionMode}, follows the focus {list.SingleSelectionFollowsFocus}, Tab navigation {list.TabNavigation}, items are pressed like buttons {list.IsItemClickEnabled}, {list.Count} items, item {list.Index} selected"
                 : "the rail is not a ListView");
@@ -160,7 +162,7 @@ internal sealed partial class WindowChecks
         }
 
         _report.Check(
-            "each of the ten items, selected through UI Automation as a screen reader selects it, shows its panel at once: the name over the inspector is the panel's, and the rail has that item selected and no other",
+            "each of the items, selected through UI Automation as a screen reader selects it, shows its panel at once: the name over the inspector is the panel's, and the rail has that item selected and no other",
             wrongShown.Count == 0,
             wrongShown.Count == 0 ? string.Join(", ", titles) : string.Join(" | ", wrongShown));
         _report.Check(
@@ -648,9 +650,9 @@ internal sealed partial class WindowChecks
 
         var opened = PanelShown(editor, "Background", 2);
         var (rail, items) = RailOf(editor);
-        string[] titles = ["Background", "Screen", "Zoom", "Cut", "Speed", "Captions", "Audio", "Project"];
+        string[] titles = ["Background", "Screen", "Zoom", "Annotate", "Cut", "Speed", "Captions", "Audio", "Project"];
         _report.Check(
-            "a recording without a camera opens on the Background panel, and its rail has eight items: Background, Screen, Zoom, Cut, Speed, Captions, Audio, Project. There is no Scene and no Camera item",
+            "a recording without a camera opens on the Background panel, and its rail has nine items: Background, Screen, Zoom, Annotate, Cut, Speed, Captions, Audio, Project. There is no Scene and no Camera item",
             IsShown(opened, "Background") && items.Select(item => item.Name).SequenceEqual(titles) && rail?.SelectedNames.SequenceEqual(["Background"]) == true
                 && StudioInspectorPanels.GetAvailable(false).Select(StudioInspectorPanels.GetTitle).SequenceEqual(titles),
             $"{PanelWords(opened)}; items: {string.Join(", ", items.Select(item => item.Name))}");

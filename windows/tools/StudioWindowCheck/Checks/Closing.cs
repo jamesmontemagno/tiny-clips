@@ -8,9 +8,10 @@ using TinyClips.Tools.StudioWindowCheck.Host;
 
 namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
-// 6. Closing: the question a project that was never exported asks, what each answer does, a
-// project that was exported, and an export that ends behind the question about it: the close
-// button then, and where the keyboard focus is. What Esc does is in ClosingByEscape.cs, and a
+// 6. Closing: the question a project without a saved project folder asks, what each answer
+// does, a project that was exported without being saved as a folder, a project saved as a
+// folder with and without changes, and an export that ends behind the question about it: the
+// close button then, and where the keyboard focus is. What Esc does is in ClosingByEscape.cs, and a
 // window that closes while its edits cannot be saved in ClosingUnsaved.cs.
 internal sealed partial class WindowChecks
 {
@@ -21,7 +22,7 @@ internal sealed partial class WindowChecks
     private void Closing()
     {
         DraftQuestion();
-        ExportAnswer();
+        ExportedAndSavedProjects();
         CloseButtonAfterTheExportEndedBehindItsQuestion();
         ClosingByEscape();
         ClosingWhenTheSaveFails();
@@ -30,7 +31,7 @@ internal sealed partial class WindowChecks
     /// <summary>Cancel, Keep as draft, the draft opened again, and Delete.</summary>
     private void DraftQuestion()
     {
-        Timeline.Mark("6: a project that was never exported");
+        Timeline.Mark("6: a project without a saved project folder");
         var folder = NewCameraProject("Closing, a draft");
         if (OpenReady(folder, "closing, a draft") is not { } editor)
         {
@@ -59,21 +60,21 @@ internal sealed partial class WindowChecks
         var deletesBefore = _services.Store.Deletes;
         var pressed = PressClose(editor);
         var question = Dialog(editor);
-        var export = question?.Find("PrimaryButton");
-        var keep = question?.Find("SecondaryButton");
+        var keep = question?.Find("PrimaryButton");
+        var second = question?.Find("SecondaryButton");
         var cancel = question?.Find("CloseButton");
         var delete = question?.Find("StudioClosePromptDeleteButton");
-        var words = question?.FindAll(ControlTypeNames.Text).Select(text => text.Name).FirstOrDefault(text => text.StartsWith("It has not been exported", StringComparison.Ordinal)) ?? string.Empty;
+        var words = question?.FindAll(ControlTypeNames.Text).Select(text => text.Name).FirstOrDefault(text => text.StartsWith("It has not been saved as a project", StringComparison.Ordinal)) ?? string.Empty;
         var paused = Until(() => NameOf(editor, "StudioPlayPauseButton", 0), name => name == "Play", 2) == "Play";
         var focus = Until(() => FocusedId(editor), id => id == "PrimaryButton", 1.5);
         _report.Check(
-            "the close button on a project that was never exported asks first, with four answers: Export, Keep as draft, Cancel and Delete; the window stays, and the video stops playing",
-            edited && shown?.Shown == Both(editor, Start) && pressed && question is { Name: "Export this recording before closing?" }
-                && export is { Name: "Export", IsEnabled: true } && keep is { Name: "Keep as draft" } && cancel is { Name: "Cancel" } && delete is { Name: "Delete recording", ControlType: ControlTypeNames.Button }
-                && words.Length > 0 && paused && Native.Exists(editor.Handle),
-            $"question \"{question?.Name}\": \"{words}\"; answers {export}, {keep}, {cancel}, {delete}; playing stopped: {paused}");
+            "the close button on a project that has no saved project folder asks first, with three answers: Keep as draft, Cancel and Delete; the window stays, and the video stops playing",
+            edited && shown?.Shown == Both(editor, Start) && pressed && question is { Name: DraftQuestionTitle }
+                && keep is { Name: "Keep as draft", IsEnabled: true } && second is not { Name.Length: > 0 } && cancel is { Name: "Cancel" } && delete is { Name: "Delete recording", ControlType: ControlTypeNames.Button }
+                && words == DraftQuestionWords && paused && Native.Exists(editor.Handle),
+            $"question \"{question?.Name}\": \"{words}\"; answers {keep}, {second?.ToString() ?? "no second button"}, {cancel}, {delete}; playing stopped: {paused}");
         _report.Check(
-            "when the question opens, the keyboard focus is on Export, its default answer, and not on Delete",
+            "when the question opens, the keyboard focus is on Keep as draft, its default answer, and not on Delete",
             focus == "PrimaryButton",
             $"focus is on \"{focus}\"");
         if (question is null || cancel is null)
@@ -98,7 +99,7 @@ internal sealed partial class WindowChecks
         // Keep as draft.
         Timeline.Mark("6: Keep as draft");
         var keptPressed = PressClose(editor);
-        var kept = Dialog(editor)?.Find("SecondaryButton")?.Invoke() ?? false;
+        var kept = Dialog(editor)?.Find("PrimaryButton")?.Invoke() ?? false;
         var gone = WindowGone(editor);
         Release(editor);
         var wanted = Describe(editor.Expected);
@@ -150,93 +151,115 @@ internal sealed partial class WindowChecks
             $"the folder was gone {F(took, "0")} ms after the answer: {folderGone}; window gone {windowGone}; delete attempts {_services.Store.Deletes - deletesBefore}, failed {_services.Store.FailedDeletes}{(_services.Errors() is { Length: > 0 } errors ? "; reported: " + errors[0] : string.Empty)}");
     }
 
-    /// <summary>Export as the answer: cancelled, the window stays; finished, it closes by itself. And the exported project, opened again.</summary>
-    private void ExportAnswer()
+    /// <summary>
+    /// What closing asks is decided by the saved project folder, not by an export: a project
+    /// that was exported but has no folder asks the draft question; one saved as a folder closes
+    /// without a question while it has no changes, and with a change asks whether to save it.
+    /// Cancel, Don't save and Save.
+    /// </summary>
+    private void ExportedAndSavedProjects()
     {
-        Timeline.Mark("6: the answer Export");
-        const int First = 60;
-        const int Last = 104;
-        var folder = NewScreenProject("Closing, export", p => p with { Edits = new StudioEdits { TrimStart = 2.0, TrimEnd = 3.5 } });
-        if (OpenReady(folder, "closing, export") is not { } editor)
+        // Exported, without a saved project folder: the draft question, and Keep as draft.
+        Timeline.Mark("6: a project that was exported, without a saved project folder");
+        var exported = NewExportedProject("Closing, exported");
+        if (OpenReady(exported, "closing, exported") is { } editor)
+        {
+            var pressed = PressClose(editor);
+            var question = Dialog(editor);
+            var isDraft = IsDraftQuestion(question);
+            var kept = isDraft && (question!.Find("PrimaryButton")?.Invoke() ?? false);
+            var gone = WindowGone(editor);
+            var asked = QuestionAsked(question);
+            CloseQuietly(editor);
+            _report.Check(
+                "a project that was exported, but never saved as a project folder, asks the same question as any draft when it is closed: Keep as draft, Cancel and Delete, with no Export among them; Keep as draft closes the window, and the project stays with its export listed",
+                pressed && isDraft && kept && gone && File.Exists(exported.Paths.ScreenPath) && _services.Store.Load(editor.Id).Exports.Length == 1,
+                $"close pressed {pressed}; {asked}; Keep as draft pressed {kept}; window gone {gone}; exports listed {_services.Store.Load(editor.Id).Exports.Length}");
+        }
+
+        // Saved as a folder, with no change since it was opened: closes without a question.
+        Timeline.Mark("6: a project saved as a folder, without changes");
+        const string SavedName = "Closing, saved";
+        var (saved, projectFile) = NewSavedProject(SavedName);
+        var target = Path.GetDirectoryName(projectFile)!;
+        var folderBefore = Fingerprint(target);
+        if (OpenReady(saved, "closing, saved") is not { } quiet)
         {
             return;
         }
 
-        LookFor(editor, s => s.Shown == Both(editor, First), 5);
-        var filesBefore = ExportFiles();
-
-        // Export, stopped again: the window stays.
-        var asked = PressClose(editor);
-        var chosen = Dialog(editor)?.Find("PrimaryButton")?.Invoke() ?? false;
-        var overlay = Find(editor, "StudioCancelExportButton", 3);
-        var stopped = overlay?.Invoke() ?? false;
-        var idle = Gone(editor, "StudioCancelExportButton", 15);
-        Thread.Sleep(300);
-        var files = Until(() => ExportFiles().Except(filesBefore).ToArray(), left => left.Length == 0, 3, 50);
+        var closePressed = PressClose(quiet);
+        var closedAtOnce = WindowGone(quiet, 5);
+        var questionAsked = !closedAtOnce && HasDialog(quiet);
+        CloseQuietly(quiet);
         _report.Check(
-            "Export in the question starts the export, and when that export is cancelled the window stays open, with nothing written",
-            asked && chosen && overlay is not null && stopped && idle && Native.Exists(editor.Handle) && !HasDialog(editor) && files.Length == 0 && _services.Store.Load(editor.Id).Exports.Length == 0,
-            $"export started {overlay is not null}, cancelled {stopped}; window open {Native.Exists(editor.Handle)}; files left: {(files.Length == 0 ? "none" : string.Join(", ", files.Select(Path.GetFileName)))}");
-        Thread.Sleep(QuestionSettles);
+            "a project saved as a project folder, with no change since it was opened, closes without a question, and stays; its folder is as it was",
+            closePressed && closedAtOnce && !questionAsked && File.Exists(saved.Paths.ScreenPath) && Fingerprint(target).SequenceEqual(folderBefore),
+            $"window gone {closedAtOnce}{(questionAsked ? ", a question was asked" : string.Empty)}; the project is there: {File.Exists(saved.Paths.ScreenPath)}; the saved folder is {(Fingerprint(target).SequenceEqual(folderBefore) ? "as it was" : "changed")}");
 
-        // Export, to the end: the window closes by itself.
-        Timeline.Mark("6: Export, to the end");
-        var askedAgain = PressClose(editor);
-        var watch = Stopwatch.StartNew();
-        var chosenAgain = Dialog(editor)?.Find("PrimaryButton")?.Invoke() ?? false;
-        var gone = WindowGone(editor, 60);
-        var took = watch.Elapsed.TotalSeconds;
-        Release(editor);
-        var finished = Until(() => _services.Exports.FirstOrDefault(e => e.ProjectId == editor.Id), e => e is not null, 5, 30);
-        var project = _services.Store.Load(editor.Id);
-        var frames = new List<Shown>();
-        var decodeFailure = string.Empty;
-        if (finished is not null)
-        {
-            try
-            {
-                var size = ExportedSize(editor.Expected);
-                var (width, height) = ((int)size.Width, (int)size.Height);
-                var view = SceneView.Resolve(editor.Expected, editor.Folder.Screen, editor.Folder.Camera, width, height);
-                foreach (var frame in DecodedFrames(finished.Path, width, height, "format=bgra"))
-                {
-                    frames.Add(Shown.Read(frame, width, height, view, editor.Folder.Screen, editor.Folder.Camera));
-                }
-            }
-            catch (Exception ex)
-            {
-                decodeFailure = ex.Message;
-            }
-        }
-
-        var range = Enumerable.Range(First, Last - First + 1).Select(frame => Both(editor, frame)).ToArray();
-        _report.Check(
-            "Export in the question, left to finish: the video of the trimmed range is written, the project lists it, and then the window closes by itself",
-            askedAgain && chosenAgain && gone && finished is not null && File.Exists(finished.Path) && project.Exports.Length == 1 && frames.SequenceEqual(range) && File.Exists(folder.Paths.ScreenPath),
-            $"the window was gone {F(took, "0.0")} s after the answer: {gone}; video: {(finished is null ? "none" : Path.GetFileName(finished.Path))}, {frames.Count} frames{(frames.Count > 0 ? $", screen {frames[0].Screen} to {frames[^1].Screen}" : string.Empty)} (expected {range.Length}, {First} to {Last}); exports listed {project.Exports.Length}{(decodeFailure.Length > 0 ? "; " + decodeFailure : string.Empty)}");
-
-        // Exported: opened again, it closes without a question.
-        Timeline.Mark("6: a project that was exported");
-        if (OpenReady(folder, "closing, exported") is not { } again)
+        // A change: Save changes, then Cancel and Don't save.
+        Timeline.Mark("6: a saved project with a change, Cancel and Don't save");
+        if (OpenReady(saved, "closing, saved, Don't save") is not { } changed)
         {
             return;
         }
 
-        LookFor(again, s => s.Shown == Both(again, First), 5);
-        var closePressed = PressClose(again);
-        var closedAtOnce = WindowGone(again, 5);
-        var question = !closedAtOnce && HasDialog(again);
-        CloseQuietly(again);
-
+        var paddingBefore = _services.Store.Load(changed.Id).Canvas.Padding;
+        var edited = SetSlider(changed, "StudioPaddingSlider", 0.12);
+        var asks = PressClose(changed);
+        var unsaved = Dialog(changed);
+        var focus = unsaved is null ? string.Empty : Until(() => FocusedId(changed), id => id == "PrimaryButton", 1.5);
         _report.Check(
-            "a project that was exported closes without a question, and stays",
-            closePressed && closedAtOnce && !question && File.Exists(folder.Paths.ScreenPath) && _services.Store.Load(again.Id).Exports.Length == 1,
-            $"window gone {closedAtOnce}{(question ? ", a question was asked" : string.Empty)}; the project is there: {File.Exists(folder.Paths.ScreenPath)}");
+            "a project saved as a project folder that has changed since asks first, with its name, whether to save the changes: Save, Don't save and Cancel, with the keyboard focus on Save, and no Delete; the window stays",
+            edited && asks && IsUnsavedChangesQuestion(unsaved, SavedName) && focus == "PrimaryButton" && Native.Exists(changed.Handle),
+            $"close pressed {asks}; {QuestionAsked(unsaved)}; focus on \"{focus}\"");
+        if (unsaved is null)
+        {
+            CloseQuietly(changed);
+            return;
+        }
+
+        Dismiss(changed, unsaved);
+        var staysAfterCancel = Native.Exists(changed.Handle) && Same(SliderValue(changed, "StudioPaddingSlider"), 0.12);
+        var revealedBefore = _services.Revealed.Count;
+        var askedAgain = PressClose(changed);
+        var dontSave = Dialog(changed)?.Find("SecondaryButton")?.Invoke() ?? false;
+        var discardedGone = WindowGone(changed);
+        CloseQuietly(changed);
+        var restored = Until(() => _services.Store.Load(changed.Id).Canvas.Padding, padding => Same(padding, paddingBefore), 3, 50);
+        _report.Check(
+            "Cancel keeps the window and the change; Don't save closes the window and puts the project back as it was when it was opened, and the saved folder is not written",
+            staysAfterCancel && askedAgain && dontSave && discardedGone && Same(restored, paddingBefore) && Fingerprint(target).SequenceEqual(folderBefore) && _services.Revealed.Count == revealedBefore,
+            $"after Cancel the window was open with the change: {staysAfterCancel}; Don't save pressed {dontSave}; window gone {discardedGone}; the padding in the project is {F(restored)} (it was {F(paddingBefore)}); the saved folder is {(Fingerprint(target).SequenceEqual(folderBefore) ? "as it was" : "changed")}");
+
+        // A change: Save.
+        Timeline.Mark("6: a saved project with a change, and Save");
+        if (OpenReady(saved, "closing, saved, Save") is not { } toSave)
+        {
+            return;
+        }
+
+        var editedAgain = SetSlider(toSave, "StudioPaddingSlider", 0.2);
+        revealedBefore = _services.Revealed.Count;
+        var savesBefore = _services.Store.ProjectSavesBegun;
+        var savePressed = PressClose(toSave);
+        var saveQuestion = Dialog(toSave);
+        var isSaveQuestion = IsUnsavedChangesQuestion(saveQuestion, SavedName);
+        var chose = saveQuestion?.Find("PrimaryButton")?.Invoke() ?? false;
+        var savedGone = WindowGone(toSave, 15);
+        CloseQuietly(toSave);
+        var inFolder = Until(() => PaddingOf(projectFile), padding => Same(padding, 0.2), 3, 50);
+        var inStore = _services.Store.Load(toSave.Id).Canvas.Padding;
+        _report.Check(
+            "Save writes the change into the saved project folder, without showing the folder, and then the window closes; the project keeps the change",
+            editedAgain && savePressed && isSaveQuestion && chose && savedGone && Same(inFolder, 0.2) && Same(inStore, 0.2)
+                && _services.Store.ProjectSavesBegun == savesBefore + 1 && _services.Revealed.Count == revealedBefore && _services.Errors().Length == 0,
+            $"{QuestionAsked(saveQuestion)}; Save pressed {chose}; window gone {savedGone}; the padding in the saved folder is {F(inFolder)} and in the project {F(inStore)}; saves begun {_services.Store.ProjectSavesBegun - savesBefore}; shown in its folder: {_services.Revealed.Count - revealedBefore}{(_services.Errors() is { Length: > 0 } errors ? "; reported: " + errors[0] : string.Empty)}");
     }
 
     /// <summary>
     /// No window closes from under a question, and nothing under a question is given the
-    /// keyboard. Closing can come to ask nothing while its question is open in one place: the
+    /// keyboard. What closing asks can change while its question is open in one place: the
     /// question about a running export, with the export ending behind it. The end of an export
     /// asks for the keyboard focus to go back to Export: that waits until the question has been
     /// answered, because the focus on Export would take Esc away from the question, and Enter
@@ -283,7 +306,8 @@ internal sealed partial class WindowChecks
             WhenTheUiThreadHasNothingWaiting();
             focusAtFirst = Until(() => FocusedId(editor), IsOnTheQuestion, 1.5);
 
-            // The export ends behind the question. From here on closing asks nothing.
+            // The export ends behind the question. From here on closing asks the draft question:
+            // the project has been exported, but it has no saved project folder.
             ended = Until(() => !IsExporting(editor), done => done, 120, 50);
             finished = Until(() => _services.Exports.FirstOrDefault(e => e.ProjectId == editor.Id), e => e is not null, 5, 30);
             Thread.Sleep(300);
@@ -315,7 +339,7 @@ internal sealed partial class WindowChecks
             return;
         }
 
-        // Keep exporting is the answer that leaves the window. The close button then has nothing to ask.
+        // Keep exporting is the answer that leaves the window. The close button then asks the draft question.
         var kept = Dialog(editor, 1)?.Find("CloseButton")?.Invoke() ?? false;
         var questionGone = Until(() => !HasDialog(editor), gone => gone, 3);
         var staysAfter = Native.Exists(editor.Handle);
@@ -328,6 +352,9 @@ internal sealed partial class WindowChecks
             $"Keep exporting pressed {kept}; question gone {questionGone}; window open {staysAfter}; the focus is on \"{focusAfterAnswer}\"");
         Thread.Sleep(QuestionSettles);
         var closePressed = staysAfter && PressClose(editor);
+        var draftQuestion = closePressed ? Dialog(editor) : null;
+        var isDraft = IsDraftQuestion(draftQuestion);
+        var keptAsDraft = isDraft && (draftQuestion!.Find("PrimaryButton")?.Invoke() ?? false);
         var goneAtLast = WindowGone(editor, 5);
         if (goneAtLast)
         {
@@ -340,8 +367,8 @@ internal sealed partial class WindowChecks
 
         var listed = _services.Store.Load(editor.Id).Exports.Length;
         _report.Check(
-            "answered with Keep exporting, the question goes and the window stays; the close button then closes the window at once, because the recording has been exported",
-            kept && questionGone && staysAfter && closePressed && goneAtLast && listed == 1 && File.Exists(folder.Paths.ScreenPath),
-            $"Keep exporting pressed {kept}; question gone {questionGone}; window open after it {staysAfter}; the close button pressed {closePressed}, and the window gone {goneAtLast}; exports listed {listed}");
+            "answered with Keep exporting, the question goes and the window stays; the close button then asks the draft question, because the recording has been exported but not saved as a project folder, and Keep as draft closes the window",
+            kept && questionGone && staysAfter && closePressed && isDraft && keptAsDraft && goneAtLast && listed == 1 && File.Exists(folder.Paths.ScreenPath),
+            $"Keep exporting pressed {kept}; question gone {questionGone}; window open after it {staysAfter}; the close button pressed {closePressed}, and it asked: {QuestionAsked(draftQuestion)}; Keep as draft pressed {keptAsDraft}; the window gone {goneAtLast}; exports listed {listed}");
     }
 }

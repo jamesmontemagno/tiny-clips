@@ -14,9 +14,11 @@ namespace TinyClips.Tools.StudioWindowCheck.Checks;
 
 // 6, continued. Esc asks the window to close, as its close button does, behind the setting that
 // guards the other editors against a stray Esc. Where closing asks a question of its own, that
-// question is asked, once, whatever the setting says. Where a project is open and closing asks
-// nothing, which is a project that was exported, Esc asks whether it was meant while the
-// setting is on, and closes at once while it is off. A window that cannot show its project
+// question is asked, once, whatever the setting says: the draft question of a project without a
+// saved project folder, exported or not, and the question about unsaved changes of a saved one.
+// Where a project is open and closing asks nothing, which is a project saved as a folder that
+// has not changed since, Esc asks whether it was meant while the setting is on, and closes at
+// once while it is off. A window that cannot show its project
 // closes at once either way. And Esc that is not the window's to act on does nothing: with a
 // modifier, held, in a text box, while the list of a drop-down is open and in a drag. While an
 // export runs a press stops the export and that is all, and a held key does not even do that.
@@ -31,7 +33,8 @@ internal sealed partial class WindowChecks
     private const string EscapeQuestionId = "EditorCloseConfirmationDialog";
     private const string EscapeQuestionTitle = "Close Studio?";
     private const string EscapeQuestionWords = "Your edits are saved with the project, and you can reopen it from the Clips Library. You can turn off this confirmation in General settings.";
-    private const string DraftQuestionTitle = "Export this recording before closing?";
+    private const string DraftQuestionTitle = "Keep this recording?";
+    private const string DraftQuestionWords = "It has not been saved as a project. Keep it as a draft to finish later from the Clips Library, or delete it.";
     private const string CanvasDropDown = "StudioCanvasComboBox";
 
     private void ClosingByEscape()
@@ -45,7 +48,8 @@ internal sealed partial class WindowChecks
         var asksBefore = OnUi(() => _services.Settings.ConfirmEditorEscape);
         try
         {
-            EscapeOnAnExportedProject();
+            EscapeOnASavedProject();
+            EscapeOnASavedProjectWithAChange();
             EscapeOnADraft();
             EscapeWhileAnExportRuns();
             EscapeThatIsNotTheWindows();
@@ -88,24 +92,66 @@ internal sealed partial class WindowChecks
         && question.Find("SecondaryButton") is not { Name.Length: > 0 }
         && WordsOf(question).Contains(EscapeQuestionWords);
 
-    /// <summary>Whether a question is the one a recording that was never exported asks, with its four answers.</summary>
+    /// <summary>
+    /// Whether a question is the one a recording without a saved project folder asks, exported
+    /// or not: Keep as draft and Cancel, no second answer, and Delete recording inside it.
+    /// </summary>
     private static bool IsDraftQuestion(UiaElement? question) =>
         question is { Name: DraftQuestionTitle }
         && question.Id != EscapeQuestionId
-        && question.Find("PrimaryButton") is { Name: "Export" }
-        && question.Find("SecondaryButton") is { Name: "Keep as draft" }
+        && question.Find("PrimaryButton") is { Name: "Keep as draft", IsEnabled: true }
+        && question.Find("SecondaryButton") is not { Name.Length: > 0 }
         && question.Find("CloseButton") is { Name: "Cancel" }
-        && question.Find("StudioClosePromptDeleteButton") is { Name: "Delete recording" };
+        && question.Find("StudioClosePromptDeleteButton") is { Name: "Delete recording" }
+        && WordsOf(question).Contains(DraftQuestionWords);
+
+    /// <summary>
+    /// Whether a question is the one a project saved as a folder asks when it has changed since:
+    /// Save changes to its name, with Save, Don't save and Cancel, and no Delete.
+    /// </summary>
+    private static bool IsUnsavedChangesQuestion(UiaElement? question, string projectName) =>
+        question is not null
+        && question.Name == $"Save changes to \u201C{projectName}\u201D?"
+        && question.Id != EscapeQuestionId
+        && question.Find("PrimaryButton") is { Name: "Save", IsEnabled: true }
+        && question.Find("SecondaryButton") is { Name: "Don't save" }
+        && question.Find("CloseButton") is { Name: "Cancel" }
+        && question.Find("StudioClosePromptDeleteButton") is null;
 
     private static string QuestionAsked(UiaElement? question) => question is null
         ? "no question"
         : $"question \"{question.Name}\" [{question.Id}] with {question.Find("PrimaryButton")}, {question.Find("SecondaryButton")?.ToString() ?? "no second button"} and {question.Find("CloseButton")}: {string.Join(" | ", WordsOf(question).Select(text => $"\"{text}\""))}";
 
-    /// <summary>A project that lists an export, without an export having to run: closing it asks nothing.</summary>
+    /// <summary>
+    /// A project that lists an export, without an export having to run. It has no saved project
+    /// folder, so closing it still asks the draft question.
+    /// </summary>
     private TestFolder NewExportedProject(string name) => NewScreenProject(name, p => p with
     {
         Exports = [new StudioExport { Path = Path.Combine(_services.ExportDirectory, name + ".mp4"), ExportedAt = DateTimeOffset.UtcNow }],
     });
+
+    /// <summary>
+    /// A project that lists an export and is saved as a project folder, linked to it as Save
+    /// project leaves it: closing it asks nothing while it has not changed since it was opened.
+    /// The folder is written by a store of its own on the same root, so that the saves the
+    /// window begins are counted alone. Returns the folder's .tinyclips file.
+    /// </summary>
+    private (TestFolder Folder, string ProjectFile) NewSavedProject(string name)
+    {
+        var folder = NewExportedProject(name);
+        var store = new StudioProjectStore(_services.Store.RootDirectory);
+        var folderName = StudioProjectFolder.FolderName(name);
+
+        // Beside the projects of the store and not one of them, gone with the rest of the run.
+        var parent = Path.Combine(_services.Root, "saved projects", folder.Paths.ProjectId);
+        Directory.CreateDirectory(parent);
+        var target = Path.Combine(parent, folderName);
+        store.SaveProjectFolder(folder.Paths.ProjectId, target);
+        var projectFile = Path.Combine(target, folderName + StudioProjectFolder.ProjectFileExtension);
+        StudioProjectDestination.Remember(store, folder.Paths.ProjectId, projectFile);
+        return (folder, projectFile);
+    }
 
     /// <summary>
     /// Answers a question with Cancel and gives it the time to finish closing: until then the
@@ -134,14 +180,15 @@ internal sealed partial class WindowChecks
         Until(() => NameOf(editor, "StudioPlayPauseButton", 0), name => name == "Play", 2) == "Play";
 
     /// <summary>
-    /// A project that was exported. Closing it asks nothing, so Esc asks whether it was meant:
-    /// the question, the question while it is open, Cancel, Close Studio, and the setting off.
+    /// A project saved as a folder, without changes. Closing it asks nothing, so Esc asks
+    /// whether it was meant: the question, the question while it is open, Cancel, Close Studio,
+    /// and the setting off.
     /// </summary>
-    private void EscapeOnAnExportedProject()
+    private void EscapeOnASavedProject()
     {
-        Timeline.Mark("6: Esc on a project that was exported");
-        var folder = NewExportedProject("Esc, exported");
-        if (OpenReady(folder, "Esc, exported") is not { } editor)
+        Timeline.Mark("6: Esc on a project saved as a folder");
+        var (folder, _) = NewSavedProject("Esc, saved");
+        if (OpenReady(folder, "Esc, saved") is not { } editor)
         {
             return;
         }
@@ -156,7 +203,7 @@ internal sealed partial class WindowChecks
         var stopped = HasStoppedPlaying(editor);
         var focus = question is null ? string.Empty : Until(() => FocusedId(editor), id => id == "PrimaryButton", 1.5);
         _report.Check(
-            "Esc on a project that was exported asks whether it was meant, while the setting is on: the question the other editors ask, with Studio's words, Close Studio and Cancel, and the focus on Close Studio; the window stays, and the video stops playing",
+            "Esc on a project saved as a folder, without changes, asks whether it was meant, while the setting is on: the question the other editors ask, with Studio's words, Close Studio and Cancel, and the focus on Close Studio; the window stays, and the video stops playing",
             playing && ran == StudioShortcutAction.RequestClose && IsEscapeQuestion(question) && stopped && focus == "PrimaryButton" && Native.Exists(editor.Handle),
             $"Esc ran {ran}; {QuestionAsked(question)}; focus on \"{focus}\"; the video was playing {playing} and stopped {stopped}; window open {Native.Exists(editor.Handle)}");
         if (question is null)
@@ -216,9 +263,9 @@ internal sealed partial class WindowChecks
             $"Esc ran {ranAgain}; the same question {sameQuestion}; Close Studio pressed {confirmed}; window gone {windowGone}; exports listed {project.Exports.Length}; the recording is there: {File.Exists(folder.Paths.ScreenPath)}; deletes {_services.Store.Deletes - deletesBefore}");
 
         // The setting off.
-        Timeline.Mark("6: Esc on a project that was exported, with the confirmation switched off");
+        Timeline.Mark("6: Esc on a project saved as a folder, with the confirmation switched off");
         ConfirmEscape(false);
-        if (OpenReady(folder, "Esc, exported, not asked") is not { } quiet)
+        if (OpenReady(folder, "Esc, saved, not asked") is not { } quiet)
         {
             ConfirmEscape(true);
             return;
@@ -240,19 +287,52 @@ internal sealed partial class WindowChecks
         ConfirmEscape(true);
         var left = _services.Store.Load(quiet.Id);
         _report.Check(
-            "with the confirmation switched off, Esc on a project that was exported closes the window at once, without a question, and the project stays",
+            "with the confirmation switched off, Esc on a project saved as a folder, without changes, closes the window at once, without a question, and the project stays",
             ranQuiet == StudioShortcutAction.RequestClose && askedAtOnce == 0 && goneAtOnce && left.Exports.Length == 1 && File.Exists(folder.Paths.ScreenPath)
                 && _services.Store.Deletes == deletesBefore && _services.Errors().Length == errorsBefore,
             $"Esc ran {ranQuiet}; window gone {goneAtOnce}; questions asked: {askedAtOnce + askedLater}; exports listed {left.Exports.Length}");
     }
 
     /// <summary>
-    /// A recording that was never exported. Closing it asks what to do with it, and that is the
-    /// confirmation: Esc asks it whatever the setting says, once, and nothing after it.
+    /// A project saved as a folder that has changed since. Closing it asks whether to save the
+    /// changes, and that is the confirmation: Esc asks it, once, and not whether Esc was meant.
+    /// </summary>
+    private void EscapeOnASavedProjectWithAChange()
+    {
+        Timeline.Mark("6: Esc on a project saved as a folder, with a change");
+        const string Name = "Esc, saved, changed";
+        var (folder, projectFile) = NewSavedProject(Name);
+        if (OpenReady(folder, "Esc, saved, changed") is not { } editor)
+        {
+            return;
+        }
+
+        ConfirmEscape(true);
+        var paddingInFolder = PaddingOf(projectFile);
+        var edited = SetSlider(editor, "StudioPaddingSlider", 0.12);
+        var ran = Escape(editor);
+        var question = Dialog(editor);
+        var asked = Questions(editor);
+        _report.Check(
+            "Esc on a project saved as a folder that has changed since asks what its close button asks, with the confirmation on: whether to save the changes, with Save, Don't save and Cancel, in one question, and not whether Esc was meant; the window stays",
+            edited && ran == StudioShortcutAction.RequestClose && IsUnsavedChangesQuestion(question, Name) && asked.Count == 1 && !asked.Any(IsEscapeQuestion) && Native.Exists(editor.Handle),
+            $"Esc ran {ran}; {asked.Count} question(s): {QuestionAsked(question)}; window open {Native.Exists(editor.Handle)}");
+        Dismiss(editor, question);
+        var stays = Native.Exists(editor.Handle);
+        CloseQuietly(editor);
+        _report.Check(
+            "Cancel keeps the window, and nothing is written into the saved folder",
+            question is not null && stays && Same(PaddingOf(projectFile), paddingInFolder),
+            $"window open after Cancel {stays}; the padding in the saved folder is {F(PaddingOf(projectFile))} (it was {F(paddingInFolder)})");
+    }
+
+    /// <summary>
+    /// A recording without a saved project folder. Closing it asks what to do with it, and that
+    /// is the confirmation: Esc asks it whatever the setting says, once, and nothing after it.
     /// </summary>
     private void EscapeOnADraft()
     {
-        Timeline.Mark("6: Esc on a recording that was never exported");
+        Timeline.Mark("6: Esc on a recording without a saved project folder");
         var folder = NewScreenProject("Esc, a draft");
         if (OpenReady(folder, "Esc, a draft") is not { } editor)
         {
@@ -268,7 +348,7 @@ internal sealed partial class WindowChecks
         var stopped = HasStoppedPlaying(editor);
         var asked = Questions(editor).Count;
         _report.Check(
-            "Esc on a recording that was never exported asks what its close button asks, also with the confirmation switched off: Export, Keep as draft, Cancel and Delete, in one question; the window stays, and the video stops playing",
+            "Esc on a recording without a saved project folder asks what its close button asks, also with the confirmation switched off: Keep as draft, Cancel and Delete, in one question; the window stays, and the video stops playing",
             playing && ran == StudioShortcutAction.RequestClose && IsDraftQuestion(question) && asked == 1 && stopped && Native.Exists(editor.Handle),
             $"Esc ran {ran}; {asked} question(s): {QuestionAsked(question)}, Delete: {question?.Find("StudioClosePromptDeleteButton")?.ToString() ?? "none"}; the video was playing {playing} and stopped {stopped}; window open {Native.Exists(editor.Handle)}");
         ConfirmEscape(true);
@@ -285,7 +365,7 @@ internal sealed partial class WindowChecks
         var ranAgain = Escape(editor);
         var again = Dialog(editor);
         var sameQuestion = IsDraftQuestion(again);
-        var kept = again?.Find("SecondaryButton")?.Invoke() ?? false;
+        var kept = again?.Find("PrimaryButton")?.Invoke() ?? false;
         var second = string.Empty;
         var watch = Stopwatch.StartNew();
         while (Native.Exists(editor.Handle) && watch.Elapsed.TotalSeconds < 5)
@@ -373,7 +453,7 @@ internal sealed partial class WindowChecks
         var pressedAgain = Escape(editor);
         var question = Dialog(editor);
         _report.Check(
-            "pressed again with the export gone, Esc asks the window to close: the recording was never exported, so it asks what to do with it",
+            "pressed again with the export gone, Esc asks the window to close: the recording has no saved project folder, so it asks what to do with it",
             pressedAgain == StudioShortcutAction.RequestClose && IsDraftQuestion(question) && Questions(editor).Count == 1 && Native.Exists(editor.Handle),
             $"Esc ran {pressedAgain}; {QuestionAsked(question)}");
         Dismiss(editor, question);
@@ -489,13 +569,13 @@ internal sealed partial class WindowChecks
     /// <summary>
     /// Esc that is not the window's to act on: held, with a modifier, while the list of a
     /// drop-down is open, in a text box, and in the middle of a drag. And a drop-down that only
-    /// has the focus, where Esc is the window's like anywhere else. On a project that was
-    /// exported, with the confirmation on, so that a key the window acts on shows as a question.
+    /// has the focus, where Esc is the window's like anywhere else. On a project saved as a
+    /// folder, with the confirmation on, so that a key the window acts on shows as a question.
     /// </summary>
     private void EscapeThatIsNotTheWindows()
     {
         Timeline.Mark("6: Esc that is not the window's to act on");
-        var folder = NewExportedProject("Esc, left alone");
+        var (folder, _) = NewSavedProject("Esc, left alone");
         if (OpenReady(folder, "Esc, left alone") is not { } editor)
         {
             return;

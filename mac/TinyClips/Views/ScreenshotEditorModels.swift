@@ -1142,21 +1142,18 @@ let annotationColorPresets: [AnnotationColorPreset] = [
     AnnotationColorPreset(id: "brown", name: "Brown", color: Color(red: 0.60, green: 0.40, blue: 0.24)),
 ]
 
+/// Whether two colors are the same in 8 bits of sRGB, which is what a saved color keeps of them.
 func annotationColorsEqual(_ lhs: Color, _ rhs: Color) -> Bool {
-    guard let left = NSColor(lhs).usingColorSpace(.deviceRGB),
-          let right = NSColor(rhs).usingColorSpace(.deviceRGB) else {
+    guard let left = NSColor(lhs).usingColorSpace(.sRGB),
+          let right = NSColor(rhs).usingColorSpace(.sRGB) else {
         return false
     }
 
-    var lr: CGFloat = 0, lg: CGFloat = 0, lb: CGFloat = 0, la: CGFloat = 0
-    var rr: CGFloat = 0, rg: CGFloat = 0, rb: CGFloat = 0, ra: CGFloat = 0
-    left.getRed(&lr, green: &lg, blue: &lb, alpha: &la)
-    right.getRed(&rr, green: &rg, blue: &rb, alpha: &ra)
-
-    return abs(lr - rr) < 0.0001 &&
-        abs(lg - rg) < 0.0001 &&
-        abs(lb - rb) < 0.0001 &&
-        abs(la - ra) < 0.0001
+    func bytes(_ color: NSColor) -> [Int] {
+        [color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent]
+            .map { Int(($0 * 255).rounded()) }
+    }
+    return bytes(left) == bytes(right)
 }
 
 func arrowControlPoint(start: CGPoint, end: CGPoint, style: ArrowStyle) -> CGPoint {

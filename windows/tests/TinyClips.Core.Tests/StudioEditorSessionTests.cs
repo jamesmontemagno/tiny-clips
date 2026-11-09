@@ -257,24 +257,25 @@ public sealed class StudioEditorSessionTests : StudioEditorSessionTestBase
     }
 
     [Fact]
-    public async Task ClosePrompt_DependsOnExportingAndOnHavingBeenExported()
+    public async Task ClosePrompt_AsksWhileExporting_AndOtherwiseTreatsAProjectWithoutAFolderAsADraft()
     {
         var loading = CreateSession(CreateProject());
         Assert.Equal(StudioClosePrompt.None, loading.GetClosePrompt());
 
         var session = await OpenAsync(CreateProject());
-        Assert.Equal(StudioClosePrompt.NeverExported, session.GetClosePrompt());
+        Assert.Equal(StudioClosePrompt.Draft, session.GetClosePrompt());
 
         var export = session.ExportAsync(() => ExportPath, default);
         Assert.Equal(StudioClosePrompt.ExportRunning, session.GetClosePrompt());
 
+        // An export is not a saved project: it is still a draft.
         Exporter.Complete();
         Assert.Equal(StudioExportOutcome.Exported, await FinishAsync(export));
-        Assert.Equal(StudioClosePrompt.None, session.GetClosePrompt());
+        Assert.Equal(StudioClosePrompt.Draft, session.GetClosePrompt());
     }
 
     [Fact]
-    public async Task ClosePrompt_IsNotNeededForAProjectThatWasExportedBefore()
+    public async Task ClosePrompt_TreatsAProjectThatWasExportedBefore_AsADraft()
     {
         var id = CreateProject(camera: true);
         Projects.RecordExport(id, ExportPath);
@@ -283,6 +284,7 @@ public sealed class StudioEditorSessionTests : StudioEditorSessionTestBase
 
         Assert.True(session.HasCamera);
         Assert.False(session.HasNeverExported);
-        Assert.Equal(StudioClosePrompt.None, session.GetClosePrompt());
+        Assert.False(session.HasSavedProjectFolder);
+        Assert.Equal(StudioClosePrompt.Draft, session.GetClosePrompt());
     }
 }

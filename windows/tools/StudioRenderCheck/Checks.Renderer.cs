@@ -58,6 +58,14 @@ internal static partial class RendererChecks
                 await Check("background: none, solid, gradient", context => Background(context, bench)).ConfigureAwait(false);
                 await Check("background: image", context => BackgroundImage(context, bench)).ConfigureAwait(false);
                 await Check("branding badge", context => Badge(context, bench)).ConfigureAwait(false);
+                await Check("annotation: arrow", context => AnnotationArrow(context, bench)).ConfigureAwait(false);
+                await Check("annotation: follows a zoom", context => AnnotationFollowsZoom(context, bench)).ConfigureAwait(false);
+                await Check("annotation: callout and text boxes", context => AnnotationBoxes(context, bench)).ConfigureAwait(false);
+                await Check("annotation: fades with the screen", context => AnnotationFades(context, bench)).ConfigureAwait(false);
+                await Check("annotation: rectangles and redactions", context => AnnotationAreas(context, bench)).ConfigureAwait(false);
+                await Check("annotation: rotation and stationary redaction pixels", context => AnnotationRotation(context, bench)).ConfigureAwait(false);
+                await Check("annotation: emoji in color, with a shadow", context => AnnotationEmoji(context, bench)).ConfigureAwait(false);
+                await Check("annotation: many emoji shadows", context => AnnotationManyEmoji(context, bench)).ConfigureAwait(false);
                 await Check("captions: when they show", context => CaptionTimes(context, bench)).ConfigureAwait(false);
                 await Check("captions: their sizes", context => CaptionSizes(context, bench)).ConfigureAwait(false);
                 await Check("captions: their places", context => CaptionPlaces(context, bench)).ConfigureAwait(false);

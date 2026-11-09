@@ -30,6 +30,9 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
     private const string CaptionsWindowsAdds = "captions: only the Windows file has it: { \"cues\": [] }";
     private const string CaptionStyleWindowsAdds = "overlays.captions: only the Windows file has it: { \"enabled\": false, \"size\": \"medium\", \"position\": \"bottom\", \"appearance\": \"classicOutline\" }";
 
+    /// <summary>The same of <c>overlays.annotations</c>, which is an empty list by default.</summary>
+    private const string AnnotationsWindowsAdds = "overlays.annotations: only the Windows file has it: []";
+
     private static string MacsProjectFile =>
         Path.Combine(AppContext.BaseDirectory, "StudioFixtures", "folder", "saved-on-macos-1.9.0.tinyclips");
 
@@ -98,12 +101,13 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
 
         // Nothing the Mac wrote is dropped or changed. One value differs, the id the project
         // got when it was opened. New fields absent from this older file are written at
-        // their defaults: volume, gradient direction, and captions.
+        // their defaults: volume, gradient direction, annotations, and captions.
         Assert.Equal(
             [
                 VolumeWindowsAdds,
                 "canvas.background.gradientDirectionDegrees: only the Windows file has it: 45",
                 $"id: the Mac's file has \"{IdInTheMacsFile}\", the Windows file has \"{opened.Id}\"",
+                AnnotationsWindowsAdds,
                 CaptionStyleWindowsAdds,
                 CaptionsWindowsAdds,
             ],
@@ -196,6 +200,11 @@ public sealed class StudioProjectFolderFromAMacTests : StudioProjectFolderTestBa
         if (macProject["audio"]?["volume"] is null)
         {
             expected.Add(VolumeWindowsAdds);
+        }
+
+        if (macProject["overlays"]?["annotations"] is null)
+        {
+            expected.Add(AnnotationsWindowsAdds);
         }
 
         if (macProject["captions"] is null)

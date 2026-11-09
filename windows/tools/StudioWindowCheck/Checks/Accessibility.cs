@@ -247,7 +247,7 @@ internal sealed partial class WindowChecks
         var buttons = dialogTree.Where(e => e.Element.ControlType == ControlTypeNames.Button).Select(e => e.Element.Name).ToArray();
         _report.Check(
             "the question on closing: it is a window with the question as its name, and every button and text in it has a name",
-            question is { ControlType: ControlTypeNames.Window, Name: "Export this recording before closing?" } && problems.Count == 0 && buttons.Length == 4,
+            question is { ControlType: ControlTypeNames.Window, Name: DraftQuestionTitle } && problems.Count == 0 && buttons.Length == 3,
             problems.Count == 0 ? $"{elements} elements; buttons: {string.Join(", ", buttons)}; {panes} pane(s) without a name; tree saved as tree-close-question.txt" : string.Join("; ", problems));
         question?.Find("CloseButton")?.Invoke();
         Until(() => !HasDialog(editor), gone => gone, 3);

@@ -47,21 +47,33 @@ public sealed partial class StudioPreviewOverlay : UserControl
     {
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         UpdateHandle();
+        UpdateAnnotations();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         EndPress();
+        EndAnnotationPress();
     }
 
-    private void OnSizeChanged(object sender, SizeChangedEventArgs e) => UpdateHandle();
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateHandle();
+        UpdateAnnotations();
+    }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(StudioViewModel.BubbleRect))
         {
             UpdateHandle();
+        }
+
+        if (string.IsNullOrEmpty(e.PropertyName)
+            || e.PropertyName is nameof(StudioViewModel.AnnotationHandles) or nameof(StudioViewModel.Playhead) or nameof(StudioViewModel.IsPlaying) or nameof(StudioViewModel.BubbleRect))
+        {
+            UpdateAnnotations();
         }
     }
 

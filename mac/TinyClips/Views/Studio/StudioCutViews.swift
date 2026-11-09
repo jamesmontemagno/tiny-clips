@@ -35,7 +35,6 @@ struct StudioCutLane: View {
 
             ZStack(alignment: .topLeading) {
                 track(usable: usable, duration: duration)
-                emptyText
                 cutBlocks(width: width, height: proxy.size.height, usable: usable, duration: duration)
                 playheadLine(usable: usable, duration: duration)
             }
@@ -61,17 +60,6 @@ struct StudioCutLane: View {
                     }
             )
             .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var emptyText: some View {
-        if viewModel.cuts.isEmpty {
-            Text("No cuts. Press X to cut a second out at the playhead.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(false)
-        }
     }
 
     private func cutBlocks(width: CGFloat, height: CGFloat, usable: CGFloat, duration: Double) -> some View {

@@ -1,9 +1,11 @@
 using System.ComponentModel;
 using System.Globalization;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
@@ -44,6 +46,7 @@ public sealed partial class StudioInspector : UserControl
     private bool _isSyncingCaptionList;
     private IReadOnlyList<StudioCaptionRow>? _captionListRows;
     private bool _isSyncingSwatches;
+    private bool _isSyncingAnnotations;
 
     public StudioInspector(StudioViewModel viewModel)
     {
@@ -52,9 +55,16 @@ public sealed partial class StudioInspector : UserControl
         StudioGlyphRow.Attach(ZoomAddRow);
 
         // The names come from the editor model, so the lists and what screen readers hear agree.
+        // A rounded rectangle shows a shorter word, to fit next to the others, and keeps its name.
         foreach (var shape in Enum.GetValues<StudioCameraShape>())
         {
-            ShapeChoice.Items.Add(StudioEditorModel.GetShapeName(shape));
+            var name = StudioEditorModel.GetShapeName(shape);
+            var choice = CreateChoice(
+                shape == StudioCameraShape.RoundedRectangle ? "Rounded" : name,
+                $"StudioCameraShape_{shape}");
+            AutomationProperties.SetName(choice, name);
+            ToolTipService.SetToolTip(choice, name);
+            ShapeChoice.Items.Add(choice);
         }
 
         foreach (var anchor in Enum.GetValues<StudioAnchor>())
@@ -96,6 +106,11 @@ public sealed partial class StudioInspector : UserControl
         Unloaded += OnUnloaded;
     }
 
+    private static bool s_isAnnotationAdvancedExpanded;
+    private bool _isSyncingAnnotationChips;
+    private readonly List<ToggleButton> _annotationStyleChips = [];
+    private readonly List<ToggleButton> _annotationEmojiChoices = [];
+
     public StudioViewModel ViewModel { get; }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -107,6 +122,16 @@ public sealed partial class StudioInspector : UserControl
         SyncCaptionList();
         SyncCaptionStates();
         SyncPanels();
+        BuildAnnotationStyleChips();
+        BuildAnnotationEmojiChoices();
+        AnnotationFillColorPicker.ColorNamer = NameAnnotationColor;
+        AnnotationTextColorPicker.ColorNamer = NameAnnotationColor;
+        AnnotationShapeFillColorPicker.ColorNamer = NameAnnotationColor;
+        SyncAnnotationLayers();
+        SyncAnnotationText();
+        SyncAnnotationEmoji();
+        SyncAnnotationStyleChips();
+        AnnotationAdvancedGroup.IsExpanded = s_isAnnotationAdvancedExpanded;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e) =>
@@ -122,6 +147,12 @@ public sealed partial class StudioInspector : UserControl
         if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(StudioViewModel.ZoomPad))
         {
             FocusPad.Update(ViewModel.ZoomPad);
+        }
+
+        if (string.IsNullOrEmpty(e.PropertyName)
+            || e.PropertyName is nameof(StudioViewModel.AnnotationStyleIndex) or nameof(StudioViewModel.HasCustomAnnotationColors) or nameof(StudioViewModel.HasAnnotationTextColor) or nameof(StudioViewModel.AnnotationChipGlyph))
+        {
+            SyncAnnotationStyleChips();
         }
 
         if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName is nameof(StudioViewModel.SelectedCaptionRow) or nameof(StudioViewModel.CaptionRows))
@@ -142,6 +173,19 @@ public sealed partial class StudioInspector : UserControl
         if (string.IsNullOrEmpty(e.PropertyName))
         {
             SyncPanels();
+            SyncAnnotationLayers();
+            SyncAnnotationText();
+            SyncAnnotationEmoji();
+        }
+        else if (e.PropertyName == nameof(StudioViewModel.SelectedAnnotationIndex))
+        {
+            SyncAnnotationLayers();
+            SyncAnnotationText();
+            SyncAnnotationEmoji();
+        }
+        else if (e.PropertyName == nameof(StudioViewModel.AnnotationEmoji))
+        {
+            SyncAnnotationEmoji();
         }
         else if (e.PropertyName == nameof(StudioViewModel.InspectorPanel))
         {
@@ -428,6 +472,7 @@ public sealed partial class StudioInspector : UserControl
         SetVisible(ZoomPanel, panel == StudioInspectorPanel.Zoom);
         SetVisible(CutPanel, panel == StudioInspectorPanel.Cut);
         SetVisible(SpeedPanel, panel == StudioInspectorPanel.Speed);
+        SetVisible(AnnotatePanel, panel == StudioInspectorPanel.Annotate);
         SetVisible(CaptionsPanel, panel == StudioInspectorPanel.Captions);
         SetVisible(AudioPanel, panel == StudioInspectorPanel.Audio);
         SetVisible(ProjectPanel, panel == StudioInspectorPanel.Project);
@@ -813,6 +858,350 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
+    // The annotations. The list and the text box are kept in step here, not by a binding: a row keeps
+    // its place while its text is typed, and the box keeps its caret.
+
+    /// <summary>Fills the list of annotations, the top of the picture first, and marks the selected one.</summary>
+    private void SyncAnnotationLayers()
+    {
+        var annotations = ViewModel.Annotations;
+        var items = AnnotationLayerList.Items;
+        _isSyncingAnnotations = true;
+        try
+        {
+            while (items.Count > annotations.Count)
+            {
+                items.RemoveAt(items.Count - 1);
+            }
+
+            while (items.Count < annotations.Count)
+            {
+                items.Add(new ListViewItem());
+            }
+
+            for (var row = 0; row < annotations.Count; row++)
+            {
+                var annotation = annotations[annotations.Count - 1 - row];
+                var item = (ListViewItem)items[row];
+                item.Content = StudioEditorText.GetAnnotationLabel(annotation);
+                AutomationProperties.SetName(item, StudioEditorText.GetAnnotationDescription(annotation));
+                AutomationProperties.SetAutomationId(item, string.Create(CultureInfo.InvariantCulture, $"StudioAnnotationLayer_{row}"));
+            }
+
+            AnnotationLayerList.SelectedIndex = ViewModel.SelectedAnnotationIndex is { } index ? annotations.Count - 1 - index : -1;
+            AnnotationLayerList.Visibility = annotations.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        finally
+        {
+            _isSyncingAnnotations = false;
+        }
+    }
+
+    private void OnAnnotationLayerSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isSyncingAnnotations && AnnotationLayerList.SelectedIndex is >= 0 and var row)
+        {
+            ViewModel.SelectAnnotationInView(ViewModel.Annotations.Count - 1 - row);
+        }
+    }
+
+    // The box writes a line break its own way, and a project can hold another, so both are compared by what they mean.
+    private void SyncAnnotationText()
+    {
+        var text = ViewModel.AnnotationText;
+        if (AnnotationTextBox.Text.ReplaceLineEndings("\n") != text.ReplaceLineEndings("\n"))
+        {
+            _isSyncingAnnotations = true;
+            try
+            {
+                AnnotationTextBox.Text = text;
+            }
+            finally
+            {
+                _isSyncingAnnotations = false;
+            }
+        }
+    }
+
+    private void OnAnnotationTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_isSyncingAnnotations)
+        {
+            ViewModel.AnnotationText = AnnotationTextBox.Text;
+        }
+    }
+
+    private void OnAnnotationTextLostFocus(object sender, RoutedEventArgs e) => ViewModel.EndAnnotationTyping();
+
+    private void SyncAnnotationEmoji()
+    {
+        var emoji = ViewModel.AnnotationEmoji;
+        if (AnnotationEmojiTextBox.Text != emoji && !(AnnotationEmojiTextBox.FocusState != FocusState.Unfocused && string.IsNullOrWhiteSpace(AnnotationEmojiTextBox.Text)))
+        {
+            _isSyncingAnnotations = true;
+            try
+            {
+                AnnotationEmojiTextBox.Text = emoji;
+            }
+            finally
+            {
+                _isSyncingAnnotations = false;
+            }
+        }
+
+        _isSyncingAnnotationChips = true;
+        foreach (var choice in _annotationEmojiChoices)
+        {
+            choice.IsChecked = Equals(choice.Tag, emoji);
+        }
+
+        _isSyncingAnnotationChips = false;
+    }
+
+    private void OnAnnotationEmojiTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_isSyncingAnnotations)
+        {
+            ViewModel.AnnotationEmoji = AnnotationEmojiTextBox.Text;
+        }
+    }
+
+    /// <summary>The common emoji, one button each, named as a screen reader should say them.</summary>
+    private void BuildAnnotationEmojiChoices()
+    {
+        if (_annotationEmojiChoices.Count > 0)
+        {
+            return;
+        }
+
+        const int Columns = 6;
+        var choices = ViewModel.EmojiChoices;
+        for (var column = 0; column < Columns; column++)
+        {
+            AnnotationEmojiGrid.ColumnDefinitions.Add(new ColumnDefinition());
+        }
+
+        for (var row = 0; row < (choices.Count + Columns - 1) / Columns; row++)
+        {
+            AnnotationEmojiGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
+        for (var index = 0; index < choices.Count; index++)
+        {
+            var (emoji, name) = choices[index];
+            var choice = new ToggleButton
+            {
+                Content = new TextBlock { Text = emoji, FontFamily = new FontFamily("Segoe UI Emoji"), FontSize = 18, IsColorFontEnabled = true },
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(0, 4, 0, 4),
+                Tag = emoji,
+            };
+            AutomationProperties.SetAutomationId(choice, string.Create(CultureInfo.InvariantCulture, $"StudioAnnotationEmoji_{index}"));
+            AutomationProperties.SetName(choice, name);
+            ToolTipService.SetToolTip(choice, name);
+            choice.Checked += OnAnnotationEmojiChoiceToggled;
+            choice.Unchecked += OnAnnotationEmojiChoiceToggled;
+            Grid.SetColumn(choice, index % Columns);
+            Grid.SetRow(choice, index / Columns);
+            AnnotationEmojiGrid.Children.Add(choice);
+            _annotationEmojiChoices.Add(choice);
+        }
+    }
+
+    // Toggled and not clicked, because a screen reader toggles a button and raises no click.
+    private void OnAnnotationEmojiChoiceToggled(object sender, RoutedEventArgs e)
+    {
+        if (_isSyncingAnnotationChips)
+        {
+            return;
+        }
+
+        if (sender is ToggleButton { Tag: string emoji, IsChecked: true })
+        {
+            ViewModel.SetAnnotationEmoji(emoji);
+        }
+
+        SyncAnnotationEmoji();
+    }
+
+    /// <summary>
+    /// Windows has no way for a desktop app to open its emoji panel, other than the keys the user
+    /// presses, so the box that takes the emoji gets the focus and the hint says which keys.
+    /// </summary>
+    private void OnMoreEmojiClick(object sender, RoutedEventArgs e)
+    {
+        MoreEmojiHint.Visibility = Visibility.Visible;
+        AnnotationEmojiTextBox.Focus(FocusState.Programmatic);
+        AnnotationEmojiTextBox.SelectAll();
+    }
+
+    private void OnAnnotationColorChoiceEnded(object? sender, EventArgs e) => ViewModel.EndAnnotationColorChoice();
+
+    private void OnAnnotationFillColorChanged(object? sender, Color color) => ViewModel.SetAnnotationFillColor(color);
+
+    private void OnAnnotationTextColorChanged(object? sender, Color color) => ViewModel.SetAnnotationTextColor(color);
+
+    private void OnAnnotationShapeFillColorChanged(object? sender, Color color) => ViewModel.SetAnnotationShapeFillColor(color);
+
+    // Advanced stays as it was left, for as long as the app runs.
+    private void OnAnnotationAdvancedExpanding(Expander sender, ExpanderExpandingEventArgs args) => s_isAnnotationAdvancedExpanded = true;
+
+    private void OnAnnotationAdvancedCollapsed(Expander sender, ExpanderCollapsedEventArgs args) => s_isAnnotationAdvancedExpanded = false;
+
+    /// <summary>The styles to start from, one chip each, showing the colors each gives.</summary>
+    private void BuildAnnotationStyleChips()
+    {
+        if (_annotationStyleChips.Count > 0)
+        {
+            return;
+        }
+
+        foreach (var style in Enum.GetValues<StudioAnnotationStyle>())
+        {
+            var (fill, text) = StudioAnnotationGeometry.GetStyleColors(style);
+            var chip = new ToggleButton
+            {
+                Style = (Style)Resources["StudioAnnotationStyleChipStyle"],
+                Background = new SolidColorBrush(ParseHex(fill)),
+                Foreground = new SolidColorBrush(ParseHex(text)),
+                Tag = style,
+            };
+            var name = $"{style} style";
+            AutomationProperties.SetAutomationId(chip, $"StudioAnnotationStyle_{style}");
+            AutomationProperties.SetName(chip, name);
+            ToolTipService.SetToolTip(chip, name);
+            chip.Checked += OnAnnotationStyleChipToggled;
+            chip.Unchecked += OnAnnotationStyleChipToggled;
+            Grid.SetColumn(chip, _annotationStyleChips.Count);
+            AnnotationStyleChips.ColumnDefinitions.Add(new ColumnDefinition());
+            AnnotationStyleChips.Children.Add(chip);
+            _annotationStyleChips.Add(chip);
+        }
+    }
+
+    // Toggled and not clicked, because a screen reader toggles a chip and raises no click.
+    private void OnAnnotationStyleChipToggled(object sender, RoutedEventArgs e)
+    {
+        if (_isSyncingAnnotationChips)
+        {
+            return;
+        }
+
+        if (sender is ToggleButton { Tag: StudioAnnotationStyle style, IsChecked: true })
+        {
+            ViewModel.SetAnnotationStyle(style);
+        }
+
+        // Choosing the one in use is no change, and a chip does not turn itself off.
+        SyncAnnotationStyleChips();
+    }
+
+    private void SyncAnnotationStyleChips()
+    {
+        var chosen = ViewModel.HasCustomAnnotationColors ? -1 : ViewModel.AnnotationStyleIndex;
+        // A box shows its letters on its fill, and the other kinds the glyph of their tool.
+        var glyph = ViewModel.HasAnnotationTextColor ? null : ViewModel.AnnotationChipGlyph ?? StudioGlyphs.AddArrow;
+        _isSyncingAnnotationChips = true;
+        foreach (var chip in _annotationStyleChips)
+        {
+            chip.IsChecked = chip.Tag is StudioAnnotationStyle style && (int)style == chosen;
+            var shown = chip.Content switch
+            {
+                FontIcon icon => icon.Glyph,
+                TextBlock => null,
+                _ => string.Empty,
+            };
+            if (shown != glyph)
+            {
+                chip.Content = glyph is not null
+                    ? new FontIcon { FontSize = 14, Glyph = glyph, Foreground = chip.Foreground }
+                    : new TextBlock { FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Text = "Aa", Foreground = chip.Foreground };
+            }
+        }
+
+        _isSyncingAnnotationChips = false;
+    }
+
+    /// <summary>The style a color comes from, as the pickers call it. Null for one chosen by hand.</summary>
+    private static string? NameAnnotationColor(Color color)
+    {
+        foreach (var style in Enum.GetValues<StudioAnnotationStyle>())
+        {
+            if (ParseHex(StudioAnnotationGeometry.GetStyleColors(style).Fill) == color)
+            {
+                return style.ToString();
+            }
+        }
+
+        return null;
+    }
+
+    private static Color ParseHex(string hex) => Color.FromArgb(
+        255,
+        byte.Parse(hex.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture),
+        byte.Parse(hex.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture),
+        byte.Parse(hex.AsSpan(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
+
+    private void OnPreviousAnnotationClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.ShowPreviousAnnotation();
+        if (!ViewModel.CanSelectPreviousAnnotation)
+        {
+            StudioFocus.Move(focus, NextAnnotationButton, AnnotationLayerList);
+        }
+    }
+
+    private void OnNextAnnotationClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.ShowNextAnnotation();
+        if (!ViewModel.CanSelectNextAnnotation)
+        {
+            StudioFocus.Move(focus, PreviousAnnotationButton, AnnotationLayerList);
+        }
+    }
+
+    private void OnBringAnnotationForwardClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.BringAnnotationForward();
+        if (!ViewModel.CanBringAnnotationForward)
+        {
+            StudioFocus.Move(focus, SendAnnotationBackButton, AnnotationLayerList);
+        }
+    }
+
+    private void OnSendAnnotationBackClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.SendAnnotationBack();
+        if (!ViewModel.CanSendAnnotationBack)
+        {
+            StudioFocus.Move(focus, BringAnnotationForwardButton, AnnotationLayerList);
+        }
+    }
+
+    private void OnDeleteAnnotationClick(object sender, RoutedEventArgs e)
+    {
+        var focus = StudioFocus.StateOf(sender);
+        ViewModel.RemoveSelectedAnnotation();
+        if (ViewModel.HasSelectedAnnotation || focus == FocusState.Unfocused)
+        {
+            return;
+        }
+
+        // The last one takes the list and both of these buttons with it, which leaves the rail.
+        if (ViewModel.Annotations.Count > 0)
+        {
+            StudioFocus.Move(focus, NextAnnotationButton, PreviousAnnotationButton);
+        }
+        else
+        {
+            FocusOnRail(ViewModel.InspectorPanel, focus);
+        }
+    }
+
     private void OnPreviousSpeedClick(object sender, RoutedEventArgs e)
     {
         var focus = StudioFocus.StateOf(sender);
@@ -893,7 +1282,7 @@ public sealed partial class StudioInspector : UserControl
     }
 
     /// <summary>The one of the four layout choices that is chosen, which is where the Tab key stops among them.</summary>
-    private RadioButton SelectedLayoutChoice => ViewModel.LayoutIndex switch
+    private SegmentedItem SelectedLayoutChoice => ViewModel.LayoutIndex switch
     {
         (int)StudioLayout.Screen => LayoutScreenChoice,
         (int)StudioLayout.SideBySide => LayoutSideBySideChoice,
@@ -901,13 +1290,10 @@ public sealed partial class StudioInspector : UserControl
         _ => LayoutBubbleChoice,
     };
 
-    /// <summary>
-    /// One choice of a group that stands in columns. A choice is as wide as what it says, and
-    /// not the width a radio button has otherwise, so that three of them fit next to each other.
-    /// </summary>
-    private static RadioButton CreateChoice(string text, string automationId)
+    /// <summary>One choice of a segmented control that is filled in code.</summary>
+    private static SegmentedItem CreateChoice(string text, string automationId)
     {
-        var choice = new RadioButton { Content = text, MinWidth = 0 };
+        var choice = new SegmentedItem { Content = text };
         AutomationProperties.SetAutomationId(choice, automationId);
         return choice;
     }

@@ -422,6 +422,14 @@ public sealed partial class StudioViewModel : ObservableObject
 
     public void StepNextFrame() => _session.StepFrames(1);
 
+    public void StepBackOneSecond() => _session.StepSeconds(-1);
+
+    public void StepForwardOneSecond() => _session.StepSeconds(1);
+
+    public void GoToStart() => _session.GoToStart();
+
+    public void GoToEnd() => _session.GoToEnd();
+
     public void Scrub(double sourceTime) => _session.Scrub(sourceTime);
 
     public void SetTrimStart(double sourceTime) => _session.SetTrimStart(sourceTime);
@@ -454,6 +462,18 @@ public sealed partial class StudioViewModel : ObservableObject
                 break;
             case StudioShortcutAction.NextFrame:
                 StepNextFrame();
+                break;
+            case StudioShortcutAction.BackOneSecond:
+                StepBackOneSecond();
+                break;
+            case StudioShortcutAction.ForwardOneSecond:
+                StepForwardOneSecond();
+                break;
+            case StudioShortcutAction.GoToStart:
+                GoToStart();
+                break;
+            case StudioShortcutAction.GoToEnd:
+                GoToEnd();
                 break;
             case StudioShortcutAction.SetTrimStartAtPlayhead:
                 SetTrimStartAtPlayhead();
@@ -496,6 +516,33 @@ public sealed partial class StudioViewModel : ObservableObject
                 break;
             case StudioShortcutAction.RemoveSelectedSpeed:
                 RemoveSelectedSpeed();
+                break;
+            case StudioShortcutAction.AddArrow:
+                AddArrowAtPlayhead();
+                break;
+            case StudioShortcutAction.AddCallout:
+                AddCalloutAtPlayhead();
+                break;
+            case StudioShortcutAction.AddText:
+                AddTextAtPlayhead();
+                break;
+            case StudioShortcutAction.AddRectangle:
+                AddRectangleAtPlayhead();
+                break;
+            case StudioShortcutAction.AddEllipse:
+                AddEllipseAtPlayhead();
+                break;
+            case StudioShortcutAction.AddRedaction:
+                AddRedactionAtPlayhead();
+                break;
+            case StudioShortcutAction.AddEmoji:
+                AddEmojiAtPlayhead();
+                break;
+            case StudioShortcutAction.DuplicateSelectedAnnotation:
+                DuplicateSelectedAnnotation();
+                break;
+            case StudioShortcutAction.RemoveSelectedAnnotation:
+                RemoveSelectedAnnotation();
                 break;
             case StudioShortcutAction.Undo:
                 Undo();
@@ -670,6 +717,7 @@ public sealed partial class StudioViewModel : ObservableObject
             RememberZoomStateAtPlayhead();
             RememberCutStateAtPlayhead();
             RememberSpeedStateAtPlayhead();
+            RememberAnnotationStateAtPlayhead();
             RememberSceneStateAtPlayhead();
             RememberCaptionStateAtPlayhead();
             OnPropertyChanged(string.Empty);
@@ -693,6 +741,7 @@ public sealed partial class StudioViewModel : ObservableObject
                 RaiseZoomStateAtPlayhead();
                 RaiseCutStateAtPlayhead();
                 RaiseSpeedStateAtPlayhead();
+                RaiseAnnotationStateAtPlayhead();
                 RaiseSceneStateAtPlayhead();
                 RaiseCaptionStateAtPlayhead();
             }

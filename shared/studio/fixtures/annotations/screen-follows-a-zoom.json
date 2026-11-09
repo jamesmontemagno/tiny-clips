@@ -1,0 +1,264 @@
+{
+  "description": "A screen arrow follows a zoom at the same size, and goes when its point leaves the window; a frame arrow does not move",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "arrow",
+          "start": 0,
+          "end": 20,
+          "x": 0.3,
+          "y": 0.4,
+          "offsetX": 0.1,
+          "offsetY": 0.1
+        },
+        {
+          "kind": "arrow",
+          "start": 0,
+          "end": 20,
+          "x": 0.1,
+          "y": 0.1
+        },
+        {
+          "kind": "arrow",
+          "attach": "frame",
+          "start": 0,
+          "end": 20,
+          "x": 0.1,
+          "y": 0.1
+        }
+      ]
+    },
+    "zooms": [
+      {
+        "start": 5,
+        "end": 15,
+        "scale": 2,
+        "focus": {
+          "mode": "point",
+          "x": 0.5,
+          "y": 0.5
+        },
+        "easeIn": 0,
+        "easeOut": 0
+      }
+    ]
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 576.0,
+            "y": 432.0
+          },
+          "stroke": 9.72,
+          "tail": {
+            "x": 684.0,
+            "y": 540.0
+          },
+          "headBase": {
+            "x": 597.993849322,
+            "y": 453.993849322
+          },
+          "halfWidth": 19.28448,
+          "hasShaft": true
+        },
+        {
+          "index": 1,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 192.0,
+            "y": 108.0
+          },
+          "stroke": 9.72,
+          "tail": {
+            "x": 62.4,
+            "y": 237.6
+          },
+          "headBase": {
+            "x": 170.006150678,
+            "y": 129.993849322
+          },
+          "halfWidth": 19.28448,
+          "hasShaft": true
+        },
+        {
+          "index": 2,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 192.0,
+            "y": 108.0
+          },
+          "stroke": 9.72,
+          "tail": {
+            "x": 62.4,
+            "y": 237.6
+          },
+          "headBase": {
+            "x": 170.006150678,
+            "y": 129.993849322
+          },
+          "halfWidth": 19.28448,
+          "hasShaft": true
+        }
+      ]
+    },
+    {
+      "time": 10,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 192.0,
+            "y": 324.0
+          },
+          "stroke": 9.72,
+          "tail": {
+            "x": 300.0,
+            "y": 432.0
+          },
+          "headBase": {
+            "x": 213.993849322,
+            "y": 345.993849322
+          },
+          "halfWidth": 19.28448,
+          "hasShaft": true
+        },
+        {
+          "index": 2,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 192.0,
+            "y": 108.0
+          },
+          "stroke": 9.72,
+          "tail": {
+            "x": 62.4,
+            "y": 237.6
+          },
+          "headBase": {
+            "x": 170.006150678,
+            "y": 129.993849322
+          },
+          "halfWidth": 19.28448,
+          "hasShaft": true
+        }
+      ]
+    },
+    {
+      "time": 10,
+      "canvas": {
+        "width": 1280,
+        "height": 720
+      },
+      "textSize": {
+        "width": 300,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 128.0,
+            "y": 216.0
+          },
+          "stroke": 6.48,
+          "tail": {
+            "x": 200.0,
+            "y": 288.0
+          },
+          "headBase": {
+            "x": 142.662566215,
+            "y": 230.662566215
+          },
+          "halfWidth": 12.85632,
+          "hasShaft": true
+        },
+        {
+          "index": 2,
+          "kind": "arrow",
+          "opacity": 1,
+          "fill": "#FF453A",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 128.0,
+            "y": 72.0
+          },
+          "stroke": 6.48,
+          "tail": {
+            "x": 41.6,
+            "y": 158.4
+          },
+          "headBase": {
+            "x": 113.337433785,
+            "y": 86.662566215
+          },
+          "halfWidth": 12.85632,
+          "hasShaft": true
+        }
+      ]
+    }
+  ]
+}

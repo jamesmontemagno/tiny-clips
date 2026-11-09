@@ -54,6 +54,96 @@
             <Setter Property="Visibility" Value="Collapsed" />
         </Style>
         <!--  Nine swatches fill one row of a panel.  -->
+        <!--  A tool of the Annotate panel, in the look of the screenshot editor's: a symbol over its name.  -->
+        <Style
+            x:Key="StudioAnnotationToolTileStyle"
+            BasedOn="{StaticResource DefaultButtonStyle}"
+            TargetType="Button">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="56" />
+            <Setter Property="Padding" Value="4,8" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+
+        <!--  A style to start from, showing the colors it gives. The ring marks the one in use.  -->
+        <Style x:Key="StudioAnnotationStyleChipStyle" TargetType="ToggleButton">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="IsTabStop" Value="True" />
+            <Setter Property="UseSystemFocusVisuals" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="Chip.Opacity" Value="0.85" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="Chip.Opacity" Value="0.7" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="Chip.Opacity" Value="0.4" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Checked">
+                                        <VisualState.Setters>
+                                            <Setter Target="Ring.Opacity" Value="1" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedPointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="Ring.Opacity" Value="1" />
+                                            <Setter Target="Chip.Opacity" Value="0.85" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedPressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="Ring.Opacity" Value="1" />
+                                            <Setter Target="Chip.Opacity" Value="0.7" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedDisabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="Ring.Opacity" Value="1" />
+                                            <Setter Target="Chip.Opacity" Value="0.4" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Border
+                                x:Name="Chip"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                                <ContentPresenter
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Content="{TemplateBinding Content}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                            <Border
+                                x:Name="Ring"
+                                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                BorderThickness="2"
+                                CornerRadius="6"
+                                IsHitTestVisible="False"
+                                Opacity="0" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="StudioSwatchGridStyle" TargetType="GridView">
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="-2,0,-2,0" />
@@ -258,29 +348,31 @@
                         <!--  The layout belongs to the scene. The heading says what the choice is of, so it has a name and no header of its own.  -->
                         <StackPanel Spacing="8">
                             <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Layout" />
-                            <RadioButtons
+                            <local:StudioSegmented
                                 x:Name="LayoutChoice"
+                                HorizontalAlignment="Stretch"
+                                local:StudioSegmentedChoice.KeepsLatestChoice="True"
                                 AutomationProperties.AutomationId="StudioLayoutChoice"
                                 AutomationProperties.Name="Layout"
                                 SelectedIndex="{x:Bind ViewModel.LayoutIndex, Mode=TwoWay}"
                                 ToolTipService.ToolTip="Screen only, screen with a camera bubble, side by side, or camera only (1 to 4)">
-                                <RadioButton
+                                <controls:SegmentedItem
                                     x:Name="LayoutScreenChoice"
                                     AutomationProperties.AutomationId="StudioLayoutScreen"
                                     Content="Screen" />
-                                <RadioButton
+                                <controls:SegmentedItem
                                     x:Name="LayoutBubbleChoice"
                                     AutomationProperties.AutomationId="StudioLayoutBubble"
                                     Content="Bubble" />
-                                <RadioButton
+                                <controls:SegmentedItem
                                     x:Name="LayoutSideBySideChoice"
                                     AutomationProperties.AutomationId="StudioLayoutSideBySide"
                                     Content="Side by side" />
-                                <RadioButton
+                                <controls:SegmentedItem
                                     x:Name="LayoutCameraChoice"
                                     AutomationProperties.AutomationId="StudioLayoutCamera"
                                     Content="Camera" />
-                            </RadioButtons>
+                            </local:StudioSegmented>
                         </StackPanel>
 
                         <StackPanel Spacing="8">
@@ -314,15 +406,16 @@
                         <!--  How the scene is entered: for every scene but the first.  -->
                         <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreSceneEntryControlsVisible, Mode=OneWay}">
                             <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Transition" />
-                            <RadioButtons
+                            <local:StudioSegmented
+                                HorizontalAlignment="Stretch"
+                                local:StudioSegmentedChoice.KeepsLatestChoice="True"
                                 AutomationProperties.AutomationId="StudioSceneEntryChoice"
                                 AutomationProperties.Name="Transition"
-                                MaxColumns="2"
                                 SelectedIndex="{x:Bind ViewModel.SceneEntryIndex, Mode=TwoWay}"
                                 ToolTipService.ToolTip="Switch to this scene's layout instantly, or animate the screen and camera into place">
-                                <RadioButton AutomationProperties.AutomationId="StudioSceneEntryCut" Content="Instant" />
-                                <RadioButton AutomationProperties.AutomationId="StudioSceneEntryMove" Content="Animated" />
-                            </RadioButtons>
+                                <controls:SegmentedItem AutomationProperties.AutomationId="StudioSceneEntryCut" Content="Instant" />
+                                <controls:SegmentedItem AutomationProperties.AutomationId="StudioSceneEntryMove" Content="Animated" />
+                            </local:StudioSegmented>
                             <local:StudioSliderRow
                                 Title="Duration"
                                 AccessibleName="Transition duration"
@@ -409,13 +502,18 @@
                             IsChecked="{x:Bind ViewModel.IsBackgroundShown, Mode=TwoWay}"
                             ToolTipService.ToolTip="Off leaves the canvas black" />
                         <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsBackgroundShown, Mode=OneWay}">
-                            <ComboBox
-                                AutomationProperties.AutomationId="StudioBackgroundStyleChoice"
-                                AutomationProperties.Name="Background style"
-                                SelectedIndex="{x:Bind ViewModel.BackgroundStyleIndex, Mode=TwoWay}">
-                                <ComboBoxItem Content="Solid color" />
-                                <ComboBoxItem Content="Gradient" />
-                            </ComboBox>
+                            <StackPanel Spacing="4">
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Style" />
+                                <local:StudioSegmented
+                                    HorizontalAlignment="Stretch"
+                                    local:StudioSegmentedChoice.KeepsLatestChoice="True"
+                                    AutomationProperties.AutomationId="StudioBackgroundStyleChoice"
+                                    AutomationProperties.Name="Background style"
+                                    SelectedIndex="{x:Bind ViewModel.BackgroundStyleIndex, Mode=TwoWay}">
+                                    <controls:SegmentedItem AutomationProperties.AutomationId="StudioBackgroundStyleSolid" Content="Solid color" />
+                                    <controls:SegmentedItem AutomationProperties.AutomationId="StudioBackgroundStyleGradient" Content="Gradient" />
+                                </local:StudioSegmented>
+                            </StackPanel>
                             <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Color" />
                             <color:SwatchColorPicker
                                 x:Name="BackgroundPrimaryColorPicker"
@@ -669,14 +767,18 @@
                                     Value="{x:Bind ViewModel.CameraOffsetY, Mode=TwoWay}" />
                             </StackPanel>
                             <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreSideBySideControlsVisible, Mode=OneWay}">
-                                <ComboBox
-                                    HorizontalAlignment="Stretch"
-                                    AutomationProperties.AutomationId="StudioCameraSideComboBox"
-                                    Header="Camera side"
-                                    SelectedIndex="{x:Bind ViewModel.CameraSideIndex, Mode=TwoWay}">
-                                    <x:String>Left or top</x:String>
-                                    <x:String>Right or bottom</x:String>
-                                </ComboBox>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Camera side" />
+                                    <local:StudioSegmented
+                                        HorizontalAlignment="Stretch"
+                                        local:StudioSegmentedChoice.KeepsLatestChoice="True"
+                                        AutomationProperties.AutomationId="StudioCameraSideComboBox"
+                                        AutomationProperties.Name="Camera side"
+                                        SelectedIndex="{x:Bind ViewModel.CameraSideIndex, Mode=TwoWay}">
+                                        <controls:SegmentedItem AutomationProperties.AutomationId="StudioCameraSideLeft" Content="Left or top" />
+                                        <controls:SegmentedItem AutomationProperties.AutomationId="StudioCameraSideRight" Content="Right or bottom" />
+                                    </local:StudioSegmented>
+                                </StackPanel>
                                 <local:StudioSliderRow
                                     Title="Camera size"
                                     GestureCompleted="{x:Bind ViewModel.EndGesture}"
@@ -700,12 +802,16 @@
                             <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Appearance" />
                             <!--  The shape is the bubble's: next to the screen, and alone, the camera is a rectangle.  -->
                             <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreBubbleControlsVisible, Mode=OneWay}">
-                                <ComboBox
-                                    x:Name="ShapeChoice"
-                                    HorizontalAlignment="Stretch"
-                                    AutomationProperties.AutomationId="StudioCameraShapeComboBox"
-                                    Header="Shape"
-                                    SelectedIndex="{x:Bind ViewModel.CameraShapeIndex, Mode=TwoWay}" />
+                                <StackPanel Spacing="4">
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Shape" />
+                                    <local:StudioSegmented
+                                        x:Name="ShapeChoice"
+                                        HorizontalAlignment="Stretch"
+                                        local:StudioSegmentedChoice.KeepsLatestChoice="True"
+                                        AutomationProperties.AutomationId="StudioCameraShapeComboBox"
+                                        AutomationProperties.Name="Shape"
+                                        SelectedIndex="{x:Bind ViewModel.CameraShapeIndex, Mode=TwoWay}" />
+                                </StackPanel>
                                 <local:StudioSliderRow
                                     Title="Corner radius"
                                     GestureCompleted="{x:Bind ViewModel.EndGesture}"
@@ -729,12 +835,13 @@
                                 editor model.
                             -->
                             <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.CanFindPeople}">
-                                <RadioButtons
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Camera background" />
+                                <local:StudioSegmented
                                     x:Name="CutoutChoice"
+                                    HorizontalAlignment="Stretch"
+                                    local:StudioSegmentedChoice.KeepsLatestChoice="True"
                                     AutomationProperties.AutomationId="StudioCameraCutoutChoice"
                                     AutomationProperties.Name="Camera background"
-                                    Header="Camera background"
-                                    MaxColumns="3"
                                     SelectedIndex="{x:Bind ViewModel.CameraCutoutIndex, Mode=TwoWay}"
                                     ToolTipService.ToolTip="Keeps, blurs, or removes what is behind you in the camera picture. With the background removed, the camera has no border and no shadow." />
                                 <TextBlock
@@ -972,19 +1079,20 @@
                             <!--  What the zoom looks at. The heading says what the choice is of, so it has a name and no header of its own.  -->
                             <StackPanel Spacing="8">
                                 <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Focus" />
-                                <RadioButtons
+                                <local:StudioSegmented
+                                    HorizontalAlignment="Stretch"
+                                    local:StudioSegmentedChoice.KeepsLatestChoice="True"
                                     AutomationProperties.AutomationId="StudioZoomFocusChoice"
                                     AutomationProperties.Name="Focus"
-                                    MaxColumns="2"
                                     SelectedIndex="{x:Bind ViewModel.ZoomFocusModeIndex, Mode=TwoWay}"
                                     ToolTipService.ToolTip="Zoom in on one point, or keep the pointer in view as it moves">
-                                    <RadioButton AutomationProperties.AutomationId="StudioZoomFocusPoint" Content="Fixed point" />
-                                    <RadioButton
+                                    <controls:SegmentedItem AutomationProperties.AutomationId="StudioZoomFocusPoint" Content="Fixed point" />
+                                    <controls:SegmentedItem
                                         AutomationProperties.AutomationId="StudioZoomFocusPointer"
                                         AutomationProperties.HelpText="{x:Bind ViewModel.ZoomFollowPointerHelpText, Mode=OneWay}"
                                         Content="Follow pointer"
                                         IsEnabled="{x:Bind ViewModel.CanZoomFollowPointer, Mode=OneWay}" />
-                                </RadioButtons>
+                                </local:StudioSegmented>
                                 <TextBlock
                                     AutomationProperties.AutomationId="StudioNoPointerNote"
                                     Style="{StaticResource StudioNoteStyle}"
@@ -1384,11 +1492,12 @@
                                 project file can hold. The panel's name says what the choice is
                                 of, so it has a name and no header of its own.
                             -->
-                            <RadioButtons
+                            <local:StudioSegmented
                                 x:Name="SpeedRateChoice"
+                                HorizontalAlignment="Stretch"
+                                local:StudioSegmentedChoice.KeepsLatestChoice="True"
                                 AutomationProperties.AutomationId="StudioSpeedRateChoice"
                                 AutomationProperties.Name="Speed"
-                                MaxColumns="3"
                                 SelectedIndex="{x:Bind ViewModel.SpeedRateIndex, Mode=TwoWay}"
                                 ToolTipService.ToolTip="How fast this part of the video plays" />
 
@@ -1490,6 +1599,593 @@
                                 Click="OnDeleteSpeedClick"
                                 ToolTipService.ToolTip="Delete this speed change, so this part plays at normal speed again (Delete)">
                                 <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.Delete}" Text="Delete speed change" />
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!--
+                        Annotate: stepping through the annotations, adding one, the list they are
+                        drawn in, and what the selected one is. It is how an annotation is chosen
+                        where several overlap, and how one is changed without a pointer.
+                    -->
+                    <StackPanel
+                        x:Name="AnnotatePanel"
+                        Spacing="16"
+                        Visibility="Collapsed">
+                        <Grid
+                            AutomationProperties.AutomationId="StudioAnnotationTools"
+                            AutomationProperties.Name="Add annotation"
+                            ColumnSpacing="6"
+                            RowSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Button
+                                AutomationProperties.AutomationId="StudioAddArrowButton"
+                                AutomationProperties.Name="Add arrow"
+                                Click="{x:Bind ViewModel.AddArrowAtPlayhead}"
+                                IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
+                                Style="{StaticResource StudioAnnotationToolTileStyle}"
+                                ToolTipService.ToolTip="Add an arrow at the playhead (A)">
+                                <StackPanel Spacing="4">
+                                    <FontIcon FontSize="16" Glyph="{x:Bind editing:StudioGlyphs.AddArrow}" />
+                                    <TextBlock FontSize="12" Text="Arrow" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Grid.Column="1"
+                                AutomationProperties.AutomationId="StudioAddCalloutButton"
+                                AutomationProperties.Name="Add callout"
+                                Click="{x:Bind ViewModel.AddCalloutAtPlayhead}"
+                                IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
+                                Style="{StaticResource StudioAnnotationToolTileStyle}"
+                                ToolTipService.ToolTip="Add a callout at the playhead (C)">
+                                <StackPanel Spacing="4">
+                                    <FontIcon FontSize="16" Glyph="{x:Bind editing:StudioGlyphs.AddCallout}" />
+                                    <TextBlock FontSize="12" Text="Callout" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Grid.Column="2"
+                                AutomationProperties.AutomationId="StudioAddTextButton"
+                                AutomationProperties.Name="Add text"
+                                Click="{x:Bind ViewModel.AddTextAtPlayhead}"
+                                IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
+                                Style="{StaticResource StudioAnnotationToolTileStyle}"
+                                ToolTipService.ToolTip="Add text at the playhead (T)">
+                                <StackPanel Spacing="4">
+                                    <FontIcon FontSize="16" Glyph="{x:Bind editing:StudioGlyphs.AddText}" />
+                                    <TextBlock FontSize="12" Text="Text" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Grid.Column="3"
+                                AutomationProperties.AutomationId="StudioAddRectangleButton"
+                                AutomationProperties.Name="Add rectangle"
+                                Click="{x:Bind ViewModel.AddRectangleAtPlayhead}"
+                                IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
+                                Style="{StaticResource StudioAnnotationToolTileStyle}"
+                                ToolTipService.ToolTip="Add a rectangle at the playhead (H)">
+                                <StackPanel Spacing="4">
+                                    <FontIcon FontSize="16" Glyph="{x:Bind editing:StudioGlyphs.AddRectangle}" />
+                                    <TextBlock FontSize="12" Text="Rectangle" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Grid.Row="1"
+                                AutomationProperties.AutomationId="StudioAddEllipseButton"
+                                AutomationProperties.Name="Add ellipse"
+                                Click="{x:Bind ViewModel.AddEllipseAtPlayhead}"
+                                IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
+                                Style="{StaticResource StudioAnnotationToolTileStyle}"
+                                ToolTipService.ToolTip="Add an ellipse at the playhead (E)">
+                                <StackPanel Spacing="4">
+                                    <FontIcon FontSize="16" Glyph="{x:Bind editing:StudioGlyphs.AddEllipse}" />
+                                    <TextBlock FontSize="12" Text="Ellipse" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Grid.Row="1"
+                                Grid.Column="1"
+                                AutomationProperties.AutomationId="StudioAddRedactionButton"
+                                AutomationProperties.Name="Add redaction"
+                                Click="{x:Bind ViewModel.AddRedactionAtPlayhead}"
+                                IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
+                                Style="{StaticResource StudioAnnotationToolTileStyle}"
+                                ToolTipService.ToolTip="Add a redaction that blurs, pixelates, or covers an area at the playhead (B)">
+                                <StackPanel Spacing="4">
+                                    <FontIcon FontSize="16" Glyph="{x:Bind editing:StudioGlyphs.AddRedaction}" />
+                                    <TextBlock FontSize="12" Text="Redact" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                Grid.Row="1"
+                                Grid.Column="2"
+                                AutomationProperties.AutomationId="StudioAddEmojiButton"
+                                AutomationProperties.Name="Add emoji"
+                                Click="{x:Bind ViewModel.AddEmojiAtPlayhead}"
+                                IsEnabled="{x:Bind ViewModel.CanAddAnnotation, Mode=OneWay}"
+                                Style="{StaticResource StudioAnnotationToolTileStyle}"
+                                ToolTipService.ToolTip="Add an emoji at the playhead (M)">
+                                <StackPanel Spacing="4">
+                                    <FontIcon FontSize="16" Glyph="{x:Bind editing:StudioGlyphs.AddEmoji}" />
+                                    <TextBlock FontSize="12" Text="Emoji" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <StackPanel Spacing="8">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button
+                                    x:Name="PreviousAnnotationButton"
+                                    AutomationProperties.AutomationId="StudioPreviousAnnotationButton"
+                                    AutomationProperties.Name="Previous annotation"
+                                    Click="OnPreviousAnnotationClick"
+                                    IsEnabled="{x:Bind ViewModel.CanSelectPreviousAnnotation, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Previous annotation">
+                                    <FontIcon FontSize="14" Glyph="&#xE76B;" />
+                                </Button>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="StudioAnnotationPositionText"
+                                        Text="{x:Bind ViewModel.AnnotationSelectionTitle, Mode=OneWay}"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="StudioAnnotationDetailText"
+                                        Style="{StaticResource StudioCaptionStyle}"
+                                        Text="{x:Bind ViewModel.AnnotationSelectionDetail, Mode=OneWay}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{x:Bind ViewModel.HasSelectedAnnotation, Mode=OneWay}" />
+                                </StackPanel>
+                                <Button
+                                    x:Name="NextAnnotationButton"
+                                    Grid.Column="2"
+                                    AutomationProperties.AutomationId="StudioNextAnnotationButton"
+                                    AutomationProperties.Name="Next annotation"
+                                    Click="OnNextAnnotationClick"
+                                    IsEnabled="{x:Bind ViewModel.CanSelectNextAnnotation, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Next annotation">
+                                    <FontIcon FontSize="14" Glyph="&#xE76C;" />
+                                </Button>
+                            </Grid>
+
+                            <TextBlock
+                                AutomationProperties.AutomationId="StudioAnnotationEmptyHint"
+                                Style="{StaticResource StudioNoteStyle}"
+                                Text="{x:Bind ViewModel.AnnotationEmptyHint}"
+                                Visibility="{x:Bind ViewModel.IsAnnotationEmptyHintVisible, Mode=OneWay}" />
+                            <TextBlock
+                                AutomationProperties.AutomationId="StudioAnnotationHint"
+                                Style="{StaticResource StudioNoteStyle}"
+                                Text="{x:Bind ViewModel.AnnotationHint}"
+                                Visibility="{x:Bind ViewModel.IsAnnotationHintVisible, Mode=OneWay}" />
+
+                            <!--  Top of the picture first. Filled in code, so that a row keeps its place while its text is typed.  -->
+                            <ListView
+                                x:Name="AnnotationLayerList"
+                                MaxHeight="136"
+                                AutomationProperties.AutomationId="StudioAnnotationLayerList"
+                                AutomationProperties.Name="Annotations, top first"
+                                SelectionChanged="OnAnnotationLayerSelectionChanged"
+                                SelectionMode="Single"
+                                SingleSelectionFollowsFocus="False" />
+                        </StackPanel>
+
+                        <!--  The selected annotation.  -->
+                        <StackPanel Spacing="16" Visibility="{x:Bind ViewModel.HasSelectedAnnotation, Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button
+                                    x:Name="BringAnnotationForwardButton"
+                                    AutomationProperties.AutomationId="StudioBringAnnotationForwardButton"
+                                    AutomationProperties.Name="Bring forward"
+                                    Click="OnBringAnnotationForwardClick"
+                                    IsEnabled="{x:Bind ViewModel.CanBringAnnotationForward, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Draw this annotation over the one above it in the list">
+                                    <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.BringForward}" Text="Bring forward" />
+                                </Button>
+                                <Button
+                                    x:Name="SendAnnotationBackButton"
+                                    AutomationProperties.AutomationId="StudioSendAnnotationBackButton"
+                                    AutomationProperties.Name="Send back"
+                                    Click="OnSendAnnotationBackClick"
+                                    IsEnabled="{x:Bind ViewModel.CanSendAnnotationBack, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Draw this annotation under the one below it in the list">
+                                    <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.SendBack}" Text="Send back" />
+                                </Button>
+                            </StackPanel>
+
+                            <TextBlock
+                                AutomationProperties.AutomationId="StudioAnnotationNotDrawnNote"
+                                Style="{StaticResource StudioNoteStyle}"
+                                Text="{x:Bind ViewModel.AnnotationNotDrawnNote}"
+                                Visibility="{x:Bind ViewModel.IsAnnotationNotDrawn, Mode=OneWay}" />
+
+                            <!--  Kept in step in code: a binding would put the caret back at the start of a line break the text box writes its own way.  -->
+                            <TextBox
+                                x:Name="AnnotationTextBox"
+                                AcceptsReturn="True"
+                                AutomationProperties.AutomationId="StudioAnnotationTextBox"
+                                Header="Text"
+                                LostFocus="OnAnnotationTextLostFocus"
+                                MaxHeight="120"
+                                TextChanged="OnAnnotationTextChanged"
+                                TextWrapping="Wrap"
+                                Visibility="{x:Bind ViewModel.HasAnnotationText, Mode=OneWay}" />
+
+                            <!--  The emoji: a choice of common ones, filled in code, and any other one typed, pasted, or picked from the Windows emoji panel.  -->
+                            <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.HasAnnotationEmoji, Mode=OneWay}">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Emoji" />
+                                    <Grid
+                                        x:Name="AnnotationEmojiGrid"
+                                        AutomationProperties.AutomationId="StudioAnnotationEmojiChoice"
+                                        AutomationProperties.Name="Emoji"
+                                        ColumnSpacing="4"
+                                        RowSpacing="4" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <!--  Kept in step in code, as the text of a text annotation is.  -->
+                                    <TextBox
+                                        x:Name="AnnotationEmojiTextBox"
+                                        AutomationProperties.AutomationId="StudioAnnotationEmojiTextBox"
+                                        AutomationProperties.Name="Emoji"
+                                        Header="Any emoji"
+                                        LostFocus="OnAnnotationTextLostFocus"
+                                        TextChanged="OnAnnotationEmojiTextChanged"
+                                        ToolTipService.ToolTip="Type or paste any emoji" />
+                                    <HyperlinkButton
+                                        x:Name="MoreEmojiButton"
+                                        Padding="0,4"
+                                        AutomationProperties.AutomationId="StudioAnnotationMoreEmojiButton"
+                                        AutomationProperties.HelpText="{x:Bind ViewModel.MoreEmojiHint}"
+                                        Click="OnMoreEmojiClick"
+                                        Content="More emoji…"
+                                        ToolTipService.ToolTip="{x:Bind ViewModel.MoreEmojiHint}" />
+                                    <TextBlock
+                                        x:Name="MoreEmojiHint"
+                                        AutomationProperties.AutomationId="StudioAnnotationMoreEmojiHint"
+                                        Style="{StaticResource StudioNoteStyle}"
+                                        Text="{x:Bind ViewModel.MoreEmojiHint}"
+                                        Visibility="Collapsed" />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    AutomationProperties.AutomationId="StudioAnnotationShadowToggle"
+                                    AutomationProperties.Name="Shadow"
+                                    Header="Shadow"
+                                    IsOn="{x:Bind ViewModel.AnnotationShadow, Mode=TwoWay}"
+                                    ToolTipService.ToolTip="A soft shadow under the emoji" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.HasAnnotationStyle, Mode=OneWay}">
+                                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.HasAnnotationRedaction, Mode=OneWay}">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Style" />
+                                        <local:StudioSegmented
+                                            HorizontalAlignment="Stretch"
+                                            local:StudioSegmentedChoice.KeepsLatestChoice="True"
+                                            AutomationProperties.AutomationId="StudioAnnotationRedactStyleChoice"
+                                            AutomationProperties.Name="Redaction style"
+                                            SelectedIndex="{x:Bind ViewModel.AnnotationRedactStyleIndex, Mode=TwoWay}">
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationRedactStyleBlur" Content="Blur" />
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationRedactStylePixelate" Content="Pixelate" />
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationRedactStyleSolid" Content="Solid" />
+                                        </local:StudioSegmented>
+                                    </StackPanel>
+                                    <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationRedactLevel, Mode=OneWay}">
+                                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Strength" />
+                                        <local:StudioSegmented
+                                            HorizontalAlignment="Stretch"
+                                            local:StudioSegmentedChoice.KeepsLatestChoice="True"
+                                            AutomationProperties.AutomationId="StudioAnnotationRedactLevelChoice"
+                                            AutomationProperties.Name="Strength"
+                                            SelectedIndex="{x:Bind ViewModel.AnnotationRedactLevelIndex, Mode=TwoWay}">
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationRedactLevelLight" Content="Light" />
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationRedactLevelMedium" Content="Medium" />
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationRedactLevelHeavy" Content="Heavy" />
+                                        </local:StudioSegmented>
+                                    </StackPanel>
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="StudioAnnotationRedactNote"
+                                        Style="{StaticResource StudioNoteStyle}"
+                                        Text="{x:Bind ViewModel.AnnotationRedactNote}" />
+                                </StackPanel>
+                                <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.HasAnnotationColor, Mode=OneWay}">
+                                <StackPanel Spacing="6">
+                                    <Grid>
+                                        <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Style" />
+                                        <TextBlock
+                                            HorizontalAlignment="Right"
+                                            AutomationProperties.AutomationId="StudioAnnotationCustomNote"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="Custom"
+                                            Visibility="{x:Bind ViewModel.HasCustomAnnotationColors, Mode=OneWay}" />
+                                    </Grid>
+                                    <!--  Filled in code: what a chip shows goes with the kind of annotation.  -->
+                                    <Grid
+                                        x:Name="AnnotationStyleChips"
+                                        AutomationProperties.AutomationId="StudioAnnotationStyleChoice"
+                                        AutomationProperties.Name="Style"
+                                        ColumnSpacing="6" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="{x:Bind ViewModel.AnnotationFillTitle, Mode=OneWay}" />
+                                    <color:SwatchColorPicker
+                                        x:Name="AnnotationFillColorPicker"
+                                        AutomationProperties.AutomationId="StudioAnnotationFillColorPicker"
+                                        AutomationProperties.Name="{x:Bind ViewModel.AnnotationFillTitle, Mode=OneWay}"
+                                        Color="{x:Bind ViewModel.AnnotationFillColor, Mode=OneWay}"
+                                        ColorChanged="OnAnnotationFillColorChanged"
+                                        ColorChoiceEnded="OnAnnotationColorChoiceEnded" />
+                                </StackPanel>
+                                </StackPanel>
+                                <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationTextColor, Mode=OneWay}">
+                                    <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Text color" />
+                                    <color:SwatchColorPicker
+                                        x:Name="AnnotationTextColorPicker"
+                                        AutomationProperties.AutomationId="StudioAnnotationTextColorPicker"
+                                        AutomationProperties.Name="Text color"
+                                        Color="{x:Bind ViewModel.AnnotationTextColor, Mode=OneWay}"
+                                        ColorChanged="OnAnnotationTextColorChanged"
+                                        ColorChoiceEnded="OnAnnotationColorChoiceEnded" />
+                                </StackPanel>
+                                <local:StudioSliderRow
+                                    Title="{x:Bind ViewModel.AnnotationScaleTitle, Mode=OneWay}"
+                                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                    Maximum="3"
+                                    Minimum="0.5"
+                                    SliderAutomationId="StudioAnnotationScaleSlider"
+                                    Step="0.05"
+                                    ValueText="{x:Bind ViewModel.AnnotationScaleText, Mode=OneWay}"
+                                    Value="{x:Bind ViewModel.AnnotationScale, Mode=TwoWay}"
+                                    Visibility="{x:Bind ViewModel.HasAnnotationScale, Mode=OneWay}" />
+                                <local:StudioSliderRow
+                                    Title="Rotation"
+                                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                    Maximum="180"
+                                    Minimum="-180"
+                                    SliderAutomationId="StudioAnnotationRotationSlider"
+                                    Step="1"
+                                    ValueText="{x:Bind ViewModel.AnnotationRotationText, Mode=OneWay}"
+                                    Value="{x:Bind ViewModel.AnnotationRotation, Mode=TwoWay}" />
+
+                                <!--  The inside of a rectangle or an ellipse, under its outline.  -->
+                                <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationShape, Mode=OneWay}">
+                                    <CheckBox
+                                        AutomationProperties.AutomationId="StudioAnnotationShapeFillCheckBox"
+                                        Content="Fill inside"
+                                        IsChecked="{x:Bind ViewModel.AnnotationShapeFilled, Mode=TwoWay}"
+                                        ToolTipService.ToolTip="Fills the inside of the shape with a see-through color" />
+                                    <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.AnnotationShapeFilled, Mode=OneWay}">
+                                        <TextBlock Style="{StaticResource StudioCaptionStyle}" Text="Fill color" />
+                                        <color:SwatchColorPicker
+                                            x:Name="AnnotationShapeFillColorPicker"
+                                            AutomationProperties.AutomationId="StudioAnnotationShapeFillColorPicker"
+                                            AutomationProperties.Name="Fill color"
+                                            Color="{x:Bind ViewModel.AnnotationShapeFillColor, Mode=OneWay}"
+                                            ColorChanged="OnAnnotationShapeFillColorChanged"
+                                            ColorChoiceEnded="OnAnnotationColorChoiceEnded" />
+                                        <local:StudioSliderRow
+                                            Title="Fill opacity"
+                                            GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                            GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                            Maximum="1"
+                                            Minimum="0"
+                                            SliderAutomationId="StudioAnnotationShapeFillOpacitySlider"
+                                            Step="0.05"
+                                            ValueText="{x:Bind ViewModel.AnnotationShapeFillOpacityText, Mode=OneWay}"
+                                            Value="{x:Bind ViewModel.AnnotationShapeFillOpacity, Mode=TwoWay}" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <local:StudioSliderRow
+                                    Title="Corner radius"
+                                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                    Maximum="0.5"
+                                    Minimum="0"
+                                    SliderAutomationId="StudioAnnotationCornerRadiusSlider"
+                                    Step="0.01"
+                                    ValueText="{x:Bind ViewModel.AnnotationCornerRadiusText, Mode=OneWay}"
+                                    Value="{x:Bind ViewModel.AnnotationCornerRadius, Mode=TwoWay}"
+                                    Visibility="{x:Bind ViewModel.HasAnnotationCornerRadius, Mode=OneWay}" />
+
+                                <!--  How big an area is, for the keyboard: on the preview its corners do the same.  -->
+                                <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationArea, Mode=OneWay}">
+                                    <local:StudioSliderRow
+                                        Title="Width"
+                                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                        Maximum="1"
+                                        Minimum="0.01"
+                                        SliderAutomationId="StudioAnnotationWidthSlider"
+                                        Step="0.01"
+                                        ValueText="{x:Bind ViewModel.AnnotationWidthText, Mode=OneWay}"
+                                        Value="{x:Bind ViewModel.AnnotationWidth, Mode=TwoWay}" />
+                                    <local:StudioSliderRow
+                                        Title="Height"
+                                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                        Maximum="1"
+                                        Minimum="0.01"
+                                        SliderAutomationId="StudioAnnotationHeightSlider"
+                                        Step="0.01"
+                                        ValueText="{x:Bind ViewModel.AnnotationHeightText, Mode=OneWay}"
+                                        Value="{x:Bind ViewModel.AnnotationHeight, Mode=TwoWay}" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!--  What most annotations never need: a drag on the preview and on the lane does the same. It is how the keyboard does both.  -->
+                            <Expander
+                                x:Name="AnnotationAdvancedGroup"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                AutomationProperties.AutomationId="StudioAnnotationAdvancedGroup"
+                                AutomationProperties.Name="Advanced"
+                                Collapsed="OnAnnotationAdvancedCollapsed"
+                                Expanding="OnAnnotationAdvancedExpanding"
+                                Header="Advanced">
+                                <StackPanel Spacing="16">
+                                    <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationStyle, Mode=OneWay}">
+                                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Attach to" />
+                                        <local:StudioSegmented
+                                            HorizontalAlignment="Stretch"
+                                            local:StudioSegmentedChoice.KeepsLatestChoice="True"
+                                            AutomationProperties.AutomationId="StudioAnnotationAttachChoice"
+                                            AutomationProperties.Name="Attach to"
+                                            SelectedIndex="{x:Bind ViewModel.AnnotationAttachIndex, Mode=TwoWay}"
+                                            ToolTipService.ToolTip="Screen follows zooms and crops. Frame stays in one place in the video.">
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationAttachScreen" Content="Screen" />
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioAnnotationAttachFrame" Content="Frame" />
+                                        </local:StudioSegmented>
+                                    </StackPanel>
+
+                            <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationStyle, Mode=OneWay}">
+                                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Position" />
+                                <local:StudioSliderRow
+                                    Title="Horizontal"
+                                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                    Maximum="1"
+                                    Minimum="0"
+                                    SliderAutomationId="StudioAnnotationXSlider"
+                                    Step="0.01"
+                                    ValueText="{x:Bind ViewModel.AnnotationXText, Mode=OneWay}"
+                                    Value="{x:Bind ViewModel.AnnotationX, Mode=TwoWay}" />
+                                <local:StudioSliderRow
+                                    Title="Vertical"
+                                    GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                    GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                    Maximum="1"
+                                    Minimum="0"
+                                    SliderAutomationId="StudioAnnotationYSlider"
+                                    Step="0.01"
+                                    ValueText="{x:Bind ViewModel.AnnotationYText, Mode=OneWay}"
+                                    Value="{x:Bind ViewModel.AnnotationY, Mode=TwoWay}" />
+                                <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.HasAnnotationOffset, Mode=OneWay}">
+                                    <local:StudioSliderRow
+                                        Title="{x:Bind ViewModel.AnnotationOffsetXTitle, Mode=OneWay}"
+                                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                        Maximum="1"
+                                        Minimum="-1"
+                                        SliderAutomationId="StudioAnnotationOffsetXSlider"
+                                        Step="0.01"
+                                        ValueText="{x:Bind ViewModel.AnnotationOffsetXText, Mode=OneWay}"
+                                        Value="{x:Bind ViewModel.AnnotationOffsetX, Mode=TwoWay}" />
+                                    <local:StudioSliderRow
+                                        Title="{x:Bind ViewModel.AnnotationOffsetYTitle, Mode=OneWay}"
+                                        GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                        GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                        Maximum="1"
+                                        Minimum="-1"
+                                        SliderAutomationId="StudioAnnotationOffsetYSlider"
+                                        Step="0.01"
+                                        ValueText="{x:Bind ViewModel.AnnotationOffsetYText, Mode=OneWay}"
+                                        Value="{x:Bind ViewModel.AnnotationOffsetY, Mode=TwoWay}" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Spacing="8">
+                                <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Timing" />
+                                <StackPanel Spacing="4">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock AutomationProperties.AccessibilityView="Raw" Text="Start" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Bottom"
+                                            AutomationProperties.AutomationId="StudioAnnotationStartText"
+                                            AutomationProperties.Name="{x:Bind ViewModel.AnnotationStartAccessibleName, Mode=OneWay}"
+                                            Style="{StaticResource StudioCaptionStyle}"
+                                            Text="{x:Bind ViewModel.AnnotationStartText, Mode=OneWay}"
+                                            Typography.NumeralAlignment="Tabular" />
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button
+                                            AutomationProperties.AutomationId="StudioAnnotationStartEarlierButton"
+                                            AutomationProperties.Name="Start 0.1 seconds earlier"
+                                            Click="{x:Bind ViewModel.StepAnnotationStartEarlier}"
+                                            Content="&#x2212;0.1 s"
+                                            ToolTipService.ToolTip="Start 0.1 seconds earlier" />
+                                        <Button
+                                            AutomationProperties.AutomationId="StudioAnnotationStartLaterButton"
+                                            AutomationProperties.Name="Start 0.1 seconds later"
+                                            Click="{x:Bind ViewModel.StepAnnotationStartLater}"
+                                            Content="+0.1 s"
+                                            ToolTipService.ToolTip="Start 0.1 seconds later" />
+                                        <Button
+                                            AutomationProperties.AutomationId="StudioAnnotationStartAtPlayheadButton"
+                                            AutomationProperties.Name="Start at playhead"
+                                            Click="{x:Bind ViewModel.SetAnnotationStartAtPlayhead}"
+                                            Content="At playhead"
+                                            ToolTipService.ToolTip="Start this annotation at the playhead" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock AutomationProperties.AccessibilityView="Raw" Text="End" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Bottom"
+                                            AutomationProperties.AutomationId="StudioAnnotationEndText"
+                                            AutomationProperties.Name="{x:Bind ViewModel.AnnotationEndAccessibleName, Mode=OneWay}"
+                                            Style="{StaticResource StudioCaptionStyle}"
+                                            Text="{x:Bind ViewModel.AnnotationEndText, Mode=OneWay}"
+                                            Typography.NumeralAlignment="Tabular" />
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button
+                                            AutomationProperties.AutomationId="StudioAnnotationEndEarlierButton"
+                                            AutomationProperties.Name="End 0.1 seconds earlier"
+                                            Click="{x:Bind ViewModel.StepAnnotationEndEarlier}"
+                                            Content="&#x2212;0.1 s"
+                                            ToolTipService.ToolTip="End 0.1 seconds earlier" />
+                                        <Button
+                                            AutomationProperties.AutomationId="StudioAnnotationEndLaterButton"
+                                            AutomationProperties.Name="End 0.1 seconds later"
+                                            Click="{x:Bind ViewModel.StepAnnotationEndLater}"
+                                            Content="+0.1 s"
+                                            ToolTipService.ToolTip="End 0.1 seconds later" />
+                                        <Button
+                                            AutomationProperties.AutomationId="StudioAnnotationEndAtPlayheadButton"
+                                            AutomationProperties.Name="End at playhead"
+                                            Click="{x:Bind ViewModel.SetAnnotationEndAtPlayhead}"
+                                            Content="At playhead"
+                                            ToolTipService.ToolTip="End this annotation at the playhead" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+
+                                </StackPanel>
+                            </Expander>
+
+                            <Button
+                                AutomationProperties.AutomationId="StudioDeleteAnnotationButton"
+                                AutomationProperties.Name="Delete annotation"
+                                Click="OnDeleteAnnotationClick"
+                                ToolTipService.ToolTip="Delete this annotation (Delete)">
+                                <local:StudioButtonLabel Glyph="{x:Bind editing:StudioGlyphs.Delete}" Text="Delete annotation" />
                             </Button>
                         </StackPanel>
                     </StackPanel>
@@ -2099,26 +2795,28 @@
                                         Style="{StaticResource StudioSwatchGridStyle}" />
                                     <StackPanel Spacing="4">
                                         <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Size" />
-                                        <controls:Segmented
+                                        <local:StudioSegmented
                                             HorizontalAlignment="Stretch"
+                                            local:StudioSegmentedChoice.KeepsLatestChoice="True"
                                             AutomationProperties.AutomationId="StudioCaptionsSizeChoice"
                                             AutomationProperties.Name="Caption size"
                                             SelectedIndex="{x:Bind ViewModel.CaptionSizeIndex, Mode=TwoWay}">
-                                            <controls:SegmentedItem Content="Small" />
-                                            <controls:SegmentedItem Content="Medium" />
-                                            <controls:SegmentedItem Content="Large" />
-                                        </controls:Segmented>
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioCaptionsSizeSmall" Content="Small" />
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioCaptionsSizeMedium" Content="Medium" />
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioCaptionsSizeLarge" Content="Large" />
+                                        </local:StudioSegmented>
                                     </StackPanel>
                                     <StackPanel Spacing="4">
                                         <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Position" />
-                                        <controls:Segmented
+                                        <local:StudioSegmented
                                             HorizontalAlignment="Stretch"
+                                            local:StudioSegmentedChoice.KeepsLatestChoice="True"
                                             AutomationProperties.AutomationId="StudioCaptionsPositionChoice"
                                             AutomationProperties.Name="Caption position"
                                             SelectedIndex="{x:Bind ViewModel.CaptionPositionIndex, Mode=TwoWay}">
-                                            <controls:SegmentedItem Content="Bottom" />
-                                            <controls:SegmentedItem Content="Top" />
-                                        </controls:Segmented>
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioCaptionsPositionBottom" Content="Bottom" />
+                                            <controls:SegmentedItem AutomationProperties.AutomationId="StudioCaptionsPositionTop" Content="Top" />
+                                        </local:StudioSegmented>
                                     </StackPanel>
                                 </StackPanel>
                                 <TextBlock Style="{StaticResource StudioNoteStyle}" Text="{x:Bind ViewModel.CaptionDrawnNote}" />

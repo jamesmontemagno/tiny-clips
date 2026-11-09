@@ -1,4 +1,5 @@
 using System.Globalization;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml.Controls;
 using TinyClips.App.Controls.Studio;
 using TinyClips.App.Views.Studio;
@@ -137,13 +138,11 @@ internal sealed partial class WindowChecks
         SetSlider(editor, "StudioPlayhead", 2.0);
 
         // No speed changes.
-        var list = Find(editor, SpeedLane);
-        var text = Find(editor, "StudioSpeedLaneEmptyText", 1);
+        var list = Find(editor, SpeedLane, 0.5);
         _report.Check(
-            "a recording without speed changes: the lane is a list called Speed changes with no items, which can take the keyboard focus, and it says how to make one, as a text and as the list's description",
-            list is { ControlType: ControlTypeNames.List, Name: "Speed changes", IsKeyboardFocusable: true, IsEnabled: true } && list.IsSelectionRequired == false && LaneItems(editor, SpeedLane).Count == 0
-                && text?.Name == StudioEditorText.NoSpeedHint && list.HelpText == StudioEditorText.NoSpeedHint && list.Patterns.Contains("Selection", StringComparison.Ordinal) && list.SelectedNames.Length == 0,
-            $"{list} with {LaneItems(editor, SpeedLane).Count} item(s), described as \"{list?.HelpText}\"; the text: \"{text?.Name}\"; patterns({list?.Patterns})");
+            "a recording without speed changes has no speed lane",
+            list is null,
+            $"{list}");
         var section = SpeedSectionShows(editor, "No speed changes yet", range: null);
         var row = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioAddSpeedButton") is { } button ? (Text: (button.Content as StudioButtonLabel)?.Text, Tip: ToolTipService.GetToolTip(button) as string) : default);
         var inSection = OnUi(() => Descendant<Button>(editor.Window.Content, "StudioSpeedSectionAddButton") is { } button ? ToolTipService.GetToolTip(button) as string : null);
@@ -170,7 +169,7 @@ internal sealed partial class WindowChecks
             "what R runs makes the two seconds from the playhead play twice as fast; the lane gets one item, named as the editor words the speed change, and it is the selected one; the playhead stays where the speed change starts",
             key == StudioShortcutAction.AddSpeed && added is null && SpeedName(one[0]) == "Speed 2×, 2.0 to 4.0 seconds" && SpeedName(one[0]) == StudioEditorText.GetSpeedDescription(one[0])
                 && list?.SelectedNames.SequenceEqual([SpeedName(one[0])]) == true
-                && Find(editor, "StudioSpeed_0") is { ControlType: ControlTypeNames.ListItem, IsEnabled: true } && Absent(editor, "StudioSpeedLaneEmptyText") && list.HelpText.Length == 0 && head == 2,
+                && Find(editor, "StudioSpeed_0") is { ControlType: ControlTypeNames.ListItem, IsEnabled: true } && list.HelpText.Length == 0 && head == 2,
             added ?? $"the key ran {key}; the editor holds {Describe(SpeedsOf(editor))}; the lane: {LaneText(editor, SpeedLane)}; playhead {Seconds(head)} s");
         _report.Check("a screen reader is told \"Speed change added.\"", said.Said && StudioEditorText.SpeedAddedMessage == "Speed change added.", $"sent: {said.Heard}");
         _report.Check(
@@ -389,12 +388,12 @@ internal sealed partial class WindowChecks
         Until(() => SelectedSpeedOf(editor), index => index == 1, 1);
         var group = Find(editor, "StudioSpeedRateChoice");
         var choices = Enumerable.Range(0, RateTexts.Length).Select(index => Find(editor, $"StudioSpeedRate_{index}", 0.5)).ToArray();
-        var shown = OnUi(() => Enumerable.Range(0, RateTexts.Length).Select(index => Descendant<RadioButton>(editor.Window.Content, $"StudioSpeedRate_{index}")?.Content as string ?? string.Empty).ToArray());
-        var tip = OnUi(() => Descendant<RadioButtons>(editor.Window.Content, "StudioSpeedRateChoice") is { } buttons ? ToolTipService.GetToolTip(buttons) as string : null);
+        var shown = OnUi(() => Enumerable.Range(0, RateTexts.Length).Select(index => Descendant<SegmentedItem>(editor.Window.Content, $"StudioSpeedRate_{index}")?.Content as string ?? string.Empty).ToArray());
+        var tip = OnUi(() => Descendant<Segmented>(editor.Window.Content, "StudioSpeedRateChoice") is { } buttons ? ToolTipService.GetToolTip(buttons) as string : null);
         var chosenFirst = RateChosen(editor, 3);
         _report.Check(
             "the rate is a choice called Speed of the editor's six rates, slowest first: each shows its rate, such as 2×, is named in words for a screen reader, such as \"Twice the speed\", and can be selected; the one the speed change plays at is the chosen one",
-            group is { Name: "Speed", IsEnabled: true } && choices.All(choice => choice is { ControlType: ControlTypeNames.RadioButton, IsEnabled: true } && choice.Patterns.Contains("SelectionItem", StringComparison.Ordinal))
+            group is { Name: "Speed", IsEnabled: true } && choices.All(choice => choice is { ControlType: ControlTypeNames.ListItem, IsEnabled: true } && choice.Patterns.Contains("SelectionItem", StringComparison.Ordinal))
                 && choices.Select(choice => choice?.Name).SequenceEqual(RateNames) && shown.SequenceEqual(RateTexts) && chosenFirst is null && tip == "How fast this part of the video plays"
                 && StudioEditorModel.SpeedRates.Select(StudioEditorText.GetSpeedRateText).SequenceEqual(RateTexts) && StudioEditorModel.SpeedRates.Select(StudioEditorText.GetSpeedRateName).SequenceEqual(RateNames),
             $"{group}, its tooltip \"{tip}\"; shown: {string.Join(", ", shown)}; named: {string.Join(", ", choices.Select(choice => $"\"{choice?.Name}\""))}; {chosenFirst ?? "2× is the chosen one"}");
@@ -767,7 +766,7 @@ internal sealed partial class WindowChecks
         string[] timeline =
         [
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
-            ZoomLane, CutLane, SpeedLane, "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
+            .. LanesShown(editor), "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
         var at = order.IndexOf(section[0]);
         var sectionTogether = at >= 0 && order.Skip(at).Take(section.Length).SequenceEqual(section);

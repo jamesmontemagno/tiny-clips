@@ -1,0 +1,124 @@
+{
+  "description": "No pointer when the point is inside the box",
+  "project": {
+    "schemaVersion": 1,
+    "id": "00000000-0000-0000-0000-000000000001",
+    "sources": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "duration": 20
+      }
+    },
+    "canvas": {
+      "padding": 0
+    },
+    "screen": {
+      "cornerRadius": 0,
+      "shadow": 0
+    },
+    "scenes": [
+      {
+        "start": 0,
+        "layout": "screen"
+      }
+    ],
+    "overlays": {
+      "annotations": [
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.5,
+          "offsetX": 0,
+          "offsetY": 0,
+          "text": "Billing lives here",
+          "style": "dark"
+        },
+        {
+          "kind": "callout",
+          "attach": "frame",
+          "start": 0,
+          "end": 9,
+          "x": 0.5,
+          "y": 0.5,
+          "offsetX": 0.09375,
+          "offsetY": 0,
+          "text": "Billing lives here",
+          "style": "dark"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "time": 1,
+      "canvas": {
+        "width": 1920,
+        "height": 1080
+      },
+      "textSize": {
+        "width": 360,
+        "height": 40
+      },
+      "expected": [
+        {
+          "index": 0,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 540.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 752.784,
+            "y": 502.504,
+            "width": 414.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 780.0,
+            "y": 520.0,
+            "width": 360,
+            "height": 40
+          },
+          "pointer": null
+        },
+        {
+          "index": 1,
+          "kind": "callout",
+          "opacity": 1,
+          "fill": "#1C1C1E",
+          "textColor": "#FFFFFF",
+          "anchor": {
+            "x": 960.0,
+            "y": 540.0
+          },
+          "font": 38.88,
+          "maxTextWidth": 1289.568,
+          "radius": 15.552,
+          "box": {
+            "x": 854.034,
+            "y": 502.504,
+            "width": 414.432,
+            "height": 74.992
+          },
+          "textRect": {
+            "x": 881.25,
+            "y": 520.0,
+            "width": 360,
+            "height": 40
+          },
+          "pointer": null
+        }
+      ]
+    }
+  ]
+}

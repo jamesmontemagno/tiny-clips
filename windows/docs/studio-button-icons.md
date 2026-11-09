@@ -30,6 +30,9 @@ Every button keeps its words and gains a symbol in front of them. The names are 
 | Show Scene | Camera panel, when the camera is hidden | the Scene panel's |
 | Save as Default Look | Project panel | `paintpalette` |
 | Save Screen Recording | a project that cannot be shown | `square.and.arrow.down` |
+| Arrow, Callout, Text | editor header, annotation blocks | `arrow.up.right`, `text.bubble`, `textformat`; on Windows `\uE72A`, `\uE8BD`, `\uE8D2` |
+| Rectangle, Ellipse, Redaction | Annotate panel, annotation blocks | on Windows `\uE71A`, `\uEA3A`, `\uED1A`, the screenshot editor's |
+| Emoji | Annotate panel, annotation blocks | on Windows `\uE76E` || Bring Forward, Send Back | Annotate panel | `arrow.up`, `arrow.down`; on Windows `\uE74A`, `\uE74B` |
 
 **The one rule:** a button that adds what a panel edits has that panel's symbol, so the rail,
 the timeline row, and the panel's own button show one picture for one thing. A test holds it.

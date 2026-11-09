@@ -280,6 +280,8 @@ private struct StudioPreviewView: View {
                 if let bubble = viewModel.bubbleRect(canvasSize: canvasSize) {
                     bubbleHandle(bubble: bubble, geometry: geometry, canvasSize: canvasSize)
                 }
+
+                StudioAnnotationPreviewLayer(viewModel: viewModel, geometry: geometry, canvasSize: canvasSize, space: Self.space)
             }
             .coordinateSpace(.named(Self.space))
         }
@@ -457,6 +459,8 @@ private struct StudioInspectorView: View {
             StudioCutInspectorSection(viewModel: viewModel)
         case .speed:
             StudioSpeedInspectorSection(viewModel: viewModel)
+        case .annotate:
+            StudioAnnotationInspectorSection(viewModel: viewModel)
         case .captions:
             StudioCaptionsInspectorSection(viewModel: viewModel)
         case .audio:
@@ -635,10 +639,18 @@ private struct StudioInspectorView: View {
 
     @ViewBuilder
     private var bubbleShapeControls: some View {
-        Picker("Shape", selection: shapeBinding) {
-            ForEach(Self.shapes, id: \.self) { shape in
-                Text(StudioEditorModel.shapeName(shape)).tag(shape)
+        // Above its choices, not beside them: four segments need the whole width.
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Shape")
+                .foregroundStyle(.secondary)
+            Picker("Shape", selection: shapeBinding) {
+                ForEach(Self.shapes, id: \.self) { shape in
+                    Text(shape == .roundedRectangle ? "Rounded" : StudioEditorModel.shapeName(shape)).tag(shape)
+                }
             }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .help("The camera's shape: circle, rounded rectangle, squircle, or rectangle")
         }
         if camera.shape == .roundedRectangle {
             StudioSliderRow(
@@ -655,9 +667,18 @@ private struct StudioInspectorView: View {
 
     @ViewBuilder
     private var sideBySideControls: some View {
-        Picker("Camera side", selection: sideBinding) {
-            Text("Left or top").tag(StudioCameraSide.leading)
-            Text("Right or bottom").tag(StudioCameraSide.trailing)
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+            GridRow {
+                Text("Side")
+                    .foregroundStyle(.secondary)
+                Picker("Camera side", selection: sideBinding) {
+                    Text("Left or top").tag(StudioCameraSide.leading)
+                    Text("Right or bottom").tag(StudioCameraSide.trailing)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .help("Which side of the video the camera takes")
+            }
         }
         StudioSliderRow(
             title: "Camera size",
@@ -675,12 +696,20 @@ private struct StudioInspectorView: View {
     private var cameraStyleControls: some View {
         Toggle("Mirror", isOn: mirrorBinding)
             .toggleStyle(.checkbox)
-        Picker("Camera background", selection: cutoutBinding) {
-            ForEach(Self.cutouts, id: \.self) { cutout in
-                Text(StudioEditorModel.cutoutName(cutout)).tag(cutout)
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+            GridRow {
+                Text("Background")
+                    .foregroundStyle(.secondary)
+                Picker("Camera background", selection: cutoutBinding) {
+                    ForEach(Self.cutouts, id: \.self) { cutout in
+                        Text(StudioEditorModel.cutoutName(cutout)).tag(cutout)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .help("Keeps, blurs, or removes what is behind you in the camera picture")
             }
         }
-        .help("Keeps, blurs, or removes what is behind you in the camera picture")
         if camera.cutout == .remove {
             Text("With the background removed, the camera has no border and no shadow.")
                 .font(.caption)
@@ -1311,7 +1340,7 @@ private struct StudioTimelineView: View {
                     Image(systemName: "backward.frame.fill")
                 }
                 .accessibilityLabel("Previous frame")
-                .help("Previous frame (Left Arrow)")
+                .help("Previous frame (Left Arrow). Shift-Left goes back one second, Home to the start.")
 
                 Button {
                     viewModel.stepFrame(by: 1)
@@ -1319,7 +1348,7 @@ private struct StudioTimelineView: View {
                     Image(systemName: "forward.frame.fill")
                 }
                 .accessibilityLabel("Next frame")
-                .help("Next frame (Right Arrow)")
+                .help("Next frame (Right Arrow). Shift-Right goes forward one second, End to the end.")
 
                 Text(viewModel.timeText)
                     .font(.callout.monospacedDigit())
@@ -1369,25 +1398,43 @@ private struct StudioTimelineView: View {
                 .help("End the video at the playhead (O)")
             }
 
-            if viewModel.hasCamera {
-                StudioSceneLane(viewModel: viewModel)
-                    .frame(height: 24)
+            // A lane shows only with something on it, so the timeline stays low until then.
+            VStack(spacing: 4) {
+                if isLaneShown(.scene) {
+                    StudioSceneLane(viewModel: viewModel)
+                        .frame(height: 24)
+                }
+
+                if isLaneShown(.zoom) {
+                    StudioZoomLane(viewModel: viewModel)
+                        .frame(height: 26)
+                }
+
+                if isLaneShown(.cut) {
+                    StudioCutLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                if isLaneShown(.speed) {
+                    StudioSpeedLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                if isLaneShown(.annotate) {
+                    StudioAnnotationLane(viewModel: viewModel)
+                        .frame(height: 22)
+                }
+
+                StudioTrimBar(viewModel: viewModel)
+                    .frame(height: 36)
             }
-
-            StudioZoomLane(viewModel: viewModel)
-                .frame(height: 26)
-
-            StudioCutLane(viewModel: viewModel)
-                .frame(height: 22)
-
-            StudioSpeedLane(viewModel: viewModel)
-                .frame(height: 22)
-
-            StudioTrimBar(viewModel: viewModel)
-                .frame(height: 36)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    private func isLaneShown(_ lane: StudioTimelineLane) -> Bool {
+        viewModel.project.map(lane.isShown(in:)) ?? false
     }
 }
 

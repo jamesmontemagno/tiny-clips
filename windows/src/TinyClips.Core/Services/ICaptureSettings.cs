@@ -169,6 +169,9 @@ public interface ICaptureSettings
     MultiMonitorCaptureMode MultiMonitorCaptureMode { get; set; }
     bool ShowRegionIndicator { get; set; }
     bool IncludeTinyClipsInCapture { get; set; }
+
+    /// <summary>Raised when <see cref="IncludeTinyClipsInCapture"/> changes value, on the thread that changed it.</summary>
+    event EventHandler? IncludeTinyClipsInCaptureChanged;
     bool ShowBrandingOverlay { get; set; }
     bool TeleprompterEnabled { get; set; }
     string TeleprompterTranscript { get; set; }

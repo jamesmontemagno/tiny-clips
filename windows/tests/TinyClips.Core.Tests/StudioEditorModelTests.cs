@@ -37,6 +37,34 @@ public sealed class StudioEditorModelTests
     }
 
     [Fact]
+    public void RestoreEditableState_PutsBackTheSavedStateAsOneUndoStep()
+    {
+        var model = new StudioEditorModel(MakeProject());
+        model.SetCanvasPadding(0.12);
+        var saved = model.EditableState;
+
+        model.SetCanvasPadding(0.3);
+        model.BeginEditingGroup();
+        model.SetCanvasPadding(0.4);
+        model.RestoreEditableState(saved);
+
+        Assert.False(model.IsGroupingEdits);
+        Assert.True(saved.ContentEquals(model.EditableState));
+        model.Undo();
+        Assert.Equal(0.4, model.Project.Canvas.Padding, Precision);
+    }
+
+    [Fact]
+    public void RestoreEditableState_OfTheCurrentStateLeavesNoUndoStep()
+    {
+        var model = new StudioEditorModel(MakeProject());
+
+        model.RestoreEditableState(model.EditableState);
+
+        Assert.False(model.CanUndo);
+    }
+
+    [Fact]
     public void Gesture_ThatChangesNothingLeavesNoUndoStep()
     {
         var model = new StudioEditorModel(MakeProject());
