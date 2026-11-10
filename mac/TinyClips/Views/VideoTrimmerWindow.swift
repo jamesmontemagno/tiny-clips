@@ -145,12 +145,13 @@ extension View {
     ) -> some View {
         confirmationDialog(prompt.title(for: media), isPresented: isPresented, titleVisibility: .visible) {
             if prompt.isDestructive {
-                Button(prompt.confirmTitle(for: media), role: .destructive, action: onConfirm)
+                Button(prompt.confirmTitle(for: media), action: onConfirm)
             } else {
                 Button(prompt.confirmTitle(for: media), action: onConfirm)
                     .keyboardShortcut(.defaultAction)
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(prompt.isDestructive ? .defaultAction : .cancelAction)
         } message: {
             Text(prompt.message(for: media))
         }
@@ -554,10 +555,11 @@ private struct VideoTrimmerView: View {
             isPresented: $showDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete Recording", role: .destructive) {
+            Button("Delete Recording") {
                 deleteSource()
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text("This permanently deletes the recording and closes the trimmer without saving. This cannot be undone.")
         }

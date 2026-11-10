@@ -1293,7 +1293,7 @@ private struct ClipsManagerContentView: View {
             get: { pendingDeleteClip != nil },
             set: { if !$0 { pendingDeleteClip = nil } }
         )) {
-            Button("Delete", role: .destructive) {
+            Button("Delete") {
                 if let pendingDeleteClip {
                     viewModel.delete(pendingDeleteClip)
                 }
@@ -1302,14 +1302,16 @@ private struct ClipsManagerContentView: View {
             Button("Cancel", role: .cancel) {
                 pendingDeleteClip = nil
             }
+            .keyboardShortcut(.defaultAction)
         } message: {
             Text("This action cannot be undone.")
         }
         .alert("Delete selected clips?", isPresented: $showBatchDeleteConfirmation) {
-            Button("Delete", role: .destructive) {
+            Button("Delete") {
                 viewModel.deleteSelected()
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text("This will permanently remove \(viewModel.selectedItems.count) clip(s).")
         }
