@@ -50,6 +50,8 @@ internal sealed class EditorController : IDisposable
 
     private readonly List<Annotation> _annotations = new();
     private readonly Stack<TextStyleUndoEntry> _textStyleUndo = new();
+    private Annotation? _pendingBendAnnotation;
+    private AnnotationSnapshot? _pendingBendUndo;
     private int _counterValue = 1;
     private bool _textStyleEditGroupActive;
     private bool _textStyleEditGroupRecorded;
@@ -537,6 +539,16 @@ internal sealed class EditorController : IDisposable
     }
 
     /// <summary>
+    /// Starts a bend-handle drag. The arrow's shape is saved so the first change made by
+    /// <see cref="MoveArrowBend"/> becomes one Undo step.
+    /// </summary>
+    public void BeginArrowBend(Annotation ann)
+    {
+        _pendingBendAnnotation = ann;
+        _pendingBendUndo = ann.CaptureSnapshot();
+    }
+
+    /// <summary>
     /// Bends an arrow so its curve passes nearest <paramref name="pixelPoint"/>. Within
     /// <paramref name="snapPixels"/> of the straight line it snaps straight.
     /// </summary>
@@ -546,12 +558,23 @@ internal sealed class EditorController : IDisposable
         {
             return;
         }
-        ClearTextStyleUndo();
         var (start, end) = Segment(ann);
         var bend = ArrowGeometry.Bend(ToPoint(start), ToPoint(end), new PointD(pixelPoint.X, pixelPoint.Y));
         if (Math.Abs(bend) * Vector2.Distance(start, end) < snapPixels)
         {
             bend = 0;
+        }
+        if (bend == ann.Arrow.Bend)
+        {
+            return;
+        }
+        if (_pendingBendUndo is { } before && ReferenceEquals(_pendingBendAnnotation, ann))
+        {
+            // One Undo restores the shape from before this drag.
+            ClearTextStyleUndo();
+            _textStyleUndo.Push(new TextStyleUndoEntry(ann, before));
+            _pendingBendUndo = null;
+            _pendingBendAnnotation = null;
         }
         ann.Arrow = ann.Arrow with { Bend = bend };
         MarkDirty();
