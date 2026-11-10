@@ -932,12 +932,6 @@ struct StudioAnnotationPreviewLayer: View {
         geometry.viewPoint(fromCanvasPoint: CGPoint(x: point.x, y: point.y))
     }
 
-    private func viewRect(_ rect: StudioRect) -> CGRect {
-        let origin = geometry.viewPoint(fromCanvasPoint: CGPoint(x: rect.x, y: rect.y))
-        let scale = max(geometry.canvasPixelsPerViewPoint, 0.0001)
-        return CGRect(x: origin.x, y: origin.y, width: CGFloat(rect.width / scale), height: CGFloat(rect.height / scale))
-    }
-
     /// Everything but the handles of the selected one: the shaft of an arrow or a whole box.
     @ViewBuilder
     private func hitArea(_ handle: StudioAnnotationHandle) -> some View {

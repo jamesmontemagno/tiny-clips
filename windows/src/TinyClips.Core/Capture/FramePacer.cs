@@ -15,7 +15,6 @@ internal sealed partial class FramePacer : IDisposable
 {
     private const uint CreateWaitableTimerHighResolution = 0x00000002;
     private const uint TimerAllAccess = 0x1F0003;
-    private const uint WaitObject0 = 0;
 
     private readonly TimeSpan _interval;
     private readonly Action _tick;

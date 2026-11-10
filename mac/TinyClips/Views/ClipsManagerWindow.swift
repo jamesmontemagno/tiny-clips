@@ -1054,7 +1054,6 @@ private struct ClipsManagerContentView: View {
     @State private var notesClip: ClipItem?
     @State private var collectionClip: ClipItem?
     @State private var batchTag = ""
-    @State private var showProUpsell = false
     @State private var showUploadcareSettings = false
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .automatic
     @State private var pendingDeleteClip: ClipItem?
@@ -1210,30 +1209,6 @@ private struct ClipsManagerContentView: View {
                 }
             }
         }
-    #if APPSTORE
-        .sheet(isPresented: $showProUpsell) {
-            VStack(spacing: 0) {
-                HStack {
-                    Spacer()
-                    Button {
-                        showProUpsell = false
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Close")
-                    .accessibilityLabel("Close")
-                }
-                .padding(.top, 12)
-                .padding(.horizontal, 12)
-
-                ProSubscriptionView()
-            }
-            .frame(minWidth: 500, minHeight: 500)
-        }
-    #endif
         .sheet(isPresented: $showUploadcareSettings) {
             ClipManagerUploadcareSettingsView(onRunArchiveNow: {
                 viewModel.archiveOldClipsNow()
@@ -3041,13 +3016,3 @@ private struct ClipManagerUploadcareSettingsView: View {
     }
 
 }
-
-// MARK: - Pro Upsell View
-
-#if APPSTORE
-private struct ProUpsellView: View {
-    var body: some View {
-        ProSubscriptionView()
-    }
-}
-#endif

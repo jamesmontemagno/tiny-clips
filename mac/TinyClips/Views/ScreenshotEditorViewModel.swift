@@ -97,7 +97,6 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var redactionSourceImage: CGImage?
     private var redactionPatches: [RedactionPatchKey: RedactionPatch] = [:]
     private var redactionPatchBytes = 0
-    private var dragOffset: CGPoint = .zero
     private var dragOriginalRect: CGRect = .zero
     private var dragOriginalAnnotationRect: CGRect = .zero
     private var dragOriginalPoints: [CGPoint] = []
