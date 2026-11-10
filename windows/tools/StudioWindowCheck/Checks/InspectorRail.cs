@@ -109,6 +109,33 @@ internal sealed partial class WindowChecks
             $"{rail}, patterns({rail?.Patterns}); the name over the inspector: {title}; {PanelWords(opened)}; "
                 + $"items: {string.Join(" | ", items.Select(item => $"{item.Name} [{item.Id}] \"{item.HelpText}\", focusable {item.IsKeyboardFocusable}, patterns({item.Patterns})"))}");
 
+        Resize(editor, SmallestWindowWidth, SmallestWindowHeight);
+        var layoutLabels = Until(() => OnUi(() =>
+        {
+            string[] ids = ["StudioLayoutScreen", "StudioLayoutBubble", "StudioLayoutSideBySide", "StudioLayoutCamera"];
+            return ids.Select(id =>
+            {
+                var item = Descendant<CommunityToolkit.WinUI.Controls.SegmentedItem>(editor.Window.Content, id);
+                var text = item is null ? null : First<TextBlock>(item);
+                if (item is null || text is null)
+                {
+                    return (Fits: false, Detail: $"{id}: no label");
+                }
+
+                var label = new TextBlock { Text = text.Text, FontFamily = text.FontFamily, FontSize = text.FontSize, FontWeight = text.FontWeight };
+                label.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+                var bounds = text.TransformToVisual(item).TransformBounds(new Windows.Foundation.Rect(0, 0, text.ActualWidth, text.ActualHeight));
+                var fits = text.ActualWidth > 0 && !text.IsTextTrimmed && label.DesiredSize.Width <= text.ActualWidth + 1
+                    && bounds.Left >= 0 && bounds.Right <= item.ActualWidth + 0.5;
+                return (Fits: fits, Detail: $"{text.Text}: needs {label.DesiredSize.Width:0.#}, has {text.ActualWidth:0.#}, item {item.ActualWidth:0.#}");
+            }).ToArray();
+        }), labels => labels.All(label => label.Fits), 2);
+        _report.Check(
+            "all four Scene layout labels fit without clipping at the smallest window size",
+            layoutLabels.All(label => label.Fits),
+            string.Join("; ", layoutLabels.Select(label => label.Detail)));
+        Resize(editor, DefaultWindowWidth, DefaultWindowHeight);
+
         // What the list's own keys rest on.
         var list = OnUi(() => Descendant<ListView>(editor.Window.Content, InspectorRailId) is { } found
             ? (Found: true, found.SelectionMode, found.SingleSelectionFollowsFocus, found.TabNavigation, found.IsItemClickEnabled, Count: found.Items.Count, Index: found.SelectedIndex)
