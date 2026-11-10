@@ -1459,6 +1459,7 @@ public sealed partial class EditorCanvas : UserControl
             if (bendDistance <= 10 && bendDistance < Math.Min(startDistance, endDistance))
             {
                 _bendAnnotation = ann;
+                _controller.BeginArrowBend(ann);
                 return true;
             }
         }
