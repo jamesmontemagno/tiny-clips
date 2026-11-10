@@ -153,7 +153,7 @@ struct GeneralSettingsSection: View {
             isPresented: $showPurgeConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Purge", role: .destructive) {
+            Button("Purge") {
                 do {
                     try TinyClipsTemporaryFiles.purge()
                     Task {
@@ -164,6 +164,7 @@ struct GeneralSettingsSection: View {
                 }
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text("This permanently deletes temporary files created by TinyClips, including recent files. Close any active recording or unsaved screenshot editor before continuing.")
         }

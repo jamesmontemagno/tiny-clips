@@ -135,8 +135,9 @@ private struct OnboardingWizardView: View {
         }
         .alert("Skip setup?", isPresented: $showSkipConfirmation) {
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
                 .help("Stay in setup.")
-            Button("Skip Setup", role: .destructive) {
+            Button("Skip Setup") {
                 onSkip()
             }
             .help("Close setup and use TinyClips with current settings.")

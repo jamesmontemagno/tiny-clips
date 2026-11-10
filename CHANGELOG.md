@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- macOS confirmation dialogs use standard, appearance-aware buttons instead of low-contrast destructive styling, including Studio, Clips Library, screenshot and video/GIF editors, cleanup, and analytics reset. Cancel is the default for destructive confirmations.
+
 ### Changed
 - The Recent Captures menu on macOS and Windows now shows the 10 newest items instead of 5.
 

@@ -124,10 +124,11 @@ struct AnalyticsSettingsSection: View {
             isPresented: $showResetConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Reset", role: .destructive) {
+            Button("Reset") {
                 store.clear()
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text("This clears all local screenshot, video, and GIF counts — including lifetime totals. This can't be undone.")
         }

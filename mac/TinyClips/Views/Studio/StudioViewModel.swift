@@ -2530,10 +2530,10 @@ final class StudioViewModel: ObservableObject {
         alert.alertStyle = .warning
         alert.messageText = "Delete “\(clipName)”?"
         alert.informativeText = "The recording and every edit are removed from Tiny Clips Studio. Videos you exported and folders you saved this project to are not deleted. This cannot be undone."
-        let deleteButton = alert.addButton(withTitle: "Delete Project")
-        deleteButton.hasDestructiveAction = true
+        // Keep standard button contrast and make Cancel the safe default.
         alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        alert.addButton(withTitle: "Delete Project")
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
 
         closesAfterExport = false
         exportTask?.cancel()
@@ -2596,8 +2596,8 @@ final class StudioViewModel: ObservableObject {
         alert.messageText = "Keep this recording?"
         alert.informativeText = "It has not been saved as a project. Keep it as a draft to finish later from the Clips Library, or delete it."
         alert.addButton(withTitle: "Keep as Draft")
-        let deleteButton = alert.addButton(withTitle: "Delete")
-        deleteButton.hasDestructiveAction = true
+        // Standard styling keeps Delete legible against either alert appearance.
+        alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
 
         switch alert.runModal() {

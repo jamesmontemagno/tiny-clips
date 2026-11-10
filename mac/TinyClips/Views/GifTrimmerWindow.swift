@@ -399,10 +399,11 @@ private struct GifTrimmerView: View {
             isPresented: $showDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete GIF", role: .destructive) {
+            Button("Delete GIF") {
                 deleteSource()
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text("This permanently deletes the GIF and closes the trimmer without saving. This cannot be undone.")
         }
