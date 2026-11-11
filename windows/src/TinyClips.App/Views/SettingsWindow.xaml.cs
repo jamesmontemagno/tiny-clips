@@ -103,6 +103,7 @@ public sealed partial class SettingsWindow : Window
             RootGrid.Loaded += OnRootGridLoaded;
             ApplyTheme();
             ViewModel.ThemeChanged += ApplyTheme;
+            Activated += OnActivatedRefreshHotKeys;
             Closed += OnClosed;
         }
         _openTrace?.Mark(WindowOpenMilestone.ConstructorCompleted);
@@ -112,6 +113,14 @@ public sealed partial class SettingsWindow : Window
     {
         Activated -= OnActivatedSetIcon;
         WindowIcon.Apply(AppWindow);
+    }
+
+    private void OnActivatedRefreshHotKeys(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState != WindowActivationState.Deactivated)
+        {
+            ViewModel.RefreshHotKeyDisplays();
+        }
     }
 
     private void OnRootGridLoaded(object sender, RoutedEventArgs args)
@@ -165,6 +174,7 @@ public sealed partial class SettingsWindow : Window
         }
 
         ViewModel.ThemeChanged -= ApplyTheme;
+        Activated -= OnActivatedRefreshHotKeys;
         Closed -= OnClosed;
 
         foreach (var section in _sectionCache.Values)
