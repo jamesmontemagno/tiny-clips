@@ -145,8 +145,9 @@ struct SettingsView: View {
         }
         .alert("Hide Dock icon?", isPresented: $showDisableDockWarning) {
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
                 .help("Keep TinyClips visible in the Dock.")
-            Button("Hide Dock Icon", role: .destructive) {
+            Button("Hide Dock Icon") {
                 settings.showInDock = false
                 applyDockVisibility(false)
                 reopenSettingsWindow()

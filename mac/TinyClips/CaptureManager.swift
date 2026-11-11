@@ -2680,7 +2680,10 @@ class CaptureManager: ObservableObject {
         // New installations get the tour, not a second introduction on their next launch.
         CaptureSettings.markWhatsNewSeen()
 
-        let window = OnboardingWizardWindow { [weak self] completed in
+        let window = OnboardingWizardWindow(applyShortcut: { [weak self] binding, action in
+            guard let self else { return "The capture shortcut service is unavailable." }
+            return self.applyCaptureHotKey(binding, for: action)
+        }) { [weak self] completed in
             if completed {
                 settings.hasCompletedOnboarding = true
             }

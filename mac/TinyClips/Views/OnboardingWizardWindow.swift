@@ -6,10 +6,13 @@ class OnboardingWizardWindow: NSWindow, NSWindowDelegate {
     private var onComplete: ((Bool) -> Void)?
     private var didComplete = false
 
-    convenience init(onComplete: @escaping (Bool) -> Void) {
+    convenience init(
+        applyShortcut: @escaping (HotKeyBinding, HotKeyAction) -> String?,
+        onComplete: @escaping (Bool) -> Void
+    ) {
         self.init(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 390),
-            styleMask: [.titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 640),
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -17,10 +20,12 @@ class OnboardingWizardWindow: NSWindow, NSWindowDelegate {
         self.onComplete = onComplete
         self.delegate = self
         self.isReleasedWhenClosed = false
+        self.contentMinSize = NSSize(width: 580, height: 530)
         self.title = "Welcome to Tiny Clips"
         self.center()
 
         let hostingView = NSHostingView(rootView: OnboardingWizardView(
+            applyShortcut: applyShortcut,
             onFinish: { [weak self] in
                 self?.finish(completed: true)
             },
@@ -34,15 +39,17 @@ class OnboardingWizardWindow: NSWindow, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard !didComplete else { return }
         didComplete = true
-        onComplete?(false)
+        let callback = onComplete
         onComplete = nil
+        callback?(false)
     }
 
     private func finish(completed: Bool) {
         guard !didComplete else { return }
         didComplete = true
-        onComplete?(completed)
+        let callback = onComplete
         onComplete = nil
+        callback?(completed)
         close()
     }
 }
@@ -52,9 +59,11 @@ private enum OnboardingStep: Int, CaseIterable {
     case screen
     case optional
     case settings
+    case shortcuts
 #if !APPSTORE
     case updates
 #endif
+    case complete
 
     var title: String {
         switch self {
@@ -65,17 +74,27 @@ private enum OnboardingStep: Int, CaseIterable {
         case .optional:
             return "Optional Permissions"
         case .settings:
-            return "Common Capture Settings"
+            return "Make it yours"
+        case .shortcuts:
+            return "Your capture shortcuts"
 #if !APPSTORE
         case .updates:
             return "Automatic Updates"
 #endif
+        case .complete:
+            return "You're all set"
         }
     }
 }
 
 private struct OnboardingWizardView: View {
     @ObservedObject private var settings = CaptureSettings.shared
+    @ObservedObject private var launchAtLogin = LaunchAtLoginManager.shared
+    @AppStorage("copyScreenshotToClipboard") private var copyScreenshotToClipboard = true
+    @AppStorage("showScreenshotEditor") private var showScreenshotEditor = true
+    @AppStorage("showSaveNotifications") private var showSaveNotifications = false
+    @AppStorage("videoCountdownEnabled") private var videoCountdownEnabled = true
+    @AppStorage("gifCountdownEnabled") private var gifCountdownEnabled = true
 #if !APPSTORE
     @ObservedObject private var sparkleController = SparkleController.shared
 #endif
@@ -84,7 +103,12 @@ private struct OnboardingWizardView: View {
     @State private var microphoneGranted = false
     @State private var notificationsGranted = false
     @State private var showSkipConfirmation = false
+    @State private var shortcutError: String?
+    @State private var shortcutRevision = 0
+    @State private var notificationPermission: NotificationPermissionState?
+    @State private var isRequestingNotifications = false
 
+    let applyShortcut: (HotKeyBinding, HotKeyAction) -> String?
     let onFinish: () -> Void
     let onSkip: () -> Void
 
@@ -133,15 +157,20 @@ private struct OnboardingWizardView: View {
         .onAppear {
             refreshStatus()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshStatus()
+            shortcutRevision += 1
+        }
         .alert("Skip setup?", isPresented: $showSkipConfirmation) {
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
                 .help("Stay in setup.")
-            Button("Skip Setup", role: .destructive) {
+            Button("Skip Setup") {
                 onSkip()
             }
             .help("Close setup and use TinyClips with current settings.")
         } message: {
-            Text("You can run setup later from Settings.")
+            Text("Changes already made will be kept. You can run setup later from Settings.")
         }
     }
 
@@ -156,6 +185,10 @@ private struct OnboardingWizardView: View {
             optionalPermissionsContent
         case .settings:
             commonSettingsContent
+        case .shortcuts:
+            shortcutsContent
+        case .complete:
+            completionContent
 #if !APPSTORE
         case .updates:
             updatesContent
@@ -308,52 +341,156 @@ private struct OnboardingWizardView: View {
 
     private var commonSettingsContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Choose your default capture behavior. You can change this any time in Settings.")
+            Text("Changes apply as you make them. You can change these later in Settings.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            capturePreferenceCard(
-                title: "Screenshots",
-                subtitle: "Control what happens after each screenshot finishes.",
-                symbolName: "camera.viewfinder",
-                accentColor: .blue,
-                openLabel: "Open editor after capture",
-                openBinding: $settings.showScreenshotEditor,
-                saveBinding: $settings.saveImmediatelyScreenshot,
-                copyBinding: $settings.copyScreenshotToClipboard,
-                openHelp: "Open the screenshot editor after capture so you can annotate or crop before finishing.",
-                saveHelp: "When enabled, screenshots save right away instead of waiting for editor actions.",
-                copyHelp: "Copy screenshots to the clipboard as an image, even before saving in the editor."
+            preferenceToggleRow(
+                title: "Launch at login",
+                description: "Keep menu bar capture shortcuts ready when you sign in.",
+                binding: Binding(get: { launchAtLogin.isEnabled }, set: { launchAtLogin.setEnabled($0) })
             )
 
-            capturePreferenceCard(
-                title: "Videos",
-                subtitle: "Decide whether recordings open in the trimmer or save immediately.",
-                symbolName: "video",
-                accentColor: .red,
-                openLabel: "Open trimmer after recording",
-                openBinding: $settings.showTrimmer,
-                saveBinding: $settings.saveImmediatelyVideo,
-                copyBinding: $settings.copyVideoToClipboard,
-                openHelp: "Open the video trimmer after recording so you can trim before finishing.",
-                saveHelp: "When enabled, videos save right away instead of waiting for trimmer actions.",
-                copyHelp: "Copy saved videos to the clipboard as a file URL."
+            preferenceToggleRow(
+                title: "Copy screenshots to clipboard",
+                description: "Paste screenshots straight into a chat or document.",
+                binding: $copyScreenshotToClipboard
             )
 
-            capturePreferenceCard(
-                title: "GIFs",
-                subtitle: "Set the default post-capture flow for GIF recordings.",
-                symbolName: "sparkles.rectangle.stack",
-                accentColor: .orange,
-                openLabel: "Open trimmer after recording",
-                openBinding: $settings.showGifTrimmer,
-                saveBinding: $settings.saveImmediatelyGif,
-                copyBinding: $settings.copyGifToClipboard,
-                openHelp: "Open the GIF trimmer after recording so you can trim before finishing.",
-                saveHelp: "When enabled, GIFs save right away instead of waiting for trimmer actions.",
-                copyHelp: "Copy saved GIFs to the clipboard as a file URL."
+            preferenceToggleRow(
+                title: "Open screenshot editor",
+                description: "Annotate or crop after capturing. Turn off for fewer interruptions.",
+                binding: Binding(
+                    get: { showScreenshotEditor },
+                    set: { enabled in
+                        showScreenshotEditor = enabled
+                        if !enabled { settings.saveImmediatelyScreenshot = true }
+                    }
+                )
             )
+
+            preferenceToggleRow(
+                title: "Recording countdown",
+                description: "Get ready before recording video or GIF.",
+                binding: Binding(
+                    get: { videoCountdownEnabled && gifCountdownEnabled },
+                    set: { settings.setRecordingCountdown($0) }
+                )
+            )
+            if videoCountdownEnabled != gifCountdownEnabled {
+                Text("Video and GIF currently have different settings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            preferenceToggleRow(
+                title: "Notify after saving",
+                description: "Confirm when your capture has been saved. System permission is separate.",
+                binding: $showSaveNotifications
+            )
+
+            notificationStatusContent
+
+            DisclosureGroup("Additional capture options") {
+                VStack(alignment: .leading, spacing: 12) {
+                    preferenceToggleRow(
+                        title: "Save screenshots immediately",
+                        description: "Save right away instead of waiting for editor actions.",
+                        binding: $settings.saveImmediatelyScreenshot
+                    )
+                    .disabled(!showScreenshotEditor)
+                    if !showScreenshotEditor {
+                        Text("Save immediately stays enabled while the screenshot editor is turned off.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    capturePreferenceCard(
+                        title: "Videos",
+                        subtitle: "Decide whether recordings open in the trimmer or save immediately.",
+                        symbolName: "video",
+                        accentColor: .red,
+                        openLabel: "Open trimmer after recording",
+                        openBinding: $settings.showTrimmer,
+                        saveBinding: $settings.saveImmediatelyVideo,
+                        copyBinding: $settings.copyVideoToClipboard,
+                        openHelp: "Open the video trimmer after recording so you can trim before finishing.",
+                        saveHelp: "When enabled, videos save right away instead of waiting for trimmer actions.",
+                        copyHelp: "Copy saved videos to the clipboard as a file URL."
+                    )
+
+                    capturePreferenceCard(
+                        title: "GIFs",
+                        subtitle: "Set the default post-capture flow for GIF recordings.",
+                        symbolName: "sparkles.rectangle.stack",
+                        accentColor: .orange,
+                        openLabel: "Open trimmer after recording",
+                        openBinding: $settings.showGifTrimmer,
+                        saveBinding: $settings.saveImmediatelyGif,
+                        copyBinding: $settings.copyGifToClipboard,
+                        openHelp: "Open the GIF trimmer after recording so you can trim before finishing.",
+                        saveHelp: "When enabled, GIFs save right away instead of waiting for trimmer actions.",
+                        copyHelp: "Copy saved GIFs to the clipboard as a file URL."
+                    )
+                }
+                .padding(.top, 8)
+            }
         }
+    }
+
+    private var notificationStatusContent: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("System notifications: \(notificationPermission?.summary ?? "Checking…")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityElement(children: .combine)
+            if let notificationPermission {
+                if notificationPermission.canRequest {
+                    Button("Allow Notifications") { requestNotificationPermission() }
+                        .disabled(isRequestingNotifications)
+                } else {
+                    Button("Open Notification Settings") {
+                        guard PermissionManager.shared.openNotificationSettings() else {
+                            SaveService.shared.showError("Could not open macOS Notification Settings.")
+                            return
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var shortcutsContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("These shortcuts work system-wide. Record Video makes an ordinary recording, not Studio.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            if let shortcutError {
+                Label(shortcutError, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("Shortcut error: \(shortcutError)")
+            }
+
+            ForEach([HotKeyAction.screenshot, .recordVideo, .recordGif], id: \.self) { action in
+                ShortcutRecorderField(
+                    label: action.displayName,
+                    iconName: nil,
+                    binding: settings.hotKeyBinding(for: action),
+                    defaultBinding: HotKeyBinding.defaultBinding(for: action),
+                    onBindingRecorded: { binding in
+                        shortcutError = applyShortcut(binding, action)
+                        shortcutRevision += 1
+                    }
+                )
+            }
+
+            Text("Stop Recording: \(HotKeyBinding.stopRecording.displayString) (fixed)")
+            Text("More shortcuts are available in Settings → Shortcuts. Changes already made remain if you skip setup.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .id(shortcutRevision)
     }
 
 #if !APPSTORE
@@ -383,6 +520,41 @@ private struct OnboardingWizardView: View {
     }
 #endif
 
+    private var completionContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 16) {
+                Image(systemName: "apple.logo")
+                Text("Tiny Clips")
+                    .fontWeight(.semibold)
+                Spacer()
+                Image(systemName: "camera.viewfinder")
+                    .padding(8)
+                    .background(Color.accentColor.opacity(0.2), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: 2))
+                Image(systemName: "wifi")
+                Text("12:00")
+            }
+            .padding(12)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("macOS menu bar illustration. Tiny Clips is the camera icon near the clock.")
+
+            Label("Find Tiny Clips in your menu bar", systemImage: "arrow.up")
+                .font(.headline)
+            Text("Click the camera icon at the top of your screen to start a capture or open Settings.")
+                .foregroundStyle(.secondary)
+
+            Text("Or use a key binding")
+                .font(.subheadline.weight(.semibold))
+            shortcutRow("Screenshot", action: .screenshot)
+            shortcutRow("Record Video", action: .recordVideo)
+            shortcutRow("Record GIF", action: .recordGif)
+            Text("You can change your preferences and shortcuts anytime in Settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var isLastStep: Bool {
         step == OnboardingStep.allCases.last
     }
@@ -410,11 +582,13 @@ private struct OnboardingWizardView: View {
     }
 
     private func refreshStatus() {
+        launchAtLogin.refresh()
         screenGranted = PermissionManager.shared.hasScreenRecordingPermission()
         microphoneGranted = PermissionManager.shared.microphonePermissionGranted()
 
         Task {
             notificationsGranted = await PermissionManager.shared.notificationPermissionGranted()
+            notificationPermission = await PermissionManager.shared.notificationPermissionState()
         }
     }
 
@@ -436,8 +610,14 @@ private struct OnboardingWizardView: View {
     }
 
     private func requestNotificationPermission() {
+        isRequestingNotifications = true
         Task {
+            defer { isRequestingNotifications = false }
             notificationsGranted = await PermissionManager.shared.requestNotificationPermission()
+            notificationPermission = await PermissionManager.shared.notificationPermissionState()
+            if notificationPermission?.canRequest == true {
+                SaveService.shared.showError("Could not request notification permission. Try again or enable notifications in macOS System Settings.")
+            }
         }
     }
 
@@ -529,6 +709,7 @@ private struct OnboardingWizardView: View {
         HStack(alignment: .center, spacing: 10) {
             Toggle("", isOn: binding)
                 .labelsHidden()
+                .accessibilityLabel(title)
                 .toggleStyle(.switch)
 
             VStack(alignment: .leading, spacing: 2) {

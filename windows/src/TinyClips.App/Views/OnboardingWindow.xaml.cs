@@ -2,36 +2,40 @@ using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.Windows.AppNotifications;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
-using Windows.Graphics;
 
 namespace TinyClips.App;
 
 /// <summary>
-/// First-run welcome wizard. Four steps introduce the app, offer launch at login, and show the
-/// shortcuts, then mark onboarding complete so it does not appear again. Raised via the tray on
-/// first launch.
+/// First-run preferences and capture shortcuts. Explicit changes persist immediately.
 /// </summary>
 public sealed partial class OnboardingWindow : Window
 {
     private const int LaunchAtLoginStep = 2;
-    private const int LastStep = 3;
+    private const int LastStep = 4;
 
-    // 480×520 DIP: step 3 (the densest step) holds an 88-DIP illustration, title, body,
-    // shortcut card, and navigation footer; 520 keeps all content in-frame at 100% DPI.
     private const int MinimumWidthDip  = 480;
     private const int MinimumHeightDip = 520;
 
     private readonly ICaptureSettings _settings;
     private int _step;
     private readonly WindowChromeController _chromeController;
+    private readonly IHotKeyService _hotKeys;
+    private readonly HotKeyEditOperation _hotKeyEdit;
+    private readonly Dictionary<HotKeyAction, TextBlock> _shortcutLabels = new();
 
     public OnboardingViewModel ViewModel { get; }
 
     public OnboardingWindow()
     {
         _settings = App.Services.GetRequiredService<ICaptureSettings>();
+        _hotKeys = App.Services.GetRequiredService<IHotKeyService>();
+        _hotKeyEdit = new HotKeyEditOperation(
+            _hotKeys, () => ((App)Application.Current).ReapplyGlobalHotKeys(), _hotKeys.SetBinding);
         ViewModel = new OnboardingViewModel(App.Services.GetRequiredService<ILaunchAtLoginService>(), _settings);
 
         InitializeComponent();
@@ -54,13 +58,21 @@ public sealed partial class OnboardingWindow : Window
             _ => ElementTheme.Default,
         };
 
-        var hotKeys = App.Services.GetRequiredService<IHotKeyService>();
-        ScreenshotShortcut.Text = hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString;
-        VideoShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
-        GifShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
+        AddShortcutRow(HotKeyAction.Screenshot);
+        AddShortcutRow(HotKeyAction.RecordVideo);
+        AddShortcutRow(HotKeyAction.RecordGif);
+        RefreshShortcuts();
 
         // A change can still finish after the wizard closes; it no longer has a toggle to update.
         Closed += (_, _) => Bindings.StopTracking();
+        Activated += (_, args) =>
+        {
+            if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                RefreshLaunchAtLoginOnItsStep();
+                RefreshShortcuts();
+            }
+        };
 
         _ = ViewModel.RefreshAsync();
         UpdateStep();
@@ -102,6 +114,8 @@ public sealed partial class OnboardingWindow : Window
     {
         if (_step == LaunchAtLoginStep)
         {
+            ViewModel.RefreshPreferences();
+            RefreshNotificationStatus();
             _ = ViewModel.RefreshAsync();
         }
     }
@@ -112,6 +126,8 @@ public sealed partial class OnboardingWindow : Window
         Step1.Visibility = _step == 1 ? Visibility.Visible : Visibility.Collapsed;
         Step2.Visibility = _step == 2 ? Visibility.Visible : Visibility.Collapsed;
         Step3.Visibility = _step == 3 ? Visibility.Visible : Visibility.Collapsed;
+        Step4.Visibility = _step == 4 ? Visibility.Visible : Visibility.Collapsed;
+        RefreshShortcuts();
 
         BackButton.Visibility = _step > 0 ? Visibility.Visible : Visibility.Collapsed;
         SkipButton.Visibility = _step >= LastStep ? Visibility.Collapsed : Visibility.Visible;
@@ -123,5 +139,87 @@ public sealed partial class OnboardingWindow : Window
         Dot1.Style = _step == 1 ? active : inactive;
         Dot2.Style = _step == 2 ? active : inactive;
         Dot3.Style = _step == 3 ? active : inactive;
+        Dot4.Style = _step == 4 ? active : inactive;
+    }
+
+    private void AddShortcutRow(HotKeyAction action)
+    {
+        var label = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        _shortcutLabels.Add(action, label);
+        var row = new StackPanel { Spacing = 8 };
+        row.Children.Add(label);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var edit = new Button { Content = "Edit" };
+        var reset = new Button { Content = "Reset" };
+        var clear = new Button { Content = "Clear" };
+        foreach (var button in new[] { edit, reset, clear })
+        {
+            AutomationProperties.SetName(button, $"{button.Content} {HotKeyEditOperation.ActionName(action)} shortcut");
+            AutomationProperties.SetAutomationId(button, $"Onboarding{action}{button.Content}Shortcut");
+            buttons.Children.Add(button);
+        }
+        edit.Click += (_, _) => HotKeyRecorder.Show(edit, _hotKeys, _hotKeyEdit, action, ReportShortcut);
+        reset.Click += (_, _) => ApplyShortcut(action, _hotKeys.DefaultFor(action));
+        clear.Click += (_, _) => ApplyShortcut(action, new HotKeyDefinition(HotKeyModifiers.None, 0));
+        row.Children.Add(buttons);
+        ShortcutRows.Children.Add(new Border { Style = (Style)Application.Current.Resources["SettingCardStyle"], Child = row });
+    }
+
+    private void ApplyShortcut(HotKeyAction action, HotKeyDefinition candidate)
+    {
+        if (_hotKeyEdit.TryApply(action, candidate, out var error))
+        {
+            ReportShortcut($"{HotKeyEditOperation.ActionName(action)} shortcut: {candidate.DisplayString}.", InfoBarSeverity.Success);
+        }
+        else
+        {
+            ReportShortcut(error, InfoBarSeverity.Error);
+        }
+    }
+
+    private void ReportShortcut(string message, InfoBarSeverity severity)
+    {
+        RefreshShortcuts();
+        ShortcutStatus.Message = message;
+        ShortcutStatus.Severity = severity;
+        ShortcutStatus.IsOpen = true;
+        var peer = FrameworkElementAutomationPeer.FromElement(ShortcutStatus)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(ShortcutStatus);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
+
+    private void RefreshShortcuts()
+    {
+        foreach (var (action, label) in _shortcutLabels)
+        {
+            label.Text = $"{HotKeyEditOperation.ActionName(action)}: {_hotKeys.GetBinding(action).DisplayString}";
+        }
+        ScreenshotShortcut.Text = _hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString;
+        VideoShortcut.Text = _hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
+        GifShortcut.Text = _hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
+    }
+
+    private void RefreshNotificationStatus()
+    {
+        try
+        {
+            var setting = AppNotificationManager.Default.Setting;
+            NotificationStatus.Text = setting == AppNotificationSetting.Enabled
+                ? "Windows allows notifications. Do not disturb can still silence alerts."
+                : $"Windows notification availability: {setting}. Turning on save notifications does not override Windows settings.";
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Unable to read notification availability: {ex}");
+            NotificationStatus.Text = "Couldn't check Windows notification availability. Check Windows notification settings.";
+        }
+    }
+
+    private async void OnNotificationSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        if (!await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:notifications")))
+        {
+            NotificationStatus.Text = "Couldn't open Windows notification settings. Open Windows Settings → System → Notifications.";
+        }
     }
 }

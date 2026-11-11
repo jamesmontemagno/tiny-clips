@@ -975,7 +975,7 @@ struct ScreenshotEditorView: View {
         )
         .confirmationDialog(closePrompt.title, isPresented: $showExitConfirmation, titleVisibility: .visible) {
             if closePrompt.isDestructive {
-                Button(closePrompt.confirmTitle, role: .destructive) {
+                Button(closePrompt.confirmTitle) {
                     onDone(lastSavedURL)
                 }
             } else {
@@ -985,14 +985,16 @@ struct ScreenshotEditorView: View {
                 .keyboardShortcut(.defaultAction)
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(closePrompt.isDestructive ? .defaultAction : .cancelAction)
         } message: {
             Text(closePrompt.message)
         }
         .confirmationDialog("Delete \(imageURL.lastPathComponent)?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-            Button("Delete Screenshot", role: .destructive) {
+            Button("Delete Screenshot") {
                 deleteSource()
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: {
             if let lastSavedURL,
                lastSavedURL.standardizedFileURL != imageURL.standardizedFileURL {
@@ -1004,10 +1006,11 @@ struct ScreenshotEditorView: View {
             }
         }
         .confirmationDialog("Clear all annotations?", isPresented: $showClearAnnotationsConfirmation, titleVisibility: .visible) {
-            Button("Clear Annotations", role: .destructive) {
+            Button("Clear Annotations") {
                 viewModel.clearAnnotations()
             }
             Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
         } message: {
             Text("This removes all annotations from the screenshot.")
         }

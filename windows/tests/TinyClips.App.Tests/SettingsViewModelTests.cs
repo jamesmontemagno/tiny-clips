@@ -10,6 +10,32 @@ namespace TinyClips.App.Tests;
 public sealed class SettingsViewModelTests
 {
     [Fact]
+    public void RefreshHotKeyDisplays_ReportsExternalEditsClearAndResetWithoutWritingSettings()
+    {
+        var fixture = new Fixture();
+        var hotKeys = new HotKeyService(fixture.Settings);
+        var vm = fixture.CreateViewModel(hotKeys: hotKeys);
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, args) => notifications.Add(args.PropertyName);
+        var screenshotBinding = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Alt, 0x41);
+        hotKeys.SetBinding(HotKeyAction.Screenshot, screenshotBinding);
+        hotKeys.SetBinding(HotKeyAction.RecordVideo, new HotKeyDefinition(HotKeyModifiers.None, 0));
+        hotKeys.SetBinding(HotKeyAction.RecordGif, hotKeys.DefaultFor(HotKeyAction.RecordGif));
+        var writesBefore = fixture.Store.Writes;
+
+        vm.RefreshHotKeyDisplays();
+
+        Assert.Equal(screenshotBinding.DisplayString, vm.ScreenshotHotKeyDisplay);
+        Assert.Equal(hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString, vm.VideoHotKeyDisplay);
+        Assert.Equal(hotKeys.DefaultFor(HotKeyAction.RecordGif).DisplayString, vm.GifHotKeyDisplay);
+        Assert.Equal(
+            ["ScreenshotHotKeyDisplay", "VideoHotKeyDisplay", "GifHotKeyDisplay", "OcrHotKeyDisplay",
+                "ScreenshotRegionHotKeyDisplay", "ScreenshotWindowHotKeyDisplay", "ScreenshotScreenHotKeyDisplay"],
+            notifications);
+        Assert.Equal(writesBefore, fixture.Store.Writes);
+    }
+
+    [Fact]
     public async Task TemporaryFiles_SlowScanDoesNotBlockOrRepeatOnBindingReads()
     {
         var fixture = new Fixture();
@@ -1068,8 +1094,9 @@ public sealed class SettingsViewModelTests
             ITeleprompterTranscriptSaveScheduler? scheduler = null,
             IClipAnalyticsService? analytics = null,
             Func<TemporaryFilesSummary>? getTemporaryFilesSummary = null,
-            Func<TemporaryFilesPurgeResult>? purgeTemporaryFiles = null) => new(
-            Settings, new FakeHotKeys(), LaunchAtLogin, Audio, Webcams, new FakeStorage(),
+            Func<TemporaryFilesPurgeResult>? purgeTemporaryFiles = null,
+            IHotKeyService? hotKeys = null) => new(
+            Settings, hotKeys ?? new FakeHotKeys(), LaunchAtLogin, Audio, Webcams, new FakeStorage(),
             analytics ?? Analytics, Credentials, dispatcherQueue: null, transcriptSaveScheduler: scheduler,
             getTemporaryFilesSummary: getTemporaryFilesSummary, purgeTemporaryFiles: purgeTemporaryFiles);
     }

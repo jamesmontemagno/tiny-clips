@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- macOS confirmation dialogs use standard, appearance-aware buttons instead of low-contrast destructive styling, including Studio, Clips Library, screenshot and video/GIF editors, cleanup, and analytics reset. Cancel is the default for destructive confirmations.
+
 ### Changed
 - The macOS screenshot editor can now change the color, fill, and stroke width of a selected rectangle, circle, arrow, line, or pencil stroke, with undo. Stroke width is a 1–40 px slider measured in image pixels, like Windows; the starting width scales with the capture so large screenshots keep their previous look.
 - macOS screenshot rectangles, circles, lines, and arrows can be **Hand-drawn**, with a **Roughness** slider. Each annotation keeps its own wobble as it moves or redraws, and arrows keep their taper.
@@ -14,6 +17,8 @@ All notable changes to this project will be documented in this file.
 - Rectangles and circles in the macOS screenshot editor have a **Stroke position** option to draw the border inside, centered on, or outside the shape's edge. Centered is the default, as before.
 - Translucent arrows and lines in the macOS screenshot editor no longer draw darker where the shaft meets the head or a cap.
 - macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrow.
+- The macOS welcome wizard opens in a larger, resizable window so setup content has more room.
+- The macOS welcome wizard now offers five quick preferences (launch at login, screenshot clipboard and editor behavior, video/GIF countdown, and save notifications) and lets you customize the Screenshot, Record Video, and Record GIF shortcuts. Changes apply immediately without resetting saved choices; additional capture options remain available. Recording countdown uses a switch with a shorter description, and the final page illustrates how to open Tiny Clips from the menu bar.
 - The Recent Captures menu on macOS and Windows now shows the 10 newest items instead of 5.
 
 ## v2.1.0.1-mac - 2026-11-08

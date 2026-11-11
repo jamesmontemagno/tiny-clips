@@ -27,6 +27,7 @@
     <Compile Include="..\..\src\TinyClips.App\Services\QuickBugReport.cs" Link="QuickBugReport.cs" />
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\BuildFlavor.cs" Link="BuildFlavor.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\GlobalHotKeyFailureFormatter.cs" Link="GlobalHotKeyFailureFormatter.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Services\HotKeyEditOperation.cs" Link="HotKeyEditOperation.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\GlobalHotKeyManager.cs" Link="GlobalHotKeyManager.cs" />
     <!--
       A Studio project saved as a folder (#429): how the app tells a .tinyclips file from a

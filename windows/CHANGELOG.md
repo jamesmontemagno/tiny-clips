@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- Keyboard shortcut labels in an already-open Settings window refresh when returning from onboarding after editing, clearing, or resetting a shortcut.
+
 ### Changed
 - Screenshot editor lines and arrows now have **Start** and **End** controls for flat, round, or square ends (arrows have a start control; their other end is the head), and rectangles have a **Corners** option under **Advanced** for sharp, round, or beveled corners. New rectangles now default to round corners.
 - Rectangles and ellipses in the screenshot editor have a **Stroke position** option to draw the border inside, centered on, or outside the shape's edge. Centered is the default, as before. The saved image is exact; the live preview approximates inside and outside borders on ellipses.
@@ -13,6 +16,7 @@ own `CHANGELOG.md` at the repository root.
 - Screenshot pen strokes are now smooth, tapered ink: the line follows the pointer more steadily, thins slightly when drawn quickly, tapers at both ends, and keeps an even color when translucent.
 - Screenshot arrows and lines now have a **Fill** (the body's color), a **Size** (its thickness), and an optional outline: a **Stroke color** and **Stroke** width (none by default) placed by **Stroke position**, which starts at **Outside** for arrows and lines. For shapes, the color control is now named **Stroke color** and sits directly above the **Stroke** width. In the live preview an inside outline is shown centered; the saved image draws it exactly.
 - Screenshot arrows are now one smooth shape with an **Arrow** picker for **Classic**, **Tapered**, and **Curved** presets. Drag the diamond handle on a selected arrow's middle to bend it either way (it snaps straight near the line), and use **Advanced** to set its **Arc**, **Start width**, **End width**, **Head size**, and head **Corners**. Editing any of these shows **Custom**. The previous straight and curved arrow styles are replaced by these controls. Arrows in the live preview now match the saved image at every zoom level, and a curved arrow can be selected anywhere along its curve.
+- The welcome wizard now offers five quick preferences (launch at login, screenshot clipboard and editor behavior, video/GIF countdown, and save notifications) and editable Screenshot, Record Video, and Record GIF shortcuts. Changes apply immediately without resetting saved choices; shortcut recording uses the same validated flyout as Settings. Recording countdown uses a toggle with a shorter description, and the final page illustrates how to open Tiny Clips from the taskbar's system tray.
 - The tray's Recent menu now shows the 10 newest items instead of 5.
 
 ### Added
@@ -39,6 +43,7 @@ own `CHANGELOG.md` at the repository root.
 - Studio **Export** now opens a flyout to choose the resolution (Source, 4K, 1440p, 1080p, 720p or 480p) and quality (Best, High, Standard or Small file), and shows the pixel size and estimated file size they come to. It starts at 1080p and High, and offers your last choice next time. A video keeps its canvas's shape and is never scaled up. Source exports the canvas at its own size, even past 4K; a size the PC's encoders cannot make fails with a message to choose 4K or smaller. Above 4K the bitrate grows with the pixel count instead of stopping at the 4K ceiling. Agents can pass `resolution` and `quality` to `studio.export`, list what is on offer with `studio.export.options`, and read or set the remembered choice as settings; omitted values now use that choice rather than the largest size, and the result reports the video `codec` written.
 
 ### Fixed
+- Studio's inspector is wider so the Scene panel's "Side by side" layout label fits in its segmented control.
 - Finishing the getting started wizard no longer closes the app; Tiny Clips keeps running in the system tray. Closing any other window as the last one open no longer exits it either.
 - Studio's segmented choices remain usable while a screen reader is listening.
 - Studio preview handles multiple shadowed emoji without failing and keeps every shadow when many are visible.

@@ -179,6 +179,16 @@ xcodebuild test -project mac/TinyClips.xcodeproj -scheme TinyClips -configuratio
 
 TinyClips requires **Screen Recording** permission at runtime. On first launch, macOS will prompt you to grant access in **System Settings → Privacy & Security → Screen Recording**.
 
+The macOS welcome wizard also offers launch at login, screenshot clipboard and editor
+preferences, a combined video/GIF countdown choice, save notifications, and editable
+Screenshot/Record Video/Record GIF shortcuts. Explicit changes apply immediately and remain
+if setup is skipped; opening or revisiting setup preserves saved choices. The countdown
+toggle changes both enabled flags without changing their individual durations; a short note
+indicates different saved flags. Additional capture options remain in a disclosure.
+The final page illustrates the menu bar camera icon used to open Tiny Clips.
+Notification authorization is separate from the save-notification preference. Only the
+direct-distribution wizard includes automatic updates; the Mac App Store variant does not.
+
 ---
 
 ## Project Structure

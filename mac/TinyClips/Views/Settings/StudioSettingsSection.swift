@@ -387,18 +387,16 @@ struct StudioSettingsSection: View {
         alert.alertStyle = .warning
         alert.messageText = "Delete this draft?"
         alert.informativeText = "\"\(row.name)\" and its recordings will be removed. This cannot be undone."
-        let deleteButton = alert.addButton(withTitle: "Delete")
-        deleteButton.hasDestructiveAction = true
-        // An alert's first button answers Return. This one must not: it cannot be undone.
-        deleteButton.keyEquivalent = ""
-        // Esc, by its title.
+        // Use standard button contrast; destructive styling can hide Delete in dark mode.
+        // Cancel comes first so Return never deletes a recording.
         let cancelButton = alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Delete")
         // With Keyboard Navigation switched on, Space presses the button that has the focus.
         // That is to be Cancel. The alert is laid out here, so that what is set after it is
         // what the alert opens with.
         alert.layout()
         alert.window.initialFirstResponder = cancelButton
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
         delete(row)
     }
 

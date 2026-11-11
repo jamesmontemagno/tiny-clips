@@ -20,11 +20,85 @@ public sealed class OnboardingViewModel : ObservableObject
     private bool _launchAtLogin;
     private bool _canChangeLaunchAtLogin;
     private string _launchAtLoginNote = string.Empty;
+    private bool _copyScreenshotToClipboard;
+    private bool _showScreenshotEditor;
+    private bool _showSaveNotifications;
+    private bool? _recordingCountdown;
 
     public OnboardingViewModel(ILaunchAtLoginService launchAtLoginService, ICaptureSettings settings)
     {
         _launchAtLoginService = launchAtLoginService;
         _settings = settings;
+        RefreshPreferences();
+    }
+
+    public bool CopyScreenshotToClipboard
+    {
+        get => _copyScreenshotToClipboard;
+        set
+        {
+            if (SetProperty(ref _copyScreenshotToClipboard, value))
+            {
+                _settings.CopyScreenshotToClipboard = value;
+            }
+        }
+    }
+
+    public bool ShowScreenshotEditor
+    {
+        get => _showScreenshotEditor;
+        set
+        {
+            if (SetProperty(ref _showScreenshotEditor, value))
+            {
+                _settings.ShowScreenshotEditor = value;
+            }
+        }
+    }
+
+    public bool ShowSaveNotifications
+    {
+        get => _showSaveNotifications;
+        set
+        {
+            if (SetProperty(ref _showSaveNotifications, value))
+            {
+                _settings.ShowSaveNotifications = value;
+            }
+        }
+    }
+
+    public bool RecordingCountdown
+    {
+        get => _recordingCountdown == true;
+        set
+        {
+            // A mixed saved state displays as Custom; initial binding write-backs must not normalize it.
+            if (value != RecordingCountdown)
+            {
+                _recordingCountdown = value;
+                _settings.VideoCountdownEnabled = value;
+                _settings.GifCountdownEnabled = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(RecordingCountdownOffContent));
+            }
+        }
+    }
+
+    public string RecordingCountdownOffContent => _recordingCountdown is null ? "Custom" : "Off";
+
+    public void RefreshPreferences()
+    {
+        SetProperty(ref _copyScreenshotToClipboard, _settings.CopyScreenshotToClipboard, nameof(CopyScreenshotToClipboard));
+        SetProperty(ref _showScreenshotEditor, _settings.ShowScreenshotEditor, nameof(ShowScreenshotEditor));
+        SetProperty(ref _showSaveNotifications, _settings.ShowSaveNotifications, nameof(ShowSaveNotifications));
+        bool? countdown = _settings.VideoCountdownEnabled == _settings.GifCountdownEnabled
+            ? _settings.VideoCountdownEnabled
+            : null;
+        if (SetProperty(ref _recordingCountdown, countdown, nameof(RecordingCountdown)))
+        {
+            OnPropertyChanged(nameof(RecordingCountdownOffContent));
+        }
     }
 
     public bool LaunchAtLogin
