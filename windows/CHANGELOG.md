@@ -5,7 +5,11 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- Keyboard shortcut labels in an already-open Settings window refresh when returning from onboarding after editing, clearing, or resetting a shortcut.
+
 ### Changed
+- The welcome wizard now offers five quick preferences (launch at login, screenshot clipboard and editor behavior, video/GIF countdown, and save notifications) and editable Screenshot, Record Video, and Record GIF shortcuts. Changes apply immediately without resetting saved choices; shortcut recording uses the same validated flyout as Settings. Recording countdown uses a toggle with a shorter description, and the final page illustrates how to open Tiny Clips from the taskbar's system tray.
 - The tray's Recent menu now shows the 10 newest items instead of 5.
 
 ### Added

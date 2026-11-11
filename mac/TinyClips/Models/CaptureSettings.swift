@@ -539,6 +539,11 @@ class CaptureSettings: ObservableObject {
     @AppStorage("videoRecordingTimeLimitMinutes") var videoRecordingTimeLimitMinutes: Int = 0
     @AppStorage("gifCountdownEnabled") var gifCountdownEnabled: Bool = true
     @AppStorage("gifCountdownDuration") var gifCountdownDuration: Int = 3
+
+    func setRecordingCountdown(_ enabled: Bool) {
+        videoCountdownEnabled = enabled
+        gifCountdownEnabled = enabled
+    }
     @AppStorage("screenshotCountdownEnabled") var screenshotCountdownEnabled: Bool = false
     @AppStorage("screenshotCountdownDuration") var screenshotCountdownDuration: Int = 3
     @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false

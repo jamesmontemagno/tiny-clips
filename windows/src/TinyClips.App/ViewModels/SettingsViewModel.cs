@@ -1044,17 +1044,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     public void SetHotKey(HotKeyAction action, HotKeyModifiers modifiers, uint virtualKey)
     {
         _hotKeys.SetBinding(action, new HotKeyDefinition(modifiers, virtualKey));
-        RaiseHotKeyDisplays();
+        RefreshHotKeyDisplays();
     }
 
     /// <summary>Restores the default shortcut for the given action.</summary>
     public void ResetHotKey(HotKeyAction action)
     {
         _hotKeys.SetBinding(action, _hotKeys.DefaultFor(action));
-        RaiseHotKeyDisplays();
+        RefreshHotKeyDisplays();
     }
 
-    private void RaiseHotKeyDisplays()
+    internal void RefreshHotKeyDisplays()
     {
         OnPropertyChanged(nameof(ScreenshotHotKeyDisplay));
         OnPropertyChanged(nameof(VideoHotKeyDisplay));

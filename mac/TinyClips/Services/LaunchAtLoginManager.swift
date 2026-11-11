@@ -11,6 +11,10 @@ final class LaunchAtLoginManager: ObservableObject {
         isEnabled = SMAppService.mainApp.status == .enabled
     }
 
+    func refresh() {
+        isEnabled = SMAppService.mainApp.status == .enabled
+    }
+
     func setEnabled(_ enabled: Bool) {
         do {
             if enabled {
@@ -21,6 +25,6 @@ final class LaunchAtLoginManager: ObservableObject {
         } catch {
             SaveService.shared.showError("Could not \(enabled ? "enable" : "disable") launch at login: \(error.localizedDescription)")
         }
-        isEnabled = SMAppService.mainApp.status == .enabled
+        refresh()
     }
 }

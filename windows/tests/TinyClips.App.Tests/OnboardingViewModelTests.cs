@@ -175,14 +175,106 @@ public sealed class OnboardingViewModelTests
         var elements = SettingsMarkup.Elements(markup);
         string?[] names = [.. elements.Select(element => element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value)];
 
-        Assert.Equal(["Step0", "Step1", "Step2", "Step3"], names.Where(name => name?.StartsWith("Step", StringComparison.Ordinal) == true));
-        Assert.Equal(["Dot0", "Dot1", "Dot2", "Dot3"], names.Where(name => name?.StartsWith("Dot", StringComparison.Ordinal) == true));
+        Assert.Equal(["Step0", "Step1", "Step2", "Step3", "Step4"], names.Where(name => name?.StartsWith("Step", StringComparison.Ordinal) == true));
+        Assert.Equal(["Dot0", "Dot1", "Dot2", "Dot3", "Dot4"], names.Where(name => name?.StartsWith("Dot", StringComparison.Ordinal) == true));
 
-        var toggle = Assert.Single(elements, element => element.Name.LocalName == "ToggleSwitch");
+        var toggle = Assert.Single(elements, element => element.Attr("AutomationProperties.AutomationId") == "OnboardingLaunchAtLoginToggle");
         Assert.Equal("OnboardingLaunchAtLoginToggle", toggle.Attr("AutomationProperties.AutomationId"));
         Assert.Equal("Launch at login", toggle.Attr("AutomationProperties.Name"));
         Assert.Equal("{x:Bind ViewModel.CanChangeLaunchAtLogin, Mode=OneWay}", toggle.Attr("IsEnabled"));
-        Assert.Equal(["LaunchAtLogin"], SettingsMarkup.TwoWayViewModelProperties(markup));
+        Assert.Equal(
+            ["CopyScreenshotToClipboard", "LaunchAtLogin", "RecordingCountdown", "ShowSaveNotifications", "ShowScreenshotEditor"],
+            SettingsMarkup.TwoWayViewModelProperties(markup).Order());
+        var countdown = Assert.Single(elements, element =>
+            element.Attr("AutomationProperties.Name") == "Countdown before video and GIF recording");
+        Assert.Equal("ToggleSwitch", countdown.Name.LocalName);
+        Assert.Equal("{x:Bind ViewModel.RecordingCountdown, Mode=TwoWay}", countdown.Attr("IsOn"));
+    }
+
+    [Fact]
+    public void CompletionPage_ShowsTrayGuidanceBeforeAlternativeKeyBindings()
+    {
+        var elements = SettingsMarkup.Elements("OnboardingWindow.xaml").ToList();
+        var title = elements.FindIndex(element => element.Attr("Text") == "You're all set");
+        var illustration = elements.FindIndex(element =>
+            element.Attr("AutomationProperties.Name") == "Windows taskbar illustration. Tiny Clips is in the system tray near the clock.");
+        var alternative = elements.FindIndex(element => element.Attr("Text") == "Or use a key binding");
+        var bindings = elements.FindIndex(element =>
+            element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value == "ScreenshotShortcut");
+
+        Assert.True(title >= 0 && title < illustration);
+        Assert.True(illustration < alternative && alternative < bindings);
+    }
+
+    [Fact]
+    public void RefreshingPreferences_PreservesMixedCountdownAndDoesNotWrite()
+    {
+        var storage = new MemorySettings();
+        var settings = new CaptureSettings(storage);
+        settings.VideoCountdownEnabled = true;
+        settings.GifCountdownEnabled = false;
+        settings.CopyScreenshotToClipboard = false;
+        var writesBefore = storage.Writes;
+        var model = new OnboardingViewModel(new FakeLaunchAtLogin(), settings);
+
+        Assert.False(model.RecordingCountdown);
+        Assert.Equal("Custom", model.RecordingCountdownOffContent);
+        Assert.False(model.CopyScreenshotToClipboard);
+        model.CopyScreenshotToClipboard = model.CopyScreenshotToClipboard;
+        model.RecordingCountdown = model.RecordingCountdown;
+        model.RefreshPreferences();
+
+        Assert.Equal(writesBefore, storage.Writes);
+        Assert.True(settings.VideoCountdownEnabled);
+        Assert.False(settings.GifCountdownEnabled);
+        Assert.Equal("Custom", model.RecordingCountdownOffContent);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CountdownChoice_UpdatesBothAndPreservesSavedDurations(bool enabled)
+    {
+        var fixture = new Fixture();
+        fixture.Settings.VideoCountdownEnabled = true;
+        fixture.Settings.GifCountdownEnabled = false;
+        fixture.Settings.VideoCountdownDuration = 8;
+        fixture.Settings.GifCountdownDuration = 5;
+        fixture.Settings.ScreenshotCountdownEnabled = true;
+        fixture.ViewModel.RefreshPreferences();
+
+        fixture.ViewModel.RecordingCountdown = true;
+        fixture.ViewModel.RecordingCountdown = enabled;
+
+        Assert.Equal(enabled, fixture.Settings.VideoCountdownEnabled);
+        Assert.Equal(enabled, fixture.Settings.GifCountdownEnabled);
+        Assert.Equal(8, fixture.Settings.VideoCountdownDuration);
+        Assert.Equal(5, fixture.Settings.GifCountdownDuration);
+        Assert.True(fixture.Settings.ScreenshotCountdownEnabled);
+        Assert.Equal(enabled, fixture.ViewModel.RecordingCountdown);
+        Assert.Equal("Off", fixture.ViewModel.RecordingCountdownOffContent);
+    }
+
+    [Fact]
+    public void ExplicitPreferences_PersistImmediatelyAndReopenWithoutChangingOtherCaptureOptions()
+    {
+        var fixture = new Fixture();
+        fixture.ViewModel.CopyScreenshotToClipboard = false;
+        fixture.ViewModel.ShowScreenshotEditor = false;
+        fixture.ViewModel.ShowSaveNotifications = true;
+
+        var reopened = new OnboardingViewModel(fixture.LaunchAtLogin, fixture.Settings);
+        Assert.False(reopened.CopyScreenshotToClipboard);
+        Assert.False(reopened.ShowScreenshotEditor);
+        Assert.True(reopened.ShowSaveNotifications);
+        Assert.True(fixture.Settings.ShowTrimmer);
+        Assert.True(fixture.Settings.ShowGifTrimmer);
+        Assert.False(fixture.Settings.CopyVideoToClipboard);
+        Assert.False(fixture.Settings.CopyGifToClipboard);
+
+        fixture.Settings.CopyScreenshotToClipboard = true;
+        reopened.RefreshPreferences();
+        Assert.True(reopened.CopyScreenshotToClipboard);
     }
 
     private sealed class Fixture
@@ -223,12 +315,17 @@ public sealed class OnboardingViewModelTests
     private sealed class MemorySettings : ISettingsService
     {
         private readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);
+        public int Writes { get; private set; }
         public AppTheme Theme { get; set; }
         public string SaveDirectory { get; set; } = string.Empty;
 
         public T Get<T>(string key, T defaultValue) =>
             _values.TryGetValue(key, out var value) && value is T typed ? typed : defaultValue;
 
-        public void Set<T>(string key, T value) => _values[key] = value;
+        public void Set<T>(string key, T value)
+        {
+            Writes++;
+            _values[key] = value;
+        }
     }
 }

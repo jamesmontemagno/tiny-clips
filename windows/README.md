@@ -41,8 +41,15 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   for the screen and the camera, cuts, speed changes, trim, and MP4 export.
   The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
 - **Region outline** — a red outline frames the selected region during the countdown.
-- **Onboarding & Guide** — a first-run welcome wizard, including an optional launch-at-login
-  choice, and an in-app help reference.
+- **Onboarding & Guide** — a first-run welcome wizard with five quick preferences: launch at
+  login, copy screenshots to clipboard, open the screenshot editor, video/GIF countdown, and
+  save notifications. Customize Screenshot, Record Video, and Record GIF shortcuts with the
+  same validated recorder used in Settings. Explicit changes apply immediately and remain if
+  you skip setup; opening setup never resets saved choices. The countdown choice updates both
+  video and GIF without changing their saved durations, and shows Custom if they differ.
+  Windows notification availability is separate from the save-notification preference.
+  The final page illustrates where to find Tiny Clips in the taskbar's system tray.
+  An in-app Guide provides a help reference.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
   **Smart Collections** (All, Recent, This Week, This Month, Large Files, Favorites, Screenshots,
   Videos, GIFs), your **Collections**, and **Tags**; search across names, tags and notes; a
