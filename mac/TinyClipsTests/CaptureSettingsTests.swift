@@ -26,6 +26,28 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(CaptureSettings.imageFormat(from: "invalid"), .jpeg)
     }
 
+    func testWelcomeCountdownChoiceUpdatesBothWithoutChangingDurationsOrScreenshotCountdown() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        settings.videoCountdownEnabled = true
+        settings.gifCountdownEnabled = false
+        settings.videoCountdownDuration = 7
+        settings.gifCountdownDuration = 5
+        settings.screenshotCountdownEnabled = true
+        settings.screenshotCountdownDuration = 9
+
+        for enabled in [false, true] {
+            settings.setRecordingCountdown(enabled)
+
+            let reopened = CaptureSettings(defaults: defaults, performMigrations: false)
+            XCTAssertEqual(reopened.videoCountdownEnabled, enabled)
+            XCTAssertEqual(reopened.gifCountdownEnabled, enabled)
+            XCTAssertEqual(reopened.videoCountdownDuration, 7)
+            XCTAssertEqual(reopened.gifCountdownDuration, 5)
+            XCTAssertTrue(reopened.screenshotCountdownEnabled)
+            XCTAssertEqual(reopened.screenshotCountdownDuration, 9)
+        }
+    }
+
     func testStudioPickerIsDistinctFromVideoButRetainsVideoCaptureRouting() {
         let studio = CapturePickerIntent(captureType: .video, forStudio: true)
         XCTAssertEqual(studio, .studio)

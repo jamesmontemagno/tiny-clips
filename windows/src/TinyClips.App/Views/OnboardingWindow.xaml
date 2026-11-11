@@ -106,25 +106,24 @@
                     Title="Studio Mode" />
             </StackPanel>
 
-            <!--  Step 2: Launch at login  -->
-            <StackPanel
+            <!--  Step 2: Preferences  -->
+            <ScrollViewer
                 x:Name="Step2"
-                MaxWidth="560"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Spacing="16"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled"
                 Visibility="Collapsed">
+            <StackPanel MaxWidth="560" Spacing="12" Padding="0,8">
                 <TextBlock
                     HorizontalAlignment="Center"
                     Style="{StaticResource TitleTextBlockStyle}"
-                    Text="Start Tiny Clips with Windows?"
+                    Text="Make it yours"
                     TextAlignment="Center"
                     TextWrapping="Wrap" />
                 <TextBlock
                     HorizontalAlignment="Center"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource BodyTextBlockStyle}"
-                    Text="Tiny Clips runs quietly in your system tray. Start it when you sign in so your capture shortcuts are always ready."
+                    Text="Changes apply as you make them. You can change these later in Settings."
                     TextAlignment="Center"
                     TextWrapping="Wrap" />
                 <controls:SettingsCard
@@ -148,45 +147,118 @@
                         IsEnabled="{x:Bind ViewModel.CanChangeLaunchAtLogin, Mode=OneWay}"
                         IsOn="{x:Bind ViewModel.LaunchAtLogin, Mode=TwoWay}" />
                 </controls:SettingsCard>
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="You can change this any time in Settings → General."
-                    TextAlignment="Center"
-                    TextWrapping="Wrap" />
+                <controls:SettingsCard
+                    Header="Copy screenshots to clipboard"
+                    Description="Paste your screenshot straight into a chat or document."
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
+                    <ToggleSwitch
+                        AutomationProperties.Name="Copy screenshots to clipboard"
+                        IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Header="Open screenshot editor"
+                    Description="Annotate or crop after capturing. Turn off for fewer interruptions."
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}">
+                    <ToggleSwitch
+                        AutomationProperties.Name="Open screenshot editor after capture"
+                        IsOn="{x:Bind ViewModel.ShowScreenshotEditor, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Header="Recording countdown"
+                    Description="Get ready before recording video or GIF."
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE916;}">
+                    <ToggleSwitch
+                        AutomationProperties.Name="Countdown before video and GIF recording"
+                        AutomationProperties.HelpText="Custom means video and GIF have different saved settings."
+                        OffContent="{x:Bind ViewModel.RecordingCountdownOffContent, Mode=OneWay}"
+                        IsOn="{x:Bind ViewModel.RecordingCountdown, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Header="Notify after saving"
+                    Description="Confirm when your capture has been saved."
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE7F4;}">
+                    <ToggleSwitch
+                        AutomationProperties.Name="Notify after saving"
+                        IsOn="{x:Bind ViewModel.ShowSaveNotifications, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <TextBlock x:Name="NotificationStatus" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
+                <HyperlinkButton Content="Windows notification settings" Click="OnNotificationSettingsClicked" />
             </StackPanel>
+            </ScrollViewer>
 
-            <!--  Step 3: All set  -->
-            <StackPanel
+            <!--  Step 3: Shortcuts  -->
+            <ScrollViewer
                 x:Name="Step3"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled"
+                Visibility="Collapsed">
+                <StackPanel MaxWidth="560" Spacing="12" Padding="0,8">
+                    <TextBlock Text="Your capture shortcuts" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="These work system-wide. Edit, clear, or reset each shortcut. Record video makes an ordinary recording, not Studio." TextWrapping="Wrap" />
+                    <StackPanel x:Name="ShortcutRows" Spacing="8" />
+                    <InfoBar x:Name="ShortcutStatus" IsOpen="False" AutomationProperties.LiveSetting="Polite" />
+                    <TextBlock Text="Stop recording: Ctrl+Shift+S (fixed)" TextWrapping="Wrap" />
+                    <TextBlock Text="More shortcuts are available in Settings → Keyboard shortcuts. Changes already made remain if you skip setup." TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!--  Step 4: All set  -->
+            <ScrollViewer
+                x:Name="Step4"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled"
+                Visibility="Collapsed">
+            <StackPanel
                 MaxWidth="560"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Spacing="16"
-                Visibility="Collapsed">
-                <Border
-                    Width="88"
-                    Height="88"
-                    HorizontalAlignment="Center"
-                    Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}"
-                    CornerRadius="20">
-                    <FontIcon
-                        FontFamily="Segoe Fluent Icons"
-                        FontSize="44"
-                        Foreground="{ThemeResource SystemFillColorSuccessBrush}"
-                        Glyph="&#xE73E;" />
-                </Border>
+                Spacing="16">
                 <TextBlock
                     HorizontalAlignment="Center"
                     Style="{StaticResource TitleTextBlockStyle}"
                     Text="You're all set" />
+                <Border
+                    Padding="16,12"
+                    Margin="0,8,0,0"
+                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    AutomationProperties.Name="Windows taskbar illustration. Tiny Clips is in the system tray near the clock."
+                    AutomationProperties.AccessibilityView="Content">
+                    <Grid ColumnSpacing="16" AutomationProperties.AccessibilityView="Raw">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Taskbar" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                            <FontIcon FontSize="14" Glyph="&#xE70E;" />
+                            <Border
+                                Padding="8"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                CornerRadius="8">
+                                <Image Width="24" Height="24" Source="ms-appx:///Assets/TrayIcon.ico" />
+                            </Border>
+                            <FontIcon FontSize="14" Glyph="&#xE767;" />
+                            <TextBlock VerticalAlignment="Center" Text="12:00" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
                 <TextBlock
                     HorizontalAlignment="Center"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource BodyTextBlockStyle}"
-                    Text="Use these shortcuts any time, or click the tray icon."
+                    Text="Click Tiny Clips in the taskbar's system tray, near the clock, to start a capture. If it's hidden, open the up arrow."
                     TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Or use a key binding"
                     TextWrapping="Wrap" />
                 <Border Style="{StaticResource SettingCardStyle}">
                     <StackPanel Spacing="8">
@@ -226,6 +298,7 @@
                     </StackPanel>
                 </Border>
             </StackPanel>
+            </ScrollViewer>
         </Grid>
 
         <!--  Footer  -->
@@ -245,7 +318,7 @@
                 <Button
                     x:Name="SkipButton"
                     AutomationProperties.AutomationId="OnboardingSkipButton"
-                    AutomationProperties.HelpText="Close the welcome guide and start using Tiny Clips"
+                    AutomationProperties.HelpText="Close setup and keep changes already made"
                     Background="Transparent"
                     BorderThickness="0"
                     Click="OnSkipClicked"
@@ -281,6 +354,11 @@
                     Style="{StaticResource DotInactiveStyle}" />
                 <Ellipse
                     x:Name="Dot3"
+                    Width="8"
+                    Height="8"
+                    Style="{StaticResource DotInactiveStyle}" />
+                <Ellipse
+                    x:Name="Dot4"
                     Width="8"
                     Height="8"
                     Style="{StaticResource DotInactiveStyle}" />

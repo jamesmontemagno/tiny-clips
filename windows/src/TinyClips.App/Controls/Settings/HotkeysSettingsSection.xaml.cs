@@ -1,28 +1,29 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Microsoft.UI.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using TinyClips.Core.Models;
-using Windows.System;
-using Windows.UI.Core;
+using TinyClips.Core.Services;
 
 namespace TinyClips.App.Settings.Sections;
 
-/// <summary>Screenshot/video/GIF global hotkey display, editing, and reset.</summary>
 public sealed partial class HotkeysSettingsSection : UserControl
 {
     private readonly IDisposable _realizationScope;
+    private readonly IHotKeyService _hotKeys;
+    private readonly HotKeyEditOperation _edit;
 
     public SettingsViewModel ViewModel { get; }
 
     public HotkeysSettingsSection(SettingsViewModel viewModel)
     {
         ViewModel = viewModel;
+        _hotKeys = App.Services.GetRequiredService<IHotKeyService>();
+        _edit = new HotKeyEditOperation(
+            _hotKeys,
+            () => ((App)Application.Current).ReapplyGlobalHotKeys(),
+            (action, binding) => ViewModel.SetHotKey(action, binding.Modifiers, binding.VirtualKey));
         _realizationScope = viewModel.BeginSectionRealization(SettingsSectionKind.Hotkeys);
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
@@ -30,296 +31,53 @@ public sealed partial class HotkeysSettingsSection : UserControl
 
     private static HotKeyAction ActionFromTag(object? tag) => (tag as string) switch
     {
+        "Screenshot" => HotKeyAction.Screenshot,
         "Video" => HotKeyAction.RecordVideo,
         "Gif" => HotKeyAction.RecordGif,
         "RecognizeText" => HotKeyAction.RecognizeText,
         "ScreenshotRegion" => HotKeyAction.ScreenshotRegion,
         "ScreenshotWindow" => HotKeyAction.ScreenshotWindow,
         "ScreenshotScreen" => HotKeyAction.ScreenshotScreen,
-        _ => HotKeyAction.Screenshot,
+        _ => throw new ArgumentException("Unknown shortcut action.", nameof(tag)),
     };
 
-    private async void OnEditHotKey(object sender, RoutedEventArgs e)
+    private void OnEditHotKey(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement element)
         {
-            await RecordShortcutAsync(ActionFromTag(element.Tag));
+            HotKeyRecorder.Show(element, _hotKeys, _edit, ActionFromTag(element.Tag), ShowSectionStatus);
         }
     }
 
     private void OnResetHotKey(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement element)
+        if (sender is FrameworkElement element)
         {
-            return;
-        }
-
-        var action = ActionFromTag(element.Tag);
-        var defaultBinding = ViewModel.GetDefaultHotKey(action);
-
-        // An unbound default (no modifiers, no key) means "clear the shortcut"; it is always
-        // valid and intentionally fails the modifier/key requirements, so skip validation.
-        var isUnboundDefault = defaultBinding.IsUnbound;
-        if (!isUnboundDefault)
-        {
-            var validation = ViewModel.ValidateHotKey(action, defaultBinding);
-            if (!validation.IsValid)
-            {
-                ShowSectionStatus(ValidationMessage(validation), InfoBarSeverity.Error);
-                return;
-            }
-        }
-
-        if (TryApplyCandidate(action, defaultBinding, out var errorMessage))
-        {
-            ShowSectionStatus(
-                isUnboundDefault
-                    ? $"{ActionName(action)} shortcut cleared."
-                    : $"{ActionName(action)} shortcut reset to {defaultBinding.DisplayString}.",
-                InfoBarSeverity.Success);
-        }
-        else
-        {
-            ShowSectionStatus(errorMessage, InfoBarSeverity.Error);
+            var action = ActionFromTag(element.Tag);
+            Apply(action, _hotKeys.DefaultFor(action), "reset");
         }
     }
 
     private void OnDeleteHotKey(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement element)
+        if (sender is FrameworkElement element)
         {
-            return;
+            Apply(ActionFromTag(element.Tag), new HotKeyDefinition(HotKeyModifiers.None, 0), "cleared");
         }
+    }
 
-        var action = ActionFromTag(element.Tag);
-        var unbound = new HotKeyDefinition(HotKeyModifiers.None, 0);
-        if (ViewModel.GetHotKey(action).IsUnbound)
+    private void Apply(HotKeyAction action, HotKeyDefinition candidate, string verb)
+    {
+        if (_edit.TryApply(action, candidate, out var error))
         {
-            ShowSectionStatus($"{ActionName(action)} shortcut is already cleared.", InfoBarSeverity.Informational);
-            return;
-        }
-
-        if (TryApplyCandidate(action, unbound, out var errorMessage))
-        {
-            ShowSectionStatus($"{ActionName(action)} shortcut cleared.", InfoBarSeverity.Success);
+            ShowSectionStatus(
+                $"{HotKeyEditOperation.ActionName(action)} shortcut {verb}: {candidate.DisplayString}.",
+                InfoBarSeverity.Success);
         }
         else
         {
-            ShowSectionStatus(errorMessage, InfoBarSeverity.Error);
+            ShowSectionStatus(error, InfoBarSeverity.Error);
         }
-    }
-
-    private async Task RecordShortcutAsync(HotKeyAction action)
-    {
-        var instructions = new TextBlock
-        {
-            Text = "Focus the shortcut recorder, then press at least one modifier and a non-modifier key.",
-            TextWrapping = TextWrapping.Wrap,
-        };
-
-        var recorder = new TextBox
-        {
-            Header = "New shortcut",
-            HorizontalTextAlignment = TextAlignment.Center,
-            IsReadOnly = true,
-            MinWidth = 320,
-            Text = "Press a shortcut",
-        };
-        AutomationProperties.SetAutomationId(recorder, "HotKeyRecorderTextBox");
-        AutomationProperties.SetName(recorder, $"New {ActionName(action)} shortcut");
-        AutomationProperties.SetHelpText(
-            recorder,
-            "Press Ctrl, Alt, Shift, or Win together with one non-modifier key.");
-
-        var status = new InfoBar
-        {
-            IsClosable = false,
-            IsOpen = true,
-            Message = "Waiting for a shortcut.",
-            Severity = InfoBarSeverity.Informational,
-        };
-        AutomationProperties.SetAutomationId(status, "HotKeyRecorderStatusInfoBar");
-        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-
-        var content = new StackPanel
-        {
-            Spacing = 12,
-        };
-        content.Children.Add(instructions);
-        content.Children.Add(recorder);
-        content.Children.Add(status);
-
-        var dialog = new ContentDialog
-        {
-            Title = $"Set {ActionName(action)} shortcut",
-            Content = content,
-            PrimaryButtonText = "Save",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            IsPrimaryButtonEnabled = false,
-        };
-
-        HotKeyDefinition? candidate = null;
-
-        void SetRecorderStatus(string message, InfoBarSeverity severity)
-        {
-            status.Message = message;
-            status.Severity = severity;
-            var peer = FrameworkElementAutomationPeer.FromElement(status)
-                ?? FrameworkElementAutomationPeer.CreatePeerForElement(status);
-            peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-        }
-
-        void OnKey(object sender, KeyRoutedEventArgs args)
-        {
-            var modifiers = CurrentModifiers();
-            if (modifiers == 0 && IsDialogNavigationKey(args.Key))
-            {
-                return;
-            }
-
-            args.Handled = true;
-
-            if (IsModifierKey(args.Key))
-            {
-                candidate = null;
-                dialog.IsPrimaryButtonEnabled = false;
-                recorder.Text = ModifierPreview(CurrentModifiers());
-                SetRecorderStatus(
-                    "Now press a non-modifier key while holding the modifier.",
-                    InfoBarSeverity.Informational);
-                return;
-            }
-
-            var proposed = new HotKeyDefinition(modifiers, (uint)args.Key);
-            recorder.Text = proposed.DisplayString;
-            var validation = ViewModel.ValidateHotKey(action, proposed);
-            if (!validation.IsValid)
-            {
-                candidate = null;
-                dialog.IsPrimaryButtonEnabled = false;
-                SetRecorderStatus(ValidationMessage(validation), InfoBarSeverity.Error);
-                return;
-            }
-
-            candidate = proposed;
-            dialog.IsPrimaryButtonEnabled = true;
-            SetRecorderStatus(
-                $"{proposed.DisplayString} is ready. Choose Save to apply it.",
-                InfoBarSeverity.Success);
-        }
-
-        void OnPrimaryButtonClick(
-            ContentDialog sender,
-            ContentDialogButtonClickEventArgs args)
-        {
-            if (candidate is not HotKeyDefinition proposed)
-            {
-                args.Cancel = true;
-                SetRecorderStatus(
-                    "Press a valid shortcut before saving.",
-                    InfoBarSeverity.Error);
-                return;
-            }
-
-            if (!TryApplyCandidate(action, proposed, out var errorMessage))
-            {
-                args.Cancel = true;
-                SetRecorderStatus(errorMessage, InfoBarSeverity.Error);
-                recorder.Focus(FocusState.Programmatic);
-                return;
-            }
-
-            ShowSectionStatus(
-                $"{ActionName(action)} shortcut changed to {proposed.DisplayString}.",
-                InfoBarSeverity.Success);
-        }
-
-        void OnOpened(ContentDialog sender, ContentDialogOpenedEventArgs args)
-            => recorder.Focus(FocusState.Programmatic);
-
-        recorder.KeyDown += OnKey;
-        dialog.PrimaryButtonClick += OnPrimaryButtonClick;
-        dialog.Opened += OnOpened;
-        await SettingsDialog.TryShowAsync(dialog, XamlRoot);
-        recorder.KeyDown -= OnKey;
-        dialog.PrimaryButtonClick -= OnPrimaryButtonClick;
-        dialog.Opened -= OnOpened;
-    }
-
-    private static bool IsModifierKey(VirtualKey key) => key is
-        VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl or
-        VirtualKey.Shift or VirtualKey.LeftShift or VirtualKey.RightShift or
-        VirtualKey.Menu or VirtualKey.LeftMenu or VirtualKey.RightMenu or
-        VirtualKey.LeftWindows or VirtualKey.RightWindows;
-
-    private static bool IsDialogNavigationKey(VirtualKey key) =>
-        key is VirtualKey.Tab or VirtualKey.Enter or VirtualKey.Escape;
-
-    private static HotKeyModifiers CurrentModifiers()
-    {
-        HotKeyModifiers modifiers = 0;
-        if (IsKeyDown(VirtualKey.Control))
-        {
-            modifiers |= HotKeyModifiers.Control;
-        }
-
-        if (IsKeyDown(VirtualKey.Shift))
-        {
-            modifiers |= HotKeyModifiers.Shift;
-        }
-
-        if (IsKeyDown(VirtualKey.Menu))
-        {
-            modifiers |= HotKeyModifiers.Alt;
-        }
-
-        if (IsKeyDown(VirtualKey.LeftWindows) || IsKeyDown(VirtualKey.RightWindows))
-        {
-            modifiers |= HotKeyModifiers.Win;
-        }
-
-        return modifiers;
-    }
-
-    private static bool IsKeyDown(VirtualKey key) =>
-        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
-
-    private bool TryApplyCandidate(
-        HotKeyAction action,
-        HotKeyDefinition candidate,
-        out string errorMessage)
-    {
-        var previous = ViewModel.GetHotKey(action);
-        ViewModel.SetHotKey(action, candidate.Modifiers, candidate.VirtualKey);
-
-        if (App.Current is not App app)
-        {
-            ViewModel.SetHotKey(action, previous.Modifiers, previous.VirtualKey);
-            errorMessage = "TinyClips could not access the global hotkey service. The previous shortcut was restored.";
-            return false;
-        }
-
-        var applyResult = app.ReapplyGlobalHotKeys();
-        var applyFailures = applyResult.BlockingFailuresFor(action);
-        if (applyFailures.Count == 0)
-        {
-            errorMessage = string.Empty;
-            return true;
-        }
-
-        ViewModel.SetHotKey(action, previous.Modifiers, previous.VirtualKey);
-        var rollbackResult = app.ReapplyGlobalHotKeys();
-
-        errorMessage = GlobalHotKeyFailureFormatter.FormatApply(applyFailures);
-
-        var rollbackFailures = rollbackResult.BlockingFailuresFor(action);
-        if (rollbackFailures.Count > 0)
-        {
-            errorMessage += GlobalHotKeyFailureFormatter.FormatRollback(rollbackFailures);
-        }
-
-        return false;
     }
 
     private void ShowSectionStatus(string message, InfoBarSeverity severity)
@@ -331,54 +89,4 @@ public sealed partial class HotkeysSettingsSection : UserControl
             ?? FrameworkElementAutomationPeer.CreatePeerForElement(HotKeyStatusInfoBar);
         peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
-
-    private static string ValidationMessage(HotKeyValidationResult result) => result.Error switch
-    {
-        HotKeyValidationError.ModifierRequired =>
-            "Include at least one modifier: Ctrl, Alt, Shift, or Win.",
-        HotKeyValidationError.KeyRequired or HotKeyValidationError.ModifierKeyNotAllowed =>
-            "Include one non-modifier key with the modifier.",
-        HotKeyValidationError.DuplicateBinding =>
-            $"That shortcut is already assigned to {ActionName(result.ConflictingAction!.Value)}.",
-        HotKeyValidationError.StopRecordingConflict =>
-            "That shortcut is reserved for Stop recording (Ctrl+Shift+S). Choose a different combination.",
-        _ => string.Empty,
-    };
-
-    private static string ModifierPreview(HotKeyModifiers modifiers)
-    {
-        var tokens = new List<string>();
-        if (modifiers.HasFlag(HotKeyModifiers.Control))
-        {
-            tokens.Add("Ctrl");
-        }
-
-        if (modifiers.HasFlag(HotKeyModifiers.Alt))
-        {
-            tokens.Add("Alt");
-        }
-
-        if (modifiers.HasFlag(HotKeyModifiers.Shift))
-        {
-            tokens.Add("Shift");
-        }
-
-        if (modifiers.HasFlag(HotKeyModifiers.Win))
-        {
-            tokens.Add("Win");
-        }
-
-        return tokens.Count == 0 ? "Press a shortcut" : $"{string.Join("+", tokens)}+…";
-    }
-
-    private static string ActionName(HotKeyAction action) => action switch
-    {
-        HotKeyAction.RecordVideo => "Record video",
-        HotKeyAction.RecordGif => "Record GIF",
-        HotKeyAction.RecognizeText => "Recognize text",
-        HotKeyAction.ScreenshotRegion => "Screenshot region",
-        HotKeyAction.ScreenshotWindow => "Screenshot window",
-        HotKeyAction.ScreenshotScreen => "Screenshot screen",
-        _ => "Screenshot",
-    };
 }
