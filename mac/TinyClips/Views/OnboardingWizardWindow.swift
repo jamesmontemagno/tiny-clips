@@ -11,7 +11,7 @@ class OnboardingWizardWindow: NSWindow, NSWindowDelegate {
         onComplete: @escaping (Bool) -> Void
     ) {
         self.init(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 390),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -20,7 +20,7 @@ class OnboardingWizardWindow: NSWindow, NSWindowDelegate {
         self.onComplete = onComplete
         self.delegate = self
         self.isReleasedWhenClosed = false
-        self.contentMinSize = NSSize(width: 580, height: 530)
+        self.contentMinSize = NSSize(width: 460, height: 390)
         self.title = "Welcome to Tiny Clips"
         self.center()
 
@@ -74,7 +74,7 @@ private enum OnboardingStep: Int, CaseIterable {
         case .optional:
             return "Optional Permissions"
         case .settings:
-            return "Make it yours"
+            return "Common Capture Settings"
         case .shortcuts:
             return "Your capture shortcuts"
 #if !APPSTORE
@@ -91,10 +91,14 @@ private struct OnboardingWizardView: View {
     @ObservedObject private var settings = CaptureSettings.shared
     @ObservedObject private var launchAtLogin = LaunchAtLoginManager.shared
     @AppStorage("copyScreenshotToClipboard") private var copyScreenshotToClipboard = true
+    @AppStorage("copyVideoToClipboard") private var copyVideoToClipboard = false
+    @AppStorage("copyGifToClipboard") private var copyGifToClipboard = false
     @AppStorage("showScreenshotEditor") private var showScreenshotEditor = true
-    @AppStorage("showSaveNotifications") private var showSaveNotifications = false
-    @AppStorage("videoCountdownEnabled") private var videoCountdownEnabled = true
-    @AppStorage("gifCountdownEnabled") private var gifCountdownEnabled = true
+    @AppStorage("showTrimmer") private var showTrimmer = true
+    @AppStorage("showGifTrimmer") private var showGifTrimmer = true
+    @AppStorage("saveImmediatelyScreenshot") private var saveImmediatelyScreenshot = true
+    @AppStorage("saveImmediatelyVideo") private var saveImmediatelyVideo = true
+    @AppStorage("saveImmediatelyGif") private var saveImmediatelyGif = true
 #if !APPSTORE
     @ObservedObject private var sparkleController = SparkleController.shared
 #endif
@@ -105,8 +109,6 @@ private struct OnboardingWizardView: View {
     @State private var showSkipConfirmation = false
     @State private var shortcutError: String?
     @State private var shortcutRevision = 0
-    @State private var notificationPermission: NotificationPermissionState?
-    @State private var isRequestingNotifications = false
 
     let applyShortcut: (HotKeyBinding, HotKeyAction) -> String?
     let onFinish: () -> Void
@@ -351,112 +353,47 @@ private struct OnboardingWizardView: View {
                 binding: Binding(get: { launchAtLogin.isEnabled }, set: { launchAtLogin.setEnabled($0) })
             )
 
-            preferenceToggleRow(
-                title: "Copy screenshots to clipboard",
-                description: "Paste screenshots straight into a chat or document.",
-                binding: $copyScreenshotToClipboard
+            capturePreferenceCard(
+                title: "Screenshots",
+                subtitle: "Control what happens after each screenshot finishes.",
+                symbolName: "camera.viewfinder",
+                accentColor: .blue,
+                openLabel: "Open editor after capture",
+                openBinding: $showScreenshotEditor,
+                saveBinding: $saveImmediatelyScreenshot,
+                copyBinding: $copyScreenshotToClipboard,
+                openHelp: "Open the screenshot editor after capture so you can annotate or crop before finishing.",
+                saveHelp: "When enabled, screenshots save right away instead of waiting for editor actions.",
+                copyHelp: "Copy screenshots to the clipboard as an image, even before saving in the editor."
             )
 
-            preferenceToggleRow(
-                title: "Open screenshot editor",
-                description: "Annotate or crop after capturing. Turn off for fewer interruptions.",
-                binding: Binding(
-                    get: { showScreenshotEditor },
-                    set: { enabled in
-                        showScreenshotEditor = enabled
-                        if !enabled { settings.saveImmediatelyScreenshot = true }
-                    }
-                )
+            capturePreferenceCard(
+                title: "Videos",
+                subtitle: "Decide whether recordings open in the trimmer or save immediately.",
+                symbolName: "video",
+                accentColor: .red,
+                openLabel: "Open trimmer after recording",
+                openBinding: $showTrimmer,
+                saveBinding: $saveImmediatelyVideo,
+                copyBinding: $copyVideoToClipboard,
+                openHelp: "Open the video trimmer after recording so you can trim before finishing.",
+                saveHelp: "When enabled, videos save right away instead of waiting for trimmer actions.",
+                copyHelp: "Copy saved videos to the clipboard as a file URL."
             )
 
-            preferenceToggleRow(
-                title: "Recording countdown",
-                description: "Get ready before recording video or GIF.",
-                binding: Binding(
-                    get: { videoCountdownEnabled && gifCountdownEnabled },
-                    set: { settings.setRecordingCountdown($0) }
-                )
+            capturePreferenceCard(
+                title: "GIFs",
+                subtitle: "Set the default post-capture flow for GIF recordings.",
+                symbolName: "sparkles.rectangle.stack",
+                accentColor: .orange,
+                openLabel: "Open trimmer after recording",
+                openBinding: $showGifTrimmer,
+                saveBinding: $saveImmediatelyGif,
+                copyBinding: $copyGifToClipboard,
+                openHelp: "Open the GIF trimmer after recording so you can trim before finishing.",
+                saveHelp: "When enabled, GIFs save right away instead of waiting for trimmer actions.",
+                copyHelp: "Copy saved GIFs to the clipboard as a file URL."
             )
-            if videoCountdownEnabled != gifCountdownEnabled {
-                Text("Video and GIF currently have different settings.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            preferenceToggleRow(
-                title: "Notify after saving",
-                description: "Confirm when your capture has been saved. System permission is separate.",
-                binding: $showSaveNotifications
-            )
-
-            notificationStatusContent
-
-            DisclosureGroup("Additional capture options") {
-                VStack(alignment: .leading, spacing: 12) {
-                    preferenceToggleRow(
-                        title: "Save screenshots immediately",
-                        description: "Save right away instead of waiting for editor actions.",
-                        binding: $settings.saveImmediatelyScreenshot
-                    )
-                    .disabled(!showScreenshotEditor)
-                    if !showScreenshotEditor {
-                        Text("Save immediately stays enabled while the screenshot editor is turned off.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    capturePreferenceCard(
-                        title: "Videos",
-                        subtitle: "Decide whether recordings open in the trimmer or save immediately.",
-                        symbolName: "video",
-                        accentColor: .red,
-                        openLabel: "Open trimmer after recording",
-                        openBinding: $settings.showTrimmer,
-                        saveBinding: $settings.saveImmediatelyVideo,
-                        copyBinding: $settings.copyVideoToClipboard,
-                        openHelp: "Open the video trimmer after recording so you can trim before finishing.",
-                        saveHelp: "When enabled, videos save right away instead of waiting for trimmer actions.",
-                        copyHelp: "Copy saved videos to the clipboard as a file URL."
-                    )
-
-                    capturePreferenceCard(
-                        title: "GIFs",
-                        subtitle: "Set the default post-capture flow for GIF recordings.",
-                        symbolName: "sparkles.rectangle.stack",
-                        accentColor: .orange,
-                        openLabel: "Open trimmer after recording",
-                        openBinding: $settings.showGifTrimmer,
-                        saveBinding: $settings.saveImmediatelyGif,
-                        copyBinding: $settings.copyGifToClipboard,
-                        openHelp: "Open the GIF trimmer after recording so you can trim before finishing.",
-                        saveHelp: "When enabled, GIFs save right away instead of waiting for trimmer actions.",
-                        copyHelp: "Copy saved GIFs to the clipboard as a file URL."
-                    )
-                }
-                .padding(.top, 8)
-            }
-        }
-    }
-
-    private var notificationStatusContent: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("System notifications: \(notificationPermission?.summary ?? "Checking…")")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityElement(children: .combine)
-            if let notificationPermission {
-                if notificationPermission.canRequest {
-                    Button("Allow Notifications") { requestNotificationPermission() }
-                        .disabled(isRequestingNotifications)
-                } else {
-                    Button("Open Notification Settings") {
-                        guard PermissionManager.shared.openNotificationSettings() else {
-                            SaveService.shared.showError("Could not open macOS Notification Settings.")
-                            return
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -588,7 +525,6 @@ private struct OnboardingWizardView: View {
 
         Task {
             notificationsGranted = await PermissionManager.shared.notificationPermissionGranted()
-            notificationPermission = await PermissionManager.shared.notificationPermissionState()
         }
     }
 
@@ -610,12 +546,10 @@ private struct OnboardingWizardView: View {
     }
 
     private func requestNotificationPermission() {
-        isRequestingNotifications = true
         Task {
-            defer { isRequestingNotifications = false }
             notificationsGranted = await PermissionManager.shared.requestNotificationPermission()
-            notificationPermission = await PermissionManager.shared.notificationPermissionState()
-            if notificationPermission?.canRequest == true {
+            let notificationPermission = await PermissionManager.shared.notificationPermissionState()
+            if notificationPermission.canRequest {
                 SaveService.shared.showError("Could not request notification permission. Try again or enable notifications in macOS System Settings.")
             }
         }
