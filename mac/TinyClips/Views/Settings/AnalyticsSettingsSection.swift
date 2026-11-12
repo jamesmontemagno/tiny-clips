@@ -30,90 +30,54 @@ struct AnalyticsSettingsSection: View {
     }
 
     var body: some View {
-        SettingsFormSection("Capture Analytics", icon: "chart.bar") {
+        SettingsFormSection(
+            "Capture Analytics",
+            icon: "chart.bar",
+            footer: summaries.allSatisfy({ $0.counts.totalCount == 0 })
+                ? "No captures yet for this range. Take a screenshot, video, or GIF to start the chart."
+                : "Daily totals are stored locally on this device and roll over automatically after 30 days."
+        ) {
             Picker("Time range", selection: $selectedRange) {
                 Text("Last 7 Days").tag(7)
                 Text("Last 30 Days").tag(30)
             }
             .pickerStyle(.segmented)
 
-            HStack(spacing: 8) {
-                ForEach(CaptureType.allCases, id: \.self) { type in
-                    TypeToggleChip(
-                        title: type.label,
-                        color: type.color,
-                        isOn: !hiddenTypes.contains(type),
-                        action: { toggleType(type) }
-                    )
-                }
-            }
-
-            hoverDetailText
-                .settingsDescription()
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Chart(chartEntries) { entry in
-                BarMark(
-                    x: .value("Day", entry.date, unit: .day),
-                    y: .value("Captures", entry.count)
-                )
-                .foregroundStyle(entry.type.color)
-                .accessibilityLabel("\(entry.type.label) on \(entry.date.formatted(date: .abbreviated, time: .omitted))")
-                .accessibilityValue("\(entry.count)")
-            }
-            .chartXAxis {
-                AxisMarks(values: .stride(by: .day, count: selectedRange == 7 ? 1 : 5)) { value in
-                    AxisGridLine()
-                    AxisTick()
-                    AxisValueLabel {
-                        if let date = value.as(Date.self) {
-                            Text(date, format: selectedRange == 7
-                                ? .dateTime.weekday(.narrow)
-                                : .dateTime.month(.abbreviated).day())
-                        }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    ForEach(CaptureType.allCases, id: \.self) { type in
+                        TypeToggleChip(
+                            title: type.label,
+                            color: type.color,
+                            isOn: !hiddenTypes.contains(type),
+                            action: { toggleType(type) }
+                        )
                     }
                 }
+
+                hoverDetailText
+                    .settingsDescription()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                analyticsChart
             }
-            .chartYScale(domain: 0...maxDailyTotal)
-            .frame(height: 220)
-            .accessibilityLabel("Capture analytics chart")
-            .chartOverlay { proxy in
-                GeometryReader { geometry in
-                    Rectangle()
-                        .fill(.clear)
-                        .contentShape(Rectangle())
-                        .onContinuousHover { phase in
-                            switch phase {
-                            case .active(let location):
-                                guard let plotFrame = proxy.plotFrame else { return }
-                                let frame = geometry[plotFrame]
-                                let originX = frame.origin.x
-                                if let date: Date = proxy.value(atX: location.x - originX) {
-                                    hoveredDate = date
-                                }
-                            case .ended:
-                                hoveredDate = nil
-                            }
-                        }
-                }
-            }
+            .padding(.vertical, 4)
 
             HStack(spacing: 12) {
                 AnalyticsTotalCard(title: "Screenshots", count: store.totalCount(for: .screenshot, days: selectedRange), color: .blue)
                 AnalyticsTotalCard(title: "Videos", count: store.totalCount(for: .video, days: selectedRange), color: .red)
                 AnalyticsTotalCard(title: "GIFs", count: store.totalCount(for: .gif, days: selectedRange), color: .green)
             }
+            .padding(.vertical, 4)
 
-            if summaries.allSatisfy({ $0.counts.totalCount == 0 }) {
-                Text("No captures yet for this range. Take a screenshot, video, or GIF to start the chart.")
-                    .settingsDescription()
-            } else {
-                Text("Daily totals are stored locally on this device and roll over automatically after 30 days.")
-                    .settingsDescription()
-            }
-
-            Button("Reset Capture Analytics…", role: .destructive) {
-                showResetConfirmation = true
+            SettingsActionRow(
+                title: "Reset analytics",
+                description: "Clears all local counts, including lifetime totals."
+            ) {
+                Button("Reset…", role: .destructive) {
+                    showResetConfirmation = true
+                }
+                .accessibilityLabel("Reset capture analytics")
             }
         }
         .confirmationDialog(
@@ -130,14 +94,17 @@ struct AnalyticsSettingsSection: View {
             Text("This clears all local screenshot, video, and GIF counts — including lifetime totals. This can't be undone.")
         }
 
-        SettingsFormSection("Lifetime Totals", icon: "sum") {
+        SettingsFormSection(
+            "Lifetime Totals",
+            icon: "sum",
+            footer: "\(store.lifetimeTotals.totalCount) captures since you started using Tiny Clips."
+        ) {
             HStack(spacing: 12) {
                 AnalyticsTotalCard(title: "Screenshots", count: store.lifetimeTotal(for: .screenshot), color: .blue)
                 AnalyticsTotalCard(title: "Videos", count: store.lifetimeTotal(for: .video), color: .red)
                 AnalyticsTotalCard(title: "GIFs", count: store.lifetimeTotal(for: .gif), color: .green)
             }
-            Text("\(store.lifetimeTotals.totalCount) captures since you started using Tiny Clips.")
-                .settingsDescription()
+            .padding(.vertical, 4)
         }
 
         SettingsFormSection("Insights", icon: "sparkles") {
@@ -192,7 +159,10 @@ struct AnalyticsSettingsSection: View {
         }
 
         SettingsFormSection("Share", icon: "square.and.arrow.up") {
-            HStack(spacing: 12) {
+            SettingsActionRow(
+                title: "Share a summary",
+                description: "A quick text summary of your capture activity for the selected range."
+            ) {
                 Button {
                     copySummaryToClipboard()
                 } label: {
@@ -203,8 +173,54 @@ struct AnalyticsSettingsSection: View {
                     Label("Share…", systemImage: "square.and.arrow.up")
                 }
             }
-            Text("Share a quick text summary of your capture activity for the selected range.")
-                .settingsDescription()
+        }
+    }
+
+    private var analyticsChart: some View {
+        Chart(chartEntries) { entry in
+            BarMark(
+                x: .value("Day", entry.date, unit: .day),
+                y: .value("Captures", entry.count)
+            )
+            .foregroundStyle(entry.type.color)
+            .accessibilityLabel("\(entry.type.label) on \(entry.date.formatted(date: .abbreviated, time: .omitted))")
+            .accessibilityValue("\(entry.count)")
+        }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .day, count: selectedRange == 7 ? 1 : 5)) { value in
+                AxisGridLine()
+                AxisTick()
+                AxisValueLabel {
+                    if let date = value.as(Date.self) {
+                        Text(date, format: selectedRange == 7
+                            ? .dateTime.weekday(.narrow)
+                            : .dateTime.month(.abbreviated).day())
+                    }
+                }
+            }
+        }
+        .chartYScale(domain: 0...maxDailyTotal)
+        .frame(height: 220)
+        .accessibilityLabel("Capture analytics chart")
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            guard let plotFrame = proxy.plotFrame else { return }
+                            let frame = geometry[plotFrame]
+                            let originX = frame.origin.x
+                            if let date: Date = proxy.value(atX: location.x - originX) {
+                                hoveredDate = date
+                            }
+                        case .ended:
+                            hoveredDate = nil
+                        }
+                    }
+            }
         }
     }
 

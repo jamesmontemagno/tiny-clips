@@ -7,10 +7,11 @@ struct ShortcutsSettingsSection: View {
     @State private var shortcutError: String?
 
     var body: some View {
-        SettingsFormSection("Global Keyboard Shortcuts", icon: "keyboard") {
-            Text("These shortcuts work system-wide, even when the menu is closed. At least one modifier key (⌃ ⌥ ⇧ ⌘) is required. Screenshot Region, Screenshot Screen, and Screenshot Window skip the capture picker.")
-                .settingsDescription()
-
+        SettingsFormSection(
+            "Global Keyboard Shortcuts",
+            icon: "keyboard",
+            footer: "These shortcuts work system-wide, even when the menu is closed. At least one modifier key (⌃ ⌥ ⇧ ⌘) is required. Screenshot Region, Screenshot Screen, and Screenshot Window skip the capture picker."
+        ) {
             if let shortcutError {
                 Label(shortcutError, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
@@ -26,7 +27,7 @@ struct ShortcutsSettingsSection: View {
             ForEach(HotKeyAction.allCases, id: \.self) { action in
                 ShortcutRecorderField(
                     label: action.displayName,
-                    iconName: captureModeIconName(for: action),
+                    iconName: action.iconName,
                     binding: settings.hotKeyBinding(for: action),
                     defaultBinding: HotKeyBinding.defaultBinding(for: action),
                     onBindingRecorded: { apply($0, for: action) }
@@ -35,19 +36,25 @@ struct ShortcutsSettingsSection: View {
             }
         }
 
-        SettingsFormSection("Fixed Shortcuts", icon: "lock") {
-            Text("The following shortcuts are fixed and cannot be changed.")
-                .settingsDescription()
-
-            fixedShortcutRow(label: "Stop Recording", keys: "⌘.")
-            fixedShortcutRow(label: "Settings", keys: "⌘,")
-            fixedShortcutRow(label: "Quit", keys: "⌘Q")
+        SettingsFormSection(
+            "Fixed Shortcuts",
+            icon: "lock",
+            footer: "These shortcuts are fixed and cannot be changed."
+        ) {
+            fixedShortcutRow(label: "Stop Recording", iconName: "stop.circle", keys: "⌘.")
+            fixedShortcutRow(label: "Settings", iconName: "gearshape", keys: "⌘,")
+            fixedShortcutRow(label: "Quit", iconName: "power", keys: "⌘Q")
         }
     }
 
-    private func fixedShortcutRow(label: String, keys: String) -> some View {
+    private func fixedShortcutRow(label: String, iconName: String, keys: String) -> some View {
         HStack {
-            Text(label)
+            Label {
+                Text(label)
+            } icon: {
+                Image(systemName: iconName)
+                    .frame(width: ShortcutRecorderField.iconWidth)
+            }
             Spacer()
             Text(keys)
                 .font(.system(.body, design: .monospaced))
@@ -56,19 +63,8 @@ struct ShortcutsSettingsSection: View {
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private func captureModeIconName(for action: HotKeyAction) -> String? {
-        switch action {
-        case .screenshotRegion:
-            return "viewfinder.rectangular"
-        case .screenshotScreen:
-            return "display"
-        case .screenshotWindow:
-            return "macwindow"
-        default:
-            return nil
-        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label), \(keys)")
     }
 
     private func apply(_ binding: HotKeyBinding, for action: HotKeyAction) {

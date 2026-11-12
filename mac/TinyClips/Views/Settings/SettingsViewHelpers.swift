@@ -2,64 +2,199 @@ import Foundation
 import SwiftUI
 import AppKit
 
+/// One titled group in the grouped Settings form. Every child of `content` is its own form row:
+/// the form draws the card, the separators between rows, and the row spacing, so sections must
+/// not add a background or stack their settings into a single row.
 struct SettingsFormSection<Content: View>: View {
     let title: String?
     let icon: String?
+    let footer: String?
     @ViewBuilder let content: () -> Content
 
     init(
         _ title: String? = nil,
         icon: String? = nil,
+        footer: String? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.icon = icon
+        self.footer = footer
         self.content = content
     }
 
     var body: some View {
         Section {
-            VStack(alignment: .leading, spacing: 12) {
-                if let title {
-                    if let icon {
-                        Label(title, systemImage: icon)
-                            .font(.headline)
-                            .accessibilityAddTraits(.isHeader)
-                    } else {
-                        Text(title)
-                            .font(.headline)
-                            .accessibilityAddTraits(.isHeader)
-                    }
-                }
+            content()
+        } header: {
+            if let title {
+                SettingsSectionHeader(title: title, icon: icon)
+            }
+        } footer: {
+            if let footer {
+                Text(footer)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
 
+struct SettingsSectionHeader: View {
+    let title: String
+    let icon: String?
+
+    var body: some View {
+        Group {
+            if let icon {
+                Label(title, systemImage: icon)
+            } else {
+                Text(title)
+            }
+        }
+        .font(.headline)
+        .foregroundStyle(.primary)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// A group that starts collapsed, for settings most people never change. Its header matches the
+/// other groups and is the control that opens it. Pass `startsExpanded` when one of its settings
+/// is already changed from the default, so a setting in effect is never hidden.
+struct SettingsAdvancedSection<Content: View>: View {
+    let title: String
+    let icon: String
+    @ViewBuilder let content: () -> Content
+    @State private var isExpanded: Bool
+
+    init(
+        _ title: String = "Advanced",
+        icon: String = "gearshape.2",
+        startsExpanded: Bool = false,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.icon = icon
+        self.content = content
+        _isExpanded = State(initialValue: startsExpanded)
+    }
+
+    var body: some View {
+        Section {
+            if isExpanded {
                 content()
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.quaternary)
-            )
+        } header: {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    SettingsSectionHeader(title: title, icon: icon)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .accessibilityHidden(true)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(isExpanded ? "Hides these settings." : "Shows these settings.")
         }
     }
 }
 
 extension View {
-    func settingsCard() -> some View {
-        padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.quaternary)
-            )
-    }
-
+    /// Secondary text inside a row, matching the form's own subtitle style.
     func settingsDescription() -> some View {
-        font(.callout)
+        font(.subheadline)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// A tooltip only where there is something to say.
+    @ViewBuilder
+    func settingsHelp(_ text: String?) -> some View {
+        if let text {
+            help(text)
+        } else {
+            self
+        }
+    }
+}
+
+/// A switch row: title on the left, switch on the right. Give it a description only when the
+/// title does not say what the setting does.
+struct SettingsToggleRow: View {
+    let title: String
+    var description: String? = nil
+    @Binding var isOn: Bool
+    var help: String?
+    var accessibilityHint: String?
+    var disabled = false
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            Text(title)
+            if let description {
+                Text(description)
+            }
+        }
+        .settingsHelp(help)
+        .accessibilityHint(accessibilityHint ?? help ?? "")
+        .disabled(disabled)
+    }
+}
+
+/// A slider row: title on the left, slider and its current value on the right. Every slider and
+/// value column has the same width, so sliders line up down a page.
+struct SettingsSliderRow: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let valueText: String
+    var help: String?
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack(spacing: 10) {
+                Slider(value: $value, in: range, step: step)
+                    .labelsHidden()
+                    .frame(width: 220)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(valueText)
+                Text(valueText)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(width: 64, alignment: .trailing)
+                    .accessibilityHidden(true)
+            }
+        }
+        .settingsHelp(help)
+    }
+}
+
+/// A row for something you do rather than set: what it is on the left, its buttons on the right.
+struct SettingsActionRow<Actions: View>: View {
+    let title: String
+    var description: String? = nil
+    @ViewBuilder let actions: () -> Actions
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 8) {
+                actions()
+            }
+        } label: {
+            Text(title)
+            if let description {
+                Text(description)
+            }
+        }
     }
 }
 

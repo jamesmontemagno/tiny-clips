@@ -7,210 +7,75 @@ struct AgentControlSettingsSection: View {
     @State private var permissionsClientID: String?
 
     var body: some View {
-        SettingsFormSection("Agent Control", icon: "terminal") {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .center, spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(automationEnabled ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.06))
-                            .frame(width: 42, height: 42)
-                        Image(systemName: "terminal")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(automationEnabled ? Color.accentColor : Color.secondary)
-                    }
+        SettingsFormSection(
+            "Agent Control",
+            icon: "terminal",
+            footer: "Each agent needs approval once and only gets the permissions you allow. Deleting, uploading, and discarding always ask you first."
+        ) {
+            SettingsToggleRow(
+                title: "Allow agents to control Tiny Clips",
+                description: "Lets AI agents and scripts on this Mac use Tiny Clips through the Agent Plugin, MCP server, or command-line tool.",
+                isOn: $automationEnabled,
+                help: "Starts a local endpoint that only apps running as your user can reach."
+            )
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Allow agents to control Tiny Clips")
-                            .font(.headline)
-                        Text("Use the Agent Plugin, MCP server, or command-line tool.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    Toggle("Enabled", isOn: $automationEnabled)
-                        .toggleStyle(.switch)
-                        .accessibilityLabel("Allow agents to control Tiny Clips")
-                        .help("Starts a local endpoint that only apps running as your user can reach.")
-                }
-
-                Text("Each agent needs approval once and only gets the permissions you allow. Deleting, uploading, and discarding always ask you first.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if automationEnabled {
-                    Divider()
-
-                    HStack(alignment: .center, spacing: 10) {
-                        statusRow
-                        Spacer()
-                        Text("Local endpoint")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack(spacing: 8) {
-                        Text(controller.endpointPath)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.primary)
-                            .textSelection(.enabled)
-                            .lineLimit(2)
-                            .truncationMode(.middle)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Button {
-                            let pasteboard = NSPasteboard.general
-                            pasteboard.clearContents()
-                            pasteboard.setString(controller.endpointPath, forType: .string)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .help("Copy endpoint path")
-                        .accessibilityLabel("Copy endpoint path")
-                    }
-                    .padding(10)
-                    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(.quaternary)
-                    )
-                    .accessibilityElement(children: .contain)
-                }
+            if automationEnabled {
+                AgentConnectionRows(
+                    isRunning: controller.isRunning,
+                    lastError: controller.lastError,
+                    endpointPath: controller.endpointPath,
+                    retry: { controller.retryStart() }
+                )
             }
-            .padding(.vertical, 6)
-        }
-
-        SettingsFormSection("Get Started", icon: "sparkles") {
-            AgentControlSetupView()
         }
 
         SettingsFormSection("Paired Agents", icon: "person.2") {
             if controller.clients.isEmpty {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "person.crop.circle.badge.questionmark")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("No agents are paired")
-                            .font(.headline)
-                        Text("Follow Get Started to install the plugin or CLI, then pair an agent.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("No agents are paired")
+                    Text("Follow Get Started below to install the plugin or CLI, then pair an agent.")
+                        .settingsDescription()
                 }
-                .padding(.vertical, 6)
+                .accessibilityElement(children: .combine)
             } else {
                 ForEach(controller.clients) { client in
-                    clientRow(client)
+                    AgentClientRow(
+                        client: client,
+                        isEditingPermissions: Binding(
+                            get: { permissionsClientID == client.id },
+                            set: { isEditing in
+                                if isEditing {
+                                    permissionsClientID = client.id
+                                } else if permissionsClientID == client.id {
+                                    permissionsClientID = nil
+                                }
+                            }
+                        ),
+                        revoke: { controller.revoke(client) }
+                    )
                 }
             }
         }
 
         SettingsFormSection("Activity", icon: "text.page") {
-            HStack(alignment: .center, spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
-                        .frame(width: 36, height: 36)
-                    Image(systemName: "text.page")
-                        .foregroundStyle(.secondary)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Agent activity")
-                        .font(.headline)
-                    Text("Every agent request is recorded in a local audit log.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
+            SettingsActionRow(
+                title: "Audit log",
+                description: "Every agent request is recorded in a local audit log."
+            ) {
                 Button("Open Audit Log") {
                     openAuditLog()
                 }
-                .buttonStyle(.bordered)
-            }
-            .padding(.vertical, 6)
-        }
-    }
-
-    @ViewBuilder
-    private var statusRow: some View {
-        if controller.isRunning {
-            Label("Listening for agents", systemImage: "dot.radiowaves.left.and.right")
-                .foregroundStyle(.green)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Status: listening for agents")
-        } else if let error = controller.lastError {
-            HStack {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Agent control error: \(error)")
-                Spacer()
-                Button("Try Again") { controller.retryStart() }
-            }
-        } else {
-            Label("Starting…", systemImage: "hourglass")
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func clientRow(_ client: AutomationClient) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 36, height: 36)
-                Image(systemName: "person.2")
-                    .foregroundStyle(Color.accentColor)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(client.name)
-                    .font(.headline)
-                Text(client.scopes.joined(separator: ", "))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                Text(lastUsedText(client))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .accessibilityElement(children: .combine)
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                Button("Permissions…") {
-                    permissionsClientID = client.id
-                }
-                .buttonStyle(.bordered)
-                .help("Choose what this agent is allowed to do.")
-                .accessibilityLabel("Change permissions for \(client.name)")
-                .popover(isPresented: Binding(
-                    get: { permissionsClientID == client.id },
-                    set: { if !$0, permissionsClientID == client.id { permissionsClientID = nil } }
-                )) {
-                    AgentPermissionsEditor(clientID: client.id)
-                }
-
-                Button("Revoke", role: .destructive) {
-                    controller.revoke(client)
-                }
-                .buttonStyle(.bordered)
-                .help("Remove this agent's access. It will need to pair again.")
-                .accessibilityLabel("Revoke \(client.name)")
+                .help("Show the agent activity log in Finder.")
             }
         }
-        .padding(.vertical, 6)
-    }
 
-    private func lastUsedText(_ client: AutomationClient) -> String {
-        guard let lastUsed = client.lastUsedAt else { return "Paired \(client.createdAt.formatted(date: .abbreviated, time: .shortened)), never used" }
-        return "Last used \(lastUsed.formatted(.relative(presentation: .named)))"
+        SettingsFormSection("Get Started", icon: "sparkles") {
+            AgentControlSetupSteps()
+        }
+
+        SettingsAdvancedSection("Set Up Without a Plugin", icon: "wrench.and.screwdriver") {
+            AgentControlManualSetupSteps()
+        }
     }
 
     private func openAuditLog() {
@@ -221,6 +86,96 @@ struct AgentControlSettingsSection: View {
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             NSWorkspace.shared.open(url.deletingLastPathComponent())
         }
+    }
+}
+
+/// The rows under the Agent Control switch while it is on: whether the endpoint is up, and where.
+struct AgentConnectionRows: View {
+    let isRunning: Bool
+    let lastError: String?
+    let endpointPath: String
+    let retry: () -> Void
+
+    var body: some View {
+        if !isRunning, let lastError {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Label(lastError, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Agent control error: \(lastError)")
+                Spacer(minLength: 0)
+                Button("Try Again", action: retry)
+            }
+        } else {
+            LabeledContent("Status") {
+                if isRunning {
+                    Label("Listening for agents", systemImage: "dot.radiowaves.left.and.right")
+                        .foregroundStyle(.green)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Listening for agents")
+                } else {
+                    Label("Starting…", systemImage: "hourglass")
+                }
+            }
+        }
+
+        LabeledContent("Endpoint") {
+            HStack(spacing: 8) {
+                Text(endpointPath)
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 380, alignment: .trailing)
+                    .help(endpointPath)
+                AgentCopyButton(value: endpointPath, label: "Copy endpoint path")
+            }
+        }
+    }
+}
+
+/// One paired agent: who it is and what it may do on the left, its actions on the right.
+struct AgentClientRow: View {
+    let client: AutomationClient
+    @Binding var isEditingPermissions: Bool
+    let revoke: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(client.name)
+                Text(client.scopes.joined(separator: ", "))
+                    .settingsDescription()
+                    .lineLimit(2)
+                Text(lastUsedText)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .accessibilityElement(children: .combine)
+
+            Spacer(minLength: 0)
+
+            Button("Permissions…") {
+                isEditingPermissions = true
+            }
+            .help("Choose what this agent is allowed to do.")
+            .accessibilityLabel("Change permissions for \(client.name)")
+            .popover(isPresented: $isEditingPermissions) {
+                AgentPermissionsEditor(clientID: client.id)
+            }
+
+            Button("Revoke", role: .destructive, action: revoke)
+                .help("Remove this agent's access. It will need to pair again.")
+                .accessibilityLabel("Revoke \(client.name)")
+        }
+    }
+
+    private var lastUsedText: String {
+        guard let lastUsed = client.lastUsedAt else {
+            return "Paired \(client.createdAt.formatted(date: .abbreviated, time: .shortened)), never used"
+        }
+        return "Last used \(lastUsed.formatted(.relative(presentation: .named)))"
     }
 }
 
@@ -273,161 +228,249 @@ private struct AgentPermissionsEditor: View {
     }
 }
 
+// MARK: - Setup instructions
+
+/// The setup instructions on their own, for the Guide window. Settings shows the same steps as
+/// form rows instead.
 struct AgentControlSetupView: View {
-    @State private var copyStatus = ""
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            setupCard(title: "Before you begin", icon: "checklist") {
-                Link("Install the .NET 10 SDK", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
-                Text("Turn on Agent Control above and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        VStack(alignment: .leading, spacing: 16) {
+            AgentControlSetupSteps()
 
-            setupCard(title: "Recommended: Install the Agent Plugin", icon: "puzzlepiece.extension") {
-                Text("Choose one install method. Both install the same plugin; you only need one.")
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            Divider()
 
-                VStack(alignment: .leading, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("VS Code")
-                            .font(.subheadline.weight(.semibold))
-                        Text("Run Chat: Install Plugin from Source from the Command Palette, then enter this repository URL.")
-                            .fixedSize(horizontal: false, vertical: true)
-                        command("https://github.com/jamesmontemagno/tiny-clips.git", label: "Copy VS Code plugin repository URL")
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("GitHub Copilot CLI")
-                            .font(.subheadline.weight(.semibold))
-                        command("copilot plugin marketplace add jamesmontemagno/tiny-clips", label: "Copy Copilot CLI marketplace command")
-                        command("copilot plugin install tinyclips@tinyclips", label: "Copy Copilot CLI plugin install command")
-                    }
-                }
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Pair once, then approve the requested permissions in Tiny Clips.")
-                    command("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Copy pair command")
-
-                    Text("Check the connection:")
-                        .foregroundStyle(.secondary)
-                    command("dnx TinyClips --yes -- status", label: "Copy status command")
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Try it in a fresh agent session")
-                        .font(.subheadline.weight(.semibold))
-                    Text("“Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy.”")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            setupCard(title: "Use the CLI directly", icon: "terminal") {
-                Text("For terminal agents and scripts without plugin support, choose either dnx or a global CLI install.")
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Run without a global install")
-                        .font(.subheadline.weight(.semibold))
-                    command("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Copy dnx pair command")
-                    command("dnx TinyClips --yes -- status", label: "Copy dnx status command")
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Or install once, then use the tinyclips command")
-                        .font(.subheadline.weight(.semibold))
-                    command("dotnet tool install -g TinyClips", label: "Copy global CLI install command")
-                    command("tinyclips pair --name \"My agent\"", label: "Copy global CLI pair command")
-                    command("tinyclips status", label: "Copy global CLI status command")
-                }
-            }
-
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("For agents that support MCP but not plugins, pair using either route above, then add this local stdio server in the agent's MCP settings. The agent must run as the same macOS user. Restart or reload its MCP connection after configuring it.")
-                        .fixedSize(horizontal: false, vertical: true)
-                    command(
-                        "{\"mcpServers\":{\"tinyclips\":{\"command\":\"dotnet\",\"args\":[\"dnx\",\"TinyClips\",\"--verbosity\",\"quiet\",\"--yes\",\"--\",\"mcp\"]}}}",
-                        label: "Copy MCP configuration"
-                    )
-                    Text("If you installed the global CLI, use command tinyclips with args [\"mcp\"] instead. MCP setup varies by agent; workflow Skills are included with the plugin, not this manual configuration.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            DisclosureGroup("Set up without a plugin") {
+                VStack(alignment: .leading, spacing: 16) {
+                    AgentControlManualSetupSteps()
                 }
                 .padding(.top, 10)
-            } label: {
-                Label("Manual MCP setup (without a plugin)", systemImage: "slider.horizontal.3")
-                    .font(.headline)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.quaternary)
+        }
+    }
+}
+
+/// The recommended way to connect an agent, one step per view. In a form each step is a row.
+struct AgentControlSetupSteps: View {
+    var body: some View {
+        AgentSetupStep(number: 1, title: "Before you begin") {
+            Link("Install the .NET 10 SDK", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
+            AgentSetupNote("Turn on Agent Control above and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant.")
+        }
+
+        AgentSetupStep(number: 2, title: "Install the Agent Plugin", badge: "Recommended") {
+            AgentSetupNote("Choose one install method. Both install the same plugin; you only need one.")
+
+            AgentSetupSubheading("VS Code")
+            Text("Run Chat: Install Plugin from Source from the Command Palette, then enter this repository URL.")
+                .fixedSize(horizontal: false, vertical: true)
+            AgentCommand("https://github.com/jamesmontemagno/tiny-clips.git", label: "Copy VS Code plugin repository URL")
+
+            AgentSetupSubheading("GitHub Copilot CLI")
+            AgentCommand("copilot plugin marketplace add jamesmontemagno/tiny-clips", label: "Copy Copilot CLI marketplace command")
+            AgentCommand("copilot plugin install tinyclips@tinyclips", label: "Copy Copilot CLI plugin install command")
+        }
+
+        AgentSetupStep(number: 3, title: "Pair your agent") {
+            Text("Pair once, then approve the requested permissions in Tiny Clips.")
+                .fixedSize(horizontal: false, vertical: true)
+            AgentCommand("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Copy pair command")
+
+            AgentSetupSubheading("Check the connection")
+            AgentCommand("dnx TinyClips --yes -- status", label: "Copy status command")
+        }
+
+        AgentSetupStep(number: 4, title: "Try it") {
+            Text("Start a fresh agent session, then ask:")
+            AgentCommand(
+                "Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy.",
+                label: "Copy example prompt",
+                isCode: false
             )
+            Link(
+                "Full setup, Skills, and example prompts",
+                destination: URL(string: "https://github.com/jamesmontemagno/tiny-clips/blob/main/docs/agent-integration.md")!
+            )
+        }
+    }
+}
 
-            Link("Full setup, Skills, and example prompts", destination: URL(string: "https://github.com/jamesmontemagno/tiny-clips/blob/main/docs/agent-integration.md")!)
-            if !copyStatus.isEmpty {
-                Text(copyStatus)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+/// Ways to connect an agent that cannot install the plugin.
+struct AgentControlManualSetupSteps: View {
+    var body: some View {
+        AgentSetupStep(title: "Use the CLI directly") {
+            AgentSetupNote("For terminal agents and scripts without plugin support, choose either dnx or a global CLI install.")
+
+            AgentSetupSubheading("Run without a global install")
+            AgentCommand("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Copy dnx pair command")
+            AgentCommand("dnx TinyClips --yes -- status", label: "Copy dnx status command")
+
+            AgentSetupSubheading("Or install once, then use the tinyclips command")
+            AgentCommand("dotnet tool install -g TinyClips", label: "Copy global CLI install command")
+            AgentCommand("tinyclips pair --name \"My agent\"", label: "Copy global CLI pair command")
+            AgentCommand("tinyclips status", label: "Copy global CLI status command")
+        }
+
+        AgentSetupStep(title: "Manual MCP setup") {
+            Text("For agents that support MCP but not plugins, pair using either route above, then add this local stdio server in the agent's MCP settings. The agent must run as the same macOS user. Restart or reload its MCP connection after configuring it.")
+                .fixedSize(horizontal: false, vertical: true)
+            AgentCommand(
+                "{\"mcpServers\":{\"tinyclips\":{\"command\":\"dotnet\",\"args\":[\"dnx\",\"TinyClips\",\"--verbosity\",\"quiet\",\"--yes\",\"--\",\"mcp\"]}}}",
+                label: "Copy MCP configuration"
+            )
+            AgentSetupNote("If you installed the global CLI, use command tinyclips with args [\"mcp\"] instead. MCP setup varies by agent; workflow Skills are included with the plugin, not this manual configuration.")
+        }
+    }
+}
+
+private struct AgentSetupStep<Content: View>: View {
+    var number: Int?
+    let title: String
+    var badge: String?
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            if let number {
+                Text("\(number)")
+                    .font(.caption.weight(.bold))
+                    .monospacedDigit()
+                    .frame(width: 20, height: 20)
+                    .background(.quaternary, in: Circle())
+                    .accessibilityHidden(true)
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(.headline)
+                        .accessibilityLabel(number.map { "Step \($0): \(title)" } ?? title)
+                        .accessibilityAddTraits(.isHeader)
+                    if let badge {
+                        Text(badge)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.quaternary, in: Capsule())
+                    }
+                }
+                .frame(minHeight: 20)
+
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct AgentSetupSubheading: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
     }
 
-    private func setupCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.headline)
-            content()
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.quaternary)
-        )
+    var body: some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
+    }
+}
+
+private struct AgentSetupNote: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
     }
 
-    private func command(_ value: String, label: String) -> some View {
+    var body: some View {
+        Text(text)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Text to copy into a terminal or an agent, with its copy button beside it.
+private struct AgentCommand: View {
+    let value: String
+    let label: String
+    let isCode: Bool
+
+    init(_ value: String, label: String, isCode: Bool = true) {
+        self.value = value
+        self.label = label
+        self.isCode = isCode
+    }
+
+    var body: some View {
         HStack(alignment: .center, spacing: 8) {
             Text(value)
-                .font(.caption.monospaced())
+                .font(isCode ? .callout.monospaced() : .callout)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button {
-                NSPasteboard.general.clearContents()
-                copyStatus = NSPasteboard.general.setString(value, forType: .string)
-                    ? "\(label) copied."
-                    : "Could not copy. Select the command text and copy it manually."
-            } label: {
-                Image(systemName: "doc.on.doc")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help(label)
-            .accessibilityLabel(label)
+            AgentCopyButton(value: value, label: label)
         }
         .padding(.leading, 10)
         .padding(.trailing, 6)
         .padding(.vertical, 6)
-        .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.7), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(.quaternary)
         )
+    }
+}
+
+/// Copies its value and says so on the button itself, where the click was.
+private struct AgentCopyButton: View {
+    private enum Outcome {
+        case copied
+        case failed
+    }
+
+    let value: String
+    let label: String
+    @State private var outcome: Outcome?
+
+    var body: some View {
+        Button {
+            copy()
+        } label: {
+            Image(systemName: iconName)
+                .frame(width: 14)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .help(outcome == .failed ? failureText : label)
+        .accessibilityLabel(label)
+    }
+
+    private var iconName: String {
+        switch outcome {
+        case .copied: "checkmark"
+        case .failed: "exclamationmark.triangle"
+        case nil: "doc.on.doc"
+        }
+    }
+
+    private var failureText: String {
+        "Could not copy. Select the text and copy it manually."
+    }
+
+    private func copy() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let didCopy = pasteboard.setString(value, forType: .string)
+        outcome = didCopy ? .copied : .failed
+        AccessibilityNotification.Announcement(didCopy ? "Copied" : failureText).post()
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            outcome = nil
+        }
     }
 }

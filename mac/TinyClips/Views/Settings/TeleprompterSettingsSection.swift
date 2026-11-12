@@ -19,15 +19,20 @@ struct TeleprompterSettingsSection: View {
 
     var body: some View {
         SettingsFormSection("Teleprompter", icon: "captions.bubble") {
-            Toggle("Enable teleprompter", isOn: $settings.teleprompterEnabled)
-                .help("Show an auto-scrolling transcript overlay while recording video. The overlay is never captured in the recording.")
-                .accessibilityHint("When enabled, an auto-scrolling transcript overlay appears during video recordings only.")
-
-            Text("The teleprompter appears during video recordings only and is never included in the captured video.")
-                .settingsDescription()
+            SettingsToggleRow(
+                title: "Enable teleprompter",
+                description: "Show an auto-scrolling script while recording video. It is never included in the capture.",
+                isOn: $settings.teleprompterEnabled,
+                help: "Show an auto-scrolling transcript overlay while recording video. The overlay is never captured in the recording.",
+                accessibilityHint: "When enabled, an auto-scrolling transcript overlay appears during video recordings only."
+            )
         }
 
-        SettingsFormSection("Transcript", icon: "text.alignleft") {
+        SettingsFormSection(
+            "Transcript",
+            icon: "text.alignleft",
+            footer: "Paste or type the script you want to read while recording."
+        ) {
             TextEditor(text: $settings.teleprompterTranscript)
                 .font(.system(size: 13))
                 .frame(minHeight: 120, maxHeight: 180)
@@ -35,10 +40,10 @@ struct TeleprompterSettingsSection: View {
                 .accessibilityLabel("Teleprompter transcript")
                 .accessibilityHint("Enter the text to scroll during video recordings.")
 
-            HStack {
-                Text("Paste or type the script you want to read while recording.")
-                    .settingsDescription()
-                Spacer()
+            SettingsActionRow(
+                title: "Load from a file",
+                description: "Replaces the transcript with a plain-text file."
+            ) {
                 Button("Load Text File…") {
                     loadTranscript()
                 }
@@ -48,30 +53,21 @@ struct TeleprompterSettingsSection: View {
             }
         }
 
-        SettingsFormSection("Scroll Speed", icon: "speedometer") {
-            HStack {
-                Slider(
-                    value: $settings.teleprompterScrollSpeed,
-                    in: 0...100,
-                    step: 1
-                )
-                .controlSize(.large)
-                .frame(height: 28)
-                .disabled(!settings.teleprompterEnabled)
-                .onAppear {
-                    settings.teleprompterScrollSpeed = min(max(settings.teleprompterScrollSpeed, 0), 100)
-                }
-                .accessibilityLabel("Teleprompter scroll speed")
-                .accessibilityValue("\(Int(settings.teleprompterScrollSpeed)) points per second")
-                Text("\(Int(settings.teleprompterScrollSpeed)) pt/s")
-                    .monospacedDigit()
-                    .frame(width: 56, alignment: .trailing)
+        SettingsFormSection("Scrolling & Text", icon: "textformat.size") {
+            SettingsSliderRow(
+                title: "Scroll speed",
+                value: $settings.teleprompterScrollSpeed,
+                range: 0...100,
+                step: 1,
+                valueText: "\(Int(settings.teleprompterScrollSpeed)) pt/s",
+                help: "Set how fast the transcript scrolls, in points per second."
+            )
+            .disabled(!settings.teleprompterEnabled)
+            .onAppear {
+                settings.teleprompterScrollSpeed = min(max(settings.teleprompterScrollSpeed, 0), 100)
             }
-            .help("Set how fast the transcript scrolls, in points per second.")
-        }
 
-        SettingsFormSection("Appearance", icon: "paintbrush") {
-            Picker("Text size:", selection: $settings.teleprompterFontSize) {
+            Picker("Text size", selection: $settings.teleprompterFontSize) {
                 ForEach(TeleprompterDisplaySize.allCases, id: \.rawValue) { size in
                     Text(size.label).tag(size.rawValue)
                 }
@@ -80,7 +76,7 @@ struct TeleprompterSettingsSection: View {
             .help("Choose the teleprompter text size.")
             .accessibilityLabel("Teleprompter text size")
 
-            Picker("Panel height:", selection: $settings.teleprompterPanelHeight) {
+            Picker("Panel height", selection: $settings.teleprompterPanelHeight) {
                 ForEach(TeleprompterDisplaySize.allCases, id: \.rawValue) { size in
                     Text(size.label).tag(size.rawValue)
                 }
@@ -90,15 +86,17 @@ struct TeleprompterSettingsSection: View {
             .accessibilityLabel("Teleprompter panel height")
         }
 
-        SettingsFormSection("Preview", icon: "rectangle.and.text.magnified") {
+        SettingsFormSection(
+            "Preview",
+            icon: "play.rectangle",
+            footer: "This preview uses the same size, height, and scroll speed as the recording overlay."
+        ) {
             TeleprompterScrollPreview(
                 transcript: settings.teleprompterTranscript,
                 scrollSpeed: settings.teleprompterScrollSpeed,
                 fontSize: fontSize.fontSize,
                 viewportHeight: panelHeight.viewportHeight
             )
-            Text("This preview uses the same size, height, and scroll speed as the recording overlay.")
-                .settingsDescription()
         }
     }
 
