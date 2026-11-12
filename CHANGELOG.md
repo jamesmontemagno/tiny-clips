@@ -13,8 +13,8 @@ All notable changes to this project will be documented in this file.
 - Agent Plugin instructions now use the GitHub Copilot CLI marketplace install flow instead of deprecated direct repository installs.
 - macOS Settings pages now use a consistent card-based layout with readable descriptions, larger window sizing, clear section hierarchy, and appearance-aware borders.
 - macOS Agent Control settings now use a larger, scrollable layout with clearer status and endpoint cards, readable setup instructions, copyable command panels, and more polished paired-agent rows.
-- The macOS welcome wizard opens in a larger, resizable window so setup content has more room.
-- The macOS welcome wizard now offers five quick preferences (launch at login, screenshot clipboard and editor behavior, video/GIF countdown, and save notifications) and lets you customize the Screenshot, Record Video, and Record GIF shortcuts. Changes apply immediately without resetting saved choices; additional capture options remain available. Recording countdown uses a switch with a shorter description, and the final page illustrates how to open Tiny Clips from the menu bar.
+- The macOS welcome wizard returns to its compact 460 × 390-point size, with resizing and scrollable content.
+- The macOS welcome wizard restores separate Screenshots, Videos, and GIFs preference cards, with Launch at Login at the top, and lets you customize the Screenshot, Record Video, and Record GIF shortcuts. Changes apply immediately without resetting saved choices; countdown and save-notification preferences remain in Settings. The final page illustrates how to open Tiny Clips from the menu bar.
 - The Recent Captures menu on macOS and Windows now shows the 10 newest items instead of 5.
 
 ## v2.1.0.1-mac - 2026-11-08
