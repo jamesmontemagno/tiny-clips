@@ -63,6 +63,16 @@ final class WindowPresenter {
                 presenter?.frontmostApplicationDidChange(to: processIdentifier)
             }
         }
+        presenter.closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let window = notification.object as? NSWindow else { return }
+            MainActor.assumeIsolated {
+                TinyClipsActivationPolicy.endPresentation(of: window)
+            }
+        }
         return presenter
     }()
 
@@ -81,6 +91,7 @@ final class WindowPresenter {
     private var pendingAttempt: Attempt?
     private var resignObserver: NSObjectProtocol?
     private var workspaceObserver: NSObjectProtocol?
+    private var closeObserver: NSObjectProtocol?
 
     init(
         processIdentifier: pid_t,
@@ -106,6 +117,9 @@ final class WindowPresenter {
         )
         pendingAttempt = attempt
 
+        if let nsWindow = window as? NSWindow {
+            TinyClipsActivationPolicy.beginPresentation(of: nsWindow)
+        }
         window.prepareForPresentation()
         activate()
         if window.isMiniaturized {
@@ -120,7 +134,7 @@ final class WindowPresenter {
             guard let window, window.isVisible, !window.isMiniaturized else { return }
 
             if self.isApplicationActive() {
-                guard !window.isKeyWindow, !self.hasKeyWindow() else { return }
+                guard !window.isKeyWindow else { return }
             } else {
                 guard let original = pending.originalProcessIdentifier,
                       self.frontmostProcessIdentifier() == original else { return }

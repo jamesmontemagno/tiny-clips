@@ -44,6 +44,18 @@ private struct ScreenshotEditorMenuCommands: Commands {
     @FocusedValue(\.screenshotEditorCommandActions) private var editor
 
     var body: some Commands {
+        CommandGroup(replacing: .appTermination) {
+            Button("Close Window") {
+                if let editor {
+                    editor.close()
+                } else {
+                    NSApp.keyWindow?.performClose(nil)
+                }
+            }
+            .disabled(editor == nil)
+            .keyboardShortcut("q", modifiers: .command)
+        }
+
         CommandGroup(replacing: .saveItem) {
             // Replacing `.saveItem` removes SwiftUI's default Close item app-wide, and a separate
             // `before: .saveItem` group never reaches the menu, so Close has to live in this group.

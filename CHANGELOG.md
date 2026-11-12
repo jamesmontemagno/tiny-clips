@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- macOS `Command-Q` now closes the active Settings, Clips Library, or editor window instead of quitting Tiny Clips; the menu-bar `Quit` action remains the explicit way to exit the app.
+- macOS Settings, Clips Library, and editor windows now keep Tiny Clips as the active application menu and restore the requested window as key instead of leaving the menu bar tied to another app.
 - macOS confirmation dialogs use standard, appearance-aware buttons instead of low-contrast destructive styling, including Studio, Clips Library, screenshot and video/GIF editors, cleanup, and analytics reset. Cancel is the default for destructive confirmations.
 
 ### Changed

@@ -157,9 +157,13 @@ struct SettingsView: View {
             Text("TinyClips may briefly close the Settings window when switching out of Dock mode.")
         }
         .onAppear {
+            TinyClipsActivationPolicy.beginPresentation(named: "settings-window")
             PerformanceSignposts.endSettingsOpenIfNeeded()
             refreshCaptureDevicesIfNeeded()
             applyRequestedTabIfNeeded()
+        }
+        .onDisappear {
+            TinyClipsActivationPolicy.endPresentation(named: "settings-window")
         }
         .onReceive(settingsWindowManager.$selectedTab.compactMap { $0 }) { requestedTab in
             selectedTab = requestedTab
