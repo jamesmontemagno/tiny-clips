@@ -73,8 +73,9 @@ struct SettingsView: View {
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
-        } detail: {
-            Form {
+        }         detail: {
+            ScrollView {
+                Form {
                 switch selectedTab ?? .general {
                 case .general:
                     GeneralSettingsSection(
@@ -129,9 +130,17 @@ struct SettingsView: View {
                 }
             }
             .formStyle(.grouped)
+                .frame(maxWidth: .infinity)
+            }
+            .scrollIndicators(.visible)
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 720, minHeight: 460)
+        .frame(
+            minWidth: 820,
+            idealWidth: 860,
+            minHeight: 560,
+            idealHeight: 680
+        )
         .sheet(isPresented: $showQuickBugReportForm) {
             QuickBugReportFormView(context: quickBugReportContext) { type, title, description in
                 let url = QuickBugReportURLBuilder.makeURL(

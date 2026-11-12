@@ -36,7 +36,12 @@ Connect an AI agent to Tiny Clips on macOS or Windows with bundled MCP tools and
 https://github.com/jamesmontemagno/tiny-clips.git
 ```
 
-No manual clone or marketplace is required. With GitHub Copilot CLI, run `copilot plugin install jamesmontemagno/tiny-clips`.
+No manual clone is required for VS Code. With GitHub Copilot CLI, register the Tiny Clips marketplace and install the plugin:
+
+```sh
+copilot plugin marketplace add jamesmontemagno/tiny-clips
+copilot plugin install tinyclips@tinyclips
+```
 
 Install the .NET 10 SDK, enable **Settings → Agent Control** in Tiny Clips, then pair once with `dnx TinyClips --yes -- pair` and approve in the app. See the [plugin installation guide](docs/agent-plugin.md) and [agent integration guide](docs/agent-integration.md) for setup, permissions, and examples.
 

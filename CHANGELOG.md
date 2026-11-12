@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 - macOS confirmation dialogs use standard, appearance-aware buttons instead of low-contrast destructive styling, including Studio, Clips Library, screenshot and video/GIF editors, cleanup, and analytics reset. Cancel is the default for destructive confirmations.
 
 ### Changed
+- Agent Plugin instructions now use the GitHub Copilot CLI marketplace install flow instead of deprecated direct repository installs.
+- macOS Settings pages now use a consistent card-based layout with readable descriptions, larger window sizing, clear section hierarchy, and appearance-aware borders.
+- macOS Agent Control settings now use a larger, scrollable layout with clearer status and endpoint cards, readable setup instructions, copyable command panels, and more polished paired-agent rows.
 - The macOS welcome wizard opens in a larger, resizable window so setup content has more room.
 - The macOS welcome wizard now offers five quick preferences (launch at login, screenshot clipboard and editor behavior, video/GIF countdown, and save notifications) and lets you customize the Screenshot, Record Video, and Record GIF shortcuts. Changes apply immediately without resetting saved choices; additional capture options remain available. Recording countdown uses a switch with a shorter description, and the final page illustrates how to open Tiny Clips from the menu bar.
 - The Recent Captures menu on macOS and Windows now shows the 10 newest items instead of 5.

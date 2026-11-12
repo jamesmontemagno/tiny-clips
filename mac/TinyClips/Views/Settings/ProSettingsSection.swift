@@ -7,19 +7,17 @@ struct ProSettingsSection: View {
 
     var body: some View {
         if storeService.hasProTip {
-            Section {
+            SettingsFormSection("Supporter", icon: "star.fill") {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Supporter")
                             .font(.headline)
                         if let plan = storeService.activeProPlan {
                             Text("Plan: \(plan.label) — thank you for your support!")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .settingsDescription()
                         } else {
                             Text("Thank you for supporting independent development!")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .settingsDescription()
                         }
                     }
                     Spacer()

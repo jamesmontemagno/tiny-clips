@@ -7,10 +7,9 @@ struct ShortcutsSettingsSection: View {
     @State private var shortcutError: String?
 
     var body: some View {
-        Section("Global Keyboard Shortcuts") {
+        SettingsFormSection("Global Keyboard Shortcuts", icon: "keyboard") {
             Text("These shortcuts work system-wide, even when the menu is closed. At least one modifier key (⌃ ⌥ ⇧ ⌘) is required. Screenshot Region, Screenshot Screen, and Screenshot Window skip the capture picker.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
 
             if let shortcutError {
                 Label(shortcutError, systemImage: "exclamationmark.triangle.fill")
@@ -36,10 +35,9 @@ struct ShortcutsSettingsSection: View {
             }
         }
 
-        Section("Fixed Shortcuts") {
+        SettingsFormSection("Fixed Shortcuts", icon: "lock") {
             Text("The following shortcuts are fixed and cannot be changed.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
 
             fixedShortcutRow(label: "Stop Recording", keys: "⌘.")
             fixedShortcutRow(label: "Settings", keys: "⌘,")

@@ -2,6 +2,65 @@ import Foundation
 import SwiftUI
 import AppKit
 
+struct SettingsFormSection<Content: View>: View {
+    let title: String?
+    let icon: String?
+    @ViewBuilder let content: () -> Content
+
+    init(
+        _ title: String? = nil,
+        icon: String? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.icon = icon
+        self.content = content
+    }
+
+    var body: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                if let title {
+                    if let icon {
+                        Label(title, systemImage: icon)
+                            .font(.headline)
+                    } else {
+                        Text(title)
+                            .font(.headline)
+                    }
+                }
+
+                content()
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(.quaternary)
+            )
+        }
+    }
+}
+
+extension View {
+    func settingsCard() -> some View {
+        padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(.quaternary)
+            )
+    }
+
+    func settingsDescription() -> some View {
+        font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 extension Binding where Value == Int {
 	var doubleValue: Binding<Double> {
 		Binding<Double>(

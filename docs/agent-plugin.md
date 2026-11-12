@@ -30,13 +30,14 @@ For local development, you can enter the absolute path to the repository root in
 
 ### GitHub Copilot CLI
 
-Install the plugin directly from this repository:
+Register the Tiny Clips marketplace, then install the plugin:
 
 ```sh
-copilot plugin install jamesmontemagno/tiny-clips
+copilot plugin marketplace add jamesmontemagno/tiny-clips
+copilot plugin install tinyclips@tinyclips
 ```
 
-No marketplace is needed for a direct install. To update or remove it later:
+Direct repository installs are deprecated and will stop being supported in a future Copilot CLI release. Use the marketplace commands above. To update or remove the marketplace install later:
 
 ```sh
 copilot plugin update tinyclips

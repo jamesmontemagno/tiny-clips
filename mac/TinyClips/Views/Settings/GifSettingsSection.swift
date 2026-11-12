@@ -6,7 +6,7 @@ struct GifSettingsSection: View {
     let gifMouseClickToggleBinding: Binding<Bool>
 
     var body: some View {
-        Section("GIF Quality") {
+        SettingsFormSection("GIF Quality", icon: "photo.on.rectangle.angled") {
             HStack {
                 Text("Frame rate:")
                 Slider(value: $settings.gifFrameRate, in: 5...30, step: 1)
@@ -32,7 +32,7 @@ struct GifSettingsSection: View {
             .help("Limit GIF output width to reduce file size.")
         }
 
-        Section("Before Recording") {
+        SettingsFormSection("Before Recording", icon: "timer") {
             Toggle("Show capture picker before recording", isOn: $settings.showGifCapturePicker)
                 .help("When disabled, GIF recording goes straight to region selection.")
                 .onChange(of: settings.showGifCapturePicker) { _, isEnabled in
@@ -59,7 +59,7 @@ struct GifSettingsSection: View {
             }
         }
 
-        Section("During Recording") {
+        SettingsFormSection("During Recording", icon: "record.circle") {
             Toggle("Show capture region during recording", isOn: $settings.showRegionIndicator)
                 .help("Show a visible border around the selected capture area while recording.")
             Toggle("Prevent display sleep while recording", isOn: $settings.preventDisplaySleepWhileRecording)
@@ -87,7 +87,7 @@ struct GifSettingsSection: View {
             .buttonStyle(.link)
         }
 
-        Section("After Recording") {
+        SettingsFormSection("After Recording", icon: "arrow.right.square") {
             Toggle("Show capture picker after recording", isOn: $settings.showGifCapturePickerAfterCapture)
                 .help("Reopen the capture picker after each recording so you can quickly start another.")
                 .disabled(!settings.showGifCapturePicker)

@@ -7,23 +7,58 @@ struct AgentControlSettingsSection: View {
     @State private var permissionsClientID: String?
 
     var body: some View {
-        Section("Agent Control") {
-            Text("Let AI agents and scripts on this Mac drive Tiny Clips through the Agent Plugin, MCP server, or command-line tool: take screenshots, record, open editors, and manage your library. Each agent has to be approved here once and only gets the permissions you allow. Deleting, uploading, and discarding always ask you first.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        SettingsFormSection("Agent Control", icon: "terminal") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(automationEnabled ? Color.accentColor.opacity(0.16) : Color.primary.opacity(0.06))
+                            .frame(width: 42, height: 42)
+                        Image(systemName: "terminal")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(automationEnabled ? Color.accentColor : Color.secondary)
+                    }
 
-            Toggle("Allow agents to control Tiny Clips", isOn: $automationEnabled)
-                .help("Starts a local endpoint that only apps running as your user can reach.")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Allow agents to control Tiny Clips")
+                            .font(.headline)
+                        Text("Use the Agent Plugin, MCP server, or command-line tool.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
 
-            if automationEnabled {
-                statusRow
-                LabeledContent("Endpoint:") {
-                    HStack(spacing: 6) {
+                    Spacer(minLength: 12)
+
+                    Toggle("Enabled", isOn: $automationEnabled)
+                        .toggleStyle(.switch)
+                        .help("Starts a local endpoint that only apps running as your user can reach.")
+                }
+
+                Text("Each agent needs approval once and only gets the permissions you allow. Deleting, uploading, and discarding always ask you first.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if automationEnabled {
+                    Divider()
+
+                    HStack(alignment: .center, spacing: 10) {
+                        statusRow
+                        Spacer()
+                        Text("Local endpoint")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack(spacing: 8) {
                         Text(controller.endpointPath)
                             .font(.caption.monospaced())
+                            .foregroundStyle(.primary)
                             .textSelection(.enabled)
                             .lineLimit(2)
                             .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
                         Button {
                             let pasteboard = NSPasteboard.general
                             pasteboard.clearContents()
@@ -31,24 +66,42 @@ struct AgentControlSettingsSection: View {
                         } label: {
                             Image(systemName: "doc.on.doc")
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                         .help("Copy endpoint path")
                         .accessibilityLabel("Copy endpoint path")
                     }
+                    .padding(10)
+                    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(.quaternary)
+                    )
+                    .accessibilityElement(children: .contain)
                 }
-                .accessibilityElement(children: .contain)
             }
+            .padding(.vertical, 6)
         }
 
-        Section("Get Started") {
+        SettingsFormSection("Get Started", icon: "sparkles") {
             AgentControlSetupView()
         }
 
-        Section("Paired Agents") {
+        SettingsFormSection("Paired Agents", icon: "person.2") {
             if controller.clients.isEmpty {
-                Text("No agents are paired. Follow Get Started to install the plugin and pair an agent.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "person.crop.circle.badge.questionmark")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("No agents are paired")
+                            .font(.headline)
+                        Text("Follow Get Started to install the plugin or CLI, then pair an agent.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 6)
             } else {
                 ForEach(controller.clients) { client in
                     clientRow(client)
@@ -56,14 +109,29 @@ struct AgentControlSettingsSection: View {
             }
         }
 
-        Section("Activity") {
-            Text("Every agent request is recorded in a local audit log.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button("Open Audit Log") {
-                openAuditLog()
+        SettingsFormSection("Activity", icon: "text.page") {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "text.page")
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Agent activity")
+                        .font(.headline)
+                    Text("Every agent request is recorded in a local audit log.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Open Audit Log") {
+                    openAuditLog()
+                }
+                .buttonStyle(.bordered)
             }
-            .help("Show the agent activity log in Finder.")
+            .padding(.vertical, 6)
         }
     }
 
@@ -90,35 +158,53 @@ struct AgentControlSettingsSection: View {
     }
 
     private func clientRow(_ client: AutomationClient) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "person.2")
+                    .foregroundStyle(Color.accentColor)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text(client.name)
+                    .font(.headline)
                 Text(client.scopes.joined(separator: ", "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
                 Text(lastUsedText(client))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
+
             Spacer()
-            Button("Permissions…") {
-                permissionsClientID = client.id
+
+            HStack(spacing: 8) {
+                Button("Permissions…") {
+                    permissionsClientID = client.id
+                }
+                .buttonStyle(.bordered)
+                .help("Choose what this agent is allowed to do.")
+                .accessibilityLabel("Change permissions for \(client.name)")
+                .popover(isPresented: Binding(
+                    get: { permissionsClientID == client.id },
+                    set: { if !$0, permissionsClientID == client.id { permissionsClientID = nil } }
+                )) {
+                    AgentPermissionsEditor(clientID: client.id)
+                }
+
+                Button("Revoke", role: .destructive) {
+                    controller.revoke(client)
+                }
+                .buttonStyle(.bordered)
+                .help("Remove this agent's access. It will need to pair again.")
+                .accessibilityLabel("Revoke \(client.name)")
             }
-            .help("Choose what this agent is allowed to do.")
-            .accessibilityLabel("Change permissions for \(client.name)")
-            .popover(isPresented: Binding(
-                get: { permissionsClientID == client.id },
-                set: { if !$0, permissionsClientID == client.id { permissionsClientID = nil } }
-            )) {
-                AgentPermissionsEditor(clientID: client.id)
-            }
-            Button("Revoke", role: .destructive) {
-                controller.revoke(client)
-            }
-            .help("Remove this agent's access. It will need to pair again.")
-            .accessibilityLabel("Revoke \(client.name)")
         }
+        .padding(.vertical, 6)
     }
 
     private func lastUsedText(_ client: AutomationClient) -> String {
@@ -190,93 +276,136 @@ struct AgentControlSetupView: View {
     @State private var copyStatus = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            GroupBox("Before you begin") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Link("Install the .NET 10 SDK", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
-                    Text("Turn on Agent Control above and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant.")
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 14) {
+            setupCard(title: "Before you begin", icon: "checklist") {
+                Link("Install the .NET 10 SDK", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
+                Text("Turn on Agent Control above and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            GroupBox {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Choose the install method for your agent. Both install the same plugin; you only need one.")
-                        .foregroundStyle(.secondary)
+            setupCard(title: "Recommended: Install the Agent Plugin", icon: "puzzlepiece.extension") {
+                Text("Choose one install method. Both install the same plugin; you only need one.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: 8) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("VS Code")
                             .font(.subheadline.weight(.semibold))
-                        Text("Run Chat: Install Plugin from Source from the Command Palette, then enter this repository URL. No manual clone or marketplace is required.")
+                        Text("Run Chat: Install Plugin from Source from the Command Palette, then enter this repository URL.")
+                            .fixedSize(horizontal: false, vertical: true)
                         command("https://github.com/jamesmontemagno/tiny-clips.git", label: "Copy VS Code plugin repository URL")
                     }
+
                     VStack(alignment: .leading, spacing: 6) {
                         Text("GitHub Copilot CLI")
                             .font(.subheadline.weight(.semibold))
-                        command("copilot plugin install jamesmontemagno/tiny-clips", label: "Copy Copilot CLI plugin install command")
+                        command("copilot plugin marketplace add jamesmontemagno/tiny-clips", label: "Copy Copilot CLI marketplace command")
+                        command("copilot plugin install tinyclips@tinyclips", label: "Copy Copilot CLI plugin install command")
                     }
-                    Divider()
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Pair once, then approve the requested permissions in Tiny Clips.")
                     command("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Copy pair command")
+
                     Text("Check the connection:")
-                    command("dnx TinyClips --yes -- status", label: "Copy status command")
-                    Text("Start a fresh agent session, then ask: “Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy.”")
-                        .textSelection(.enabled)
                         .foregroundStyle(.secondary)
+                    command("dnx TinyClips --yes -- status", label: "Copy status command")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } label: {
-                Label("Recommended: Install the Agent Plugin", systemImage: "puzzlepiece.extension")
-                    .font(.headline)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Try it in a fresh agent session")
+                        .font(.subheadline.weight(.semibold))
+                    Text("“Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy.”")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
-            GroupBox {
+            setupCard(title: "Use the CLI directly", icon: "terminal") {
+                Text("For terminal agents and scripts without plugin support, choose either dnx or a global CLI install.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("For terminal agents and scripts without plugin support, choose either dnx or a global CLI install.")
-                        .foregroundStyle(.secondary)
-                    Text("Run without a global install:")
+                    Text("Run without a global install")
                         .font(.subheadline.weight(.semibold))
                     command("dnx TinyClips --yes -- pair --name \"My agent\"", label: "Copy dnx pair command")
                     command("dnx TinyClips --yes -- status", label: "Copy dnx status command")
-                    Text("Or install once, then use the tinyclips command:")
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Or install once, then use the tinyclips command")
                         .font(.subheadline.weight(.semibold))
                     command("dotnet tool install -g TinyClips", label: "Copy global CLI install command")
                     command("tinyclips pair --name \"My agent\"", label: "Copy global CLI pair command")
                     command("tinyclips status", label: "Copy global CLI status command")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } label: {
-                Label("Use the CLI directly (without a plugin)", systemImage: "terminal")
-                    .font(.headline)
             }
 
-            DisclosureGroup("Manual MCP setup (without a plugin)") {
-                VStack(alignment: .leading, spacing: 8) {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("For agents that support MCP but not plugins, pair using either route above, then add this local stdio server in the agent's MCP settings. The agent must run as the same macOS user. Restart or reload its MCP connection after configuring it.")
+                        .fixedSize(horizontal: false, vertical: true)
                     command(
                         "{\"mcpServers\":{\"tinyclips\":{\"command\":\"dotnet\",\"args\":[\"dnx\",\"TinyClips\",\"--verbosity\",\"quiet\",\"--yes\",\"--\",\"mcp\"]}}}",
                         label: "Copy MCP configuration"
                     )
                     Text("If you installed the global CLI, use command tinyclips with args [\"mcp\"] instead. MCP setup varies by agent; workflow Skills are included with the plugin, not this manual configuration.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.top, 6)
+                .padding(.top, 10)
+            } label: {
+                Label("Manual MCP setup (without a plugin)", systemImage: "slider.horizontal.3")
+                    .font(.headline)
             }
-            Text("Agents request permissions when they pair, and you choose which to grant. Change an agent's permissions under Paired Agents at any time. Deleting, uploading, and discarding always need approval. Turn off Agent Control or revoke an agent to stop access. Screen Recording, Microphone, and Camera permissions still apply.")
-                .foregroundStyle(.secondary)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(.quaternary)
+            )
+
             Link("Full setup, Skills, and example prompts", destination: URL(string: "https://github.com/jamesmontemagno/tiny-clips/blob/main/docs/agent-integration.md")!)
             if !copyStatus.isEmpty {
                 Text(copyStatus)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }
-        .font(.caption)
+    }
+
+    private func setupCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: icon)
+                .font(.headline)
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.quaternary)
+        )
     }
 
     private func command(_ value: String, label: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .center, spacing: 8) {
             Text(value)
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button {
                 NSPasteboard.general.clearContents()
@@ -286,9 +415,18 @@ struct AgentControlSetupView: View {
             } label: {
                 Image(systemName: "doc.on.doc")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .help(label)
             .accessibilityLabel(label)
         }
+        .padding(.leading, 10)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.quaternary)
+        )
     }
 }

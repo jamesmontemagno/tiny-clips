@@ -30,7 +30,7 @@ struct AnalyticsSettingsSection: View {
     }
 
     var body: some View {
-        Section("Capture Analytics") {
+        SettingsFormSection("Capture Analytics", icon: "chart.bar") {
             Picker("Time range", selection: $selectedRange) {
                 Text("Last 7 Days").tag(7)
                 Text("Last 30 Days").tag(30)
@@ -49,8 +49,7 @@ struct AnalyticsSettingsSection: View {
             }
 
             hoverDetailText
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Chart(chartEntries) { entry in
@@ -107,12 +106,10 @@ struct AnalyticsSettingsSection: View {
 
             if summaries.allSatisfy({ $0.counts.totalCount == 0 }) {
                 Text("No captures yet for this range. Take a screenshot, video, or GIF to start the chart.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
             } else {
                 Text("Daily totals are stored locally on this device and roll over automatically after 30 days.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
             }
 
             Button("Reset Capture Analytics…", role: .destructive) {
@@ -133,22 +130,20 @@ struct AnalyticsSettingsSection: View {
             Text("This clears all local screenshot, video, and GIF counts — including lifetime totals. This can't be undone.")
         }
 
-        Section("Lifetime Totals") {
+        SettingsFormSection("Lifetime Totals", icon: "sum") {
             HStack(spacing: 12) {
                 AnalyticsTotalCard(title: "Screenshots", count: store.lifetimeTotal(for: .screenshot), color: .blue)
                 AnalyticsTotalCard(title: "Videos", count: store.lifetimeTotal(for: .video), color: .red)
                 AnalyticsTotalCard(title: "GIFs", count: store.lifetimeTotal(for: .gif), color: .green)
             }
             Text("\(store.lifetimeTotals.totalCount) captures since you started using Tiny Clips.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
         }
 
-        Section("Insights") {
+        SettingsFormSection("Insights", icon: "sparkles") {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Busiest day (\(selectedRange == 7 ? "last 7 days" : "last 30 days"))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
                 Text(busiestWeekdayText)
                     .font(.body.weight(.medium))
 
@@ -167,8 +162,7 @@ struct AnalyticsSettingsSection: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Most active hour (all-time)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
                 Text(mostActiveHourText)
                     .font(.body.weight(.medium))
 
@@ -197,7 +191,7 @@ struct AnalyticsSettingsSection: View {
             }
         }
 
-        Section {
+        SettingsFormSection("Share", icon: "square.and.arrow.up") {
             HStack(spacing: 12) {
                 Button {
                     copySummaryToClipboard()
@@ -209,12 +203,8 @@ struct AnalyticsSettingsSection: View {
                     Label("Share…", systemImage: "square.and.arrow.up")
                 }
             }
-        } header: {
-            Text("Share")
-        } footer: {
             Text("Share a quick text summary of your capture activity for the selected range.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
         }
     }
 
