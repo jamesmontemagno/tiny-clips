@@ -239,6 +239,7 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         didComplete = true
         onComplete = nil
         menuActions.stopPlayback?()
+        TinyClipsActivationPolicy.endPresentation(of: self)
         callback(url)
         orderOut(nil)
     }
