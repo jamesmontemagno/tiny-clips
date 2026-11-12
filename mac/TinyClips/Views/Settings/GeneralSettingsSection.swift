@@ -15,13 +15,12 @@ struct GeneralSettingsSection: View {
 
     var body: some View {
         SettingsFormSection("Output", icon: "folder") {
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Use default folders", isOn: $settings.useDefaultSaveDirectories)
-                    .accessibilityLabel("Use default capture folders")
-
-                Text("Screenshots → Pictures/TinyClips, Videos and GIFs → Movies/TinyClips")
-                    .settingsDescription()
-            }
+            SettingsToggleRow(
+                title: "Use default folders",
+                description: "Screenshots → Pictures/TinyClips; videos and GIFs → Movies/TinyClips.",
+                isOn: $settings.useDefaultSaveDirectories,
+                accessibilityHint: "Use the default capture folders for screenshots, videos, and GIFs."
+            )
 
             if !settings.useDefaultSaveDirectories {
                 saveDirectoryRow(title: "Screenshots folder", type: .screenshot)
@@ -60,7 +59,11 @@ struct GeneralSettingsSection: View {
                     .truncationMode(.middle)
             }
 
-            Toggle("Show in Finder after save", isOn: $settings.showInFinder)
+            SettingsToggleRow(
+                title: "Show in Finder after save",
+                description: "Reveal the saved capture in Finder.",
+                isOn: $settings.showInFinder
+            )
         }
 
         SettingsFormSection("Notifications", icon: "bell") {
@@ -96,9 +99,13 @@ struct GeneralSettingsSection: View {
             Text("System permission allows notifications for saved captures and background tasks, including Studio captions. macOS controls how they are delivered.")
                 .settingsDescription()
 
-            Toggle("Show notification after save", isOn: $settings.showSaveNotifications)
-                .accessibilityLabel("Show notification after save")
-                .help("Only controls save notifications. Does not grant system permission or change background-task notifications.")
+            SettingsToggleRow(
+                title: "Show notification after save",
+                description: "Display a notification when a capture is saved.",
+                isOn: $settings.showSaveNotifications,
+                help: "Only controls save notifications. Does not grant system permission or change background-task notifications.",
+                accessibilityHint: "Show a notification after saving a capture."
+            )
         }
         .task {
             await refreshNotificationPermission()
@@ -108,25 +115,41 @@ struct GeneralSettingsSection: View {
         }
 
         SettingsFormSection("Editors", icon: "pencil.and.outline") {
-            Toggle("Confirm before closing editors with Esc", isOn: $settings.confirmEditorEscape)
-                .help("Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. Turn off to close them right away, discarding anything unsaved.")
+            SettingsToggleRow(
+                title: "Confirm before closing editors with Esc",
+                description: "Ask before closing an editor with unsaved work.",
+                isOn: $settings.confirmEditorEscape,
+                help: "Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. Turn off to close them right away, discarding anything unsaved."
+            )
         }
 
         SettingsFormSection("Advanced", icon: "slider.horizontal.3") {
-            Toggle("Launch at login", isOn: Binding(
-                get: { launchAtLogin.isEnabled },
-                set: { launchAtLogin.setEnabled($0) }
-            ))
-            Toggle("Show TinyClips in Dock (enables ⌘⇥)", isOn: showInDockBinding)
-                .help("When enabled, TinyClips appears in Command-Tab and can participate in normal app/window switching.")
+            SettingsToggleRow(
+                title: "Launch at login",
+                description: "Open TinyClips automatically after sign-in.",
+                isOn: Binding(
+                    get: { launchAtLogin.isEnabled },
+                    set: { launchAtLogin.setEnabled($0) }
+                )
+            )
+            SettingsToggleRow(
+                title: "Show TinyClips in Dock (enables ⌘⇥)",
+                description: "Make TinyClips visible in the Dock and app switcher.",
+                isOn: showInDockBinding,
+                help: "When enabled, TinyClips appears in Command-Tab and can participate in normal app/window switching."
+            )
             Picker("When capturing a display", selection: $settings.multiMonitorCaptureMode) {
                 ForEach(MultiMonitorCaptureMode.allCases, id: \.self) { mode in
                     Text(mode.label).tag(mode)
                 }
             }
             .help("Choose whether TinyClips asks for a display or captures one automatically when multiple monitors are connected.")
-            Toggle("Include TinyClips in captures", isOn: $settings.includeTinyClipsInCapture)
-                .help("For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection.")
+            SettingsToggleRow(
+                title: "Include TinyClips in captures",
+                description: "Let TinyClips windows appear in captures.",
+                isOn: $settings.includeTinyClipsInCapture,
+                help: "For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection."
+            )
             Button {
                 NSWorkspace.shared.open(TinyClipsTemporaryFiles.directoryURL)
             } label: {
@@ -242,8 +265,12 @@ struct BrandingSettingsSection: View {
 
     var body: some View {
         SettingsFormSection("Branding", icon: "flag") {
-            Toggle("Show 'Captured on Tiny Clips' overlay", isOn: $settings.showBrandingOverlay)
-                .help("Adds a 'Captured on Tiny Clips' watermark to the bottom-right corner of screenshots, recordings, and GIFs.")
+            SettingsToggleRow(
+                title: "Show 'Captured on Tiny Clips' overlay",
+                description: "Add a TinyClips watermark to captures.",
+                isOn: $settings.showBrandingOverlay,
+                help: "Adds a 'Captured on Tiny Clips' watermark to the bottom-right corner of screenshots, recordings, and GIFs."
+            )
         }
     }
 }

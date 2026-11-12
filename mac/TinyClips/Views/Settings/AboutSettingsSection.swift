@@ -70,11 +70,15 @@ struct AboutSettingsSection: View {
 
 #if !APPSTORE
         SettingsFormSection("Updates", icon: "arrow.down.circle") {
-            Toggle("Automatically check for updates", isOn: Binding(
-                get: { sparkleController.automaticallyChecksForUpdates },
-                set: { sparkleController.automaticallyChecksForUpdates = $0 }
-            ))
-            .help("When enabled, TinyClips periodically checks for updates and Sparkle presents the standard update alert when one is available.")
+            SettingsToggleRow(
+                title: "Automatically check for updates",
+                description: "Check for new releases and show update alerts.",
+                isOn: Binding(
+                    get: { sparkleController.automaticallyChecksForUpdates },
+                    set: { sparkleController.automaticallyChecksForUpdates = $0 }
+                ),
+                help: "When enabled, TinyClips periodically checks for updates and Sparkle presents the standard update alert when one is available."
+            )
 
             Button("Check for Updates\u{2026}") {
                 sparkleController.checkForUpdates()

@@ -40,8 +40,12 @@ struct MouseClicksSettingsSection: View {
         }
 
         SettingsFormSection("GIF", icon: "photo.on.rectangle.angled") {
-            Toggle("Use Video click settings", isOn: $settings.gifMouseClicksUseVideoSettings)
-                .help("When enabled, GIF click visuals mirror Video settings.")
+            SettingsToggleRow(
+                title: "Use Video click settings",
+                description: "Use the same click effects for GIF and Video.",
+                isOn: $settings.gifMouseClicksUseVideoSettings,
+                help: "When enabled, GIF click visuals mirror Video settings."
+            )
 
             if settings.gifMouseClicksUseVideoSettings {
                 Text("GIF click visuals mirror Video settings.")

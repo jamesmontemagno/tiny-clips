@@ -19,7 +19,7 @@ struct SettingsFormSection<Content: View>: View {
 
     var body: some View {
         Section {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 if let title {
                     if let icon {
                         Label(title, systemImage: icon)
@@ -42,7 +42,7 @@ struct SettingsFormSection<Content: View>: View {
                     .strokeBorder(.quaternary)
             )
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
     }
 }
 
@@ -61,6 +61,30 @@ extension View {
         font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct SettingsToggleRow: View {
+    let title: String
+    let description: String
+    @Binding var isOn: Bool
+    var help: String?
+    var accessibilityHint: String?
+    var disabled = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle(title, isOn: $isOn)
+                .help(help ?? description)
+                .disabled(disabled)
+
+            Text(description)
+                .settingsDescription()
+                .padding(.leading, 20)
+                .accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(accessibilityHint ?? description)
     }
 }
 

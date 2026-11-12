@@ -106,17 +106,18 @@ struct StudioSettingsSection: View {
         SettingsFormSection("Tiny Clips Studio", icon: "square.stack.3d.up") {
             // The task hangs off this one row so it exists once, whether Studio is on or off.
             // What an editor changes is heard by the list itself, not by a row.
-            Toggle("Tiny Clips Studio (Preview)", isOn: $settings.studioPreviewEnabled)
-                .help("Turns on Tiny Clips Studio, an editor for video recordings that is still being built.")
-                .task {
-                    studioProjects.reload()
-                }
-                .onChange(of: settings.studioPreviewEnabled) { _, _ in
-                    studioProjects.reload()
-                }
-
-            Text("Studio is an editor for video recordings. A recording made for Studio keeps the screen, the camera, and the clicks apart, so you can arrange them over a background, zoom, cut, and change the layout before you export. It is a preview: parts of it are unfinished.")
-                .settingsDescription()
+            SettingsToggleRow(
+                title: "Tiny Clips Studio (Preview)",
+                description: "Edit recordings with separate screen, camera, and click layers.",
+                isOn: $settings.studioPreviewEnabled,
+                help: "Turns on Tiny Clips Studio, an editor for video recordings that is still being built."
+            )
+            .task {
+                studioProjects.reload()
+            }
+            .onChange(of: settings.studioPreviewEnabled) { _, _ in
+                studioProjects.reload()
+            }
 
             if !settings.studioPreviewEnabled, let keptText {
                 Text(keptText)

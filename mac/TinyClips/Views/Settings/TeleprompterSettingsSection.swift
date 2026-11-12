@@ -19,12 +19,13 @@ struct TeleprompterSettingsSection: View {
 
     var body: some View {
         SettingsFormSection("Teleprompter", icon: "captions.bubble") {
-            Toggle("Enable teleprompter", isOn: $settings.teleprompterEnabled)
-                .help("Show an auto-scrolling transcript overlay while recording video. The overlay is never captured in the recording.")
-                .accessibilityHint("When enabled, an auto-scrolling transcript overlay appears during video recordings only.")
-
-            Text("The teleprompter appears during video recordings only and is never included in the captured video.")
-                .settingsDescription()
+            SettingsToggleRow(
+                title: "Enable teleprompter",
+                description: "Show an auto-scrolling script while recording video. It is never included in the capture.",
+                isOn: $settings.teleprompterEnabled,
+                help: "Show an auto-scrolling transcript overlay while recording video. The overlay is never captured in the recording.",
+                accessibilityHint: "When enabled, an auto-scrolling transcript overlay appears during video recordings only."
+            )
         }
 
         SettingsFormSection("Transcript", icon: "text.alignleft") {

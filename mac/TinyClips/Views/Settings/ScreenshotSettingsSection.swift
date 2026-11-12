@@ -33,16 +33,24 @@ struct ScreenshotSettingsSection: View {
         }
 
         SettingsFormSection("Before Capture", icon: "camera.aperture") {
-            Toggle("Show capture picker before screenshot", isOn: $settings.showScreenshotCapturePicker)
-                .help("When disabled, screenshots go straight to region selection.")
-                .onChange(of: settings.showScreenshotCapturePicker) { _, isEnabled in
-                    if !isEnabled {
-                        settings.showScreenshotCapturePickerAfterCapture = false
-                    }
+            SettingsToggleRow(
+                title: "Show capture picker before screenshot",
+                description: "Choose a capture mode before taking a screenshot.",
+                isOn: $settings.showScreenshotCapturePicker,
+                help: "When disabled, screenshots go straight to region selection."
+            )
+            .onChange(of: settings.showScreenshotCapturePicker) { _, isEnabled in
+                if !isEnabled {
+                    settings.showScreenshotCapturePickerAfterCapture = false
                 }
+            }
 
-            Toggle("Countdown before screenshot", isOn: $settings.screenshotCountdownEnabled)
-                .help("Wait before capturing so you can prepare the screen.")
+            SettingsToggleRow(
+                title: "Countdown before screenshot",
+                description: "Wait briefly for a countdown before capturing.",
+                isOn: $settings.screenshotCountdownEnabled,
+                help: "Wait before capturing so you can prepare the screen."
+            )
             if settings.screenshotCountdownEnabled {
                 HStack {
                     Text("Duration:")
@@ -60,31 +68,50 @@ struct ScreenshotSettingsSection: View {
         }
 
         SettingsFormSection("After Capture", icon: "arrow.right.square") {
-            Toggle("Show capture picker after screenshot", isOn: $settings.showScreenshotCapturePickerAfterCapture)
-                .help("Reopen the capture picker after each screenshot so you can quickly take another.")
-                .disabled(!settings.showScreenshotCapturePicker)
+            SettingsToggleRow(
+                title: "Show capture picker after screenshot",
+                description: "Return to the capture picker for another shot.",
+                isOn: $settings.showScreenshotCapturePickerAfterCapture,
+                help: "Reopen the capture picker after each screenshot so you can quickly take another.",
+                disabled: !settings.showScreenshotCapturePicker
+            )
 
-            Toggle("Open editor after capture", isOn: $settings.showScreenshotEditor)
-                .help("Open the screenshot editor after capture so you can annotate or crop.")
-                .onChange(of: settings.showScreenshotEditor) { _, isEnabled in
-                    if !isEnabled {
-                        settings.saveImmediatelyScreenshot = true
-                    }
+            SettingsToggleRow(
+                title: "Open editor after capture",
+                description: "Open the screenshot editor to annotate or crop.",
+                isOn: $settings.showScreenshotEditor,
+                help: "Open the screenshot editor after capture so you can annotate or crop."
+            )
+            .onChange(of: settings.showScreenshotEditor) { _, isEnabled in
+                if !isEnabled {
+                    settings.saveImmediatelyScreenshot = true
                 }
+            }
 
-            Toggle("Save immediately", isOn: $settings.saveImmediatelyScreenshot)
-                .help("Save immediately instead of waiting for actions in the editor.")
-                .disabled(!settings.showScreenshotEditor)
+            SettingsToggleRow(
+                title: "Save immediately",
+                description: "Save without waiting for editor actions.",
+                isOn: $settings.saveImmediatelyScreenshot,
+                help: "Save immediately instead of waiting for actions in the editor.",
+                disabled: !settings.showScreenshotEditor
+            )
 
-            Toggle("Copy to clipboard", isOn: $settings.copyScreenshotToClipboard)
-                .help("Copy screenshots to the clipboard as an image, even before saving in the editor.")
+            SettingsToggleRow(
+                title: "Copy to clipboard",
+                description: "Place a copy of the image on the clipboard.",
+                isOn: $settings.copyScreenshotToClipboard,
+                help: "Copy screenshots to the clipboard as an image, even before saving in the editor."
+            )
         }
 
         DisclosureGroup("Advanced") {
-            Toggle("Exclude ClickLight overlays", isOn: $settings.excludeClickLightFromScreenshots)
-                .help("Exclude ClickLight from region, screen, and scrolling screenshots without adding a delay. Video and GIF recordings are unchanged.")
-                .accessibilityLabel("Exclude ClickLight overlays")
-                .accessibilityHint("Hides ClickLight overlays in screenshots only. Does not change video or GIF recordings.")
+            SettingsToggleRow(
+                title: "Exclude ClickLight overlays",
+                description: "Keep ClickLight rings out of screenshots.",
+                isOn: $settings.excludeClickLightFromScreenshots,
+                help: "Exclude ClickLight from region, screen, and scrolling screenshots without adding a delay. Video and GIF recordings are unchanged.",
+                accessibilityHint: "Hides ClickLight overlays in screenshots only. Does not change video or GIF recordings."
+            )
 
             Text("Keeps ClickLight rings and other ClickLight overlays out of screenshots. Window captures already include only the selected window. No ClickLight shortcut setup is required.")
                 .settingsDescription()

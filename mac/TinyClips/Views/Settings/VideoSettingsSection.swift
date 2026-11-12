@@ -27,20 +27,34 @@ struct VideoSettingsSection: View {
         }
 
         SettingsFormSection("Audio", icon: "waveform") {
-            Toggle("Record output audio", isOn: $settings.recordAudio)
-                .help("Include the current system output mix in the recording.")
-            Text("Output audio records the current system mix. macOS does not provide a separate output-device picker here.")
-                .settingsDescription()
+            SettingsToggleRow(
+                title: "Record output audio",
+                description: "Include the current system output mix.",
+                isOn: $settings.recordAudio,
+                help: "Include the current system output mix in the recording."
+            )
 
-            Toggle("Record microphone", isOn: $settings.recordMicrophone)
-                .help("Include microphone input in the recording.")
+            SettingsToggleRow(
+                title: "Record microphone",
+                description: "Include input from the selected microphone.",
+                isOn: $settings.recordMicrophone,
+                help: "Include microphone input in the recording."
+            )
 
-            Toggle("Limit microphone peaks", isOn: $settings.microphoneLimiterEnabled)
-                .help("Softly compresses loud microphone peaks before encoding to prevent distortion.")
+            SettingsToggleRow(
+                title: "Limit microphone peaks",
+                description: "Reduce loud peaks before encoding.",
+                isOn: $settings.microphoneLimiterEnabled,
+                help: "Softly compresses loud microphone peaks before encoding to prevent distortion."
+            )
 
-            Toggle("Reduce background and wind noise", isOn: $settings.windNoiseRemovalEnabled)
-                .help("Uses macOS wind-noise removal when the selected microphone supports it.")
-                .accessibilityHint("When enabled, supported microphones reduce background and wind noise before recording.")
+            SettingsToggleRow(
+                title: "Reduce background and wind noise",
+                description: "Use supported macOS noise removal.",
+                isOn: $settings.windNoiseRemovalEnabled,
+                help: "Uses macOS wind-noise removal when the selected microphone supports it.",
+                accessibilityHint: "When enabled, supported microphones reduce background and wind noise before recording."
+            )
 
             Picker("Microphone input:", selection: $settings.selectedMicrophoneID) {
                 Text("System Default").tag("")
@@ -53,13 +67,17 @@ struct VideoSettingsSection: View {
         }
 
         SettingsFormSection("Webcam Overlay", icon: "camera") {
-            Toggle("Enable webcam overlay by default", isOn: $settings.webcamEnabled)
-                .help("Show a webcam picture-in-picture overlay while recording.")
-                .onChange(of: settings.webcamEnabled) { _, isEnabled in
-                    if isEnabled {
-                        settings.recordMicrophone = true
-                    }
+            SettingsToggleRow(
+                title: "Enable webcam overlay by default",
+                description: "Add a picture-in-picture webcam to recordings.",
+                isOn: $settings.webcamEnabled,
+                help: "Show a webcam picture-in-picture overlay while recording."
+            )
+            .onChange(of: settings.webcamEnabled) { _, isEnabled in
+                if isEnabled {
+                    settings.recordMicrophone = true
                 }
+            }
 
             Picker("Default camera:", selection: $settings.selectedWebcamID) {
                 Text("System Default").tag("")
@@ -93,16 +111,24 @@ struct VideoSettingsSection: View {
         }
 
         SettingsFormSection("Before Recording", icon: "timer") {
-            Toggle("Show capture picker before recording", isOn: $settings.showVideoCapturePicker)
-                .help("When disabled, video recording goes straight to region selection.")
-                .onChange(of: settings.showVideoCapturePicker) { _, isEnabled in
-                    if !isEnabled {
-                        settings.showVideoCapturePickerAfterCapture = false
-                    }
+            SettingsToggleRow(
+                title: "Show capture picker before recording",
+                description: "Choose a capture mode before starting a video.",
+                isOn: $settings.showVideoCapturePicker,
+                help: "When disabled, video recording goes straight to region selection."
+            )
+            .onChange(of: settings.showVideoCapturePicker) { _, isEnabled in
+                if !isEnabled {
+                    settings.showVideoCapturePickerAfterCapture = false
                 }
+            }
 
-            Toggle("Countdown before recording", isOn: $settings.videoCountdownEnabled)
-                .help("Wait before recording starts so you can prepare the screen.")
+            SettingsToggleRow(
+                title: "Countdown before recording",
+                description: "Wait briefly for a countdown before recording.",
+                isOn: $settings.videoCountdownEnabled,
+                help: "Wait before recording starts so you can prepare the screen."
+            )
             if settings.videoCountdownEnabled {
                 HStack {
                     Text("Duration:")
@@ -120,16 +146,28 @@ struct VideoSettingsSection: View {
         }
 
         SettingsFormSection("During Recording", icon: "record.circle") {
-            Toggle("Show capture region during recording", isOn: $settings.showRegionIndicator)
-                .help("Show a visible border around the selected capture area while recording.")
+            SettingsToggleRow(
+                title: "Show capture region during recording",
+                description: "Draw a visible border around the capture area.",
+                isOn: $settings.showRegionIndicator,
+                help: "Show a visible border around the selected capture area while recording."
+            )
 
-            Toggle("Prevent display sleep while recording", isOn: $settings.preventDisplaySleepWhileRecording)
-                .help("Keep the display awake and prevent the screen saver while recording video or GIFs.")
-                .accessibilityHint("When enabled, TinyClips keeps the display awake while recording video or GIFs.")
+            SettingsToggleRow(
+                title: "Prevent display sleep while recording",
+                description: "Keep the display awake during capture.",
+                isOn: $settings.preventDisplaySleepWhileRecording,
+                help: "Keep the display awake and prevent the screen saver while recording video or GIFs.",
+                accessibilityHint: "When enabled, TinyClips keeps the display awake while recording video or GIFs."
+            )
 
-            Toggle("Show mouse clicks in recording", isOn: $settings.showMouseClickVisualsInVideo)
-                .help("Adds a subtle pulse at click positions in saved video recordings.")
-                .accessibilityHint("When enabled, mouse clicks are shown as a pulse effect in saved video recordings.")
+            SettingsToggleRow(
+                title: "Show mouse clicks in recording",
+                description: "Add a subtle pulse at click positions.",
+                isOn: $settings.showMouseClickVisualsInVideo,
+                help: "Adds a subtle pulse at click positions in saved video recordings.",
+                accessibilityHint: "When enabled, mouse clicks are shown as a pulse effect in saved video recordings."
+            )
             Button("Customize mouse click effect…") {
                 selectedTab.wrappedValue = .mouseClicks
             }
@@ -137,23 +175,39 @@ struct VideoSettingsSection: View {
         }
 
         SettingsFormSection("After Recording", icon: "arrow.right.square") {
-            Toggle("Show capture picker after recording", isOn: $settings.showVideoCapturePickerAfterCapture)
-                .help("Reopen the capture picker after each recording so you can quickly start another.")
-                .disabled(!settings.showVideoCapturePicker)
+            SettingsToggleRow(
+                title: "Show capture picker after recording",
+                description: "Return to the capture picker for another video.",
+                isOn: $settings.showVideoCapturePickerAfterCapture,
+                help: "Reopen the capture picker after each recording so you can quickly start another.",
+                disabled: !settings.showVideoCapturePicker
+            )
 
-            Toggle("Open trimmer after recording", isOn: $settings.showTrimmer)
-                .help("Open the trimmer when recording ends so you can trim before saving.")
-                .onChange(of: settings.showTrimmer) { _, isEnabled in
-                    if !isEnabled {
-                        settings.saveImmediatelyVideo = true
-                    }
+            SettingsToggleRow(
+                title: "Open trimmer after recording",
+                description: "Open the video trimmer when recording ends.",
+                isOn: $settings.showTrimmer,
+                help: "Open the trimmer when recording ends so you can trim before saving."
+            )
+            .onChange(of: settings.showTrimmer) { _, isEnabled in
+                if !isEnabled {
+                    settings.saveImmediatelyVideo = true
                 }
+            }
 
-            Toggle("Save immediately", isOn: $settings.saveImmediatelyVideo)
-                .help("Save immediately instead of waiting for actions in the trimmer.")
-                .disabled(!settings.showTrimmer)
-            Toggle("Copy to clipboard", isOn: $settings.copyVideoToClipboard)
-                .help("Copy saved videos to the clipboard as a file URL.")
+            SettingsToggleRow(
+                title: "Save immediately",
+                description: "Save without waiting for trimmer actions.",
+                isOn: $settings.saveImmediatelyVideo,
+                help: "Save immediately instead of waiting for actions in the trimmer.",
+                disabled: !settings.showTrimmer
+            )
+            SettingsToggleRow(
+                title: "Copy to clipboard",
+                description: "Place a copy of the video on the clipboard.",
+                isOn: $settings.copyVideoToClipboard,
+                help: "Copy saved videos to the clipboard as a file URL."
+            )
         }
 
         DisclosureGroup("Advanced") {

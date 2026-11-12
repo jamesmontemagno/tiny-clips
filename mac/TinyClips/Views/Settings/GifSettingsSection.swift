@@ -33,16 +33,24 @@ struct GifSettingsSection: View {
         }
 
         SettingsFormSection("Before Recording", icon: "timer") {
-            Toggle("Show capture picker before recording", isOn: $settings.showGifCapturePicker)
-                .help("When disabled, GIF recording goes straight to region selection.")
-                .onChange(of: settings.showGifCapturePicker) { _, isEnabled in
-                    if !isEnabled {
-                        settings.showGifCapturePickerAfterCapture = false
-                    }
+            SettingsToggleRow(
+                title: "Show capture picker before recording",
+                description: "Choose a capture mode before starting a GIF.",
+                isOn: $settings.showGifCapturePicker,
+                help: "When disabled, GIF recording goes straight to region selection."
+            )
+            .onChange(of: settings.showGifCapturePicker) { _, isEnabled in
+                if !isEnabled {
+                    settings.showGifCapturePickerAfterCapture = false
                 }
+            }
 
-            Toggle("Countdown before recording", isOn: $settings.gifCountdownEnabled)
-                .help("Wait before recording starts so you can prepare the screen.")
+            SettingsToggleRow(
+                title: "Countdown before recording",
+                description: "Wait briefly for a countdown before recording.",
+                isOn: $settings.gifCountdownEnabled,
+                help: "Wait before recording starts so you can prepare the screen."
+            )
             if settings.gifCountdownEnabled {
                 HStack {
                     Text("Duration:")
@@ -60,24 +68,31 @@ struct GifSettingsSection: View {
         }
 
         SettingsFormSection("During Recording", icon: "record.circle") {
-            Toggle("Show capture region during recording", isOn: $settings.showRegionIndicator)
-                .help("Show a visible border around the selected capture area while recording.")
-            Toggle("Prevent display sleep while recording", isOn: $settings.preventDisplaySleepWhileRecording)
-                .help("Keep the display awake and prevent the screen saver while recording video or GIFs.")
-                .accessibilityHint("When enabled, TinyClips keeps the display awake while recording video or GIFs.")
-            Toggle(
-                settings.gifMouseClicksUseVideoSettings
+            SettingsToggleRow(
+                title: "Show capture region during recording",
+                description: "Draw a visible border around the capture area.",
+                isOn: $settings.showRegionIndicator,
+                help: "Show a visible border around the selected capture area while recording."
+            )
+            SettingsToggleRow(
+                title: "Prevent display sleep while recording",
+                description: "Keep the display awake during capture.",
+                isOn: $settings.preventDisplaySleepWhileRecording,
+                help: "Keep the display awake and prevent the screen saver while recording video or GIFs.",
+                accessibilityHint: "When enabled, TinyClips keeps the display awake while recording video or GIFs."
+            )
+            SettingsToggleRow(
+                title: settings.gifMouseClicksUseVideoSettings
                     ? "Show mouse clicks in recording (mirrors Video)"
                     : "Show mouse clicks in recording",
-                isOn: gifMouseClickToggleBinding
-            )
-            .help(
-                settings.gifMouseClicksUseVideoSettings
+                description: settings.gifMouseClicksUseVideoSettings
+                    ? "GIF clicks follow the Video mouse click setting."
+                    : "Add a subtle pulse at click positions.",
+                isOn: gifMouseClickToggleBinding,
+                help: settings.gifMouseClicksUseVideoSettings
                     ? "Uses the Video mouse click on/off setting for GIF recordings."
-                    : "Adds a subtle pulse at click positions in saved GIF recordings."
-            )
-            .accessibilityHint(
-                settings.gifMouseClicksUseVideoSettings
+                    : "Adds a subtle pulse at click positions in saved GIF recordings.",
+                accessibilityHint: settings.gifMouseClicksUseVideoSettings
                     ? "When enabled, GIF recordings use the same mouse click visibility setting as Video recordings."
                     : "When enabled, mouse clicks are shown as a pulse effect in saved GIF recordings."
             )
@@ -88,23 +103,39 @@ struct GifSettingsSection: View {
         }
 
         SettingsFormSection("After Recording", icon: "arrow.right.square") {
-            Toggle("Show capture picker after recording", isOn: $settings.showGifCapturePickerAfterCapture)
-                .help("Reopen the capture picker after each recording so you can quickly start another.")
-                .disabled(!settings.showGifCapturePicker)
+            SettingsToggleRow(
+                title: "Show capture picker after recording",
+                description: "Return to the capture picker for another GIF.",
+                isOn: $settings.showGifCapturePickerAfterCapture,
+                help: "Reopen the capture picker after each recording so you can quickly start another.",
+                disabled: !settings.showGifCapturePicker
+            )
 
-            Toggle("Open trimmer after recording", isOn: $settings.showGifTrimmer)
-                .help("Open the trimmer when recording ends so you can trim before saving.")
-                .onChange(of: settings.showGifTrimmer) { _, isEnabled in
-                    if !isEnabled {
-                        settings.saveImmediatelyGif = true
-                    }
+            SettingsToggleRow(
+                title: "Open trimmer after recording",
+                description: "Open the GIF trimmer when recording ends.",
+                isOn: $settings.showGifTrimmer,
+                help: "Open the trimmer when recording ends so you can trim before saving."
+            )
+            .onChange(of: settings.showGifTrimmer) { _, isEnabled in
+                if !isEnabled {
+                    settings.saveImmediatelyGif = true
                 }
+            }
 
-            Toggle("Save immediately", isOn: $settings.saveImmediatelyGif)
-                .help("Save immediately instead of waiting for actions in the trimmer.")
-                .disabled(!settings.showGifTrimmer)
-            Toggle("Copy to clipboard", isOn: $settings.copyGifToClipboard)
-                .help("Copy saved GIFs to the clipboard as a file URL.")
+            SettingsToggleRow(
+                title: "Save immediately",
+                description: "Save without waiting for trimmer actions.",
+                isOn: $settings.saveImmediatelyGif,
+                help: "Save immediately instead of waiting for actions in the trimmer.",
+                disabled: !settings.showGifTrimmer
+            )
+            SettingsToggleRow(
+                title: "Copy to clipboard",
+                description: "Place a copy of the GIF on the clipboard.",
+                isOn: $settings.copyGifToClipboard,
+                help: "Copy saved GIFs to the clipboard as a file URL."
+            )
         }
     }
 }
