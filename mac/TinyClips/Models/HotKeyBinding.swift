@@ -29,6 +29,25 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
             return "Screenshot Screen"
         }
     }
+
+    var iconName: String {
+        switch self {
+        case .screenshot:
+            return "camera"
+        case .recordVideo:
+            return "video"
+        case .recordGif:
+            return "photo.on.rectangle.angled"
+        case .copyTextFromRegion:
+            return "text.viewfinder"
+        case .screenshotRegion:
+            return "viewfinder.rectangular"
+        case .screenshotWindow:
+            return "macwindow"
+        case .screenshotScreen:
+            return "display"
+        }
+    }
 }
 
 // MARK: - HotKeyBinding

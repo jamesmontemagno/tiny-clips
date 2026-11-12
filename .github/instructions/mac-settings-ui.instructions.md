@@ -41,6 +41,8 @@ Use these conventions for all macOS Settings tabs and shared Settings controls.
   only for compact icon controls that already belong to a strong row.
 - Group conditional controls immediately below the setting that enables them. Do not leave
   disabled controls visually disconnected from their explanation.
+- Give every configurable or fixed keyboard shortcut row a meaningful SF Symbol through
+  `HotKeyAction.iconName`; key badges alone are not sufficient.
 
 ## Text and Command Rows
 

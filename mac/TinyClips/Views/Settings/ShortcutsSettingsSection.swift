@@ -26,7 +26,7 @@ struct ShortcutsSettingsSection: View {
             ForEach(HotKeyAction.allCases, id: \.self) { action in
                 ShortcutRecorderField(
                     label: action.displayName,
-                    iconName: captureModeIconName(for: action),
+                    iconName: action.iconName,
                     binding: settings.hotKeyBinding(for: action),
                     defaultBinding: HotKeyBinding.defaultBinding(for: action),
                     onBindingRecorded: { apply($0, for: action) }
@@ -39,15 +39,15 @@ struct ShortcutsSettingsSection: View {
             Text("The following shortcuts are fixed and cannot be changed.")
                 .settingsDescription()
 
-            fixedShortcutRow(label: "Stop Recording", keys: "⌘.")
-            fixedShortcutRow(label: "Settings", keys: "⌘,")
-            fixedShortcutRow(label: "Quit", keys: "⌘Q")
+            fixedShortcutRow(label: "Stop Recording", iconName: "stop.circle", keys: "⌘.")
+            fixedShortcutRow(label: "Settings", iconName: "gearshape", keys: "⌘,")
+            fixedShortcutRow(label: "Quit", iconName: "power", keys: "⌘Q")
         }
     }
 
-    private func fixedShortcutRow(label: String, keys: String) -> some View {
+    private func fixedShortcutRow(label: String, iconName: String, keys: String) -> some View {
         HStack {
-            Text(label)
+            Label(label, systemImage: iconName)
             Spacer()
             Text(keys)
                 .font(.system(.body, design: .monospaced))
@@ -56,19 +56,8 @@ struct ShortcutsSettingsSection: View {
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private func captureModeIconName(for action: HotKeyAction) -> String? {
-        switch action {
-        case .screenshotRegion:
-            return "viewfinder.rectangular"
-        case .screenshotScreen:
-            return "display"
-        case .screenshotWindow:
-            return "macwindow"
-        default:
-            return nil
-        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label), \(keys)")
     }
 
     private func apply(_ binding: HotKeyBinding, for action: HotKeyAction) {
