@@ -412,7 +412,7 @@ private struct OnboardingWizardView: View {
             ForEach([HotKeyAction.screenshot, .recordVideo, .recordGif], id: \.self) { action in
                 ShortcutRecorderField(
                     label: action.displayName,
-                    iconName: nil,
+                    iconName: action.iconName,
                     binding: settings.hotKeyBinding(for: action),
                     defaultBinding: HotKeyBinding.defaultBinding(for: action),
                     onBindingRecorded: { binding in

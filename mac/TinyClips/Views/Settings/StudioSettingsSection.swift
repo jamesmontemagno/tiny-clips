@@ -103,45 +103,52 @@ struct StudioSettingsSection: View {
     }()
 
     var body: some View {
-        SettingsFormSection("Tiny Clips Studio", icon: "square.stack.3d.up") {
+        SettingsFormSection(
+            "Tiny Clips Studio",
+            icon: "square.stack.3d.up",
+            footer: settings.studioPreviewEnabled
+                ? "To record for Studio, choose Studio Recording… in the menu bar menu. It keeps the screen and camera as separate layers and opens the editor when the recording ends. Record Video is always an ordinary recording."
+                : keptText
+        ) {
             // The task hangs off this one row so it exists once, whether Studio is on or off.
             // What an editor changes is heard by the list itself, not by a row.
-            Toggle("Tiny Clips Studio (Preview)", isOn: $settings.studioPreviewEnabled)
-                .help("Turns on Tiny Clips Studio, an editor for video recordings that is still being built.")
-                .task {
-                    studioProjects.reload()
-                }
-                .onChange(of: settings.studioPreviewEnabled) { _, _ in
-                    studioProjects.reload()
-                }
-
-            Text("Studio is an editor for video recordings. A recording made for Studio keeps the screen, the camera, and the clicks apart, so you can arrange them over a background, zoom, cut, and change the layout before you export. It is a preview: parts of it are unfinished.")
-                .settingsDescription()
-
-            if !settings.studioPreviewEnabled, let keptText {
-                Text(keptText)
-                    .settingsDescription()
+            SettingsToggleRow(
+                title: "Tiny Clips Studio (Preview)",
+                description: "An editor for video recordings that keeps the screen, camera, and clicks as separate layers. Parts of it are unfinished.",
+                isOn: $settings.studioPreviewEnabled,
+                help: "Turns on Tiny Clips Studio, an editor for video recordings that is still being built."
+            )
+            .task {
+                studioProjects.reload()
+            }
+            .onChange(of: settings.studioPreviewEnabled) { _, _ in
+                studioProjects.reload()
             }
         }
 
         if settings.studioPreviewEnabled {
-            SettingsFormSection("Recording", icon: "record.circle") {
-                Label("Choose Studio Recording… in the menu bar menu", systemImage: "square.stack.3d.up")
-                Text("Studio Recording keeps the screen and camera as separate layers and opens the editor when the recording ends. Record Video is always an ordinary recording.")
-                    .settingsDescription()
-            }
-
-            SettingsFormSection("Projects", icon: "folder") {
-                Button("Open Project…") {
-                    StudioWindowRegistry.shared.chooseProjectFileToOpen()
+            SettingsFormSection(
+                "Projects",
+                icon: "folder",
+                footer: "Recordings you kept as drafts are listed below. Exported videos reopen their project from the Clips Library."
+            ) {
+                SettingsActionRow(
+                    title: "Open a saved project",
+                    description: "Opens a project saved with Save Project, from its .tinyclips file."
+                ) {
+                    Button("Open Project…") {
+                        StudioWindowRegistry.shared.chooseProjectFileToOpen()
+                    }
+                    .help("Open a project that was saved as a folder, from its .tinyclips file.")
                 }
-                .help("Open a project that was saved as a folder, from its .tinyclips file.")
-                Text("Opens a project saved with Save Project in the editor. Recordings you kept as drafts are listed below, and exported videos reopen their project from the Clips Library.")
-                    .settingsDescription()
             }
 
-            SettingsFormSection("Storage", icon: "internaldrive") {
-                Picker("Keep exported projects for:", selection: $settings.studioSourceRetentionDays) {
+            SettingsFormSection(
+                "Storage",
+                icon: "internaldrive",
+                footer: "Studio keeps the original screen and camera recordings so a video can be rearranged later. Removing a project does not remove the videos you exported from it. Drafts are never removed automatically, and neither is a project whose exported video is gone."
+            ) {
+                Picker("Keep exported projects for", selection: $settings.studioSourceRetentionDays) {
                     Text("7 days").tag(7)
                     Text("14 days").tag(14)
                     Text("30 days").tag(30)
@@ -150,7 +157,7 @@ struct StudioSettingsSection: View {
                 }
                 .help("How long a project stays editable after you last opened it.")
 
-                Picker("Storage limit:", selection: $settings.studioStorageCapGigabytes) {
+                Picker("Storage limit", selection: $settings.studioStorageCapGigabytes) {
                     Text("5 GB").tag(5)
                     Text("10 GB").tag(10)
                     Text("20 GB").tag(20)
@@ -159,40 +166,38 @@ struct StudioSettingsSection: View {
                 }
                 .help("When exported projects use more than this, the ones opened longest ago are removed first, and the one you opened last is always kept. Drafts and projects you keep are not counted.")
 
-                LabeledContent("Storage used:") {
+                LabeledContent("Storage used") {
                     Text(storageText)
                 }
 
-                HStack {
+                SettingsActionRow(
+                    title: "Clean up",
+                    description: cleanUpResult ?? "Removes the projects that are past these limits."
+                ) {
                     Button(isCleaningUp ? "Cleaning Up…" : "Clean Up Now") {
                         cleanUpNow()
                     }
                     .disabled(isCleaningUp)
                     .help("Remove the projects that are past these limits now.")
-
-                    if let cleanUpResult {
-                        Text(cleanUpResult)
-                            .settingsDescription()
-                    }
                 }
-
-                Text("Studio keeps the original screen and camera recordings so a video can be rearranged later. Removing a project does not remove the videos you exported from it. Drafts are never removed automatically, and neither is a project whose exported video is gone.")
-                    .settingsDescription()
             }
         }
 
         if settings.studioPreviewEnabled, !draftRows.isEmpty {
-            SettingsFormSection("Drafts", icon: "doc.on.doc") {
+            SettingsFormSection("Drafts", icon: "doc.on.doc", footer: savedRecordingNoteText) {
                 ForEach(draftRows) { row in
                     draftRow(row)
                 }
-
-                if let note = savedRecordingNote, draftRows.contains(where: { $0.id == note.projectID }) {
-                    Text(note.text)
-                        .settingsDescription()
-                }
             }
         }
+    }
+
+    /// What the last save of a screen recording said, while its draft is still in the list.
+    private var savedRecordingNoteText: String? {
+        guard let note = savedRecordingNote, draftRows.contains(where: { $0.id == note.projectID }) else {
+            return nil
+        }
+        return note.text
     }
 
     private func draftRow(_ row: DraftRow) -> some View {

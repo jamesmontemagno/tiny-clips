@@ -8,7 +8,7 @@ import Carbon.HIToolbox
 /// record a new one by clicking "Record" and pressing any key combo.
 struct ShortcutRecorderField: View {
     let label: String
-    let iconName: String?
+    let iconName: String
     let binding: HotKeyBinding
     let defaultBinding: HotKeyBinding
     let onBindingRecorded: (HotKeyBinding) -> Void
@@ -16,16 +16,20 @@ struct ShortcutRecorderField: View {
     @State private var isRecording = false
     @State private var eventMonitor: Any?
 
+    /// One width for every shortcut icon, so the names beside them line up.
+    static let iconWidth: CGFloat = 22
+
     private var isCustom: Bool {
         binding != defaultBinding
     }
 
     var body: some View {
         HStack {
-            if let iconName = iconName {
-                Label(label, systemImage: iconName)
-            } else {
+            Label {
                 Text(label)
+            } icon: {
+                Image(systemName: iconName)
+                    .frame(width: Self.iconWidth)
             }
 
             Spacer()
