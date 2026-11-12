@@ -253,7 +253,7 @@ struct MenuBarContentView: View {
         Divider()
 
         Button {
-            NSApplication.shared.terminate(nil)
+            TinyClipsAppDelegate.requestFullTermination()
         } label: {
             Label("Quit", systemImage: "power")
         }

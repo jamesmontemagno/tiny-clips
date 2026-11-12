@@ -31,7 +31,7 @@ struct AboutSettingsSection: View {
     }
 
     var body: some View {
-        Section {
+        SettingsFormSection("TinyClips", icon: "app") {
             HStack {
                 Spacer()
                 VStack(spacing: 8) {
@@ -44,15 +44,14 @@ struct AboutSettingsSection: View {
                     Text("TinyClips")
                         .font(.headline)
                     Text("v\(appVersion) (\(appBuild))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .settingsDescription()
                 }
                 Spacer()
             }
             .padding(.vertical, 4)
         }
 
-        Section {
+        SettingsFormSection("Resources", icon: "link") {
             Link("GitHub Repository", destination: URL(string: "https://github.com/jamesmontemagno/tiny-clips")!)
                 .accessibilityHint("Opens the TinyClips GitHub repository in your browser.")
             Button("Send Feedback…", action: onFileBug)
@@ -70,7 +69,7 @@ struct AboutSettingsSection: View {
         }
 
 #if !APPSTORE
-        Section {
+        SettingsFormSection("Updates", icon: "arrow.down.circle") {
             Toggle("Automatically check for updates", isOn: Binding(
                 get: { sparkleController.automaticallyChecksForUpdates },
                 set: { sparkleController.automaticallyChecksForUpdates = $0 }
@@ -87,8 +86,7 @@ struct AboutSettingsSection: View {
                     Label("Move TinyClips to Applications for smoother updates.", systemImage: "folder.badge.plus")
 
                     Text("When TinyClips runs outside the Applications folder, macOS may ask for extra permission before Sparkle can replace the app. Moving it into Applications makes future updates much smoother.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .settingsDescription()
 
                     Link("Open Applications Folder", destination: applicationsFolderURL)
                         .accessibilityHint("Opens the Applications folder in Finder so you can move TinyClips there for smoother updates.")

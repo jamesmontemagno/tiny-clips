@@ -14,14 +14,13 @@ struct GeneralSettingsSection: View {
     @State private var isRequestingNotifications = false
 
     var body: some View {
-        Section("Output") {
+        SettingsFormSection("Output", icon: "folder") {
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("Use default folders", isOn: $settings.useDefaultSaveDirectories)
                     .accessibilityLabel("Use default capture folders")
 
                 Text("Screenshots → Pictures/TinyClips, Videos and GIFs → Movies/TinyClips")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
             }
 
             if !settings.useDefaultSaveDirectories {
@@ -53,12 +52,10 @@ struct GeneralSettingsSection: View {
                 .font(.caption)
 
                 Text("Tokens: {app}, {type}, {date}, {time}, {datetime}")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
 
                 Text("Preview: \(SaveService.shared.namingPreview(for: .screenshot))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -66,7 +63,7 @@ struct GeneralSettingsSection: View {
             Toggle("Show in Finder after save", isOn: $settings.showInFinder)
         }
 
-        Section("Notifications") {
+        SettingsFormSection("Notifications", icon: "bell") {
             LabeledContent("System notifications", value: notificationPermission?.summary ?? "Checking…")
                 .accessibilityElement(children: .combine)
 
@@ -97,8 +94,7 @@ struct GeneralSettingsSection: View {
             }
 
             Text("System permission allows notifications for saved captures and background tasks, including Studio captions. macOS controls how they are delivered.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
 
             Toggle("Show notification after save", isOn: $settings.showSaveNotifications)
                 .accessibilityLabel("Show notification after save")
@@ -111,12 +107,12 @@ struct GeneralSettingsSection: View {
             Task { await refreshNotificationPermission() }
         }
 
-        Section("Editors") {
+        SettingsFormSection("Editors", icon: "pencil.and.outline") {
             Toggle("Confirm before closing editors with Esc", isOn: $settings.confirmEditorEscape)
                 .help("Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. Turn off to close them right away, discarding anything unsaved.")
         }
 
-        Section("Advanced") {
+        SettingsFormSection("Advanced", icon: "slider.horizontal.3") {
             Toggle("Launch at login", isOn: Binding(
                 get: { launchAtLogin.isEnabled },
                 set: { launchAtLogin.setEnabled($0) }
@@ -185,14 +181,12 @@ struct GeneralSettingsSection: View {
             }
 
             Text(saveDirectoryPath(for: type))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
                 .lineLimit(1)
                 .truncationMode(.middle)
 
             Text(saveDirectoryHint(for: type))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
         }
     }
 
@@ -218,18 +212,15 @@ struct GeneralSettingsSection: View {
                     .controlSize(.small)
                 Text("Calculating TinyClips temporary files…")
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .settingsDescription()
         } else if let temporaryFilesSummary {
             let fileLabel = temporaryFilesSummary.fileCount == 1 ? "file" : "files"
             Text("\(temporaryFilesSummary.fileCount) temporary \(fileLabel) using \(ByteCountFormatter.string(fromByteCount: temporaryFilesSummary.totalSize, countStyle: .file))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
                 .accessibilityLabel("\(temporaryFilesSummary.fileCount) TinyClips temporary \(fileLabel), using \(ByteCountFormatter.string(fromByteCount: temporaryFilesSummary.totalSize, countStyle: .file))")
         } else {
             Text("Could not calculate TinyClips temporary files.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
         }
     }
 
@@ -250,7 +241,7 @@ struct BrandingSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
 
     var body: some View {
-        Section("Branding") {
+        SettingsFormSection("Branding", icon: "flag") {
             Toggle("Show 'Captured on Tiny Clips' overlay", isOn: $settings.showBrandingOverlay)
                 .help("Adds a 'Captured on Tiny Clips' watermark to the bottom-right corner of screenshots, recordings, and GIFs.")
         }

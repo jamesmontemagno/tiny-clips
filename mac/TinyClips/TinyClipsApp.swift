@@ -11,8 +11,15 @@ enum TinyClipsRuntime {
 }
 
 enum TinyClipsActivationPolicy {
-    static func resolve(showInDock: Bool, hasOpenEditors: Bool) -> NSApplication.ActivationPolicy {
-        showInDock || hasOpenEditors ? .regular : .accessory
+    private static var namedPresentationWindows: Set<String> = []
+    private static var appKitPresentationWindows: Set<ObjectIdentifier> = []
+
+    static func resolve(
+        showInDock: Bool,
+        hasOpenEditors: Bool,
+        hasOpenUserWindows: Bool = false
+    ) -> NSApplication.ActivationPolicy {
+        showInDock || hasOpenEditors || hasOpenUserWindows ? .regular : .accessory
     }
 
     /// Whether a screenshot editor or Studio window is open. While one is, Tiny Clips shows its
@@ -23,14 +30,73 @@ enum TinyClipsActivationPolicy {
     }
 
     @MainActor
+    private static var hasOpenUserWindows: Bool {
+        !namedPresentationWindows.isEmpty || !appKitPresentationWindows.isEmpty
+    }
+
+    @MainActor
+    static func beginPresentation(named identifier: String) {
+        namedPresentationWindows.insert(identifier)
+        applyCurrent()
+    }
+
+    @MainActor
+    static func endPresentation(named identifier: String) {
+        namedPresentationWindows.remove(identifier)
+        applyCurrent()
+    }
+
+    @MainActor
+    static func beginPresentation(of window: NSWindow) {
+        appKitPresentationWindows.insert(ObjectIdentifier(window))
+        applyCurrent()
+    }
+
+    @MainActor
+    static func endPresentation(of window: NSWindow) {
+        appKitPresentationWindows.remove(ObjectIdentifier(window))
+        applyCurrent()
+    }
+
+    @MainActor
     static func applyCurrent() {
         NSApplication.shared.setActivationPolicy(
-            resolve(showInDock: CaptureSettings.shared.showInDock, hasOpenEditors: hasOpenEditors)
+            resolve(
+                showInDock: CaptureSettings.shared.showInDock,
+                hasOpenEditors: hasOpenEditors,
+                hasOpenUserWindows: hasOpenUserWindows
+            )
         )
     }
 }
 
+enum TinyClipsTerminationPolicy {
+    static func resolve(explicitQuitRequested: Bool) -> NSApplication.TerminateReply {
+        explicitQuitRequested ? .terminateNow : .terminateCancel
+    }
+}
+
 final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
+    private static var permitsFullTermination = false
+
+    @MainActor
+    static func requestFullTermination() {
+        permitsFullTermination = true
+        NSApplication.shared.terminate(nil)
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let reply = TinyClipsTerminationPolicy.resolve(
+            explicitQuitRequested: Self.permitsFullTermination
+        )
+        guard reply == .terminateCancel else { return reply }
+
+        if let keyWindow = sender.keyWindow, keyWindow.isVisible {
+            keyWindow.performClose(nil)
+        }
+        return .terminateCancel
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         open(urls)
     }
@@ -76,6 +142,12 @@ final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
 struct AppWindowCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {}
+        CommandGroup(replacing: .appTermination) {
+            Button("Close Window") {
+                NSApp.keyWindow?.performClose(nil)
+            }
+            .keyboardShortcut("q", modifiers: .command)
+        }
     }
 }
 

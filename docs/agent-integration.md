@@ -74,13 +74,14 @@ https://github.com/jamesmontemagno/tiny-clips.git
 
 Confirm the plugin is enabled in **Chat: Open Customizations → Plugins**, then start a fresh session. VS Code downloads the plugin; you do not need to clone the repository yourself or register a marketplace. The manifest, MCP configuration, and Skills live at the repository root. See the [VS Code installation steps](agent-plugin.md#vs-code).
 
-For **GitHub Copilot CLI**, install directly from this repository:
+For **GitHub Copilot CLI**, register the Tiny Clips marketplace and install the plugin:
 
 ```sh
-copilot plugin install jamesmontemagno/tiny-clips
+copilot plugin marketplace add jamesmontemagno/tiny-clips
+copilot plugin install tinyclips@tinyclips
 ```
 
-Update or uninstall CLI installs with `copilot plugin update tinyclips` or `copilot plugin uninstall tinyclips`. VS Code also discovers CLI-installed plugins. Other Agent Plugins-compatible clients may have their own install flow.
+Direct repository installs are deprecated and will stop being supported in a future Copilot CLI release. Update or uninstall the marketplace install with `copilot plugin update tinyclips` or `copilot plugin uninstall tinyclips`. VS Code also discovers CLI-installed plugins. Other Agent Plugins-compatible clients may have their own install flow.
 
 The plugin adds the `tinyclips` MCP server (launched with `dotnet dnx`) and all Skills below, so you can skip the manual MCP and Skills setup. You still need the .NET 10 SDK, Agent Control turned on, and a one-time pairing (`tinyclips pair` if installed, or `dnx TinyClips --yes -- pair`) before the tools work. See the [plugin installation guide](agent-plugin.md) for its prerequisites and install details.
 

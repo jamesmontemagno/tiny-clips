@@ -4,7 +4,7 @@ struct ScreenshotSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
 
     var body: some View {
-        Section("Image & Quality") {
+        SettingsFormSection("Image & Quality", icon: "photo") {
             Picker("Default format:", selection: $settings.screenshotFormat) {
                 ForEach(ImageFormat.allCases, id: \.rawValue) { format in
                     Text(format.label).tag(format.rawValue)
@@ -32,7 +32,7 @@ struct ScreenshotSettingsSection: View {
             .help("Resize the saved screenshot relative to captured pixels.")
         }
 
-        Section("Before Capture") {
+        SettingsFormSection("Before Capture", icon: "camera.aperture") {
             Toggle("Show capture picker before screenshot", isOn: $settings.showScreenshotCapturePicker)
                 .help("When disabled, screenshots go straight to region selection.")
                 .onChange(of: settings.showScreenshotCapturePicker) { _, isEnabled in
@@ -59,7 +59,7 @@ struct ScreenshotSettingsSection: View {
             }
         }
 
-        Section("After Capture") {
+        SettingsFormSection("After Capture", icon: "arrow.right.square") {
             Toggle("Show capture picker after screenshot", isOn: $settings.showScreenshotCapturePickerAfterCapture)
                 .help("Reopen the capture picker after each screenshot so you can quickly take another.")
                 .disabled(!settings.showScreenshotCapturePicker)
@@ -87,8 +87,8 @@ struct ScreenshotSettingsSection: View {
                 .accessibilityHint("Hides ClickLight overlays in screenshots only. Does not change video or GIF recordings.")
 
             Text("Keeps ClickLight rings and other ClickLight overlays out of screenshots. Window captures already include only the selected window. No ClickLight shortcut setup is required.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
         }
+        .settingsCard()
     }
 }

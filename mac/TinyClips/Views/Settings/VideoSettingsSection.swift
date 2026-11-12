@@ -7,7 +7,7 @@ struct VideoSettingsSection: View {
     let selectedTab: Binding<SettingsTab?>
 
     var body: some View {
-        Section("Video Quality") {
+        SettingsFormSection("Video Quality", icon: "4k.tv") {
             Picker("Frame rate:", selection: $settings.videoFrameRate) {
                 Text("24 fps").tag(24)
                 Text("30 fps").tag(30)
@@ -23,16 +23,14 @@ struct VideoSettingsSection: View {
             .help("Choose the video encoder used for MP4 recordings.")
 
             Text("H.265 / HEVC requires a hardware encoder. TinyClips falls back to H.264 if the encoder is unavailable.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
         }
 
-        Section("Audio") {
+        SettingsFormSection("Audio", icon: "waveform") {
             Toggle("Record output audio", isOn: $settings.recordAudio)
                 .help("Include the current system output mix in the recording.")
             Text("Output audio records the current system mix. macOS does not provide a separate output-device picker here.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
 
             Toggle("Record microphone", isOn: $settings.recordMicrophone)
                 .help("Include microphone input in the recording.")
@@ -54,7 +52,7 @@ struct VideoSettingsSection: View {
 
         }
 
-        Section("Webcam Overlay") {
+        SettingsFormSection("Webcam Overlay", icon: "camera") {
             Toggle("Enable webcam overlay by default", isOn: $settings.webcamEnabled)
                 .help("Show a webcam picture-in-picture overlay while recording.")
                 .onChange(of: settings.webcamEnabled) { _, isEnabled in
@@ -94,7 +92,7 @@ struct VideoSettingsSection: View {
             .help("Choose the webcam overlay size preset.")
         }
 
-        Section("Before Recording") {
+        SettingsFormSection("Before Recording", icon: "timer") {
             Toggle("Show capture picker before recording", isOn: $settings.showVideoCapturePicker)
                 .help("When disabled, video recording goes straight to region selection.")
                 .onChange(of: settings.showVideoCapturePicker) { _, isEnabled in
@@ -121,7 +119,7 @@ struct VideoSettingsSection: View {
             }
         }
 
-        Section("During Recording") {
+        SettingsFormSection("During Recording", icon: "record.circle") {
             Toggle("Show capture region during recording", isOn: $settings.showRegionIndicator)
                 .help("Show a visible border around the selected capture area while recording.")
 
@@ -138,7 +136,7 @@ struct VideoSettingsSection: View {
             .buttonStyle(.link)
         }
 
-        Section("After Recording") {
+        SettingsFormSection("After Recording", icon: "arrow.right.square") {
             Toggle("Show capture picker after recording", isOn: $settings.showVideoCapturePickerAfterCapture)
                 .help("Reopen the capture picker after each recording so you can quickly start another.")
                 .disabled(!settings.showVideoCapturePicker)
@@ -176,5 +174,6 @@ struct VideoSettingsSection: View {
                 .help("Reset the audio offset to 0 ms.")
             }
         }
+        .settingsCard()
     }
 }

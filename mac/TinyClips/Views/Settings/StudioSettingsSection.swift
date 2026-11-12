@@ -103,7 +103,7 @@ struct StudioSettingsSection: View {
     }()
 
     var body: some View {
-        Section("Tiny Clips Studio") {
+        SettingsFormSection("Tiny Clips Studio", icon: "square.stack.3d.up") {
             // The task hangs off this one row so it exists once, whether Studio is on or off.
             // What an editor changes is heard by the list itself, not by a row.
             Toggle("Tiny Clips Studio (Preview)", isOn: $settings.studioPreviewEnabled)
@@ -116,35 +116,31 @@ struct StudioSettingsSection: View {
                 }
 
             Text("Studio is an editor for video recordings. A recording made for Studio keeps the screen, the camera, and the clicks apart, so you can arrange them over a background, zoom, cut, and change the layout before you export. It is a preview: parts of it are unfinished.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
 
             if !settings.studioPreviewEnabled, let keptText {
                 Text(keptText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
             }
         }
 
         if settings.studioPreviewEnabled {
-            Section("Recording") {
+            SettingsFormSection("Recording", icon: "record.circle") {
                 Label("Choose Studio Recording… in the menu bar menu", systemImage: "square.stack.3d.up")
                 Text("Studio Recording keeps the screen and camera as separate layers and opens the editor when the recording ends. Record Video is always an ordinary recording.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
             }
 
-            Section("Projects") {
+            SettingsFormSection("Projects", icon: "folder") {
                 Button("Open Project…") {
                     StudioWindowRegistry.shared.chooseProjectFileToOpen()
                 }
                 .help("Open a project that was saved as a folder, from its .tinyclips file.")
                 Text("Opens a project saved with Save Project in the editor. Recordings you kept as drafts are listed below, and exported videos reopen their project from the Clips Library.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
             }
 
-            Section("Storage") {
+            SettingsFormSection("Storage", icon: "internaldrive") {
                 Picker("Keep exported projects for:", selection: $settings.studioSourceRetentionDays) {
                     Text("7 days").tag(7)
                     Text("14 days").tag(14)
@@ -176,27 +172,24 @@ struct StudioSettingsSection: View {
 
                     if let cleanUpResult {
                         Text(cleanUpResult)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .settingsDescription()
                     }
                 }
 
                 Text("Studio keeps the original screen and camera recordings so a video can be rearranged later. Removing a project does not remove the videos you exported from it. Drafts are never removed automatically, and neither is a project whose exported video is gone.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
             }
         }
 
         if settings.studioPreviewEnabled, !draftRows.isEmpty {
-            Section("Drafts") {
+            SettingsFormSection("Drafts", icon: "doc.on.doc") {
                 ForEach(draftRows) { row in
                     draftRow(row)
                 }
 
                 if let note = savedRecordingNote, draftRows.contains(where: { $0.id == note.projectID }) {
                     Text(note.text)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .settingsDescription()
                 }
             }
         }
@@ -212,12 +205,10 @@ struct StudioSettingsSection: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(row.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
                 if let note = row.note {
                     Text(note)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .settingsDescription()
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

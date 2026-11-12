@@ -41,10 +41,11 @@ Each contract command becomes a `tinyclips_<domain>_<verb>` tool, plus `tinyclip
 
 ## Skills
 
-The [repository-root Agent Plugin](../docs/agent-plugin.md) bundles this MCP server with portable SKILL.md workflows (setup, capture, Studio editing, record a demo, library). GitHub Copilot CLI can install it directly, without a marketplace:
+The [repository-root Agent Plugin](../docs/agent-plugin.md) bundles this MCP server with portable SKILL.md workflows (setup, capture, Studio editing, record a demo, library). GitHub Copilot CLI can install it from the Tiny Clips marketplace:
 
 ```sh
-copilot plugin install jamesmontemagno/tiny-clips
+copilot plugin marketplace add jamesmontemagno/tiny-clips
+copilot plugin install tinyclips@tinyclips
 ```
 
 In VS Code, run **Chat: Install Plugin from Source** and enter `https://github.com/jamesmontemagno/tiny-clips.git`. No manual clone is needed. VS Code also discovers CLI-installed plugins. See the [VS Code install instructions](../docs/agent-plugin.md#vs-code).

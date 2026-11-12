@@ -117,6 +117,7 @@ class GifTrimmerWindow: NSWindow, NSWindowDelegate {
         guard !didComplete, let callback = onComplete else { return }
         didComplete = true
         onComplete = nil
+        TinyClipsActivationPolicy.endPresentation(of: self)
         callback(url)
         orderOut(nil)
     }

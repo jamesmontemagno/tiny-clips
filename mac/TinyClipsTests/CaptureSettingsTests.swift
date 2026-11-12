@@ -332,6 +332,28 @@ final class CaptureSettingsTests: XCTestCase {
         )
     }
 
+    func testActivationPolicyIsRegularWhileASettingsOrLibraryWindowIsOpen() {
+        XCTAssertEqual(
+            TinyClipsActivationPolicy.resolve(
+                showInDock: false,
+                hasOpenEditors: false,
+                hasOpenUserWindows: true
+            ),
+            .regular
+        )
+    }
+
+    func testQuitOnlyTerminatesTheAppWhenRequestedByTheMenuBar() {
+        XCTAssertEqual(
+            TinyClipsTerminationPolicy.resolve(explicitQuitRequested: false),
+            .terminateCancel
+        )
+        XCTAssertEqual(
+            TinyClipsTerminationPolicy.resolve(explicitQuitRequested: true),
+            .terminateNow
+        )
+    }
+
     func testHotKeyDefaultsAndRoundTripUseIsolatedDefaults() {
         let settings = CaptureSettings(defaults: defaults, performMigrations: false)
 

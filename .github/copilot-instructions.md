@@ -72,6 +72,7 @@ dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c De
 - Never include Sparkle in MAS builds; guard Sparkle usage with `#if canImport(Sparkle)`.
 - Use `ObservableObject` / `@Published` / `@StateObject` and `@AppStorage` patterns used by existing code.
 - Follow targeted instruction files when they apply:
+  - `.github/instructions/mac-settings-ui.instructions.md`
   - `.github/instructions/capture-windows.instructions.md`
   - `.github/instructions/mas-storekit.instructions.md`
 

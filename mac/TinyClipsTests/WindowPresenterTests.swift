@@ -96,20 +96,18 @@ final class WindowPresenterTests: XCTestCase {
         XCTAssertEqual(harness.events, ["activate", "makeKey", "orderFront"])
     }
 
-    func testRetryDoesNotOverrideAnExistingKeyWindow() {
-        for targetIsKey in [false, true] {
-            let harness = Harness()
-            let window = harness.makeWindow()
-            harness.presenter.present(window)
-            harness.applicationIsActive = true
-            harness.hasKeyWindow = true
-            window.isKeyWindow = targetIsKey
-            harness.events.removeAll()
+    func testRetryRestoresRequestedWindowWhenAnotherKeyWindowExists() {
+        let harness = Harness()
+        let window = harness.makeWindow()
+        harness.presenter.present(window)
+        harness.applicationIsActive = true
+        harness.hasKeyWindow = true
+        window.isKeyWindow = false
+        harness.events.removeAll()
 
-            harness.retries[0]()
+        harness.retries[0]()
 
-            XCTAssertTrue(harness.events.isEmpty)
-        }
+        XCTAssertEqual(harness.events, ["activate", "makeKey", "orderFront"])
     }
 
     func testRetryDoesNotReopenAClosedOrMinimizedWindow() {
