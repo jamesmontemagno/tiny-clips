@@ -61,7 +61,6 @@ struct GeneralSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Show in Finder after save",
-                description: "Reveal the saved capture in Finder.",
                 isOn: $settings.showInFinder
             )
         }
@@ -101,7 +100,6 @@ struct GeneralSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Show notification after save",
-                description: "Display a notification when a capture is saved.",
                 isOn: $settings.showSaveNotifications,
                 help: "Only controls save notifications. Does not grant system permission or change background-task notifications.",
                 accessibilityHint: "Show a notification after saving a capture."
@@ -126,7 +124,6 @@ struct GeneralSettingsSection: View {
         SettingsFormSection("Advanced", icon: "slider.horizontal.3") {
             SettingsToggleRow(
                 title: "Launch at login",
-                description: "Open TinyClips automatically after sign-in.",
                 isOn: Binding(
                     get: { launchAtLogin.isEnabled },
                     set: { launchAtLogin.setEnabled($0) }
@@ -134,7 +131,6 @@ struct GeneralSettingsSection: View {
             )
             SettingsToggleRow(
                 title: "Show TinyClips in Dock (enables ⌘⇥)",
-                description: "Make TinyClips visible in the Dock and app switcher.",
                 isOn: showInDockBinding,
                 help: "When enabled, TinyClips appears in Command-Tab and can participate in normal app/window switching."
             )
@@ -267,7 +263,6 @@ struct BrandingSettingsSection: View {
         SettingsFormSection("Branding", icon: "flag") {
             SettingsToggleRow(
                 title: "Show 'Captured on Tiny Clips' overlay",
-                description: "Add a TinyClips watermark to captures.",
                 isOn: $settings.showBrandingOverlay,
                 help: "Adds a 'Captured on Tiny Clips' watermark to the bottom-right corner of screenshots, recordings, and GIFs."
             )

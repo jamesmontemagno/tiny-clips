@@ -14,7 +14,7 @@ Use these conventions for all macOS Settings tabs and shared Settings controls.
 - Use one clear content card per logical settings section. Do not mix unrelated controls into a
   compact wall of rows.
 - Keep card spacing consistent:
-  `18 pt` outer padding, `6 pt` spacing between setting rows, `4 pt` between cards,
+  `18 pt` outer padding, `8 pt` spacing between setting rows, `6 pt` between cards,
   `10 pt` or `12 pt` corner radius,
   and an appearance-aware border.
 - Use full-width cards with `maxWidth: .infinity`; avoid fixed widths except for intentional
@@ -34,8 +34,10 @@ Use these conventions for all macOS Settings tabs and shared Settings controls.
 ## Controls and Hierarchy
 
 - Put a concise headline above a supporting description.
-- Use a two-column row for settings with a switch: title and description on the left, switch on
-  the right. Reuse `SettingsToggleRow` instead of placing the description below a native toggle.
+- Use a two-column row for settings with a switch: title on the left and switch on the right.
+  Reuse `SettingsToggleRow` instead of placing a native toggle inline.
+- Add a secondary description only when the setting is non-obvious, has consequences, or needs
+  to explain platform behavior. Omit it for self-explanatory settings.
 - Use `.headline` for card titles and primary row names, `.callout` for descriptions, and
   `.caption` or `.caption2` only for metadata.
 - Use `.toggleStyle(.switch)` for `SettingsToggleRow` controls. Keep the visual control at the

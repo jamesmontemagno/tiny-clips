@@ -35,7 +35,6 @@ struct ScreenshotSettingsSection: View {
         SettingsFormSection("Before Capture", icon: "camera.aperture") {
             SettingsToggleRow(
                 title: "Show capture picker before screenshot",
-                description: "Choose a capture mode before taking a screenshot.",
                 isOn: $settings.showScreenshotCapturePicker,
                 help: "When disabled, screenshots go straight to region selection."
             )
@@ -47,7 +46,6 @@ struct ScreenshotSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Countdown before screenshot",
-                description: "Wait briefly for a countdown before capturing.",
                 isOn: $settings.screenshotCountdownEnabled,
                 help: "Wait before capturing so you can prepare the screen."
             )
@@ -70,7 +68,6 @@ struct ScreenshotSettingsSection: View {
         SettingsFormSection("After Capture", icon: "arrow.right.square") {
             SettingsToggleRow(
                 title: "Show capture picker after screenshot",
-                description: "Return to the capture picker for another shot.",
                 isOn: $settings.showScreenshotCapturePickerAfterCapture,
                 help: "Reopen the capture picker after each screenshot so you can quickly take another.",
                 disabled: !settings.showScreenshotCapturePicker
@@ -78,7 +75,6 @@ struct ScreenshotSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Open editor after capture",
-                description: "Open the screenshot editor to annotate or crop.",
                 isOn: $settings.showScreenshotEditor,
                 help: "Open the screenshot editor after capture so you can annotate or crop."
             )
@@ -90,7 +86,6 @@ struct ScreenshotSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Save immediately",
-                description: "Save without waiting for editor actions.",
                 isOn: $settings.saveImmediatelyScreenshot,
                 help: "Save immediately instead of waiting for actions in the editor.",
                 disabled: !settings.showScreenshotEditor
@@ -98,7 +93,6 @@ struct ScreenshotSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Copy to clipboard",
-                description: "Place a copy of the image on the clipboard.",
                 isOn: $settings.copyScreenshotToClipboard,
                 help: "Copy screenshots to the clipboard as an image, even before saving in the editor."
             )

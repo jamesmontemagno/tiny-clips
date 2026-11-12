@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 - macOS confirmation dialogs use standard, appearance-aware buttons instead of low-contrast destructive styling, including Studio, Clips Library, screenshot and video/GIF editors, cleanup, and analytics reset. Cancel is the default for destructive confirmations.
 
 ### Changed
-- macOS Settings rows now use a clearer two-column layout with switches aligned to the right, visible secondary descriptions, 6 points of spacing inside cards, and 4 points between cards. Agent Control setup uses a flatter hierarchy and less nested chrome.
+- macOS Settings rows now use a clearer two-column layout with switches aligned to the right, secondary descriptions reserved for non-obvious settings, 8 points of spacing inside cards, and 6 points between cards. Agent Control setup uses a flatter hierarchy and less nested chrome.
 - macOS Shortcuts settings now show an icon for every configurable and fixed key binding.
 - macOS Settings cards now use more comfortable padding and vertical spacing so controls and descriptions do not appear cramped.
 - Agent Plugin instructions now use the GitHub Copilot CLI marketplace install flow instead of deprecated direct repository installs.

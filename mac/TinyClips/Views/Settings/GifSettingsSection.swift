@@ -35,7 +35,6 @@ struct GifSettingsSection: View {
         SettingsFormSection("Before Recording", icon: "timer") {
             SettingsToggleRow(
                 title: "Show capture picker before recording",
-                description: "Choose a capture mode before starting a GIF.",
                 isOn: $settings.showGifCapturePicker,
                 help: "When disabled, GIF recording goes straight to region selection."
             )
@@ -47,7 +46,6 @@ struct GifSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Countdown before recording",
-                description: "Wait briefly for a countdown before recording.",
                 isOn: $settings.gifCountdownEnabled,
                 help: "Wait before recording starts so you can prepare the screen."
             )
@@ -70,13 +68,11 @@ struct GifSettingsSection: View {
         SettingsFormSection("During Recording", icon: "record.circle") {
             SettingsToggleRow(
                 title: "Show capture region during recording",
-                description: "Draw a visible border around the capture area.",
                 isOn: $settings.showRegionIndicator,
                 help: "Show a visible border around the selected capture area while recording."
             )
             SettingsToggleRow(
                 title: "Prevent display sleep while recording",
-                description: "Keep the display awake during capture.",
                 isOn: $settings.preventDisplaySleepWhileRecording,
                 help: "Keep the display awake and prevent the screen saver while recording video or GIFs.",
                 accessibilityHint: "When enabled, TinyClips keeps the display awake while recording video or GIFs."
@@ -105,7 +101,6 @@ struct GifSettingsSection: View {
         SettingsFormSection("After Recording", icon: "arrow.right.square") {
             SettingsToggleRow(
                 title: "Show capture picker after recording",
-                description: "Return to the capture picker for another GIF.",
                 isOn: $settings.showGifCapturePickerAfterCapture,
                 help: "Reopen the capture picker after each recording so you can quickly start another.",
                 disabled: !settings.showGifCapturePicker
@@ -113,7 +108,6 @@ struct GifSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Open trimmer after recording",
-                description: "Open the GIF trimmer when recording ends.",
                 isOn: $settings.showGifTrimmer,
                 help: "Open the trimmer when recording ends so you can trim before saving."
             )
@@ -125,14 +119,12 @@ struct GifSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Save immediately",
-                description: "Save without waiting for trimmer actions.",
                 isOn: $settings.saveImmediatelyGif,
                 help: "Save immediately instead of waiting for actions in the trimmer.",
                 disabled: !settings.showGifTrimmer
             )
             SettingsToggleRow(
                 title: "Copy to clipboard",
-                description: "Place a copy of the GIF on the clipboard.",
                 isOn: $settings.copyGifToClipboard,
                 help: "Copy saved GIFs to the clipboard as a file URL."
             )

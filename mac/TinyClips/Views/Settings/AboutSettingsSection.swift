@@ -72,7 +72,6 @@ struct AboutSettingsSection: View {
         SettingsFormSection("Updates", icon: "arrow.down.circle") {
             SettingsToggleRow(
                 title: "Automatically check for updates",
-                description: "Check for new releases and show update alerts.",
                 isOn: Binding(
                     get: { sparkleController.automaticallyChecksForUpdates },
                     set: { sparkleController.automaticallyChecksForUpdates = $0 }
