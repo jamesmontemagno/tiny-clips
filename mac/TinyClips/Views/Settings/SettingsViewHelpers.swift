@@ -19,7 +19,7 @@ struct SettingsFormSection<Content: View>: View {
 
     var body: some View {
         Section {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 18) {
                 if let title {
                     if let icon {
                         Label(title, systemImage: icon)
@@ -42,7 +42,7 @@ struct SettingsFormSection<Content: View>: View {
                     .strokeBorder(.quaternary)
             )
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 }
 
