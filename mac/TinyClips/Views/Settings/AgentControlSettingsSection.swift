@@ -31,6 +31,7 @@ struct AgentControlSettingsSection: View {
 
                     Toggle("Enabled", isOn: $automationEnabled)
                         .toggleStyle(.switch)
+                        .accessibilityLabel("Allow agents to control Tiny Clips")
                         .help("Starts a local endpoint that only apps running as your user can reach.")
                 }
 

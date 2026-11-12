@@ -24,9 +24,11 @@ struct SettingsFormSection<Content: View>: View {
                     if let icon {
                         Label(title, systemImage: icon)
                             .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
                     } else {
                         Text(title)
                             .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
                     }
                 }
 
