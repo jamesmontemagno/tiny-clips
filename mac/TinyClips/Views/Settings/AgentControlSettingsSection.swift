@@ -8,7 +8,7 @@ struct AgentControlSettingsSection: View {
 
     var body: some View {
         SettingsFormSection("Agent Control", icon: "terminal") {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .center, spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -94,7 +94,7 @@ struct AgentControlSettingsSection: View {
                     Image(systemName: "person.crop.circle.badge.questionmark")
                         .font(.title3)
                         .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 10) {
                         Text("No agents are paired")
                             .font(.headline)
                         Text("Follow Get Started to install the plugin or CLI, then pair an agent.")
@@ -278,7 +278,7 @@ struct AgentControlSetupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            setupCard(title: "Before you begin", icon: "checklist") {
+            setupGroup(title: "Before you begin", icon: "checklist") {
                 Link("Install the .NET 10 SDK", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
                 Text("Turn on Agent Control above and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant.")
                     .font(.callout)
@@ -286,7 +286,9 @@ struct AgentControlSetupView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            setupCard(title: "Recommended: Install the Agent Plugin", icon: "puzzlepiece.extension") {
+            Divider()
+
+            setupGroup(title: "Recommended: Install the Agent Plugin", icon: "puzzlepiece.extension") {
                 Text("Choose one install method. Both install the same plugin; you only need one.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -330,7 +332,9 @@ struct AgentControlSetupView: View {
                 }
             }
 
-            setupCard(title: "Use the CLI directly", icon: "terminal") {
+            Divider()
+
+            setupGroup(title: "Use the CLI directly", icon: "terminal") {
                 Text("For terminal agents and scripts without plugin support, choose either dnx or a global CLI install.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -351,6 +355,8 @@ struct AgentControlSetupView: View {
                 }
             }
 
+            Divider()
+
             DisclosureGroup {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("For agents that support MCP but not plugins, pair using either route above, then add this local stdio server in the agent's MCP settings. The agent must run as the same macOS user. Restart or reload its MCP connection after configuring it.")
@@ -369,13 +375,7 @@ struct AgentControlSetupView: View {
                 Label("Manual MCP setup (without a plugin)", systemImage: "slider.horizontal.3")
                     .font(.headline)
             }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.quaternary)
-            )
+            .padding(.vertical, 4)
 
             Link("Full setup, Skills, and example prompts", destination: URL(string: "https://github.com/jamesmontemagno/tiny-clips/blob/main/docs/agent-integration.md")!)
             if !copyStatus.isEmpty {
@@ -386,19 +386,14 @@ struct AgentControlSetupView: View {
         }
     }
 
-    private func setupCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func setupGroup<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: icon)
                 .font(.headline)
             content()
         }
-        .padding(18)
+        .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.quaternary)
-        )
     }
 
     private func command(_ value: String, label: String) -> some View {

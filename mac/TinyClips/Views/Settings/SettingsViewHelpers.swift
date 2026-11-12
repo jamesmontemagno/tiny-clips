@@ -36,13 +36,13 @@ struct SettingsFormSection<Content: View>: View {
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.quaternary)
+                    .strokeBorder(.quaternary.opacity(0.65))
             )
         }
-        .padding(.vertical, 4)
+        .padding(.bottom, 4)
     }
 }
 
@@ -50,10 +50,10 @@ extension View {
     func settingsCard() -> some View {
         padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(.quaternary)
+                    .strokeBorder(.quaternary.opacity(0.65))
             )
     }
 
@@ -73,18 +73,26 @@ struct SettingsToggleRow: View {
     var disabled = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Toggle(title, isOn: $isOn)
-                .help(help ?? description)
-                .disabled(disabled)
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body)
+                    .accessibilityHidden(true)
+                Text(description)
+                    .settingsDescription()
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(disabled ? 0.55 : 1)
 
-            Text(description)
-                .settingsDescription()
-                .padding(.leading, 20)
-                .accessibilityHidden(true)
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .help(help ?? description)
+                .accessibilityLabel(title)
+                .accessibilityHint(accessibilityHint ?? description)
+                .disabled(disabled)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint(accessibilityHint ?? description)
     }
 }
 

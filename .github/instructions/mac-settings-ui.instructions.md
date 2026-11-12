@@ -28,16 +28,18 @@ Use these conventions for all macOS Settings tabs and shared Settings controls.
   styled `DisclosureGroup`.
 - Use `.settingsDescription()` for explanatory copy. It uses readable callout text, secondary
   foreground color, and fixed vertical sizing.
-- Use `.quaternary.opacity(0.35)` for card fill and `.quaternary` for the border unless a specific
+- Use `.quaternary.opacity(0.3)` for card fill and `.quaternary.opacity(0.65)` for the border unless a specific
   status state (success, warning, destructive) requires stronger semantic color.
 
 ## Controls and Hierarchy
 
 - Put a concise headline above a supporting description.
+- Use a two-column row for settings with a switch: title and description on the left, switch on
+  the right. Reuse `SettingsToggleRow` instead of placing the description below a native toggle.
 - Use `.headline` for card titles and primary row names, `.callout` for descriptions, and
   `.caption` or `.caption2` only for metadata.
-- Use `.toggleStyle(.switch)` for a primary enable/disable action. Use standard toggles and
-  pickers for ordinary settings.
+- Use `.toggleStyle(.switch)` for `SettingsToggleRow` controls. Keep the visual control at the
+  trailing edge and its title and description in the leading column.
 - Use bordered buttons for deliberate secondary actions and copy controls. Use `.borderless`
   only for compact icon controls that already belong to a strong row.
 - Group conditional controls immediately below the setting that enables them. Do not leave
@@ -51,6 +53,8 @@ Use these conventions for all macOS Settings tabs and shared Settings controls.
 - Wrap setup text naturally with `fixedSize(horizontal: false, vertical: true)`.
 - Put copyable commands and endpoint values in a padded row with a subtle fill and border.
   Align the copy button at the trailing edge and use `.bordered` with `.controlSize(.small)`.
+- Avoid nested cards. Use headings, separators, and whitespace to group content inside an
+  existing Settings card.
 - Keep copy status visible after an action and clear enough to read.
 
 ## State and Feedback
