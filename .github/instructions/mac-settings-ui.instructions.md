@@ -14,7 +14,7 @@ Use these conventions for all macOS Settings tabs and shared Settings controls.
 - Use one clear content card per logical settings section. Do not mix unrelated controls into a
   compact wall of rows.
 - Keep card spacing consistent:
-  `18 pt` outer padding, `18 pt` spacing between major items, `10 pt` or `12 pt` corner radius,
+  `18 pt` outer padding, `4 pt` spacing between setting rows, `10 pt` or `12 pt` corner radius,
   and an appearance-aware border.
 - Use full-width cards with `maxWidth: .infinity`; avoid fixed widths except for intentional
   popovers or control value columns.

@@ -8,7 +8,7 @@ struct AgentControlSettingsSection: View {
 
     var body: some View {
         SettingsFormSection("Agent Control", icon: "terminal") {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .center, spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -277,7 +277,7 @@ struct AgentControlSetupView: View {
     @State private var copyStatus = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 4) {
             setupCard(title: "Before you begin", icon: "checklist") {
                 Link("Install the .NET 10 SDK", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
                 Text("Turn on Agent Control above and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant.")
@@ -387,7 +387,7 @@ struct AgentControlSetupView: View {
     }
 
     private func setupCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 4) {
             Label(title, systemImage: icon)
                 .font(.headline)
             content()

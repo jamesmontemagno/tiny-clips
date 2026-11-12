@@ -19,7 +19,7 @@ struct SettingsFormSection<Content: View>: View {
 
     var body: some View {
         Section {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
                 if let title {
                     if let icon {
                         Label(title, systemImage: icon)
