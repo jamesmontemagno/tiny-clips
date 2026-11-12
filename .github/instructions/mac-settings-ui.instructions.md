@@ -10,11 +10,11 @@ Use these conventions for all macOS Settings tabs and shared Settings controls.
 ## Layout
 
 - Keep Settings in a `ScrollView` and preserve enough room for a natural macOS settings window:
-  `820 pt` minimum width, `860 pt` ideal width, `560 pt` minimum height, and `680 pt` ideal height.
+  `820 pt` minimum width, `860 pt` ideal width, `580 pt` minimum height, and `720 pt` ideal height.
 - Use one clear content card per logical settings section. Do not mix unrelated controls into a
   compact wall of rows.
 - Keep card spacing consistent:
-  `14 pt` outer padding, `12 pt` spacing between major items, `10 pt` or `12 pt` corner radius,
+  `18 pt` outer padding, `16 pt` spacing between major items, `10 pt` or `12 pt` corner radius,
   and an appearance-aware border.
 - Use full-width cards with `maxWidth: .infinity`; avoid fixed widths except for intentional
   popovers or control value columns.

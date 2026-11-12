@@ -138,8 +138,8 @@ struct SettingsView: View {
         .frame(
             minWidth: 820,
             idealWidth: 860,
-            minHeight: 560,
-            idealHeight: 680
+            minHeight: 580,
+            idealHeight: 720
         )
         .sheet(isPresented: $showQuickBugReportForm) {
             QuickBugReportFormView(context: quickBugReportContext) { type, title, description in

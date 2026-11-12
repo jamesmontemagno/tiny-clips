@@ -8,7 +8,7 @@ struct AgentControlSettingsSection: View {
 
     var body: some View {
         SettingsFormSection("Agent Control", icon: "terminal") {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .center, spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -81,7 +81,7 @@ struct AgentControlSettingsSection: View {
                     .accessibilityElement(children: .contain)
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
         }
 
         SettingsFormSection("Get Started", icon: "sparkles") {
@@ -277,7 +277,7 @@ struct AgentControlSetupView: View {
     @State private var copyStatus = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             setupCard(title: "Before you begin", icon: "checklist") {
                 Link("Install the .NET 10 SDK", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
                 Text("Turn on Agent Control above and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant.")
@@ -369,7 +369,7 @@ struct AgentControlSetupView: View {
                 Label("Manual MCP setup (without a plugin)", systemImage: "slider.horizontal.3")
                     .font(.headline)
             }
-            .padding(14)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
@@ -387,12 +387,12 @@ struct AgentControlSetupView: View {
     }
 
     private func setupCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             Label(title, systemImage: icon)
                 .font(.headline)
             content()
         }
-        .padding(14)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(

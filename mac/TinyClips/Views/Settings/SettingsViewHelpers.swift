@@ -19,7 +19,7 @@ struct SettingsFormSection<Content: View>: View {
 
     var body: some View {
         Section {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 16) {
                 if let title {
                     if let icon {
                         Label(title, systemImage: icon)
@@ -34,7 +34,7 @@ struct SettingsFormSection<Content: View>: View {
 
                 content()
             }
-            .padding(14)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
@@ -42,12 +42,13 @@ struct SettingsFormSection<Content: View>: View {
                     .strokeBorder(.quaternary)
             )
         }
+        .padding(.vertical, 4)
     }
 }
 
 extension View {
     func settingsCard() -> some View {
-        padding(14)
+        padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
