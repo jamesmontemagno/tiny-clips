@@ -10,15 +10,14 @@ struct MouseClicksSettingsSection: View {
 
     @ViewBuilder
     private var mouseClicksControls: some View {
-        Section("Mouse Click Effects") {
+        SettingsFormSection("Mouse Click Effects", icon: "cursorarrow.rays") {
             Text("Tune the saved click pulse for recordings. Adding click effects will add more processing time at the end of recording.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .settingsDescription()
             Link("For the best live click animations, install ClickLight.", destination: clickLightURL)
                 .help("Opens ClickLight on GitHub.")
         }
 
-        Section("Video") {
+        SettingsFormSection("Video", icon: "video") {
             MouseClickOverlayControls(
                 color: videoMouseClickColorBinding,
                 size: Binding(
@@ -40,14 +39,13 @@ struct MouseClicksSettingsSection: View {
             )
         }
 
-        Section("GIF") {
+        SettingsFormSection("GIF", icon: "photo.on.rectangle.angled") {
             Toggle("Use Video click settings", isOn: $settings.gifMouseClicksUseVideoSettings)
                 .help("When enabled, GIF click visuals mirror Video settings.")
 
             if settings.gifMouseClicksUseVideoSettings {
                 Text("GIF click visuals mirror Video settings.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .settingsDescription()
             } else {
                 MouseClickOverlayControls(
                     color: gifMouseClickColorBinding,
