@@ -73,9 +73,8 @@ struct SettingsView: View {
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
-        }         detail: {
-            ScrollView {
-                Form {
+        } detail: {
+            Form {
                 switch selectedTab ?? .general {
                 case .general:
                     GeneralSettingsSection(
@@ -130,9 +129,6 @@ struct SettingsView: View {
                 }
             }
             .formStyle(.grouped)
-                .frame(maxWidth: .infinity)
-            }
-            .scrollIndicators(.visible)
         }
         .navigationSplitViewStyle(.balanced)
         .frame(

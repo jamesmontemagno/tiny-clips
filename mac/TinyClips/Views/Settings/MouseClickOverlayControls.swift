@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// The click-effect settings as form rows, for a Settings section.
 struct MouseClickOverlayControls: View {
     let color: Binding<NSColor>
     let size: Binding<Double>
@@ -8,67 +9,45 @@ struct MouseClickOverlayControls: View {
     let duration: Binding<Double>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Color")
-                Spacer()
-                MouseClickColorWell(color: color)
-                    .frame(width: 48, height: 24)
-                    .accessibilityLabel("Mouse click color")
-            }
-
-            mouseClickSlider(
-                title: "Size",
-                value: size,
-                range: 12...100,
-                step: 1,
-                valueText: { "\(Int($0)) px" }
-            )
-
-            mouseClickSlider(
-                title: "Stroke width",
-                value: strokeWidth,
-                range: 1...10,
-                step: 1,
-                valueText: { "\(Int($0)) px" }
-            )
-
-            mouseClickSlider(
-                title: "Opacity",
-                value: opacity,
-                range: 0.1...1.0,
-                step: 0.05,
-                valueText: { "\(Int(($0 * 100).rounded()))%" }
-            )
-
-            mouseClickSlider(
-                title: "Duration",
-                value: duration,
-                range: 0.15...1.0,
-                step: 0.05,
-                valueText: { String(format: "%.2f s", $0) }
-            )
-        }
-    }
-
-    @ViewBuilder
-    private func mouseClickSlider(
-        title: String,
-        value: Binding<Double>,
-        range: ClosedRange<Double>,
-        step: Double,
-        valueText: @escaping (Double) -> String
-    ) -> some View {
         HStack {
-            Text(title)
-                .frame(width: 110, alignment: .leading)
-
-            Slider(value: value, in: range, step: step)
-
-            Text(valueText(value.wrappedValue))
-                .monospacedDigit()
-                .frame(width: 64, alignment: .trailing)
+            Text("Color")
+            Spacer()
+            MouseClickColorWell(color: color)
+                .frame(width: 44, height: 22)
+                .accessibilityLabel("Mouse click color")
         }
+
+        SettingsSliderRow(
+            title: "Size",
+            value: size,
+            range: 12...100,
+            step: 1,
+            valueText: "\(Int(size.wrappedValue)) px"
+        )
+
+        SettingsSliderRow(
+            title: "Stroke width",
+            value: strokeWidth,
+            range: 1...10,
+            step: 1,
+            valueText: "\(Int(strokeWidth.wrappedValue)) px"
+        )
+
+        SettingsSliderRow(
+            title: "Opacity",
+            value: opacity,
+            range: 0.1...1.0,
+            step: 0.05,
+            valueText: "\(Int((opacity.wrappedValue * 100).rounded()))%"
+        )
+
+        SettingsSliderRow(
+            title: "Duration",
+            value: duration,
+            range: 0.15...1.0,
+            step: 0.05,
+            valueText: String(format: "%.2f s", duration.wrappedValue)
+        )
     }
 }
 

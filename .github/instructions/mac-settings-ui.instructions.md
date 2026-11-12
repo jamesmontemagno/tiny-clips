@@ -5,81 +5,91 @@ applyTo: "mac/TinyClips/Views/SettingsView.swift, mac/TinyClips/Views/Settings/*
 
 # macOS Settings UI Styleguide
 
-Use these conventions for all macOS Settings tabs and shared Settings controls.
+Settings is a grouped `Form`, laid out the way System Settings is. The form draws the cards, the
+separators between rows, and the spacing. Do not draw your own.
 
-## Layout
+## The one rule
 
-- Keep Settings in a `ScrollView` and preserve enough room for a natural macOS settings window:
-  `820 pt` minimum width, `860 pt` ideal width, `580 pt` minimum height, and `720 pt` ideal height.
-- Use one clear content card per logical settings section. Do not mix unrelated controls into a
-  compact wall of rows.
-- Keep card spacing consistent:
-  `18 pt` outer padding, `8 pt` spacing between setting rows, `6 pt` between cards,
-  `10 pt` or `12 pt` corner radius,
-  and an appearance-aware border.
-- Use full-width cards with `maxWidth: .infinity`; avoid fixed widths except for intentional
-  popovers or control value columns.
+**One group is one `Section`, and one setting is one row.** Every direct child of a section
+becomes a row with a separator above it and the form's own padding around it.
 
-## Shared SwiftUI Helpers
+- Never wrap a section's settings in a `VStack`, and never give a section a background, border, or
+  padding. That puts a card inside the form's card and removes the row separators, and no spacing
+  value will then look right.
+- Never put the `Form` inside a `ScrollView`. The form scrolls itself.
+- Do not set spacing between settings by hand. If rows look cramped, something is stacked inside
+  one row.
 
-- Prefer `SettingsFormSection(title, icon:)` for titled cards. The title is part of the card, and
-  the icon should describe the section.
-- Use `.settingsCard()` for standalone controls that are not a normal Form section, such as a
-  styled `DisclosureGroup`.
-- Use `.settingsDescription()` for explanatory copy. It uses readable callout text, secondary
-  foreground color, and fixed vertical sizing.
-- Use `.quaternary.opacity(0.3)` for card fill and `.quaternary.opacity(0.65)` for the border unless a specific
-  status state (success, warning, destructive) requires stronger semantic color.
+## Building blocks
 
-## Controls and Hierarchy
+All are in `SettingsViewHelpers.swift`. Use them instead of laying a row out by hand.
 
-- Put a concise headline above a supporting description.
-- Use a two-column row for settings with a switch: title on the left and switch on the right.
-  Reuse `SettingsToggleRow` instead of placing a native toggle inline.
-- Add a secondary description only when the setting is non-obvious, has consequences, or needs
-  to explain platform behavior. Omit it for self-explanatory settings.
-- Use `.headline` for card titles and primary row names, `.callout` for descriptions, and
-  `.caption` or `.caption2` only for metadata.
-- Use `.toggleStyle(.switch)` for `SettingsToggleRow` controls. Keep the visual control at the
-  trailing edge and its title and description in the leading column.
-- Use bordered buttons for deliberate secondary actions and copy controls. Use `.borderless`
-  only for compact icon controls that already belong to a strong row.
-- Group conditional controls immediately below the setting that enables them. Do not leave
-  disabled controls visually disconnected from their explanation.
-- Give every configurable or fixed keyboard shortcut row a meaningful SF Symbol through
-  `HotKeyAction.iconName`; key badges alone are not sufficient.
+| Use | For |
+|---|---|
+| `SettingsFormSection(title, icon:, footer:)` | A group. The title and SF Symbol go above the card. |
+| `SettingsToggleRow` | A switch. Title on the left, switch on the right. |
+| `Picker("Label", selection:)` | A choice. Give it a plain label with no trailing colon. |
+| `SettingsSliderRow` | A slider with its value. All sliders share one width so they line up. |
+| `SettingsActionRow` | Something you do: what it is on the left, its buttons on the right. |
+| `LabeledContent("Label") { … }` | A value to read, or a control with no helper above. |
+| `SettingsAdvancedSection` | Settings most people never change. Starts collapsed. |
+| `.settingsDescription()` | Secondary text inside a row you had to build yourself. |
 
-## Text and Command Rows
+## Grouping
 
-- Never rely on `.caption` alone for setup instructions or important descriptions.
-- Wrap setup text naturally with `fixedSize(horizontal: false, vertical: true)`.
-- Put copyable commands and endpoint values in a padded row with a subtle fill and border.
-  Align the copy button at the trailing edge and use `.bordered` with `.controlSize(.small)`.
-- Avoid nested cards. Use headings, separators, and whitespace to group content inside an
-  existing Settings card.
-- Keep copy status visible after an action and clear enough to read.
+- Name a group for what its settings have in common: "Save Location", "Before Recording". Do not
+  use a catch-all like "Advanced" or "Other" for an ordinary group.
+- Aim for two to six rows in a group. Split a longer one, and fold a single stray setting into the
+  group it is closest to.
+- Order groups by how often they are used, and by time where there is one: before, during, after.
+- Show a setting that depends on another directly under it, and only while it applies. For
+  example, the countdown duration appears under the countdown switch when it is on.
+- A setting that belongs to another tab gets a `SettingsActionRow` with a button that goes there.
 
-## State and Feedback
+## Advanced settings
 
-- Use semantic colors only for meaning: green for connected/listening, red for errors or
-  destructive actions, secondary for inactive or metadata states.
-- Preserve error text and retry actions when a setting or service has an error.
-- Keep paired-agent names, permission summaries, last-used metadata, and action buttons aligned
-  in a single row when space allows; wrap naturally at narrower widths.
+Use `SettingsAdvancedSection` for the collapsed group at the end of a tab. Its header matches the
+other groups and is what opens it. Pass `startsExpanded:` when one of its settings is changed from
+the default, so a setting in effect is never hidden. Do not use a bare `DisclosureGroup` in the
+form: it has no header and does not look like the other groups.
+
+## Text
+
+- Add a description under a title only when the title does not say what the setting does, or the
+  setting has a consequence worth knowing. Most switches need none. Keep the detail in `.help`.
+- Text about a whole group goes in the section `footer`, not in a row.
+- A row title is sentence case with no trailing colon or period. A button that opens a dialog or
+  another window ends with an ellipsis.
+- When a row title already says what a button is for, keep the button short ("Choose…",
+  "Reset…") and give it the full name as its accessibility label.
+
+## Custom rows
+
+Some content is not a setting: a chart, a preview, a setup step with commands. That is one row
+with its own layout. Keep it flat, with no card of its own. Text to copy goes in a field with a
+copy button that confirms on the button itself.
+
+## Color
+
+Use semantic colors only for meaning: green for connected, red for errors and destructive
+actions. Do not tint decoration with the accent color.
 
 ## Accessibility
 
-- Provide stable accessibility labels and hints for icon-only copy, permissions, revoke, reset,
-  and file-picker actions.
-- Keep descriptive text exposed in VoiceOver; do not merge it into a label unless the label
-  accurately represents the full control.
-- Preserve keyboard navigation and `.destructive` roles for destructive actions.
-- Do not introduce UI that only works with a pointer; all Settings actions should remain usable
-  by keyboard and VoiceOver.
+- Section titles are headers. `SettingsFormSection` does this.
+- A slider, color well, or stepper with a hidden label needs an `accessibilityLabel`, and a
+  slider needs an `accessibilityValue`. `SettingsSliderRow` does both.
+- Icon-only buttons need a label. When several rows have the same button title, each needs a
+  label that says which row it is for.
+- Every keyboard shortcut row has an SF Symbol from `HotKeyAction.iconName`, in a frame of
+  `ShortcutRecorderField.iconWidth` so the names line up.
+- Keep `.destructive` roles, and keep every action reachable by keyboard and VoiceOver.
 
-## Validation
+## Check your work
 
-Build and test macOS Settings changes with both app schemes:
+Look at the tab in the running app, in light and dark, before finishing. Quit any running copy of
+TinyClips first: opening the app while another copy runs only brings that one forward, and it may
+be an older build.
 
 ```bash
 xcodebuild test -project mac/TinyClips.xcodeproj -scheme TinyClips -configuration Debug \

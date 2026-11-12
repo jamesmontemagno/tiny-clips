@@ -7,10 +7,11 @@ struct ShortcutsSettingsSection: View {
     @State private var shortcutError: String?
 
     var body: some View {
-        SettingsFormSection("Global Keyboard Shortcuts", icon: "keyboard") {
-            Text("These shortcuts work system-wide, even when the menu is closed. At least one modifier key (⌃ ⌥ ⇧ ⌘) is required. Screenshot Region, Screenshot Screen, and Screenshot Window skip the capture picker.")
-                .settingsDescription()
-
+        SettingsFormSection(
+            "Global Keyboard Shortcuts",
+            icon: "keyboard",
+            footer: "These shortcuts work system-wide, even when the menu is closed. At least one modifier key (⌃ ⌥ ⇧ ⌘) is required. Screenshot Region, Screenshot Screen, and Screenshot Window skip the capture picker."
+        ) {
             if let shortcutError {
                 Label(shortcutError, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
@@ -35,10 +36,11 @@ struct ShortcutsSettingsSection: View {
             }
         }
 
-        SettingsFormSection("Fixed Shortcuts", icon: "lock") {
-            Text("The following shortcuts are fixed and cannot be changed.")
-                .settingsDescription()
-
+        SettingsFormSection(
+            "Fixed Shortcuts",
+            icon: "lock",
+            footer: "These shortcuts are fixed and cannot be changed."
+        ) {
             fixedShortcutRow(label: "Stop Recording", iconName: "stop.circle", keys: "⌘.")
             fixedShortcutRow(label: "Settings", iconName: "gearshape", keys: "⌘,")
             fixedShortcutRow(label: "Quit", iconName: "power", keys: "⌘Q")
@@ -47,7 +49,12 @@ struct ShortcutsSettingsSection: View {
 
     private func fixedShortcutRow(label: String, iconName: String, keys: String) -> some View {
         HStack {
-            Label(label, systemImage: iconName)
+            Label {
+                Text(label)
+            } icon: {
+                Image(systemName: iconName)
+                    .frame(width: ShortcutRecorderField.iconWidth)
+            }
             Spacer()
             Text(keys)
                 .font(.system(.body, design: .monospaced))

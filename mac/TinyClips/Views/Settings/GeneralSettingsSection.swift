@@ -14,10 +14,10 @@ struct GeneralSettingsSection: View {
     @State private var isRequestingNotifications = false
 
     var body: some View {
-        SettingsFormSection("Output", icon: "folder") {
+        SettingsFormSection("Save Location", icon: "folder") {
             SettingsToggleRow(
                 title: "Use default folders",
-                description: "Screenshots → Pictures/TinyClips; videos and GIFs → Movies/TinyClips.",
+                description: "Screenshots go to Pictures/TinyClips. Videos and GIFs go to Movies/TinyClips.",
                 isOn: $settings.useDefaultSaveDirectories,
                 accessibilityHint: "Use the default capture folders for screenshots, videos, and GIFs."
             )
@@ -28,75 +28,78 @@ struct GeneralSettingsSection: View {
                 saveDirectoryRow(title: "GIFs folder", type: .gif)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                TextField("File name template", text: $settings.fileNameTemplate)
-                    .textFieldStyle(.roundedBorder)
-
-                HStack(spacing: 10) {
-                    Button("Classic") {
-                        settings.fileNameTemplate = "TinyClips {date} at {time}"
-                    }
-                    .buttonStyle(.link)
-
-                    Button("Type + Date") {
-                        settings.fileNameTemplate = "{type} {date} at {time}"
-                    }
-                    .buttonStyle(.link)
-
-                    Button("Date First") {
-                        settings.fileNameTemplate = "{date} {time} {type}"
-                    }
-                    .buttonStyle(.link)
-                }
-                .font(.caption)
-
-                Text("Tokens: {app}, {type}, {date}, {time}, {datetime}")
-                    .settingsDescription()
-
-                Text("Preview: \(SaveService.shared.namingPreview(for: .screenshot))")
-                    .settingsDescription()
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
             SettingsToggleRow(
                 title: "Show in Finder after save",
                 isOn: $settings.showInFinder
             )
         }
 
-        SettingsFormSection("Notifications", icon: "bell") {
-            LabeledContent("System notifications", value: notificationPermission?.summary ?? "Checking…")
-                .accessibilityElement(children: .combine)
+        SettingsFormSection(
+            "File Names",
+            icon: "textformat",
+            footer: "Tokens: {app}, {type}, {date}, {time}, {datetime}"
+        ) {
+            TextField("File name template", text: $settings.fileNameTemplate)
 
-            if let notificationPermission {
-                if notificationPermission.canRequest {
-                    Button("Enable Notifications") {
-                        isRequestingNotifications = true
-                        Task {
-                            defer { isRequestingNotifications = false }
-                            _ = await PermissionManager.shared.requestNotificationPermission()
-                            await refreshNotificationPermission()
-                            if self.notificationPermission?.canRequest == true {
-                                SaveService.shared.showError("Could not request notification permission. Please try again or enable TinyClips notifications in macOS System Settings.")
-                            }
-                        }
+            LabeledContent("Presets") {
+                HStack(spacing: 8) {
+                    Button("Classic") {
+                        settings.fileNameTemplate = "TinyClips {date} at {time}"
                     }
-                    .disabled(isRequestingNotifications)
-                    .accessibilityHint("Requests macOS permission for TinyClips notifications.")
-                } else {
-                    Button("Open Notification Settings") {
-                        guard PermissionManager.shared.openNotificationSettings() else {
-                            SaveService.shared.showError("Could not open macOS Notification Settings.")
-                            return
-                        }
+                    Button("Type + Date") {
+                        settings.fileNameTemplate = "{type} {date} at {time}"
                     }
-                    .accessibilityHint("Opens macOS notification settings to manage TinyClips alerts.")
+                    Button("Date First") {
+                        settings.fileNameTemplate = "{date} {time} {type}"
+                    }
                 }
+                .controlSize(.small)
             }
 
-            Text("System permission allows notifications for saved captures and background tasks, including Studio captions. macOS controls how they are delivered.")
-                .settingsDescription()
+            LabeledContent("Preview") {
+                Text(SaveService.shared.namingPreview(for: .screenshot))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+
+        SettingsFormSection(
+            "Notifications",
+            icon: "bell",
+            footer: "System permission allows notifications for saved captures and background tasks, including Studio captions. macOS controls how they are delivered."
+        ) {
+            SettingsActionRow(
+                title: "System notifications",
+                description: notificationPermission?.summary ?? "Checking…"
+            ) {
+                if let notificationPermission {
+                    if notificationPermission.canRequest {
+                        Button("Enable…") {
+                            isRequestingNotifications = true
+                            Task {
+                                defer { isRequestingNotifications = false }
+                                _ = await PermissionManager.shared.requestNotificationPermission()
+                                await refreshNotificationPermission()
+                                if self.notificationPermission?.canRequest == true {
+                                    SaveService.shared.showError("Could not request notification permission. Please try again or enable TinyClips notifications in macOS System Settings.")
+                                }
+                            }
+                        }
+                        .disabled(isRequestingNotifications)
+                        .accessibilityLabel("Enable notifications")
+                        .accessibilityHint("Requests macOS permission for TinyClips notifications.")
+                    } else {
+                        Button("Open Settings…") {
+                            guard PermissionManager.shared.openNotificationSettings() else {
+                                SaveService.shared.showError("Could not open macOS Notification Settings.")
+                                return
+                            }
+                        }
+                        .accessibilityLabel("Open notification settings")
+                        .accessibilityHint("Opens macOS notification settings to manage TinyClips alerts.")
+                    }
+                }
+            }
 
             SettingsToggleRow(
                 title: "Show notification after save",
@@ -112,16 +115,23 @@ struct GeneralSettingsSection: View {
             Task { await refreshNotificationPermission() }
         }
 
-        SettingsFormSection("Editors", icon: "pencil.and.outline") {
+        SettingsFormSection("Capture", icon: "camera.viewfinder") {
+            Picker("When capturing a display", selection: $settings.multiMonitorCaptureMode) {
+                ForEach(MultiMonitorCaptureMode.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .help("Choose whether TinyClips asks for a display or captures one automatically when multiple monitors are connected.")
+
             SettingsToggleRow(
-                title: "Confirm before closing editors with Esc",
-                description: "Ask before closing an editor with unsaved work.",
-                isOn: $settings.confirmEditorEscape,
-                help: "Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. Turn off to close them right away, discarding anything unsaved."
+                title: "Include TinyClips in captures",
+                description: "For demos and development. TinyClips windows can appear in captures and in window selection.",
+                isOn: $settings.includeTinyClipsInCapture,
+                help: "For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection."
             )
         }
 
-        SettingsFormSection("Advanced", icon: "slider.horizontal.3") {
+        SettingsFormSection("App Behavior", icon: "macwindow") {
             SettingsToggleRow(
                 title: "Launch at login",
                 isOn: Binding(
@@ -130,37 +140,41 @@ struct GeneralSettingsSection: View {
                 )
             )
             SettingsToggleRow(
-                title: "Show TinyClips in Dock (enables ⌘⇥)",
+                title: "Show TinyClips in Dock",
+                description: "Also adds TinyClips to the ⌘⇥ app switcher.",
                 isOn: showInDockBinding,
                 help: "When enabled, TinyClips appears in Command-Tab and can participate in normal app/window switching."
             )
-            Picker("When capturing a display", selection: $settings.multiMonitorCaptureMode) {
-                ForEach(MultiMonitorCaptureMode.allCases, id: \.self) { mode in
-                    Text(mode.label).tag(mode)
-                }
-            }
-            .help("Choose whether TinyClips asks for a display or captures one automatically when multiple monitors are connected.")
             SettingsToggleRow(
-                title: "Include TinyClips in captures",
-                description: "Let TinyClips windows appear in captures.",
-                isOn: $settings.includeTinyClipsInCapture,
-                help: "For developer/demo use. When enabled, TinyClips windows can appear in screenshots, recordings, and window selection."
+                title: "Confirm before closing editors with Esc",
+                description: "Ask before Esc closes an editor with unsaved work.",
+                isOn: $settings.confirmEditorEscape,
+                help: "Ask before Esc closes the screenshot editor, video trimmer, or GIF trimmer. Turn off to close them right away, discarding anything unsaved."
             )
-            Button {
-                NSWorkspace.shared.open(TinyClipsTemporaryFiles.directoryURL)
-            } label: {
-                Label("Open TinyClips Temp Folder", systemImage: "folder")
-            }
+        }
+
+        SettingsFormSection("Maintenance", icon: "wrench.and.screwdriver") {
+            SettingsActionRow(title: "Temporary files", description: temporaryFilesSummaryText) {
+                Button("Open Folder") {
+                    NSWorkspace.shared.open(TinyClipsTemporaryFiles.directoryURL)
+                }
                 .help("Open the temporary folder where TinyClips processes captures.")
+                .accessibilityLabel("Open TinyClips temp folder")
                 .accessibilityHint("Opens the temporary folder containing TinyClips processing files in Finder.")
-            temporaryFilesSummaryView
-            Button("Purge Temp Files Now…", role: .destructive) {
-                showPurgeConfirmation = true
+
+                Button("Purge…", role: .destructive) {
+                    showPurgeConfirmation = true
+                }
+                .help("Delete all temporary files currently created by TinyClips.")
+                .accessibilityLabel("Purge temp files now")
+                .accessibilityHint("Deletes temporary TinyClips files after confirmation.")
             }
-            .help("Delete all temporary files currently created by TinyClips.")
-            .accessibilityHint("Deletes temporary TinyClips files after confirmation.")
-            Button("Reset All Settings to Defaults…") {
-                resetAllSettings()
+
+            SettingsActionRow(title: "Reset all settings", description: "Return every setting to its default.") {
+                Button("Reset…") {
+                    resetAllSettings()
+                }
+                .accessibilityLabel("Reset all settings to defaults")
             }
         }
         .confirmationDialog(
@@ -188,24 +202,17 @@ struct GeneralSettingsSection: View {
         }
     }
 
-    @ViewBuilder
     private func saveDirectoryRow(title: String, type: CaptureType) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(title)
-                Spacer()
-                Button("Choose…") {
-                    chooseSaveDirectory(type)
-                }
+        LabeledContent {
+            Button("Choose…") {
+                chooseSaveDirectory(type)
             }
-
+            .accessibilityLabel("Choose \(title.lowercased())")
+        } label: {
+            Text(title)
             Text(saveDirectoryPath(for: type))
-                .settingsDescription()
                 .lineLimit(1)
                 .truncationMode(.middle)
-
-            Text(saveDirectoryHint(for: type))
-                .settingsDescription()
         }
     }
 
@@ -219,28 +226,16 @@ struct GeneralSettingsSection: View {
 #endif
     }
 
-    private func saveDirectoryHint(for type: CaptureType) -> String {
-        "Saved captures of this type use this folder."
-    }
-
-    @ViewBuilder
-    private var temporaryFilesSummaryView: some View {
+    private var temporaryFilesSummaryText: String {
         if isLoadingTemporaryFiles {
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Calculating TinyClips temporary files…")
-            }
-            .settingsDescription()
-        } else if let temporaryFilesSummary {
-            let fileLabel = temporaryFilesSummary.fileCount == 1 ? "file" : "files"
-            Text("\(temporaryFilesSummary.fileCount) temporary \(fileLabel) using \(ByteCountFormatter.string(fromByteCount: temporaryFilesSummary.totalSize, countStyle: .file))")
-                .settingsDescription()
-                .accessibilityLabel("\(temporaryFilesSummary.fileCount) TinyClips temporary \(fileLabel), using \(ByteCountFormatter.string(fromByteCount: temporaryFilesSummary.totalSize, countStyle: .file))")
-        } else {
-            Text("Could not calculate TinyClips temporary files.")
-                .settingsDescription()
+            return "Calculating…"
         }
+        guard let temporaryFilesSummary else {
+            return "Could not calculate the size."
+        }
+        let fileLabel = temporaryFilesSummary.fileCount == 1 ? "file" : "files"
+        let size = ByteCountFormatter.string(fromByteCount: temporaryFilesSummary.totalSize, countStyle: .file)
+        return "\(temporaryFilesSummary.fileCount) \(fileLabel) using \(size)"
     }
 
     private func loadTemporaryFilesSummary() async {
@@ -263,6 +258,7 @@ struct BrandingSettingsSection: View {
         SettingsFormSection("Branding", icon: "flag") {
             SettingsToggleRow(
                 title: "Show 'Captured on Tiny Clips' overlay",
+                description: "Adds a small watermark to the bottom-right corner of screenshots, recordings, and GIFs.",
                 isOn: $settings.showBrandingOverlay,
                 help: "Adds a 'Captured on Tiny Clips' watermark to the bottom-right corner of screenshots, recordings, and GIFs."
             )

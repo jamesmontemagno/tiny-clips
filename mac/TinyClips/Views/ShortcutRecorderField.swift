@@ -16,13 +16,21 @@ struct ShortcutRecorderField: View {
     @State private var isRecording = false
     @State private var eventMonitor: Any?
 
+    /// One width for every shortcut icon, so the names beside them line up.
+    static let iconWidth: CGFloat = 22
+
     private var isCustom: Bool {
         binding != defaultBinding
     }
 
     var body: some View {
         HStack {
-            Label(label, systemImage: iconName)
+            Label {
+                Text(label)
+            } icon: {
+                Image(systemName: iconName)
+                    .frame(width: Self.iconWidth)
+            }
 
             Spacer()
 

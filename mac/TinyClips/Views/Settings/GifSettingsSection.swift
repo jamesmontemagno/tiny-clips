@@ -7,29 +7,25 @@ struct GifSettingsSection: View {
 
     var body: some View {
         SettingsFormSection("GIF Quality", icon: "photo.on.rectangle.angled") {
-            HStack {
-                Text("Frame rate:")
-                Slider(value: $settings.gifFrameRate, in: 5...30, step: 1)
-                Text("\(Int(settings.gifFrameRate)) fps")
-                    .monospacedDigit()
-                    .frame(width: 50, alignment: .trailing)
-            }
-            .help("Choose the frame rate for GIF recording.")
-            HStack {
-                Text("Max width:")
-                Slider(
-                    value: Binding(
-                        get: { Double(settings.gifMaxWidth) },
-                        set: { settings.gifMaxWidth = Int($0) }
-                    ),
-                    in: 320...1920,
-                    step: 40
-                )
-                Text("\(settings.gifMaxWidth)px")
-                    .monospacedDigit()
-                    .frame(width: 60, alignment: .trailing)
-            }
-            .help("Limit GIF output width to reduce file size.")
+            SettingsSliderRow(
+                title: "Frame rate",
+                value: $settings.gifFrameRate,
+                range: 5...30,
+                step: 1,
+                valueText: "\(Int(settings.gifFrameRate)) fps",
+                help: "Choose the frame rate for GIF recording."
+            )
+            SettingsSliderRow(
+                title: "Max width",
+                value: Binding(
+                    get: { Double(settings.gifMaxWidth) },
+                    set: { settings.gifMaxWidth = Int($0) }
+                ),
+                range: 320...1920,
+                step: 40,
+                valueText: "\(settings.gifMaxWidth) px",
+                help: "Limit GIF output width to reduce file size."
+            )
         }
 
         SettingsFormSection("Before Recording", icon: "timer") {
@@ -50,18 +46,14 @@ struct GifSettingsSection: View {
                 help: "Wait before recording starts so you can prepare the screen."
             )
             if settings.gifCountdownEnabled {
-                HStack {
-                    Text("Duration:")
-                    Slider(
-                        value: $settings.gifCountdownDuration.doubleValue,
-                        in: 1...10,
-                        step: 1
-                    )
-                    Text("\(settings.gifCountdownDuration)s")
-                        .monospacedDigit()
-                        .frame(width: 30, alignment: .trailing)
-                }
-                .help("Set the countdown duration in seconds.")
+                SettingsSliderRow(
+                    title: "Countdown duration",
+                    value: $settings.gifCountdownDuration.doubleValue,
+                    range: 1...10,
+                    step: 1,
+                    valueText: "\(settings.gifCountdownDuration)s",
+                    help: "Set the countdown duration in seconds."
+                )
             }
         }
 
@@ -78,12 +70,10 @@ struct GifSettingsSection: View {
                 accessibilityHint: "When enabled, TinyClips keeps the display awake while recording video or GIFs."
             )
             SettingsToggleRow(
-                title: settings.gifMouseClicksUseVideoSettings
-                    ? "Show mouse clicks in recording (mirrors Video)"
-                    : "Show mouse clicks in recording",
+                title: "Show mouse clicks in recording",
                 description: settings.gifMouseClicksUseVideoSettings
-                    ? "GIF clicks follow the Video mouse click setting."
-                    : "Add a subtle pulse at click positions.",
+                    ? "Mirrors the Video setting."
+                    : nil,
                 isOn: gifMouseClickToggleBinding,
                 help: settings.gifMouseClicksUseVideoSettings
                     ? "Uses the Video mouse click on/off setting for GIF recordings."
@@ -92,10 +82,13 @@ struct GifSettingsSection: View {
                     ? "When enabled, GIF recordings use the same mouse click visibility setting as Video recordings."
                     : "When enabled, mouse clicks are shown as a pulse effect in saved GIF recordings."
             )
-            Button("Customize mouse click effect…") {
-                selectedTab.wrappedValue = .mouseClicks
+
+            SettingsActionRow(title: "Mouse click effect") {
+                Button("Customize…") {
+                    selectedTab.wrappedValue = .mouseClicks
+                }
+                .accessibilityLabel("Customize mouse click effect")
             }
-            .buttonStyle(.link)
         }
 
         SettingsFormSection("After Recording", icon: "arrow.right.square") {

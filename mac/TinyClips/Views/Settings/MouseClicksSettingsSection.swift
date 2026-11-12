@@ -10,14 +10,11 @@ struct MouseClicksSettingsSection: View {
 
     @ViewBuilder
     private var mouseClicksControls: some View {
-        SettingsFormSection("Mouse Click Effects", icon: "cursorarrow.rays") {
-            Text("Tune the saved click pulse for recordings. Adding click effects will add more processing time at the end of recording.")
-                .settingsDescription()
-            Link("For the best live click animations, install ClickLight.", destination: clickLightURL)
-                .help("Opens ClickLight on GitHub.")
-        }
-
-        SettingsFormSection("Video", icon: "video") {
+        SettingsFormSection(
+            "Video",
+            icon: "video",
+            footer: "Click effects are added to the saved recording, which adds processing time when a recording ends."
+        ) {
             MouseClickOverlayControls(
                 color: videoMouseClickColorBinding,
                 size: Binding(
@@ -42,15 +39,12 @@ struct MouseClicksSettingsSection: View {
         SettingsFormSection("GIF", icon: "photo.on.rectangle.angled") {
             SettingsToggleRow(
                 title: "Use Video click settings",
-                description: "Use the same click effects for GIF and Video.",
+                description: "GIF recordings use the same click effect as Video.",
                 isOn: $settings.gifMouseClicksUseVideoSettings,
                 help: "When enabled, GIF click visuals mirror Video settings."
             )
 
-            if settings.gifMouseClicksUseVideoSettings {
-                Text("GIF click visuals mirror Video settings.")
-                    .settingsDescription()
-            } else {
+            if !settings.gifMouseClicksUseVideoSettings {
                 MouseClickOverlayControls(
                     color: gifMouseClickColorBinding,
                     size: Binding(
@@ -70,6 +64,16 @@ struct MouseClicksSettingsSection: View {
                         set: { settings.gifMouseClickDuration = $0 }
                     )
                 )
+            }
+        }
+
+        SettingsFormSection("Live Click Animations", icon: "cursorarrow.rays") {
+            SettingsActionRow(
+                title: "ClickLight",
+                description: "For the best live click animations while you record, install ClickLight."
+            ) {
+                Link("Get ClickLight", destination: clickLightURL)
+                    .help("Opens ClickLight on GitHub.")
             }
         }
     }

@@ -31,7 +31,7 @@ struct AboutSettingsSection: View {
     }
 
     var body: some View {
-        SettingsFormSection("TinyClips", icon: "app") {
+        SettingsFormSection {
             HStack {
                 Spacer()
                 VStack(spacing: 8) {
@@ -48,23 +48,31 @@ struct AboutSettingsSection: View {
                 }
                 Spacer()
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 8)
         }
 
         SettingsFormSection("Resources", icon: "link") {
-            Link("GitHub Repository", destination: URL(string: "https://github.com/jamesmontemagno/tiny-clips")!)
-                .accessibilityHint("Opens the TinyClips GitHub repository in your browser.")
-            Button("Send Feedback…", action: onFileBug)
-                .accessibilityHint("Choose a bug report or feature request, then open a pre-filled GitHub issue.")
-            Link("Report Detailed Issue", destination: reportIssueURL)
-                .accessibilityHint("Opens the detailed issue reporter in your browser.")
+            linkRow(
+                "GitHub Repository",
+                destination: URL(string: "https://github.com/jamesmontemagno/tiny-clips")!,
+                hint: "Opens the TinyClips GitHub repository in your browser."
+            )
+
+            SettingsActionRow(title: "Feedback", description: "Report a bug or request a feature.") {
+                Button("Send Feedback…", action: onFileBug)
+                    .accessibilityHint("Choose a bug report or feature request, then open a pre-filled GitHub issue.")
+            }
+
+            linkRow(
+                "Report Detailed Issue",
+                destination: reportIssueURL,
+                hint: "Opens the detailed issue reporter in your browser."
+            )
             if let privacyURL = URL(string: "https://tinyclips.app/privacy.html") {
-                Link("Privacy Policy", destination: privacyURL)
-                    .accessibilityHint("Opens Privacy Policy in your browser.")
+                linkRow("Privacy Policy", destination: privacyURL, hint: "Opens Privacy Policy in your browser.")
             }
             if let termsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
-                Link("Terms of Use", destination: termsURL)
-                    .accessibilityHint("Opens Terms of Use in your browser.")
+                linkRow("Terms of Use", destination: termsURL, hint: "Opens Terms of Use in your browser.")
             }
         }
 
@@ -79,28 +87,49 @@ struct AboutSettingsSection: View {
                 help: "When enabled, TinyClips periodically checks for updates and Sparkle presents the standard update alert when one is available."
             )
 
-            Button("Check for Updates\u{2026}") {
-                sparkleController.checkForUpdates()
+            SettingsActionRow(title: "Check for updates") {
+                Button("Check Now\u{2026}") {
+                    sparkleController.checkForUpdates()
+                }
+                .help("Manually check for updates now.")
+                .accessibilityLabel("Check for updates")
             }
-            .help("Manually check for updates now.")
 
             if !isInstalledInApplicationsFolder {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Move TinyClips to Applications for smoother updates.", systemImage: "folder.badge.plus")
-
-                    Text("When TinyClips runs outside the Applications folder, macOS may ask for extra permission before Sparkle can replace the app. Moving it into Applications makes future updates much smoother.")
-                        .settingsDescription()
-
+                SettingsActionRow(
+                    title: "Move TinyClips to Applications",
+                    description: "Outside the Applications folder, macOS may ask for extra permission before an update can replace the app."
+                ) {
                     Link("Open Applications Folder", destination: applicationsFolderURL)
                         .accessibilityHint("Opens the Applications folder in Finder so you can move TinyClips there for smoother updates.")
                 }
-                .padding(.vertical, 2)
             }
 
-            Link("Download the Latest Version", destination: latestReleaseURL)
-                .help("If the automatic update check fails, download the newest release directly from GitHub.")
-                .accessibilityHint("Opens the latest TinyClips release on GitHub so you can update manually if the in-app update fails.")
+            linkRow(
+                "Download the Latest Version",
+                destination: latestReleaseURL,
+                hint: "Opens the latest TinyClips release on GitHub so you can update manually if the in-app update fails."
+            )
+            .help("If the automatic update check fails, download the newest release directly from GitHub.")
         }
 #endif
+    }
+
+    /// A whole row that opens a page in the browser.
+    private func linkRow(_ title: String, destination: URL, hint: String) -> some View {
+        Link(destination: destination) {
+            HStack {
+                Text(title)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(hint)
     }
 }

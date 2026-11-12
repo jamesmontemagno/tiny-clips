@@ -10,12 +10,10 @@ All notable changes to this project will be documented in this file.
 - macOS confirmation dialogs use standard, appearance-aware buttons instead of low-contrast destructive styling, including Studio, Clips Library, screenshot and video/GIF editors, cleanup, and analytics reset. Cancel is the default for destructive confirmations.
 
 ### Changed
-- macOS Settings rows now use a clearer two-column layout with switches aligned to the right, secondary descriptions reserved for non-obvious settings, 8 points of spacing inside cards, and 6 points between cards. Agent Control setup uses a flatter hierarchy and less nested chrome.
+- macOS Settings now follows the standard grouped layout: one card per group with its title above it, one setting per row with a separator, controls aligned on the right, and notes under the group they describe. The window opens larger. General is regrouped into Save Location, File Names, Notifications, Capture, App Behavior, and Maintenance, and Teleprompter combines scroll speed and text size. Advanced settings for Screenshot and Video open from a matching group at the end of the tab, which starts open when one of its settings is changed.
+- macOS Agent Control settings show the status and endpoint under the switch, list paired agents and the audit log before the setup guide, and number the setup steps. Copy buttons confirm on the button, the example prompt can be copied, and setup without a plugin has its own expandable group. The Guide window shows the same steps.
 - macOS Shortcuts settings now show an icon for every configurable and fixed key binding.
-- macOS Settings cards now use more comfortable padding and vertical spacing so controls and descriptions do not appear cramped.
 - Agent Plugin instructions now use the GitHub Copilot CLI marketplace install flow instead of deprecated direct repository installs.
-- macOS Settings pages now use a consistent card-based layout with readable descriptions, larger window sizing, clear section hierarchy, and appearance-aware borders.
-- macOS Agent Control settings now use a larger, scrollable layout with clearer status and endpoint cards, readable setup instructions, copyable command panels, and more polished paired-agent rows.
 - The macOS welcome wizard returns to its compact 460 × 390-point size, with resizing and scrollable content.
 - The macOS welcome wizard restores separate Screenshots, Videos, and GIFs preference cards, with Launch at Login at the top, and lets you customize the Screenshot, Record Video, and Record GIF shortcuts. Changes apply immediately without resetting saved choices; countdown and save-notification preferences remain in Settings. The final page illustrates how to open Tiny Clips from the menu bar.
 - The Recent Captures menu on macOS and Windows now shows the 10 newest items instead of 5.
