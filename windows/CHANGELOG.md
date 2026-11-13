@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v2.1.0-windows] - 2026-11-13
+
 ### Fixed
 - Keyboard shortcut labels in an already-open Settings window refresh when returning from onboarding after editing, clearing, or resetting a shortcut.
 
