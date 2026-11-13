@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v2.1.0.2-mac - 2026-11-12
+
 ### Fixed
 - macOS `Command-Q` now closes the active Settings, Clips Library, or editor window instead of quitting Tiny Clips; the menu-bar `Quit` action remains the explicit way to exit the app.
 - macOS Settings, Clips Library, and editor windows now keep Tiny Clips as the active application menu and restore the requested window as key instead of leaving the menu bar tied to another app.
