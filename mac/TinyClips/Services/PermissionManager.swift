@@ -98,10 +98,6 @@ class PermissionManager: ObservableObject {
         }
     }
 
-    func cameraPermissionGranted() -> Bool {
-        AVCaptureDevice.authorizationStatus(for: .video) == .authorized
-    }
-
     func requestNotificationPermission() async -> Bool {
         let center = UNUserNotificationCenter.current()
         let status = await notificationPermissionStatus()

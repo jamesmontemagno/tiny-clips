@@ -571,10 +571,6 @@ class CaptureSettings: ObservableObject {
     @AppStorage("screenshotScreenHotKeyCode") var screenshotScreenHotKeyCode: Int = -1
     @AppStorage("screenshotScreenHotKeyModifiers") var screenshotScreenHotKeyModifiers: Int = 0
 
-    func resolvedSaveDirectory(for captureType: CaptureType) -> URL {
-        URL(fileURLWithPath: saveDirectoryPath(for: captureType), isDirectory: true)
-    }
-
     static func defaultSaveDirectoryURL(for captureType: CaptureType) -> URL {
         let fallbackBase = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
         let searchPath: FileManager.SearchPathDirectory = captureType == .screenshot
@@ -593,21 +589,6 @@ class CaptureSettings: ObservableObject {
         case .gif:
             return gifSaveDirectory
         }
-    }
-
-    func hasCustomSaveDirectory(for captureType: CaptureType) -> Bool {
-#if APPSTORE
-        switch captureType {
-        case .screenshot:
-            return !screenshotSaveDirectoryBookmark.isEmpty
-        case .video:
-            return !videoSaveDirectoryBookmark.isEmpty
-        case .gif:
-            return !gifSaveDirectoryBookmark.isEmpty
-        }
-#else
-        return !saveDirectoryPath(for: captureType).isEmpty
-#endif
     }
 
 #if APPSTORE
@@ -650,9 +631,6 @@ class CaptureSettings: ObservableObject {
         }
     }
 
-    func resetSaveDirectory(for captureType: CaptureType?) {
-        setSaveDirectoryBookmark(Data(), displayPath: "", for: captureType)
-    }
 #endif
 
     var imageFormat: ImageFormat {
