@@ -11,24 +11,24 @@
         <item>
             
             
-            <title>2.1.0.1</title>
+            <title>2.1.0.2</title>
             
             
-            <pubDate>Mon, 09 Nov 2026 07:56:24 +0000</pubDate>
+            <pubDate>Fri, 13 Nov 2026 07:37:10 +0000</pubDate>
             
             
-            <sparkle:version>67</sparkle:version>
+            <sparkle:version>68</sparkle:version>
             
             
-            <sparkle:shortVersionString>2.1.0.1</sparkle:shortVersionString>
+            <sparkle:shortVersionString>2.1.0.2</sparkle:shortVersionString>
             
             
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             
             
-            <description><![CDATA[<h3>Fixed</h3><ul><li>The Release Hub suggests the next fourth component for macOS release tags such as `v2.1.0.1-mac`, instead of changing the app version&#x27;s patch component. Empty Unreleased notes block preparation with an actionable message; failed note validation and dry runs leave the changelog unchanged in both tagging scripts.</li></ul><h3>Changed</h3><ul><li>The What&#x27;s New window now introduces 2.1 on macOS: Agent Control first, with a diagram of what it lets agents use, a reminder that it is off until you turn it on, and a button to its settings. Studio follows with its existing switch, which keeps your saved choice, then what&#x27;s new in Studio and more to try. It appears once for returning users.</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v2.1.0.0-mac...v2.1.0.1-mac">Full Changelog</a></p>]]></description>
-            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v2.1.0.1-mac</sparkle:releaseNotesLink>
-            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v2.1.0.1-mac/TinyClips-v2.1.0.1-mac.zip" length="7916171" type="application/octet-stream" sparkle:edSignature="yDa2/2Y6G5+CxE/4OeZcQqv0pJ2LSDDiHZ6Xjk9KlnGEyUpEH7oP/lwPv0kqEc7c0xYXJ+/vFIf5ykCfuMuRDw=="/>
+            <description><![CDATA[<h3>Fixed</h3><ul><li>macOS `Command-Q` now closes the active Settings, Clips Library, or editor window instead of quitting Tiny Clips; the menu-bar `Quit` action remains the explicit way to exit the app.</li><li>macOS Settings, Clips Library, and editor windows now keep Tiny Clips as the active application menu and restore the requested window as key instead of leaving the menu bar tied to another app.</li><li>macOS confirmation dialogs use standard, appearance-aware buttons instead of low-contrast destructive styling, including Studio, Clips Library, screenshot and video/GIF editors, cleanup, and analytics reset. Cancel is the default for destructive confirmations.</li></ul><h3>Changed</h3><ul><li>macOS Settings now follows the standard grouped layout: one card per group with its title above it, one setting per row with a separator, controls aligned on the right, and notes under the group they describe. The window opens larger. General is regrouped into Save Location, File Names, Notifications, Capture, App Behavior, and Maintenance, and Teleprompter combines scroll speed and text size. Advanced settings for Screenshot and Video open from a matching group at the end of the tab, which starts open when one of its settings is changed.</li><li>macOS Agent Control settings show the status and endpoint under the switch, list paired agents and the audit log before the setup guide, and number the setup steps. Copy buttons confirm on the button, the example prompt can be copied, and setup without a plugin has its own expandable group. The Guide window shows the same steps.</li><li>macOS Shortcuts settings now show an icon for every configurable and fixed key binding.</li><li>Agent Plugin instructions now use the GitHub Copilot CLI marketplace install flow instead of deprecated direct repository installs.</li><li>The macOS welcome wizard returns to its compact 460 × 390-point size, with resizing and scrollable content.</li><li>The macOS welcome wizard restores separate Screenshots, Videos, and GIFs preference cards, with Launch at Login at the top, and lets you customize the Screenshot, Record Video, and Record GIF shortcuts. Changes apply immediately without resetting saved choices; countdown and save-notification preferences remain in Settings. The final page illustrates how to open Tiny Clips from the menu bar.</li><li>The Recent Captures menu on macOS and Windows now shows the 10 newest items instead of 5.</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v2.1.0.1-mac...v2.1.0.2-mac">Full Changelog</a></p>]]></description>
+            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v2.1.0.2-mac</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v2.1.0.2-mac/TinyClips-v2.1.0.2-mac.zip" length="7952753" type="application/octet-stream" sparkle:edSignature="IoE6IPIJrJ4H6lzVDWrA7FcEm/wdgqGBZOTk8eG5NX/x1nXy0IXdOgA/GHF/UdihwUdbxin1r6NaOpAEoq4TAQ=="/>
             
         
         </item>
