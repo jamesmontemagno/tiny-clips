@@ -5,7 +5,6 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
-- macOS screenshot-editor selections can now edit a shape's stroke color and width, plus rectangle and circle fill colors.
 - A pencil stroke now counts as an unsaved change in the macOS screenshot editor, like other annotations.
 
 ### Changed

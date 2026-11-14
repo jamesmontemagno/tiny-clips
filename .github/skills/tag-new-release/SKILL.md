@@ -52,8 +52,9 @@ When asked to tag a new release:
    - macOS: root `CHANGELOG.md`
    - Windows: `windows/CHANGELOG.md`
 4. **Update changelog** - Insert the release heading with today's date below Unreleased.
-   - Unreleased must contain at least one release-note bullet. Previously released sections are not reused automatically.
-   - Both scripts validate notes before writing the changelog; missing-note failures and dry runs leave the working tree unchanged.
+   - Unreleased must contain at least one release-note bullet for a normal release. Previously released sections are not reused automatically.
+   - The scripts reject missing notes by default. Pass `--allow-empty` (Bash) or `-AllowEmpty` (PowerShell) only for an intentional maintenance release; this creates an empty commit and annotated tag with a `Maintenance release.` message without changing the changelog.
+   - Dry runs leave the working tree unchanged.
 5. **Verify the working directory** - Ensure there are no uncommitted changes before creating commit/tag.
 6. **Create commit** - Commit the changelog release marker.
 7. **Create an annotated git tag** with:
