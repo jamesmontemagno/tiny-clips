@@ -905,7 +905,7 @@ export function renderHtml({ instanceId, token }) {
       const tagPushed = actualTagPushed || (demo?.tag === version && demo.pushed);
       const releasePublished = actualReleasePublished || (demo?.tag === version && demo.published);
       const hasReleaseNotes = data.unreleasedCount > 0;
-      const canPrepareRelease = demoMode || (snapshot.git.canPrepareRelease && hasReleaseNotes);
+      const canPrepareRelease = demoMode || snapshot.git.canPrepareRelease;
       const canCreateReleasePr = demoMode || snapshot.git.canCreateReleasePr;
       const releasePullRequest = data.releasePullRequest?.pullRequest;
       const releasePrExists = Boolean(releasePullRequest) || demo?.prCreated === true;
@@ -924,15 +924,15 @@ export function renderHtml({ instanceId, token }) {
             ? '<span class="badge warn">Commit changes first</span>'
             : (hasReleaseNotes
               ? '<span class="badge good">Ready to prepare</span>'
-              : '<span class="badge warn">Add release notes</span>'))));
+              : '<span class="badge good">Ready for maintenance release</span>'))));
       const prepareDetail = preparedLocally
         ? "Prepared locally. Create a release PR to send the changelog commit for review."
         : (demoMode
-          ? "Simulates the changelog commit and release tag without changing Git."
+          ? "Simulates release preparation and tagging without changing Git."
           : (!snapshot.git.atMainTip
           ? "Start from the latest origin/main with no additional commits."
           : (!hasReleaseNotes
-            ? "Add bullet points under Unreleased in " + data.changelog + " and commit them before preparing."
+            ? "No unreleased notes are available. Creates an empty maintenance-release commit and annotated tag without changing " + data.changelog + "."
             : "Moves Unreleased notes into a dated section, commits, and creates an annotated tag.")));
       const createPrDetail = demoMode
         ? (tagPushed ? "PR and tag publication simulated. No branch or tag was sent to origin." : "Simulates creating a release pull request.")
@@ -941,7 +941,9 @@ export function renderHtml({ instanceId, token }) {
           : (preparedLocally
             ? (releasePullRequest
               ? "Release PR #" + releasePullRequest.number + " is " + releasePullRequest.state.toLowerCase() + "."
-              : "Pushes only a release branch and opens a PR into main.")
+              : (hasReleaseNotes
+                ? "Pushes only a release branch and opens a PR into main."
+                : "Opens a maintenance release PR without changing the changelog."))
             : "Prepare the release tag first."));
       const mergePrDetail = demoMode
         ? (tagPushed ? "Merge and tag publication simulated." : "Simulates merging the release PR and publishing its tag.")

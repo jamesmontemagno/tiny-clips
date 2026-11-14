@@ -227,7 +227,7 @@ await joinSession({
                 },
                 {
                     name: "prepare_release",
-                    description: "Create the changelog commit and annotated tag after exact typed confirmation.",
+                    description: "Create a changelog release commit, or an empty maintenance-release commit when there are no unreleased notes, and an annotated tag after exact typed confirmation.",
                     inputSchema: {
                         type: "object",
                         properties: {
@@ -242,7 +242,7 @@ await joinSession({
                 },
                 {
                     name: "undo_prepare",
-                    description: "Delete an unpushed local release tag and restore its single release commit after exact typed confirmation.",
+                    description: "Delete an unpushed local release tag and restore its single changelog or maintenance-release commit after exact typed confirmation.",
                     inputSchema: {
                         type: "object",
                         properties: {
@@ -257,7 +257,7 @@ await joinSession({
                 },
                 {
                     name: "create_release_pr",
-                    description: "Push a release branch and create a pull request for the prepared release commit after exact typed confirmation.",
+                    description: "Push a prepared release branch and create a pull request, including maintenance releases with no changelog changes, after exact typed confirmation.",
                     inputSchema: {
                         type: "object",
                         properties: {

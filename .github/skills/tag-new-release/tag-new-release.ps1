@@ -8,7 +8,10 @@ param(
     [string]$Version,
 
     [Parameter(Mandatory = $false)]
-    [switch]$DryRun
+    [switch]$DryRun,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$AllowEmpty
 )
 
 Set-StrictMode -Version Latest
@@ -70,7 +73,8 @@ function Build-TagMessage {
     param(
         [string[]]$Lines,
         [string]$ReleaseHeading,
-        [string]$TagVersion
+        [string]$TagVersion,
+        [switch]$AllowEmpty
     )
 
     $capture = $false
@@ -96,7 +100,10 @@ function Build-TagMessage {
     }
 
     if (-not ($body | Where-Object { $_ -match '^\-\s+' })) {
-        throw "Unreleased contains no release notes. Add bullet points before preparing $TagVersion."
+        if (-not $AllowEmpty) {
+            throw "Unreleased contains no release notes. Add bullet points before preparing $TagVersion."
+        }
+        return "Release $TagVersion`n`nMaintenance release."
     }
 
     $messageLines = New-Object System.Collections.Generic.List[string]
@@ -104,6 +111,31 @@ function Build-TagMessage {
     $messageLines.Add("")
     $messageLines.AddRange($body)
     return ($messageLines -join "`n")
+}
+
+function Test-ReleaseHasNotes {
+    param(
+        [string[]]$Lines,
+        [string]$ReleaseHeading
+    )
+
+    $capture = $false
+    foreach ($line in $Lines) {
+        if (-not $capture) {
+            if ($line -eq $ReleaseHeading) {
+                $capture = $true
+            }
+            continue
+        }
+        if ($line -match '^## ') {
+            break
+        }
+        if ($line -match '^\-\s+') {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 $repoRoot = Get-RepoRoot
@@ -193,13 +225,18 @@ for ($i = 0; $i -lt $originalLines.Count; $i++) {
     }
 }
 
-$tagMessage = Build-TagMessage -Lines $updatedLines -ReleaseHeading $releaseHeading -TagVersion $Version
+$hasReleaseNotes = Test-ReleaseHasNotes -Lines $updatedLines -ReleaseHeading $releaseHeading
+$tagMessage = Build-TagMessage -Lines $updatedLines -ReleaseHeading $releaseHeading -TagVersion $Version -AllowEmpty:$AllowEmpty
 
 if ($DryRun) {
     Write-Host "Dry run only; no commit or tag created."
     Write-Host "Platform: $Platform"
     Write-Host "Version: $Version"
-    Write-Host "Changelog: $changelogPath"
+    if ($hasReleaseNotes) {
+        Write-Host "Changelog: $changelogPath"
+    } else {
+        Write-Host "Changelog: unchanged (no Unreleased notes)"
+    }
     Write-Host ""
     Write-Host "Tag message preview:"
     Write-Host $tagMessage
@@ -207,14 +244,21 @@ if ($DryRun) {
 }
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($changelogPath, ($updatedLines -join "`n"), $utf8NoBom)
-
-git add $changelogPath
-git commit -m @"
+if ($hasReleaseNotes) {
+    [System.IO.File]::WriteAllText($changelogPath, ($updatedLines -join "`n"), $utf8NoBom)
+    git add $changelogPath
+    git commit -m @"
 Mark $Version release
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 "@
+} else {
+    git commit --allow-empty -m @"
+Mark $Version release
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+"@
+}
 
 $tagMessageFile = New-TemporaryFile
 try {

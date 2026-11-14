@@ -81,15 +81,16 @@ function createReleaseFixture(t, platform, notes, runner) {
     const args = runner.extension === "sh"
         ? [script, "--platform", platform, "--version", tag]
         : ["-NoProfile", "-File", script, "-Platform", platform, "-Version", tag];
-    const run = (dryRun = false) => execFileSync(runner.command, [
+    const run = (dryRun = false, allowEmpty = false) => execFileSync(runner.command, [
         ...args,
+        ...(allowEmpty ? [runner.extension === "sh" ? "--allow-empty" : "-AllowEmpty"] : []),
         ...(dryRun ? [runner.extension === "sh" ? "--dry-run" : "-DryRun"] : []),
     ], { cwd: root, encoding: "utf8", stdio: "pipe" });
     return { root, git, run, changelog, original, head, tag };
 }
 
 for (const platform of ["mac", "windows"]) {
-    test(`rejects ${platform} release-note previews when Unreleased has no bullets`, async (t) => {
+    test(`generates maintenance release notes for ${platform} when Unreleased has no bullets`, async (t) => {
         const fixture = createReleaseFixture(t, platform, "### Fixed\n", runners[0]);
         const moduleDir = join(fixture.root, ".github", "extensions", "tinyclips-release-hub");
         mkdirSync(moduleDir, { recursive: true });
@@ -98,7 +99,9 @@ for (const platform of ["mac", "windows"]) {
         }
         const { generateReleaseNotes: generate } = await import(pathToFileURL(join(moduleDir, "release-data.mjs")).href);
 
-        await assert.rejects(generate(platform, fixture.tag), /No release notes found.*Add bullet points/);
+        const result = await generate(platform, fixture.tag);
+        assert.match(result.notes, /Maintenance release\./);
+        assert.equal(result.itemCount, 0);
     });
 }
 
@@ -121,6 +124,29 @@ for (const runner of runners) {
                 assert.equal(fixture.git("tag", "--list"), "");
             });
         }
+
+        test(`${runner.name} ${platform} prepares a maintenance release without changing the changelog when explicitly allowed`, { skip }, (t) => {
+            const fixture = createReleaseFixture(t, platform, "### Fixed\n", runner);
+
+            const preview = fixture.run(true, true);
+            assert.match(preview, /Maintenance release\./);
+            assert.match(preview, /Changelog: unchanged/);
+            assert.equal(readFileSync(fixture.changelog, "utf8"), fixture.original);
+            assert.equal(fixture.git("status", "--porcelain"), "");
+            assert.equal(fixture.git("rev-parse", "HEAD"), fixture.head);
+            assert.equal(fixture.git("tag", "--list"), "");
+
+            fixture.run(false, true);
+            assert.equal(fixture.git("rev-list", "--count", `${fixture.head}..HEAD`), "1");
+            assert.equal(fixture.git("diff", "--name-only", `${fixture.head}..HEAD`), "");
+            assert.equal(fixture.git("cat-file", "-t", `refs/tags/${fixture.tag}`), "tag");
+            assert.equal(
+                fixture.git("for-each-ref", "--format=%(contents)", `refs/tags/${fixture.tag}`),
+                `Release ${fixture.tag}\n\nMaintenance release.`,
+            );
+            assert.equal(readFileSync(fixture.changelog, "utf8"), fixture.original);
+            assert.equal(fixture.git("status", "--porcelain"), "");
+        });
 
         test(`${runner.name} ${platform} previews without mutation and prepares an annotated release with only Unreleased notes`, { skip }, (t) => {
             const fixture = createReleaseFixture(t, platform, "### Fixed\n- New release fix.", runner);
