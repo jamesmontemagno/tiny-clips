@@ -635,9 +635,6 @@ export async function generateReleaseNotes(platform, version) {
         ? extractReleaseSection(markdown, platform, version) || extractSection(markdown, config.unreleasedHeading)
         : extractSection(markdown, config.unreleasedHeading);
     const tag = version || "NEXT_VERSION";
-    if (platform !== "agent" && countNotes(body) === 0) {
-        throw new Error(`No release notes found for ${version || "Unreleased"} in ${config.changelog}. Add bullet points under ${config.unreleasedHeading} before preparing.`);
-    }
     const install = platform === "mac"
         ? [
             "## Install",
@@ -688,7 +685,8 @@ export async function generateReleaseNotes(platform, version) {
                 "- The candidate package is tested on Linux, Windows, macOS Apple silicon, and macOS Intel.",
                 "- NuGet Trusted Publishing exchanges the GitHub OIDC token for a short-lived API key.",
             ];
-    const notes = [body || "- Maintenance release.", "", ...install].join("\n").trim();
+    const releaseNotes = countNotes(body) > 0 ? body : "- Maintenance release.";
+    const notes = [releaseNotes, "", ...install].join("\n").trim();
     return { platform, version: tag, source: config.changelog, notes, itemCount: countNotes(body) };
 }
 
@@ -888,17 +886,22 @@ export async function performReleaseAction(action, input) {
             throw new Error("Release preparation requires a session based exactly on the latest origin/main.");
         }
         const root = await getRepoRoot();
+        const config = platformConfig(input.platform);
+        const markdown = await readFile(`${root}/${config.changelog}`, "utf8");
+        const allowEmpty = countNotes(extractSection(markdown, config.unreleasedHeading)) === 0;
         if (process.platform === "win32") {
             const output = await run("powershell", [
                 "-NoProfile", "-ExecutionPolicy", "Bypass",
                 "-File", `${root}\\.github\\skills\\tag-new-release\\tag-new-release.ps1`,
                 "-Platform", input.platform, "-Version", input.version,
+                ...(allowEmpty ? ["-AllowEmpty"] : []),
             ]);
             return { action, tag: input.version, output };
         }
         const output = await run("bash", [
             `${root}/.github/skills/tag-new-release/tag-new-release.sh`,
             "--platform", input.platform, "--version", input.version,
+            ...(allowEmpty ? ["--allow-empty"] : []),
         ]);
         return { action, tag: input.version, output };
     }
@@ -915,7 +918,7 @@ export async function performReleaseAction(action, input) {
         if (releasePullRequest.pullRequest) {
             throw new Error(`Cannot undo ${input.tag} after release PR #${releasePullRequest.pullRequest.number} exists.`);
         }
-        const [head, originMain, status, aheadOfMain, behindMain, tagCommit, tagType, subject, changedFiles, remoteTag] =
+        const [head, originMain, status, aheadOfMain, behindMain, tagCommit, tagType, subject, changedFiles, tagMessage, remoteTag] =
             await Promise.all([
                 run("git", ["rev-parse", "HEAD"]),
                 run("git", ["rev-parse", "origin/main"]),
@@ -926,6 +929,7 @@ export async function performReleaseAction(action, input) {
                 run("git", ["cat-file", "-t", `refs/tags/${input.tag}`]),
                 run("git", ["log", "-1", "--format=%s"]),
                 run("git", ["diff", "--name-only", "origin/main..HEAD"]),
+                run("git", ["for-each-ref", "--format=%(contents)", `refs/tags/${input.tag}`]),
                 run("git", ["ls-remote", "--tags", "origin", `refs/tags/${input.tag}`]),
             ]);
         const files = changedFiles.split(/\r?\n/).filter(Boolean);
@@ -944,7 +948,9 @@ export async function performReleaseAction(action, input) {
         if (subject !== `Mark ${input.tag} release`) {
             throw new Error(`Current commit is not the expected ${input.tag} release commit.`);
         }
-        if (files.length !== 1 || files[0].replaceAll("\\", "/") !== config.changelog) {
+        const isMaintenanceRelease = files.length === 0 &&
+            tagMessage === `Release ${input.tag}\n\nMaintenance release.`;
+        if (!isMaintenanceRelease && (files.length !== 1 || files[0].replaceAll("\\", "/") !== config.changelog)) {
             throw new Error(`Release commit must only change ${config.changelog}.`);
         }
         await run("git", ["tag", "-d", input.tag]);
@@ -957,7 +963,7 @@ export async function performReleaseAction(action, input) {
         assertTag(platform, input.tag);
         assertConfirmation(input.confirmation, `CREATE PR ${input.tag}`);
         await run("git", ["fetch", "--quiet", "origin", "main"]);
-        const [head, originMain, status, aheadOfMain, behindMain, tagCommit, branch] = await Promise.all([
+        const [head, originMain, status, aheadOfMain, behindMain, tagCommit, branch, changedFiles] = await Promise.all([
             run("git", ["rev-parse", "HEAD"]),
             run("git", ["rev-parse", "origin/main"]),
             run("git", ["status", "--porcelain"]),
@@ -965,6 +971,7 @@ export async function performReleaseAction(action, input) {
             run("git", ["rev-list", "--count", "HEAD..origin/main"]),
             run("git", ["rev-list", "-n", "1", input.tag]),
             run("git", ["branch", "--show-current"]),
+            run("git", ["diff", "--name-only", "origin/main..HEAD"]),
         ]);
         if (status) {
             throw new Error("Creating a release PR requires a clean working tree.");
@@ -987,10 +994,13 @@ export async function performReleaseAction(action, input) {
             throw new Error(`Could not inspect release PRs: ${existing.error}`);
         }
         if (!existing.pullRequest) {
+            const maintenanceRelease = changedFiles.length === 0;
             await run("gh", [
             "pr", "create", "--base", "main", "--head", branchName,
             "--title", `Release ${input.tag}`,
-            "--body", `Prepares the ${input.tag} release changelog and tag.`,
+            "--body", maintenanceRelease
+                ? `Prepares the ${input.tag} maintenance release. No changelog entries were available, so this PR intentionally leaves the changelog unchanged.`
+                : `Prepares the ${input.tag} release changelog and tag.`,
             ]);
         }
         const pullRequest = existing.pullRequest ?? (await getReleasePullRequest(input.tag)).pullRequest;

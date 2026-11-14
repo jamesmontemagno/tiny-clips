@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  ./tag-new-release.sh --platform <mac|windows> [--version <tag>] [--dry-run]
+  ./tag-new-release.sh --platform <mac|windows> [--version <tag>] [--allow-empty] [--dry-run]
 
 Examples:
   ./tag-new-release.sh --platform mac --version v1.5.0-mac
@@ -16,6 +16,7 @@ Notes:
   - Requires a clean working tree.
   - Updates changelog by inserting a dated release heading after "Unreleased".
   - Commits changelog update, then creates an annotated tag with release notes.
+  - --allow-empty permits a maintenance release with no Unreleased bullets; it leaves the changelog unchanged.
   - Does not push commits/tags.
 EOF
 }
@@ -23,6 +24,7 @@ EOF
 PLATFORM=""
 INPUT_VERSION=""
 DRY_RUN="false"
+ALLOW_EMPTY="false"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -36,6 +38,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --dry-run)
             DRY_RUN="true"
+            shift
+            ;;
+        --allow-empty)
+            ALLOW_EMPTY="true"
             shift
             ;;
         -h|--help)
@@ -187,6 +193,7 @@ END {
     exit 1
 }
 
+HAS_RELEASE_NOTES="true"
 if ! awk -v heading="$RELEASE_HEADING" '
 BEGIN { cap=0; found=0; hasNotes=0 }
 $0 == heading { cap=1; found=1; next }
@@ -198,43 +205,60 @@ cap {
 }
 END { if (!found || !hasNotes) exit 1 }
 ' "$TMP_CHANGELOG"; then
-    echo "❌ Unreleased in ${CHANGELOG_FILE} contains no release notes. Add bullet points before preparing ${VERSION}." >&2
-    exit 1
+    if [[ "$ALLOW_EMPTY" != "true" ]]; then
+        echo "❌ Unreleased in ${CHANGELOG_FILE} contains no release notes. Add bullet points before preparing ${VERSION}." >&2
+        exit 1
+    fi
+    HAS_RELEASE_NOTES="false"
 fi
 
-{
-    printf 'Release %s\n\n' "$VERSION"
-    awk -v heading="$RELEASE_HEADING" '
-    BEGIN { cap=0 }
-    $0 == heading { cap=1; next }
-    /^## / && cap { exit }
-    cap {
-        if ($0 ~ /^### /) {
-            sub(/^### /, "", $0)
-            print $0 ":"
-        } else {
-            print $0
+if [[ "$HAS_RELEASE_NOTES" == "true" ]]; then
+    {
+        printf 'Release %s\n\n' "$VERSION"
+        awk -v heading="$RELEASE_HEADING" '
+        BEGIN { cap=0 }
+        $0 == heading { cap=1; next }
+        /^## / && cap { exit }
+        cap {
+            if ($0 ~ /^### /) {
+                sub(/^### /, "", $0)
+                print $0 ":"
+            } else {
+                print $0
+            }
         }
-    }
-    ' "$TMP_CHANGELOG"
-} > "$TMP_TAG_MSG"
+        ' "$TMP_CHANGELOG"
+    } > "$TMP_TAG_MSG"
+else
+    printf 'Release %s\n\nMaintenance release.\n' "$VERSION" > "$TMP_TAG_MSG"
+fi
 
 if [[ "$DRY_RUN" == "true" ]]; then
     echo "ℹ️ Dry run only; no commit or tag created."
     echo "Platform: $PLATFORM"
     echo "Version: $VERSION"
-    echo "Changelog: $CHANGELOG_FILE"
+    if [[ "$HAS_RELEASE_NOTES" == "true" ]]; then
+        echo "Changelog: $CHANGELOG_FILE"
+    else
+        echo "Changelog: unchanged (no Unreleased notes)"
+    fi
     echo ""
     echo "Tag message preview:"
     cat "$TMP_TAG_MSG"
     exit 0
 fi
 
-cp "$TMP_CHANGELOG" "$CHANGELOG_FILE"
-git add "$CHANGELOG_FILE"
-git commit -m "Mark ${VERSION} release
+if [[ "$HAS_RELEASE_NOTES" == "true" ]]; then
+    cp "$TMP_CHANGELOG" "$CHANGELOG_FILE"
+    git add "$CHANGELOG_FILE"
+    git commit -m "Mark ${VERSION} release
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+else
+    git commit --allow-empty -m "Mark ${VERSION} release
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+fi
 git tag -a "$VERSION" -F "$TMP_TAG_MSG"
 
 echo "✅ Created commit and tag: $VERSION"
