@@ -1,6 +1,6 @@
 cask "tiny-clips" do
-  version "2.1.0.3"
-  sha256 "ecc7dcd642706be584bc22fcb23eddbc061b6c9ec58999410299c3b4ceecbe8d"
+  version "2.1.0.4"
+  sha256 "e914633014bb0f50aade8d8fd0da92ea900e1e736d2fc7dd8df463f073944a28"
 
   url "https://github.com/jamesmontemagno/tiny-clips/releases/download/v#{version}-mac/TinyClips-v#{version}-mac.zip"
   name "TinyClips"
