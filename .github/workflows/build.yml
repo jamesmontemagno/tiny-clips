@@ -41,6 +41,7 @@ jobs:
             mac:
               - 'mac/**'
               - 'shared/studio/fixtures/**'
+              - 'shared/screenshot/fixtures/**'
               - 'shared/automation/**'
               - '.github/workflows/build.yml'
               - '!**/*.md'

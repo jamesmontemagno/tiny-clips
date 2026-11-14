@@ -211,6 +211,151 @@ enum EditTool: String, CaseIterable {
     var storesRotation: Bool {
         supportsRotation && self != .pencil
     }
+
+    /// Lines and arrow tails take a start cap; an arrow's other end is its head.
+    var usesStartCap: Bool { self == .line || self == .arrow }
+
+    var usesEndCap: Bool { self == .line }
+
+    /// Rectangles and arrowheads have corners; circles have none and pencil strokes always round.
+    var usesJoin: Bool { self == .rectangle || self == .arrow }
+
+    /// Closed shapes align their stroke; arrows and lines align their outline.
+    var usesAlignment: Bool { self == .rectangle || self == .circle || self == .arrow || self == .line }
+
+    /// Arrows and lines are filled bodies (in the annotation's color, at its line width) that can
+    /// carry a separate outline.
+    var usesOutline: Bool { self == .arrow || self == .line }
+
+    /// Shapes that can be drawn by hand (see `SketchGeometry`).
+    var usesSketch: Bool { self == .rectangle || self == .circle || self == .line || self == .arrow }
+}
+
+/// Where a closed shape's stroke sits relative to its outline. Raw values match the Windows names.
+enum StrokeAlignment: String, CaseIterable, Identifiable {
+    case center
+    case inside
+    case outside
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .center: return "Center"
+        case .inside: return "Inside"
+        case .outside: return "Outside"
+        }
+    }
+}
+
+/// A rectangle's stroke as a filled ring: `outer` with its corners shaped by `outerJoin` (rounded
+/// or cut by `cornerSize`), minus the always-sharp `inner` rectangle. Shared with Windows through
+/// `shared/screenshot/fixtures/alignment`.
+struct RectStrokeRing: Equatable {
+    var outer: CGRect
+    var outerJoin: StrokeJoin
+    var cornerSize: CGFloat
+    var inner: CGRect
+
+    init(bounds: CGRect, width: CGFloat, alignment: StrokeAlignment, join: StrokeJoin) {
+        let outerOffset: CGFloat
+        let innerInset: CGFloat
+        switch alignment {
+        case .center:
+            outerOffset = width / 2
+            innerInset = width / 2
+        case .inside:
+            outerOffset = 0
+            innerInset = width
+        case .outside:
+            outerOffset = width
+            innerInset = 0
+        }
+        outer = Self.inset(bounds, by: -outerOffset)
+        outerJoin = outerOffset > 0 ? join : .miter
+        cornerSize = outerOffset > 0 && join != .miter ? outerOffset : 0
+        inner = Self.inset(bounds, by: innerInset)
+    }
+
+    /// The ring to fill with the even-odd rule.
+    var path: CGPath {
+        let path = CGMutablePath()
+        let o = outer
+        let c = cornerSize
+        switch outerJoin {
+        case .round where c > 0:
+            path.addRoundedRect(in: o, cornerWidth: c, cornerHeight: c)
+        case .bevel where c > 0:
+            path.addLines(between: [
+                CGPoint(x: o.minX + c, y: o.minY), CGPoint(x: o.maxX - c, y: o.minY),
+                CGPoint(x: o.maxX, y: o.minY + c), CGPoint(x: o.maxX, y: o.maxY - c),
+                CGPoint(x: o.maxX - c, y: o.maxY), CGPoint(x: o.minX + c, y: o.maxY),
+                CGPoint(x: o.minX, y: o.maxY - c), CGPoint(x: o.minX, y: o.minY + c),
+            ])
+            path.closeSubpath()
+        default:
+            path.addRect(o)
+        }
+        path.addRect(inner)
+        return path
+    }
+
+    /// Insets by `amount` (outsets when negative), never past an empty rectangle.
+    static func inset(_ rect: CGRect, by amount: CGFloat) -> CGRect {
+        let dx = min(amount, rect.width / 2)
+        let dy = min(amount, rect.height / 2)
+        return CGRect(x: rect.minX + dx, y: rect.minY + dy, width: rect.width - 2 * dx, height: rect.height - 2 * dy)
+    }
+}
+
+/// How an open stroke ends. Raw values match the Windows `StrokeCap` names and the shared contract.
+enum StrokeCap: String, CaseIterable, Identifiable {
+    case butt
+    case round
+    case square
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .butt: return "Flat"
+        case .round: return "Round"
+        case .square: return "Square"
+        }
+    }
+
+    var cgLineCap: CGLineCap {
+        switch self {
+        case .butt: return .butt
+        case .round: return .round
+        case .square: return .square
+        }
+    }
+}
+
+/// How a stroke turns a corner. Raw values match the Windows `StrokeJoin` names.
+enum StrokeJoin: String, CaseIterable, Identifiable {
+    case miter
+    case round
+    case bevel
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .miter: return "Sharp"
+        case .round: return "Round"
+        case .bevel: return "Beveled"
+        }
+    }
+
+    var cgLineJoin: CGLineJoin {
+        switch self {
+        case .miter: return .miter
+        case .round: return .round
+        case .bevel: return .bevel
+        }
+    }
 }
 
 struct ScreenshotAnnotation: Identifiable {
@@ -232,7 +377,22 @@ struct ScreenshotAnnotation: Identifiable {
     var redactionBlurPreset: RedactionBlurPreset = .medium
     var isOpaqueRedaction = false
     var isPixelatedRedaction = false
-    var arrowStyle: ArrowStyle = .straight
+    var arrow: ArrowShapeOptions = .classic
+    var startCap: StrokeCap = .round
+    var endCap: StrokeCap = .round
+    var lineJoin: StrokeJoin = .round
+    var strokeAlignment: StrokeAlignment = .center
+    /// Arrows and lines only: an outline around the body; a width of 0 draws none.
+    var outlineColor: Color = .black
+    var outlineWidth: CGFloat = 0
+    /// Rectangles, circles, lines, and arrows can be drawn by hand; see `SketchGeometry`.
+    var isSketch = false
+    var roughness: CGFloat = SketchGeometry.defaultRoughness
+    /// Fixes the hand-drawn wobble, so it never changes as the annotation redraws or moves.
+    var seed: Int32 = SketchGeometry.newSeed()
+
+    /// The roughness to draw with: 0 unless the annotation is hand-drawn.
+    var sketchRoughness: CGFloat { isSketch ? roughness : 0 }
     /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
     var rotation: CGFloat = 0
 
@@ -498,30 +658,6 @@ enum RedactionStrength: String, CaseIterable, Identifiable {
         case .light: self = .light
         case .medium: self = .medium
         case .heavy: self = .heavy
-        }
-    }
-}
-
-enum ArrowStyle: String, CaseIterable, Identifiable {
-    case straight
-    case curvedLeft
-    case curvedRight
-
-    var id: Self { self }
-
-    var label: String {
-        switch self {
-        case .straight: return "Straight"
-        case .curvedLeft: return "Curved Left"
-        case .curvedRight: return "Curved Right"
-        }
-    }
-
-    var curvatureSign: CGFloat {
-        switch self {
-        case .straight: return 0
-        case .curvedLeft: return -1
-        case .curvedRight: return 1
         }
     }
 }
@@ -1156,13 +1292,909 @@ func annotationColorsEqual(_ lhs: Color, _ rhs: Color) -> Bool {
     return bytes(left) == bytes(right)
 }
 
-func arrowControlPoint(start: CGPoint, end: CGPoint, style: ArrowStyle) -> CGPoint {
-    let mid = CGPoint(x: (start.x + end.x) * 0.5, y: (start.y + end.y) * 0.5)
-    guard style != .straight else { return mid }
+/// The arrow's shape, which stays in sync with the bend and size sliders.
+enum ArrowPreset: String, CaseIterable, Identifiable {
+    case classic
+    case tapered
+    case curved
+    case custom
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .classic: return "Classic"
+        case .tapered: return "Tapered"
+        case .curved: return "Curved"
+        case .custom: return "Custom"
+        }
+    }
+}
+
+/// How an arrow is shaped. `bend` is how far the curve's midpoint sits from the chord's midpoint,
+/// as a fraction of the chord length; positive bows to the left of travel. The width scales
+/// multiply the stroke width at the tail and where the shaft meets the head.
+struct ArrowShapeOptions: Equatable {
+    var bend: CGFloat
+    var startWidthScale: CGFloat
+    var endWidthScale: CGFloat
+    var headScale: CGFloat
+
+    static let classic = ArrowShapeOptions(bend: 0, startWidthScale: 1, endWidthScale: 1, headScale: 1)
+    static let tapered = ArrowShapeOptions(bend: 0, startWidthScale: 0.25, endWidthScale: 1, headScale: 1.2)
+    static let curved = ArrowShapeOptions(bend: 0.2, startWidthScale: 1, endWidthScale: 1, headScale: 1)
+
+    static let bendRange: ClosedRange<CGFloat> = -1...1
+    static let widthScaleRange: ClosedRange<CGFloat> = 0...2
+    static let headScaleRange: ClosedRange<CGFloat> = 0.5...3
+
+    /// The preset these options match, or `.custom`.
+    var preset: ArrowPreset {
+        if matches(.classic) { return .classic }
+        if matches(.tapered) { return .tapered }
+        if matches(.curved) { return .curved }
+        return .custom
+    }
+
+    private func matches(_ other: ArrowShapeOptions) -> Bool {
+        abs(bend - other.bend) < 0.001
+            && abs(startWidthScale - other.startWidthScale) < 0.001
+            && abs(endWidthScale - other.endWidthScale) < 0.001
+            && abs(headScale - other.headScale) < 0.001
+    }
+}
+
+extension ArrowShapeOptions {
+    init(preset: ArrowPreset) {
+        switch preset {
+        case .tapered: self = .tapered
+        case .curved: self = .curved
+        case .classic, .custom: self = .classic
+        }
+    }
+}
+
+/// An arrow's single filled outline, plus the curve's control point and bend handle.
+struct ArrowOutline {
+    var control: CGPoint
+    var handle: CGPoint
+    var points: [CGPoint]
+
+    /// The outline as a path; fill it with the nonzero rule so a tight bend stays solid.
+    var path: CGPath { LineGeometry.path(points) }
+}
+
+/// Distance from `point` to the segment from `start` to `end`.
+func distanceToSegment(from point: CGPoint, start: CGPoint, end: CGPoint) -> CGFloat {
     let dx = end.x - start.x
     let dy = end.y - start.y
-    let length = max(1, hypot(dx, dy))
-    let normal = CGPoint(x: -dy / length, y: dx / length)
-    let magnitude = max(20, length * 0.25) * style.curvatureSign
-    return CGPoint(x: mid.x + normal.x * magnitude, y: mid.y + normal.y * magnitude)
+    let lengthSquared = dx * dx + dy * dy
+    if lengthSquared <= 0.000001 {
+        return hypot(point.x - start.x, point.y - start.y)
+    }
+    let t = max(0, min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+    return hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy))
+}
+
+/// Arrow geometry shared by the preview, the export, and the Windows app through
+/// `shared/screenshot/fixtures/arrow`. Points are y-down. Widths are in source-image pixels;
+/// `scale` is the caller's units per image pixel, so the preview and the export draw the same
+/// proportions. The arrow is one outline (tapered shaft, head, and tail cap), so a translucent
+/// color fills it evenly.
+enum ArrowGeometry {
+    /// Shortest head, in image pixels, so thin arrows still read as arrows.
+    static let minimumHeadLength: CGFloat = 12
+    /// Head length as a multiple of the stroke width.
+    static let headLengthPerWidth: CGFloat = 3.5
+    /// Half the angle between the head's two wings.
+    static let headSpread: CGFloat = .pi / 7
+    private static let maximumHeadFraction: CGFloat = 0.45
+    private static let shaftEndFraction: CGFloat = 0.8
+    private static let shaftSamples = 24
+    private static let capSegments = 8
+    private static let cornerSegments = 6
+    private static let trimIterations = 40
+
+    static func headLength(width: CGFloat) -> CGFloat {
+        max(minimumHeadLength, width * headLengthPerWidth)
+    }
+
+    /// The point on the curve at its midpoint, where the bend handle sits.
+    static func handle(start: CGPoint, end: CGPoint, bend: CGFloat) -> CGPoint {
+        let chord = sub(end, start)
+        let n = rightNormal(normalize(chord, fallback: CGPoint(x: 1, y: 0)))
+        return sub(lerp(start, end, 0.5), mul(n, bend * length(chord)))
+    }
+
+    /// The bend that puts the curve's midpoint nearest `handle`.
+    static func bend(start: CGPoint, end: CGPoint, handle: CGPoint) -> CGFloat {
+        let chord = sub(end, start)
+        let chordLength = length(chord)
+        guard chordLength >= 0.001 else { return 0 }
+        let n = rightNormal(mul(chord, 1 / chordLength))
+        let offset = sub(handle, lerp(start, end, 0.5))
+        let bend = -(offset.x * n.x + offset.y * n.y) / chordLength
+        return min(max(bend, ArrowShapeOptions.bendRange.lowerBound), ArrowShapeOptions.bendRange.upperBound)
+    }
+
+    static func control(start: CGPoint, end: CGPoint, bend: CGFloat) -> CGPoint {
+        sub(mul(handle(start: start, end: end, bend: bend), 2), lerp(start, end, 0.5))
+    }
+
+    static func pointOnCurve(_ start: CGPoint, _ control: CGPoint, _ end: CGPoint, _ t: CGFloat) -> CGPoint {
+        let u = 1 - t
+        return CGPoint(
+            x: u * u * start.x + 2 * u * t * control.x + t * t * end.x,
+            y: u * u * start.y + 2 * u * t * control.y + t * t * end.y
+        )
+    }
+
+    /// - Parameter roughness: Above 0, the shaft follows a hand-drawn wobble seeded by `seed` (see
+    ///   `SketchGeometry`); the taper follows it.
+    static func build(
+        start: CGPoint,
+        end: CGPoint,
+        width: CGFloat,
+        options: ArrowShapeOptions,
+        startCap: StrokeCap,
+        join: StrokeJoin,
+        scale: CGFloat = 1,
+        roughness: CGFloat = 0,
+        seed: Int32 = 0
+    ) -> ArrowOutline {
+        let chord = sub(end, start)
+        let chordLength = length(chord)
+        let handle = handle(start: start, end: end, bend: options.bend)
+        let control = sub(mul(handle, 2), lerp(start, end, 0.5))
+        guard chordLength >= 0.001 else {
+            return ArrowOutline(control: control, handle: handle, points: [])
+        }
+        let u = mul(chord, 1 / chordLength)
+        let (p0, c1, c2, p3) = centerline(start: start, end: end, control: control, width: width, scale: scale, roughness: roughness, seed: seed)
+
+        let head = min(options.headScale * headLength(width: width) * scale, maximumHeadFraction * chordLength)
+        let tipDirection = normalize(sub(p3, c2), fallback: u)
+        let angle = atan2(tipDirection.y, tipDirection.x)
+        let wingRight = CGPoint(x: p3.x - head * cos(angle - headSpread), y: p3.y - head * sin(angle - headSpread))
+        let wingLeft = CGPoint(x: p3.x - head * cos(angle + headSpread), y: p3.y - head * sin(angle + headSpread))
+
+        // The shaft stops where the curve is as far from the tip as the head's base.
+        let baseDistance = head * cos(headSpread)
+        var lo: CGFloat = 0
+        var hi: CGFloat = 1
+        for _ in 0..<trimIterations {
+            let m = (lo + hi) / 2
+            if length(sub(cubic(p0, c1, c2, p3, m), p3)) > baseDistance {
+                lo = m
+            } else {
+                hi = m
+            }
+        }
+        let trim = (lo + hi) / 2
+
+        let startHalf = width * options.startWidthScale / 2 * scale
+        let endHalf = min(width * options.endWidthScale / 2 * scale, shaftEndFraction * head * sin(headSpread))
+        let (left, right) = shaftEdges(p0, c1, c2, p3, tEnd: trim, startHalf: startHalf, endHalf: endHalf, fallback: u)
+
+        let size = min(width / 2 * scale, 0.2 * head)
+        var points = left
+        points += corner(previous: left[left.count - 1], vertex: wingLeft, next: p3, size: size, join: join)
+        points += corner(previous: wingLeft, vertex: p3, next: wingRight, size: size, join: join)
+        points += corner(previous: p3, vertex: wingRight, next: right[right.count - 1], size: size, join: join)
+        points += right.reversed()
+
+        let tailTangent = normalize(cubicTangent(p0, c1, c2, p3, 0), fallback: u)
+        points += LineGeometry.cap(around: p0, outward: mul(tailTangent, -1), normal: mul(rightNormal(tailTangent), -1), half: startHalf, cap: startCap)
+        return ArrowOutline(control: control, handle: handle, points: points)
+    }
+
+    /// The arrow's centerline as a cubic: its bend's quadratic raised to a cubic, plus the
+    /// hand-drawn wobble when sketched.
+    private static func centerline(start: CGPoint, end: CGPoint, control: CGPoint, width: CGFloat, scale: CGFloat, roughness: CGFloat, seed: Int32) -> (CGPoint, CGPoint, CGPoint, CGPoint) {
+        if roughness > 0 {
+            let (s0, c1, c2, e) = SketchGeometry.centerline(start: start, end: end, width: width, roughness: roughness, seed: seed, scale: scale)
+            let d = mul(sub(control, lerp(start, end, 0.5)), 2.0 / 3)
+            return (s0, add(c1, d), add(c2, d), e)
+        }
+        return (start, add(start, mul(sub(control, start), 2.0 / 3)), add(end, mul(sub(control, end), 2.0 / 3)), end)
+    }
+
+    /// The left and right edges of a stroke along a cubic, from t = 0 to `tEnd`, whose half width
+    /// runs from `startHalf` to `endHalf`.
+    static func shaftEdges(
+        _ p0: CGPoint, _ c1: CGPoint, _ c2: CGPoint, _ p3: CGPoint,
+        tEnd: CGFloat, startHalf: CGFloat, endHalf: CGFloat, fallback: CGPoint
+    ) -> (left: [CGPoint], right: [CGPoint]) {
+        var left: [CGPoint] = []
+        var right: [CGPoint] = []
+        for i in 0...shaftSamples {
+            let f = CGFloat(i) / CGFloat(shaftSamples)
+            let t = tEnd * f
+            let p = cubic(p0, c1, c2, p3, t)
+            let n = rightNormal(normalize(cubicTangent(p0, c1, c2, p3, t), fallback: fallback))
+            let half = startHalf + (endHalf - startHalf) * f
+            left.append(sub(p, mul(n, half)))
+            right.append(add(p, mul(n, half)))
+        }
+        return (left, right)
+    }
+
+    static func cubic(_ p0: CGPoint, _ c1: CGPoint, _ c2: CGPoint, _ p3: CGPoint, _ t: CGFloat) -> CGPoint {
+        let u = 1 - t
+        let a = u * u * u
+        let b = 3 * u * u * t
+        let c = 3 * u * t * t
+        let d = t * t * t
+        return CGPoint(
+            x: a * p0.x + b * c1.x + c * c2.x + d * p3.x,
+            y: a * p0.y + b * c1.y + c * c2.y + d * p3.y
+        )
+    }
+
+    static func cubicTangent(_ p0: CGPoint, _ c1: CGPoint, _ c2: CGPoint, _ p3: CGPoint, _ t: CGFloat) -> CGPoint {
+        let u = 1 - t
+        let a = 3 * u * u
+        let b = 6 * u * t
+        let c = 3 * t * t
+        return CGPoint(
+            x: a * (c1.x - p0.x) + b * (c2.x - c1.x) + c * (p3.x - c2.x),
+            y: a * (c1.y - p0.y) + b * (c2.y - c1.y) + c * (p3.y - c2.y)
+        )
+    }
+
+    /// Distance from `point` to the arrow's curve, for hit testing.
+    static func distance(from point: CGPoint, start: CGPoint, end: CGPoint, bend: CGFloat) -> CGFloat {
+        let control = control(start: start, end: end, bend: bend)
+        var previous = start
+        var best = CGFloat.greatestFiniteMagnitude
+        for i in 1...32 {
+            let next = pointOnCurve(start, control, end, CGFloat(i) / 32)
+            best = min(best, distanceToSegment(from: point, start: previous, end: next))
+            previous = next
+        }
+        return best
+    }
+
+    /// Whether `point` is inside a filled outline (nonzero rule) or within `tolerance` of its edge,
+    /// so a click anywhere on the drawn shape, its head and its outline selects it.
+    static func outlineContains(_ outline: [CGPoint], point: CGPoint, tolerance: CGFloat) -> Bool {
+        guard outline.count >= 3 else { return false }
+        var winding = 0
+        var previous = outline[outline.count - 1]
+        for current in outline {
+            if distanceToSegment(from: point, start: previous, end: current) <= tolerance {
+                return true
+            }
+            let cross = (current.x - previous.x) * (point.y - previous.y) - (point.x - previous.x) * (current.y - previous.y)
+            if previous.y <= point.y {
+                if current.y > point.y, cross > 0 { winding += 1 }
+            } else if current.y <= point.y, cross < 0 {
+                winding -= 1
+            }
+            previous = current
+        }
+        return winding != 0
+    }
+
+    private static func corner(previous: CGPoint, vertex: CGPoint, next: CGPoint, size: CGFloat, join: StrokeJoin) -> [CGPoint] {
+        guard join != .miter, size > 0 else { return [vertex] }
+        let toPrevious = sub(previous, vertex)
+        let toNext = sub(next, vertex)
+        let k = min(size, min(0.45 * length(toPrevious), 0.45 * length(toNext)))
+        let a = add(vertex, mul(normalize(toPrevious, fallback: .zero), k))
+        let b = add(vertex, mul(normalize(toNext, fallback: .zero), k))
+        if join == .bevel {
+            return [a, b]
+        }
+        return (0...cornerSegments).map { pointOnCurve(a, vertex, b, CGFloat($0) / CGFloat(cornerSegments)) }
+    }
+
+    /// The unit normal to the right of travel in a y-down space.
+    static func rightNormal(_ direction: CGPoint) -> CGPoint {
+        CGPoint(x: -direction.y, y: direction.x)
+    }
+
+    static func normalize(_ v: CGPoint, fallback: CGPoint) -> CGPoint {
+        let vectorLength = length(v)
+        return vectorLength > 1e-9 ? mul(v, 1 / vectorLength) : fallback
+    }
+
+    private static func length(_ v: CGPoint) -> CGFloat {
+        (v.x * v.x + v.y * v.y).squareRoot()
+    }
+
+    private static func add(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: a.x + b.x, y: a.y + b.y) }
+
+    private static func sub(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: a.x - b.x, y: a.y - b.y) }
+
+    private static func mul(_ a: CGPoint, _ k: CGFloat) -> CGPoint { CGPoint(x: a.x * k, y: a.y * k) }
+
+    private static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
+        CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+    }
+}
+
+/// A straight line as one filled outline, shared with Windows through
+/// `shared/screenshot/fixtures/line`. Points are y-down; `scale` is the caller's units per image
+/// pixel. Filling the outline (rather than stroking the line) lets each end take its own cap and
+/// lets the line carry an outline of its own, like an arrow.
+enum LineGeometry {
+    private static let capSegments = 8
+
+    /// - Parameter roughness: Above 0, the line follows a hand-drawn wobble seeded by `seed` (see
+    ///   `SketchGeometry`).
+    static func outline(
+        start: CGPoint, end: CGPoint, width: CGFloat, startCap: StrokeCap, endCap: StrokeCap,
+        scale: CGFloat = 1, roughness: CGFloat = 0, seed: Int32 = 0
+    ) -> [CGPoint] {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let length = (dx * dx + dy * dy).squareRoot()
+        guard length >= 0.001 else { return [] }
+        let u = CGPoint(x: dx * (1 / length), y: dy * (1 / length))
+        if roughness > 0 {
+            let half = width / 2 * scale
+            let (p0, c1, c2, p3) = SketchGeometry.centerline(start: start, end: end, width: width, roughness: roughness, seed: seed, scale: scale)
+            let (left, right) = ArrowGeometry.shaftEdges(p0, c1, c2, p3, tEnd: 1, startHalf: half, endHalf: half, fallback: u)
+            let endTangent = ArrowGeometry.normalize(ArrowGeometry.cubicTangent(p0, c1, c2, p3, 1), fallback: u)
+            let startTangent = ArrowGeometry.normalize(ArrowGeometry.cubicTangent(p0, c1, c2, p3, 0), fallback: u)
+            let endNormal = ArrowGeometry.rightNormal(endTangent)
+            let startNormal = ArrowGeometry.rightNormal(startTangent)
+            var points = left
+            points += cap(around: p3, outward: endTangent, normal: endNormal, half: half, cap: endCap)
+            points += right.reversed()
+            points += cap(
+                around: p0,
+                outward: CGPoint(x: -startTangent.x, y: -startTangent.y),
+                normal: CGPoint(x: -startNormal.x, y: -startNormal.y),
+                half: half,
+                cap: startCap
+            )
+            return points
+        }
+        let n = CGPoint(x: -u.y, y: u.x)
+        let half = width / 2 * scale
+        var points = [
+            CGPoint(x: start.x - n.x * half, y: start.y - n.y * half),
+            CGPoint(x: end.x - n.x * half, y: end.y - n.y * half),
+        ]
+        points += cap(around: end, outward: u, normal: n, half: half, cap: endCap)
+        points.append(CGPoint(x: end.x + n.x * half, y: end.y + n.y * half))
+        points.append(CGPoint(x: start.x + n.x * half, y: start.y + n.y * half))
+        points += cap(around: start, outward: CGPoint(x: -u.x, y: -u.y), normal: CGPoint(x: -n.x, y: -n.y), half: half, cap: startCap)
+        return points
+    }
+
+    /// Points around one end between the line's two edges, going away along `outward`. `normal`
+    /// points from the edge the outline arrives on to the one it leaves by.
+    static func cap(around center: CGPoint, outward: CGPoint, normal: CGPoint, half: CGFloat, cap: StrokeCap) -> [CGPoint] {
+        switch cap {
+        case .round:
+            return (1..<capSegments).map { j in
+                let theta = CGFloat.pi * CGFloat(j) / CGFloat(capSegments)
+                let along = -half * cos(theta)
+                let away = half * sin(theta)
+                return CGPoint(
+                    x: center.x + (normal.x * along + outward.x * away),
+                    y: center.y + (normal.y * along + outward.y * away)
+                )
+            }
+        case .square:
+            return [
+                CGPoint(x: center.x - normal.x * half + outward.x * half, y: center.y - normal.y * half + outward.y * half),
+                CGPoint(x: center.x + normal.x * half + outward.x * half, y: center.y + normal.y * half + outward.y * half),
+            ]
+        case .butt:
+            return []
+        }
+    }
+
+    /// A closed path through `points`; fill it with the nonzero rule.
+    static func path(_ points: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        guard points.count >= 3 else { return path }
+        path.addLines(between: points)
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Freehand pen strokes as one filled outline, shared with Windows through
+/// `shared/screenshot/fixtures/pen`. A port of perfect-freehand's `getStroke` (MIT, © 2021 Stephen
+/// Ruiz Ltd, github.com/steveruizok/perfect-freehand at 176e00f) with fixed options: size = the
+/// stroke width, thinning 0.3, smoothing 0.5, streamline 0.5, simulated pressure, linear easing,
+/// both ends tapered, and the stroke treated as complete. Lengths use `squareRoot()` rather than
+/// `hypot`, and the cap loops keep the source's accumulating steps, so every platform produces the
+/// same points. Work in image pixels: the thresholds are in the stroke's own units.
+enum PenGeometry {
+    private static let thinning: CGFloat = 0.3
+    private static let smoothing: CGFloat = 0.5
+    private static let streamline: CGFloat = 0.5
+    private static let taperPerWidth: CGFloat = 3
+    private static let rateOfPressureChange: CGFloat = 0.275
+    private static let fixedPi: CGFloat = .pi + 0.0001
+    private static let startCapSegments: CGFloat = 13
+    private static let cornerCapSegments: CGFloat = 13
+    private static let endNoiseThreshold: CGFloat = 3
+    private static let minStreamlineT: CGFloat = 0.15
+    private static let streamlineTRange: CGFloat = 0.85
+    private static let minRadius: CGFloat = 0.01
+    private static let defaultFirstPressure: CGFloat = 0.25
+    private static let defaultPressure: CGFloat = 0.5
+
+    private struct StrokePoint {
+        var point: CGPoint
+        var pressure: CGFloat
+        var vector: CGPoint
+        var distance: CGFloat
+        var runningLength: CGFloat
+    }
+
+    static func outline(_ input: [CGPoint], width: CGFloat) -> [CGPoint] {
+        let size = width
+        let points = strokePoints(input, size: size)
+        guard !points.isEmpty, size > 0 else { return [] }
+
+        let total = points[points.count - 1].runningLength
+        let taperStart = size * taperPerWidth
+        let taperEnd = size * taperPerWidth
+        let minDistance = pow(size * smoothing, 2)
+        var left: [CGPoint] = []
+        var right: [CGPoint] = []
+
+        var prevPressure = points[0].pressure
+        for curr in points.prefix(10) {
+            prevPressure = (prevPressure + simulatePressure(prevPressure, distance: curr.distance, size: size)) / 2
+        }
+
+        var radius = strokeRadius(size, pressure: points[points.count - 1].pressure)
+        var firstRadius: CGFloat?
+        var prevVector = points[0].vector
+        var prevLeft = points[0].point
+        var prevRight = prevLeft
+        var tempLeft = prevLeft
+        var tempRight = prevRight
+        var prevSharp = false
+
+        for i in points.indices {
+            let sp = points[i]
+            let p = sp.point
+            let vector = sp.vector
+            let running = sp.runningLength
+            let isLast = i == points.count - 1
+            if !isLast && total - running < endNoiseThreshold {
+                continue
+            }
+
+            let pressure = simulatePressure(prevPressure, distance: sp.distance, size: size)
+            radius = strokeRadius(size, pressure: pressure)
+            if firstRadius == nil {
+                firstRadius = radius
+            }
+
+            var startStrength: CGFloat = 1
+            if running < taperStart {
+                let x = running / taperStart
+                startStrength = x * (2 - x)
+            }
+            var endStrength: CGFloat = 1
+            if total - running < taperEnd {
+                let x = (total - running) / taperEnd
+                endStrength = (x - 1) * (x - 1) * (x - 1) + 1
+            }
+            radius = max(minRadius, radius * min(startStrength, endStrength))
+
+            let nextVector = (!isLast ? points[i + 1] : sp).vector
+            let nextDpr = !isLast ? dpr(vector, nextVector) : 1.0
+            let prevDpr = dpr(vector, prevVector)
+            let isSharp = prevDpr < 0 && !prevSharp
+            let isNextSharp = nextDpr < 0
+
+            if isSharp || isNextSharp {
+                let offset = mul(per(prevVector), radius)
+                let step = 1 / cornerCapSegments
+                var t: CGFloat = 0
+                while t <= 1 {
+                    tempLeft = rotate(sub(p, offset), around: p, by: fixedPi * t)
+                    left.append(tempLeft)
+                    tempRight = rotate(add(p, offset), around: p, by: fixedPi * -t)
+                    right.append(tempRight)
+                    t += step
+                }
+                prevLeft = tempLeft
+                prevRight = tempRight
+                if isNextSharp {
+                    prevSharp = true
+                }
+                continue
+            }
+
+            prevSharp = false
+            if isLast {
+                let offset = mul(per(vector), radius)
+                left.append(sub(p, offset))
+                right.append(add(p, offset))
+                continue
+            }
+
+            let offset = mul(per(lerp(nextVector, vector, nextDpr)), radius)
+            tempLeft = sub(p, offset)
+            if i <= 1 || dist2(prevLeft, tempLeft) > minDistance {
+                left.append(tempLeft)
+                prevLeft = tempLeft
+            }
+            tempRight = add(p, offset)
+            if i <= 1 || dist2(prevRight, tempRight) > minDistance {
+                right.append(tempRight)
+                prevRight = tempRight
+            }
+            prevPressure = pressure
+            prevVector = vector
+        }
+
+        let first = points[0].point
+        if points.count == 1 {
+            // A dot: the stroke is complete, so even a tapered one draws a circle.
+            let start = add(first, mul(unit(per(sub(first, add(first, CGPoint(x: 1, y: 1))))), -(firstRadius ?? radius)))
+            var dot: [CGPoint] = []
+            let step = 1 / startCapSegments
+            var t = step
+            while t <= 1 {
+                dot.append(rotate(start, around: first, by: fixedPi * 2 * t))
+                t += step
+            }
+            return dot
+        }
+
+        // Both ends taper, so there is no start cap and the end is the last point.
+        return left + [points[points.count - 1].point] + right.reversed()
+    }
+
+    /// A smooth closed path through the outline: quadratic curves through each pair of points'
+    /// midpoints, as perfect-freehand recommends, so the edge does not look faceted.
+    static func smoothPath(_ outline: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        guard outline.count >= 3 else { return path }
+        path.move(to: outline[0])
+        for i in outline.indices {
+            let point = outline[i]
+            let next = outline[(i + 1) % outline.count]
+            path.addQuadCurve(to: lerp(point, next, 0.5), control: point)
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    private static func strokePoints(_ input: [CGPoint], size: CGFloat) -> [StrokePoint] {
+        guard !input.isEmpty else { return [] }
+        let t = minStreamlineT + (1 - streamline) * streamlineTRange
+        var pts = input
+        if pts.count == 2 {
+            let last = pts[1]
+            pts = [pts[0]] + (1..<5).map { lerp(pts[0], last, CGFloat($0) / 4) }
+        }
+        if pts.count == 1 {
+            pts.append(add(pts[0], CGPoint(x: 1, y: 1)))
+        }
+
+        var result = [StrokePoint(point: pts[0], pressure: defaultFirstPressure, vector: CGPoint(x: 1, y: 1), distance: 0, runningLength: 0)]
+        var prev = result[0]
+        var reachedMinimum = false
+        var running: CGFloat = 0
+        let lastIndex = pts.count - 1
+        for i in 1..<pts.count {
+            let p = i == lastIndex ? pts[i] : lerp(prev.point, pts[i], t)
+            if p.x == prev.point.x && p.y == prev.point.y {
+                continue
+            }
+            let distance = length(sub(p, prev.point))
+            running += distance
+            if i < lastIndex && !reachedMinimum {
+                if running < size {
+                    continue
+                }
+                reachedMinimum = true
+            }
+            prev = StrokePoint(point: p, pressure: defaultPressure, vector: unit(sub(prev.point, p)), distance: distance, runningLength: running)
+            result.append(prev)
+        }
+        result[0].vector = result.count > 1 ? result[1].vector : .zero
+        return result
+    }
+
+    private static func simulatePressure(_ prev: CGFloat, distance: CGFloat, size: CGFloat) -> CGFloat {
+        let sp = min(1, distance / size)
+        let rp = min(1, 1 - sp)
+        return min(1, prev + (rp - prev) * (sp * rateOfPressureChange))
+    }
+
+    private static func strokeRadius(_ size: CGFloat, pressure: CGFloat) -> CGFloat {
+        size * (0.5 - thinning * (0.5 - pressure))
+    }
+
+    private static func rotate(_ a: CGPoint, around c: CGPoint, by r: CGFloat) -> CGPoint {
+        let s = sin(r)
+        let co = cos(r)
+        let px = a.x - c.x
+        let py = a.y - c.y
+        return CGPoint(x: px * co - py * s + c.x, y: px * s + py * co + c.y)
+    }
+
+    private static func length(_ a: CGPoint) -> CGFloat { (a.x * a.x + a.y * a.y).squareRoot() }
+
+    private static func unit(_ a: CGPoint) -> CGPoint {
+        let n = length(a)
+        return CGPoint(x: a.x / n, y: a.y / n)
+    }
+
+    private static func per(_ a: CGPoint) -> CGPoint { CGPoint(x: a.y, y: -a.x) }
+
+    private static func dpr(_ a: CGPoint, _ b: CGPoint) -> CGFloat { a.x * b.x + a.y * b.y }
+
+    private static func dist2(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let dx = a.x - b.x
+        let dy = a.y - b.y
+        return dx * dx + dy * dy
+    }
+
+    private static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint {
+        CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+    }
+
+    private static func add(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: a.x + b.x, y: a.y + b.y) }
+
+    private static func sub(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: a.x - b.x, y: a.y - b.y) }
+
+    private static func mul(_ a: CGPoint, _ k: CGFloat) -> CGPoint { CGPoint(x: a.x * k, y: a.y * k) }
+}
+
+/// One step of a sketched stroke: move to `end`, or a cubic to it.
+struct SketchOp: Equatable {
+    var isMove: Bool
+    var control1: CGPoint
+    var control2: CGPoint
+    var end: CGPoint
+}
+
+/// The hand-drawn ("sketch") style, shared with Windows through `shared/screenshot/fixtures/sketch`.
+/// A port of rough.js (MIT, © 2019 Preet Shihn, github.com/rough-stuff/rough at 56a2762) with its
+/// default options. Each shape seeds its own Park–Miller generator, so a stored seed redraws the
+/// same wobble everywhere. Geometry is computed in units of half the stroke width (at least 0.5),
+/// so the wobble looks the same at any stroke width or image size, as if rough.js drew it with its
+/// default 2-unit-wide stroke. Random draws happen in exactly rough.js's order; keep it when editing.
+enum SketchGeometry {
+    static let defaultRoughness: CGFloat = 1
+    static let roughnessRange: ClosedRange<CGFloat> = 0...3
+
+    private static let bowing: CGFloat = 1
+    private static let maxRandomnessOffset: CGFloat = 2
+    private static let curveFitting: CGFloat = 0.95
+    private static let curveStepCount: CGFloat = 9
+    private static let curveTightness: CGFloat = 0
+    private static let minimumUnit: CGFloat = 0.5
+
+    /// A new non-zero seed for an annotation; zero would mean "not seeded".
+    static func newSeed() -> Int32 { Int32.random(in: 1...Int32.max - 1) }
+
+    static func rectangle(_ bounds: CGRect, width: CGFloat, roughness: CGFloat, seed: Int32, scale: CGFloat = 1) -> [SketchOp] {
+        let unit = unit(width, scale: scale)
+        var rough = Rough(roughness: roughness, seed: seed)
+        return scaled(rough.rectangle(bounds.minX / unit, bounds.minY / unit, bounds.width / unit, bounds.height / unit), unit)
+    }
+
+    static func ellipse(_ bounds: CGRect, width: CGFloat, roughness: CGFloat, seed: Int32, scale: CGFloat = 1) -> [SketchOp] {
+        let unit = unit(width, scale: scale)
+        let cx = (bounds.minX + bounds.width / 2) / unit
+        let cy = (bounds.minY + bounds.height / 2) / unit
+        var rough = Rough(roughness: roughness, seed: seed)
+        return scaled(rough.ellipse(cx, cy, bounds.width / unit, bounds.height / unit), unit)
+    }
+
+    /// A hand-drawn cubic from start to end: rough.js's single-stroke line.
+    static func centerline(start: CGPoint, end: CGPoint, width: CGFloat, roughness: CGFloat, seed: Int32, scale: CGFloat = 1) -> (CGPoint, CGPoint, CGPoint, CGPoint) {
+        let unit = unit(width, scale: scale)
+        var rough = Rough(roughness: roughness, seed: seed)
+        let ops = rough.line(start.x / unit, start.y / unit, end.x / unit, end.y / unit, move: true, overlay: false)
+        let move = ops[0].end
+        let curve = ops[1]
+        return (
+            CGPoint(x: move.x * unit, y: move.y * unit),
+            CGPoint(x: curve.control1.x * unit, y: curve.control1.y * unit),
+            CGPoint(x: curve.control2.x * unit, y: curve.control2.y * unit),
+            CGPoint(x: curve.end.x * unit, y: curve.end.y * unit)
+        )
+    }
+
+    /// The generator's first values for a seed; exposed for the shared fixtures.
+    static func randomValues(seed: Int32, count: Int) -> [CGFloat] {
+        var random = RoughRandom(seed: seed)
+        return (0..<count).map { _ in random.next() }
+    }
+
+    /// The ops as a path to stroke with round caps and joins.
+    static func path(_ ops: [SketchOp]) -> CGPath {
+        let path = CGMutablePath()
+        for op in ops {
+            if op.isMove {
+                path.move(to: op.end)
+            } else {
+                path.addCurve(to: op.end, control1: op.control1, control2: op.control2)
+            }
+        }
+        return path
+    }
+
+    /// The geometry's unit for a `width` in image pixels, in the caller's units (`scale` per image
+    /// pixel). The minimum applies in image pixels, so the wobble looks the same at every zoom.
+    private static func unit(_ width: CGFloat, scale: CGFloat) -> CGFloat { max(minimumUnit, width / 2) * scale }
+
+    private static func scaled(_ ops: [SketchOp], _ unit: CGFloat) -> [SketchOp] {
+        ops.map {
+            SketchOp(
+                isMove: $0.isMove,
+                control1: CGPoint(x: $0.control1.x * unit, y: $0.control1.y * unit),
+                control2: CGPoint(x: $0.control2.x * unit, y: $0.control2.y * unit),
+                end: CGPoint(x: $0.end.x * unit, y: $0.end.y * unit)
+            )
+        }
+    }
+
+    private struct RoughRandom {
+        var seed: Int32
+
+        init(seed: Int32) {
+            precondition(seed != 0, "A sketch needs a non-zero seed.")
+            self.seed = seed
+        }
+
+        mutating func next() -> CGFloat {
+            seed = 48271 &* seed
+            return CGFloat(Int32.max & seed) / 2147483648.0
+        }
+    }
+
+    private struct Rough {
+        let roughness: CGFloat
+        var random: RoughRandom
+
+        init(roughness: CGFloat, seed: Int32) {
+            self.roughness = roughness
+            random = RoughRandom(seed: seed)
+        }
+
+        mutating func offset(_ lo: CGFloat, _ hi: CGFloat, gain: CGFloat = 1) -> CGFloat {
+            roughness * gain * ((random.next() * (hi - lo)) + lo)
+        }
+
+        mutating func offsetOpt(_ x: CGFloat, gain: CGFloat = 1) -> CGFloat {
+            offset(-x, x, gain: gain)
+        }
+
+        mutating func line(_ x1: CGFloat, _ y1: CGFloat, _ x2: CGFloat, _ y2: CGFloat, move: Bool, overlay: Bool) -> [SketchOp] {
+            let lengthSq = (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)
+            let length = lengthSq.squareRoot()
+            let gain: CGFloat = length < 200 ? 1 : length > 500 ? 0.4 : (-0.0016668) * length + 1.233334
+            var offset = SketchGeometry.maxRandomnessOffset
+            if offset * offset * 100 > lengthSq {
+                offset = length / 10
+            }
+            let halfOffset = offset / 2
+            let diverge = 0.2 + random.next() * 0.2
+            var midX = SketchGeometry.bowing * SketchGeometry.maxRandomnessOffset * (y2 - y1) / 200
+            var midY = SketchGeometry.bowing * SketchGeometry.maxRandomnessOffset * (x1 - x2) / 200
+            midX = offsetOpt(midX, gain: gain)
+            midY = offsetOpt(midY, gain: gain)
+            let jitter = overlay ? halfOffset : offset
+            var ops: [SketchOp] = []
+            if move {
+                let mx = x1 + offsetOpt(jitter, gain: gain)
+                let my = y1 + offsetOpt(jitter, gain: gain)
+                ops.append(SketchOp(isMove: true, control1: .zero, control2: .zero, end: CGPoint(x: mx, y: my)))
+            }
+            let c1x = midX + x1 + (x2 - x1) * diverge + offsetOpt(jitter, gain: gain)
+            let c1y = midY + y1 + (y2 - y1) * diverge + offsetOpt(jitter, gain: gain)
+            let c2x = midX + x1 + 2 * (x2 - x1) * diverge + offsetOpt(jitter, gain: gain)
+            let c2y = midY + y1 + 2 * (y2 - y1) * diverge + offsetOpt(jitter, gain: gain)
+            let ex = x2 + offsetOpt(jitter, gain: gain)
+            let ey = y2 + offsetOpt(jitter, gain: gain)
+            ops.append(SketchOp(isMove: false, control1: CGPoint(x: c1x, y: c1y), control2: CGPoint(x: c2x, y: c2y), end: CGPoint(x: ex, y: ey)))
+            return ops
+        }
+
+        private mutating func doubleLine(_ x1: CGFloat, _ y1: CGFloat, _ x2: CGFloat, _ y2: CGFloat) -> [SketchOp] {
+            line(x1, y1, x2, y2, move: true, overlay: false) + line(x1, y1, x2, y2, move: true, overlay: true)
+        }
+
+        mutating func rectangle(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> [SketchOp] {
+            let pts = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+            var ops: [SketchOp] = []
+            for i in 0..<3 {
+                ops += doubleLine(pts[i].0, pts[i].1, pts[i + 1].0, pts[i + 1].1)
+            }
+            ops += doubleLine(pts[3].0, pts[3].1, pts[0].0, pts[0].1)
+            return ops
+        }
+
+        mutating func ellipse(_ cx: CGFloat, _ cy: CGFloat, _ w: CGFloat, _ h: CGFloat) -> [SketchOp] {
+            let psq = (CGFloat.pi * 2 * (((w / 2) * (w / 2) + (h / 2) * (h / 2)) / 2).squareRoot()).squareRoot()
+            let stepCount = (max(SketchGeometry.curveStepCount, (SketchGeometry.curveStepCount / CGFloat(200).squareRoot()) * psq)).rounded(.up)
+            let increment = (CGFloat.pi * 2) / stepCount
+            var rx = abs(w / 2)
+            var ry = abs(h / 2)
+            let fitRandomness = 1 - SketchGeometry.curveFitting
+            rx += offsetOpt(rx * fitRandomness)
+            ry += offsetOpt(ry * fitRandomness)
+            let inner = offset(0.4, 1)
+            let overlap = increment * offset(0.1, inner)
+            var ops = Self.curve(ellipsePoints(increment, cx, cy, rx, ry, offset: 1, overlap: overlap))
+            if roughness != 0 {
+                ops += Self.curve(ellipsePoints(increment, cx, cy, rx, ry, offset: 1.5, overlap: 0))
+            }
+            return ops
+        }
+
+        private mutating func ellipsePoints(
+            _ increment: CGFloat, _ cx: CGFloat, _ cy: CGFloat, _ rx: CGFloat, _ ry: CGFloat,
+            offset: CGFloat, overlap: CGFloat
+        ) -> [CGPoint] {
+            var pts: [CGPoint] = []
+            if roughness == 0 {
+                let increment = increment / 4
+                pts.append(CGPoint(x: cx + rx * cos(-increment), y: cy + ry * sin(-increment)))
+                var angle: CGFloat = 0
+                while angle <= CGFloat.pi * 2 {
+                    pts.append(CGPoint(x: cx + rx * cos(angle), y: cy + ry * sin(angle)))
+                    angle = angle + increment
+                }
+                pts.append(CGPoint(x: cx + rx * cos(0), y: cy + ry * sin(0)))
+                pts.append(CGPoint(x: cx + rx * cos(increment), y: cy + ry * sin(increment)))
+                return pts
+            }
+
+            let radOffset = offsetOpt(0.5) - (CGFloat.pi / 2)
+            func jittered(_ scale: CGFloat, _ angle: CGFloat) -> CGPoint {
+                let x = offsetOpt(offset) + cx + scale * rx * cos(angle)
+                let y = offsetOpt(offset) + cy + scale * ry * sin(angle)
+                return CGPoint(x: x, y: y)
+            }
+            pts.append(jittered(0.9, radOffset - increment))
+            let endAngle = CGFloat.pi * 2 + radOffset - 0.01
+            var angle = radOffset
+            while angle < endAngle {
+                pts.append(jittered(1, angle))
+                angle = angle + increment
+            }
+            pts.append(jittered(1, radOffset + CGFloat.pi * 2 + overlap * 0.5))
+            pts.append(jittered(0.98, radOffset + overlap))
+            pts.append(jittered(0.9, radOffset + overlap * 0.5))
+            return pts
+        }
+
+        private static func curve(_ pts: [CGPoint]) -> [SketchOp] {
+            guard pts.count > 3 else { return [] }
+            let s = 1 - SketchGeometry.curveTightness
+            var ops = [SketchOp(isMove: true, control1: .zero, control2: .zero, end: pts[1])]
+            var i = 1
+            while i + 2 < pts.count {
+                let b1 = CGPoint(x: pts[i].x + (s * pts[i + 1].x - s * pts[i - 1].x) / 6, y: pts[i].y + (s * pts[i + 1].y - s * pts[i - 1].y) / 6)
+                let b2 = CGPoint(x: pts[i + 1].x + (s * pts[i].x - s * pts[i + 2].x) / 6, y: pts[i + 1].y + (s * pts[i].y - s * pts[i + 2].y) / 6)
+                ops.append(SketchOp(isMove: false, control1: b1, control2: b2, end: pts[i + 1]))
+                i += 1
+            }
+            return ops
+        }
+    }
+}
+
+/// Stroke widths are stored in source-image pixels, the unit the Windows editor and the shared
+/// fixtures use.
+enum AnnotationStrokeMath {
+    static let widthRange: ClosedRange<CGFloat> = 1...40
+
+    /// The starting width for an image. Before widths were stored in image pixels the default was
+    /// 4 at a 900-pixel-wide reference, so this keeps that look on large captures.
+    static func defaultWidth(forImagePixelWidth width: CGFloat) -> CGFloat {
+        let scaled = (4 * max(1, width / 900)).rounded()
+        return min(max(scaled, widthRange.lowerBound), widthRange.upperBound)
+    }
 }

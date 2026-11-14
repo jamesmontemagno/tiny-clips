@@ -24,6 +24,7 @@ public sealed partial class EditorInspector : UserControl
 {
     private EditorController _controller = null!;
     private bool _inspectorInitializing = true;
+    private string _strokeSliderLabel = "Stroke";
     private bool _bgInitializing;
     private bool _backgroundSelectionBusy;
     private ContentDialog? _backgroundColorDialog;
@@ -81,6 +82,14 @@ public sealed partial class EditorInspector : UserControl
         controller.AnnotationVisualInvalidated += (_, ann) =>
         {
             // Keep the rotation slider in step with the on-canvas rotation grip.
+            // Keep the arrow sliders in step with the on-canvas bend handle.
+            if (ann.Tool == EditTool.Arrow
+                && ReferenceEquals(ann, _controller.SelectedAnnotation)
+                && Math.Abs(ArrowArcSlider.Value - Math.Round(ann.Arrow.Bend * 100)) >= 1)
+            {
+                ShowArrowShape(ann.Arrow);
+            }
+
             if (ann.Tool.StoresRotation()
                 && ReferenceEquals(ann, _controller.SelectedAnnotation)
                 && Math.Abs(RotationSlider.Value - ann.Rotation) > 0.5)
@@ -144,7 +153,8 @@ public sealed partial class EditorInspector : UserControl
 
     private void UpdateInspectorHeaders()
     {
-        StrokeSlider.Header = $"Stroke — {(int)_controller.StrokeThickness} px";
+        StrokeSlider.Header = $"{_strokeSliderLabel} — {(int)_controller.StrokeThickness} px";
+        OutlineSlider.Header = OutlineSlider.Value > 0 ? $"Stroke — {(int)OutlineSlider.Value} px" : "Stroke — none";
         NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(_controller.NumberScale * 100)}%";
         FontSizeSlider.Header = $"Font size — {(int)_controller.TextFontSize} px";
         RotationSlider.Header = $"Rotation — {(int)Math.Round(RotationSlider.Value)}°";
@@ -248,8 +258,17 @@ public sealed partial class EditorInspector : UserControl
         var showsEmoji = tool is EditTool.Emoji;
 
         ColorSection.Visibility = showsColor ? Visibility.Visible : Visibility.Collapsed;
+        ShowColorLabel(tool);
+        ShowOutline(tool, _controller.OutlineColorDefault, _controller.OutlineWidthDefault);
+        ShowSketch(tool, _controller.SketchDefault, _controller.RoughnessDefault);
         StrokeSection.Visibility = showsStroke ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = showsArrowStyle ? Visibility.Visible : Visibility.Collapsed;
+        ShowStrokeEnds(
+            tool,
+            _controller.StartCapDefault,
+            _controller.EndCapDefault,
+            _controller.LineJoinDefault,
+            tool.UsesOutline() ? _controller.OutlineAlignmentDefault : _controller.StrokeAlignmentDefault);
         FillSection.Visibility = showsFill ? Visibility.Visible : Visibility.Collapsed;
         TextSection.Visibility = showsText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = showsNumber ? Visibility.Visible : Visibility.Collapsed;
@@ -265,7 +284,7 @@ public sealed partial class EditorInspector : UserControl
 
         if (showsArrowStyle)
         {
-            ArrowStyleCombo.SelectedIndex = (int)_controller.ArrowStyleDefault;
+            ShowArrowShape(_controller.ArrowDefault);
         }
 
         if (showsRedact)
@@ -318,8 +337,12 @@ public sealed partial class EditorInspector : UserControl
         var hasColor = isShape || isText || isCounter;
 
         ColorSection.Visibility = hasColor ? Visibility.Visible : Visibility.Collapsed;
+        ShowColorLabel(ann.Tool);
+        ShowOutline(ann.Tool, ann.OutlineColor, ann.OutlineWidth);
+        ShowSketch(ann.Tool, ann.IsSketch, ann.Roughness);
         StrokeSection.Visibility = isShape ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = isArrow ? Visibility.Visible : Visibility.Collapsed;
+        ShowStrokeEnds(ann.Tool, ann.StartCap, ann.EndCap, ann.LineJoin, ann.StrokeAlignment);
         FillSection.Visibility = isFillable ? Visibility.Visible : Visibility.Collapsed;
         TextSection.Visibility = isText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = isCounter ? Visibility.Visible : Visibility.Collapsed;
@@ -341,7 +364,7 @@ public sealed partial class EditorInspector : UserControl
 
         if (isArrow)
         {
-            ArrowStyleCombo.SelectedIndex = (int)ann.ArrowStyle;
+            ShowArrowShape(ann.Arrow);
         }
 
         if (hasColor)
@@ -439,14 +462,182 @@ public sealed partial class EditorInspector : UserControl
         UpdateInspectorHeaders();
     }
 
-    private void OnArrowStyleChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>
+    /// Names the color and width controls for the tool. Arrows and lines are filled bodies, so
+    /// their color is the fill and their width the body's size, with the stroke as an outline;
+    /// other shapes' color sits right above their stroke width.
+    /// </summary>
+    private void ShowColorLabel(EditTool tool)
+    {
+        var label = tool.UsesOutline() ? "Fill"
+            : tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Pen ? "Stroke color"
+            : "Color";
+        ColorLabel.Text = label;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AnnotationColorPicker, label);
+        _strokeSliderLabel = tool.UsesOutline() ? "Size" : "Stroke";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(StrokeSlider, tool.UsesOutline() ? "Size" : "Stroke width");
+    }
+
+    // Callers hold _inspectorInitializing, so loading the controls doesn't write back.
+    private void ShowOutline(EditTool tool, Color color, double width)
+    {
+        OutlineSection.Visibility = tool.UsesOutline() ? Visibility.Visible : Visibility.Collapsed;
+        OutlineColorPicker.Color = color;
+        OutlineSlider.Value = width;
+    }
+
+    // Callers hold _inspectorInitializing, so loading the controls doesn't write back.
+    private void ShowSketch(EditTool tool, bool isSketch, double roughness)
+    {
+        SketchSection.Visibility = tool.UsesSketch() ? Visibility.Visible : Visibility.Collapsed;
+        SketchToggle.IsOn = isSketch;
+        RoughnessSlider.Value = roughness;
+        RoughnessSlider.Visibility = isSketch ? Visibility.Visible : Visibility.Collapsed;
+        RoughnessSlider.Header = $"Roughness — {roughness:0.##}";
+    }
+
+    private void OnSketchToggled(object sender, RoutedEventArgs e)
+    {
+        RoughnessSlider.Visibility = SketchToggle.IsOn ? Visibility.Visible : Visibility.Collapsed;
+        if (!_inspectorInitializing)
+        {
+            _controller.SetSketch(SketchToggle.IsOn);
+        }
+    }
+
+    private void OnRoughnessChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        RoughnessSlider.Header = $"Roughness — {e.NewValue:0.##}";
+        if (!_inspectorInitializing)
+        {
+            _controller.SetRoughness(e.NewValue);
+        }
+    }
+
+    private void OnOutlineColorChanged(object? sender, Color color)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.SetOutlineColor(color);
+        }
+    }
+
+    private void OnOutlineWidthChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_inspectorInitializing)
         {
             return;
         }
 
-        _controller.SetArrowStyle((ArrowStyle)Math.Clamp(ArrowStyleCombo.SelectedIndex, 0, 2));
+        _controller.SetOutlineWidth(e.NewValue);
+        UpdateInspectorHeaders();
+    }
+
+    // Callers hold _inspectorInitializing, so loading the combos doesn't write back.
+    private void ShowStrokeEnds(EditTool tool, StrokeCap startCap, StrokeCap endCap, StrokeJoin join, StrokeAlignment alignment)
+    {
+        StrokeAlignmentSection.Visibility = tool.UsesAlignment() ? Visibility.Visible : Visibility.Collapsed;
+        StrokeAlignmentCombo.SelectedIndex = (int)alignment;
+        StartCapSection.Visibility = tool.UsesStartCap() ? Visibility.Visible : Visibility.Collapsed;
+        EndCapSection.Visibility = tool.UsesEndCap() ? Visibility.Visible : Visibility.Collapsed;
+        StrokeAdvancedExpander.Visibility = tool.UsesJoin() ? Visibility.Visible : Visibility.Collapsed;
+        ArrowAdvancedPanel.Visibility = tool == EditTool.Arrow ? Visibility.Visible : Visibility.Collapsed;
+        StartCapCombo.SelectedIndex = (int)startCap;
+        EndCapCombo.SelectedIndex = (int)endCap;
+        LineJoinCombo.SelectedIndex = (int)join;
+    }
+
+    private void OnStrokeAlignmentChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_inspectorInitializing || StrokeAlignmentCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        _controller.SetStrokeAlignment((StrokeAlignment)StrokeAlignmentCombo.SelectedIndex);
+    }
+
+    private void OnStartCapChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_inspectorInitializing || StartCapCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        _controller.SetStartCap((StrokeCap)StartCapCombo.SelectedIndex);
+    }
+
+    private void OnEndCapChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_inspectorInitializing || EndCapCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        _controller.SetEndCap((StrokeCap)EndCapCombo.SelectedIndex);
+    }
+
+    private void OnLineJoinChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_inspectorInitializing || LineJoinCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        _controller.SetLineJoin((StrokeJoin)LineJoinCombo.SelectedIndex);
+    }
+
+    // Callers outside the change handlers hold _inspectorInitializing so loading doesn't write back.
+    private void ShowArrowShape(ArrowShapeOptions shape)
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+        ArrowPresetCombo.SelectedIndex = (int)shape.Preset;
+        ArrowArcSlider.Value = Math.Round(shape.Bend * 100);
+        ArrowStartWidthSlider.Value = Math.Round(shape.StartWidthScale * 100);
+        ArrowEndWidthSlider.Value = Math.Round(shape.EndWidthScale * 100);
+        ArrowHeadSizeSlider.Value = Math.Round(shape.HeadScale * 100);
+        ArrowArcSlider.Header = $"Arc — {(int)ArrowArcSlider.Value}%";
+        ArrowStartWidthSlider.Header = $"Start width — {(int)ArrowStartWidthSlider.Value}%";
+        ArrowEndWidthSlider.Header = $"End width — {(int)ArrowEndWidthSlider.Value}%";
+        ArrowHeadSizeSlider.Header = $"Head size — {(int)ArrowHeadSizeSlider.Value}%";
+        _inspectorInitializing = wasInitializing;
+    }
+
+    private void OnArrowPresetChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_inspectorInitializing || ArrowPresetCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        var preset = (ArrowPreset)ArrowPresetCombo.SelectedIndex;
+        if (preset == ArrowPreset.Custom)
+        {
+            // Custom is whatever the sliders say, so choosing it opens them and leaves the shape alone.
+            StrokeAdvancedExpander.IsExpanded = true;
+            return;
+        }
+
+        var shape = ArrowShapeOptions.For(preset);
+        _controller.SetArrowShape(shape);
+        ShowArrowShape(shape);
+    }
+
+    private void OnArrowSliderChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        var shape = new ArrowShapeOptions(
+            ArrowArcSlider.Value / 100,
+            ArrowStartWidthSlider.Value / 100,
+            ArrowEndWidthSlider.Value / 100,
+            ArrowHeadSizeSlider.Value / 100);
+        _controller.SetArrowShape(shape);
+        ShowArrowShape(shape);
     }
 
     private void OnFillToggled(object sender, RoutedEventArgs e)

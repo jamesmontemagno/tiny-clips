@@ -102,6 +102,14 @@
                     <Ellipse x:Name="EndEndpointHandle" Canvas.ZIndex="10001" Width="12" Height="12"
                              Fill="{ThemeResource AccentFillColorDefaultBrush}" IsHitTestVisible="False"
                              Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Visibility="Collapsed" />
+                    <Rectangle x:Name="ArrowBendHandle" Canvas.ZIndex="10001" Width="11" Height="11"
+                               Fill="{ThemeResource ControlSolidFillColorDefaultBrush}" IsHitTestVisible="False"
+                               Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2"
+                               RenderTransformOrigin="0.5,0.5" Visibility="Collapsed">
+                        <Rectangle.RenderTransform>
+                            <RotateTransform Angle="45" />
+                        </Rectangle.RenderTransform>
+                    </Rectangle>
                     <Line x:Name="RotationHandleStem" Canvas.ZIndex="10001" IsHitTestVisible="False"
                           Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="1.5" Visibility="Collapsed" />
                     <Grid x:Name="RotationHandle" Canvas.ZIndex="10002" Width="18" Height="18"

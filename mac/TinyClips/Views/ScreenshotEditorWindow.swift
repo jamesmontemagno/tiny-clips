@@ -495,6 +495,10 @@ struct ScreenshotEditorView: View {
     @State private var currentSaveURL: URL
     @State private var lastSavedURL: URL?
     @State private var zoomScale: CGFloat = 1
+    @State private var isStrokeAdvancedExpanded = false
+    /// Set when Custom is chosen while the values still match a preset, so the picker stays on
+    /// Custom while the sliders are adjusted.
+    @State private var isChoosingCustomArrow = false
     @State private var panOffset: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
     @State private var backingScaleFactor: CGFloat = 1
@@ -525,9 +529,12 @@ struct ScreenshotEditorView: View {
 
     private var primaryColorLabel: String? {
         switch inspectorTool {
-        case .rectangle, .circle:
-            return "Border"
-        case .arrow, .line, .pencil, .text:
+        case .arrow, .line:
+            // Arrows and lines are filled bodies; their stroke is a separate outline.
+            return "Fill"
+        case .rectangle, .circle, .pencil:
+            return "Stroke color"
+        case .text:
             return "Color"
         case .number:
             return "Badge"
@@ -547,13 +554,142 @@ struct ScreenshotEditorView: View {
     private var primaryColorBinding: Binding<Color> {
         Binding(
             get: {
-                viewModel.selectedTextColor() ?? viewModel.selectedNumberBadgeColor() ?? viewModel.selectedColor
+                viewModel.selectedTextColor()
+                    ?? viewModel.selectedNumberBadgeColor()
+                    ?? viewModel.selectedStrokeColor()
+                    ?? viewModel.selectedColor
             },
             set: { newValue in
                 if viewModel.inspectorTool == .text {
                     _ = viewModel.updateTextColor(newValue)
-                } else if !viewModel.updateSelectedNumberBadgeColor(newValue) {
+                } else if !viewModel.updateSelectedNumberBadgeColor(newValue),
+                          !viewModel.updateSelectedStrokeColor(newValue) {
                     viewModel.selectedColor = newValue
+                }
+            }
+        )
+    }
+
+    private var fillColorBinding: Binding<Color> {
+        Binding(
+            get: {
+                viewModel.selectedShapeFillColor() ?? viewModel.selectedFillColor
+            },
+            set: { newValue in
+                if !viewModel.updateSelectedShapeFillColor(newValue) {
+                    viewModel.selectedFillColor = newValue
+                }
+            }
+        )
+    }
+
+    private var startCapBinding: Binding<StrokeCap> {
+        Binding(
+            get: { viewModel.selectedStartCap() ?? viewModel.startCap },
+            set: { newValue in
+                if !viewModel.updateSelectedStartCap(newValue) {
+                    viewModel.startCap = newValue
+                }
+            }
+        )
+    }
+
+    private var endCapBinding: Binding<StrokeCap> {
+        Binding(
+            get: { viewModel.selectedEndCap() ?? viewModel.endCap },
+            set: { newValue in
+                if !viewModel.updateSelectedEndCap(newValue) {
+                    viewModel.endCap = newValue
+                }
+            }
+        )
+    }
+
+    private var strokeAlignmentBinding: Binding<StrokeAlignment> {
+        Binding(
+            get: {
+                viewModel.selectedStrokeAlignment()
+                    ?? (viewModel.inspectorTool.usesOutline ? viewModel.outlineAlignment : viewModel.strokeAlignment)
+            },
+            set: { newValue in
+                if viewModel.updateSelectedStrokeAlignment(newValue) {
+                    return
+                }
+                if viewModel.inspectorTool.usesOutline {
+                    viewModel.outlineAlignment = newValue
+                } else {
+                    viewModel.strokeAlignment = newValue
+                }
+            }
+        )
+    }
+
+    private var lineJoinBinding: Binding<StrokeJoin> {
+        Binding(
+            get: { viewModel.selectedLineJoin() ?? viewModel.lineJoin },
+            set: { newValue in
+                if !viewModel.updateSelectedLineJoin(newValue) {
+                    viewModel.lineJoin = newValue
+                }
+            }
+        )
+    }
+
+    private var sketchBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.selectedIsSketch() ?? viewModel.isSketch },
+            set: { newValue in
+                if !viewModel.updateSelectedIsSketch(newValue) {
+                    viewModel.isSketch = newValue
+                }
+            }
+        )
+    }
+
+    private var roughnessBinding: Binding<CGFloat> {
+        Binding(
+            get: { viewModel.selectedRoughness() ?? viewModel.roughness },
+            set: { newValue in
+                let roughness = (newValue * 4).rounded() / 4
+                if !viewModel.updateSelectedRoughness(roughness) {
+                    viewModel.roughness = roughness
+                }
+            }
+        )
+    }
+
+    private var outlineColorBinding: Binding<Color> {
+        Binding(
+            get: { viewModel.selectedOutlineColor() ?? viewModel.outlineColor },
+            set: { newValue in
+                if !viewModel.updateSelectedOutlineColor(newValue) {
+                    viewModel.outlineColor = newValue
+                }
+            }
+        )
+    }
+
+    private var outlineWidthBinding: Binding<CGFloat> {
+        Binding(
+            get: { viewModel.selectedOutlineWidth() ?? viewModel.outlineWidth },
+            set: { newValue in
+                let width = newValue.rounded()
+                if !viewModel.updateSelectedOutlineWidth(width) {
+                    viewModel.outlineWidth = width
+                }
+            }
+        )
+    }
+
+    private var lineWidthBinding: Binding<CGFloat> {
+        Binding(
+            get: {
+                viewModel.selectedLineWidth() ?? viewModel.lineWidth
+            },
+            set: { newValue in
+                let width = newValue.rounded()
+                if !viewModel.updateSelectedLineWidth(width) {
+                    viewModel.lineWidth = width
                 }
             }
         )
@@ -598,17 +734,58 @@ struct ScreenshotEditorView: View {
         )
     }
 
-    private var arrowStyleBinding: Binding<ArrowStyle> {
+    private var arrowShapeBinding: Binding<ArrowShapeOptions> {
         Binding(
-            get: {
-                viewModel.selectedArrowStyle() ?? viewModel.selectedArrowStylePreset
-            },
+            get: { viewModel.selectedArrowShape() ?? viewModel.arrowShape },
             set: { newValue in
-                if !viewModel.updateSelectedArrowStyle(newValue) {
-                    viewModel.selectedArrowStylePreset = newValue
+                if !viewModel.updateSelectedArrowShape(newValue) {
+                    viewModel.arrowShape = newValue
                 }
             }
         )
+    }
+
+    private var arrowPresetBinding: Binding<ArrowPreset> {
+        Binding(
+            get: { isChoosingCustomArrow ? .custom : arrowShapeBinding.wrappedValue.preset },
+            set: { preset in
+                guard preset != .custom else {
+                    // Custom is whatever the sliders say, so choosing it opens them.
+                    isChoosingCustomArrow = true
+                    isStrokeAdvancedExpanded = true
+                    return
+                }
+                isChoosingCustomArrow = false
+                arrowShapeBinding.wrappedValue = ArrowShapeOptions(preset: preset)
+            }
+        )
+    }
+
+    /// A percent slider bound to one field of the arrow's shape.
+    private func arrowSlider(_ title: String, _ keyPath: WritableKeyPath<ArrowShapeOptions, CGFloat>, in range: ClosedRange<CGFloat>) -> some View {
+        let percent = Binding<CGFloat>(
+            get: { (arrowShapeBinding.wrappedValue[keyPath: keyPath] * 100).rounded() },
+            set: { newValue in
+                var shape = arrowShapeBinding.wrappedValue
+                shape[keyPath: keyPath] = newValue.rounded() / 100
+                arrowShapeBinding.wrappedValue = shape
+            }
+        )
+        return LabeledContent(title) {
+            HStack(spacing: 8) {
+                Slider(
+                    value: percent,
+                    in: (range.lowerBound * 100)...(range.upperBound * 100),
+                    step: 1,
+                    onEditingChanged: { viewModel.setAdjustingSelectedArrowShape($0) }
+                )
+                Text("\(Int(percent.wrappedValue))%")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .frame(width: 42, alignment: .trailing)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var textFontFamilyBinding: Binding<String> {
@@ -1115,12 +1292,17 @@ struct ScreenshotEditorView: View {
 
     private var styleControls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let primaryColorLabel {
-                SwatchColorPicker(label: primaryColorLabel, color: primaryColorBinding, supportsOpacity: true)
+            if viewModel.showsArrowStyleControl {
+                Picker("Arrow", selection: arrowPresetBinding) {
+                    ForEach(ArrowPreset.allCases) { preset in
+                        Text(preset.label).tag(preset)
+                    }
+                }
             }
 
-            if showsFillColorPicker {
-                SwatchColorPicker(label: "Fill", color: $viewModel.selectedFillColor, supportsOpacity: true, allowsTransparent: true)
+            // Stroked shapes show their color beside the stroke width below.
+            if let primaryColorLabel, !viewModel.showsLineWidthControl {
+                SwatchColorPicker(label: primaryColorLabel, color: primaryColorBinding, supportsOpacity: true)
             }
 
             if showsNumberTextColorPicker {
@@ -1253,22 +1435,131 @@ struct ScreenshotEditorView: View {
                 .accessibilityElement(children: .combine)
             }
 
+            if viewModel.showsLineWidthControl, let primaryColorLabel {
+                SwatchColorPicker(label: primaryColorLabel, color: primaryColorBinding, supportsOpacity: true)
+            }
+
             if viewModel.showsLineWidthControl {
-                Picker("Stroke", selection: $viewModel.lineWidth) {
-                    Text("1 px").tag(CGFloat(1))
-                    Text("2 px").tag(CGFloat(2))
-                    Text("4 px").tag(CGFloat(4))
-                    Text("6 px").tag(CGFloat(6))
-                    Text("8 px").tag(CGFloat(8))
-                    Text("10 px").tag(CGFloat(10))
+                LabeledContent(viewModel.showsOutlineControls ? "Size" : "Stroke") {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: lineWidthBinding,
+                            in: AnnotationStrokeMath.widthRange,
+                            step: 1,
+                            onEditingChanged: { viewModel.setAdjustingSelectedLineWidth($0) }
+                        )
+                        Text("\(Int(lineWidthBinding.wrappedValue)) px")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+
+            if viewModel.showsOutlineControls {
+                SwatchColorPicker(label: "Stroke color", color: outlineColorBinding, supportsOpacity: true)
+
+                LabeledContent("Stroke") {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: outlineWidthBinding,
+                            in: 0...20,
+                            step: 1,
+                            onEditingChanged: { viewModel.setAdjustingSelectedLineWidth($0) }
+                        )
+                        Text(outlineWidthBinding.wrappedValue > 0 ? "\(Int(outlineWidthBinding.wrappedValue)) px" : "None")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+
+            if viewModel.showsStrokeAlignmentControl {
+                Picker("Stroke position", selection: strokeAlignmentBinding) {
+                    ForEach(StrokeAlignment.allCases) { alignment in
+                        Text(alignment.label).tag(alignment)
+                    }
                 }
             }
 
-            if viewModel.showsArrowStyleControl {
-                HStack(spacing: 8) {
-                    ForEach(ArrowStyle.allCases) { style in
-                        ArrowStyleButton(style: style, isSelected: arrowStyleBinding.wrappedValue == style) {
-                            arrowStyleBinding.wrappedValue = style
+            if showsFillColorPicker {
+                SwatchColorPicker(label: "Fill", color: fillColorBinding, supportsOpacity: true, allowsTransparent: true)
+            }
+
+            if viewModel.showsStartCapControl {
+                Picker("Start", selection: startCapBinding) {
+                    ForEach(StrokeCap.allCases) { cap in
+                        Text(cap.label).tag(cap)
+                    }
+                }
+                .accessibilityLabel("Line start")
+            }
+
+            if viewModel.showsEndCapControl {
+                Picker("End", selection: endCapBinding) {
+                    ForEach(StrokeCap.allCases) { cap in
+                        Text(cap.label).tag(cap)
+                    }
+                }
+                .accessibilityLabel("Line end")
+            }
+
+            if viewModel.showsSketchControls {
+                Toggle("Hand-drawn", isOn: sketchBinding)
+
+                if sketchBinding.wrappedValue {
+                    LabeledContent("Roughness") {
+                        HStack(spacing: 8) {
+                            Slider(
+                                value: roughnessBinding,
+                                in: SketchGeometry.roughnessRange,
+                                step: 0.25,
+                                onEditingChanged: { viewModel.setAdjustingSelectedLineWidth($0) }
+                            )
+                            Text(String(format: "%.2g", Double(roughnessBinding.wrappedValue)))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .frame(width: 38, alignment: .trailing)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+
+            if viewModel.showsLineJoinControl {
+                // A plain toggle row: a DisclosureGroup nested in this sidebar's outline list
+                // never shows its content.
+                Button {
+                    isStrokeAdvancedExpanded.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .rotationEffect(.degrees(isStrokeAdvancedExpanded ? 90 : 0))
+                        Text("Advanced")
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Advanced")
+                .accessibilityValue(isStrokeAdvancedExpanded ? "Expanded" : "Collapsed")
+
+                if isStrokeAdvancedExpanded {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if viewModel.showsArrowStyleControl {
+                            arrowSlider("Arc", \.bend, in: ArrowShapeOptions.bendRange)
+                            arrowSlider("Start width", \.startWidthScale, in: ArrowShapeOptions.widthScaleRange)
+                            arrowSlider("End width", \.endWidthScale, in: ArrowShapeOptions.widthScaleRange)
+                            arrowSlider("Head size", \.headScale, in: ArrowShapeOptions.headScaleRange)
+                        }
+                        Picker("Corners", selection: lineJoinBinding) {
+                            ForEach(StrokeJoin.allCases) { join in
+                                Text(join.label).tag(join)
+                            }
                         }
                     }
                 }
@@ -1348,6 +1639,9 @@ struct ScreenshotEditorView: View {
                 }
             }
         }
+        // A different arrow (or tool) shows its own preset again.
+        .onChange(of: viewModel.selectedAnnotationIndex) { isChoosingCustomArrow = false }
+        .onChange(of: viewModel.selectedTool) { isChoosingCustomArrow = false }
     }
 
     private var rotationBinding: Binding<Double> {

@@ -196,7 +196,7 @@ struct ScreenshotEditorCanvasView: View {
                     Canvas { context, _ in
                         for annotation in viewModel.previewAnnotationsInDrawOrder where !annotation.isOpaqueRedaction {
                             let scaledRect = viewModel.scaledRect(annotation.rect, imageSize: imageSize, origin: .zero)
-                            drawAnnotation(annotation, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage, zoomScale: zoomScale)
+                            drawAnnotation(annotation, in: context, scaledRect: scaledRect, imageSize: imageSize, origin: .zero, sourceImage: viewModel.originalImage)
                         }
                     }
 
@@ -363,6 +363,17 @@ struct ScreenshotEditorCanvasView: View {
                             .frame(width: 12, height: 12)
                             .position(endPt)
                             .allowsHitTesting(false)
+
+                        // Bend handle (diamond) on the curve's midpoint
+                        if ann.tool == .arrow {
+                            Rectangle()
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                                .stroke(Color.accentColor, lineWidth: 2)
+                                .frame(width: 10, height: 10)
+                                .rotationEffect(.degrees(45))
+                                .position(ArrowGeometry.handle(start: startPt, end: endPt, bend: ann.arrow.bend))
+                                .allowsHitTesting(false)
+                        }
                     } else if let frame = viewModel.rotationFrame(for: ann) {
                         let corners = RotatableAnnotationGeometry.corners(of: frame.rect, rotation: frame.rotation, in: imageSize)
                             .map { CGPoint(x: origin.x + $0.x, y: origin.y + $0.y) }
@@ -558,13 +569,45 @@ struct ScreenshotEditorCanvasView: View {
         return (rotated, CGRect(x: -scaledRect.width / 2, y: -scaledRect.height / 2, width: scaledRect.width, height: scaledRect.height))
     }
 
-    private func drawAnnotation(_ annotation: ScreenshotAnnotation, in context: GraphicsContext, scaledRect: CGRect, imageSize: CGSize, origin: CGPoint, sourceImage: NSImage? = nil, zoomScale: CGFloat = 1) {
+    /// Hand-drawn strokes have round ends and corners, as rough.js draws them.
+    private static func sketchStyle(_ lineWidth: CGFloat) -> StrokeStyle {
+        StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+    }
+
+    /// Strokes a closed `shape` at its alignment. Inside and outside strokes are drawn at double
+    /// width and clipped to the shape (or to everything outside it), as the export does.
+    private func strokeAligned(_ shape: Path, alignment: StrokeAlignment, color: Color, style: StrokeStyle, in context: GraphicsContext) {
+        guard alignment != .center else {
+            context.stroke(shape, with: .color(color), style: style)
+            return
+        }
+        var doubled = style
+        doubled.lineWidth *= 2
+        var clipped = context
+        clipped.clip(to: shape, options: alignment == .outside ? .inverse : [])
+        clipped.stroke(shape, with: .color(color), style: doubled)
+    }
+
+    /// Fills an arrow's or line's body and draws its outline, if it has one.
+    private func drawBody(_ points: [CGPoint], annotation: ScreenshotAnnotation, pixelScale: CGFloat, in context: GraphicsContext) {
+        let body = Path(LineGeometry.path(points))
+        context.fill(body, with: .color(annotation.color))
+        guard annotation.outlineWidth > 0 else { return }
+        strokeAligned(
+            body,
+            alignment: annotation.strokeAlignment,
+            color: annotation.outlineColor,
+            style: StrokeStyle(lineWidth: annotation.outlineWidth * pixelScale, lineJoin: annotation.lineJoin.cgLineJoin),
+            in: context
+        )
+    }
+
+    private func drawAnnotation(_ annotation: ScreenshotAnnotation, in context: GraphicsContext, scaledRect: CGRect, imageSize: CGSize, origin: CGPoint, sourceImage: NSImage? = nil) {
         let color = annotation.color
-        // `imageSize` already grows with zoomScale, but stroke widths, arrowheads, and
-        // number-badge fonts are stored in fixed screen-space units. Scale them by
-        // zoomScale so the preview matches the exported annotation proportions at
-        // any zoom level instead of appearing thinner as the canvas is enlarged.
-        let lineWidth = annotation.lineWidth * zoomScale
+        // Stroke widths are in source-image pixels; `imageSize` is the displayed image, so this
+        // maps them onto the canvas at any zoom level, the same proportions the export draws.
+        let pixelScale = viewModel.displayScale(forImageSize: imageSize)
+        let lineWidth = annotation.lineWidth * pixelScale
 
         switch annotation.tool {
         case .rectangle:
@@ -572,82 +615,66 @@ struct ScreenshotEditorCanvasView: View {
             if annotation.fillColor != .clear {
                 ctx.fill(Path(rect), with: .color(annotation.fillColor))
             }
-            ctx.stroke(Path(rect), with: .color(color), lineWidth: lineWidth)
+            if annotation.isSketch {
+                let ops = SketchGeometry.rectangle(rect.standardized, width: annotation.lineWidth, roughness: annotation.roughness, seed: annotation.seed, scale: pixelScale)
+                ctx.stroke(Path(SketchGeometry.path(ops)), with: .color(color), style: Self.sketchStyle(lineWidth))
+            } else {
+                let ring = RectStrokeRing(bounds: rect.standardized, width: lineWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
+                ctx.fill(Path(ring.path), with: .color(color), style: FillStyle(eoFill: true))
+            }
 
         case .circle:
             let (ctx, rect) = rotatedDrawing(context, annotation: annotation, scaledRect: scaledRect)
             if annotation.fillColor != .clear {
                 ctx.fill(Path(ellipseIn: rect), with: .color(annotation.fillColor))
             }
-            ctx.stroke(Path(ellipseIn: rect), with: .color(color), lineWidth: lineWidth)
+            if annotation.isSketch {
+                let ops = SketchGeometry.ellipse(rect.standardized, width: annotation.lineWidth, roughness: annotation.roughness, seed: annotation.seed, scale: pixelScale)
+                ctx.stroke(Path(SketchGeometry.path(ops)), with: .color(color), style: Self.sketchStyle(lineWidth))
+            } else {
+                strokeAligned(Path(ellipseIn: rect), alignment: annotation.strokeAlignment, color: color, style: StrokeStyle(lineWidth: lineWidth), in: ctx)
+            }
 
         case .arrow:
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
-            let start = linePoints.start
-            let end = linePoints.end
-            let headLength = max(18 * zoomScale, lineWidth * 4.0)
-            let headAngle: CGFloat = .pi / 6
-            let control = arrowControlPoint(start: start, end: end, style: annotation.arrowStyle)
-            let tipAngle: CGFloat
-            switch annotation.arrowStyle {
-            case .straight:
-                tipAngle = atan2(end.y - start.y, end.x - start.x)
-            case .curvedLeft, .curvedRight:
-                tipAngle = atan2(end.y - control.y, end.x - control.x)
-            }
-
-            let wing1 = CGPoint(
-                x: end.x - headLength * cos(tipAngle - headAngle),
-                y: end.y - headLength * sin(tipAngle - headAngle)
+            let outline = ArrowGeometry.build(
+                start: linePoints.start,
+                end: linePoints.end,
+                width: annotation.lineWidth,
+                options: annotation.arrow,
+                startCap: annotation.startCap,
+                join: annotation.lineJoin,
+                scale: pixelScale,
+                roughness: annotation.sketchRoughness,
+                seed: annotation.seed
             )
-            let wing2 = CGPoint(
-                x: end.x - headLength * cos(tipAngle + headAngle),
-                y: end.y - headLength * sin(tipAngle + headAngle)
-            )
-            // Shaft ends at the base of the filled arrowhead
-            let shaftEnd = CGPoint(
-                x: end.x - headLength * cos(headAngle) * cos(tipAngle),
-                y: end.y - headLength * cos(headAngle) * sin(tipAngle)
-            )
-            var linePath = Path()
-            linePath.move(to: start)
-            switch annotation.arrowStyle {
-            case .straight:
-                linePath.addLine(to: shaftEnd)
-            case .curvedLeft, .curvedRight:
-                linePath.addQuadCurve(to: shaftEnd, control: control)
-            }
-            context.stroke(linePath, with: .color(color), lineWidth: lineWidth)
-
-            // Filled triangular arrowhead
-            var arrowHead = Path()
-            arrowHead.move(to: end)
-            arrowHead.addLine(to: wing1)
-            arrowHead.addLine(to: wing2)
-            arrowHead.closeSubpath()
-            context.fill(arrowHead, with: .color(color))
+            // One body, so a translucent color fills evenly without a layer.
+            drawBody(outline.points, annotation: annotation, pixelScale: pixelScale, in: context)
 
         case .line:
-            var path = Path()
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
-            path.move(to: linePoints.start)
-            path.addLine(to: linePoints.end)
-            context.stroke(path, with: .color(color), lineWidth: lineWidth)
+            let outline = LineGeometry.outline(
+                start: linePoints.start,
+                end: linePoints.end,
+                width: annotation.lineWidth,
+                startCap: annotation.startCap,
+                endCap: annotation.endCap,
+                scale: pixelScale,
+                roughness: annotation.sketchRoughness,
+                seed: annotation.seed
+            )
+            drawBody(outline, annotation: annotation, pixelScale: pixelScale, in: context)
 
         case .pencil:
             if annotation.points.count > 1 {
-                var path = Path()
-                let scaledPoints = annotation.points.map { pt in
-                    CGPoint(
-                        x: origin.x + pt.x * imageSize.width,
-                        y: origin.y + pt.y * imageSize.height
-                    )
+                // The outline is built in image pixels, where its thresholds are defined, then placed.
+                let pixelSize = CGSize(width: imageSize.width / pixelScale, height: imageSize.height / pixelScale)
+                let pixelPoints = annotation.points.map { CGPoint(x: $0.x * pixelSize.width, y: $0.y * pixelSize.height) }
+                let outline = PenGeometry.outline(pixelPoints, width: annotation.lineWidth)
+                var place = CGAffineTransform(translationX: origin.x, y: origin.y).scaledBy(x: pixelScale, y: pixelScale)
+                if let placed = PenGeometry.smoothPath(outline).copy(using: &place) {
+                    context.fill(Path(placed), with: .color(color))
                 }
-                path.move(to: scaledPoints[0])
-                for pt in scaledPoints.dropFirst() {
-                    path.addLine(to: pt)
-                }
-                context.stroke(path, with: .color(color), lineWidth: lineWidth)
             }
 
         case .blur:

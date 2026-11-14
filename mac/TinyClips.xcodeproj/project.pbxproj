@@ -219,6 +219,7 @@
 		B600000000000000000000F1 /* StudioInspectorPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A500000000000000000000F1 /* StudioInspectorPanelTests.swift */; };
 		B600000000000000000000F2 /* StudioProjectFolderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A500000000000000000000F2 /* StudioProjectFolderTests.swift */; };
 		B60000000000000000000003 /* StudioFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000003 /* StudioFixtureTests.swift */; };
+		B600000000000000000000F5 /* ScreenshotFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A500000000000000000000F5 /* ScreenshotFixtureTests.swift */; };
 		A1D0A0000000000000000002 /* StudioAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0A0000000000000000001 /* StudioAnnotations.swift */; };
 		A1D0A0000000000000000003 /* StudioAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0A0000000000000000001 /* StudioAnnotations.swift */; };
 		A1D0A0000000000000000005 /* StudioAnnotationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0A0000000000000000004 /* StudioAnnotationTests.swift */; };
@@ -412,6 +413,7 @@
 		A500000000000000000000F1 /* StudioInspectorPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioInspectorPanelTests.swift; sourceTree = "<group>"; };
 		A500000000000000000000F2 /* StudioProjectFolderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioProjectFolderTests.swift; sourceTree = "<group>"; };
 		A50000000000000000000003 /* StudioFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioFixtureTests.swift; sourceTree = "<group>"; };
+		A500000000000000000000F5 /* ScreenshotFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotFixtureTests.swift; sourceTree = "<group>"; };
 		A1D0A0000000000000000001 /* StudioAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioAnnotations.swift; sourceTree = "<group>"; };
 		A1D0A0000000000000000004 /* StudioAnnotationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioAnnotationTests.swift; sourceTree = "<group>"; };
 		A400000000000000000000F7 /* StudioExportPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioExportPresets.swift; sourceTree = "<group>"; };
@@ -686,6 +688,7 @@
 				A500000000000000000000F2 /* StudioProjectFolderTests.swift */,
 				A1D0A0000000000000000004 /* StudioAnnotationTests.swift */,
 				A50000000000000000000003 /* StudioFixtureTests.swift */,
+				A500000000000000000000F5 /* ScreenshotFixtureTests.swift */,
 				A500000000000000000000F9 /* StudioCaptionPainterTests.swift */,
 				A500000000000000000000FA /* StudioCaptionGenerationTests.swift */,
 				A500000000000000000000F3 /* StudioCaptionsTests.swift */,
@@ -1127,6 +1130,7 @@
 				B600000000000000000000F2 /* StudioProjectFolderTests.swift in Sources */,
 				A1D0A0000000000000000005 /* StudioAnnotationTests.swift in Sources */,
 				B60000000000000000000003 /* StudioFixtureTests.swift in Sources */,
+				B600000000000000000000F5 /* ScreenshotFixtureTests.swift in Sources */,
 				B600000000000000000000F9 /* StudioCaptionPainterTests.swift in Sources */,
 				B600000000000000000000FA /* StudioCaptionGenerationTests.swift in Sources */,
 				B600000000000000000000F3 /* StudioCaptionsTests.swift in Sources */,

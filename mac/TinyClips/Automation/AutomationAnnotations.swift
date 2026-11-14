@@ -5,9 +5,8 @@ import SwiftUI
 /// the result renders exactly like an edit made in the editor.
 enum AutomationAnnotations {
     static let maximumCount = 500
-    /// Editor text sizes are relative to an 800-pixel-wide image; strokes grow past 900 pixels.
+    /// Editor text sizes are relative to an 800-pixel-wide image. Stroke widths are image pixels.
     static let editorTextReferenceWidth: CGFloat = 800
-    static let editorStrokeReferenceWidth: CGFloat = 900
 
     private static let allowedKeys: Set<String> = [
         "type", "bounds", "points", "text", "color", "textColor", "fillColor",
@@ -96,12 +95,12 @@ enum AutomationAnnotations {
         let textColor = try parseColor(object["textColor"], key: "textColor", label: label) ?? .white
         let fillColor = try parseColor(object["fillColor"], key: "fillColor", label: label) ?? .clear
 
-        var lineWidth: CGFloat = 4
+        var lineWidth = AnnotationStrokeMath.defaultWidth(forImagePixelWidth: size.width)
         if object["lineWidth"] != nil {
             guard let pixels = AutomationValue.double(object["lineWidth"]), pixels.isFinite, pixels >= 0, pixels <= 500 else {
                 throw fail("lineWidth must be a number from 0 to 500.")
             }
-            lineWidth = CGFloat(pixels) / max(1, size.width / editorStrokeReferenceWidth)
+            lineWidth = CGFloat(pixels)
         }
 
         var annotation = ScreenshotAnnotation(

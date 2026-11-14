@@ -133,7 +133,7 @@ public sealed class ScreenshotExportTests
             SizeScale = 1.5,
             Redaction = RedactionLevel.Heavy,
             RedactStyle = RedactionStyle.Pixelate,
-            ArrowStyle = ArrowStyle.Curved2,
+            Arrow = new ArrowShapeOptions(-0.3, 0.5, 1.5, 2),
             TextColor = Color.FromArgb(255, 9, 10, 11),
             FontSize = 42,
             FontFamily = "Arial",
@@ -154,9 +154,9 @@ public sealed class ScreenshotExportTests
         var snapshot = annotation.CaptureSnapshot();
         var expected = new AnnotationSnapshot(EditTool.Text, new Rect(10, 20, 30, 40),
             Color.FromArgb(255, 1, 2, 3), Color.FromArgb(96, 4, 5, 6), 7, "synthetic text",
-            8, 1.5, RedactionLevel.Heavy, RedactionStyle.Pixelate, ArrowStyle.Curved2,
+            8, 1.5, RedactionLevel.Heavy, RedactionStyle.Pixelate, new ArrowShapeOptions(-0.3, 0.5, 1.5, 2),
             snapshot.Points, Color.FromArgb(255, 9, 10, 11), 42, "Arial", true, true, true, true,
-            annotation.TextBoxStyle, 45);
+            annotation.TextBoxStyle, 45, OutlineColor: Color.FromArgb(255, 0, 0, 0), Seed: annotation.Seed);
         Assert.Equal(expected, snapshot);
 
         annotation.Points[0] = Vector2.Zero;
