@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v2.1.1-windows] - 2026-11-14
+
 ### Fixed
 - The screenshot editor now restores drawing-tool color, stroke, and fill defaults when switching tools, and text edits no longer leave a selection active under another tool.
 
