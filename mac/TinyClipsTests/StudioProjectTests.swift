@@ -1539,16 +1539,6 @@ final class StudioProjectTests: XCTestCase {
         )
     }
 
-    private func fullyPopulatedEvents() -> StudioEvents {
-        StudioEvents(
-            capture: StudioCaptureInfo(width: 1920, height: 1080, scale: 2, kind: .region),
-            clicks: [StudioClickEvent(t: 1, x: 0.2, y: 0.3, button: .right)],
-            cursor: [StudioCursorSample(t: 2, x: 0.4, y: 0.5)],
-            cameraCorners: [StudioCameraCornerEvent(t: 3, corner: .topLeft)],
-            markers: [.object(["future": .bool(true)])]
-        )
-    }
-
     private func writeProject(_ project: StudioProject, folderID: String) throws {
         let directory = directoryURL.appendingPathComponent(folderID, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

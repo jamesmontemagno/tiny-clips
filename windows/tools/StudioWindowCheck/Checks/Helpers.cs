@@ -186,9 +186,6 @@ internal sealed partial class WindowChecks
     private static StudioProject WithScene(StudioProject project, Func<StudioScene, StudioScene> edit) =>
         project with { Scenes = [edit(project.Scenes[0])] };
 
-    /// <summary>How often the process asked for the keyboard focus or for activation since a moment, and was refused.</summary>
-    private static int FocusRequestsSince(double moment) => ForegroundGuard.Events().Count(e => e.At >= moment);
-
     /// <summary>The size an export of the project comes to at the resolution the tool's settings save, which the header names.</summary>
     private StudioSize ExportedSize(StudioProject project) =>
         StudioExportPresets.GetSize(StudioCanvasMath.NaturalSize(project), _services.Settings.StudioExportResolution);
@@ -273,13 +270,6 @@ internal sealed partial class WindowChecks
             + $"overlay {F(overlay.ActualWidth, "0.##")}x{F(overlay.ActualHeight, "0.##")} at ({F(overlayAt.X, "0.##")},{F(overlayAt.Y, "0.##")}); "
             + $"handle Canvas.Left {F(Canvas.GetLeft(handle), "0.##")}, Canvas.Top {F(Canvas.GetTop(handle), "0.##")}, {F(handle.ActualWidth, "0.##")}x{F(handle.ActualHeight, "0.##")}; "
             + $"view model canvas {F(viewModel.CanvasWidth)}x{F(viewModel.CanvasHeight)}, bubble {(viewModel.BubbleRect is { } b ? R(b) : "none")}";
-    });
-
-    /// <summary>What the editor says about itself, for the detail of a check that did not hold. Read on the UI thread.</summary>
-    private string StateOf(Editor editor) => OnUi(() =>
-    {
-        var viewModel = editor.Window.ViewModel;
-        return $"ready {viewModel.IsReady}, editable {viewModel.IsEditable}, exporting {viewModel.IsExporting}, playing {viewModel.IsPlaying}, playhead {F(viewModel.Playhead, "0.####")}, error \"{viewModel.ErrorMessage}\"";
     });
 
     // ---------------------------------------------------------------------------------------

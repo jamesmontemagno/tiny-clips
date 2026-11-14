@@ -20,7 +20,6 @@ export const canonLogin = login => {
     const lower = login.toLowerCase();
     return AGENT_LOGINS.has(lower) ? AGENT : lower;
 };
-export const isAgent = login => canonLogin(login) === AGENT;
 export const shortRepo = nwo => String(nwo).split("/")[1] ?? String(nwo);
 export const cleanTitle = title => String(title ?? "")
     .replace(/^\s*\[?Feature\]?:\s*/i, "")

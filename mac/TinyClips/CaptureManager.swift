@@ -3027,14 +3027,6 @@ class CaptureManager: ObservableObject {
 
     // Bridges synchronous CPU-heavy work to a background queue so it does not
     // block the @MainActor run loop (which would freeze the processing indicator).
-    nonisolated private static func runOffMain<T>(_ work: @escaping () -> T) async -> T {
-        await withCheckedContinuation { (continuation: CheckedContinuation<T, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: work())
-            }
-        }
-    }
-
     nonisolated private static func runOffMainThrowing<T>(_ work: @escaping () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
