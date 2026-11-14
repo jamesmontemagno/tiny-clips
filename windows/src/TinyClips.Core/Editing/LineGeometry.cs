@@ -10,10 +10,8 @@ public static class LineGeometry
 {
     private const int CapSegments = 8;
 
-    /// <param name="roughness">Above 0, the line follows a hand-drawn wobble seeded by
-    /// <paramref name="seed"/> (see <see cref="SketchGeometry"/>).</param>
     public static IReadOnlyList<PointD> Outline(
-        PointD start, PointD end, double width, StrokeCap startCap, StrokeCap endCap, double scale = 1, double roughness = 0, int seed = 0)
+        PointD start, PointD end, double width, StrokeCap startCap, StrokeCap endCap, double scale = 1)
     {
         var dx = end.X - start.X;
         var dy = end.Y - start.Y;
@@ -23,10 +21,6 @@ public static class LineGeometry
             return Array.Empty<PointD>();
         }
         var u = new PointD(dx * (1 / length), dy * (1 / length));
-        if (roughness > 0)
-        {
-            return SketchedOutline(start, end, width, scale, startCap, endCap, roughness, seed, u);
-        }
         var n = new PointD(-u.Y, u.X);
         var half = width / 2 * scale;
         var points = new List<PointD>(4 + 2 * CapSegments)
@@ -46,26 +40,6 @@ public static class LineGeometry
     /// <paramref name="outward"/>. <paramref name="normal"/> points from the edge the outline
     /// arrives on to the one it leaves by.
     /// </summary>
-    private static IReadOnlyList<PointD> SketchedOutline(
-        PointD start, PointD end, double width, double scale, StrokeCap startCap, StrokeCap endCap, double roughness, int seed, PointD u)
-    {
-        var half = width / 2 * scale;
-        var (p0, c1, c2, p3) = SketchGeometry.Centerline(start, end, width, roughness, seed, scale);
-        var (left, right) = ArrowGeometry.ShaftEdges(p0, c1, c2, p3, 1, half, half, u);
-        var endTangent = ArrowGeometry.Normalize(ArrowGeometry.CubicTangent(p0, c1, c2, p3, 1), u);
-        var startTangent = ArrowGeometry.Normalize(ArrowGeometry.CubicTangent(p0, c1, c2, p3, 0), u);
-        var points = new List<PointD>(left.Length * 2 + 2 * CapSegments);
-        points.AddRange(left);
-        AddCap(points, p3, endTangent, ArrowGeometry.RightNormal(endTangent), half, endCap);
-        for (var i = right.Length - 1; i >= 0; i--)
-        {
-            points.Add(right[i]);
-        }
-        var startNormal = ArrowGeometry.RightNormal(startTangent);
-        AddCap(points, p0, new PointD(-startTangent.X, -startTangent.Y), new PointD(-startNormal.X, -startNormal.Y), half, startCap);
-        return points;
-    }
-
     internal static void AddCap(List<PointD> points, PointD center, PointD outward, PointD normal, double half, StrokeCap cap)
     {
         if (cap == StrokeCap.Round)

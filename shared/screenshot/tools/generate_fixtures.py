@@ -22,8 +22,7 @@ ARROW_DIR = FIXTURES / "arrow"
 ALIGNMENT_DIR = FIXTURES / "alignment"
 LINE_DIR = FIXTURES / "line"
 PEN_DIR = FIXTURES / "pen"
-SKETCH_DIR = FIXTURES / "sketch"
-FIXTURE_DIRS = [ARROW_DIR, ALIGNMENT_DIR, LINE_DIR, PEN_DIR, SKETCH_DIR]
+FIXTURE_DIRS = [ARROW_DIR, ALIGNMENT_DIR, LINE_DIR, PEN_DIR]
 
 # Arrow geometry. Points are y-down; widths are in source-image pixels and `scale` is the
 # caller's units per image pixel. An arrow is one filled outline: a tapered shaft along a
@@ -42,7 +41,6 @@ VALID_CAPS = {"butt", "round", "square"}
 ARROW_PRESETS = {
     "classic": {"bend": 0, "startWidthScale": 1, "endWidthScale": 1, "headScale": 1},
     "tapered": {"bend": 0, "startWidthScale": 0.25, "endWidthScale": 1, "headScale": 1.2},
-    "curved": {"bend": 0.2, "startWidthScale": 1, "endWidthScale": 1, "headScale": 1},
 }
 
 
@@ -122,187 +120,6 @@ def arrow_bend(start, end, handle):
     return clamp(-(offset["x"] * n["x"] + offset["y"] * n["y"]) / l, -1, 1)
 
 
-# Hand-drawn ("sketch") style: a port of rough.js (MIT, (c) 2019 Preet Shihn,
-# github.com/rough-stuff/rough at 56a2762) with its default options. Each shape seeds its own
-# Park-Miller generator, so a stored seed redraws the same wobble everywhere. Geometry is computed
-# in units of half the stroke width (at least 0.5), so the wobble looks the same at any stroke
-# width or image size, as if rough.js drew it with its default 2-unit-wide stroke.
-ROUGH_BOWING = 1
-ROUGH_MAX_RANDOMNESS_OFFSET = 2
-ROUGH_CURVE_FITTING = 0.95
-ROUGH_CURVE_STEP_COUNT = 9
-ROUGH_CURVE_TIGHTNESS = 0
-ROUGH_MINIMUM_UNIT = 0.5
-
-
-def imul(a, b):
-    r = (a * b) & 0xFFFFFFFF
-    return r - 0x100000000 if r >= 0x80000000 else r
-
-
-class RoughRandom:
-    def __init__(self, seed):
-        if seed == 0:
-            raise ValueError("a sketch needs a non-zero seed")
-        self.seed = seed
-
-    def next(self):
-        self.seed = imul(48271, self.seed)
-        return (0x7FFFFFFF & self.seed) / 2 ** 31
-
-
-class Rough:
-    def __init__(self, roughness, seed):
-        self.roughness = roughness
-        self.random = RoughRandom(seed)
-
-    def offset(self, lo, hi, gain=1):
-        return self.roughness * gain * ((self.random.next() * (hi - lo)) + lo)
-
-    def offset_opt(self, x, gain=1):
-        return self.offset(-x, x, gain)
-
-    def line(self, x1, y1, x2, y2, move, overlay):
-        length_sq = (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)
-        length = math.sqrt(length_sq)
-        if length < 200:
-            gain = 1
-        elif length > 500:
-            gain = 0.4
-        else:
-            gain = (-0.0016668) * length + 1.233334
-        offset = ROUGH_MAX_RANDOMNESS_OFFSET
-        if offset * offset * 100 > length_sq:
-            offset = length / 10
-        half_offset = offset / 2
-        diverge = 0.2 + self.random.next() * 0.2
-        mid_x = ROUGH_BOWING * ROUGH_MAX_RANDOMNESS_OFFSET * (y2 - y1) / 200
-        mid_y = ROUGH_BOWING * ROUGH_MAX_RANDOMNESS_OFFSET * (x1 - x2) / 200
-        mid_x = self.offset_opt(mid_x, gain)
-        mid_y = self.offset_opt(mid_y, gain)
-        jitter = half_offset if overlay else offset
-        ops = []
-        if move:
-            mx = x1 + self.offset_opt(jitter, gain)
-            my = y1 + self.offset_opt(jitter, gain)
-            ops.append({"op": "move", "data": [mx, my]})
-        data = []
-        data.append(mid_x + x1 + (x2 - x1) * diverge + self.offset_opt(jitter, gain))
-        data.append(mid_y + y1 + (y2 - y1) * diverge + self.offset_opt(jitter, gain))
-        data.append(mid_x + x1 + 2 * (x2 - x1) * diverge + self.offset_opt(jitter, gain))
-        data.append(mid_y + y1 + 2 * (y2 - y1) * diverge + self.offset_opt(jitter, gain))
-        data.append(x2 + self.offset_opt(jitter, gain))
-        data.append(y2 + self.offset_opt(jitter, gain))
-        ops.append({"op": "bcurveTo", "data": data})
-        return ops
-
-    def double_line(self, x1, y1, x2, y2):
-        return self.line(x1, y1, x2, y2, True, False) + self.line(x1, y1, x2, y2, True, True)
-
-    def rectangle(self, x, y, w, h):
-        pts = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
-        ops = []
-        for i in range(3):
-            ops += self.double_line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1])
-        ops += self.double_line(pts[3][0], pts[3][1], pts[0][0], pts[0][1])
-        return ops
-
-    def ellipse(self, cx, cy, w, h):
-        psq = math.sqrt(math.pi * 2 * math.sqrt(((w / 2) * (w / 2) + (h / 2) * (h / 2)) / 2))
-        step_count = math.ceil(max(ROUGH_CURVE_STEP_COUNT, (ROUGH_CURVE_STEP_COUNT / math.sqrt(200)) * psq))
-        increment = (math.pi * 2) / step_count
-        rx = abs(w / 2)
-        ry = abs(h / 2)
-        fit_randomness = 1 - ROUGH_CURVE_FITTING
-        rx += self.offset_opt(rx * fit_randomness)
-        ry += self.offset_opt(ry * fit_randomness)
-        overlap = increment * self.offset(0.1, self.offset(0.4, 1))
-        ops = self.curve(self.ellipse_points(increment, cx, cy, rx, ry, 1, overlap))
-        if self.roughness != 0:
-            ops += self.curve(self.ellipse_points(increment, cx, cy, rx, ry, 1.5, 0))
-        return ops
-
-    def ellipse_points(self, increment, cx, cy, rx, ry, offset, overlap):
-        pts = []
-        if self.roughness == 0:
-            increment = increment / 4
-            pts.append((cx + rx * math.cos(-increment), cy + ry * math.sin(-increment)))
-            angle = 0
-            while angle <= math.pi * 2:
-                pts.append((cx + rx * math.cos(angle), cy + ry * math.sin(angle)))
-                angle = angle + increment
-            pts.append((cx + rx * math.cos(0), cy + ry * math.sin(0)))
-            pts.append((cx + rx * math.cos(increment), cy + ry * math.sin(increment)))
-            return pts
-        rad_offset = self.offset_opt(0.5) - (math.pi / 2)
-
-        def jittered(scale, angle):
-            x = self.offset_opt(offset) + cx + scale * rx * math.cos(angle)
-            y = self.offset_opt(offset) + cy + scale * ry * math.sin(angle)
-            return (x, y)
-
-        pts.append(jittered(0.9, rad_offset - increment))
-        end_angle = math.pi * 2 + rad_offset - 0.01
-        angle = rad_offset
-        while angle < end_angle:
-            pts.append(jittered(1, angle))
-            angle = angle + increment
-        pts.append(jittered(1, rad_offset + math.pi * 2 + overlap * 0.5))
-        pts.append(jittered(0.98, rad_offset + overlap))
-        pts.append(jittered(0.9, rad_offset + overlap * 0.5))
-        return pts
-
-    def curve(self, pts):
-        ops = []
-        if len(pts) > 3:
-            s_ = 1 - ROUGH_CURVE_TIGHTNESS
-            ops.append({"op": "move", "data": [pts[1][0], pts[1][1]]})
-            i = 1
-            while i + 2 < len(pts):
-                b1 = (pts[i][0] + (s_ * pts[i + 1][0] - s_ * pts[i - 1][0]) / 6, pts[i][1] + (s_ * pts[i + 1][1] - s_ * pts[i - 1][1]) / 6)
-                b2 = (pts[i + 1][0] + (s_ * pts[i][0] - s_ * pts[i + 2][0]) / 6, pts[i + 1][1] + (s_ * pts[i][1] - s_ * pts[i + 2][1]) / 6)
-                ops.append({"op": "bcurveTo", "data": [b1[0], b1[1], b2[0], b2[1], pts[i + 1][0], pts[i + 1][1]]})
-                i += 1
-        return ops
-
-
-def sketch_unit(width, scale=1):
-    """The unit for a width in image pixels, in the caller's units (scale per image pixel). The
-    minimum applies in image pixels, so the wobble looks the same at every zoom."""
-    return max(ROUGH_MINIMUM_UNIT, width / 2) * scale
-
-
-def scale_ops(ops, unit):
-    return [{"op": o["op"], "data": [v * unit for v in o["data"]]} for o in ops]
-
-
-def sketch_rectangle(r, width, roughness, seed):
-    unit = sketch_unit(width)
-    ops = Rough(roughness, seed).rectangle(r["x"] / unit, r["y"] / unit, r["width"] / unit, r["height"] / unit)
-    return scale_ops(ops, unit)
-
-
-def sketch_ellipse(r, width, roughness, seed):
-    unit = sketch_unit(width)
-    cx = (r["x"] + r["width"] / 2) / unit
-    cy = (r["y"] + r["height"] / 2) / unit
-    ops = Rough(roughness, seed).ellipse(cx, cy, r["width"] / unit, r["height"] / unit)
-    return scale_ops(ops, unit)
-
-
-def sketch_centerline(start, end, width, roughness, seed, scale=1):
-    """A hand-drawn cubic from start to end: rough.js's single-stroke line."""
-    unit = sketch_unit(width, scale)
-    ops = Rough(roughness, seed).line(start["x"] / unit, start["y"] / unit, end["x"] / unit, end["y"] / unit, True, False)
-    m, c = ops[0]["data"], ops[1]["data"]
-    return (
-        point(m[0] * unit, m[1] * unit),
-        point(c[0] * unit, c[1] * unit),
-        point(c[2] * unit, c[3] * unit),
-        point(c[4] * unit, c[5] * unit),
-    )
-
-
 def cubic(p0, c1, c2, p3, t):
     u = 1 - t
     a, b, c, d = u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t
@@ -321,13 +138,8 @@ def cubic_tangent(p0, c1, c2, p3, t):
     )
 
 
-def arrow_centerline(start, end, control, width, scale, roughness, seed):
-    """The arrow's centerline as a cubic: its bend's quadratic, raised to a cubic, plus the
-    hand-drawn wobble when sketched."""
-    if roughness > 0:
-        s0, c1, c2, e = sketch_centerline(start, end, width, roughness, seed, scale)
-        d = mul(sub(control, lerp(start, end, 0.5)), 2 / 3)
-        return s0, add(c1, d), add(c2, d), e
+def arrow_centerline(start, end, control):
+    """The arrow's centerline as a cubic: its bend's quadratic, raised to a cubic."""
     return start, add(start, mul(sub(control, start), 2 / 3)), add(end, mul(sub(control, end), 2 / 3)), end
 
 
@@ -344,7 +156,7 @@ def corner(prev, vertex, nxt, size, join):
     return [quad(a, vertex, b, j / CORNER_SEGMENTS) for j in range(CORNER_SEGMENTS + 1)]
 
 
-def arrow_outline(start, end, width, bend, start_scale, end_scale, head_scale, start_cap, join, scale, roughness=0, seed=0):
+def arrow_outline(start, end, width, bend, start_scale, end_scale, head_scale, start_cap, join, scale):
     if start_cap not in VALID_CAPS:
         raise ValueError(f"unknown cap {start_cap!r}")
     if join not in VALID_JOINS:
@@ -356,7 +168,7 @@ def arrow_outline(start, end, width, bend, start_scale, end_scale, head_scale, s
     if l < 0.001:
         return {"control": control, "handle": handle, "points": []}
     u = mul(chord, 1 / l)
-    p0, c1, c2, p3 = arrow_centerline(start, end, control, width, scale, roughness, seed)
+    p0, c1, c2, p3 = arrow_centerline(start, end, control)
 
     head = min(head_scale * head_length(width) * scale, MAXIMUM_HEAD_FRACTION * l)
     tip_direction = normalize(sub(p3, c2), u)
@@ -480,27 +292,14 @@ def generate_alignments():
     }
 
 
-def line_outline(start, end, width, start_cap, end_cap, scale, roughness=0, seed=0):
-    """A line's filled outline: its two edges joined by each end's cap. Sketched lines follow
-    a hand-drawn cubic; others are straight."""
+def line_outline(start, end, width, start_cap, end_cap, scale):
+    """A line's filled outline: its two edges joined by each end's cap."""
     for cap in (start_cap, end_cap):
         if cap not in VALID_CAPS:
             raise ValueError(f"unknown cap {cap!r}")
     chord = sub(end, start)
     if length(chord) < 0.001:
         return []
-    if roughness > 0:
-        u = normalize(chord, point(1, 0))
-        half = width / 2 * scale
-        p0, c1, c2, p3 = sketch_centerline(start, end, width, roughness, seed, scale)
-        left, right = shaft_edges(p0, c1, c2, p3, 1, half, half, u)
-        end_tangent = normalize(cubic_tangent(p0, c1, c2, p3, 1), u)
-        start_tangent = normalize(cubic_tangent(p0, c1, c2, p3, 0), u)
-        points = list(left)
-        points += cap_points(p3, end_tangent, right_normal(end_tangent), half, end_cap)
-        points += list(reversed(right))
-        points += cap_points(p0, mul(start_tangent, -1), mul(right_normal(start_tangent), -1), half, start_cap)
-        return points
     u = normalize(chord, point(1, 0))
     n = right_normal(u)
     half = width / 2 * scale
@@ -803,21 +602,29 @@ def arrow_case(start, end, width, preset=None, scale=1, start_cap="round", join=
     }
 
 
+def arrow_variety(preset=None, **overrides):
+    return [
+        arrow_case((100, 100), (400, 100), 2, preset, **overrides),
+        arrow_case((100, 100), (400, 100), 10, preset, **overrides),
+        arrow_case((50, 300), (350, 60), 6, preset, **overrides),
+        arrow_case((200, 400), (200, 80), 4, preset, **overrides),
+        arrow_case((10, 10), (22, 14), 8, preset, **overrides),
+        arrow_case((100, 100), (400, 100), 6, preset, scale=0.5, **overrides),
+    ]
+
+
 def generate_arrows():
     fixtures = {}
     for preset in sorted(ARROW_PRESETS):
         fixtures[f"{preset}.json"] = {
             "description": f"The {preset} preset: thin (minimum head), thick, diagonal, upward, short (head clamp), and a preview scale.",
             "preset": ARROW_PRESETS[preset],
-            "cases": [
-                arrow_case((100, 100), (400, 100), 2, preset),
-                arrow_case((100, 100), (400, 100), 10, preset),
-                arrow_case((50, 300), (350, 60), 6, preset),
-                arrow_case((200, 400), (200, 80), 4, preset),
-                arrow_case((10, 10), (22, 14), 8, preset),
-                arrow_case((100, 100), (400, 100), 6, preset, scale=0.5),
-            ],
+            "cases": arrow_variety(preset),
         }
+    fixtures["bent.json"] = {
+        "description": "A classic arrow bent with its handle (bend 0.2): thin (minimum head), thick, diagonal, upward, short (head clamp), and a preview scale.",
+        "cases": arrow_variety(bend=0.2),
+    }
     fixtures["options.json"] = {
         "description": "Tail caps, head corners, a right bend, a full bend, a wide tail, a small head that clamps the shaft, and a zero-length arrow.",
         "cases": [
@@ -845,68 +652,10 @@ def generate_arrows():
     return fixtures
 
 
-def generate_sketches():
-    seeds = [1, 12345, 2147483646, 987654321]
-    random_cases = []
-    for seed in seeds:
-        r = RoughRandom(seed)
-        random_cases.append({"seed": seed, "values": [r.next() for _ in range(8)]})
-
-    box = rect(40, 30, 220, 140)
-    small = rect(10, 10, 30, 12)
-    rect_cases = [
-        {"bounds": b, "width": w, "roughness": rough, "seed": seed, "expected": sketch_rectangle(b, w, rough, seed)}
-        for b, w, rough, seed in [(box, 4, 1, 1), (box, 12, 2, 12345), (small, 2, 1, 987654321), (box, 6, 3, 2147483646)]
-    ]
-    ellipse_cases = [
-        {"bounds": b, "width": w, "roughness": rough, "seed": seed, "expected": sketch_ellipse(b, w, rough, seed)}
-        for b, w, rough, seed in [(box, 4, 1, 1), (box, 12, 2, 12345), (small, 2, 1, 987654321), (box, 6, 0, 42)]
-    ]
-    line_cases = []
-    # The last case is a thin line zoomed out, where the wobble's minimum unit applies in pixels.
-    for start, end, w, rough, seed, caps, scale in [
-        ((100, 100), (400, 100), 6, 1, 1, ("round", "round"), 1),
-        ((50, 300), (350, 60), 10, 2, 12345, ("butt", "square"), 1),
-        ((10, 10), (40, 20), 4, 1, 987654321, ("square", "round"), 1),
-        ((50, 50), (200, 120), 0.5, 2, 42, ("round", "round"), 0.5),
-    ]:
-        case = line_case(start, end, w, caps[0], caps[1], scale)
-        case["roughness"] = rough
-        case["seed"] = seed
-        case["expected"] = line_outline(case["start"], case["end"], w, caps[0], caps[1], scale, rough, seed)
-        line_cases.append(case)
-    arrow_cases = []
-    # The last case is a thin arrow zoomed out, where the wobble's minimum unit applies in pixels.
-    for start, end, w, preset, rough, seed, scale in [
-        ((100, 100), (400, 100), 6, "classic", 1, 1, 1),
-        ((50, 300), (350, 60), 8, "tapered", 2, 12345, 1),
-        ((100, 100), (400, 220), 6, "curved", 1, 2147483646, 1),
-        ((10, 10), (40, 20), 4, "classic", 3, 987654321, 1),
-        ((50, 50), (200, 120), 0.5, "curved", 2, 42, 0.5),
-    ]:
-        case = arrow_case(start, end, w, preset, scale)
-        case["roughness"] = rough
-        case["seed"] = seed
-        case["expected"] = arrow_outline(
-            case["start"], case["end"], w, case["bend"], case["startWidthScale"], case["endWidthScale"],
-            case["headScale"], case["startCap"], case["join"], scale, rough, seed,
-        )
-        arrow_cases.append(case)
-    return {
-        "random.json": {"description": "The first values of the seeded generator, which must match bit for bit.", "cases": random_cases},
-        "rectangle.json": {"description": "Sketched rectangle strokes as move and cubic ops, at several widths and roughnesses.", "cases": rect_cases},
-        "ellipse.json": {"description": "Sketched ellipse strokes as move and cubic ops; roughness 0 traces the exact ellipse once.", "cases": ellipse_cases},
-        "line.json": {"description": "Sketched line outlines (the line format plus roughness and seed).", "cases": line_cases},
-        "arrow.json": {"description": "Sketched arrow outlines (the arrow format plus roughness and seed); the taper follows the wobble.", "cases": arrow_cases},
-    }
-
-
 def generated_files():
     files = {}
     for filename, fixture in generate_arrows().items():
         files[Path("arrow") / filename] = fixture
-    for filename, fixture in generate_sketches().items():
-        files[Path("sketch") / filename] = fixture
     for filename, fixture in generate_pens().items():
         files[Path("pen") / filename] = fixture
     for filename, fixture in generate_lines().items():

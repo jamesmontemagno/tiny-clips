@@ -1,6 +1,6 @@
 # Screenshot Annotation Strokes, Arrows, and Hand-Drawn Style: Research
 
-Status: research and recommendation only. No code has changed.
+Status: implemented on macOS and Windows. The hand-drawn style and the Curved arrow preset shipped in early builds and were then removed after testing (see [3.5](#35-decisions-made-after-the-research)).
 Scope: macOS (`mac/`) and Windows (`windows/`) screenshot editor annotation tools.
 
 Requested features:
@@ -242,12 +242,9 @@ StrokeStyle                       applies to
   lineJoin         miter|round|bevel       rect, arrowhead            (default round)
   startCap         butt|round|square       line, arrow tail          (default round)
   endCap           butt|round|square       line                      (default round)
-  lineStyle        solid|sketch            rect, ellipse, line, arrow (default solid)
-  sketchRoughness  0…3                     when sketch               (default 1)
-  seed             UInt32 ≠ 0              assigned at creation, always present
 
 ArrowGeometry                     arrow only
-  preset           classic|tapered|curved|custom
+  preset           classic|tapered|custom
   bend             −1…1, H offset / chord length (default 0; mac's 0.25 curve ≈ 0.125, since H = ½ of the control offset)
   startWidthScale  0…2 × width     (classic 1.0, tapered 0.25)
   endWidthScale    0…2 × width     (classic 1.0, tapered 1.0)
@@ -262,10 +259,8 @@ Pen                               pen only
 - **Presets:**
   - Classic: straight, uniform width, head scale 1.
   - Tapered: tail scale 0.25, end scale 1, head scale 1.2.
-  - Curved: classic with a bend of 0.2.
-  - Editing any advanced field shows **Custom**, following the text-box precedent.
+  - Editing any advanced field, or bending the arrow with its handle, shows **Custom**, following the text-box precedent.
 - **Mapping the old style:** replace `ArrowStyle` with `bend`. `straight` becomes 0. The two curves become ±0.125 after the left/right sign fix described in 1.4.
-- **Seed:** assign it to *every* annotation at creation. Then switching to sketch later keeps a stable look, and copies keep the same seed.
 - **Defaults** are remembered **per tool across sessions** in `CaptureSettings`: arrow width and preset do not leak into rectangles.
 - **Hit testing and bounds** use the stroked outline (Win2D `StrokeContainsPoint`, or the mac stroked path), including the outside-alignment growth and the arrow polygon.
 
@@ -273,17 +268,15 @@ Pen                               pen only
 
 - **Shared pure geometry modules** go in Core on Windows and Models on macOS. They are tested with fixtures:
   - `ArrowOutline(start, end, bend, widths, head, startCap) → polygon`: the centerline, de Casteljau trim, arc-length sampling, offsets, cap arcs, and head, as one closed polygon.
-  - `RoughGenerator(seed, options)` → cubic Bézier ops for rect, ellipse, line, and quadratic curve, plus arrowhead wings drawn as two rough lines.
   - `FreehandOutline(points, options) → polygon`.
 - **Platform code only fills or strokes the returned geometry:**
   - Arrows, lines, and pen strokes: fill the polygon. Caps are part of the geometry, so independent start and end caps work the same on macOS.
-  - Sketch shapes: stroke the Bézier ops with round caps and joins at `width`.
   - Rectangle and ellipse: stroke natively with `lineJoin`. Get alignment from clip-and-double for exact results on ellipses.
   - Wrap any annotation whose alpha is below 1 in a transparency layer (macOS) or `CreateLayer(opacity)` (Windows).
 - **macOS:** make the preview (`GraphicsContext`) and export (`CGContext`) consume the *same* geometry functions. This removes today's duplicated arrow constants. The one `CGPath` per annotation can be wrapped in a SwiftUI `Path`.
 - **Windows:**
   - Export stays in Win2D. Build a `CanvasGeometry.CreatePolygon` or `CanvasPathBuilder` from the shared points.
-  - For the preview, XAML `Path` with a `PathGeometry` from the same points works for arrows, lines, pen, and sketch.
+  - For the preview, XAML `Path` with a `PathGeometry` from the same points works for arrows, lines, and pen.
   - Exact ellipse alignment in XAML has no clip-geometry equivalent. Decided: accept the inset/outset approximation in the preview; export stays exact.
 - **Bend handle:**
   - The handle is drawn at `H` on the curve.
@@ -311,8 +304,8 @@ Pen                               pen only
    - Follow-up: arrows and lines are now a filled body (Fill = the annotation's color, Size = its width) with an optional outline (Stroke color, Stroke width, Stroke position defaulting to Outside), drawn by clipping a doubled stroke to the body. Lines became filled outlines (`shared/screenshot/fixtures/line`), which also replaced the macOS mixed-cap workaround and its fade layer.
 5. **Freehand pen** using the perfect-freehand port.
    - Done. Fixed options: thinning 0.3 (0.5 drew a 6 px pen about 3 px wide), smoothing and streamline 0.5, simulated pressure, both ends tapered over 3 widths, `last = true`. Lengths use sqrt instead of hypot and cap loops keep the source's accumulating steps so all three implementations match bit for bit. Rendered through midpoint quadratic curves. Real pen pressure is not used yet (still an open question).
-6. **Sketch style** using the rough.js port, with the seed. Fixtures must lock the random-number sequence.
-   - Done. Rectangles and ellipses stroke rough.js's double-stroke ops (alignment does not apply to them). Lines and arrows bend their centerline along rough.js's single-stroke line (arrows add their bend on top) and build their filled body along it, so taper, fill, and outline still work. Arrows now always use a cubic centerline (the bend's quadratic raised to a cubic). Coordinates are divided by half the stroke width before rough.js runs. Fills stay solid (the hachure question is still open). Every annotation gets a random non-zero seed at creation.
+6. **Sketch style** using the rough.js port, with the seed.
+   - Built, then removed after testing (see 3.5). Arrows keep the cubic centerline it introduced (the bend's quadratic raised to a cubic).
 7. Accessibility pass (VoiceOver and UI Automation for the new controls and the bend handle), then changelogs.
 
 ### 3.4 Risks
@@ -320,9 +313,7 @@ Pen                               pen only
 | Risk | Mitigation |
 |---|---|
 | Floating-point drift between Swift (double) and C# (float `Vector2`) breaks fixtures | Compare with a tolerance. Use `double` in the C# geometry module, and convert to `Vector2` only at the draw call. |
-| Random-number streams diverge, so sketches differ across platforms | Keep the minstd integer math, a fixed draw order, and fixtures that record raw random outputs as well as geometry. |
 | Tapered polygon self-intersects at high bend or very short length | Clamp bend and head relative to length. Fill with nonzero winding. Use a minimum sample count and fall back to straight when the arrow is degenerate, as tldraw does. |
-| Sketch double stroke looks muddy with translucent colors | Use the transparency or opacity layer per annotation. |
 | Exact ellipse alignment in the Windows XAML preview does not match export | Use a Win2D preview overlay, or accept a documented approximation. |
 | Unit migration on macOS changes the look of existing widths | Annotations are not persisted, so only defaults and presets need remapping. Check the result visually at fit and native zoom. |
 | Inspector clutter | Show only the controls that apply to the tool. Advanced arrow fields go in a disclosure. |
@@ -333,13 +324,12 @@ Pen                               pen only
 1. **Caps:** separate start and end controls in the UI. Both default to round on both platforms, so macOS switches from butt to round.
 2. **Joins:** user-facing in the Advanced section for rectangles and arrowheads. Default is round.
 3. **Alignment:** new rectangles and ellipses default to centered, as today.
-4. **Sketch with taper:** keep the taper. Wobble the centerline first, then build the tapered outline from it.
-5. **Sketch control:** an on/off switch plus a roughness slider. The seed is stored on every annotation.
+4. **Hand-drawn style:** removed after testing. The look wasn't wanted, and the rough.js port was a lot of code to keep in step on two platforms.
+5. **Curved preset:** removed. The on-canvas bend handle sets any curve, so a bent arrow shows **Custom**.
 6. **Windows preview:** keep XAML. Ellipse inside/outside alignment is approximated (inset/outset) in the preview only; export stays exact in Win2D. Document the difference.
 7. **Defaults:** remembered per tool across sessions, which needs new `CaptureSettings` keys on both platforms.
 
 ### 3.6 Still open
 
-1. **Sketch fill:** solid fill under a rough outline, or a rough.js hachure fill? (Only matters if shapes gain fills.)
-2. **Pen pressure:** use real pen or Force Touch pressure where available, or always simulate it?
-3. **More arrowheads** (open, bar, dot) and double-headed arrows: now or later?
+1. **Pen pressure:** use real pen or Force Touch pressure where available, or always simulate it?
+2. **More arrowheads** (open, bar, dot) and double-headed arrows: now or later?

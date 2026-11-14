@@ -98,8 +98,4 @@ public static class AnnotationStroke
     /// <summary>Arrows and lines are filled bodies (in the annotation's color, at its thickness)
     /// that can carry a separate outline.</summary>
     public static bool UsesOutline(this EditTool tool) => tool is EditTool.Arrow or EditTool.Line;
-
-    /// <summary>Shapes that can be drawn by hand (see <see cref="SketchGeometry"/>).</summary>
-    public static bool UsesSketch(this EditTool tool) =>
-        tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Line or EditTool.Arrow;
 }

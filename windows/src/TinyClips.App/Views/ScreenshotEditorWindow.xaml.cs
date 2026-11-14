@@ -507,6 +507,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         var tool = e.Key switch
         {
             Windows.System.VirtualKey.V => EditTool.Select,
+            Windows.System.VirtualKey.G => EditTool.Background,
             Windows.System.VirtualKey.C => EditTool.Crop,
             Windows.System.VirtualKey.R => EditTool.Rectangle,
             Windows.System.VirtualKey.O => EditTool.Ellipse,

@@ -514,6 +514,8 @@ struct ScreenshotEditorCanvasView: View {
         switch viewModel.selectedTool {
         case .move:
             return "Select an annotation, drag inside it to move, drag a corner handle to resize, or drag the rotation grip above it to rotate."
+        case .background:
+            return "Use the Background section in the sidebar to add padding, a background, and a frame."
         case .emoji:
             return "Click to place the selected emoji."
         case .crop:
@@ -569,11 +571,6 @@ struct ScreenshotEditorCanvasView: View {
         return (rotated, CGRect(x: -scaledRect.width / 2, y: -scaledRect.height / 2, width: scaledRect.width, height: scaledRect.height))
     }
 
-    /// Hand-drawn strokes have round ends and corners, as rough.js draws them.
-    private static func sketchStyle(_ lineWidth: CGFloat) -> StrokeStyle {
-        StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
-    }
-
     /// Strokes a closed `shape` at its alignment. Inside and outside strokes are drawn at double
     /// width and clipped to the shape (or to everything outside it), as the export does.
     private func strokeAligned(_ shape: Path, alignment: StrokeAlignment, color: Color, style: StrokeStyle, in context: GraphicsContext) {
@@ -615,25 +612,15 @@ struct ScreenshotEditorCanvasView: View {
             if annotation.fillColor != .clear {
                 ctx.fill(Path(rect), with: .color(annotation.fillColor))
             }
-            if annotation.isSketch {
-                let ops = SketchGeometry.rectangle(rect.standardized, width: annotation.lineWidth, roughness: annotation.roughness, seed: annotation.seed, scale: pixelScale)
-                ctx.stroke(Path(SketchGeometry.path(ops)), with: .color(color), style: Self.sketchStyle(lineWidth))
-            } else {
-                let ring = RectStrokeRing(bounds: rect.standardized, width: lineWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
-                ctx.fill(Path(ring.path), with: .color(color), style: FillStyle(eoFill: true))
-            }
+            let ring = RectStrokeRing(bounds: rect.standardized, width: lineWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
+            ctx.fill(Path(ring.path), with: .color(color), style: FillStyle(eoFill: true))
 
         case .circle:
             let (ctx, rect) = rotatedDrawing(context, annotation: annotation, scaledRect: scaledRect)
             if annotation.fillColor != .clear {
                 ctx.fill(Path(ellipseIn: rect), with: .color(annotation.fillColor))
             }
-            if annotation.isSketch {
-                let ops = SketchGeometry.ellipse(rect.standardized, width: annotation.lineWidth, roughness: annotation.roughness, seed: annotation.seed, scale: pixelScale)
-                ctx.stroke(Path(SketchGeometry.path(ops)), with: .color(color), style: Self.sketchStyle(lineWidth))
-            } else {
-                strokeAligned(Path(ellipseIn: rect), alignment: annotation.strokeAlignment, color: color, style: StrokeStyle(lineWidth: lineWidth), in: ctx)
-            }
+            strokeAligned(Path(ellipseIn: rect), alignment: annotation.strokeAlignment, color: color, style: StrokeStyle(lineWidth: lineWidth), in: ctx)
 
         case .arrow:
             let linePoints = viewModel.scaledLinePoints(for: annotation, imageSize: imageSize, origin: origin)
@@ -644,9 +631,7 @@ struct ScreenshotEditorCanvasView: View {
                 options: annotation.arrow,
                 startCap: annotation.startCap,
                 join: annotation.lineJoin,
-                scale: pixelScale,
-                roughness: annotation.sketchRoughness,
-                seed: annotation.seed
+                scale: pixelScale
             )
             // One body, so a translucent color fills evenly without a layer.
             drawBody(outline.points, annotation: annotation, pixelScale: pixelScale, in: context)
@@ -659,9 +644,7 @@ struct ScreenshotEditorCanvasView: View {
                 width: annotation.lineWidth,
                 startCap: annotation.startCap,
                 endCap: annotation.endCap,
-                scale: pixelScale,
-                roughness: annotation.sketchRoughness,
-                seed: annotation.seed
+                scale: pixelScale
             )
             drawBody(outline, annotation: annotation, pixelScale: pixelScale, in: context)
 
@@ -704,7 +687,7 @@ struct ScreenshotEditorCanvasView: View {
                 .font(.system(size: EmojiAnnotationMath.glyphFontSize(forSide: scaledRect.height)))
             rotated.draw(glyph, at: .zero, anchor: .center)
 
-        case .text, .crop, .move:
+        case .text, .crop, .move, .background:
             break
         }
     }

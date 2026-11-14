@@ -1,11 +1,5 @@
 {
-  "description": "The curved preset: thin (minimum head), thick, diagonal, upward, short (head clamp), and a preview scale.",
-  "preset": {
-    "bend": 0.2,
-    "startWidthScale": 1,
-    "endWidthScale": 1,
-    "headScale": 1
-  },
+  "description": "A classic arrow bent with its handle (bend 0.2): thin (minimum head), thick, diagonal, upward, short (head clamp), and a preview scale.",
   "cases": [
     {
       "start": {

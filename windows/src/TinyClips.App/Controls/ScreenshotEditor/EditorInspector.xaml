@@ -3,9 +3,11 @@
     x:Class="TinyClips.App.ScreenshotEditor.EditorInspector"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:TinyClips.App"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:studio="using:TinyClips.App.Controls.Studio"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -43,20 +45,20 @@
                     Style="{StaticResource BodyStrongTextBlockStyle}"
                     Text="Tool" />
 
-                <!--  Arrow shape (index order matches ArrowPreset)  -->
-                <StackPanel x:Name="ArrowStyleSection" Spacing="2">
-                    <ComboBox
-                        x:Name="ArrowPresetCombo"
+                <!--  Arrow shape (item order matches ArrowPreset)  -->
+                <StackPanel x:Name="ArrowStyleSection" Spacing="4">
+                    <TextBlock Text="Arrow" />
+                    <studio:StudioSegmented
+                        x:Name="ArrowPresetChoice"
                         HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="EditorArrowPresetCombo"
+                        studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                        AutomationProperties.AutomationId="EditorArrowPresetChoice"
                         AutomationProperties.Name="Arrow shape"
-                        Header="Arrow"
                         SelectionChanged="OnArrowPresetChanged">
-                        <ComboBoxItem Content="Classic" />
-                        <ComboBoxItem Content="Tapered" />
-                        <ComboBoxItem Content="Curved" />
-                        <ComboBoxItem Content="Custom" />
-                    </ComboBox>
+                        <controls:SegmentedItem Content="Classic" />
+                        <controls:SegmentedItem Content="Tapered" />
+                        <controls:SegmentedItem Content="Custom" />
+                    </studio:StudioSegmented>
                 </StackPanel>
 
                 <!--  Color  -->
@@ -110,69 +112,53 @@
                         ValueChanged="OnOutlineWidthChanged" />
                 </StackPanel>
 
-                <!--  Stroke position for closed shapes (index order matches StrokeAlignment)  -->
-                <StackPanel x:Name="StrokeAlignmentSection" Spacing="2">
-                    <ComboBox
-                        x:Name="StrokeAlignmentCombo"
+                <!--  Stroke position for closed shapes (item order matches StrokeAlignment)  -->
+                <StackPanel x:Name="StrokeAlignmentSection" Spacing="4">
+                    <TextBlock Text="Stroke position" />
+                    <studio:StudioSegmented
+                        x:Name="StrokeAlignmentChoice"
                         HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="EditorStrokeAlignmentCombo"
+                        studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                        AutomationProperties.AutomationId="EditorStrokeAlignmentChoice"
                         AutomationProperties.Name="Stroke position"
-                        Header="Stroke position"
                         SelectionChanged="OnStrokeAlignmentChanged">
-                        <ComboBoxItem Content="Center" />
-                        <ComboBoxItem Content="Inside" />
-                        <ComboBoxItem Content="Outside" />
-                    </ComboBox>
+                        <controls:SegmentedItem Content="Center" />
+                        <controls:SegmentedItem Content="Inside" />
+                        <controls:SegmentedItem Content="Outside" />
+                    </studio:StudioSegmented>
                 </StackPanel>
 
-                <!--  Line ends (index order matches StrokeCap)  -->
-                <StackPanel x:Name="StartCapSection" Spacing="2">
-                    <ComboBox
-                        x:Name="StartCapCombo"
+                <!--  Line ends (item order matches StrokeCap)  -->
+                <StackPanel x:Name="StartCapSection" Spacing="4">
+                    <TextBlock Text="Start" />
+                    <studio:StudioSegmented
+                        x:Name="StartCapChoice"
                         HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="EditorStartCapCombo"
+                        studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                        AutomationProperties.AutomationId="EditorStartCapChoice"
                         AutomationProperties.Name="Line start"
-                        Header="Start"
                         SelectionChanged="OnStartCapChanged">
-                        <ComboBoxItem Content="Flat" />
-                        <ComboBoxItem Content="Round" />
-                        <ComboBoxItem Content="Square" />
-                    </ComboBox>
+                        <controls:SegmentedItem Content="Flat" />
+                        <controls:SegmentedItem Content="Round" />
+                        <controls:SegmentedItem Content="Square" />
+                    </studio:StudioSegmented>
                 </StackPanel>
-                <StackPanel x:Name="EndCapSection" Spacing="2">
-                    <ComboBox
-                        x:Name="EndCapCombo"
+                <StackPanel x:Name="EndCapSection" Spacing="4">
+                    <TextBlock Text="End" />
+                    <studio:StudioSegmented
+                        x:Name="EndCapChoice"
                         HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="EditorEndCapCombo"
+                        studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                        AutomationProperties.AutomationId="EditorEndCapChoice"
                         AutomationProperties.Name="Line end"
-                        Header="End"
                         SelectionChanged="OnEndCapChanged">
-                        <ComboBoxItem Content="Flat" />
-                        <ComboBoxItem Content="Round" />
-                        <ComboBoxItem Content="Square" />
-                    </ComboBox>
+                        <controls:SegmentedItem Content="Flat" />
+                        <controls:SegmentedItem Content="Round" />
+                        <controls:SegmentedItem Content="Square" />
+                    </studio:StudioSegmented>
                 </StackPanel>
 
-                <!--  Hand-drawn style for rectangles, ellipses, lines, and arrows  -->
-                <StackPanel x:Name="SketchSection" Spacing="2">
-                    <ToggleSwitch
-                        x:Name="SketchToggle"
-                        AutomationProperties.AutomationId="EditorSketchToggle"
-                        AutomationProperties.Name="Hand-drawn"
-                        Header="Hand-drawn"
-                        Toggled="OnSketchToggled" />
-                    <Slider
-                        x:Name="RoughnessSlider"
-                        AutomationProperties.AutomationId="EditorRoughnessSlider"
-                        AutomationProperties.Name="Roughness"
-                        Header="Roughness"
-                        Maximum="3"
-                        Minimum="0"
-                        StepFrequency="0.25"
-                        ValueChanged="OnRoughnessChanged" />
-                </StackPanel>
-
-                <!--  Advanced stroke options (index order matches StrokeJoin)  -->
+                <!--  Advanced stroke options (item order matches StrokeJoin)  -->
                 <Expander
                     x:Name="StrokeAdvancedExpander"
                     HorizontalAlignment="Stretch"
@@ -221,17 +207,20 @@
                                 StepFrequency="1"
                                 ValueChanged="OnArrowSliderChanged" />
                         </StackPanel>
-                    <ComboBox
-                        x:Name="LineJoinCombo"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="EditorLineJoinCombo"
-                        AutomationProperties.Name="Corners"
-                        Header="Corners"
-                        SelectionChanged="OnLineJoinChanged">
-                        <ComboBoxItem Content="Sharp" />
-                        <ComboBoxItem Content="Round" />
-                        <ComboBoxItem Content="Beveled" />
-                    </ComboBox>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Corners" />
+                            <studio:StudioSegmented
+                                x:Name="LineJoinChoice"
+                                HorizontalAlignment="Stretch"
+                                studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                                AutomationProperties.AutomationId="EditorLineJoinChoice"
+                                AutomationProperties.Name="Corners"
+                                SelectionChanged="OnLineJoinChanged">
+                                <controls:SegmentedItem Content="Sharp" />
+                                <controls:SegmentedItem Content="Round" />
+                                <controls:SegmentedItem Content="Beveled" />
+                            </studio:StudioSegmented>
+                        </StackPanel>
                     </StackPanel>
                 </Expander>
 
@@ -465,28 +454,34 @@
 
                 <!--  Redaction style + strength  -->
                 <StackPanel x:Name="RedactSection" Spacing="8">
-                    <ComboBox
-                        x:Name="RedactStyleCombo"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="EditorRedactStyleCombo"
-                        AutomationProperties.Name="Redaction style"
-                        Header="Style"
-                        SelectionChanged="OnRedactionStyleChanged">
-                        <ComboBoxItem Content="Blur" Tag="Blur" />
-                        <ComboBoxItem Content="Pixelate" Tag="Pixelate" />
-                        <ComboBoxItem Content="Solid" Tag="Solid" />
-                    </ComboBox>
-                    <ComboBox
-                        x:Name="RedactionCombo"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.AutomationId="EditorRedactionCombo"
-                        AutomationProperties.Name="Redaction strength"
-                        Header="Strength"
-                        SelectionChanged="OnRedactionLevelChanged">
-                        <ComboBoxItem Content="Light" Tag="Light" />
-                        <ComboBoxItem Content="Medium" Tag="Medium" />
-                        <ComboBoxItem Content="Heavy" Tag="Heavy" />
-                    </ComboBox>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Style" />
+                        <studio:StudioSegmented
+                            x:Name="RedactStyleChoice"
+                            HorizontalAlignment="Stretch"
+                            studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                            AutomationProperties.AutomationId="EditorRedactStyleChoice"
+                            AutomationProperties.Name="Redaction style"
+                            SelectionChanged="OnRedactionStyleChanged">
+                            <controls:SegmentedItem Content="Blur" />
+                            <controls:SegmentedItem Content="Pixelate" />
+                            <controls:SegmentedItem Content="Solid" />
+                        </studio:StudioSegmented>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Strength" />
+                        <studio:StudioSegmented
+                            x:Name="RedactionChoice"
+                            HorizontalAlignment="Stretch"
+                            studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                            AutomationProperties.AutomationId="EditorRedactionChoice"
+                            AutomationProperties.Name="Redaction strength"
+                            SelectionChanged="OnRedactionLevelChanged">
+                            <controls:SegmentedItem Content="Light" />
+                            <controls:SegmentedItem Content="Medium" />
+                            <controls:SegmentedItem Content="Heavy" />
+                        </studio:StudioSegmented>
+                    </StackPanel>
                 </StackPanel>
 
                 <!--  On-device OCR suggestions; shown only while the Redact tool is active.  -->
@@ -510,268 +505,260 @@
                         TextWrapping="Wrap" />
                 </StackPanel>
 
-                <!--  Background &amp; padding  -->
-                <Expander
-                    x:Name="BackgroundExpander"
+                <!--  Background &amp; padding; shown only while the Background tool is active.  -->
+                <StackPanel
+                    x:Name="BackgroundSection"
                     HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Stretch"
-                    AutomationProperties.AutomationId="EditorBackgroundExpander">
-                    <Expander.Resources>
-                        <Thickness x:Key="ExpanderContentPadding">12,8,12,12</Thickness>
-                    </Expander.Resources>
-                    <Expander.Header>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" FontSize="16" Glyph="&#xE7F4;" />
-                            <TextBlock VerticalAlignment="Center" Text="Background" />
-                        </StackPanel>
-                    </Expander.Header>
-                    <StackPanel HorizontalAlignment="Stretch" Spacing="12">
-                        <ComboBox
-                            x:Name="BgStyleCombo"
+                    Spacing="12"
+                    Visibility="Collapsed">
+                    <ComboBox
+                        x:Name="BgStyleCombo"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorBgStyleCombo"
+                        AutomationProperties.Name="Background style"
+                        Header="Style"
+                        SelectionChanged="OnBgStyleChanged">
+                        <ComboBoxItem Content="Transparent" Tag="Transparent" />
+                        <ComboBoxItem Content="Solid color" Tag="Solid" />
+                        <ComboBoxItem Content="Gradient" Tag="Gradient" />
+                        <ComboBoxItem Content="Image" Tag="Image" />
+                    </ComboBox>
+
+                    <StackPanel x:Name="BackgroundImagePanel" Spacing="8" Visibility="Collapsed">
+                        <Button
+                            x:Name="ChooseBackgroundImageButton"
                             HorizontalAlignment="Stretch"
-                            AutomationProperties.AutomationId="EditorBgStyleCombo"
-                            AutomationProperties.Name="Background style"
-                            Header="Style"
-                            SelectionChanged="OnBgStyleChanged">
-                            <ComboBoxItem Content="Transparent" Tag="Transparent" />
-                            <ComboBoxItem Content="Solid color" Tag="Solid" />
-                            <ComboBoxItem Content="Gradient" Tag="Gradient" />
-                            <ComboBoxItem Content="Image" Tag="Image" />
-                        </ComboBox>
-
-                        <StackPanel x:Name="BackgroundImagePanel" Spacing="8" Visibility="Collapsed">
-                            <Button
-                                x:Name="ChooseBackgroundImageButton"
+                            AutomationProperties.AutomationId="EditorChooseBackgroundImageButton"
+                            AutomationProperties.Name="Choose or replace background image"
+                            Click="OnChooseBackgroundImage"
+                            Content="Choose image..." />
+                        <TextBlock
+                            x:Name="BackgroundImageName"
+                            AutomationProperties.AutomationId="EditorBackgroundImageName"
+                            TextWrapping="Wrap" />
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Placement" />
+                            <studio:StudioSegmented
+                                x:Name="BackgroundImagePlacementChoice"
                                 HorizontalAlignment="Stretch"
-                                AutomationProperties.AutomationId="EditorChooseBackgroundImageButton"
-                                AutomationProperties.Name="Choose or replace background image"
-                                Click="OnChooseBackgroundImage"
-                                Content="Choose image..." />
-                            <TextBlock
-                                x:Name="BackgroundImageName"
-                                AutomationProperties.AutomationId="EditorBackgroundImageName"
-                                TextWrapping="Wrap" />
-                            <ComboBox
-                                x:Name="BackgroundImagePlacementCombo"
-                                HorizontalAlignment="Stretch"
-                                AutomationProperties.AutomationId="EditorBackgroundImagePlacementCombo"
+                                studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                                AutomationProperties.AutomationId="EditorBackgroundImagePlacementChoice"
                                 AutomationProperties.Name="Background image placement"
-                                Header="Placement"
                                 SelectionChanged="OnBackgroundImagePlacementChanged">
-                                <ComboBoxItem Content="Fill" />
-                                <ComboBoxItem Content="Fit" />
-                            </ComboBox>
-                            <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="Fill crops to cover the frame. Fit shows the whole image with transparent gaps. Still PNG, JPEG, or WebP; up to 32 megapixels."
-                                TextWrapping="Wrap" />
-                            <Button
-                                x:Name="RemoveBackgroundImageButton"
-                                HorizontalAlignment="Stretch"
-                                AutomationProperties.AutomationId="EditorRemoveBackgroundImageButton"
-                                AutomationProperties.Name="Remove background image"
-                                Click="OnRemoveBackgroundImage"
-                                Content="Remove image" />
+                                <controls:SegmentedItem Content="Fill" />
+                                <controls:SegmentedItem Content="Fit" />
+                            </studio:StudioSegmented>
                         </StackPanel>
-
                         <TextBlock
-                            x:Name="SolidPresetHeader"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Solid presets" />
-                        <GridView
-                            x:Name="SolidPresetGrid"
-                            Padding="0"
-                            AutomationProperties.Name="Solid background presets"
-                            SelectionMode="None" />
-
-                        <TextBlock
-                            x:Name="GradientPresetHeader"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Gradient presets" />
-                        <GridView
-                            x:Name="GradientPresetGrid"
-                            Padding="0"
-                            AutomationProperties.Name="Gradient background presets"
-                            SelectionMode="None" />
-
-                        <Slider
-                            x:Name="GradientDirectionSlider"
-                            AutomationProperties.AutomationId="EditorGradientDirectionSlider"
-                            AutomationProperties.Name="Gradient direction"
-                            Header="Gradient direction"
-                            Maximum="360"
-                            Minimum="0"
-                            StepFrequency="1"
-                            ToolTipService.ToolTip="Direction from the first color to the second. 0° is left to right; 90° is top to bottom."
-                            ValueChanged="OnGradientDirectionChanged" />
-
-                        <StackPanel x:Name="CustomColorPanel" Spacing="8">
-                            <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="Custom color" />
-                            <Button
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Left"
-                                AutomationProperties.AutomationId="EditorCustomSolidBgColorButton"
-                                AutomationProperties.Name="Choose custom solid background color"
-                                Click="OnChooseCustomSolidColor">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Border
-                                        x:Name="CustomSolidColorSwatch"
-                                        Width="22"
-                                        Height="22"
-                                        BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="4" />
-                                    <TextBlock VerticalAlignment="Center" Text="Choose color…" />
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
-
-                        <StackPanel x:Name="CustomGradientColorPanel" Spacing="8">
-                            <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="Custom gradient colors" />
-                            <Button
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Left"
-                                AutomationProperties.AutomationId="EditorGradientStartColorButton"
-                                AutomationProperties.Name="Choose first gradient color"
-                                Click="OnChooseGradientStartColor">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Border
-                                        x:Name="GradientStartColorSwatch"
-                                        Width="22"
-                                        Height="22"
-                                        BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="4" />
-                                    <TextBlock VerticalAlignment="Center" Text="First color…" />
-                                </StackPanel>
-                            </Button>
-                            <Button
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Left"
-                                AutomationProperties.AutomationId="EditorGradientEndColorButton"
-                                AutomationProperties.Name="Choose second gradient color"
-                                Click="OnChooseGradientEndColor">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Border
-                                        x:Name="GradientEndColorSwatch"
-                                        Width="22"
-                                        Height="22"
-                                        BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="4" />
-                                    <TextBlock VerticalAlignment="Center" Text="Second color…" />
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
-
-                        <Slider
-                            x:Name="PaddingSlider"
-                            AutomationProperties.AutomationId="EditorPaddingSlider"
-                            AutomationProperties.Name="Padding"
-                            Header="Padding"
-                            Maximum="160"
-                            Minimum="0"
-                            StepFrequency="2"
-                            ValueChanged="OnPaddingChanged" />
-                        <ComboBox
-                            x:Name="ExportFrameCombo"
-                            AutomationProperties.AutomationId="EditorExportFrameCombo"
-                            AutomationProperties.Name="Export frame"
-                            Header="Frame"
-                            SelectionChanged="OnExportFrameChanged">
-                            <ComboBoxItem Content="Original" />
-                            <ComboBoxItem Content="1:1" />
-                            <ComboBoxItem Content="4:3" />
-                            <ComboBoxItem Content="16:9" />
-                            <ComboBoxItem Content="3:4" />
-                            <ComboBoxItem Content="9:16" />
-                        </ComboBox>
-                        <StackPanel Spacing="6">
-                            <TextBlock
-                                x:Name="AlignmentHeader"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="Image alignment" />
-                            <!--
-                                3×3 placement grid: one tap sets both axes. Each cell is a ToggleButton
-                                whose checked state mirrors the controller's H+V alignment; arrow keys
-                                move between cells, Space/Enter selects.
-                            -->
-                            <Grid
-                                x:Name="AlignmentGrid"
-                                HorizontalAlignment="Left"
-                                AutomationProperties.Name="Image alignment"
-                                ColumnSpacing="4"
-                                RowSpacing="4"
-                                XYFocusKeyboardNavigation="Enabled">
-                                <Grid.Resources>
-                                    <Style x:Key="AlignmentCellStyle" TargetType="ToggleButton">
-                                        <Setter Property="Width" Value="40" />
-                                        <Setter Property="Height" Value="32" />
-                                        <Setter Property="Padding" Value="0" />
-                                        <Setter Property="MinWidth" Value="0" />
-                                        <Setter Property="MinHeight" Value="0" />
-                                        <Setter Property="HorizontalContentAlignment" Value="Center" />
-                                        <Setter Property="VerticalContentAlignment" Value="Center" />
-                                    </Style>
-                                    <!--  A glyph (not a shape) so the dot inherits the cell's state foreground.  -->
-                                    <Style x:Key="AlignmentDotStyle" TargetType="TextBlock">
-                                        <Setter Property="Text" Value="&#x25CF;" />
-                                        <Setter Property="FontSize" Value="10" />
-                                        <Setter Property="IsTextSelectionEnabled" Value="False" />
-                                    </Style>
-                                </Grid.Resources>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <ToggleButton Grid.Row="0" Grid.Column="0" Style="{StaticResource AlignmentCellStyle}" Tag="0,0" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignTopLeft" AutomationProperties.Name="Top-left image alignment" ToolTipService.ToolTip="Top left"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
-                                <ToggleButton Grid.Row="0" Grid.Column="1" Style="{StaticResource AlignmentCellStyle}" Tag="1,0" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignTopCenter" AutomationProperties.Name="Top-center image alignment" ToolTipService.ToolTip="Top center"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
-                                <ToggleButton Grid.Row="0" Grid.Column="2" Style="{StaticResource AlignmentCellStyle}" Tag="2,0" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignTopRight" AutomationProperties.Name="Top-right image alignment" ToolTipService.ToolTip="Top right"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
-                                <ToggleButton Grid.Row="1" Grid.Column="0" Style="{StaticResource AlignmentCellStyle}" Tag="0,1" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignMiddleLeft" AutomationProperties.Name="Middle-left image alignment" ToolTipService.ToolTip="Middle left"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
-                                <ToggleButton Grid.Row="1" Grid.Column="1" Style="{StaticResource AlignmentCellStyle}" Tag="1,1" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignCenter" AutomationProperties.Name="Center image alignment" ToolTipService.ToolTip="Center"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
-                                <ToggleButton Grid.Row="1" Grid.Column="2" Style="{StaticResource AlignmentCellStyle}" Tag="2,1" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignMiddleRight" AutomationProperties.Name="Middle-right image alignment" ToolTipService.ToolTip="Middle right"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
-                                <ToggleButton Grid.Row="2" Grid.Column="0" Style="{StaticResource AlignmentCellStyle}" Tag="0,2" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignBottomLeft" AutomationProperties.Name="Bottom-left image alignment" ToolTipService.ToolTip="Bottom left"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
-                                <ToggleButton Grid.Row="2" Grid.Column="1" Style="{StaticResource AlignmentCellStyle}" Tag="1,2" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignBottomCenter" AutomationProperties.Name="Bottom-center image alignment" ToolTipService.ToolTip="Bottom center"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
-                                <ToggleButton Grid.Row="2" Grid.Column="2" Style="{StaticResource AlignmentCellStyle}" Tag="2,2" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignBottomRight" AutomationProperties.Name="Bottom-right image alignment" ToolTipService.ToolTip="Bottom right"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
-                            </Grid>
-                        </StackPanel>
-                        <Slider
-                            x:Name="CornerSlider"
-                            AutomationProperties.AutomationId="EditorCornerSlider"
-                            AutomationProperties.Name="Corner radius"
-                            Header="Image corners"
-                            Maximum="60"
-                            Minimum="0"
-                            StepFrequency="1"
-                            ValueChanged="OnCornerChanged" />
-                        <Slider
-                            x:Name="ShadowSlider"
-                            AutomationProperties.AutomationId="EditorShadowSlider"
-                            AutomationProperties.Name="Shadow"
-                            Header="Shadow"
-                            Maximum="40"
-                            Minimum="0"
-                            StepFrequency="1"
-                            ValueChanged="OnShadowChanged" />
+                            Text="Fill crops to cover the frame. Fit shows the whole image with transparent gaps. Still PNG, JPEG, or WebP; up to 32 megapixels."
+                            TextWrapping="Wrap" />
+                        <Button
+                            x:Name="RemoveBackgroundImageButton"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.AutomationId="EditorRemoveBackgroundImageButton"
+                            AutomationProperties.Name="Remove background image"
+                            Click="OnRemoveBackgroundImage"
+                            Content="Remove image" />
                     </StackPanel>
-                </Expander>
+
+                    <TextBlock
+                        x:Name="SolidPresetHeader"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Solid presets" />
+                    <GridView
+                        x:Name="SolidPresetGrid"
+                        Padding="0"
+                        AutomationProperties.Name="Solid background presets"
+                        SelectionMode="None" />
+
+                    <TextBlock
+                        x:Name="GradientPresetHeader"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Gradient presets" />
+                    <GridView
+                        x:Name="GradientPresetGrid"
+                        Padding="0"
+                        AutomationProperties.Name="Gradient background presets"
+                        SelectionMode="None" />
+
+                    <Slider
+                        x:Name="GradientDirectionSlider"
+                        AutomationProperties.AutomationId="EditorGradientDirectionSlider"
+                        AutomationProperties.Name="Gradient direction"
+                        Header="Gradient direction"
+                        Maximum="360"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ToolTipService.ToolTip="Direction from the first color to the second. 0° is left to right; 90° is top to bottom."
+                        ValueChanged="OnGradientDirectionChanged" />
+
+                    <StackPanel x:Name="CustomColorPanel" Spacing="8">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Custom color" />
+                        <Button
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            AutomationProperties.AutomationId="EditorCustomSolidBgColorButton"
+                            AutomationProperties.Name="Choose custom solid background color"
+                            Click="OnChooseCustomSolidColor">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Border
+                                    x:Name="CustomSolidColorSwatch"
+                                    Width="22"
+                                    Height="22"
+                                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="4" />
+                                <TextBlock VerticalAlignment="Center" Text="Choose color…" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <StackPanel x:Name="CustomGradientColorPanel" Spacing="8">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Custom gradient colors" />
+                        <Button
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            AutomationProperties.AutomationId="EditorGradientStartColorButton"
+                            AutomationProperties.Name="Choose first gradient color"
+                            Click="OnChooseGradientStartColor">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Border
+                                    x:Name="GradientStartColorSwatch"
+                                    Width="22"
+                                    Height="22"
+                                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="4" />
+                                <TextBlock VerticalAlignment="Center" Text="First color…" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            AutomationProperties.AutomationId="EditorGradientEndColorButton"
+                            AutomationProperties.Name="Choose second gradient color"
+                            Click="OnChooseGradientEndColor">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Border
+                                    x:Name="GradientEndColorSwatch"
+                                    Width="22"
+                                    Height="22"
+                                    BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="4" />
+                                <TextBlock VerticalAlignment="Center" Text="Second color…" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <Slider
+                        x:Name="PaddingSlider"
+                        AutomationProperties.AutomationId="EditorPaddingSlider"
+                        AutomationProperties.Name="Padding"
+                        Header="Padding"
+                        Maximum="160"
+                        Minimum="0"
+                        StepFrequency="2"
+                        ValueChanged="OnPaddingChanged" />
+                    <ComboBox
+                        x:Name="ExportFrameCombo"
+                        AutomationProperties.AutomationId="EditorExportFrameCombo"
+                        AutomationProperties.Name="Export frame"
+                        Header="Frame"
+                        SelectionChanged="OnExportFrameChanged">
+                        <ComboBoxItem Content="Original" />
+                        <ComboBoxItem Content="1:1" />
+                        <ComboBoxItem Content="4:3" />
+                        <ComboBoxItem Content="16:9" />
+                        <ComboBoxItem Content="3:4" />
+                        <ComboBoxItem Content="9:16" />
+                    </ComboBox>
+                    <StackPanel Spacing="6">
+                        <TextBlock
+                            x:Name="AlignmentHeader"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Image alignment" />
+                        <!--
+                            3×3 placement grid: one tap sets both axes. Each cell is a ToggleButton
+                            whose checked state mirrors the controller's H+V alignment; arrow keys
+                            move between cells, Space/Enter selects.
+                        -->
+                        <Grid
+                            x:Name="AlignmentGrid"
+                            HorizontalAlignment="Left"
+                            AutomationProperties.Name="Image alignment"
+                            ColumnSpacing="4"
+                            RowSpacing="4"
+                            XYFocusKeyboardNavigation="Enabled">
+                            <Grid.Resources>
+                                <Style x:Key="AlignmentCellStyle" TargetType="ToggleButton">
+                                    <Setter Property="Width" Value="40" />
+                                    <Setter Property="Height" Value="32" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="MinWidth" Value="0" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                    <Setter Property="VerticalContentAlignment" Value="Center" />
+                                </Style>
+                                <!--  A glyph (not a shape) so the dot inherits the cell's state foreground.  -->
+                                <Style x:Key="AlignmentDotStyle" TargetType="TextBlock">
+                                    <Setter Property="Text" Value="&#x25CF;" />
+                                    <Setter Property="FontSize" Value="10" />
+                                    <Setter Property="IsTextSelectionEnabled" Value="False" />
+                                </Style>
+                            </Grid.Resources>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <ToggleButton Grid.Row="0" Grid.Column="0" Style="{StaticResource AlignmentCellStyle}" Tag="0,0" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignTopLeft" AutomationProperties.Name="Top-left image alignment" ToolTipService.ToolTip="Top left"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                            <ToggleButton Grid.Row="0" Grid.Column="1" Style="{StaticResource AlignmentCellStyle}" Tag="1,0" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignTopCenter" AutomationProperties.Name="Top-center image alignment" ToolTipService.ToolTip="Top center"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                            <ToggleButton Grid.Row="0" Grid.Column="2" Style="{StaticResource AlignmentCellStyle}" Tag="2,0" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignTopRight" AutomationProperties.Name="Top-right image alignment" ToolTipService.ToolTip="Top right"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                            <ToggleButton Grid.Row="1" Grid.Column="0" Style="{StaticResource AlignmentCellStyle}" Tag="0,1" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignMiddleLeft" AutomationProperties.Name="Middle-left image alignment" ToolTipService.ToolTip="Middle left"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                            <ToggleButton Grid.Row="1" Grid.Column="1" Style="{StaticResource AlignmentCellStyle}" Tag="1,1" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignCenter" AutomationProperties.Name="Center image alignment" ToolTipService.ToolTip="Center"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                            <ToggleButton Grid.Row="1" Grid.Column="2" Style="{StaticResource AlignmentCellStyle}" Tag="2,1" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignMiddleRight" AutomationProperties.Name="Middle-right image alignment" ToolTipService.ToolTip="Middle right"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                            <ToggleButton Grid.Row="2" Grid.Column="0" Style="{StaticResource AlignmentCellStyle}" Tag="0,2" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignBottomLeft" AutomationProperties.Name="Bottom-left image alignment" ToolTipService.ToolTip="Bottom left"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                            <ToggleButton Grid.Row="2" Grid.Column="1" Style="{StaticResource AlignmentCellStyle}" Tag="1,2" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignBottomCenter" AutomationProperties.Name="Bottom-center image alignment" ToolTipService.ToolTip="Bottom center"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                            <ToggleButton Grid.Row="2" Grid.Column="2" Style="{StaticResource AlignmentCellStyle}" Tag="2,2" Click="OnAlignmentCellClicked" AutomationProperties.AutomationId="EditorAlignBottomRight" AutomationProperties.Name="Bottom-right image alignment" ToolTipService.ToolTip="Bottom right"><TextBlock Style="{StaticResource AlignmentDotStyle}" /></ToggleButton>
+                        </Grid>
+                    </StackPanel>
+                    <Slider
+                        x:Name="CornerSlider"
+                        AutomationProperties.AutomationId="EditorCornerSlider"
+                        AutomationProperties.Name="Corner radius"
+                        Header="Image corners"
+                        Maximum="60"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnCornerChanged" />
+                    <Slider
+                        x:Name="ShadowSlider"
+                        AutomationProperties.AutomationId="EditorShadowSlider"
+                        AutomationProperties.Name="Shadow"
+                        Header="Shadow"
+                        Maximum="40"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnShadowChanged" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Border>

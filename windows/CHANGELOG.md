@@ -5,14 +5,19 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- After switching tools, the screenshot editor inspector shows the new tool's color, stroke width, fill, and badge settings instead of those of the last selected annotation, and the **Stroke**, **Font size**, and **Badge size** labels show the selected annotation's values.
+- Selecting a redaction in the screenshot editor no longer marks the screenshot as edited or makes its style and strength the defaults for new redactions.
+
 ### Changed
 - Screenshot editor lines and arrows now have **Start** and **End** controls for flat, round, or square ends (arrows have a start control; their other end is the head), and rectangles have a **Corners** option under **Advanced** for sharp, round, or beveled corners. New rectangles now default to round corners.
 - Rectangles and ellipses in the screenshot editor have a **Stroke position** option to draw the border inside, centered on, or outside the shape's edge. Centered is the default, as before. The saved image is exact; the live preview approximates inside and outside borders on ellipses.
 - Translucent arrows and pen strokes in the screenshot editor no longer draw darker where pieces overlap, in the live preview or the saved image.
-- Screenshot rectangles, ellipses, lines, and arrows can be **Hand-drawn**, with a **Roughness** slider. Each annotation keeps its own wobble as it moves or redraws, and arrows keep their taper.
 - Screenshot pen strokes are now smooth, tapered ink: the line follows the pointer more steadily, thins slightly when drawn quickly, tapers at both ends, and keeps an even color when translucent.
 - Screenshot arrows and lines now have a **Fill** (the body's color), a **Size** (its thickness), and an optional outline: a **Stroke color** and **Stroke** width (none by default) placed by **Stroke position**, which starts at **Outside** for arrows and lines. For shapes, the color control is now named **Stroke color** and sits directly above the **Stroke** width. In the live preview an inside outline is shown centered; the saved image draws it exactly.
-- Screenshot arrows are now one smooth shape with an **Arrow** picker for **Classic**, **Tapered**, and **Curved** presets. Drag the diamond handle on a selected arrow's middle to bend it either way (it snaps straight near the line), and use **Advanced** to set its **Arc**, **Start width**, **End width**, **Head size**, and head **Corners**. Editing any of these shows **Custom**. The previous straight and curved arrow styles are replaced by these controls. Arrows in the live preview now match the saved image at every zoom level, and a curved arrow can be selected anywhere along its curve.
+- Screenshot arrows are now one smooth shape with an **Arrow** picker for **Classic** and **Tapered** presets. Drag the diamond handle on a selected arrow's middle to bend it either way (it snaps straight near the line), and use **Advanced** to set its **Arc**, **Start width**, **End width**, **Head size**, and head **Corners**. Editing any of these shows **Custom**. The previous straight and curved arrow styles are replaced by these controls. Arrows in the live preview now match the saved image at every zoom level, and a curved arrow can be selected anywhere along its curve.
+- The screenshot editor has a **Background** tool after **Select** (shortcut **G**) for padding, a background, and a frame, which used to sit in the inspector's **Background** expander. New installs open the editor on **Background** and upgrades keep **Select**; choose another with **Default editor tool** in Screenshot settings, or with the `screenshotEditorDefaultTool` Agent Control setting.
+- Short choices in the screenshot editor (**Arrow**, **Stroke position**, **Start**, **End**, **Corners**, redaction **Style** and **Strength**, and background image **Placement**) are now segmented controls instead of drop-downs.
 
 ## [v2.3.1-windows] - 2026-11-24
 

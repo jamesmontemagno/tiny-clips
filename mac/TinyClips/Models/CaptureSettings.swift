@@ -403,6 +403,8 @@ class CaptureSettings: ObservableObject {
     static let confirmEditorEscapeKey = CaptureSettingsDefaultsKey.confirmEditorEscape
     static let studioExportResolutionKey = CaptureSettingsDefaultsKey.studioExportResolution
     static let screenshotEditorNativeSizeKey = "screenshotEditorNativeSize"
+    /// The editor tool a new screenshot editor starts with, as an `EditTool.settingID`.
+    static let screenshotEditorDefaultToolKey = "screenshotEditorDefaultTool"
     /// Where the Captions panel keeps the language captions are generated in, as a BCP 47 tag, or
     /// empty for the system's.
     static let studioCaptionLanguageKey = "studioCaptionLanguage"
@@ -529,6 +531,7 @@ class CaptureSettings: ObservableObject {
     @CapturePreference("webcamCornerRadius") var webcamCornerRadius: Double = -1
     @CapturePreference("showScreenshotEditor") var showScreenshotEditor: Bool = true
     @CapturePreference("screenshotEditorNativeSize") var screenshotEditorNativeSize: Bool = false
+    @CapturePreference("screenshotEditorDefaultTool") var screenshotEditorDefaultTool: String = EditTool.background.settingID
     @CapturePreference(CaptureSettingsDefaultsKey.confirmEditorEscape) var confirmEditorEscape: Bool = true
     @CapturePreference("showGifTrimmer") var showGifTrimmer: Bool = true
     @CapturePreference("saveImmediatelyScreenshot") var saveImmediatelyScreenshot: Bool = true
@@ -928,6 +931,8 @@ class CaptureSettings: ObservableObject {
     func resetPreferences(preservingHotKeys: Bool = false) {
         objectWillChange.send()
         Self.resetStoredDefaults(defaults, preservingHotKeys: preservingHotKeys)
+        // Store it so finishing onboarding again can't make the migration treat this as an upgrade.
+        screenshotEditorDefaultTool = EditTool.background.settingID
         defaults.set(true, forKey: Self.useDefaultSaveDirectoriesKey)
         ensureSaveDirectoryDefaults(defaults)
     }
@@ -964,7 +969,7 @@ class CaptureSettings: ObservableObject {
         studioExportResolutionKey, CaptureSettingsDefaultsKey.studioExportQuality,
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
-        "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",
+        "showScreenshotEditor", screenshotEditorNativeSizeKey, screenshotEditorDefaultToolKey, confirmEditorEscapeKey, "showGifTrimmer",
         "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
         "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
         "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
@@ -1019,6 +1024,7 @@ class CaptureSettings: ObservableObject {
 
         Self.migrateSaveDirectorySettings(in: defaults)
         ensureSaveDirectoryDefaults(defaults)
+        Self.migrateScreenshotEditorDefaultTool(in: defaults)
 
         guard defaults.object(forKey: "multiMonitorCaptureMode") == nil else { return }
 
@@ -1086,6 +1092,19 @@ class CaptureSettings: ObservableObject {
             defaults.set(videoGifDisplayPath, forKey: "gifSaveDirectoryDisplayPath")
         }
 #endif
+    }
+
+    /// The editor used to open with Move. Keep that for people upgrading and start new installs on
+    /// Background. The choice is always stored, so finishing onboarding later doesn't change it.
+    static func migrateScreenshotEditorDefaultTool(in defaults: UserDefaults) {
+        guard defaults.object(forKey: screenshotEditorDefaultToolKey) == nil else { return }
+        let tool: EditTool = defaults.bool(forKey: "hasCompletedOnboarding") ? .move : .background
+        defaults.set(tool.settingID, forKey: screenshotEditorDefaultToolKey)
+    }
+
+    var screenshotEditorDefaultEditTool: EditTool {
+        get { EditTool(settingID: screenshotEditorDefaultTool) ?? .background }
+        set { screenshotEditorDefaultTool = newValue.settingID }
     }
 
     /// Whether someone chose a save folder, as opposed to the default folders saved for them.

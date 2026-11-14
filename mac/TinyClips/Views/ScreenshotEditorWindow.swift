@@ -487,7 +487,6 @@ struct ScreenshotEditorView: View {
     private var lastSavedURL: URL? { lifecycle.lastSavedURL }
     @State private var splitVisibility: NavigationSplitViewVisibility = .automatic
     @State private var activePopover: EditorPopover?
-    @State private var isBackgroundSectionExpanded = true
     @State private var showExitConfirmation = false
     @State private var closePrompt: ScreenshotEditorClosePrompt = .discardChanges
     @AppStorage(CaptureSettings.confirmEditorEscapeKey) private var confirmOnEscape = true
@@ -642,29 +641,6 @@ struct ScreenshotEditorView: View {
         )
     }
 
-    private var sketchBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.selectedIsSketch() ?? viewModel.isSketch },
-            set: { newValue in
-                if !viewModel.updateSelectedIsSketch(newValue) {
-                    viewModel.isSketch = newValue
-                }
-            }
-        )
-    }
-
-    private var roughnessBinding: Binding<CGFloat> {
-        Binding(
-            get: { viewModel.selectedRoughness() ?? viewModel.roughness },
-            set: { newValue in
-                let roughness = (newValue * 4).rounded() / 4
-                if !viewModel.updateSelectedRoughness(roughness) {
-                    viewModel.roughness = roughness
-                }
-            }
-        )
-    }
-
     private var outlineColorBinding: Binding<Color> {
         Binding(
             get: { viewModel.selectedOutlineColor() ?? viewModel.outlineColor },
@@ -795,6 +771,28 @@ struct ScreenshotEditorView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// A short list of choices as segments, titled above so they fit the inspector's width.
+    private func segmentedPicker<Option: Identifiable & Hashable>(
+        _ title: String,
+        accessibilityLabel: String? = nil,
+        selection: Binding<Option>,
+        options: [Option],
+        label: @escaping (Option) -> String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .accessibilityHidden(true)
+            Picker(accessibilityLabel ?? title, selection: selection) {
+                ForEach(options) { option in
+                    Text(label(option)).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+        }
+    }
+
     private var textFontFamilyBinding: Binding<String> {
         Binding(
             get: {
@@ -814,7 +812,11 @@ struct ScreenshotEditorView: View {
                 viewModel.selectedTextFontSize() ?? viewModel.textFontSize
             },
             set: { newValue in
-                _ = viewModel.updateSelectedTextFontSize(newValue)
+                // Whole sizes, without a stepped slider's tick marks.
+                let size = newValue.rounded()
+                if !viewModel.updateSelectedTextFontSize(size) {
+                    viewModel.textFontSize = size
+                }
             }
         )
     }
@@ -893,19 +895,11 @@ struct ScreenshotEditorView: View {
         )
     }
 
-    private func handleTextBoxSliderEditing(_ isEditing: Bool) {
+    private func handleTextSliderEditing(_ isEditing: Bool) {
         if isEditing {
-            viewModel.beginSelectedTextBoxStyleEdit()
+            viewModel.beginSelectedTextStyleEdit()
         } else {
-            viewModel.endSelectedTextBoxStyleEdit()
-        }
-    }
-
-    private func handleTextFontSizeSliderEditing(_ isEditing: Bool) {
-        if isEditing {
-            viewModel.beginSelectedTextFontSizeEdit()
-        } else {
-            viewModel.endSelectedTextFontSizeEdit()
+            viewModel.endSelectedTextStyleEdit()
         }
     }
 
@@ -1179,14 +1173,11 @@ struct ScreenshotEditorView: View {
                 }
             }
 
-            Section {
-                DisclosureGroup(isExpanded: $isBackgroundSectionExpanded) {
+            if viewModel.selectedTool == .background {
+                Section("Background") {
                     backgroundControls
-                        .padding(.top, 8)
-                } label: {
-                    Label("Background", systemImage: "photo.on.rectangle")
+                        .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
                 }
-                .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
             }
         }
         .listStyle(.sidebar)
@@ -1268,15 +1259,17 @@ struct ScreenshotEditorView: View {
                 Button {
                     viewModel.selectedTool = tool
                 } label: {
-                    VStack(spacing: 1) {
+                    VStack(spacing: 3) {
                         Image(systemName: tool.rawValue)
-                            .font(.system(size: 12))
+                            .font(.system(size: 16))
+                            .frame(height: 20)
                         Text(tool.label)
-                            .font(.system(size: 8))
+                            .font(.system(size: 10))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                            .minimumScaleFactor(0.75)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .padding(.horizontal, 2)
+                    .frame(maxWidth: .infinity, minHeight: 46)
                     .background(viewModel.selectedTool == tool ? Color.accentColor.opacity(0.2) : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .contentShape(RoundedRectangle(cornerRadius: 6))
@@ -1338,11 +1331,7 @@ struct ScreenshotEditorView: View {
     private var styleControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             if viewModel.showsArrowStyleControl {
-                Picker("Arrow", selection: arrowPresetBinding) {
-                    ForEach(ArrowPreset.allCases) { preset in
-                        Text(preset.label).tag(preset)
-                    }
-                }
+                segmentedPicker("Arrow", selection: arrowPresetBinding, options: ArrowPreset.allCases, label: \.label)
             }
 
             // Stroked shapes show their color beside the stroke width below.
@@ -1409,23 +1398,20 @@ struct ScreenshotEditorView: View {
                     }
                 }
 
-                HStack(spacing: 8) {
-                    Text("Size")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Slider(
-                        value: textFontSizeBinding,
-                        in: 10...72,
-                        step: 1,
-                        onEditingChanged: handleTextFontSizeSliderEditing
-                    )
-                        .accessibilityLabel("Text size")
-                        .accessibilityValue("\(Int(textFontSizeBinding.wrappedValue)) points")
-                    Text("\(Int(textFontSizeBinding.wrappedValue)) pt")
-                        .font(.caption)
-                        .monospacedDigit()
-                        .frame(minWidth: 34, alignment: .trailing)
+                LabeledContent("Size") {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: textFontSizeBinding,
+                            in: ScreenshotEditorViewModel.textFontSizeRange,
+                            onEditingChanged: handleTextSliderEditing
+                        )
+                        Text("\(Int(textFontSizeBinding.wrappedValue)) pt")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 38, alignment: .trailing)
+                    }
                 }
+                .accessibilityElement(children: .combine)
 
                 HStack(spacing: 8) {
                     TextStyleToggleButton(title: "Bold", systemImage: "bold", isOn: textBoldBinding)
@@ -1457,7 +1443,7 @@ struct ScreenshotEditorView: View {
                         Slider(
                             value: textBoxBorderWidthBinding,
                             in: TextBoxStyle.borderWidthRange,
-                            onEditingChanged: handleTextBoxSliderEditing
+                            onEditingChanged: handleTextSliderEditing
                         )
                         Text("\(Int(textBoxBorderWidthBinding.wrappedValue)) px")
                             .font(.caption)
@@ -1472,7 +1458,7 @@ struct ScreenshotEditorView: View {
                         Slider(
                             value: textBoxPaddingBinding,
                             in: TextBoxStyle.paddingRange,
-                            onEditingChanged: handleTextBoxSliderEditing
+                            onEditingChanged: handleTextSliderEditing
                         )
                         Text("\(Int(textBoxPaddingBinding.wrappedValue)) px")
                             .font(.caption)
@@ -1487,7 +1473,7 @@ struct ScreenshotEditorView: View {
                         Slider(
                             value: textBoxCornerRadiusBinding,
                             in: TextBoxStyle.cornerRadiusRange,
-                            onEditingChanged: handleTextBoxSliderEditing
+                            onEditingChanged: handleTextSliderEditing
                         )
                         Text("\(Int(textBoxCornerRadiusBinding.wrappedValue)) px")
                             .font(.caption)
@@ -1541,11 +1527,12 @@ struct ScreenshotEditorView: View {
             }
 
             if viewModel.showsStrokeAlignmentControl {
-                Picker("Stroke position", selection: strokeAlignmentBinding) {
-                    ForEach(StrokeAlignment.allCases) { alignment in
-                        Text(alignment.label).tag(alignment)
-                    }
-                }
+                segmentedPicker(
+                    "Stroke position",
+                    selection: strokeAlignmentBinding,
+                    options: StrokeAlignment.allCases,
+                    label: \.label
+                )
             }
 
             if showsFillColorPicker {
@@ -1553,43 +1540,23 @@ struct ScreenshotEditorView: View {
             }
 
             if viewModel.showsStartCapControl {
-                Picker("Start", selection: startCapBinding) {
-                    ForEach(StrokeCap.allCases) { cap in
-                        Text(cap.label).tag(cap)
-                    }
-                }
-                .accessibilityLabel("Line start")
+                segmentedPicker(
+                    "Start",
+                    accessibilityLabel: "Line start",
+                    selection: startCapBinding,
+                    options: StrokeCap.allCases,
+                    label: \.label
+                )
             }
 
             if viewModel.showsEndCapControl {
-                Picker("End", selection: endCapBinding) {
-                    ForEach(StrokeCap.allCases) { cap in
-                        Text(cap.label).tag(cap)
-                    }
-                }
-                .accessibilityLabel("Line end")
-            }
-
-            if viewModel.showsSketchControls {
-                Toggle("Hand-drawn", isOn: sketchBinding)
-
-                if sketchBinding.wrappedValue {
-                    LabeledContent("Roughness") {
-                        HStack(spacing: 8) {
-                            Slider(
-                                value: roughnessBinding,
-                                in: SketchGeometry.roughnessRange,
-                                step: 0.25,
-                                onEditingChanged: { viewModel.setAdjustingSelectedLineWidth($0) }
-                            )
-                            Text(String(format: "%.2g", Double(roughnessBinding.wrappedValue)))
-                                .font(.caption)
-                                .monospacedDigit()
-                                .frame(width: 38, alignment: .trailing)
-                        }
-                    }
-                    .accessibilityElement(children: .combine)
-                }
+                segmentedPicker(
+                    "End",
+                    accessibilityLabel: "Line end",
+                    selection: endCapBinding,
+                    options: StrokeCap.allCases,
+                    label: \.label
+                )
             }
 
             if viewModel.showsLineJoinControl {
@@ -1619,11 +1586,7 @@ struct ScreenshotEditorView: View {
                             arrowSlider("End width", \.endWidthScale, in: ArrowShapeOptions.widthScaleRange)
                             arrowSlider("Head size", \.headScale, in: ArrowShapeOptions.headScaleRange)
                         }
-                        Picker("Corners", selection: lineJoinBinding) {
-                            ForEach(StrokeJoin.allCases) { join in
-                                Text(join.label).tag(join)
-                            }
-                        }
+                        segmentedPicker("Corners", selection: lineJoinBinding, options: StrokeJoin.allCases, label: \.label)
                     }
                 }
             }
@@ -1965,10 +1928,18 @@ struct ScreenshotEditorView: View {
             Text("Export")
                 .font(.headline)
 
-            Picker("Format", selection: $viewModel.saveFormat) {
-                ForEach(ImageFormat.allCases, id: \.self) { format in
-                    Text(format.label).tag(format)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Format")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Picker("Format", selection: $viewModel.saveFormat) {
+                    ForEach(ImageFormat.allCases, id: \.self) { format in
+                        Text(format.label).tag(format)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
 
             VStack(alignment: .leading, spacing: 4) {

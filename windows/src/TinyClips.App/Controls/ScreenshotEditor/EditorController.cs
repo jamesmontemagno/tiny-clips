@@ -195,10 +195,6 @@ internal sealed class EditorController : IDisposable
     /// <summary>Arrow and line outlines start outside the body, so they frame it rather than cover it.</summary>
     public StrokeAlignment OutlineAlignmentDefault { get; private set; } = StrokeAlignment.Outside;
 
-    public bool SketchDefault { get; private set; }
-
-    public double RoughnessDefault { get; private set; } = SketchGeometry.DefaultRoughness;
-
     public string EmojiDefault { get; private set; } = EmojiAnnotationMath.DefaultEmoji;
 
     // Shared across editor windows for the lifetime of the process so the "Recent" row survives
@@ -433,10 +429,9 @@ internal sealed class EditorController : IDisposable
                 {
                     return ann;
                 }
-                // The head, wide shaft ends and a hand-drawn wobble reach past the curve's pad.
+                // The head and wide shaft ends reach past the curve's pad.
                 var outline = ArrowGeometry.Build(
-                    ToPoint(start), ToPoint(end), ann.Thickness, ann.Arrow, ann.StartCap, ann.LineJoin,
-                    roughness: ann.SketchRoughness, seed: ann.Seed);
+                    ToPoint(start), ToPoint(end), ann.Thickness, ann.Arrow, ann.StartCap, ann.LineJoin);
                 var reach = ann.StrokeAlignment == StrokeAlignment.Inside ? 0 : ann.OutlineWidth;
                 if (ArrowGeometry.OutlineContains(outline.Points, point, reach + 6))
                 {
@@ -620,34 +615,6 @@ internal sealed class EditorController : IDisposable
         else
         {
             LineJoinDefault = join;
-        }
-    }
-
-    public void SetSketch(bool isSketch)
-    {
-        if (SelectedAnnotation is { } ann && ann.Tool.UsesSketch())
-        {
-            ann.IsSketch = isSketch;
-            MarkDirty();
-            AnnotationVisualInvalidated?.Invoke(this, ann);
-        }
-        else
-        {
-            SketchDefault = isSketch;
-        }
-    }
-
-    public void SetRoughness(double roughness)
-    {
-        if (SelectedAnnotation is { } ann && ann.Tool.UsesSketch())
-        {
-            ann.Roughness = roughness;
-            MarkDirty();
-            AnnotationVisualInvalidated?.Invoke(this, ann);
-        }
-        else
-        {
-            RoughnessDefault = roughness;
         }
     }
 
@@ -1350,8 +1317,6 @@ internal sealed class EditorController : IDisposable
             StrokeAlignment = tool.UsesOutline() ? OutlineAlignmentDefault : StrokeAlignmentDefault,
             OutlineColor = OutlineColorDefault,
             OutlineWidth = OutlineWidthDefault,
-            IsSketch = tool.UsesSketch() && SketchDefault,
-            Roughness = RoughnessDefault,
             Bounds = new Rect(pixelStart.X, pixelStart.Y, 0, 0),
         };
 
@@ -1877,9 +1842,6 @@ internal sealed class EditorController : IDisposable
         annotation.StrokeAlignment = snapshot.StrokeAlignment;
         annotation.OutlineColor = snapshot.OutlineColor;
         annotation.OutlineWidth = snapshot.OutlineWidth;
-        annotation.IsSketch = snapshot.IsSketch;
-        annotation.Roughness = snapshot.Roughness;
-        annotation.Seed = snapshot.Seed;
     }
 
     // -- Crop -------------------------------------------------------------------------------
@@ -2496,11 +2458,6 @@ internal sealed class EditorController : IDisposable
                 {
                     ds.FillRectangle((float)b.X, (float)b.Y, (float)b.Width, (float)b.Height, ann.FillColor);
                 }
-                if (ann.IsSketch)
-                {
-                    DrawSketch(ds, SketchGeometry.Rectangle(ToRectD(b), thickness, ann.Roughness, ann.Seed), color, thickness);
-                    break;
-                }
                 var ring = StrokeAlignmentGeometry.RectangleRing(
                     new RectD(b.X, b.Y, b.Width, b.Height), thickness, ann.StrokeAlignment, ann.LineJoin);
                 using (var ringGeometry = CreateRingGeometry(ds, ring))
@@ -2521,19 +2478,13 @@ internal sealed class EditorController : IDisposable
                         (float)(b.Height / 2),
                         ann.FillColor);
                 }
-                if (ann.IsSketch)
-                {
-                    DrawSketch(ds, SketchGeometry.Ellipse(ToRectD(b), thickness, ann.Roughness, ann.Seed), color, thickness);
-                    break;
-                }
                 DrawAlignedEllipseStroke(ds, b, color, thickness, ann.StrokeAlignment);
                 break;
             }
             case EditTool.Line:
             {
                 var (start, end) = Segment(ann);
-                var outline = LineGeometry.Outline(
-                    ToPoint(start), ToPoint(end), thickness, ann.StartCap, ann.EndCap, roughness: ann.SketchRoughness, seed: ann.Seed);
+                var outline = LineGeometry.Outline(ToPoint(start), ToPoint(end), thickness, ann.StartCap, ann.EndCap);
                 DrawBodyWithOutline(ds, outline, color, ann);
                 break;
             }
@@ -2650,8 +2601,7 @@ internal sealed class EditorController : IDisposable
     private static void DrawArrowToSession(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)
     {
         var (start, end) = Segment(ann);
-        var outline = ArrowGeometry.Build(
-            ToPoint(start), ToPoint(end), thickness, ann.Arrow, ann.StartCap, ann.LineJoin, roughness: ann.SketchRoughness, seed: ann.Seed);
+        var outline = ArrowGeometry.Build(ToPoint(start), ToPoint(end), thickness, ann.Arrow, ann.StartCap, ann.LineJoin);
         DrawBodyWithOutline(ds, outline.Points, color, ann);
     }
 
@@ -2717,36 +2667,6 @@ internal sealed class EditorController : IDisposable
     // -- Geometry helpers (also used by EditorCanvas for the live XAML preview) ----------------
 
     private static PointD ToPoint(Vector2 v) => new(v.X, v.Y);
-
-    /// <summary>Strokes a hand-drawn shape's ops with round ends and corners, as rough.js does.</summary>
-    private static void DrawSketch(CanvasDrawingSession ds, IReadOnlyList<SketchOp> ops, Color color, float thickness)
-    {
-        using var pb = new CanvasPathBuilder(ds.Device);
-        var open = false;
-        foreach (var op in ops)
-        {
-            if (op.IsMove)
-            {
-                if (open)
-                {
-                    pb.EndFigure(CanvasFigureLoop.Open);
-                }
-                pb.BeginFigure(ToVector2(op.End));
-                open = true;
-            }
-            else if (open)
-            {
-                pb.AddCubicBezier(ToVector2(op.Control1), ToVector2(op.Control2), ToVector2(op.End));
-            }
-        }
-        if (open)
-        {
-            pb.EndFigure(CanvasFigureLoop.Open);
-        }
-        using var geometry = CanvasGeometry.CreatePath(pb);
-        var style = new CanvasStrokeStyle { StartCap = CanvasCapStyle.Round, EndCap = CanvasCapStyle.Round, LineJoin = CanvasLineJoin.Round };
-        ds.DrawGeometry(geometry, color, thickness, style);
-    }
 
     /// <summary>A rectangle's stroke as one fillable ring, matching the macOS renderer exactly.</summary>
     private static CanvasGeometry CreateRingGeometry(ICanvasResourceCreator resources, RectStrokeRing ring)

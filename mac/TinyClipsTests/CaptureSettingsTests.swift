@@ -187,6 +187,36 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: CaptureSettings.screenshotEditorNativeSizeKey))
     }
 
+    func testScreenshotEditorDefaultToolKeepsMoveForUpgradesAndStartsNewInstallsOnBackground() {
+        CaptureSettings.migrateScreenshotEditorDefaultTool(in: defaults)
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .background)
+
+        // Finishing onboarding afterwards must not make a new install look like an upgrade.
+        defaults.set(true, forKey: "hasCompletedOnboarding")
+        CaptureSettings.migrateScreenshotEditorDefaultTool(in: defaults)
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .background)
+
+        defaults.removeObject(forKey: CaptureSettings.screenshotEditorDefaultToolKey)
+        CaptureSettings.migrateScreenshotEditorDefaultTool(in: defaults)
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .move)
+    }
+
+    func testScreenshotEditorDefaultToolStoresSharedNamesAndFallsBackToBackground() {
+        // Windows and Agent Control use the same names.
+        XCTAssertEqual(EditTool.allCases.map(\.settingID), [
+            "move", "background", "crop", "rectangle", "ellipse", "arrow", "line", "pen", "text", "number", "emoji", "redact"
+        ])
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        settings.screenshotEditorDefaultEditTool = .pencil
+        XCTAssertEqual(defaults.string(forKey: CaptureSettings.screenshotEditorDefaultToolKey), "pen")
+
+        defaults.set("not-a-tool", forKey: CaptureSettings.screenshotEditorDefaultToolKey)
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .background)
+
+        CaptureSettings.resetStoredDefaults(defaults)
+        XCTAssertNil(defaults.object(forKey: CaptureSettings.screenshotEditorDefaultToolKey))
+    }
+
     func testClickLightScreenshotExclusionDefaultsOff() {
         let settings = CaptureSettings(defaults: defaults, performMigrations: false)
 

@@ -438,7 +438,7 @@ struct InlineTextEditor: View {
 
             HStack(spacing: 6) {
                 Button {
-                    fontSize = max(10, fontSize - 2)
+                    fontSize = max(ScreenshotEditorViewModel.textFontSizeRange.lowerBound, fontSize - 2)
                 } label: {
                     Image(systemName: "minus")
                         .font(.system(size: 10, weight: .bold))
@@ -456,7 +456,7 @@ struct InlineTextEditor: View {
                     .frame(width: 32)
 
                 Button {
-                    fontSize = min(72, fontSize + 2)
+                    fontSize = min(ScreenshotEditorViewModel.textFontSizeRange.upperBound, fontSize + 2)
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 10, weight: .bold))

@@ -8,6 +8,7 @@ namespace TinyClips.Core.Editing;
 public enum EditTool
 {
     Select,
+    Background,
     Crop,
     Rectangle,
     Ellipse,
@@ -199,6 +200,32 @@ public static class EditToolExtensions
         tool is EditTool.Emoji or EditTool.Text or EditTool.Rectangle or EditTool.Ellipse or EditTool.Pen;
 
     public static bool StoresRotation(this EditTool tool) => tool.SupportsRotation() && tool != EditTool.Pen;
+
+    /// <summary>The tool's name in Agent Control settings, shared with the Mac app.</summary>
+    public static string SettingId(this EditTool tool) => tool switch
+    {
+        EditTool.Select => "move",
+        EditTool.Counter => "number",
+        _ => tool.ToString().ToLowerInvariant(),
+    };
+
+    /// <summary>Every tool's <see cref="SettingId"/>, in toolbar order.</summary>
+    public static IReadOnlyList<string> SettingIds { get; } = [.. Enum.GetValues<EditTool>().Select(SettingId)];
+
+    public static bool TryParseSettingId(string? id, out EditTool tool)
+    {
+        foreach (var candidate in Enum.GetValues<EditTool>())
+        {
+            if (string.Equals(candidate.SettingId(), id, StringComparison.Ordinal))
+            {
+                tool = candidate;
+                return true;
+            }
+        }
+
+        tool = default;
+        return false;
+    }
 }
 
 /// <summary>Mutable owning-thread annotation state. Capture before crossing an async boundary.</summary>
@@ -235,22 +262,13 @@ public class ScreenshotAnnotation
     public Color OutlineColor { get; set; } = Color.FromArgb(255, 0, 0, 0);
     public double OutlineWidth { get; set; }
 
-    /// <summary>Rectangles, ellipses, lines, and arrows can be drawn by hand; see <see cref="SketchGeometry"/>.</summary>
-    public bool IsSketch { get; set; }
-    public double Roughness { get; set; } = SketchGeometry.DefaultRoughness;
-
-    /// <summary>Fixes the hand-drawn wobble, so it never changes as the annotation redraws or moves.</summary>
-    public int Seed { get; set; } = SketchGeometry.NewSeed();
-
-    /// <summary>The roughness to draw with: 0 unless the annotation is hand-drawn.</summary>
-    public double SketchRoughness => IsSketch ? Roughness : 0;
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 
     public AnnotationSnapshot CaptureSnapshot() => new(
         Tool, Bounds, Color, FillColor, Thickness, Text, Number, SizeScale,
         Redaction, RedactStyle, Arrow, Points.ToImmutableArray(), TextColor,
         FontSize, FontFamily, Bold, Italic, Underline, Strikethrough, TextBoxStyle, Rotation,
-        StartCap, EndCap, LineJoin, StrokeAlignment, OutlineColor, OutlineWidth, IsSketch, Roughness, Seed);
+        StartCap, EndCap, LineJoin, StrokeAlignment, OutlineColor, OutlineWidth);
 }
 
 /// <summary>Immutable image-pixel annotation data; deliberately excludes live XAML previews.</summary>
@@ -281,14 +299,8 @@ public sealed record AnnotationSnapshot(
     StrokeJoin LineJoin = AnnotationStroke.DefaultJoin,
     StrokeAlignment StrokeAlignment = StrokeAlignment.Center,
     Color OutlineColor = default,
-    double OutlineWidth = 0,
-    bool IsSketch = false,
-    double Roughness = SketchGeometry.DefaultRoughness,
-    int Seed = 1)
+    double OutlineWidth = 0)
 {
-    /// <summary>The roughness to draw with: 0 unless the annotation is hand-drawn.</summary>
-    public double SketchRoughness => IsSketch ? Roughness : 0;
-
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 }
 

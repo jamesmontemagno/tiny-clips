@@ -5,7 +5,6 @@ public enum ArrowPreset
 {
     Classic,
     Tapered,
-    Curved,
     Custom,
 }
 
@@ -18,7 +17,6 @@ public readonly record struct ArrowShapeOptions(double Bend, double StartWidthSc
 {
     public static readonly ArrowShapeOptions Classic = new(0, 1, 1, 1);
     public static readonly ArrowShapeOptions Tapered = new(0, 0.25, 1, 1.2);
-    public static readonly ArrowShapeOptions Curved = new(0.2, 1, 1, 1);
 
     public const double MinimumBend = -1;
     public const double MaximumBend = 1;
@@ -30,7 +28,6 @@ public readonly record struct ArrowShapeOptions(double Bend, double StartWidthSc
     public static ArrowShapeOptions For(ArrowPreset preset) => preset switch
     {
         ArrowPreset.Tapered => Tapered,
-        ArrowPreset.Curved => Curved,
         _ => Classic,
     };
 
@@ -38,7 +35,6 @@ public readonly record struct ArrowShapeOptions(double Bend, double StartWidthSc
     public ArrowPreset Preset =>
         Matches(Classic) ? ArrowPreset.Classic
         : Matches(Tapered) ? ArrowPreset.Tapered
-        : Matches(Curved) ? ArrowPreset.Curved
         : ArrowPreset.Custom;
 
     private bool Matches(ArrowShapeOptions other) =>
@@ -163,8 +159,6 @@ public static class ArrowGeometry
             u * u * start.Y + 2 * u * t * control.Y + t * t * end.Y);
     }
 
-    /// <param name="roughness">Above 0, the shaft follows a hand-drawn wobble seeded by
-    /// <paramref name="seed"/> (see <see cref="SketchGeometry"/>); the taper follows it.</param>
     public static ArrowOutline Build(
         PointD start,
         PointD end,
@@ -172,9 +166,7 @@ public static class ArrowGeometry
         ArrowShapeOptions options,
         StrokeCap startCap,
         StrokeJoin join,
-        double scale = 1,
-        double roughness = 0,
-        int seed = 0)
+        double scale = 1)
     {
         var chord = Sub(end, start);
         var length = Length(chord);
@@ -185,7 +177,7 @@ public static class ArrowGeometry
             return new ArrowOutline(control, handle, Array.Empty<PointD>());
         }
         var u = Mul(chord, 1 / length);
-        var (p0, c1, c2, p3) = Centerline(start, end, control, width, scale, roughness, seed);
+        var (p0, c1, c2, p3) = Centerline(start, end, control);
 
         var head = Math.Min(options.HeadScale * HeadLength(width) * scale, MaximumHeadFraction * length);
         var tipDirection = Normalize(Sub(p3, c2), u);
@@ -230,26 +222,15 @@ public static class ArrowGeometry
         return new ArrowOutline(control, handle, points);
     }
 
-    /// <summary>
-    /// The arrow's centerline as a cubic: its bend's quadratic raised to a cubic, plus the
-    /// hand-drawn wobble when sketched.
-    /// </summary>
-    private static (PointD, PointD, PointD, PointD) Centerline(PointD start, PointD end, PointD control, double width, double scale, double roughness, int seed)
-    {
-        if (roughness > 0)
-        {
-            var (s0, c1, c2, e) = SketchGeometry.Centerline(start, end, width, roughness, seed, scale);
-            var d = Mul(Sub(control, Lerp(start, end, 0.5)), 2.0 / 3);
-            return (s0, Add(c1, d), Add(c2, d), e);
-        }
-        return (start, Add(start, Mul(Sub(control, start), 2.0 / 3)), Add(end, Mul(Sub(control, end), 2.0 / 3)), end);
-    }
+    /// <summary>The arrow's centerline as a cubic: its bend's quadratic raised to a cubic.</summary>
+    private static (PointD, PointD, PointD, PointD) Centerline(PointD start, PointD end, PointD control) =>
+        (start, Add(start, Mul(Sub(control, start), 2.0 / 3)), Add(end, Mul(Sub(control, end), 2.0 / 3)), end);
 
     /// <summary>
     /// The left and right edges of a stroke along a cubic, from t = 0 to <paramref name="tEnd"/>,
     /// whose half width runs from <paramref name="startHalf"/> to <paramref name="endHalf"/>.
     /// </summary>
-    internal static (PointD[] Left, PointD[] Right) ShaftEdges(
+    private static (PointD[] Left, PointD[] Right) ShaftEdges(
         PointD p0, PointD c1, PointD c2, PointD p3, double tEnd, double startHalf, double endHalf, PointD fallback)
     {
         var left = new PointD[ShaftSamples + 1];
@@ -267,7 +248,7 @@ public static class ArrowGeometry
         return (left, right);
     }
 
-    internal static PointD Cubic(PointD p0, PointD c1, PointD c2, PointD p3, double t)
+    private static PointD Cubic(PointD p0, PointD c1, PointD c2, PointD p3, double t)
     {
         var u = 1 - t;
         var a = u * u * u;
@@ -279,7 +260,7 @@ public static class ArrowGeometry
             a * p0.Y + b * c1.Y + c * c2.Y + d * p3.Y);
     }
 
-    internal static PointD CubicTangent(PointD p0, PointD c1, PointD c2, PointD p3, double t)
+    private static PointD CubicTangent(PointD p0, PointD c1, PointD c2, PointD p3, double t)
     {
         var u = 1 - t;
         var a = 3 * u * u;
@@ -327,9 +308,9 @@ public static class ArrowGeometry
     }
 
     /// <summary>The unit normal to the right of travel in a y-down space.</summary>
-    internal static PointD RightNormal(PointD direction) => new(-direction.Y, direction.X);
+    private static PointD RightNormal(PointD direction) => new(-direction.Y, direction.X);
 
-    internal static PointD Normalize(PointD v, PointD fallback)
+    private static PointD Normalize(PointD v, PointD fallback)
     {
         var length = Length(v);
         return length > 1e-9 ? Mul(v, 1 / length) : fallback;

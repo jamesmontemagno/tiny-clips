@@ -30,11 +30,12 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
     @Published var selectedTool: EditTool = .move {
         didSet {
-            if selectedTool != .move {
-                selectedAnnotationIndex = nil
-            }
-            // The crop selection belongs to the Crop tool; it never lingers hidden behind another tool.
-            if oldValue == .crop, selectedTool != .crop {
+            guard oldValue != selectedTool else { return }
+            // Only Move shows a selection, so it never lingers hidden behind another tool, where
+            // style edits meant for the new tool would quietly change the old element instead.
+            selectedAnnotationIndex = nil
+            // The crop selection belongs to the Crop tool for the same reason.
+            if oldValue == .crop {
                 clearCropSelection()
             }
         }
@@ -64,6 +65,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var isEditingText = false
     @Published var textEditPosition: CGPoint? // normalized click position
     @Published var textEditValue: String = ""
+    /// Text sizes offered while typing and in the inspector, in editor reference units.
+    static let textFontSizeRange: ClosedRange<CGFloat> = 10...72
     @Published var textFontSize: CGFloat = 16
     @Published var textFontFamily: String = textSystemFontFamily
     @Published var textIsBold = false
@@ -89,8 +92,6 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var outlineWidth: CGFloat = 0
     /// Arrow and line outlines start outside the body, so they frame it rather than cover it.
     @Published var outlineAlignment: StrokeAlignment = .outside
-    @Published var isSketch = false
-    @Published var roughness: CGFloat = SketchGeometry.defaultRoughness
     @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
     @Published var recentEmoji: [String] = []
     @Published var backgroundStyle: ExportBackgroundStyle = .transparent
@@ -134,8 +135,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var redoStack: [EditorCanvasState] = []
     private var pendingDragHistoryState: EditorCanvasState?
     private var didChangePendingDrag = false
-    private var isGroupingTextBoxStyleEdit = false
-    private var isGroupingSelectedTextFontSizeEdit = false
+    private var isGroupingTextStyleEdit = false
 
     private var initialBackgroundStyle: ExportBackgroundStyle
     private var initialBackgroundColor: Color
@@ -182,6 +182,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         if let lastUsed = recentEmoji.first {
             self.selectedEmoji = lastUsed
         }
+        self.selectedTool = settings.screenshotEditorDefaultEditTool
     }
 
     private static let recentEmojiDefaultsKey = "screenshotEditor.recentEmoji"
@@ -464,7 +465,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     /// Whether a normalized `point` lands on an arrow's or line's drawn shape (a thick shaft, a
-    /// wide head, a hand-drawn wobble) or its outline, measured in image pixels.
+    /// wide head) or its outline, measured in image pixels.
     private func drawnOutlineContains(_ ann: ScreenshotAnnotation, point: CGPoint) -> Bool {
         let size = hitTestImageSize
         let line = linePoints(for: ann)
@@ -474,13 +475,11 @@ class ScreenshotEditorViewModel: ObservableObject {
         if ann.tool == .arrow {
             outline = ArrowGeometry.build(
                 start: start, end: end, width: ann.lineWidth, options: ann.arrow,
-                startCap: ann.startCap, join: ann.lineJoin,
-                roughness: ann.sketchRoughness, seed: ann.seed
+                startCap: ann.startCap, join: ann.lineJoin
             ).points
         } else {
             outline = LineGeometry.outline(
-                start: start, end: end, width: ann.lineWidth, startCap: ann.startCap, endCap: ann.endCap,
-                roughness: ann.sketchRoughness, seed: ann.seed
+                start: start, end: end, width: ann.lineWidth, startCap: ann.startCap, endCap: ann.endCap
             )
         }
         // An outside or centered outline reaches past the body by up to its width.
@@ -796,7 +795,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         switch inspectorTool {
         case .rectangle, .circle, .arrow, .line, .pencil, .text, .number:
             return true
-        case .move, .crop, .blur, .emoji:
+        case .move, .background, .crop, .blur, .emoji:
             return false
         }
     }
@@ -957,29 +956,19 @@ class ScreenshotEditorViewModel: ObservableObject {
         }
     }
 
-    func beginSelectedTextBoxStyleEdit() {
-        guard !isGroupingTextBoxStyleEdit, selectedAnnotationIsText else { return }
+    func beginSelectedTextStyleEdit() {
+        guard !isGroupingTextStyleEdit, selectedAnnotationIsText else { return }
         recordHistory()
-        isGroupingTextBoxStyleEdit = true
+        isGroupingTextStyleEdit = true
     }
 
-    func endSelectedTextBoxStyleEdit() {
-        isGroupingTextBoxStyleEdit = false
-    }
-
-    func beginSelectedTextFontSizeEdit() {
-        guard !isGroupingSelectedTextFontSizeEdit, selectedAnnotationIsText else { return }
-        recordHistory()
-        isGroupingSelectedTextFontSizeEdit = true
-    }
-
-    func endSelectedTextFontSizeEdit() {
-        isGroupingSelectedTextFontSizeEdit = false
+    func endSelectedTextStyleEdit() {
+        isGroupingTextStyleEdit = false
     }
 
     private func updateTextBoxStyle(_ mutation: (inout TextBoxStyle) -> Void) {
         if selectedAnnotationIsText, let index = selectedAnnotationIndex {
-            if !isGroupingTextBoxStyleEdit {
+            if !isGroupingTextStyleEdit {
                 recordHistory()
             }
             mutation(&annotations[index].textBoxStyle)
@@ -995,33 +984,6 @@ class ScreenshotEditorViewModel: ObservableObject {
         recordHistory()
         annotations[index].fontFamily = family
         markDirty()
-        return true
-    }
-
-    @discardableResult
-    func updateSelectedTextFontSize(_ size: CGFloat) -> Bool {
-        if selectedAnnotationIsText, let index = selectedAnnotationIndex {
-            guard annotations[index].fontSize != size else { return true }
-            if !isGroupingSelectedTextFontSizeEdit {
-                recordHistory()
-            }
-            var annotation = annotations[index]
-            if annotation.fontSize > 0 {
-                let scale = size / annotation.fontSize
-                annotation.rect = CGRect(
-                    x: annotation.rect.midX - annotation.rect.width * scale / 2,
-                    y: annotation.rect.midY - annotation.rect.height * scale / 2,
-                    width: annotation.rect.width * scale,
-                    height: annotation.rect.height * scale
-                )
-            }
-            annotation.fontSize = size
-            annotations[index] = annotation
-            markDirty()
-            return true
-        }
-        guard selectedTool == .text else { return false }
-        textFontSize = size
         return true
     }
 
@@ -1048,6 +1010,34 @@ class ScreenshotEditorViewModel: ObservableObject {
         guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return false }
         recordHistory()
         annotations[index].isUnderlined = isUnderlined
+        markDirty()
+        return true
+    }
+
+    func selectedTextFontSize() -> CGFloat? {
+        guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return nil }
+        return annotations[index].fontSize
+    }
+
+    /// Resizes the selected text. Its box scales with the font around the same center, as a
+    /// handle resize does, so the glyphs keep fitting.
+    @discardableResult
+    func updateSelectedTextFontSize(_ size: CGFloat) -> Bool {
+        guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return false }
+        let oldSize = annotations[index].fontSize
+        guard size != oldSize else { return true }
+        if !isGroupingTextStyleEdit {
+            recordHistory()
+        }
+        let scale = size / max(oldSize, 1)
+        let rect = annotations[index].rect
+        annotations[index].rect = CGRect(
+            x: rect.midX - rect.width * scale / 2,
+            y: rect.midY - rect.height * scale / 2,
+            width: rect.width * scale,
+            height: rect.height * scale
+        )
+        annotations[index].fontSize = size
         markDirty()
         return true
     }
@@ -1146,39 +1136,6 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     var showsOutlineControls: Bool { inspectorTool.usesOutline }
-
-    var showsSketchControls: Bool { inspectorTool.usesSketch }
-
-    func selectedIsSketch() -> Bool? {
-        selectedIndex(using: \.usesSketch).map { annotations[$0].isSketch }
-    }
-
-    @discardableResult
-    func updateSelectedIsSketch(_ isSketch: Bool) -> Bool {
-        guard let index = selectedIndex(using: \.usesSketch) else { return false }
-        recordHistory()
-        annotations[index].isSketch = isSketch
-        markDirty()
-        return true
-    }
-
-    func selectedRoughness() -> CGFloat? {
-        selectedIndex(using: \.usesSketch).map { annotations[$0].roughness }
-    }
-
-    @discardableResult
-    func updateSelectedRoughness(_ roughness: CGFloat) -> Bool {
-        guard let index = selectedIndex(using: \.usesSketch) else { return false }
-        guard annotations[index].roughness != roughness else { return true }
-        // A slider drag is one undo step, recorded at its first change.
-        if !isAdjustingSelectedLineWidth || !didRecordLineWidthAdjustment {
-            recordHistory()
-            didRecordLineWidthAdjustment = isAdjustingSelectedLineWidth
-        }
-        annotations[index].roughness = roughness
-        markDirty()
-        return true
-    }
 
     func selectedStrokeAlignment() -> StrokeAlignment? {
         selectedIndex(using: \.usesAlignment).map { annotations[$0].strokeAlignment }
@@ -1350,6 +1307,9 @@ class ScreenshotEditorViewModel: ObservableObject {
         case .text, .number, .emoji:
             break // text/number/emoji use click, not drag
 
+        case .background:
+            break // the Background tool only edits the sidebar's frame settings
+
         default:
             let rect = makeRect(from: start, to: current, isAspectLocked: isAspectLocked)
             currentAnnotation = ScreenshotAnnotation(
@@ -1369,9 +1329,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                 lineJoin: lineJoin,
                 strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
                 outlineColor: outlineColor,
-                outlineWidth: outlineWidth,
-                isSketch: selectedTool.usesSketch && isSketch,
-                roughness: roughness
+                outlineWidth: outlineWidth
             )
         }
     }
@@ -1409,6 +1367,9 @@ class ScreenshotEditorViewModel: ObservableObject {
         case .text, .number, .emoji:
             break // handled by SpatialTapGesture
 
+        case .background:
+            break
+
         default:
             let rect = makeRect(from: start, to: end, isAspectLocked: isAspectLocked)
             let w = abs(rect.width)
@@ -1432,9 +1393,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                     lineJoin: lineJoin,
                     strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
                     outlineColor: outlineColor,
-                    outlineWidth: outlineWidth,
-                    isSketch: selectedTool.usesSketch && isSketch,
-                    roughness: roughness
+                    outlineWidth: outlineWidth
                 ))
                 markDirty()
             }
@@ -2516,10 +2475,6 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ctx.fill(rect)
                 }
 
-                if annotation.isSketch {
-                    strokeSketchCG(SketchGeometry.rectangle(rect.standardized, width: strokeWidth, roughness: annotation.roughness, seed: annotation.seed), in: rect, width: strokeWidth, ctx: ctx)
-                    return
-                }
                 let ring = RectStrokeRing(bounds: rect.standardized, width: strokeWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
                 ctx.setFillColor(cgColor)
                 ctx.addPath(ring.path)
@@ -2532,10 +2487,6 @@ class ScreenshotEditorViewModel: ObservableObject {
                     let fillCGColor = NSColor(annotation.fillColor).cgColor
                     ctx.setFillColor(fillCGColor)
                     ctx.fillEllipse(in: rect)
-                }
-                if annotation.isSketch {
-                    strokeSketchCG(SketchGeometry.ellipse(rect.standardized, width: strokeWidth, roughness: annotation.roughness, seed: annotation.seed), in: rect, width: strokeWidth, ctx: ctx)
-                    return
                 }
                 strokeAlignedCG(CGPath(ellipseIn: rect, transform: nil), alignment: annotation.strokeAlignment, width: strokeWidth, in: ctx)
             }
@@ -2557,9 +2508,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                 width: strokeWidth,
                 options: annotation.arrow,
                 startCap: annotation.startCap,
-                join: annotation.lineJoin,
-                roughness: annotation.sketchRoughness,
-                seed: annotation.seed
+                join: annotation.lineJoin
             )
             var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: outputSize.height)
             if let flipped = outline.path.copy(using: &flip) {
@@ -2567,7 +2516,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             }
 
         case .line:
-            // Built y-down, where the geometry (and its hand-drawn wobble) is defined, then flipped.
+            // Built y-down, where the geometry is defined, then flipped.
             let line = linePoints(for: annotation)
             let start = CGPoint(
                 x: (line.start.x * fullSize.width) - cropOrigin.x + contentOffset.x,
@@ -2582,9 +2531,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                 end: end,
                 width: strokeWidth,
                 startCap: annotation.startCap,
-                endCap: annotation.endCap,
-                roughness: annotation.sketchRoughness,
-                seed: annotation.seed
+                endCap: annotation.endCap
             )
             var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: imageOutputHeight + contentOffset.y)
             if let flipped = LineGeometry.path(outline).copy(using: &flip) {
@@ -2734,7 +2681,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             )
             ctx.restoreGState()
 
-        case .crop, .move:
+        case .crop, .move, .background:
             break
         }
     }
@@ -2778,20 +2725,6 @@ class ScreenshotEditorViewModel: ObservableObject {
         ctx.clip(using: .evenOdd)
         ctx.setLineWidth(width * 2)
         ctx.addPath(shape)
-        ctx.strokePath()
-    }
-
-    /// Strokes a hand-drawn shape built for `rect` as if y pointed down, mirrored about the rect's
-    /// middle so its wobble matches the preview in this y-up context.
-    private func strokeSketchCG(_ ops: [SketchOp], in rect: CGRect, width: CGFloat, ctx: CGContext) {
-        var mirror = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: rect.minY + rect.maxY)
-        guard let path = SketchGeometry.path(ops).copy(using: &mirror) else { return }
-        ctx.saveGState()
-        defer { ctx.restoreGState() }
-        ctx.setLineWidth(width)
-        ctx.setLineCap(.round)
-        ctx.setLineJoin(.round)
-        ctx.addPath(path)
         ctx.strokePath()
     }
 

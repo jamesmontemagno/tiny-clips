@@ -156,7 +156,7 @@ public sealed class ScreenshotExportTests
             Color.FromArgb(255, 1, 2, 3), Color.FromArgb(96, 4, 5, 6), 7, "synthetic text",
             8, 1.5, RedactionLevel.Heavy, RedactionStyle.Pixelate, new ArrowShapeOptions(-0.3, 0.5, 1.5, 2),
             snapshot.Points, Color.FromArgb(255, 9, 10, 11), 42, "Arial", true, true, true, true,
-            annotation.TextBoxStyle, 45, OutlineColor: Color.FromArgb(255, 0, 0, 0), Seed: annotation.Seed);
+            annotation.TextBoxStyle, 45, OutlineColor: Color.FromArgb(255, 0, 0, 0));
         Assert.Equal(expected, snapshot);
 
         annotation.Points[0] = Vector2.Zero;
