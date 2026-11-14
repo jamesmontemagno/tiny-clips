@@ -18,7 +18,6 @@ After initial attempts with `Vortice.Windows` packages (which had incomplete/dif
 
 **Package Used:**
 - None required! WinRT APIs are built into `net10.0-windows10.0.26100.0` target framework
-- Optional: `SharpGen.Runtime.COM 2.1.0-beta` (resolved automatically, not critical)
 
 ### Architecture
 
