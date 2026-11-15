@@ -11,7 +11,6 @@ enum TinyClipsRuntime {
 }
 
 enum TinyClipsActivationPolicy {
-    private static var namedPresentationWindows: Set<String> = []
     private static var appKitPresentationWindows: Set<ObjectIdentifier> = []
 
     static func resolve(
@@ -31,19 +30,7 @@ enum TinyClipsActivationPolicy {
 
     @MainActor
     private static var hasOpenUserWindows: Bool {
-        !namedPresentationWindows.isEmpty || !appKitPresentationWindows.isEmpty
-    }
-
-    @MainActor
-    static func beginPresentation(named identifier: String) {
-        namedPresentationWindows.insert(identifier)
-        applyCurrent()
-    }
-
-    @MainActor
-    static func endPresentation(named identifier: String) {
-        namedPresentationWindows.remove(identifier)
-        applyCurrent()
+        !appKitPresentationWindows.isEmpty
     }
 
     @MainActor
@@ -60,13 +47,29 @@ enum TinyClipsActivationPolicy {
 
     @MainActor
     static func applyCurrent() {
-        NSApplication.shared.setActivationPolicy(
-            resolve(
-                showInDock: CaptureSettings.shared.showInDock,
-                hasOpenEditors: hasOpenEditors,
-                hasOpenUserWindows: hasOpenUserWindows
-            )
+        let application = NSApplication.shared
+        let policy = resolve(
+            showInDock: CaptureSettings.shared.showInDock,
+            hasOpenEditors: hasOpenEditors,
+            hasOpenUserWindows: hasOpenUserWindows
         )
+        let changed = apply(policy, current: application.activationPolicy()) { requested in
+#if DEBUG
+            NSLog("Tiny Clips activation policy: \(application.activationPolicy().rawValue) -> \(requested.rawValue), editors=\(hasOpenEditors), userWindows=\(appKitPresentationWindows.count)")
+#endif
+            return application.setActivationPolicy(requested)
+        }
+        if !changed {
+            NSLog("Could not change Tiny Clips activation policy to \(policy.rawValue).")
+        }
+    }
+
+    static func apply(
+        _ policy: NSApplication.ActivationPolicy,
+        current: NSApplication.ActivationPolicy,
+        change: (NSApplication.ActivationPolicy) -> Bool
+    ) -> Bool {
+        current == policy || change(policy)
     }
 }
 

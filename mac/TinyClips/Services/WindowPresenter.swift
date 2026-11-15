@@ -1,10 +1,45 @@
 import AppKit
+import Combine
+import SwiftUI
+
+struct UserWindowPresentationObserver: NSViewRepresentable {
+    final class ObserverView: NSView {
+        private var observers: [AnyCancellable] = []
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.removeAll()
+            guard let window else { return }
+            _ = WindowPresenter.shared
+            for name in [NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification] {
+                observers.append(NotificationCenter.default.publisher(for: name, object: window).sink { [weak window] _ in
+                    MainActor.assumeIsolated {
+                        Self.registerVisibleWindow(window)
+                    }
+                })
+            }
+            Self.registerVisibleWindow(window)
+        }
+
+        private static func registerVisibleWindow(_ window: NSWindow?) {
+            // SwiftUI can briefly attach content to a window that it never presents.
+            DispatchQueue.main.async { [weak window] in
+                guard let window, window.isVisible else { return }
+                TinyClipsActivationPolicy.beginPresentation(of: window)
+            }
+        }
+    }
+
+    func makeNSView(context: Context) -> ObserverView { ObserverView() }
+    func updateNSView(_ nsView: ObserverView, context: Context) {}
+}
 
 @MainActor
 protocol WindowPresentationTarget: AnyObject {
     var isVisible: Bool { get }
     var isMiniaturized: Bool { get }
     var isKeyWindow: Bool { get }
+    var hasAttachedSheet: Bool { get }
 
     func prepareForPresentation()
     func deminiaturize(_ sender: Any?)
@@ -13,6 +48,10 @@ protocol WindowPresentationTarget: AnyObject {
 }
 
 extension NSWindow: WindowPresentationTarget {
+    var hasAttachedSheet: Bool {
+        attachedSheet != nil || NSApp.modalWindow != nil
+    }
+
     func prepareForPresentation() {
         collectionBehavior.insert(.moveToActiveSpace)
     }

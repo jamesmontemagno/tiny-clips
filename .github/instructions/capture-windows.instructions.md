@@ -112,3 +112,7 @@ Rules:
 - Defer `nil` releases with `DispatchQueue.main.async` — avoids deallocation mid-callback.
 - Persist floating panel positions on dismiss and restore on reopen.
 - Editor/trimmer windows open **after** recording resources are fully released.
+
+## Learnings
+
+- Dock visibility must follow actual native window visibility and `NSWindow.willCloseNotification`, not SwiftUI `onAppear`/`onDisappear`: hidden Library content can fire those callbacks repeatedly and leave stale Dock icons. Use `UserWindowPresentationObserver` for SwiftUI-hosted user windows, and keep screenshot sessions registered until their native window closes. Validate multiple image opens with one application Dock icon and no intermediate accessory/regular policy churn; unit-testing the policy resolver alone does not catch this.

@@ -37,6 +37,7 @@ struct MenuBarContentView: View {
     @ObservedObject private var recentCaptures = RecentCaptureStore.shared
     @ObservedObject private var studioDrafts = StudioRecentDrafts.shared
     @ObservedObject private var automation = AutomationController.shared
+    @ObservedObject private var screenshotEditors = ScreenshotEditorRegistry.shared
     @Environment(\.openWindow) private var openWindow
 #if APPSTORE
     @Environment(\.requestReview) private var requestReview
@@ -176,6 +177,14 @@ struct MenuBarContentView: View {
         } label: {
             Label("Clips Library…", systemImage: "film.stack")
         }
+
+        Button {
+            screenshotEditors.closeAllInteractively()
+        } label: {
+            Label("Close All Screenshot Editors", systemImage: "xmark.rectangle")
+        }
+        .disabled(!screenshotEditors.hasOpenSessions || screenshotEditors.isClosingAll)
+        .accessibilityHint("Closes screenshot editors, asking before discarding unsaved work. Cancel stops closing the remaining editors.")
 
 #if APPSTORE
         if appStoreClipCountForReview >= 25 && !appStoreReviewRequested {

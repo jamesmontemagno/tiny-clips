@@ -33,12 +33,34 @@ public class McpServerTests
     {
         var tools = McpServer.ListTools("windows");
         Assert.DoesNotContain(tools, tool => tool.Name.StartsWith("tinyclips_notifications_", StringComparison.Ordinal));
+        Assert.DoesNotContain(tools, tool => tool.Name is "tinyclips_editor_list" or "tinyclips_editor_closeAll");
         Assert.Contains(tools, tool => tool.Name == "tinyclips_app_status");
 
         var macTools = McpServer.ListTools("macos");
         Assert.Contains(macTools, tool => tool.Name == "tinyclips_notifications_status");
         Assert.Contains(macTools, tool => tool.Name == "tinyclips_notifications_requestPermission");
         Assert.Contains(macTools, tool => tool.Name == "tinyclips_notifications_openSettings");
+        Assert.Contains(macTools, tool => tool.Name == "tinyclips_editor_list");
+        Assert.Contains(macTools, tool => tool.Name == "tinyclips_editor_closeAll");
+    }
+
+    [Fact]
+    public async Task SafeEditorCleanupPreservesPartialResultsAndEnforcesScope()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["edit"];
+        await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>
+        {
+            var result = await client.CallToolAsync("tinyclips_editor_closeAll", cancellationToken: token);
+            Assert.False(result.IsError);
+            Assert.Equal("clean", (string?)Body(result)["closed"]![0]);
+            Assert.Equal("unsavedChanges", (string?)Body(result)["remaining"]![0]!["reason"]);
+            app.Clients["t"] = ["read"];
+            var denied = await client.CallToolAsync("tinyclips_editor_closeAll", cancellationToken: token);
+            Assert.True(denied.IsError);
+            Assert.Equal("missing_scope", (string?)Body(denied)["error"]!["code"]);
+        });
     }
 
     [Theory]

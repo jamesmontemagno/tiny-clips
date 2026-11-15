@@ -161,14 +161,11 @@ struct SettingsView: View {
         } message: {
             Text("TinyClips may briefly close the Settings window when switching out of Dock mode.")
         }
+        .background(UserWindowPresentationObserver())
         .onAppear {
-            TinyClipsActivationPolicy.beginPresentation(named: "settings-window")
             PerformanceSignposts.endSettingsOpenIfNeeded()
             refreshCaptureDevicesIfNeeded()
             applyRequestedTabIfNeeded()
-        }
-        .onDisappear {
-            TinyClipsActivationPolicy.endPresentation(named: "settings-window")
         }
         .onReceive(settingsWindowManager.$selectedTab.compactMap { $0 }) { requestedTab in
             selectedTab = requestedTab
@@ -256,12 +253,7 @@ struct SettingsView: View {
     }
 
     private func applyDockVisibility(_ showInDock: Bool) {
-        NSApplication.shared.setActivationPolicy(
-            TinyClipsActivationPolicy.resolve(
-                showInDock: showInDock,
-                hasOpenEditors: TinyClipsActivationPolicy.hasOpenEditors
-            )
-        )
+        TinyClipsActivationPolicy.applyCurrent()
         if showInDock {
             NSRunningApplication.current.activate(options: [.activateAllWindows])
         }

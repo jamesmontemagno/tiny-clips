@@ -717,6 +717,7 @@ enum ScreenshotEditorClosePrompt: Equatable {
 
     enum Trigger {
         case closeCommand
+        case closeAll
         case escapeKey
     }
 
@@ -728,6 +729,9 @@ enum ScreenshotEditorClosePrompt: Equatable {
     ) -> ScreenshotEditorClosePrompt? {
         switch trigger {
         case .closeCommand:
+            return hasUnsavedChanges ? .discardChanges : nil
+        case .closeAll:
+            if discardsUnsavedCapture { return .discardUnsavedCapture }
             return hasUnsavedChanges ? .discardChanges : nil
         case .escapeKey:
             guard confirmOnEscape else { return nil }
