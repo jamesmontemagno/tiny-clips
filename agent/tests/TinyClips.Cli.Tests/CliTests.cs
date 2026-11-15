@@ -70,6 +70,19 @@ public class CliTests
     }
 
     [Fact]
+    public async Task SafeEditorCleanupPreservesPartialResults()
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["edit"];
+        var (output, error) = (new StringWriter(), new StringWriter());
+        Assert.Equal(0, await Cli.RunAsync(["editor.closeAll"], app.Environment(output, error, token: "t"), TestContext.Current.CancellationToken));
+        var result = Json(output);
+        Assert.Equal("clean", result["closed"]![0]!.GetValue<string>());
+        Assert.Equal("unsavedChanges", result["remaining"]![0]!["reason"]!.GetValue<string>());
+        Assert.False(result["remaining"]![0]!["canCloseSafely"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public async Task NamedPipeAcceptsSameUserAndCarriesAuthenticatedRequests()
     {
         await using var app = new FakeApp(useNamedPipe: true);

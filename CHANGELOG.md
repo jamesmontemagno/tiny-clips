@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- macOS Dock visibility follows real Settings, Library, and editor windows rather than SwiftUI appearance callbacks, preventing duplicate stale Dock icons when several images open. Reopening the same image reuses its editor, preserves edits, and restores a minimized window.
+
+### Added
+- macOS **Close All Screenshot Editors** closes windows in order, asks before discarding unsaved work, and stops on Cancel. Agent Control adds macOS-only `editor.list` and `editor.closeAll`; agents close only safe editors and receive details of windows left open for review.
+
 ## v2.1.0.3-mac - 2026-11-14
 
 ### Fixed

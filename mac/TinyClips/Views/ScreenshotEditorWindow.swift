@@ -482,7 +482,9 @@ struct ScreenshotEditorView: View {
     let onDone: (URL?) -> Void
 
     @StateObject private var viewModel: ScreenshotEditorViewModel
-    @State private var isSaving = false
+    @ObservedObject private var lifecycle: ScreenshotEditorLifecycle
+    private var isSaving: Bool { lifecycle.isSaving }
+    private var lastSavedURL: URL? { lifecycle.lastSavedURL }
     @State private var splitVisibility: NavigationSplitViewVisibility = .automatic
     @State private var activePopover: EditorPopover?
     @State private var isBackgroundSectionExpanded = true
@@ -493,7 +495,6 @@ struct ScreenshotEditorView: View {
     @State private var showDeleteConfirmation = false
     @State private var showClearAnnotationsConfirmation = false
     @State private var currentSaveURL: URL
-    @State private var lastSavedURL: URL?
     @State private var zoomScale: CGFloat = 1
     @State private var panOffset: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
@@ -505,15 +506,16 @@ struct ScreenshotEditorView: View {
         imageURL: URL,
         initialSaveURL: URL,
         deleteSourceAfterSave: Bool,
+        lifecycle: ScreenshotEditorLifecycle,
         onDone: @escaping (URL?) -> Void
     ) {
         self.imageURL = imageURL
         self.initialSaveURL = initialSaveURL
         self.deleteSourceAfterSave = deleteSourceAfterSave
         self.onDone = onDone
+        self.lifecycle = lifecycle
         _viewModel = StateObject(wrappedValue: ScreenshotEditorViewModel(url: imageURL))
         _currentSaveURL = State(initialValue: initialSaveURL)
-        _lastSavedURL = State(initialValue: nil)
         _nativeSizeSelected = State(
             initialValue: UserDefaults.standard.bool(forKey: CaptureSettings.screenshotEditorNativeSizeKey)
         )
@@ -816,6 +818,23 @@ struct ScreenshotEditorView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .disabled(lifecycle.isFinishing)
+        .onAppear {
+            lifecycle.attach(viewModel)
+        }
+        .onChange(of: lifecycle.closeRequest) { _, request in
+            guard let request else { return }
+            if let reason = lifecycle.blockReason(for: request.mode) {
+                lifecycle.resolve(.blocked(reason))
+            } else {
+                close(trigger: .closeAll)
+            }
+        }
+        .onChange(of: showExitConfirmation) { _, isPresented in
+            if !isPresented && !lifecycle.isFinishing {
+                lifecycle.resolve(.cancelled)
+            }
+        }
         .focusedSceneValue(
             \.screenshotEditorCommandActions,
             ScreenshotEditorCommandActions(
@@ -861,7 +880,9 @@ struct ScreenshotEditorView: View {
                 }
                 .keyboardShortcut(.defaultAction)
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) {
+                lifecycle.resolve(.cancelled)
+            }
                 .keyboardShortcut(closePrompt.isDestructive ? .defaultAction : .cancelAction)
         } message: {
             Text(closePrompt.message)
@@ -1873,7 +1894,7 @@ struct ScreenshotEditorView: View {
 
     private func saveCurrentImage() {
         guard !isSaving else { return }
-        isSaving = true
+        lifecycle.isSaving = true
 
         DispatchQueue.main.async {
             let currentExtension = currentSaveURL.pathExtension.lowercased()
@@ -1886,13 +1907,13 @@ struct ScreenshotEditorView: View {
                 )
             if let url = viewModel.save(to: saveURL) {
                 currentSaveURL = url
-                lastSavedURL = url
+                lifecycle.lastSavedURL = url
                 viewModel.markSaved()
                 removeTemporarySourceAfterSave(to: url)
             } else {
                 SaveService.shared.showError("Could not save the edited image.")
             }
-            isSaving = false
+            lifecycle.isSaving = false
         }
     }
 
@@ -1906,18 +1927,18 @@ struct ScreenshotEditorView: View {
 
         guard let targetURL = chooseSaveLocation() else { return }
 
-        isSaving = true
+        lifecycle.isSaving = true
         DispatchQueue.main.async {
             if let url = viewModel.save(to: targetURL) {
                 currentSaveURL = url
-                lastSavedURL = url
+                lifecycle.lastSavedURL = url
                 viewModel.markSaved()
                 removeTemporarySourceAfterSave(to: url)
                 activePopover = nil
             } else {
                 SaveService.shared.showError("Could not save the edited image.")
             }
-            isSaving = false
+            lifecycle.isSaving = false
         }
     }
 
@@ -1970,7 +1991,7 @@ struct ScreenshotEditorView: View {
         let prompt = ScreenshotEditorClosePrompt.resolve(
             trigger: trigger,
             confirmOnEscape: confirmOnEscape,
-            hasUnsavedChanges: viewModel.hasUnsavedChanges,
+            hasUnsavedChanges: viewModel.hasUnsavedChanges || viewModel.isEditingText,
             discardsUnsavedCapture: deleteSourceAfterSave && lastSavedURL == nil
         )
         if let prompt {

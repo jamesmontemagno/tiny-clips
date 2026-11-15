@@ -493,6 +493,20 @@ final class CaptureMathTests: XCTestCase {
         }
     }
 
+    func testCloseAllProtectsUnsavedCapturesRegardlessOfEscapePreference() {
+        for confirmOnEscape in [false, true] {
+            XCTAssertEqual(
+                ScreenshotEditorClosePrompt.resolve(
+                    trigger: .closeAll,
+                    confirmOnEscape: confirmOnEscape,
+                    hasUnsavedChanges: false,
+                    discardsUnsavedCapture: true
+                ),
+                .discardUnsavedCapture
+            )
+        }
+    }
+
     func testTrimmerEscapeConfirmsEveryCloseWhenEnabled() {
         func escape(unsaved: Bool, discardsCapture: Bool) -> TrimmerEscapePrompt? {
             TrimmerEscapePrompt.resolve(

@@ -25,7 +25,7 @@ public class ContractTests
         Assert.Equal(["delete", "discard", "upload"], Contract.Current.SensitiveScopes.Order());
 
     [Fact]
-    public void NotificationCommandsAreMacOSOnly()
+    public void PlatformSpecificCommandsAreMacOSOnly()
     {
         var contract = Contract.Current;
         var notificationCommands = new[]
@@ -33,6 +33,8 @@ public class ContractTests
             "notifications.status",
             "notifications.requestPermission",
             "notifications.openSettings",
+            "editor.list",
+            "editor.closeAll",
         };
 
         foreach (var name in notificationCommands)
@@ -51,6 +53,8 @@ public class ContractTests
     [InlineData("notifications.status", "read")]
     [InlineData("notifications.requestPermission", "settings")]
     [InlineData("notifications.openSettings", "settings")]
+    [InlineData("editor.list", "read")]
+    [InlineData("editor.closeAll", "edit")]
     public void NotificationCommandsUseLeastPrivilegeAndExposeParameterlessTools(string name, string scope)
     {
         var command = Contract.Current.Find(name)!;

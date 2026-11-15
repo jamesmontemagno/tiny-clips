@@ -10,12 +10,7 @@ import ImageIO
 private struct ClipsManagerRootView: View {
     var body: some View {
         ClipsManagerContentView()
-            .onAppear {
-                TinyClipsActivationPolicy.beginPresentation(named: "clips-manager")
-            }
-            .onDisappear {
-                TinyClipsActivationPolicy.endPresentation(named: "clips-manager")
-            }
+            .background(UserWindowPresentationObserver())
     }
 }
 

@@ -117,6 +117,23 @@ final class AutomationPolicyTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testScreenshotWindowCommandsUseReadAndEditWithoutDiscardAccess() throws {
+        let contract = try loadContract()
+        for (command, scope) in [("editor.list", "read"), ("editor.closeAll", "edit")] {
+            XCTAssertTrue(AutomationCommandRouter.supportedCommands.contains(command))
+            XCTAssertEqual(contract.command(named: command)?.scope, scope)
+            XCTAssertEqual(
+                AutomationPolicy.decide(enabled: true, clientScopes: [scope], command: command, contract: contract),
+                .allow
+            )
+            XCTAssertEqual(
+                AutomationPolicy.decide(enabled: true, clientScopes: ["capture"], command: command, contract: contract),
+                .deny(.missingScope)
+            )
+        }
+    }
+
     func testJSONValueParsing() {
         XCTAssertEqual(AutomationValue.bool(true), true)
         XCTAssertNil(AutomationValue.bool(1))
