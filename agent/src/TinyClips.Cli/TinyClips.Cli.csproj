@@ -13,7 +13,7 @@
     <ToolCommandName>tinyclips</ToolCommandName>
     <PackageId>TinyClips</PackageId>
     <Title>Tiny Clips CLI and MCP server</Title>
-    <PackageVersion>0.1.0</PackageVersion>
+    <PackageVersion>0.2.0</PackageVersion>
     <Version>$(PackageVersion)</Version>
     <Authors>James Montemagno</Authors>
     <Description>Lets scripts and AI agents control the Tiny Clips screen capture app on macOS and Windows. Run "dnx TinyClips" or install with "dotnet tool install -g TinyClips"; "tinyclips mcp" starts an MCP server.</Description>
