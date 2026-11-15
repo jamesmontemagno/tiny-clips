@@ -11,24 +11,24 @@
         <item>
             
             
-            <title>2.1.0.4</title>
+            <title>2.1.0.5</title>
             
             
-            <pubDate>Sat, 14 Nov 2026 18:18:51 +0000</pubDate>
+            <pubDate>Sun, 15 Nov 2026 17:19:24 +0000</pubDate>
             
             
-            <sparkle:version>70</sparkle:version>
+            <sparkle:version>71</sparkle:version>
             
             
-            <sparkle:shortVersionString>2.1.0.4</sparkle:shortVersionString>
+            <sparkle:shortVersionString>2.1.0.5</sparkle:shortVersionString>
             
             
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             
             
-            <description><![CDATA[<h3>What's Changed</h3><ul><li>Merge pull request #622 from jamesmontemagno/release/v2.1.0.4-mac</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v2.1.0.3-mac...v2.1.0.4-mac">Full Changelog</a></p>]]></description>
-            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v2.1.0.4-mac</sparkle:releaseNotesLink>
-            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v2.1.0.4-mac/TinyClips-v2.1.0.4-mac.zip" length="7968104" type="application/octet-stream" sparkle:edSignature="lsK2TnhV4Exz1BrJMQUoBs5O6U4k7vFQX8xXVfbd3W8S750oaftSbSs6pOh1WNFqkzIHy0EkjdBzk2BwCdJECw=="/>
+            <description><![CDATA[<h3>Fixed</h3><ul><li>macOS Dock visibility follows real Settings, Library, and editor windows rather than SwiftUI appearance callbacks, preventing duplicate stale Dock icons when several images open. Reopening the same image reuses its editor, preserves edits, and restores a minimized window.</li><li>The macOS screenshot editor now counts a pen stroke, or a dragged arrow or line end, as an unsaved change, so closing asks before discarding it.</li></ul><h3>Added</h3><ul><li>macOS **Close All Screenshot Editors** closes windows in order, asks before discarding unsaved work, and stops on Cancel. Agent Control adds macOS-only `editor.list` and `editor.closeAll`; agents close only safe editors and receive details of windows left open for review.</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v2.1.0.4-mac...v2.1.0.5-mac">Full Changelog</a></p>]]></description>
+            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v2.1.0.5-mac</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v2.1.0.5-mac/TinyClips-v2.1.0.5-mac.zip" length="8009796" type="application/octet-stream" sparkle:edSignature="HBXv/XGMD86HJ0y+y0OXaVC/c5OWMryNgA00Z8R9Eq3KLJ17tbCCrj1adUUNP7poPYb7DWPx97nRjwxn82XiCA=="/>
             
         
         </item>
