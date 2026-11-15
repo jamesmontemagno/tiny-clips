@@ -6,7 +6,6 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - macOS Dock visibility follows real Settings, Library, and editor windows rather than SwiftUI appearance callbacks, preventing duplicate stale Dock icons when several images open. Reopening the same image reuses its editor, preserves edits, and restores a minimized window.
-
 - The macOS screenshot editor now counts a pen stroke, or a dragged arrow or line end, as an unsaved change, so closing asks before discarding it.
 
 ### Added
