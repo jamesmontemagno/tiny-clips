@@ -354,7 +354,8 @@ final class ScreenshotEditorLifecycle: ObservableObject {
     var blockReason: BlockReason? {
         guard let viewModel, window != nil else { return .notReady }
         if isSaving { return .saving }
-        if isFinishing || window?.hasAttachedSheet == true { return .busy }
+        // A shape or pen stroke still being drawn is not saved and not yet counted as a change.
+        if isFinishing || window?.hasAttachedSheet == true || viewModel.currentAnnotation != nil { return .busy }
         if deleteSourceAfterSave && lastSavedURL == nil { return .unsavedCapture }
         if viewModel.hasUnsavedChanges || viewModel.isEditingText { return .unsavedChanges }
         return nil

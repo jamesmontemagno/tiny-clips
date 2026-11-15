@@ -354,6 +354,42 @@ final class WindowPresenterTests: XCTestCase {
         )
     }
 
+    func testSafeCloseKeepsAnEditorWithADrawingInProgressOrAPenStroke() async throws {
+        let registry = ScreenshotEditorRegistry(presentWindow: { _ in }, applyActivationPolicy: {})
+        var ids: [UUID] = []
+        registry.installOpener { ids.append($0) }
+        let source = URL(fileURLWithPath: "/test/pen.png")
+        let model = ScreenshotEditorViewModel(url: source)
+        let window = FakeWindow(record: { _ in })
+        registry.present(imageURL: source) { _ in }
+        let lifecycle = try XCTUnwrap(registry.session(for: ids[0])?.lifecycle)
+        registry.windowDidAttach(window, for: ids[0])
+        lifecycle.attach(model)
+        XCTAssertNil(lifecycle.blockReason)
+
+        model.selectedTool = .pencil
+        let start = CGPoint(x: 0.2, y: 0.2)
+        model.handleDrag(start: start, current: CGPoint(x: 0.3, y: 0.3))
+        model.handleDrag(start: start, current: CGPoint(x: 0.4, y: 0.35))
+        // A close request for an editor wrongly judged safe would wait on a view this test lacks.
+        guard lifecycle.blockReason == .busy else {
+            return XCTFail("An editor with a stroke in progress must be busy")
+        }
+        var result = try await registry.closeAll(mode: .safeOnly)
+        XCTAssertTrue(result.closed.isEmpty)
+        XCTAssertTrue(result.blocked)
+
+        model.handleDragEnd(start: start, end: CGPoint(x: 0.4, y: 0.35))
+        XCTAssertEqual(model.annotations.count, 1)
+        guard lifecycle.blockReason == .unsavedChanges else {
+            return XCTFail("An editor with a new pen stroke must have unsaved changes")
+        }
+        result = try await registry.closeAll(mode: .safeOnly)
+        XCTAssertTrue(result.closed.isEmpty)
+        XCTAssertNotNil(registry.session(for: ids[0]))
+        XCTAssertNil(lifecycle.closeRequest)
+    }
+
     func testInteractiveCloseStopsOnCancelAndRejectsConcurrentBulkClose() async throws {
         var presented: [ObjectIdentifier] = []
         let registry = ScreenshotEditorRegistry(

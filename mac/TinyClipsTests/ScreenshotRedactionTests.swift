@@ -302,6 +302,35 @@ final class ScreenshotRedactionTests: XCTestCase {
     }
 
     @MainActor
+    func testPenStrokesAndEndPointDragsCountAsUnsavedChanges() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        XCTAssertFalse(editor.hasUnsavedChanges)
+
+        editor.selectedTool = .pencil
+        let penStart = CGPoint(x: 0.1, y: 0.8)
+        editor.handleDrag(start: penStart, current: CGPoint(x: 0.15, y: 0.85))
+        editor.handleDrag(start: penStart, current: CGPoint(x: 0.2, y: 0.8))
+        editor.handleDragEnd(start: penStart, end: CGPoint(x: 0.2, y: 0.8))
+        XCTAssertEqual(editor.annotations.map(\.tool), [.pencil])
+        XCTAssertTrue(editor.hasUnsavedChanges)
+
+        editor.selectedTool = .arrow
+        let tail = CGPoint(x: 0.2, y: 0.2)
+        let head = CGPoint(x: 0.6, y: 0.4)
+        editor.handleDragEnd(start: tail, end: head)
+        editor.markSaved()
+        XCTAssertFalse(editor.hasUnsavedChanges)
+
+        editor.selectedTool = .move
+        let moved = CGPoint(x: 0.7, y: 0.5)
+        editor.handleDrag(start: head, current: moved)
+        editor.handleDragEnd(start: head, end: moved)
+        XCTAssertEqual(editor.annotations.last?.points, [tail, moved])
+        XCTAssertTrue(editor.hasUnsavedChanges)
+    }
+
+    @MainActor
     func testSwitchingAwayFromMoveClearsAnnotationSelection() throws {
         let (editor, cleanup) = try makeEditor()
         defer { cleanup() }

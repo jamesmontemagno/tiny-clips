@@ -1086,6 +1086,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ann.points = [updated.start, updated.end]
                     ann.rect = directedRect(from: updated)
                     annotations[idx] = ann
+                    markDirty()
                 } else if isDraggingStartpoint {
                     // Move the start point (reverse rotate)
                     var ann = annotations[idx]
@@ -1162,6 +1163,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                     text: "",
                     points: pencilPoints
                 ))
+                markDirty()
             }
             pencilPoints = []
             currentAnnotation = nil
