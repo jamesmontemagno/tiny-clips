@@ -116,6 +116,10 @@ internal sealed class FakeApp : IAsyncDisposable
             }
             case "capture.screenshot":
                 return Ok(new JsonObject { ["path"] = $"/tmp/shot-{parameters["mode"]?.GetValue<string>() ?? "screen"}.png" });
+            case "editor.closeAll":
+                return Ok(JsonNode.Parse("""
+                    {"closed":["clean"],"remaining":[{"id":"dirty","path":"/tmp/dirty.png","canCloseSafely":false,"reason":"unsavedChanges"}]}
+                    """)!.AsObject());
             default:
                 return Ok(new JsonObject { ["command"] = command, ["params"] = parameters.DeepClone() });
         }

@@ -4,9 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-### Fixed
-- A pencil stroke now counts as an unsaved change in the macOS screenshot editor, like other annotations.
-
 ### Changed
 - Stroke width in the macOS screenshot editor is now a 1–40 px slider measured in image pixels, like Windows, instead of a menu of preset sizes; dragging it on a selected shape is one undo step. The starting width scales with the capture so large screenshots keep their previous look.
 - macOS screenshot pencil strokes are now smooth, tapered ink: the line follows the pointer more steadily, thins slightly when drawn quickly, tapers at both ends, and keeps an even color when translucent.
@@ -19,10 +16,20 @@ All notable changes to this project will be documented in this file.
 - The macOS screenshot editor has a **Background** tool after **Move** for padding, a background, and a frame, which used to sit in a collapsible sidebar section. The tool buttons are larger. New installs open the editor on **Background** and upgrades keep **Move**; choose another with **Default editor tool** in Screenshot settings, or with the `screenshotEditorDefaultTool` Agent Control setting.
 - Short choices in the macOS screenshot editor (**Arrow**, **Stroke position**, **Start**, **End**, **Corners**, and the export **Format**) are now segmented controls instead of pop-up menus.
 
+## v2.1.0.5-mac - 2026-11-15
+
+### Fixed
+- macOS Dock visibility follows real Settings, Library, and editor windows rather than SwiftUI appearance callbacks, preventing duplicate stale Dock icons when several images open. Reopening the same image reuses its editor, preserves edits, and restores a minimized window.
+- The macOS screenshot editor now counts a pen stroke, or a dragged arrow or line end, as an unsaved change, so closing asks before discarding it.
+
+### Added
+- macOS **Close All Screenshot Editors** closes windows in order, asks before discarding unsaved work, and stops on Cancel. Agent Control adds macOS-only `editor.list` and `editor.closeAll`; agents close only safe editors and receive details of windows left open for review.
+
 ## v2.1.0.3-mac - 2026-11-14
 
 ### Fixed
 - macOS screenshot-editor text resizing after placement scales its content rectangle around the center and groups a slider drag into one undo step; changing tools no longer applies style edits to an invisible selection, and drawing-tool color controls stay on the active tool's color.
+- macOS screenshot-editor selections can now edit a shape's stroke color and width, plus rectangle and circle fill colors.
 
 ## v2.1.0.2-mac - 2026-11-12
 

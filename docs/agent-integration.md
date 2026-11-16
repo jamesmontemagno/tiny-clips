@@ -189,6 +189,16 @@ The corresponding MCP tools are `tinyclips_notifications_status`, `tinyclips_not
 
 The `screenshotEditorDefaultTool` setting picks the tool selected when the interactive screenshot editor opens: `move`, `background`, `crop`, `rectangle`, `ellipse`, `arrow`, `line`, `pen`, `text`, `number`, `emoji`, or `redact`. New installs start on `background`; installs from before the Background tool keep `move`. It has no effect on `editor.annotate`.
 
+### Screenshot editor windows on macOS
+
+Use headless capture and annotation commands for autonomous work. `editor.open` explicitly brings up UI for a person; reopening the same screenshot reuses its existing editor without losing edits. Different screenshots keep separate windows in the same application.
+
+`editor.list` needs `read` and returns `{"editors":[...]}`. Each screenshot session has `id`, `path`, and `canCloseSafely`, plus `reason` when unsafe: `unsavedChanges`, `unsavedCapture`, `saving`, `notReady`, or `busy`.
+
+`editor.closeAll` needs `edit` and takes no parameters. It closes only sessions that can close without saving or discarding work. It returns `{"closed":["session-id"],"remaining":[...]}`, where remaining objects have the same shape as `editor.list`. Remaining windows are a partial outcome, not a claim that everything closed. A new editor opened during cleanup is not included in that cleanup's targets, but is included in `remaining`. Review unsafe windows with the user; no force-discard option exists.
+
+These commands cover screenshot editors only, not Studio or video/GIF trimmers. They are advertised only on macOS; Windows returns `not_supported`. The macOS **Close All Screenshot Editors** menu action additionally offers normal unsaved-work confirmations, one window at a time, and Cancel stops the operation.
+
 ### Trimming and frames
 
 `editor.trim` takes a video or GIF `path` plus `start` and `end` in seconds and saves a trimmed copy; an `end` past the media length is clamped. Pass `removeAudio: true` to drop a video's audio. GIFs keep each frame overlapping the range, and the result reports the actual `start`, `end`, and `frameCount`. `editor.saveFrame` saves a single still image from a video at `time` seconds, or from a GIF at `time` or a zero-based `frame` index. Windows saves frames as PNG; macOS uses the configured screenshot format. Both commands need the `edit` scope, add a new library item, never overwrite or delete the source, and do not open a trimmer window.

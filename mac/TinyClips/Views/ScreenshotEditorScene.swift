@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 struct ScreenshotEditorCommandActions {
@@ -42,6 +43,7 @@ extension FocusedValues {
 
 private struct ScreenshotEditorMenuCommands: Commands {
     @FocusedValue(\.screenshotEditorCommandActions) private var editor
+    @ObservedObject private var registry = ScreenshotEditorRegistry.shared
 
     var body: some Commands {
         CommandGroup(replacing: .appTermination) {
@@ -68,6 +70,12 @@ private struct ScreenshotEditorMenuCommands: Commands {
                 }
             }
             .keyboardShortcut("w", modifiers: .command)
+
+            Button("Close All Screenshot Editors") {
+                registry.closeAllInteractively()
+            }
+            .disabled(!registry.hasOpenSessions || registry.isClosingAll)
+            .keyboardShortcut("w", modifiers: [.command, .option])
 
             Divider()
 
@@ -214,10 +222,19 @@ struct ScreenshotEditorScene: Scene {
 
 private final class ScreenshotEditorWindowObserverView: NSView {
     var onAttach: ((NSWindow) -> Void)?
+    var onClose: (() -> Void)?
+    private var closeObserver: AnyCancellable?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        closeObserver = nil
         guard let window else { return }
+        closeObserver = NotificationCenter.default.publisher(for: NSWindow.willCloseNotification, object: window)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.onClose?()
+                }
+            }
         DispatchQueue.main.async { [weak self, weak window] in
             guard let self, let window, self.window === window else { return }
             self.onAttach?(window)
@@ -238,6 +255,9 @@ private struct ScreenshotEditorWindowObserver: NSViewRepresentable {
         view.onAttach = { window in
             ScreenshotEditorRegistry.shared.windowDidAttach(window, for: sessionID)
         }
+        view.onClose = {
+            ScreenshotEditorRegistry.shared.windowWillClose(for: sessionID)
+        }
     }
 }
 
@@ -245,17 +265,19 @@ private struct ScreenshotEditorSceneRoot: View {
     let sessionID: UUID?
     @Environment(\.dismissWindow) private var dismissWindow
     @State private var resolvedSession: ScreenshotEditorRegistry.Session?
-    @State private var completionResult: URL?
 
     var body: some View {
-        Group {
+        ZStack {
             if let session = resolvedSession, let sessionID {
                 ScreenshotEditorView(
                     imageURL: session.imageURL,
                     initialSaveURL: session.initialSaveURL,
-                    deleteSourceAfterSave: session.deleteSourceAfterSave
+                    deleteSourceAfterSave: session.deleteSourceAfterSave,
+                    lifecycle: session.lifecycle
                 ) { resultURL in
-                    completionResult = resultURL
+                    guard !session.lifecycle.isFinishing else { return }
+                    session.lifecycle.isFinishing = true
+                    session.lifecycle.completionResult = resultURL
                     // `dismissWindow` is ignored while a sheet is attached, and a confirmation dialog
                     // runs its button action before detaching, so close on the next main-loop turn.
                     DispatchQueue.main.async {
@@ -281,26 +303,113 @@ private struct ScreenshotEditorSceneRoot: View {
                 dismissWindow(id: ScreenshotEditorRegistry.windowID, value: sessionID)
             }
         }
-        .onDisappear {
-            guard let sessionID else { return }
-            ScreenshotEditorRegistry.shared.finish(sessionID, result: completionResult)
-        }
     }
 }
 
 @MainActor
-final class ScreenshotEditorRegistry {
+final class ScreenshotEditorLifecycle: ObservableObject {
+    enum CloseMode: Equatable {
+        case interactive
+        case safeOnly
+    }
+
+    enum BlockReason: String {
+        case unsavedChanges, unsavedCapture, saving, notReady, busy
+
+        /// The user can answer a prompt to close anyway.
+        var needsConfirmation: Bool {
+            self == .unsavedChanges || self == .unsavedCapture
+        }
+    }
+
+    enum CloseOutcome: Equatable {
+        case closed
+        case cancelled
+        case blocked(BlockReason)
+    }
+
+    struct CloseRequest: Equatable {
+        let id = UUID()
+        let mode: CloseMode
+    }
+
+    @Published var isSaving = false
+    @Published var lastSavedURL: URL?
+    @Published var isFinishing = false
+    @Published private(set) var closeRequest: CloseRequest?
+    var completionResult: URL?
+    weak var window: (any WindowPresentationTarget)?
+    private weak var viewModel: ScreenshotEditorViewModel?
+    private let deleteSourceAfterSave: Bool
+    private var completion: CheckedContinuation<CloseOutcome, Never>?
+
+    init(deleteSourceAfterSave: Bool) {
+        self.deleteSourceAfterSave = deleteSourceAfterSave
+    }
+
+    func attach(_ viewModel: ScreenshotEditorViewModel) {
+        self.viewModel = viewModel
+    }
+
+    var blockReason: BlockReason? {
+        guard let viewModel, window != nil else { return .notReady }
+        if isSaving { return .saving }
+        // A shape or pen stroke still being drawn is not saved and not yet counted as a change.
+        if isFinishing || window?.hasAttachedSheet == true || viewModel.currentAnnotation != nil { return .busy }
+        if deleteSourceAfterSave && lastSavedURL == nil { return .unsavedCapture }
+        if viewModel.hasUnsavedChanges || viewModel.isEditingText { return .unsavedChanges }
+        return nil
+    }
+
+    /// Why the editor cannot close in `mode`, or nil when it can close or ask the user first.
+    func blockReason(for mode: CloseMode) -> BlockReason? {
+        guard let reason = blockReason else { return nil }
+        return mode == .interactive && reason.needsConfirmation ? nil : reason
+    }
+
+    func requestClose(mode: CloseMode) async -> CloseOutcome {
+        guard completion == nil else { return .blocked(.busy) }
+        if let reason = blockReason(for: mode) {
+            return .blocked(reason)
+        }
+        return await withCheckedContinuation { continuation in
+            completion = continuation
+            closeRequest = CloseRequest(mode: mode)
+        }
+    }
+
+    func resolve(_ outcome: CloseOutcome) {
+        let pending = completion
+        completion = nil
+        closeRequest = nil
+        pending?.resume(returning: outcome)
+    }
+
+    func finish() {
+        resolve(.closed)
+        viewModel = nil
+        window = nil
+    }
+}
+
+@MainActor
+final class ScreenshotEditorRegistry: ObservableObject {
     static let shared = ScreenshotEditorRegistry()
     static let windowID = "screenshot-editor"
 
     struct Session {
         let imageURL: URL
+        /// `imageURL` with symlinks resolved, so one file reached by two paths is one session.
+        let identity: URL
         let initialSaveURL: URL
         let deleteSourceAfterSave: Bool
         let onComplete: (URL?) -> Void
+        let lifecycle: ScreenshotEditorLifecycle
     }
 
-    private var sessions: [UUID: Session] = [:]
+    @Published private var sessions: [UUID: Session] = [:]
+    @Published private(set) var isClosingAll = false
+    private var sessionOrder: [UUID] = []
     private var pendingOpens: [UUID] = []
     private var pendingWindowPresentations: Set<UUID> = []
     private var opener: ((UUID) -> Void)?
@@ -334,13 +443,23 @@ final class ScreenshotEditorRegistry {
         deleteSourceAfterSave: Bool = false,
         onComplete: @escaping (URL?) -> Void
     ) {
+        let identity = imageURL.standardizedFileURL.resolvingSymlinksInPath()
+        if let session = sessions.values.first(where: { $0.identity == identity && !$0.lifecycle.isFinishing }) {
+            if let window = session.lifecycle.window {
+                presentWindow(window)
+            }
+            return
+        }
         let id = UUID()
         sessions[id] = Session(
             imageURL: imageURL,
+            identity: identity,
             initialSaveURL: initialSaveURL ?? imageURL,
             deleteSourceAfterSave: deleteSourceAfterSave,
-            onComplete: onComplete
+            onComplete: onComplete,
+            lifecycle: ScreenshotEditorLifecycle(deleteSourceAfterSave: deleteSourceAfterSave)
         )
+        sessionOrder.append(id)
         pendingWindowPresentations.insert(id)
         applyActivationPolicy()
         if let opener {
@@ -356,13 +475,82 @@ final class ScreenshotEditorRegistry {
 
     func windowDidAttach(_ window: any WindowPresentationTarget, for id: UUID) {
         guard sessions[id] != nil, pendingWindowPresentations.remove(id) != nil else { return }
+        sessions[id]?.lifecycle.window = window
         presentWindow(window)
+    }
+
+    func windowWillClose(for id: UUID) {
+        guard let session = sessions[id] else { return }
+        finish(id, result: session.lifecycle.completionResult)
     }
 
     func finish(_ id: UUID, result: URL?) {
         guard let session = sessions.removeValue(forKey: id) else { return }
+        sessionOrder.removeAll { $0 == id }
+        pendingOpens.removeAll { $0 == id }
         pendingWindowPresentations.remove(id)
+        if let window = session.lifecycle.window as? NSWindow {
+            TinyClipsActivationPolicy.endPresentation(of: window)
+        }
+        session.lifecycle.finish()
         session.onComplete(result)
         applyActivationPolicy()
+    }
+
+    func listEditors() -> [[String: Any]] {
+        sessionOrder.compactMap { id in
+            guard let session = sessions[id] else { return nil }
+            let reason = session.lifecycle.blockReason
+            var result: [String: Any] = [
+                "id": id.uuidString,
+                "path": session.imageURL.path,
+                "canCloseSafely": reason == nil
+            ]
+            if let reason { result["reason"] = reason.rawValue }
+            return result
+        }
+    }
+
+    func closeAll(
+        mode: ScreenshotEditorLifecycle.CloseMode,
+        validateAccess: () throws -> Void = { try Task.checkCancellation() }
+    ) async throws -> (closed: [String], cancelled: Bool, blocked: Bool) {
+        guard !isClosingAll else {
+            throw AutomationError(.busy, "Screenshot editors are already being closed.")
+        }
+        isClosingAll = true
+        defer { isClosingAll = false }
+        let targets = sessionOrder
+        var closed: [String] = []
+        var blocked = false
+        for id in targets {
+            try validateAccess()
+            guard let session = sessions[id] else { continue }
+            if mode == .interactive, let window = session.lifecycle.window,
+               session.lifecycle.blockReason?.needsConfirmation == true {
+                // The prompt is attached to this window, which may be minimized or behind others.
+                presentWindow(window)
+            }
+            switch await session.lifecycle.requestClose(mode: mode) {
+            case .closed:
+                closed.append(id.uuidString)
+            case .cancelled:
+                return (closed, true, blocked)
+            case .blocked:
+                blocked = true
+            }
+        }
+        try validateAccess()
+        return (closed, false, blocked)
+    }
+
+    func closeAllInteractively() {
+        guard !isClosingAll else { return }
+        Task {
+            guard let result = try? await closeAll(mode: .interactive) else { return }
+            if !result.cancelled, result.blocked {
+                SaveService.shared.showError("Some screenshot editors are busy or still opening. Finish their current action, then try Close All Screenshot Editors again.")
+            }
+        }
     }
 }

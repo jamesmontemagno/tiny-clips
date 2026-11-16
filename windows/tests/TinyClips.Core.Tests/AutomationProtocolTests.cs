@@ -303,6 +303,21 @@ public sealed class AutomationProtocolTests : IDisposable
         Assert.Equal(AutomationErrorCodes.InvalidParams, bad.Error!.Code);
     }
 
+    [Theory]
+    [InlineData("editor.list")]
+    [InlineData("editor.closeAll")]
+    public async Task Host_DoesNotAdvertiseOrExecuteMacScreenshotWindowCommands(string command)
+    {
+        var host = CreateHost(new FakeHandler(), new FakeApprovals(true), () => true);
+        var hello = await HandleAsync(host, """{"command":"session.hello"}""");
+        Assert.DoesNotContain(command, hello.Result!["commands"]!.AsArray().Select(value => value!.GetValue<string>()));
+        var pair = await HandleAsync(host,
+            """{"command":"session.pair","params":{"clientName":"x","scopes":["read","edit"]}}""");
+        var token = await WaitForTokenAsync(host, pair.Result!["pairingId"]!.GetValue<string>());
+        var response = await HandleAsync(host, $$$"""{"token":"{{{token}}}","command":"{{{command}}}"}""");
+        Assert.Equal(AutomationErrorCodes.NotSupported, response.Error!.Code);
+    }
+
     [Fact]
     public async Task LineReader_SplitsLines_AndCapsLength()
     {

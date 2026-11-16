@@ -1284,6 +1284,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ann.points = [updated.start, updated.end]
                     ann.rect = directedRect(from: updated)
                     annotations[idx] = ann
+                    markDirty()
                 } else if isDraggingBend {
                     bendArrow(at: idx, toward: current, displaySize: displaySize)
                 } else if isDraggingStartpoint {

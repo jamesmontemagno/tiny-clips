@@ -1,5 +1,6 @@
 import Carbon.HIToolbox
 import AVFoundation
+import AppKit
 import XCTest
 @testable import TinyClips
 
@@ -353,6 +354,21 @@ final class CaptureSettingsTests: XCTestCase {
             TinyClipsActivationPolicy.resolve(showInDock: false, hasOpenEditors: true),
             .regular
         )
+    }
+
+    func testOpeningMoreEditorsDoesNotReregisterTheApplicationInTheDock() {
+        var current = NSApplication.ActivationPolicy.accessory
+        var changes: [NSApplication.ActivationPolicy] = []
+        for count in 1...5 {
+            let policy = TinyClipsActivationPolicy.resolve(showInDock: false, hasOpenEditors: count > 0)
+            XCTAssertTrue(TinyClipsActivationPolicy.apply(policy, current: current) {
+                changes.append($0)
+                current = $0
+                return true
+            })
+        }
+        XCTAssertEqual(changes, [.regular])
+        XCTAssertFalse(TinyClipsActivationPolicy.apply(.accessory, current: current) { _ in false })
     }
 
     func testActivationPolicyIsAccessoryWithoutDockPreferenceOrOpenEditor() {

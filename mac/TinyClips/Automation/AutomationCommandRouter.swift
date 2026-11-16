@@ -14,7 +14,7 @@ final class AutomationCommandRouter {
         "capture.scrolling.start", "capture.scrolling.stop", "capture.scrolling.status", "capture.scrolling.cancel",
         "recording.startVideo", "recording.startGif", "recording.stop", "recording.togglePause",
         "recording.restart", "recording.discard",
-        "editor.open", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
+        "editor.open", "editor.list", "editor.closeAll", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
         "library.delete", "library.upload", "studio.projects.list", "studio.project.get",
         "studio.project.edit", "studio.zoom.suggest", "studio.export.options", "studio.export",
         "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
@@ -33,7 +33,11 @@ final class AutomationCommandRouter {
         return manager
     }
 
-    func execute(command: String, params: [String: Any]) async throws -> [String: Any] {
+    func execute(
+        command: String,
+        params: [String: Any],
+        validateAccess: () throws -> Void = { try Task.checkCancellation() }
+    ) async throws -> [String: Any] {
         switch command {
         case "app.status": return try appStatus()
         case "app.open": return try openWindow(params)
@@ -66,6 +70,14 @@ final class AutomationCommandRouter {
         case "recording.restart": return try restart()
         case "recording.discard": return try discard()
         case "editor.open": return try openEditor(params)
+        case "editor.list":
+            guard params.isEmpty else { throw AutomationError(.invalidParams, "editor.list takes no parameters.") }
+            return ["editors": ScreenshotEditorRegistry.shared.listEditors()]
+        case "editor.closeAll":
+            guard params.isEmpty else { throw AutomationError(.invalidParams, "editor.closeAll takes no parameters.") }
+            let registry = ScreenshotEditorRegistry.shared
+            let result = try await registry.closeAll(mode: .safeOnly, validateAccess: validateAccess)
+            return ["closed": result.closed, "remaining": registry.listEditors()]
         case "studio.projects.list": return try listStudioProjects(params)
         case "studio.project.get": return try getStudioProject(params)
         case "studio.project.edit": return try editStudioProject(params)

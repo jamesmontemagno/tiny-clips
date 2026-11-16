@@ -8,6 +8,7 @@ description: Find, open, copy, delete, or upload Tiny Clips captures. Use when t
 - List: `tinyclips library.list limit=20 kind=all|screenshot|video|gif` (newest first, needs `read`).
 - Show in Finder/Explorer: `tinyclips library.reveal path="<file>"`.
 - Open the clips library window: `tinyclips app.open window=library`.
+- macOS screenshot editors: `tinyclips editor.list` (needs `read`) lists open sessions and close-safety reasons. `tinyclips editor.closeAll` (needs `edit`) closes only saved, unchanged screenshots and reports remaining sessions for user review; it never discards work. It excludes Studio/trimmers and is unavailable on Windows.
 - Copy to clipboard: `tinyclips library.copy path="<file>"` (needs `export`).
 - Delete: `tinyclips library.delete path="<file>"` (needs `delete`; moves to Trash/Recycle Bin after the user approves).
 - Upload: `tinyclips library.upload path="<file>"` (needs `upload`; uses the upload service configured in the app, after the user approves). Returns the URL.
