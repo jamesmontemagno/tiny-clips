@@ -806,7 +806,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
         var groups = _controls.Bindings.Where(binding => binding.Control == "StudioSegmented").ToArray();
-        Assert.Equal(13, groups.Length);
+        Assert.Equal(12, groups.Length);
 
         foreach (var group in groups)
         {

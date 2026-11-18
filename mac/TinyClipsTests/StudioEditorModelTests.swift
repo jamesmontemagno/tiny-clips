@@ -2599,6 +2599,18 @@ final class StudioEditorModelTests: XCTestCase {
         assertSpeed(reopened, [(2, 6, 1.25)])
     }
 
+    func testNormalSpeedOverlapsDoNotChangePlaybackWhenOpeningTheEditor() {
+        let project = withSpeed([(0, 9, 1), (2, 4, 2), (6, 8, 0.5)])
+        let before = StudioTimeMap(sourceDuration: 10, edits: project.edits)
+        let model = StudioEditorModel(project: project)
+        assertSpeed(model, [(0, 2, 1), (2, 4, 2), (4, 6, 1), (6, 8, 0.5), (8, 9, 1)])
+        XCTAssertEqual(model.outputDuration, before.outputDuration, accuracy: 1e-9)
+        for time in stride(from: 0.0, through: 10.0, by: 0.5) {
+            XCTAssertEqual(model.playbackRate(at: time), before.rate(at: time), accuracy: 1e-9)
+        }
+        assertSpeed(StudioEditorModel(project: model.project), [(0, 2, 1), (2, 4, 2), (4, 6, 1), (6, 8, 0.5), (8, 9, 1)])
+    }
+
     func testASpeedChangeOrATrimThatWouldLeaveTooLittleVideoIsNotMade() {
         // Twice as fast, a recording of 0.15 s would last 0.075 s.
         var brief = StudioEditorModel(project: makeProject(duration: 0.15))

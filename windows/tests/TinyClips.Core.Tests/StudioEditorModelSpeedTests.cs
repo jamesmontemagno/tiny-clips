@@ -179,6 +179,21 @@ public sealed class StudioEditorModelSpeedTests
     }
 
     [Fact]
+    public void NormalSpeedOverlaps_DoNotChangePlaybackWhenOpeningTheEditor()
+    {
+        var project = WithSpeed((0, 9, 1), (2, 4, 2), (6, 8, 0.5));
+        var before = new StudioTimeMap(10, project.Edits);
+        var model = new StudioEditorModel(project);
+        AssertSpeed(model, (0, 2, 1), (2, 4, 2), (4, 6, 1), (6, 8, 0.5), (8, 9, 1));
+        Assert.Equal(before.OutputDuration, model.OutputDuration, Precision);
+        for (var time = 0d; time <= 10; time += 0.5)
+        {
+            Assert.Equal(before.GetRate(time), model.GetPlaybackRate(time), Precision);
+        }
+        AssertSpeed(new StudioEditorModel(model.Project), (0, 2, 1), (2, 4, 2), (4, 6, 1), (6, 8, 0.5), (8, 9, 1));
+    }
+
+    [Fact]
     public void ASpeedChangeOrATrim_ThatWouldLeaveTooLittleVideo_IsNotMade()
     {
         // Twice as fast, a recording of 0.15 s would last 0.075 s.

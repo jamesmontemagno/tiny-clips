@@ -864,7 +864,7 @@ final class StudioProjectStore {
             if project.sources.screen.external {
                 // A video opened from elsewhere is copied in, so the folder holds everything.
                 let name = Self.copiedScreenFileName(for: paths.screenURL)
-                try require(paths.screenURL, as: name)
+                try require(paths.screenURL.resolvingSymlinksInPath(), as: name)
                 project.sources.screen.file = name
                 project.sources.screen.external = false
             } else {

@@ -1012,19 +1012,55 @@ public sealed class StudioTimeMap
             .OrderBy(static item => item.Entry.Start)
             .ThenBy(static item => item.Entry.End)
             .ThenBy(static item => item.Index)
-            .Select(static item => item.Entry);
+            .Select(static item => item.Entry)
+            .ToArray();
 
-        var result = new List<StudioSpeedRange>();
-        foreach (var entry in entries)
+        static List<StudioSpeedRange> ResolveOverlaps(IEnumerable<StudioSpeedRange> entries)
         {
-            var start = result.Count > 0 && entry.Start < result[^1].End ? result[^1].End : entry.Start;
-            if (entry.End > start)
+            var resolved = new List<StudioSpeedRange>();
+            foreach (var entry in entries)
             {
-                result.Add(entry with { Start = start });
+                var start = resolved.Count > 0 && entry.Start < resolved[^1].End ? resolved[^1].End : entry.Start;
+                if (entry.End > start)
+                {
+                    resolved.Add(entry with { Start = start });
+                }
             }
+            return resolved;
         }
 
-        return [.. result];
+        var effective = ResolveOverlaps(entries.Where(static entry => entry.Rate != 1));
+        if (!keepingNormalRate)
+        {
+            return [.. effective];
+        }
+
+        var result = new List<StudioSpeedRange>(effective);
+        foreach (var normal in ResolveOverlaps(entries.Where(static entry => entry.Rate == 1)))
+        {
+            var cursor = normal.Start;
+            foreach (var change in effective)
+            {
+                if (change.End <= cursor || change.Start >= normal.End)
+                {
+                    continue;
+                }
+                if (change.Start > cursor)
+                {
+                    result.Add(normal with { Start = cursor, End = Math.Min(change.Start, normal.End) });
+                }
+                cursor = Math.Max(cursor, change.End);
+                if (cursor >= normal.End)
+                {
+                    break;
+                }
+            }
+            if (cursor < normal.End)
+            {
+                result.Add(normal with { Start = cursor });
+            }
+        }
+        return [.. result.OrderBy(static entry => entry.Start)];
     }
 
     /// <summary>The kept segments divided where the rate changes inside them.</summary>

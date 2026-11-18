@@ -181,6 +181,23 @@ final class StudioProjectFolderTests: XCTestCase {
         XCTAssertEqual(try names(in: folder), ["Flat.tinyclips", "screen.mov"])
     }
 
+    func testSavingAnImportedSymlinkCopiesTheVideoNotTheLink() throws {
+        let video = outsideURL.appendingPathComponent("source.mov")
+        let link = outsideURL.appendingPathComponent("alias.mov")
+        try Data("video".utf8).write(to: video)
+        try fileManager.createSymbolicLink(atPath: link.path, withDestinationPath: video.lastPathComponent)
+        let project = try store.getOrCreateFlatProject(
+            request: StudioFlatProjectRequest(videoURL: link, width: 1920, height: 1080, duration: 5, appVersion: "1.0")
+        )
+        let folder = outsideURL.appendingPathComponent("Symlink Copy")
+        try store.exportProjectFolder(id: project.id, to: folder)
+        let copied = folder.appendingPathComponent("screen.mov")
+        XCTAssertEqual(try copied.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink, false)
+        try fileManager.removeItem(at: link)
+        try fileManager.removeItem(at: video)
+        XCTAssertEqual(try Data(contentsOf: copied), Data("video".utf8))
+    }
+
     // MARK: - Opening a Folder
 
     func testAFolderOpensAsANewProjectWithTheSameEditsAndNoExports() throws {

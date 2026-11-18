@@ -157,17 +157,43 @@ struct StudioTimeMap: Equatable, Sendable {
             return first.index < second.index
         }
 
-        var result: [StudioSpeedRange] = []
-        for item in entries {
-            var entry = item.entry
-            if let last = result.last, entry.start < last.end {
-                entry.start = last.end
+        func resolveOverlaps(_ entries: [(entry: StudioSpeedRange, index: Int)]) -> [StudioSpeedRange] {
+            var result: [StudioSpeedRange] = []
+            for item in entries {
+                var entry = item.entry
+                if let last = result.last, entry.start < last.end {
+                    entry.start = last.end
+                }
+                if entry.end > entry.start {
+                    result.append(entry)
+                }
             }
-            if entry.end > entry.start {
-                result.append(entry)
+            return result
+        }
+
+        let effective = resolveOverlaps(entries.filter { $0.entry.rate != 1 })
+        guard keepingNormalRate else { return effective }
+
+        var result = effective
+        for normal in resolveOverlaps(entries.filter { $0.entry.rate == 1 }) {
+            var cursor = normal.start
+            for change in effective where change.end > cursor && change.start < normal.end {
+                if change.start > cursor {
+                    var part = normal
+                    part.start = cursor
+                    part.end = min(change.start, normal.end)
+                    result.append(part)
+                }
+                cursor = max(cursor, change.end)
+                if cursor >= normal.end { break }
+            }
+            if cursor < normal.end {
+                var part = normal
+                part.start = cursor
+                result.append(part)
             }
         }
-        return result
+        return result.sorted { $0.start < $1.start }
     }
 
     /// The kept segments divided where the rate changes inside them.
