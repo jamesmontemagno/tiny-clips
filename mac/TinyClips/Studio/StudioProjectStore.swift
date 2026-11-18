@@ -898,8 +898,7 @@ final class StudioProjectStore {
             try data.write(to: projectFile, options: .atomic)
         }
 
-        guard fileManager.fileExists(atPath: folder.path) else {
-            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        if mkdir(folder.path, 0o777) == 0 {
             do {
                 try fill(folder)
             } catch {
@@ -907,6 +906,10 @@ final class StudioProjectStore {
                 throw error
             }
             return
+        }
+        let creationError = errno
+        guard creationError == EEXIST else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(creationError))
         }
 
         guard replacingSavedProject, canReplaceSavedFolder(folder) else {

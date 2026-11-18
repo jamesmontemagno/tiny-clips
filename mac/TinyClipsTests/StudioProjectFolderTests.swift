@@ -198,6 +198,46 @@ final class StudioProjectFolderTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: copied), Data("video".utf8))
     }
 
+    @MainActor
+    func testAgentProjectCopyUsesOnlyANewFolderInTheVideoDirectory() throws {
+        let id = try makeProject(camera: false)
+        let projectDirectory = try store.paths(forID: id).projectDirectory
+        let folder = try AutomationCommandRouter.studioProjectCopyDestination(
+            name: "Agent Copy", videoFolder: outsideURL, projectDirectory: projectDirectory
+        )
+        try store.exportProjectFolder(id: id, to: folder)
+        let projectFile = folder.appendingPathComponent("Agent Copy.tinyclips")
+        let reopened = try store.importProjectFolder(projectFile: projectFile)
+        XCTAssertEqual(try Data(contentsOf: try store.paths(for: reopened).screenURL), Data("screen".utf8))
+        XCTAssertThrowsError(try store.exportProjectFolder(id: id, to: folder)) { error in
+            XCTAssertEqual(error as? StudioProjectFolderError, .destinationExists)
+        }
+        XCTAssertTrue(fileManager.fileExists(atPath: projectFile.path))
+
+        for name in ["", ".", "..", "../other", "a/b", "a\\b", "bad\0name"] {
+            XCTAssertThrowsError(try AutomationCommandRouter.studioProjectCopyDestination(
+                name: name, videoFolder: outsideURL, projectDirectory: projectDirectory
+            )) { error in
+                XCTAssertEqual((error as? AutomationError)?.code, .invalidParams)
+            }
+        }
+        XCTAssertThrowsError(try AutomationCommandRouter.studioProjectCopyDestination(
+            name: "inside", videoFolder: projectDirectory, projectDirectory: projectDirectory
+        )) { error in
+            XCTAssertEqual((error as? AutomationError)?.code, .invalidParams)
+        }
+    }
+
+    func testSavingDoesNotReplaceABrokenDestinationSymlink() throws {
+        let id = try makeProject(camera: false)
+        let link = outsideURL.appendingPathComponent("Taken")
+        try fileManager.createSymbolicLink(atPath: link.path, withDestinationPath: "missing")
+        XCTAssertThrowsError(try store.exportProjectFolder(id: id, to: link)) { error in
+            XCTAssertEqual(error as? StudioProjectFolderError, .destinationExists)
+        }
+        XCTAssertEqual(try fileManager.destinationOfSymbolicLink(atPath: link.path), "missing")
+    }
+
     // MARK: - Opening a Folder
 
     func testAFolderOpensAsANewProjectWithTheSameEditsAndNoExports() throws {

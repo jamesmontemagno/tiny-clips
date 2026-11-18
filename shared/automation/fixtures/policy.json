@@ -73,6 +73,20 @@
       "decision": "allow"
     },
     {
+      "name": "project copy requires export scope",
+      "enabled": true,
+      "scopes": ["export"],
+      "command": "studio.project.saveCopy",
+      "decision": "allow"
+    },
+    {
+      "name": "project copy rejects edit without export",
+      "enabled": true,
+      "scopes": ["edit"],
+      "command": "studio.project.saveCopy",
+      "decision": "missing_scope"
+    },
+    {
       "name": "missing record",
       "enabled": true,
       "scopes": [

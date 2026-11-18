@@ -223,6 +223,12 @@ final class StudioViewModel: ObservableObject {
         return (project, events)
     }
 
+    func prepareAutomationProjectSave() -> Bool {
+        guard canSaveProjectFolder, !isInGesture else { return false }
+        commitCaptionText()
+        return saveNow()
+    }
+
     var isReady: Bool { state == .ready }
     var isEditable: Bool { state == .ready && !isExporting && busyMessage == nil }
     var isBusy: Bool { busyMessage != nil }

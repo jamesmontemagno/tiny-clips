@@ -83,6 +83,19 @@ public class CliTests
     }
 
     [Fact]
+    public async Task ProjectCopyCommandForwardsParameters()
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["export"];
+        var (output, error) = (new StringWriter(), new StringWriter());
+        Assert.Equal(0, await Cli.RunAsync(
+            ["studio.project.saveCopy", "projectId=project", "folderName=Copy"],
+            app.Environment(output, error, token: "t"), TestContext.Current.CancellationToken));
+        Assert.Equal("studio.project.saveCopy", Json(output)["command"]!.GetValue<string>());
+        Assert.Equal("Copy", Json(output)["params"]!["folderName"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task NamedPipeAcceptsSameUserAndCarriesAuthenticatedRequests()
     {
         await using var app = new FakeApp(useNamedPipe: true);
@@ -314,6 +327,7 @@ public class CliTests
         var defaults = new CliEnvironment { GetVariable = _ => null };
         Assert.Equal(TimeSpan.FromSeconds(150), defaults.RequestTimeoutFor("app.status"));
         Assert.Equal(TimeSpan.FromHours(2), defaults.RequestTimeoutFor("studio.export"));
+        Assert.Equal(TimeSpan.FromHours(2), defaults.RequestTimeoutFor("studio.project.saveCopy"));
         Assert.Equal(TimeSpan.FromHours(2), defaults.RequestTimeoutFor("editor.trim"));
         Assert.Equal(TimeSpan.FromHours(2), defaults.RequestTimeoutFor("studio.captions.generate"));
 
