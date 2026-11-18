@@ -15,7 +15,7 @@ final class AutomationCommandRouter {
         "recording.startVideo", "recording.startGif", "recording.stop", "recording.togglePause",
         "recording.restart", "recording.discard",
         "editor.open", "editor.list", "editor.closeAll", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
-        "library.delete", "library.upload", "studio.projects.list", "studio.project.get",
+        "library.delete", "library.upload", "studio.projects.list", "studio.project.get", "studio.project.saveCopy",
         "studio.project.edit", "studio.zoom.suggest", "studio.export.options", "studio.export",
         "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
     ]).union(StudioAppleSpeech.isAvailable ? ["studio.captions.models", "studio.captions.generate"] : [])
@@ -81,6 +81,9 @@ final class AutomationCommandRouter {
         case "studio.projects.list": return try listStudioProjects(params)
         case "studio.project.get": return try getStudioProject(params)
         case "studio.project.edit": return try editStudioProject(params)
+        case "studio.project.saveCopy":
+            try validateAccess()
+            return try await saveStudioProjectCopy(params)
         case "studio.zoom.suggest": return try suggestStudioZooms(params)
         case "studio.export.options": return try studioExportOptions(params)
         case "studio.export": return try await exportStudioProject(params)
@@ -656,6 +659,56 @@ final class AutomationCommandRouter {
             "project": try studioProjectObject(project),
             "revision": try studioProjectRevision(project)
         ]
+    }
+
+    static func studioProjectCopyDestination(
+        name: String,
+        videoFolder: URL,
+        projectDirectory: URL,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        guard StudioJSON.isPlainFileName(name), !name.contains("\0") else {
+            throw AutomationError(.invalidParams, "folderName must be a plain folder name.")
+        }
+        let root = videoFolder.standardizedFileURL.resolvingSymlinksInPath()
+        let project = projectDirectory.standardizedFileURL.resolvingSymlinksInPath()
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw AutomationError(.internal, "The configured video-save folder does not exist.")
+        }
+        guard root.path != project.path, !root.path.hasPrefix(project.path + "/") else {
+            throw AutomationError(.invalidParams, "The video folder cannot be inside the Studio project.")
+        }
+        return root.appendingPathComponent(name, isDirectory: true)
+    }
+
+    private func saveStudioProjectCopy(_ params: [String: Any]) async throws -> [String: Any] {
+        try requireStudioEnabled()
+        let id = try Self.requiredString(params, "projectId")
+        let name = try Self.requiredString(params, "folderName")
+        let store = StudioProjectStore.shared
+        let project = try currentStudioProject(id)
+        let paths = try store.paths(for: project)
+        let folder = try Self.studioProjectCopyDestination(
+            name: name,
+            videoFolder: SaveService.shared.outputDirectoryURL(for: .video),
+            projectDirectory: paths.projectDirectory
+        )
+        if let viewModel = StudioWindowRegistry.shared.automationViewModel(forProjectID: id),
+           !viewModel.prepareAutomationProjectSave() {
+            throw AutomationError(.busy, "The Studio project is not ready to save.")
+        }
+        do {
+            try await Task.detached(priority: .utility) {
+                try store.exportProjectFolder(id: id, to: folder)
+            }.value
+        } catch StudioProjectFolderError.destinationExists {
+            throw AutomationError(.invalidParams, "The project folder already exists; choose a new name.")
+        } catch {
+            throw AutomationError(.internal, "Studio could not save this project: \(error.localizedDescription)")
+        }
+        let file = folder.appendingPathComponent(name).appendingPathExtension(StudioProjectStore.projectFileExtension)
+        return ["projectId": id, "folderPath": folder.path, "projectFile": file.path]
     }
 
     private func editStudioProject(_ params: [String: Any]) throws -> [String: Any] {

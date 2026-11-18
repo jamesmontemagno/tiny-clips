@@ -1022,10 +1022,10 @@ public sealed record StudioProjectSummary(
     public DateTimeOffset LastUsedAt => CreatedAt > LastOpenedAt ? CreatedAt : LastOpenedAt;
 
     /// <summary>
-    /// Whether the project holds the only copy of its recording: nothing was exported from it,
-    /// or what was exported is gone. The Settings list calls both drafts.
+    /// Projects without an available export, including edits to an external video. Settings
+    /// lists these as drafts even when the original video is already in the Clips Library.
     /// </summary>
-    public bool IsDraftOrLostItsExport => (IsDraft || ExportMissing) && !IsFlat;
+    public bool IsDraftOrLostItsExport => IsDraft || ExportMissing;
 
     /// <summary>
     /// The projects the tray menu lists beside the saved captures: those that hold the only
@@ -1035,7 +1035,7 @@ public sealed record StudioProjectSummary(
     public static IReadOnlyList<StudioProjectSummary> MenuDrafts(IEnumerable<StudioProjectSummary> summaries)
     {
         ArgumentNullException.ThrowIfNull(summaries);
-        return summaries.Where(static summary => summary.IsDraftOrLostItsExport && summary.SourceExists).ToArray();
+        return summaries.Where(static summary => summary.IsDraftOrLostItsExport && !summary.IsFlat && summary.SourceExists).ToArray();
     }
 
     /// <summary>

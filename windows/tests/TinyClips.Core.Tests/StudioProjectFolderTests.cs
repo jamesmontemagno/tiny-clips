@@ -549,6 +549,23 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
     }
 
     [Fact]
+    public void SettingsListsFlatDraftsAndMissingExportsWithoutDuplicatingTheRecentMenu()
+    {
+        StudioProjectSummary[] summaries =
+        [
+            MenuSummary("flat-draft", isFlat: true),
+            MenuSummary("flat-lost-export", isDraft: false, isFlat: true, exportMissing: true),
+            MenuSummary("flat-offline", isFlat: true, sourceExists: false),
+            MenuSummary("flat-exported", isDraft: false, isFlat: true),
+        ];
+
+        Assert.Equal(
+            ["flat-draft", "flat-lost-export", "flat-offline"],
+            summaries.Where(summary => summary.IsDraftOrLostItsExport).Select(summary => summary.Id));
+        Assert.Empty(StudioProjectSummary.MenuDrafts(summaries));
+    }
+
+    [Fact]
     public void AProjectWasLastUsedWhenItWasOpenedOrFailingThatRecorded()
     {
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(100), MenuSummary("a", created: 100, opened: 0).LastUsedAt);

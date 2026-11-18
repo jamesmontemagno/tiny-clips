@@ -7,6 +7,7 @@ own `CHANGELOG.md` at the repository root.
 
 ### Fixed
 - Selecting a redaction in the screenshot editor no longer marks the screenshot as edited or makes its style and strength the defaults for new redactions.
+- Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 
 ### Changed
 - Screenshot editor lines and arrows now have **Start** and **End** controls for flat, round, or square ends (arrows have a start control; their other end is the head), and rectangles have a **Corners** option under **Advanced** for sharp, round, or beveled corners. New rectangles now default to round corners.
@@ -17,6 +18,7 @@ own `CHANGELOG.md` at the repository root.
 - Screenshot arrows are now one smooth shape with an **Arrow** picker for **Classic** and **Tapered** presets. Drag the diamond handle on a selected arrow's middle to bend it either way (it snaps straight near the line), and use **Advanced** to set its **Arc**, **Start width**, **End width**, **Head size**, and head **Corners**. Editing any of these shows **Custom**. The previous straight and curved arrow styles are replaced by these controls. Arrows in the live preview now match the saved image at every zoom level, and a curved arrow can be selected anywhere along its curve.
 - The screenshot editor has a **Background** tool after **Select** (shortcut **G**) for padding, a background, and a frame, which used to sit in the inspector's **Background** expander. New installs open the editor on **Background** and upgrades keep **Select**; choose another with **Default editor tool** in Screenshot settings, or with the `screenshotEditorDefaultTool` Agent Control setting.
 - Short choices in the screenshot editor (**Arrow**, **Stroke position**, **Start**, **End**, **Corners**, redaction **Style** and **Strength**, and background image **Placement**) are now segmented controls instead of drop-downs.
+- Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 
 ## [v2.1.1-windows] - 2026-11-14
 

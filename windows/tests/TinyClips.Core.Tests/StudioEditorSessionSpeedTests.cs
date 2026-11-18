@@ -274,10 +274,17 @@ public sealed class StudioEditorSessionSpeedTests : StudioEditorSessionTestBase
         Assert.Empty(Preview.Seeks);
         Assert.Equal(6, session.Playhead, Precision);
 
-        // A rate that is none, and the rate it has, change nothing.
+        // Normal speed keeps the selection and updates the preview without moving the playhead.
+        session.SelectSpeed(1);
+        Changes.Clear();
+        Assert.Equal(new StudioSpeedEditResult(true, 1), session.SetSpeedRate(1, 1));
+        Assert.Equal(1, session.SelectedSpeedIndex);
+        Assert.Equal(1, Preview.LastProject!.Edits.Speed[1].Rate);
+        Assert.Equal(6, session.Playhead, Precision);
+        Assert.Equal(new[] { Edited }, Changes);
         Changes.Clear();
         Assert.Equal(new StudioSpeedEditResult(false, 1), session.SetSpeedRate(1, 1));
-        Assert.Equal(new StudioSpeedEditResult(false, 1), session.SetSpeedRate(1, 0.5));
+        Assert.Equal(new StudioSpeedEditResult(false, 1), session.SetSpeedRate(1, 0));
         Assert.Empty(Changes);
 
         // No such speed change: nothing moves.

@@ -786,6 +786,8 @@ Speed entries are not clamped to the trim. Which of two overlapping entries coun
 
 Everything else stays in source time. A zoom, a move between scenes, and a click ring inside a faster piece therefore pass faster in the video, as the picture does.
 
+Editors retain a stored range at rate 1 so the Speed slider can pass through normal speed without losing its selection, and the range remains editable after reopening. Such a range has no effect on the time map above.
+
 **Sound.** The video has the recording's sound only in pieces with rate 1. For the output time of a piece with another rate it is silent.
 
 Where the video has sound, the sound tracks of the screen file are added together, each at its gain. A track's gain is two numbers multiplied: the gain of what the track holds, and `audio.volume`. Each is clamped to 0 to 1 before they are multiplied.
@@ -875,7 +877,9 @@ Starting with the one scene at 0, each change is made to a copy of the last scen
 
 Opening an existing video that has no project creates a flat project: `sources.screen.external` is true, `screen.file` is the absolute path, and `camera` and `events` are null. The caller reads the video's width, height, duration, and frame rate and passes them in; the store does not open media files. There is at most one flat project per video path. Camera layouts are unavailable, so every scene resolves as `screen`.
 
-Open in Studio checks the export link before creating a flat project, even if the library's cached link has not loaded. Dimensions describe the upright picture; preview and export apply the source's rotation metadata before layout and cropping. Imported edits autosave internally, but Save Project/Save As (portable folders) are disabled with an explanation. Keep the original video. The trimmer asks before discarding its pending edits and prevents competing operations while opening Studio.
+Open in Studio checks the export link before creating a flat project, even if the library's cached link has not loaded. Dimensions describe the upright picture; preview and export apply the source's rotation metadata before layout and cropping. Imported edits autosave internally. On macOS Save Project and Save As copy the video into a portable folder; Windows still disables portable saving for external videos. Keep the original video while working on a flat project. The trimmer asks before discarding its pending edits and prevents competing operations while opening Studio.
+
+**Keep as Draft** keeps edits in the app-managed project store (`Application Support/TinyClips/Projects/<id>/project.json` on macOS, under the app's local-data directory on Windows). Settings → Studio → Drafts lists projects without exports and projects whose exports are all missing, including flat projects. Flat drafts still reference the original video; they do not copy or change it. The recent-captures menu omits flat drafts to avoid duplicating the original video. Agents can discover them through `studio.projects.list` and read their edits with `studio.project.get`.
 
 ## 11. Export links
 

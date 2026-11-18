@@ -21,7 +21,8 @@ public sealed partial class StudioViewModel
         nameof(SpeedSelectionTitle),
         nameof(SpeedSelectionDetail),
         nameof(HasSpeedSelectionDetail),
-        nameof(SpeedRateIndex),
+        nameof(SpeedRate),
+        nameof(SpeedRateText),
         nameof(SpeedStartText),
         nameof(SpeedStartAccessibleName),
         nameof(SpeedEndText),
@@ -101,50 +102,22 @@ public sealed partial class StudioViewModel
 
     // The selected speed change
 
-    /// <summary>
-    /// Which of the editor's rates the selected speed change plays at, as its place in
-    /// <see cref="StudioEditorModel.SpeedRates"/>. None, which is -1, without a selected speed
-    /// change, and for one whose project file gave it another rate.
-    /// </summary>
-    public int SpeedRateIndex
+    public double SpeedRate
     {
-        get
-        {
-            if (SelectedSpeed is not { } speed)
-            {
-                return -1;
-            }
-
-            var rates = StudioEditorModel.SpeedRates;
-            for (var index = 0; index < rates.Count; index++)
-            {
-                if (rates[index] == speed.Rate)
-                {
-                    return index;
-                }
-            }
-
-            return -1;
-        }
-
+        get => SelectedSpeed?.Rate ?? 1;
         set
         {
-            // A two-way binding also hands back the rate the editor reported itself. Only another
-            // rate is a choice, and only a choice that the editor took is read out: one that
-            // would leave too little video is not made.
-            var rates = StudioEditorModel.SpeedRates;
-            if (value >= 0
-                && value < rates.Count
-                && value != SpeedRateIndex
-                && SelectedSpeedIndex is { } index
-                && _session.SetSpeedRate(index, rates[value]).Changed)
+            if (SelectedSpeedIndex is { } index && IsRequest(value, SpeedRate)
+                && _session.SetSpeedRate(index, value).Changed)
             {
-                Announce(StudioEditorText.GetSpeedRateName(rates[value]), "StudioSpeedRate", StudioAnnouncementKind.Completed);
+                Announce(StudioEditorText.GetSpeedRateName(SpeedRate), "StudioSpeedRate", StudioAnnouncementKind.Completed);
             }
 
-            ResyncIfDifferent(value, SpeedRateIndex);
+            ResyncIfDifferent(value, SpeedRate);
         }
     }
+
+    public string SpeedRateText => StudioEditorText.GetSpeedRateText(SpeedRate);
 
     public string SpeedStartText => StudioEditorModel.GetSecondsText(SelectedSpeed?.Start ?? 0);
 

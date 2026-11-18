@@ -15,6 +15,12 @@ All notable changes to this project will be documented in this file.
 - macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrow.
 - The macOS screenshot editor has a **Background** tool after **Move** for padding, a background, and a frame, which used to sit in a collapsible sidebar section. The tool buttons are larger. New installs open the editor on **Background** and upgrades keep **Move**; choose another with **Default editor tool** in Screenshot settings, or with the `screenshotEditorDefaultTool` Agent Control setting.
 - Short choices in the macOS screenshot editor (**Arrow**, **Stroke position**, **Start**, **End**, **Corners**, and the export **Format**) are now segmented controls instead of pop-up menus.
+- Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
+- Agents on macOS can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
+
+### Fixed
+- Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
+- macOS Studio Save Project and Save Project As… now work for videos opened from the Clips Library or video editor, in both the Studio and File menus. The video is copied into the project folder; the original is left unchanged.
 
 ## v2.1.0.5-mac - 2026-11-15
 

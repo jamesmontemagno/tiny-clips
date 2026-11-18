@@ -48,7 +48,7 @@ private final class StudioSettingsProjects: ObservableObject {
 }
 
 /// Settings for Tiny Clips Studio: the switch that turns it on while it is in preview, how long
-/// project sources are kept, and the recordings that have no exported video to stand for them.
+/// project sources are kept, and drafts without an available exported video.
 struct StudioSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
 
@@ -65,7 +65,7 @@ struct StudioSettingsSection: View {
         let text: String
     }
 
-    /// One row of the drafts list: a recording that only its project holds.
+    /// One row of the drafts list, including edits to a video kept elsewhere.
     private struct DraftRow: Identifiable {
         let id: String
         let name: String
@@ -250,7 +250,7 @@ struct StudioSettingsSection: View {
 
     // MARK: - Values
 
-    /// Recordings that only their project holds, newest first: the ones that were kept without
+    /// Projects without an available export, newest first: the ones that were kept without
     /// exporting, the ones whose exported video is gone, and after them the ones Studio cannot
     /// read.
     private var draftRows: [DraftRow] {
@@ -264,7 +264,7 @@ struct StudioSettingsSection: View {
                     detail: detailText(createdAt: project.createdAt, bytes: project.sizeOnDisk),
                     note: project.exportMissing ? Self.exportMissingNote : nil,
                     canOpen: true,
-                    canSaveRecording: project.sourceExists
+                    canSaveRecording: project.sourceExists && !project.isFlat
                 )
             }
         let unreadable = studioProjects.unreadableProjects

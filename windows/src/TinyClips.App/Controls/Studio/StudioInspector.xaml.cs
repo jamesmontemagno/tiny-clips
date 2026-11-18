@@ -84,17 +84,6 @@ public sealed partial class StudioInspector : UserControl
             CutoutChoice.Items.Add(choice);
         }
 
-        // A rate shows as "2×" and is called "Twice the speed" by a screen reader.
-        var rates = StudioEditorModel.SpeedRates;
-        for (var index = 0; index < rates.Count; index++)
-        {
-            var choice = CreateChoice(
-                StudioEditorText.GetSpeedRateText(rates[index]),
-                string.Create(CultureInfo.InvariantCulture, $"StudioSpeedRate_{index}"));
-            AutomationProperties.SetName(choice, StudioEditorText.GetSpeedRateName(rates[index]));
-            SpeedRateChoice.Items.Add(choice);
-        }
-
         AddSwatches(SolidSwatches, StudioSwatch.Solid);
         AddSwatches(GradientSwatches, StudioSwatch.Gradient);
         AddCaptionLooks();
