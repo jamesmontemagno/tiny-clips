@@ -139,13 +139,13 @@ struct StudioTimeMap: Equatable, Sendable {
     /// to the end of the entry before it where the two overlapped. The trim and the cuts play no
     /// part here, so the rate at a source time is the same wherever they are. Every entry keeps
     /// what else its file said of it.
-    static func normalizedSpeed(_ speed: [StudioSpeedRange]) -> [StudioSpeedRange] {
+    static func normalizedSpeed(_ speed: [StudioSpeedRange], keepingNormalRate: Bool = false) -> [StudioSpeedRange] {
         var entries: [(entry: StudioSpeedRange, index: Int)] = []
         for (index, stored) in speed.enumerated() {
             guard stored.rate.isFinite, stored.rate > 0 else { continue }
             var entry = stored
             entry.rate = StudioCanvasMath.clamped(stored.rate, slowestRate, fastestRate)
-            if entry.end > entry.start, entry.rate != 1 {
+            if entry.end > entry.start, keepingNormalRate || entry.rate != 1 {
                 entries.append((entry, index))
             }
         }

@@ -219,15 +219,15 @@ extension StudioProjectSummary {
     /// When the project was last worked on: when it was last open, or failing that recorded.
     var lastUsedAt: Date { max(createdAt, lastOpenedAt) }
 
-    /// Whether the project holds the only copy of its recording: nothing was exported from it,
-    /// or what was exported is gone. The Settings list calls both drafts.
-    var isDraftOrLostItsExport: Bool { (isDraft || exportMissing) && !isFlat }
+    /// Projects without an available export, including edits to an external video. Settings
+    /// lists these as drafts even when the original video is already in the Clips Library.
+    var isDraftOrLostItsExport: Bool { isDraft || exportMissing }
 
     /// The projects the Recent Captures menu lists beside the saved captures: those that hold
     /// the only copy of a recording that is still there to open. A project with an exported
     /// video is in that menu already, as the video, which opens its project.
     static func menuDrafts(from summaries: [StudioProjectSummary]) -> [StudioProjectSummary] {
-        summaries.filter { $0.isDraftOrLostItsExport && $0.sourceExists }
+        summaries.filter { $0.isDraftOrLostItsExport && !$0.isFlat && $0.sourceExists }
     }
 
     /// The projects an Open Recent menu lists: those that still have their recording, the one
@@ -719,6 +719,14 @@ final class StudioProjectStore {
 
     private static let linkedSaveLock = NSLock()
 
+    /// The name a video kept elsewhere gets in a saved project folder: `screen`, with the
+    /// video's own extension so it opens as the same kind of movie.
+    static func copiedScreenFileName(for video: URL) -> String {
+        let ext = video.pathExtension.lowercased()
+        let plain = !ext.isEmpty && ext.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+        return "screen." + (plain ? ext : "mp4")
+    }
+
     private func ownedFiles(_ project: StudioProject) -> Set<String> {
         var names: Set<String> = [project.sources.screen.file, project.sources.events ?? "events.json", "poster.jpg"]
         if let camera = project.sources.camera { names.insert(camera.file) }
@@ -834,24 +842,34 @@ final class StudioProjectStore {
     /// The files are copied after the store's lock is let go, so that an editor saving an edit
     /// does not wait for gigabytes to be copied. They are the recordings, which nothing rewrites.
     func exportProjectFolder(id: String, to folder: URL, replacingSavedProject: Bool = false) throws {
-        let (directory, fileNames, data): (URL, [String], Data) = try withLock {
+        let (files, data): ([(source: URL, name: String)], Data) = try withLock {
             var project = try loadUnlocked(id: id)
-            guard !project.sources.screen.external else { throw StudioProjectFolderError.externalSource }
             let paths = try pathsUnlocked(for: project)
 
-            var names: [String] = []
-            func require(_ url: URL) throws {
+            var files: [(source: URL, name: String)] = []
+            func contains(_ name: String) -> Bool {
+                files.contains { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+            }
+            func require(_ url: URL, as name: String? = nil) throws {
                 guard fileManager.fileExists(atPath: url.path) else {
                     throw StudioProjectFolderError.missingFile(url.lastPathComponent)
                 }
-                names.append(url.lastPathComponent)
+                files.append((url, name ?? url.lastPathComponent))
             }
             func includeIfPresent(_ url: URL) {
-                if fileManager.fileExists(atPath: url.path), !names.contains(url.lastPathComponent) {
-                    names.append(url.lastPathComponent)
+                if fileManager.fileExists(atPath: url.path), !contains(url.lastPathComponent) {
+                    files.append((url, url.lastPathComponent))
                 }
             }
-            try require(paths.screenURL)
+            if project.sources.screen.external {
+                // A video opened from elsewhere is copied in, so the folder holds everything.
+                let name = Self.copiedScreenFileName(for: paths.screenURL)
+                try require(paths.screenURL, as: name)
+                project.sources.screen.file = name
+                project.sources.screen.external = false
+            } else {
+                try require(paths.screenURL)
+            }
             if let cameraURL = paths.cameraURL {
                 try require(cameraURL)
             }
@@ -864,16 +882,13 @@ final class StudioProjectStore {
             // Where a video was exported to is a path on this computer, with its user's name in
             // it, and means nothing on another one.
             project.exports = []
-            return (paths.projectDirectory, names, try StudioJSON.makeEncoder().encode(project))
+            return (files, try StudioJSON.makeEncoder().encode(project))
         }
 
         // Filled where it will stay, or beside what it replaces and then put in its place.
         func fill(_ target: URL) throws {
-            for name in fileNames {
-                try fileManager.copyItem(
-                    at: directory.appendingPathComponent(name),
-                    to: target.appendingPathComponent(name)
-                )
+            for file in files {
+                try fileManager.copyItem(at: file.source, to: target.appendingPathComponent(file.name))
             }
             // Written last: a folder with its `.tinyclips` file in it is a whole copy. The file
             // has the name the folder will have.

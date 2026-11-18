@@ -1001,14 +1001,14 @@ public sealed class StudioTimeMap
     /// part here, so the rate at a source time is the same wherever they are. Every entry keeps
     /// what else its file said of it.
     /// </summary>
-    internal static StudioSpeedRange[] NormalizeSpeed(IEnumerable<StudioSpeedRange?>? speed)
+    internal static StudioSpeedRange[] NormalizeSpeed(IEnumerable<StudioSpeedRange?>? speed, bool keepingNormalRate = false)
     {
         // The place in the file decides between entries with the same start and end.
         var entries = (speed ?? [])
             .OfType<StudioSpeedRange>()
             .Where(static entry => double.IsFinite(entry.Rate) && entry.Rate > 0)
             .Select(static (entry, index) => (Entry: entry with { Rate = Clamp(entry.Rate, SlowestRate, FastestRate) }, Index: index))
-            .Where(static item => item.Entry.End > item.Entry.Start && item.Entry.Rate != 1)
+            .Where(item => item.Entry.End > item.Entry.Start && (keepingNormalRate || item.Entry.Rate != 1))
             .OrderBy(static item => item.Entry.Start)
             .ThenBy(static item => item.Entry.End)
             .ThenBy(static item => item.Index)

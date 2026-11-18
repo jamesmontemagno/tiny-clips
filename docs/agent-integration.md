@@ -209,7 +209,7 @@ For long pages, call `capture.scrolling.start` with a target, scroll the page wi
 
 ### Studio projects
 
-Studio commands work on both platforms when Studio is enabled. `studio.projects.list` discovers stored projects; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths.
+Studio commands work on both platforms when Studio is enabled. `studio.projects.list` discovers stored projects, including drafts made from existing videos (`isDraft: true`, `isFlat: true`) that also appear in Settings → Studio → Drafts; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths.
 
 `studio.project.edit` accepts a partial `patch` with any of `canvas`, `screen`, `camera`, `scenes`, `zooms`, `edits`, `audio`, `overlays`, and `captions`. Object values merge recursively; arrays replace their whole field. Send both the current project's `modifiedAt` as `expectedModifiedAt` and the opaque `revision` returned by `studio.project.get` as `expectedRevision`. Identity, name, source recordings, cleanup pinning, and export bookkeeping are protected. Edits to an open Studio window use its undo history; edits to a closed project are saved directly. A stale revision is rejected, so fetch the project again before retrying.
 
@@ -243,6 +243,8 @@ Arrows, callouts, text boxes, emoji, rectangles, ellipses, and redactions are in
 - The Annotate panel and the preview edit this same list, so anything a person can do there an agent can do through the patch: text, emoji, shadow, style, colors, size, area, corners, fill, redaction style and strength, what it is attached to, position, timing, drawing order (the order of the list), and deleting (leaving it out). Give an annotation a stable `id`: an open editor keeps its selection on an annotation by its `id` through an edit.
 
 The full rules are in section 6.10 of [`studio-project-format.md`](studio-project-format.md).
+
+Studio's Speed slider on both platforms offers 0.25x through 8x in 0.25x steps. Agents use `studio.project.edit` with `patch.edits.speed`, an array of `{ "start", "end", "rate" }` entries in source seconds. A rate of 1 keeps the range editable at normal speed, including after saving and reopening. Existing custom rates remain unchanged until edited; agents are not limited to the slider's steps.
 
 `studio.zoom.suggest` returns proposed automatic zooms without changing the project. To apply them, combine the suggestions with the project's manual zooms and send the resulting `zooms` array through `studio.project.edit`; suggested automatic zooms are replaced, not accumulated.
 

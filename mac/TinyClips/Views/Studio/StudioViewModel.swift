@@ -228,10 +228,10 @@ final class StudioViewModel: ObservableObject {
     var isBusy: Bool { busyMessage != nil }
 
     /// Whether the project can be saved as a folder now.
-    var canSaveProjectFolder: Bool { isEditable && !isGeneratingCaptions && editor?.project.sources.screen.external == false }
+    var canSaveProjectFolder: Bool { isEditable && !isGeneratingCaptions && editor != nil }
     var projectFolderHelp: String {
         editor?.project.sources.screen.external == true
-            ? "Imported video edits are saved automatically in Studio. Saving a portable project folder is unavailable because the source video is stored externally. Keep the original video."
+            ? "Save copies the video into a project folder with a .tinyclips file. The original video is not changed."
             : "Save includes the recordings and a .tinyclips file in a project folder."
     }
 
@@ -2594,7 +2594,7 @@ final class StudioViewModel: ObservableObject {
         pause()
         let alert = NSAlert()
         alert.messageText = "Keep this recording?"
-        alert.informativeText = "It has not been saved as a project. Keep it as a draft to finish later from the Clips Library, or delete it."
+        alert.informativeText = "It has not been saved as a project. Keep it as a draft to finish later from Settings → Studio → Drafts, or delete it."
         alert.addButton(withTitle: "Keep as Draft")
         // Standard styling keeps Delete legible against either alert appearance.
         alert.addButton(withTitle: "Delete")

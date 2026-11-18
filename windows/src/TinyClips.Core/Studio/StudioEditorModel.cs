@@ -284,7 +284,7 @@ public sealed partial class StudioEditorModel
                 Project.Edits with
                 {
                     Cuts = NormalizeStoredCuts(Project.Edits.Cuts, SourceDuration),
-                    Speed = NormalizeStoredSpeed(Project.Edits.Speed, SourceDuration),
+                    Speed = NormalizeStoredSpeed(Project.Edits.Speed, SourceDuration, keepingNormalRate: true),
                 },
                 Project.Edits.TrimStart,
                 Project.Edits.TrimEnd),

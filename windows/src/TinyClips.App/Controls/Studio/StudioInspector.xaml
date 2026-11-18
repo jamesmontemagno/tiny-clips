@@ -1485,20 +1485,16 @@
 
                         <!--  The selected speed change.  -->
                         <StackPanel Spacing="16" Visibility="{x:Bind ViewModel.HasSelectedSpeed, Mode=OneWay}">
-                            <!--
-                                How fast this part of the video plays: one of the six rates the
-                                editor offers, added in code, each showing its rate and named by
-                                the editor's text for it. None is chosen for a rate that only a
-                                project file can hold. The panel's name says what the choice is
-                                of, so it has a name and no header of its own.
-                            -->
-                            <local:StudioSegmented
-                                x:Name="SpeedRateChoice"
-                                HorizontalAlignment="Stretch"
-                                local:StudioSegmentedChoice.KeepsLatestChoice="True"
-                                AutomationProperties.AutomationId="StudioSpeedRateChoice"
-                                AutomationProperties.Name="Speed"
-                                SelectedIndex="{x:Bind ViewModel.SpeedRateIndex, Mode=TwoWay}"
+                            <local:StudioSliderRow
+                                Title="Speed"
+                                GestureCompleted="{x:Bind ViewModel.EndGesture}"
+                                GestureStarted="{x:Bind ViewModel.BeginGesture}"
+                                Maximum="8"
+                                Minimum="0.25"
+                                SliderAutomationId="StudioSpeedRateSlider"
+                                Step="0.25"
+                                ValueText="{x:Bind ViewModel.SpeedRateText, Mode=OneWay}"
+                                Value="{x:Bind ViewModel.SpeedRate, Mode=TwoWay}"
                                 ToolTipService.ToolTip="How fast this part of the video plays" />
 
                             <StackPanel Spacing="8">

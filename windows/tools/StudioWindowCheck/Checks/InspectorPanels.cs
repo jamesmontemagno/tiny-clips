@@ -40,13 +40,12 @@ internal sealed partial class WindowChecks
     // Cropped texts are in the headers of the two crop groups, not inside them.
     private static readonly Dictionary<string, (StudioInspectorPanel Panel, CropGroup Group)> Places = BuildPlaces();
 
-    // Controls the inspector makes in code: the swatches, the camera's cutouts, and the speeds.
+    // Controls the inspector makes in code.
     private static readonly (string Prefix, StudioInspectorPanel Panel)[] PlacePrefixes =
     [
         ("StudioSwatch_", StudioInspectorPanel.Background),
         ("StudioCameraCutout_", StudioInspectorPanel.Camera),
         ("StudioCameraShape_", StudioInspectorPanel.Camera),
-        ("StudioSpeedRate_", StudioInspectorPanel.Speed),
         ("StudioAnnotationLayer_", StudioInspectorPanel.Annotate),
         ("StudioAnnotationStyle_", StudioInspectorPanel.Annotate),
         ("StudioAnnotationEmoji_", StudioInspectorPanel.Annotate),
@@ -103,7 +102,7 @@ internal sealed partial class WindowChecks
             "StudioCutEndAtPlayheadButton", "StudioCutLengthText", "StudioDeleteCutButton");
         Add(StudioInspectorPanel.Speed, CropGroup.None,
             "StudioPreviousSpeedButton", "StudioSpeedPositionText", "StudioSpeedRangeText", "StudioNextSpeedButton", "StudioSpeedSectionAddButton",
-            "StudioSpeedEmptyHint", "StudioSpeedHint", "StudioSpeedRateChoice", "StudioSpeedStartText", "StudioSpeedStartEarlierButton",
+            "StudioSpeedEmptyHint", "StudioSpeedHint", "StudioSpeedRateSlider", "StudioSpeedStartText", "StudioSpeedStartEarlierButton",
             "StudioSpeedStartLaterButton", "StudioSpeedStartAtPlayheadButton", "StudioSpeedEndText", "StudioSpeedEndEarlierButton",
             "StudioSpeedEndLaterButton", "StudioSpeedEndAtPlayheadButton", "StudioSpeedLengthText", "StudioSpeedSilentNote", "StudioDeleteSpeedButton");
         Add(StudioInspectorPanel.Annotate, CropGroup.None,

@@ -252,6 +252,27 @@ public sealed class StudioProjectStoreTests : IDisposable
     }
 
     [Fact]
+    public void ImportedDraftIsListedAndReopensWithEditsWithoutChangingTheVideo()
+    {
+        var store = CreateStore();
+        Directory.CreateDirectory(_directory);
+        var videoPath = Path.Combine(_directory, "original.mp4");
+        byte[] original = [1, 2, 3];
+        File.WriteAllBytes(videoPath, original);
+        var project = store.GetOrCreateFlatProject(videoPath, new StudioRecordingSourceInfo(640, 360, 12, 24), "1.9.0");
+        store.Save(project with { Edits = project.Edits with { TrimStart = 1 } });
+
+        var reopenedStore = CreateStore();
+        var draft = Assert.Single(reopenedStore.ListSummaries(), summary => summary.IsDraftOrLostItsExport);
+        Assert.Equal(project.Id, draft.Id);
+        Assert.True(draft.SourceExists);
+        Assert.Equal(1, reopenedStore.Load(draft.Id).Edits.TrimStart);
+        Assert.Null(reopenedStore.FindScreenRecording(draft.Id));
+        reopenedStore.Delete(draft.Id);
+        Assert.Equal(original, File.ReadAllBytes(videoPath));
+    }
+
+    [Fact]
     public void Events_LoadMissingDefaultsAndSaveRoundTrips()
     {
         var store = CreateStore();

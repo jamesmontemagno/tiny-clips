@@ -2535,7 +2535,7 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(model.playbackRate(at: 8.5), 1, accuracy: 1e-9)
     }
 
-    func testTheRateOfASpeedChangeIsKeptWithinItsLimitsAndOneIsNoRate() {
+    func testTheRateOfASpeedChangeIsKeptWithinItsLimits() {
         var model = StudioEditorModel(project: withSpeed([(2, 6, 2)]))
         XCTAssertEqual(model.outputDuration, 8, accuracy: 1e-9)
 
@@ -2543,11 +2543,9 @@ final class StudioEditorModelTests: XCTestCase {
         assertSpeed(model, [(2, 6, 4)])
         XCTAssertEqual(model.outputDuration, 7, accuracy: 1e-9)
 
-        // The rate it has already changes nothing. A rate of 1 is no speed change, and neither is
-        // one that is no rate at all. None of them leaves anything to undo.
+        // The rate it has already and invalid rates leave nothing to undo.
         let depth = undoDepth(&model)
         XCTAssertEqual(model.setSpeedRate(at: 0, to: 4), StudioSpeedEditResult(changed: false, index: 0))
-        XCTAssertEqual(model.setSpeedRate(at: 0, to: 1), StudioSpeedEditResult(changed: false, index: 0))
         XCTAssertEqual(model.setSpeedRate(at: 0, to: 0), StudioSpeedEditResult(changed: false, index: 0))
         XCTAssertEqual(model.setSpeedRate(at: 0, to: -2), StudioSpeedEditResult(changed: false, index: 0))
         XCTAssertEqual(model.setSpeedRate(at: 0, to: .nan), StudioSpeedEditResult(changed: false, index: 0))
@@ -2566,14 +2564,39 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(model.setSpeedRate(at: 1, to: 2), StudioSpeedEditResult(changed: false, index: nil))
         XCTAssertEqual(model.setSpeedRate(at: -1, to: 2), StudioSpeedEditResult(changed: false, index: nil))
 
-        // Every rate the editor offers can be chosen, a new speed change has one of them, and
-        // none of them is 1.
-        XCTAssertEqual(StudioEditorModel.speedRates, [0.25, 0.5, 1.5, 2, 4, 8])
+        // The slider runs from 0.25 to 8 in exact quarter-speed steps, including normal speed.
+        XCTAssertEqual(StudioEditorModel.speedRates.count, 32)
+        XCTAssertEqual(StudioEditorModel.speedRates.first, 0.25)
+        XCTAssertEqual(StudioEditorModel.speedRates.last, 8)
+        XCTAssertEqual(StudioEditorModel.speedRates[3], 1)
+        XCTAssertTrue(zip(StudioEditorModel.speedRates, StudioEditorModel.speedRates.dropFirst()).allSatisfy {
+            $0.1 - $0.0 == 0.25
+        })
         XCTAssertTrue(StudioEditorModel.speedRates.contains(StudioEditorModel.newSpeedRate))
         for rate in StudioEditorModel.speedRates.reversed() {
             XCTAssertEqual(model.setSpeedRate(at: 0, to: rate), StudioSpeedEditResult(changed: true, index: 0))
             XCTAssertEqual(model.project.edits.speed[0].rate, rate, accuracy: 1e-9)
         }
+    }
+
+    func testSpeedSliderStepsThroughNormalSpeedAndKeepsTheRangeAfterReopening() {
+        var model = StudioEditorModel(project: withSpeed([(2, 6, 2)]))
+        model.beginEditingGroup()
+        for quarter in 1...32 {
+            let rate = Double(quarter) / 4
+            _ = model.setSpeedRate(at: 0, to: rate)
+            assertSpeed(model, [(2, 6, rate)])
+            XCTAssertEqual(model.playbackRate(at: 3), rate, accuracy: 1e-9)
+        }
+        model.commitEditingGroup()
+        model.undo()
+        assertSpeed(model, [(2, 6, 2)])
+        _ = model.setSpeedRate(at: 0, to: 1)
+        var reopened = StudioEditorModel(project: model.project)
+        assertSpeed(reopened, [(2, 6, 1)])
+        XCTAssertEqual(reopened.outputDuration, 10, accuracy: 1e-9)
+        _ = reopened.setSpeedRate(at: 0, to: 1.25)
+        assertSpeed(reopened, [(2, 6, 1.25)])
     }
 
     func testASpeedChangeOrATrimThatWouldLeaveTooLittleVideoIsNotMade() {
@@ -2719,10 +2742,10 @@ final class StudioEditorModelTests: XCTestCase {
 
         // Where two overlap, the one that starts first in the recording stays as it is and the
         // other starts where it ends, or is dropped when nothing of it is left. A rate past a
-        // limit is the limit, and an entry with a rate of 1 or of 0, with a time that is not a
+        // limit is the limit, and an entry with a rate of 0, with a time that is not a
         // number, or that ends before it starts is none. What reaches past the recording stops at
         // its ends, and what lies outside it is dropped.
-        assertSpeed(model, [(0, 0.5, 0.5), (0.5, 0.75, 3), (1, 2, 8), (4, 9, 4), (9, 10, 2)])
+        assertSpeed(model, [(0, 0.5, 0.5), (0.5, 0.75, 3), (1, 2, 8), (2.5, 3, 1), (4, 9, 4), (9, 10, 2)])
         XCTAssertFalse(model.canUndo)
         XCTAssertEqual(model.project.edits.speed[2].extra["label"], .string("intro"))
 
@@ -2814,11 +2837,10 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.speedLengthText(speed(3, .nan, 2)), "0.0 seconds, plays in 0.0 seconds")
         XCTAssertEqual(StudioEditorModel.speedLengthText(speed(3, 4, .nan)), "1.0 seconds, plays in 1.0 seconds")
 
-        // The names of the controls that choose a rate.
-        XCTAssertEqual(
-            StudioEditorModel.speedRates.map(StudioEditorModel.speedRateName),
-            ["Quarter speed", "Half speed", "One and a half times the speed", "Twice the speed", "4 times the speed", "8 times the speed"]
-        )
+        // The slider names its current rate.
+        XCTAssertEqual(StudioEditorModel.speedRateName(0.25), "Quarter speed")
+        XCTAssertEqual(StudioEditorModel.speedRateName(1), "The recording's own speed")
+        XCTAssertEqual(StudioEditorModel.speedRateName(8), "8 times the speed")
         XCTAssertEqual(StudioEditorModel.speedRateName(0.75), "0.75 times the speed")
         XCTAssertEqual(StudioEditorModel.speedRateName(20), "8 times the speed")
         XCTAssertEqual(StudioEditorModel.speedRateName(1), "The recording's own speed")
