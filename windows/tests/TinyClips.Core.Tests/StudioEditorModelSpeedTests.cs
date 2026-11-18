@@ -108,7 +108,7 @@ public sealed class StudioEditorModelSpeedTests
     }
 
     [Fact]
-    public void TheRateOfASpeedChange_IsKeptWithinItsLimits_AndOneIsNoRate()
+    public void TheRateOfASpeedChange_IsKeptWithinItsLimits()
     {
         var model = new StudioEditorModel(WithSpeed((2, 6, 2)));
         Assert.Equal(8, model.OutputDuration, Precision);
@@ -117,11 +117,9 @@ public sealed class StudioEditorModelSpeedTests
         AssertSpeed(model, (2, 6, 4));
         Assert.Equal(7, model.OutputDuration, Precision);
 
-        // The rate it has already changes nothing. A rate of 1 is no speed change, and neither is
-        // one that is no rate at all. None of them leaves anything to undo.
+        // The rate it has already and invalid rates leave nothing to undo.
         var undoDepth = UndoDepth(model);
         Assert.Equal(new StudioSpeedEditResult(false, 0), model.SetSpeedRate(0, 4));
-        Assert.Equal(new StudioSpeedEditResult(false, 0), model.SetSpeedRate(0, 1));
         Assert.Equal(new StudioSpeedEditResult(false, 0), model.SetSpeedRate(0, 0));
         Assert.Equal(new StudioSpeedEditResult(false, 0), model.SetSpeedRate(0, -2));
         Assert.Equal(new StudioSpeedEditResult(false, 0), model.SetSpeedRate(0, double.NaN));
@@ -140,15 +138,59 @@ public sealed class StudioEditorModelSpeedTests
         Assert.Equal(new StudioSpeedEditResult(false, null), model.SetSpeedRate(1, 2));
         Assert.Equal(new StudioSpeedEditResult(false, null), model.SetSpeedRate(-1, 2));
 
-        // Every rate the editor offers can be chosen, a new speed change has one of them, and
-        // none of them is 1.
-        Assert.Equal(new[] { 0.25, 0.5, 1.5, 2, 4, 8 }, StudioEditorModel.SpeedRates);
+        // The slider runs from 0.25 to 8 in exact quarter-speed steps, including normal speed.
+        Assert.Equal(32, StudioEditorModel.SpeedRates.Count);
+        Assert.Equal(0.25, StudioEditorModel.SpeedRates[0]);
+        Assert.Equal(8, StudioEditorModel.SpeedRates[^1]);
+        Assert.Equal(1, StudioEditorModel.SpeedRates[3]);
+        Assert.All(
+            Enumerable.Range(0, StudioEditorModel.SpeedRates.Count - 1),
+            index => Assert.Equal(0.25, StudioEditorModel.SpeedRates[index + 1] - StudioEditorModel.SpeedRates[index]));
         Assert.Contains(StudioEditorModel.NewSpeedRate, StudioEditorModel.SpeedRates);
         foreach (var rate in StudioEditorModel.SpeedRates.Reverse())
         {
             Assert.Equal(new StudioSpeedEditResult(true, 0), model.SetSpeedRate(0, rate));
             Assert.Equal(rate, model.Project.Edits.Speed[0].Rate, Precision);
         }
+    }
+
+    [Fact]
+    public void SpeedSlider_StepsThroughNormalSpeed_AndKeepsTheRangeAfterReopening()
+    {
+        var model = new StudioEditorModel(WithSpeed((2, 6, 2)));
+        model.BeginEditingGroup();
+        for (var quarter = 1; quarter <= 32; quarter++)
+        {
+            var rate = quarter / 4d;
+            model.SetSpeedRate(0, rate);
+            AssertSpeed(model, (2, 6, rate));
+            Assert.Equal(rate, model.GetPlaybackRate(3), Precision);
+        }
+
+        model.CommitEditingGroup();
+        model.Undo();
+        AssertSpeed(model, (2, 6, 2));
+        model.SetSpeedRate(0, 1);
+        var reopened = new StudioEditorModel(model.Project);
+        AssertSpeed(reopened, (2, 6, 1));
+        Assert.Equal(10, reopened.OutputDuration, Precision);
+        reopened.SetSpeedRate(0, 1.25);
+        AssertSpeed(reopened, (2, 6, 1.25));
+    }
+
+    [Fact]
+    public void NormalSpeedOverlaps_DoNotChangePlaybackWhenOpeningTheEditor()
+    {
+        var project = WithSpeed((0, 9, 1), (2, 4, 2), (6, 8, 0.5));
+        var before = new StudioTimeMap(10, project.Edits);
+        var model = new StudioEditorModel(project);
+        AssertSpeed(model, (0, 2, 1), (2, 4, 2), (4, 6, 1), (6, 8, 0.5), (8, 9, 1));
+        Assert.Equal(before.OutputDuration, model.OutputDuration, Precision);
+        for (var time = 0d; time <= 10; time += 0.5)
+        {
+            Assert.Equal(before.GetRate(time), model.GetPlaybackRate(time), Precision);
+        }
+        AssertSpeed(new StudioEditorModel(model.Project), (0, 2, 1), (2, 4, 2), (4, 6, 1), (6, 8, 0.5), (8, 9, 1));
     }
 
     [Fact]
@@ -320,10 +362,10 @@ public sealed class StudioEditorModelSpeedTests
 
         // Where two overlap, the one that starts first in the recording stays as it is and the
         // other starts where it ends, or is dropped when nothing of it is left. A rate past a
-        // limit is the limit, and an entry with a rate of 1 or of 0, with a time that is not a
+        // limit is the limit, and an entry with a rate of 0, with a time that is not a
         // number, or that ends before it starts is none. What reaches past the recording stops at
         // its ends, and what lies outside it is dropped.
-        AssertSpeed(model, (0, 0.5, 0.5), (0.5, 0.75, 3), (1, 2, 8), (4, 9, 4), (9, 10, 2));
+        AssertSpeed(model, (0, 0.5, 0.5), (0.5, 0.75, 3), (1, 2, 8), (2.5, 3, 1), (4, 9, 4), (9, 10, 2));
         Assert.False(model.CanUndo);
         Assert.True(model.Project.Edits.Speed[2].ExtensionData.ContainsKey("label"));
 
@@ -404,10 +446,10 @@ public sealed class StudioEditorModelSpeedTests
         Assert.Equal("0.0 seconds, plays in 0.0 seconds", StudioEditorText.GetSpeedLengthText(Speed(3, double.NaN, 2)));
         Assert.Equal("1.0 seconds, plays in 1.0 seconds", StudioEditorText.GetSpeedLengthText(Speed(3, 4, double.NaN)));
 
-        // The names of the buttons that choose a rate.
-        Assert.Equal(
-            new[] { "Quarter speed", "Half speed", "One and a half times the speed", "Twice the speed", "4 times the speed", "8 times the speed" },
-            StudioEditorModel.SpeedRates.Select(StudioEditorText.GetSpeedRateName));
+        // The slider names its current rate.
+        Assert.Equal("Quarter speed", StudioEditorText.GetSpeedRateName(0.25));
+        Assert.Equal("The recording's own speed", StudioEditorText.GetSpeedRateName(1));
+        Assert.Equal("8 times the speed", StudioEditorText.GetSpeedRateName(8));
         Assert.Equal("0.75 times the speed", StudioEditorText.GetSpeedRateName(0.75));
         Assert.Equal("8 times the speed", StudioEditorText.GetSpeedRateName(20));
         Assert.Equal("The recording's own speed", StudioEditorText.GetSpeedRateName(1));

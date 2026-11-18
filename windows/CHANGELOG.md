@@ -5,6 +5,12 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
+
+### Changed
+- Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
+
 ## [v2.1.1-windows] - 2026-11-14
 
 ### Fixed

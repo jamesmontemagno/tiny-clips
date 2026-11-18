@@ -118,6 +118,11 @@ public class ContractTests
         var contract = Contract.Current;
         Assert.Equal("read", contract.Find("studio.projects.list")!.Scope);
         Assert.Equal("read", contract.Find("studio.project.get")!.Scope);
+        var copy = contract.Find("studio.project.saveCopy")!;
+        Assert.Equal("export", copy.Scope);
+        Assert.Equal(["macos"], copy.Platforms);
+        Assert.Equal(["folderName", "projectId"], Contract.InputSchema(copy)["required"]!.AsArray()
+            .Select(parameter => parameter!.GetValue<string>()).Order());
         Assert.Equal("edit", contract.Find("studio.project.edit")!.Scope);
         Assert.Equal("read", contract.Find("studio.zoom.suggest")!.Scope);
         Assert.Equal("read", contract.Find("studio.export.options")!.Scope);
