@@ -175,7 +175,7 @@ Test-UI "Padding updates the output-resolution name" {
     # Padding adds 64 source pixels to each dimension, hence 32 output pixels at 50%.
     $dimensions = $scaledOutputResolution -split ' × | px'
     $script:paddedOutputResolution = "$([int]$dimensions[0] + 32) × $([int]$dimensions[1] + 32) px"
-    Invoke-UI invoke "EditorBackgroundExpander" @firstTarget
+    Invoke-UI invoke "EditorToolBackground" @firstTarget
     Invoke-UI wait-for "EditorPaddingSlider" @firstTarget -t 3000
     Invoke-UI set-value "EditorPaddingSlider" 32 @firstTarget
     Assert-OutputResolution $paddedOutputResolution | Out-Null
@@ -199,6 +199,9 @@ Test-UI "Add unsaved annotation to first editor" {
 }
 
 Test-UI "Alt+F4 dismisses the background picker before discard confirmation" {
+    # The background controls only show while the Background tool is active.
+    Invoke-UI invoke "EditorToolBackground" @firstTarget
+    Invoke-UI wait-for "EditorBgStyleCombo" @firstTarget -t 3000 | Out-Null
     Invoke-UI invoke "EditorBgStyleCombo" @firstTarget
     Invoke-UI send-keys "down" @firstTarget --via send-input
     Invoke-UI send-keys "enter" @firstTarget --via send-input

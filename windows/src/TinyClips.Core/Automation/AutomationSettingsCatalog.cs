@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
@@ -45,6 +46,9 @@ public sealed class AutomationSettingsCatalog
             Bool("showInExplorer", () => s.ShowInExplorer, v => s.ShowInExplorer = v),
             Bool("showSaveNotifications", () => s.ShowSaveNotifications, v => s.ShowSaveNotifications = v),
             Bool("showScreenshotEditor", () => s.ShowScreenshotEditor, v => s.ShowScreenshotEditor = v),
+            Text("screenshotEditorDefaultTool", () => s.ScreenshotEditorDefaultTool.SettingId(),
+                v => s.ScreenshotEditorDefaultTool = EditToolExtensions.TryParseSettingId(v, out var tool) ? tool : s.ScreenshotEditorDefaultTool,
+                allowed: [.. EditToolExtensions.SettingIds]),
             Bool("showTrimmer", () => s.ShowTrimmer, v => s.ShowTrimmer = v),
             Bool("showGifTrimmer", () => s.ShowGifTrimmer, v => s.ShowGifTrimmer = v),
             Bool("showScreenshotCapturePicker", () => s.ShowScreenshotCapturePicker, v => s.ShowScreenshotCapturePicker = v),

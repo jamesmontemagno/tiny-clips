@@ -87,6 +87,13 @@ struct ScreenshotSettingsSection: View {
                 disabled: !settings.showScreenshotEditor
             )
 
+            Picker("Default editor tool", selection: $settings.screenshotEditorDefaultEditTool) {
+                ForEach(EditTool.allCases, id: \.self) { tool in
+                    Text(tool.label).tag(tool)
+                }
+            }
+            .help("Choose the tool selected when the screenshot editor opens.")
+
             SettingsToggleRow(
                 title: "Copy to clipboard",
                 isOn: $settings.copyScreenshotToClipboard,

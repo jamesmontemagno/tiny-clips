@@ -187,6 +187,8 @@ The corresponding MCP tools are `tinyclips_notifications_status`, `tinyclips_not
 
 `editor.annotate` accepts a screenshot path and typed annotation objects for rectangles, ellipses, arrows, lines, pen strokes, text, numbered callouts, emoji, and redactions. Bounds and points use source-image pixels from the top-left. It renders to a new library capture and never overwrites the source. It does not open the interactive editor. Redactions accept `redactionLevel` (`light`, `medium`, or `heavy`) and `redactionStyle` (`blur`, `pixelate`, or `solid`). Blur and pixelate are built from the image, so use `solid` for passwords, keys, and other secrets; `light` can stay readable.
 
+The `screenshotEditorDefaultTool` setting picks the tool selected when the interactive screenshot editor opens: `move`, `background`, `crop`, `rectangle`, `ellipse`, `arrow`, `line`, `pen`, `text`, `number`, `emoji`, or `redact`. New installs start on `background`; installs from before the Background tool keep `move`. It has no effect on `editor.annotate`.
+
 ### Screenshot editor windows on macOS
 
 Use headless capture and annotation commands for autonomous work. `editor.open` explicitly brings up UI for a person; reopening the same screenshot reuses its existing editor without losing edits. Different screenshots keep separate windows in the same application.

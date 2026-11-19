@@ -130,7 +130,8 @@ public interface ICaptureSettings
     bool ShowScreenshotEditor { get; set; }
     /// <summary>Open the screenshot editor at native pixel size instead of fitting it to the viewport. Default false.</summary>
     bool ScreenshotEditorNativeSize { get; set; }
-    /// <summary>The tool selected when a new screenshot editor opens. Default Select (Move / select).</summary>
+    /// <summary>The tool selected when a new screenshot editor opens. Default Background; installs that
+    /// finished onboarding before it existed keep Select (Move / select).</summary>
     EditTool ScreenshotEditorDefaultTool { get; set; }
 
     /// <summary>

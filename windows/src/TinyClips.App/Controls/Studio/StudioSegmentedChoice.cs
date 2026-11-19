@@ -8,7 +8,27 @@ namespace TinyClips.App.Controls.Studio;
 /// <summary>Supplies the ListViewBase automation peer that the toolkit's Segmented control lacks.</summary>
 public sealed partial class StudioSegmented : Segmented
 {
+    /// <summary>
+    /// True while the template is first applied, when the control clears its choice and puts
+    /// back the one it remembers. A SelectionChanged handler that writes the choice to a
+    /// document can ignore those changes: they are not the user's.
+    /// </summary>
+    public bool IsApplyingTemplate { get; private set; }
+
     protected override AutomationPeer OnCreateAutomationPeer() => new StudioSegmentedAutomationPeer(this);
+
+    protected override void OnApplyTemplate()
+    {
+        IsApplyingTemplate = true;
+        try
+        {
+            base.OnApplyTemplate();
+        }
+        finally
+        {
+            IsApplyingTemplate = false;
+        }
+    }
 }
 
 public sealed partial class StudioSegmentedAutomationPeer(StudioSegmented owner) : ListViewBaseAutomationPeer(owner)

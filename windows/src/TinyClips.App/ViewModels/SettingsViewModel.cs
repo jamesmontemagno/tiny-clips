@@ -51,6 +51,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private static readonly EditTool[] _screenshotEditorToolChoices =
     [
         EditTool.Select,
+        EditTool.Background,
         EditTool.Crop,
         EditTool.Rectangle,
         EditTool.Ellipse,
@@ -1462,7 +1463,9 @@ public sealed partial class SettingsViewModel : ObservableObject
                 ScreenshotCountdownDuration = _settings.ScreenshotCountdownDuration;
                 ShowScreenshotEditor = _settings.ShowScreenshotEditor;
                 var defaultToolIndex = Array.IndexOf(_screenshotEditorToolChoices, _settings.ScreenshotEditorDefaultTool);
-                ScreenshotEditorDefaultToolIndex = defaultToolIndex >= 0 ? defaultToolIndex : 0;
+                ScreenshotEditorDefaultToolIndex = defaultToolIndex >= 0
+                    ? defaultToolIndex
+                    : Array.IndexOf(_screenshotEditorToolChoices, EditTool.Background);
                 ScreenshotUsesLiveCapture = _settings.ScreenshotUsesLiveCapture;
                 ShowScreenshotCapturePicker = _settings.ShowScreenshotCapturePicker;
                 ShowScreenshotCapturePickerAfterCapture = _settings.ShowScreenshotCapturePickerAfterCapture;
@@ -1952,7 +1955,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotEditorDefaultTool =
             value >= 0 && value < _screenshotEditorToolChoices.Length
                 ? _screenshotEditorToolChoices[value]
-                : EditTool.Select);
+                : EditTool.Background);
 
     partial void OnScreenshotUsesLiveCaptureChanged(bool value) => Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotUsesLiveCapture = value);
 

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using TinyClips.Core.Automation;
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 
@@ -47,6 +48,27 @@ public sealed class AutomationSettingsCatalogTests
         AssertInvalid(() => catalog.Set("screenshotFormat", JsonValue.Create("bmp")));
         AssertInvalid(() => catalog.Set("uploadcarePublicKey", JsonValue.Create("x")));
         AssertInvalid(() => catalog.Set("videoFrameRate", null));
+    }
+
+    [Fact]
+    public void ScreenshotEditorDefaultTool_UsesTheToolNamesSharedWithMac()
+    {
+        var settings = new CaptureSettings(new MemorySettings());
+        var catalog = new AutomationSettingsCatalog(settings);
+
+        Assert.Equal("background", catalog.Get("screenshotEditorDefaultTool")["value"]!.GetValue<string>());
+        Assert.Equal(
+            ["move", "background", "crop", "rectangle", "ellipse", "arrow", "line", "pen", "text", "number", "emoji", "redact"],
+            EditToolExtensions.SettingIds);
+
+        catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("number"));
+        Assert.Equal(EditTool.Counter, settings.ScreenshotEditorDefaultTool);
+        catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("move"));
+        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+
+        AssertInvalid(() => catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("Select")));
+        AssertInvalid(() => catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("counter")));
+        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
     }
 
     [Fact]

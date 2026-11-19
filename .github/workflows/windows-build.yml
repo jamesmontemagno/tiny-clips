@@ -44,6 +44,7 @@ jobs:
               - 'windows/*.slnx'
               - 'windows/packaging/Assert-DirectPackage.ps1'
               - 'shared/studio/fixtures/**'
+              - 'shared/screenshot/fixtures/**'
               - 'shared/automation/**'
               - 'global.json'
               - '[Nn]u[Gg]et.[Cc]onfig'

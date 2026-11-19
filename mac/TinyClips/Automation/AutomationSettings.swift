@@ -110,6 +110,7 @@ struct AutomationSetting {
         .bool("showInFinder", \.showInFinder),
         .bool("showSaveNotifications", \.showSaveNotifications),
         .bool("showScreenshotEditor", \.showScreenshotEditor),
+        .string("screenshotEditorDefaultTool", \.screenshotEditorDefaultTool, allowed: EditTool.allCases.map(\.settingID)),
         .bool("showTrimmer", \.showTrimmer),
         .bool("showGifTrimmer", \.showGifTrimmer),
         .bool("showScreenshotCapturePicker", \.showScreenshotCapturePicker),

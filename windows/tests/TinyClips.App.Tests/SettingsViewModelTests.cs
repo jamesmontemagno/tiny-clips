@@ -206,21 +206,21 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
-    public void ScreenshotEditorDefaultTool_LoadsMoveSelect_PersistsAndRoundTrips()
+    public void ScreenshotEditorDefaultTool_LoadsBackground_PersistsAndRoundTrips()
     {
         var fixture = new Fixture();
         var vm = fixture.CreateViewModel();
         Realize(vm, SettingsSectionKind.Screenshot);
 
-        Assert.Equal(0, vm.ScreenshotEditorDefaultToolIndex);
-        Assert.Equal(EditTool.Select, fixture.Settings.ScreenshotEditorDefaultTool);
+        Assert.Equal(1, vm.ScreenshotEditorDefaultToolIndex);
+        Assert.Equal(EditTool.Background, fixture.Settings.ScreenshotEditorDefaultTool);
 
-        vm.ScreenshotEditorDefaultToolIndex = 4;
+        vm.ScreenshotEditorDefaultToolIndex = 5;
         Assert.Equal(EditTool.Arrow, fixture.Settings.ScreenshotEditorDefaultTool);
 
         var reopened = fixture.CreateViewModel();
         Realize(reopened, SettingsSectionKind.Screenshot);
-        Assert.Equal(4, reopened.ScreenshotEditorDefaultToolIndex);
+        Assert.Equal(5, reopened.ScreenshotEditorDefaultToolIndex);
     }
 
     [Fact]
@@ -235,7 +235,7 @@ public sealed class SettingsViewModelTests
             "{x:Bind ViewModel.ScreenshotEditorDefaultToolIndex, Mode=TwoWay}",
             combo.Attr("SelectedIndex"));
         Assert.Equal(
-            ["Move / select", "Crop", "Rectangle", "Ellipse", "Arrow", "Line", "Pen", "Text", "Counter", "Emoji", "Redact"],
+            ["Move / select", "Background", "Crop", "Rectangle", "Ellipse", "Arrow", "Line", "Pen", "Text", "Counter", "Emoji", "Redact"],
             combo.Elements().Select(item => item.Attr("Content")));
     }
 

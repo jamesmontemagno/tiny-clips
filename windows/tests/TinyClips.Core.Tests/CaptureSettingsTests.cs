@@ -90,29 +90,52 @@ public sealed class CaptureSettingsTests
         Assert.Equal(string.Empty, settings.UploadcarePublicKey);
         Assert.False(settings.UploadcareAutoUpload);
         Assert.False(settings.UploadcareCopyUrl);
-        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+        Assert.Equal(EditTool.Background, settings.ScreenshotEditorDefaultTool);
     }
 
     [Fact]
-    public void ScreenshotEditorDefaultTool_DefaultsToSelect_RoundTrips_AndFallsBackForInvalidValues()
+    public void ScreenshotEditorDefaultTool_DefaultsToBackground_RoundTrips_AndFallsBackForInvalidValues()
     {
         var store = new TestSettingsService();
         var settings = new CaptureSettings(store);
 
-        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+        Assert.Equal(EditTool.Background, settings.ScreenshotEditorDefaultTool);
 
         settings.ScreenshotEditorDefaultTool = EditTool.Arrow;
         Assert.Equal("Arrow", store.Get("screenshotEditorDefaultTool", string.Empty));
         Assert.Equal(EditTool.Arrow, new CaptureSettings(store).ScreenshotEditorDefaultTool);
 
         store.Set("screenshotEditorDefaultTool", "NotATool");
-        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+        Assert.Equal(EditTool.Background, settings.ScreenshotEditorDefaultTool);
         store.Set("screenshotEditorDefaultTool", "999");
-        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+        Assert.Equal(EditTool.Background, settings.ScreenshotEditorDefaultTool);
 
         settings.ScreenshotEditorDefaultTool = EditTool.Arrow;
         settings.ResetToDefaults();
-        Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+        Assert.Equal(EditTool.Background, settings.ScreenshotEditorDefaultTool);
+        // Onboarding again after a reset is not an upgrade.
+        settings.HasCompletedOnboarding = true;
+        Assert.Equal(EditTool.Background, new CaptureSettings(store).ScreenshotEditorDefaultTool);
+    }
+
+    [Fact]
+    public void ScreenshotEditorDefaultTool_KeepsSelectForUpgrades_AndStartsNewInstallsOnBackground()
+    {
+        var upgrade = new TestSettingsService();
+        upgrade.Set("hasCompletedOnboarding", true);
+        Assert.Equal(EditTool.Select, new CaptureSettings(upgrade).ScreenshotEditorDefaultTool);
+        Assert.Equal("Select", upgrade.Get("screenshotEditorDefaultTool", string.Empty));
+
+        var newInstall = new TestSettingsService();
+        var settings = new CaptureSettings(newInstall);
+        Assert.Equal("Background", newInstall.Get("screenshotEditorDefaultTool", string.Empty));
+        settings.HasCompletedOnboarding = true;
+        Assert.Equal(EditTool.Background, new CaptureSettings(newInstall).ScreenshotEditorDefaultTool);
+
+        var chosen = new TestSettingsService();
+        chosen.Set("hasCompletedOnboarding", true);
+        chosen.Set("screenshotEditorDefaultTool", "Arrow");
+        Assert.Equal(EditTool.Arrow, new CaptureSettings(chosen).ScreenshotEditorDefaultTool);
     }
 
     [Fact]

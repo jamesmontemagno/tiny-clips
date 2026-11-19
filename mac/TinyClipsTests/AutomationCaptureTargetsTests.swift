@@ -150,6 +150,23 @@ final class AutomationCaptureTargetsTests: XCTestCase {
         XCTAssertEqual(annotations[9].redactionBlurPreset, .heavy)
     }
 
+    func testLineWidthIsImagePixelsOnWideImages() throws {
+        let wide = CGSize(width: 1800, height: 900)
+        let bounds: [String: Any] = ["x": 10, "y": 10, "width": 200, "height": 100]
+        let annotations = try AutomationAnnotations.parse([
+            ["type": "rectangle", "bounds": bounds, "lineWidth": 8],
+            ["type": "arrow", "bounds": bounds, "lineWidth": 8],
+            ["type": "rectangle", "bounds": bounds],
+            ["type": "text", "bounds": bounds, "text": "Hi", "fontSize": 20],
+        ] as [Any], imagePixelSize: wide)
+
+        XCTAssertEqual(annotations[0].lineWidth, 8)
+        XCTAssertEqual(annotations[1].lineWidth, 8)
+        XCTAssertEqual(annotations[2].lineWidth, AnnotationStrokeMath.defaultWidth(forImagePixelWidth: 1800))
+        XCTAssertEqual(annotations[2].lineWidth, 8)
+        XCTAssertEqual(annotations[3].fontSize, 20 * 800 / 1800, accuracy: 0.001)
+    }
+
     func testRejectsMalformedAnnotations() {
         let bounds: [String: Any] = ["x": 0, "y": 0, "width": 10, "height": 10]
         let invalid: [Any] = [

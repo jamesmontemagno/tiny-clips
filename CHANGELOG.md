@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Changed
+- Stroke width in the macOS screenshot editor is now a 1–40 px slider measured in image pixels, like Windows, instead of a menu of preset sizes; dragging it on a selected shape is one undo step. The starting width scales with the capture so large screenshots keep their previous look.
+- macOS screenshot pencil strokes are now smooth, tapered ink: the line follows the pointer more steadily, thins slightly when drawn quickly, tapers at both ends, and keeps an even color when translucent.
+- macOS Screenshot arrows and lines now have a **Fill** (the body's color), a **Size** (its thickness), and an optional outline: a **Stroke color** and **Stroke** width (none by default) placed by **Stroke position**, which starts at **Outside** for arrows and lines. For shapes, the color control is now named **Stroke color** and sits directly above the **Stroke** width.
+- macOS Screenshot arrows are now one smooth shape with an **Arrow** picker for **Classic** and **Tapered** presets. Drag the diamond handle on a selected arrow's middle to bend it either way (it snaps straight near the line), and use **Advanced** to set its **Arc**, **Start width**, **End width**, **Head size**, and head **Corners**. Editing any of these shows **Custom**. The previous straight and curved arrow styles are replaced by these controls.
+- macOS screenshot lines and arrows now have **Start** and **End** controls for flat, round, or square ends (arrows have a start control; their other end is the head), and rectangles have a **Corners** option under **Advanced** for sharp, round, or beveled corners. New strokes default to round ends and corners, and pencil strokes are now smooth instead of jagged.
+- Rectangles and circles in the macOS screenshot editor have a **Stroke position** option to draw the border inside, centered on, or outside the shape's edge. Centered is the default, as before.
+- Translucent arrows and lines in the macOS screenshot editor no longer draw darker where the shaft meets the head or a cap.
+- macOS screenshot arrows now share their geometry with Windows, so the editor preview and the saved image draw the same arrow.
+- The macOS screenshot editor has a **Background** tool after **Move** for padding, a background, and a frame, which used to sit in a collapsible sidebar section. The tool buttons are larger. New installs open the editor on **Background** and upgrades keep **Move**; choose another with **Default editor tool** in Screenshot settings, or with the `screenshotEditorDefaultTool` Agent Control setting.
+- Short choices in the macOS screenshot editor (**Arrow**, **Stroke position**, **Start**, **End**, **Corners**, and the export **Format**) are now segmented controls instead of pop-up menus.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 - Agents on macOS can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 

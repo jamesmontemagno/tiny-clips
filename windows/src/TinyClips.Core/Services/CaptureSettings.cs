@@ -7,6 +7,7 @@ namespace TinyClips.Core.Services;
 public sealed class CaptureSettings : ICaptureSettings
 {
     private const string StudioDefaultLookKey = "studioDefaultLook";
+    private const string ScreenshotEditorDefaultToolKey = "screenshotEditorDefaultTool";
 
     private readonly ISettingsService _settings;
     private readonly IClipAnalyticsService? _analytics;
@@ -16,6 +17,7 @@ public sealed class CaptureSettings : ICaptureSettings
         _settings = settings;
         _analytics = analytics;
         MigrateLegacySaveDirectory();
+        MigrateScreenshotEditorDefaultTool();
     }
 
     public string SaveDirectory
@@ -471,14 +473,14 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         get
         {
-            var persisted = _settings.Get("screenshotEditorDefaultTool", EditTool.Select.ToString());
+            var persisted = _settings.Get(ScreenshotEditorDefaultToolKey, EditTool.Background.ToString());
             return Enum.TryParse<EditTool>(persisted, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
                 ? parsed
-                : EditTool.Select;
+                : EditTool.Background;
         }
         set => _settings.Set(
-            "screenshotEditorDefaultTool",
-            Enum.IsDefined(value) ? value.ToString() : EditTool.Select.ToString());
+            ScreenshotEditorDefaultToolKey,
+            Enum.IsDefined(value) ? value.ToString() : EditTool.Background.ToString());
     }
 
     public bool ConfirmEditorEscape
@@ -975,7 +977,8 @@ public sealed class CaptureSettings : ICaptureSettings
         WebcamCornerRadius = null;
         ShowScreenshotEditor = true;
         ScreenshotEditorNativeSize = false;
-        ScreenshotEditorDefaultTool = EditTool.Select;
+        // Stored, so finishing onboarding again can't make the migration treat this as an upgrade.
+        ScreenshotEditorDefaultTool = EditTool.Background;
         ConfirmEditorEscape = true;
         ScreenshotUsesLiveCapture = false;
         ShowGifTrimmer = true;
@@ -1030,6 +1033,18 @@ public sealed class CaptureSettings : ICaptureSettings
         ScreenshotScreenHotKeyCode = 0;
         ScreenshotScreenHotKeyModifiers = 0;
         _analytics?.Clear();
+    }
+
+    // The editor used to open with Select. Keep that for people upgrading and start new installs on
+    // Background. The choice is always stored, so finishing onboarding later doesn't change it.
+    private void MigrateScreenshotEditorDefaultTool()
+    {
+        if (!string.IsNullOrEmpty(_settings.Get(ScreenshotEditorDefaultToolKey, string.Empty)))
+        {
+            return;
+        }
+
+        ScreenshotEditorDefaultTool = HasCompletedOnboarding ? EditTool.Select : EditTool.Background;
     }
 
     private void MigrateLegacySaveDirectory()

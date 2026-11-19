@@ -385,10 +385,10 @@ final class ScreenshotRedactionTests: XCTestCase {
             editor.selectedTool = .move
             editor.selectedAnnotationIndex = index
 
-            XCTAssertEqual(editor.selectedShapeColor(), .red)
-            XCTAssertEqual(editor.selectedShapeLineWidth(), 4)
-            XCTAssertTrue(editor.updateSelectedShapeColor(.blue))
-            XCTAssertTrue(editor.updateSelectedShapeLineWidth(8))
+            XCTAssertEqual(editor.selectedStrokeColor(), .red)
+            XCTAssertEqual(editor.selectedLineWidth(), 4)
+            XCTAssertTrue(editor.updateSelectedStrokeColor(.blue))
+            XCTAssertTrue(editor.updateSelectedLineWidth(8))
             XCTAssertEqual(editor.annotations[index].color, .blue)
             XCTAssertEqual(editor.annotations[index].lineWidth, 8)
 
@@ -449,11 +449,11 @@ final class ScreenshotRedactionTests: XCTestCase {
         editor.selectedTool = .move
         editor.selectedAnnotationIndex = 0
 
-        XCTAssertTrue(editor.updateSelectedShapeColor(.blue))
+        XCTAssertTrue(editor.updateSelectedStrokeColor(.blue))
         editor.undo()
         XCTAssertTrue(editor.canRedo)
         editor.selectedAnnotationIndex = 0
-        XCTAssertTrue(editor.updateSelectedShapeColor(.red))
+        XCTAssertTrue(editor.updateSelectedStrokeColor(.red))
         XCTAssertTrue(editor.canRedo)
         editor.redo()
         XCTAssertEqual(editor.annotations[0].color, .blue)
@@ -480,6 +480,7 @@ final class ScreenshotRedactionTests: XCTestCase {
                 color: .black, lineWidth: 0, text: "Selected", points: []
             )
         ]
+        editor.selectedTool = .move
         editor.selectedAnnotationIndex = 0
 
         let initialRect = editor.annotations[0].rect
@@ -510,13 +511,14 @@ final class ScreenshotRedactionTests: XCTestCase {
                 color: .black, lineWidth: 0, text: "Selected", points: []
             )
         ]
+        editor.selectedTool = .move
         editor.selectedAnnotationIndex = 0
 
-        editor.beginSelectedTextFontSizeEdit()
+        editor.beginSelectedTextStyleEdit()
         XCTAssertTrue(editor.updateSelectedTextFontSize(20))
         XCTAssertTrue(editor.updateSelectedTextFontSize(27))
         XCTAssertTrue(editor.updateSelectedTextFontSize(32))
-        editor.endSelectedTextFontSizeEdit()
+        editor.endSelectedTextStyleEdit()
 
         XCTAssertEqual(editor.annotations[0].fontSize, 32)
         XCTAssertEqual(editor.annotations[0].rect.midX, initialRect.midX, accuracy: 0.0001)
