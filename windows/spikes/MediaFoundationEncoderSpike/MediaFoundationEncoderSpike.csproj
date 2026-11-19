@@ -10,8 +10,4 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="SharpGen.Runtime.COM" Version="2.0.0-beta.18" />
-  </ItemGroup>
-
 </Project>
