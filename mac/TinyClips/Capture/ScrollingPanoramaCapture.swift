@@ -191,7 +191,7 @@ struct PanoramaAccumulator {
         let previousBand = isFirstCommit ? alignment.fixedBottomHeight : heldBottomBand
         let appendCount = alignment.shift + previousBand - alignment.fixedBottomHeight
         let sourceStartRow = height - previousBand - alignment.shift
-        guard appendCount > 0, sourceStartRow >= 0, baseRows >= 0 else {
+        guard appendCount > 0, sourceStartRow >= max(1, height / 20), baseRows >= 0 else {
             rejectedFrameCount += 1
             return .skipped
         }
@@ -371,12 +371,15 @@ struct PanoramaAccumulator {
         }
         guard let bestShift = candidate else { return nil }
 
-        let fixedBottomHeight = stationaryBottomBand(
+        // Keep seams above bottom-floating UI, including controls that appear mid-capture.
+        // Recover page content from the overlap and flush this band only from the final frame.
+        let minimumOverlap = ignoredTopBand + ignoredBottomBand + minimumSamples
+        let fixedBottomHeight = max(minimumOverlap, stationaryBottomBand(
             previous: previous,
             current: current,
             maximumHeight: bestShift / 2
-        )
-        guard bestShift + fixedBottomHeight <= height else { return nil }
+        ))
+        guard bestShift + fixedBottomHeight + ignoredTopBand <= height else { return nil }
         return Alignment(shift: bestShift, score: Double(scores[bestShift]), fixedBottomHeight: fixedBottomHeight)
     }
 

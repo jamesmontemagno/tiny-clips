@@ -113,6 +113,11 @@ Give these to an agent with Tiny Clips CLI or MCP access. Tell it which app or p
 
 An agent needs its own browser/desktop tools to click, type, or scroll in other apps; Tiny Clips does not provide those actions. Studio must be enabled for Studio commands. On macOS, Agent Control does not require a supporter tip. OS permissions still apply, and sensitive commands still ask for approval.
 
+For scrolling screenshots on both platforms, scroll gradually with overlapping content. Stitching
+keeps the lower viewport overlap until the final frame so bottom-floating controls are not repeated;
+large jumps without enough clear overlap are skipped. Agent-started captures use the same stitcher
+as interactive captures, with no additional command or setting.
+
 Supporter plans are intentionally not available to agents, on either platform: spending money needs a person, and the store's purchase dialog is theirs to confirm. No command buys a plan or reports supporter status.
 
 ## Troubleshooting setup
