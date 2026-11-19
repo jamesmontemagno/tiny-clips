@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Changed
+- The macOS Guide uses native Capture, Steps, Shortcuts, Tips, and Agents tabs with separately scrollable pages. The window is now resizable, with more room for help and agent setup.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 - Agents on macOS can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 
