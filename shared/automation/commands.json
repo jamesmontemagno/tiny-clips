@@ -70,7 +70,7 @@
     "invalid_params": "Parameters are missing or invalid.",
     "busy": "The app cannot run the command in its current state.",
     "conflict": "The target changed since it was read; fetch it again and retry.",
-    "permission_required": "An OS permission (Screen Recording, Microphone, Camera) is missing.",
+    "permission_required": "A required user device opt-in or OS permission (Screen Recording, Microphone, Camera) is missing.",
     "not_found": "The file or item does not exist.",
     "internal": "Unexpected failure."
   }

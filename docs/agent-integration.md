@@ -123,7 +123,7 @@ Supporter plans are intentionally not available to agents, on either platform: s
 | Cannot connect | Start Tiny Clips and enable Agent Control. Check the listening status and endpoint in Settings. Local access does not bridge to a remote machine or container. |
 | `unauthorized` or revoked access | Run `tinyclips pair` again as the same OS account/environment used by the agent and approve it in Tiny Clips. |
 | `missing_scope` | Grant the scope to that agent in **Settings → Agent Control → Paired Agents → Permissions** (it applies immediately), or pair again requesting it with `--scopes`. |
-| `permission_required` | Grant the relevant OS screen/audio/camera permission. On macOS, follow System Settings → Privacy & Security and restart Tiny Clips if required. |
+| `permission_required` | Ask the user to grant the relevant OS screen/audio/camera permission. Windows recording also requires the user's saved Tiny Clips opt-in for each enabled device. On macOS, follow System Settings → Privacy & Security and restart Tiny Clips if required. |
 | `not_supported` | Check your app's version and feature settings; enable Studio for Studio commands. |
 | MCP connects but calls fail | Verify the server runs locally under the same account, can find the CLI/SDK, and shares the pairing configuration. Restart or reload the MCP connection. |
 | Studio edit returns `conflict` | Read the project again and reconcile changes with its latest `modifiedAt` and `revision`; do not blindly resend the old patch. |
