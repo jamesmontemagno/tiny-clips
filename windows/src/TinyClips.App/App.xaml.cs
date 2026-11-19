@@ -1352,7 +1352,8 @@ public partial class App : Application
         CapturePickerMode? forcedMode = null,
         bool abortIfRecording = false,
         VideoRecordingCommand? videoCommand = null,
-        TargetSelection? automationSelection = null)
+        TargetSelection? automationSelection = null,
+        VideoRecordingOptions? automationOptions = null)
     {
         if (_captureFlowCts is not null || _scrollingPanel is not null)
         {
@@ -1439,6 +1440,15 @@ public partial class App : Application
                 // The pre-warm below and the start after the countdown get this same value: the
                 // recorder only reuses a prepared pipeline for a start with matching options.
                 videoOptions = BuildVideoRecordingOptions(type);
+                if (automationOptions is not null)
+                {
+                    videoOptions = videoOptions with
+                    {
+                        RecordMicrophone = automationOptions.RecordMicrophone,
+                        WebcamEnabled = automationOptions.WebcamEnabled,
+                    };
+                    EnsureAutomationDevicePermissions(videoOptions);
+                }
 
                 // Pre-warm the whole recording pipeline (capture session, encoder, webcam, audio)
                 // while the countdown runs so the recording starts the instant it hits zero.
@@ -1518,6 +1528,10 @@ public partial class App : Application
                     // Studio may have been switched off since the recording was set up. The
                     // recorder then builds its pipeline again, for an ordinary recording.
                     videoOptions = StudioRecording.OptionsAtStart(videoOptions);
+                    if (automationOptions is not null)
+                    {
+                        EnsureAutomationDevicePermissions(videoOptions);
+                    }
                     settings.VideoRecordingTimeLimitMinutes = (int)Math.Round(Math.Max(0, pick.VideoTimeLimitMinutes));
                     _activeRecordingSelection = selection with { Backdrop = null };
                     _activeRecordingType = CaptureType.Video;
@@ -1615,6 +1629,10 @@ public partial class App : Application
             HideRecordingIndicatorIfNotRecording();
             if (automationSelection is not null)
             {
+                if (ex is AutomationException)
+                {
+                    throw;
+                }
                 throw new AutomationException(AutomationErrorCodes.Internal,
                     $"Recording failed to start: {ex.Message}");
             }
@@ -2814,18 +2832,20 @@ public partial class App : Application
         StartRecordingTimer();
     }
 
-    private async Task RestartActiveRecordingAsync()
+    private async Task RestartActiveRecordingAsync(bool throwOnFailure = false)
     {
         if (_activeRecordingSelection is not { } selection || _activeRecordingType is not { } type)
         {
             return;
         }
 
+        var wasStartedByAutomation = _activeRecordingWasStartedByAutomation;
         try
         {
             await DiscardActiveRecordingAsync(clearActiveSelection: false);
             _activeRecordingSelection = selection;
             _activeRecordingType = type;
+            _activeRecordingWasStartedByAutomation = wasStartedByAutomation;
             ShowRecordingRegionIndicator(selection);
             ShowRecordingIndicator(type, selection, stopEnabled: false, startTimer: false);
 
@@ -2836,6 +2856,7 @@ public partial class App : Application
                 // A restart records the same kind of video again, so a Studio recording stays
                 // one, unless Studio has been switched off since it started.
                 _activeVideoRecordingOptions = StudioRecording.OptionsAtStart(_activeVideoRecordingOptions);
+                EnsureAutomationDevicePermissions(_activeVideoRecordingOptions);
                 await Services.GetRequiredService<IVideoRecordingService>()
                     .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes, _activeVideoRecordingOptions);
             }
@@ -2862,6 +2883,10 @@ public partial class App : Application
                 ReleaseDisplaySleepAssertion();
             }
             UpdateRecordingState();
+            if (throwOnFailure)
+            {
+                throw;
+            }
         }
     }
 
@@ -3043,7 +3068,7 @@ public partial class App : Application
 
         var settings = Services.GetRequiredService<ICaptureSettings>();
         var capture = Services.GetRequiredService<IWebcamCaptureService>();
-        if (!settings.WebcamEnabled || !capture.IsRunning)
+        if (_activeVideoRecordingOptions.WebcamEnabled == false || !settings.WebcamEnabled || !capture.IsRunning)
         {
             return;
         }

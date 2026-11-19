@@ -5,7 +5,8 @@ using TinyClips.Core.Models;
 namespace TinyClips.App;
 
 /// <summary>What the recording UI is doing, as reported by <c>recording.status</c>.</summary>
-internal sealed record AutomationRecordingSnapshot(string State, bool Busy, CaptureType? Kind);
+internal sealed record AutomationRecordingSnapshot(
+    string State, bool Busy, CaptureType? Kind, bool Microphone = false, bool Camera = false);
 internal sealed record AutomationScrollingSnapshot(bool Active, bool Stopping, int FrameCount);
 
 /// <summary>
@@ -38,7 +39,8 @@ internal interface IAutomationAppActions
     void RecordAutomationCapture(string path, CaptureType type);
 
     /// <summary>Starts a targeted recording without showing the picker or recording setup.</summary>
-    Task BeginTargetedAutomationRecordingAsync(CaptureType type, bool studio, CaptureTarget target, PixelRect? region);
+    Task BeginTargetedAutomationRecordingAsync(
+        CaptureType type, bool studio, CaptureTarget target, PixelRect? region, VideoRecordingOptions? options = null);
 
     Task StartAutomationScrollingCaptureAsync(CaptureTarget target, PixelRect? region);
 

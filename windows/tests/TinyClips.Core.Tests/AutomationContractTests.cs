@@ -66,6 +66,24 @@ public sealed class AutomationContractTests
     }
 
     [Fact]
+    public void VideoDeviceOverridesPreserveOmissionAndValidateBooleanValues()
+    {
+        Assert.True(AutomationContract.Default.TryGetCommand("recording.startVideo", out var video));
+        Assert.Equal("record", video.Scope);
+        Assert.True(AutomationHost.TryValidateParams(video, null, out var omitted, out _));
+        Assert.False(omitted.ContainsKey("microphone"));
+        Assert.False(omitted.ContainsKey("camera"));
+
+        var choices = System.Text.Json.Nodes.JsonNode.Parse("""{"microphone":false,"camera":true,"studio":true}""")!.AsObject();
+        Assert.True(AutomationHost.TryValidateParams(video, choices, out var validated, out _));
+        Assert.False(validated["microphone"]!.GetValue<bool>());
+        Assert.True(validated["camera"]!.GetValue<bool>());
+        choices["camera"] = "true";
+        Assert.False(AutomationHost.TryValidateParams(video, choices, out _, out var error));
+        Assert.Contains("camera", error);
+    }
+
+    [Fact]
     public void StudioCommands_HaveExpectedScopesAndOptimisticEditParameters()
     {
         var contract = AutomationContract.Default;

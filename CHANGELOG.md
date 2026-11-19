@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Changed
+- The shared CLI/MCP contract exposes Windows-only per-recording microphone and camera controls for video/Studio starts. Disabling never changes preferences; enabling requires existing user opt-in and OS permission. macOS explicitly returns `not_supported` for these overrides.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 - Agents on macOS can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 

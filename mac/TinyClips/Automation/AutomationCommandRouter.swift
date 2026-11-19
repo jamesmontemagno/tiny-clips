@@ -456,6 +456,9 @@ final class AutomationCommandRouter {
     }
 
     private func startVideo(_ params: [String: Any]) async throws -> [String: Any] {
+        if params["microphone"] != nil || params["camera"] != nil {
+            throw AutomationError(.notSupported, "Per-recording microphone and camera overrides are currently supported only on Windows.")
+        }
         var studio = false
         if let value = params["studio"] {
             guard let bool = AutomationValue.bool(value) else {

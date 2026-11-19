@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Agents can disable microphone and camera source capture for an individual video or Studio recording with `microphone=false camera=false`, using recording scope without changing saved settings. Enabling requires both the user's saved device opt-in and existing Windows permission; no permission prompt is shown. Start/status report effective device capture, and overrides survive countdown, Studio fallback, and restart.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 
 ### Changed

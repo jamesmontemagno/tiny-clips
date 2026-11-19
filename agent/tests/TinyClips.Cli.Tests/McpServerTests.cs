@@ -67,6 +67,24 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task RecordingToolForwardsDeviceRestrictionsWithoutSettingsScope()
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["record"];
+        await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>
+        {
+            var result = await client.CallToolAsync("tinyclips_recording_startVideo",
+                new Dictionary<string, object?> { ["microphone"] = false, ["camera"] = false, ["studio"] = true },
+                cancellationToken: token);
+            Assert.False(result.IsError);
+            var parameters = app.Received[^1]["params"]!;
+            Assert.False(parameters["microphone"]!.GetValue<bool>());
+            Assert.False(parameters["camera"]!.GetValue<bool>());
+            Assert.True(parameters["studio"]!.GetValue<bool>());
+        });
+    }
+
+    [Fact]
     public async Task SafeEditorCleanupPreservesPartialResultsAndEnforcesScope()
     {
         if (OperatingSystem.IsWindows()) return;

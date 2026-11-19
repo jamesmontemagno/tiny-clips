@@ -128,6 +128,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     public bool IsMicrophoneMuted => _audio?.IsMicrophoneMuted == true;
 
+    private bool WebcamEnabled => _activeOptions.WebcamEnabled ?? _settings.WebcamEnabled;
+
     public event EventHandler<string?>? RecordingCompleted;
 
     public event EventHandler<string>? StudioRecordingCompleted;
@@ -160,7 +162,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             var captureTarget = ResolveTarget(target);
             if (_prepared is { } existing)
             {
-                if (existing.Matches(captureTarget, region, options))
+                if (existing.Matches(captureTarget, region, options.ResolveDevices(_settings)))
                 {
                     return;
                 }
@@ -219,7 +221,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             var captureTarget = ResolveTarget(target);
             try
             {
-                if (_prepared is null || !_prepared.Matches(captureTarget, region, options))
+                if (_prepared is null || !_prepared.Matches(captureTarget, region, options.ResolveDevices(_settings)))
                 {
                     if (_prepared is not null)
                     {
@@ -263,6 +265,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         // cleanup must find nothing to delete.
         _outputPath = null;
         cancellationToken.ThrowIfCancellationRequested();
+        options = options.ResolveDevices(_settings);
         WebcamDiagnostics.BeginRecording();
         Interlocked.Exchange(ref _discardRequested, 0);
         _activeOptions = options;
@@ -574,7 +577,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         _studioInitialCorner = _settings.WebcamCornerPosition;
         _webcamPlacements = new WebcamPlacementTimeline(_studioInitialCorner);
         _audio?.BeginTimeline(_recordingTimeline);
-        if (_activeOptions.RecordForStudio && _webcamCapture.IsRunning && _studioPaths?.CameraPath is { } cameraPath)
+        if (_activeOptions.RecordForStudio && WebcamEnabled && _webcamCapture.IsRunning && _studioPaths?.CameraPath is { } cameraPath)
         {
             _studioCameraRecorder = new StudioCameraRecorder(cameraPath, _recordingTimeline, Math.Min(30, Math.Clamp(_settings.VideoFrameRate, 1, 60)));
             _webcamCapture.FrameArrived += _studioCameraRecorder.OnFrameArrived;
@@ -613,7 +616,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             Target.HMonitor == target.HMonitor &&
             Target.Hwnd == target.Hwnd &&
             Region == region &&
-            Options.RecordForStudio == options.RecordForStudio;
+            Options.MatchesCaptureOptions(options);
     }
 
     private void OnFrameReady(CapturedFrame frame, TimeSpan pts)
@@ -656,7 +659,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
             _perf?.End(RecordingStage.OverlayWebcam, webcam);
         }
-        else if (_settings.WebcamEnabled)
+        else if (WebcamEnabled)
         {
             Interlocked.Increment(ref _webcamOverlayNullFrames);
         }
@@ -841,7 +844,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         var clicks = _clickMonitor?.GetClicks();
         var drawClicks = clicks is { Count: > 0 };
         var webcamFrame = _webcamOverlay is not null ? ResolveWebcamFrame(frame.Pts) : null;
-        if (_webcamOverlay is null && _settings.WebcamEnabled)
+        if (_webcamOverlay is null && WebcamEnabled)
         {
             Interlocked.Increment(ref _webcamOverlayNullFrames);
         }
@@ -1305,11 +1308,12 @@ public sealed class VideoRecordingService : IVideoRecordingService
         Interlocked.Exchange(ref _webcamOverlayNullFrames, 0);
         Interlocked.Exchange(ref _webcamNoFrameFrames, 0);
 
-        WebcamDiagnostics.Log($"StartWebcamOverlay: WebcamEnabled={_settings.WebcamEnabled} deviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedWebcamId) ? "(default)" : _settings.SelectedWebcamId)}' shape={_settings.WebcamShape} size={_settings.WebcamSizePreset} corner={_settings.WebcamCornerPosition}");
+        WebcamDiagnostics.Log($"StartWebcamOverlay: WebcamEnabled={WebcamEnabled} deviceId='{(string.IsNullOrWhiteSpace(_settings.SelectedWebcamId) ? "(default)" : _settings.SelectedWebcamId)}' shape={_settings.WebcamShape} size={_settings.WebcamSizePreset} corner={_settings.WebcamCornerPosition}");
 
-        if (!_settings.WebcamEnabled)
+        if (!WebcamEnabled)
         {
-            WebcamDiagnostics.Log("Webcam is disabled in settings; no overlay will be composited.");
+            await StopWebcamOverlayAsync().ConfigureAwait(false);
+            WebcamDiagnostics.Log("Webcam is disabled for this recording; no overlay will be composited.");
             return;
         }
 
@@ -1874,7 +1878,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
     private void StartAudioCapture()
     {
         var wantSystem = _settings.RecordAudio;
-        var wantMic = _settings.RecordMicrophone;
+        var wantMic = _activeOptions.RecordMicrophone ?? _settings.RecordMicrophone;
         var limitMic = _settings.MicrophoneLimiterEnabled;
         var userOffset = TimeSpan.FromMilliseconds(_settings.AudioOffsetMilliseconds);
         _activeUserOffset = userOffset;
@@ -2046,7 +2050,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
             _clickMonitor?.Dispose();
             _clickMonitor = null;
-            if (_settings.WebcamEnabled)
+            if (WebcamEnabled)
             {
                 WebcamDiagnostics.Log($"Recording stopping — webcam composite summary: composited={Interlocked.Read(ref _webcamCompositedFrames)} noFrameYet={Interlocked.Read(ref _webcamNoFrameFrames)} overlayDisabled={Interlocked.Read(ref _webcamOverlayNullFrames)}");
             }

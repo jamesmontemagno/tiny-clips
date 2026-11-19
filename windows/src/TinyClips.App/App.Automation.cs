@@ -200,7 +200,10 @@ public partial class App : IAutomationAppActions
         var gif = Services.GetRequiredService<IGifRecordingService>();
         if (video.IsRecording)
         {
-            return new(video.IsPaused ? "paused" : "recording", true, CaptureType.Video);
+            return new(video.IsPaused ? "paused" : "recording", true, CaptureType.Video,
+                video.CanMuteMicrophone,
+                Services.GetRequiredService<IWebcamCaptureService>().IsRunning
+                    && _activeVideoRecordingOptions.WebcamEnabled != false);
         }
 
         if (gif.IsRecording)
@@ -288,7 +291,8 @@ public partial class App : IAutomationAppActions
         CaptureType type,
         bool studio,
         CaptureTarget target,
-        PixelRect? region)
+        PixelRect? region,
+        VideoRecordingOptions? options)
     {
         VideoRecordingCommand? videoCommand = type == CaptureType.Video
             ? studio ? VideoRecordingCommand.StudioRecording : VideoRecordingCommand.RecordVideo
@@ -298,7 +302,20 @@ public partial class App : IAutomationAppActions
             type,
             abortIfRecording: true,
             videoCommand: videoCommand,
-            automationSelection: selection);
+            automationSelection: selection,
+            automationOptions: options);
+    }
+
+    private static void EnsureAutomationDevicePermissions(VideoRecordingOptions options)
+    {
+        if (options.RecordMicrophone is null && options.WebcamEnabled is null)
+        {
+            return;
+        }
+
+        var permissions = Services.GetRequiredService<IMediaDevicePermissionService>();
+        AutomationRecordingOptions.EnsureAuthorized(options, Services.GetRequiredService<ICaptureSettings>(),
+            permissions.HasMicrophoneAccess, permissions.HasCameraAccess);
     }
 
     Task IAutomationAppActions.StartAutomationScrollingCaptureAsync(CaptureTarget target, PixelRect? region)
@@ -402,7 +419,7 @@ public partial class App : IAutomationAppActions
             return false;
         }
 
-        await RestartActiveRecordingAsync();
+        await RestartActiveRecordingAsync(throwOnFailure: true);
         return true;
     }
 

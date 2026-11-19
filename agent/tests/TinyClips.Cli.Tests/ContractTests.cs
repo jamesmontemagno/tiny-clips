@@ -96,6 +96,21 @@ public class ContractTests
     }
 
     [Fact]
+    public void RecordingDeviceChoicesAreOptionalWithoutDefaultsAndNeedOnlyRecordingScope()
+    {
+        var command = Contract.Current.Find("recording.startVideo")!;
+        var schema = Contract.InputSchema(command);
+        foreach (var device in new[] { "microphone", "camera" })
+        {
+            Assert.Equal("boolean", schema["properties"]![device]!["type"]!.GetValue<string>());
+            Assert.False(command.Params[device].Required);
+            Assert.Null(command.Params[device].Default);
+        }
+        Assert.Null(Contract.Validate(command, new JsonObject()));
+        Assert.Equal("allow", FakeApp.Decide(Contract.Current, true, ["record"], command.Name));
+    }
+
+    [Fact]
     public void MediaEditCommandsRequirePathAndRange()
     {
         var contract = Contract.Current;
@@ -180,6 +195,10 @@ public class ContractTests
     [InlineData("editor.open", "{}", "Missing required")]
     [InlineData("app.status", "{\"extra\":1}", "Unknown parameter")]
     [InlineData("recording.startVideo", "{\"studio\":\"yes\"}", "true or false")]
+    [InlineData("recording.startVideo", "{\"microphone\":false,\"camera\":false,\"studio\":true}", null)]
+    [InlineData("recording.startVideo", "{\"microphone\":true,\"camera\":true}", null)]
+    [InlineData("recording.startVideo", "{\"microphone\":\"false\"}", "true or false")]
+    [InlineData("recording.startVideo", "{\"camera\":1}", "true or false")]
     [InlineData("studio.project.edit", "{\"projectId\":\"p\",\"expectedModifiedAt\":\"now\",\"expectedRevision\":\"rev\",\"patch\":{\"sources\":{}}}", "Unknown parameter")]
     public void ValidateChecksTypesEnumsAndUnknownKeys(string command, string json, string? expected)
     {
