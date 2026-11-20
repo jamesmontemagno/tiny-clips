@@ -511,6 +511,21 @@ public partial class App : IAutomationAppActions
                     Services.GetRequiredService<IClipStorageService>().OutputDirectory(CaptureType.Video),
                     cancellationToken);
             }
+            case "studio.project.open":
+            {
+                var projectId = RequiredStudioString(parameters, "projectId");
+                if (StudioWindows().FindOpenViewModel(projectId) is null)
+                {
+                    _ = ReadAutomationProject(projectId, store);
+                }
+
+                if (OpenStudioWindow(projectId) is null)
+                {
+                    throw new AutomationException(AutomationErrorCodes.Busy, "The Studio project could not be opened.");
+                }
+
+                return new JsonObject { ["projectId"] = projectId, ["opened"] = true };
+            }
             case "studio.project.edit":
             {
                 var projectId = RequiredStudioString(parameters, "projectId");

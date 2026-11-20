@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import AVFoundation
 import AVKit
@@ -207,6 +208,11 @@ private class ClipsViewModel: ObservableObject {
     /// Videos exported from a Tiny Clips Studio project, keyed by
     /// `StudioProjectStore.exportKey(forPath:)`, with the id of that project.
     @Published private(set) var studioProjectIDs: [String: String] = [:]
+    @Published private(set) var studioProjects: [StudioProjectSummary] = []
+    @Published private(set) var unreadableStudioProjects: [StudioUnreadableProject] = []
+    @Published private(set) var studioLoadError: String?
+    @Published private(set) var isLoadingStudio = false
+    private var studioLoadGeneration = 0
     @Published var thumbnails: [String: NSImage] = [:]
     @Published var isLoading = false
     @Published var sortOption: SortOption = .newest { didSet { persistUIStateIfNeeded() } }
@@ -444,6 +450,36 @@ private class ClipsViewModel: ObservableObject {
         studioProjectIDs = await Task.detached(priority: .utility) {
             (try? StudioProjectStore.shared.exportedPathIndex()) ?? [:]
         }.value
+    }
+
+    func loadStudioProjects() {
+        studioLoadGeneration += 1
+        let generation = studioLoadGeneration
+        guard CaptureSettings.shared.studioPreviewEnabled else {
+            studioProjects = []
+            unreadableStudioProjects = []
+            studioLoadError = nil
+            isLoadingStudio = false
+            return
+        }
+        _ = SaveService.shared.outputDirectoryURL(for: .video)
+        isLoadingStudio = true
+        Task {
+            do {
+                let result = try await Task.detached(priority: .utility) {
+                    let store = StudioProjectStore.shared
+                    return (try store.listSummaries(), try store.listUnreadableProjects())
+                }.value
+                guard generation == studioLoadGeneration else { return }
+                studioProjects = result.0
+                unreadableStudioProjects = result.1.sorted { $0.createdAt > $1.createdAt }
+                studioLoadError = nil
+            } catch {
+                guard generation == studioLoadGeneration else { return }
+                studioLoadError = "Couldn't read Studio projects: \(error.localizedDescription)"
+            }
+            isLoadingStudio = false
+        }
     }
 
     /// The Studio project a video was exported from, when it is still stored.
@@ -1059,6 +1095,31 @@ private struct ClipsManagerContentView: View {
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .automatic
     @State private var pendingDeleteClip: ClipItem?
     @State private var showBatchDeleteConfirmation = false
+    @State private var showStudio = false
+    @State private var studioSearch = ""
+
+    private enum SidebarSelection: Hashable {
+        case collection(ClipsViewModel.SmartCollection)
+        case studio
+    }
+
+    private var sidebarSelection: Binding<SidebarSelection?> {
+        Binding(
+            get: { showStudio ? .studio : .collection(viewModel.smartCollection) },
+            set: { selection in
+                switch selection {
+                case .studio:
+                    showStudio = true
+                    viewModel.loadStudioProjects()
+                case .collection(let collection):
+                    showStudio = false
+                    viewModel.smartCollection = collection
+                case nil:
+                    break
+                }
+            }
+        )
+    }
 
     private let gridColumns = [
         GridItem(.adaptive(minimum: 220, maximum: 220), spacing: 12)
@@ -1070,12 +1131,19 @@ private struct ClipsManagerContentView: View {
                 .navigationSplitViewColumnWidth(min: 170, ideal: 210, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                if viewModel.selectionMode {
+                if !showStudio && viewModel.selectionMode {
                     batchToolbar
                 }
-                content
+                if showStudio {
+                    studioContent
+                } else {
+                    content
+                }
             }
-            .inspector(isPresented: $settings.clipsManagerShowInspector) {
+            .inspector(isPresented: Binding(
+                get: { !showStudio && settings.clipsManagerShowInspector },
+                set: { if !showStudio { settings.clipsManagerShowInspector = $0 } }
+            )) {
                 ClipInspectorView(
                     viewModel: viewModel,
                     item: viewModel.inspectedItem,
@@ -1095,10 +1163,11 @@ private struct ClipsManagerContentView: View {
                 .inspectorColumnWidth(min: 280, ideal: 320, max: 440)
             }
         }
-        .searchable(text: $viewModel.searchText, placement: .toolbar, prompt: "Search names, tags, notes")
+        .searchable(text: showStudio ? $studioSearch : $viewModel.searchText, placement: .toolbar, prompt: showStudio ? "Search Studio projects" : "Search names, tags, notes")
         .navigationSubtitle(countSubtitle)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                if !showStudio {
                 // Sort & Filter menu
                 Menu {
                     Picker("Sort", selection: $viewModel.sortOption) {
@@ -1185,6 +1254,7 @@ private struct ClipsManagerContentView: View {
                 .accessibilityLabel("Details pane")
                 .accessibilityValue(settings.clipsManagerShowInspector ? "Shown" : "Hidden")
                 .accessibilityHint("Shows a pane with a preview and editable details for the selected clip.")
+                }
 
                 Button {
                     showUploadcareSettings = true
@@ -1198,6 +1268,12 @@ private struct ClipsManagerContentView: View {
         .onAppear {
             viewModel.applyStatePreferences()
             viewModel.load()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .studioProjectsDidChange)) { _ in
+            if showStudio { viewModel.loadStudioProjects() }
+        }
+        .onChange(of: settings.studioPreviewEnabled) { _, _ in
+            if showStudio { viewModel.loadStudioProjects() }
         }
         .task(id: settings.clipsManagerAutoRefreshSeconds) {
             let interval = settings.clipsManagerAutoRefreshSeconds
@@ -1316,6 +1392,7 @@ private struct ClipsManagerContentView: View {
     }
 
     private var countSubtitle: String {
+        if showStudio { return "Studio" }
         let visible = viewModel.filteredSortedClips.count
         let total = viewModel.clips.count
         if total == 0 { return "" }
@@ -1327,22 +1404,90 @@ private struct ClipsManagerContentView: View {
         count == 1 ? "1 clip" : "\(count) clips"
     }
 
+    private var studioContent: some View {
+        let query = studioSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        let projects = StudioProjectSummary.libraryProjects(from: viewModel.studioProjects, matching: query)
+        let unreadable = viewModel.unreadableStudioProjects.filter { _ in
+            query.isEmpty || "Unreadable Project".localizedStandardContains(query)
+        }
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Studio Projects").font(.title2.weight(.semibold))
+                Spacer()
+                Button {
+                    viewModel.loadStudioProjects()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .disabled(viewModel.isLoadingStudio)
+            }
+            if !settings.studioPreviewEnabled {
+                Text("Turn on Tiny Clips Studio in Settings to open projects.")
+                    .foregroundStyle(.secondary)
+            } else if let error = viewModel.studioLoadError {
+                Text(error).foregroundStyle(.secondary)
+            } else if viewModel.isLoadingStudio && viewModel.studioProjects.isEmpty {
+                ProgressView("Loading Studio projects…")
+            } else if projects.isEmpty && unreadable.isEmpty {
+                Text(query.isEmpty ? "No Studio projects yet." : "No Studio projects match your search.")
+                    .foregroundStyle(.secondary)
+            } else {
+                List {
+                    ForEach(projects, id: \.id) { project in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(project.libraryName)
+                                Text("\(project.exportMissing ? "Export missing" : (project.isDraft ? "Draft" : "Project")) · \(project.lastUsedAt.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if !project.sourceExists {
+                                    Text("Recording is missing.").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button("Open in Studio") {
+                                StudioWindowRegistry.shared.open(projectID: project.id)
+                            }
+                            .accessibilityLabel("Open \(project.libraryName), \(project.lastUsedAt.formatted(date: .abbreviated, time: .shortened)), in Studio")
+                        }
+                    }
+                    ForEach(unreadable, id: \.id) { project in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Unreadable Project")
+                            Text("Studio cannot read this project from \(project.createdAt.formatted(date: .abbreviated, time: .shortened)). It may be damaged or made by a newer version.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding()
+    }
+
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        List(selection: $viewModel.smartCollection) {
+        List(selection: sidebarSelection) {
             Section("Smart Collections") {
                 ForEach(ClipsViewModel.SmartCollection.allCases, id: \.self) { collection in
                     Label(collection.rawValue, systemImage: collection.icon)
                         .badge(viewModel.count(for: collection))
-                        .tag(collection)
+                        .tag(SidebarSelection.collection(collection))
                         .accessibilityLabel("\(collection.rawValue), \(clipCountLabel(viewModel.count(for: collection)))")
                 }
+            }
+
+            Section("Studio") {
+                Label("Projects", systemImage: "square.stack.3d.up")
+                    .tag(SidebarSelection.studio)
             }
 
             if !viewModel.availableCollections.isEmpty {
                 Section("Collections") {
                     Button {
+                        showStudio = false
                         viewModel.selectedCollection = ""
                     } label: {
                         Label("All", systemImage: "folder")
@@ -1352,6 +1497,7 @@ private struct ClipsManagerContentView: View {
 
                     ForEach(viewModel.availableCollections, id: \.self) { collection in
                         Button {
+                            showStudio = false
                             viewModel.selectedCollection = collection
                         } label: {
                             Label(collection, systemImage: "folder.fill")
@@ -1365,6 +1511,7 @@ private struct ClipsManagerContentView: View {
             if !viewModel.availableTags.isEmpty {
                 Section("Tags") {
                     Button {
+                        showStudio = false
                         viewModel.selectedTag = ""
                     } label: {
                         HStack(spacing: 8) {
@@ -1383,6 +1530,7 @@ private struct ClipsManagerContentView: View {
 
                     ForEach(viewModel.availableTags, id: \.self) { tag in
                         Button {
+                            showStudio = false
                             viewModel.selectedTag = tag
                         } label: {
                             HStack(spacing: 8) {

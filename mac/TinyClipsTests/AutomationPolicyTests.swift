@@ -71,6 +71,7 @@ final class AutomationPolicyTests: XCTestCase {
         let contract = try loadContract()
         let expected = [
             "studio.projects.list": "read",
+            "studio.project.open": "edit",
             "studio.project.get": "read",
             "studio.project.saveCopy": "export",
             "studio.project.edit": "edit",

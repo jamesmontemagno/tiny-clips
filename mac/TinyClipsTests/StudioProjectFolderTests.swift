@@ -502,6 +502,24 @@ final class StudioProjectFolderTests: XCTestCase {
         XCTAssertTrue(StudioProjectSummary.menuDrafts(from: summaries).isEmpty)
     }
 
+    func testLibraryListsAllProjectsByActivityAndSearchesTheirNames() {
+        var untitled = menuSummary("untitled", created: 5)
+        untitled.name = " "
+        let summaries = [
+            menuSummary("exported", created: 10, isDraft: false),
+            menuSummary("flat", created: 20, isFlat: true),
+            menuSummary("missing", created: 20, sourceExists: false),
+            untitled
+        ]
+        XCTAssertEqual(
+            StudioProjectSummary.libraryProjects(from: summaries, matching: "").map(\.id),
+            ["flat", "missing", "exported", "untitled"]
+        )
+        XCTAssertEqual(StudioProjectSummary.libraryProjects(from: summaries, matching: " FLAT ").map(\.id), ["flat"])
+        XCTAssertEqual(StudioProjectSummary.libraryProjects(from: summaries, matching: "untitled").map(\.id), ["untitled"])
+        XCTAssertTrue(StudioProjectSummary.libraryProjects(from: summaries, matching: "absent").isEmpty)
+    }
+
     func testAProjectWasLastUsedWhenItWasOpenedOrFailingThatRecorded() {
         XCTAssertEqual(menuSummary("a", created: 100, opened: 0).lastUsedAt, Date(timeIntervalSince1970: 100))
         XCTAssertEqual(menuSummary("b", created: 100, opened: 250).lastUsedAt, Date(timeIntervalSince1970: 250))

@@ -607,6 +607,23 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
     }
 
     [Fact]
+    public void LibraryListsAllProjectsByActivityAndSearchesTheirNames()
+    {
+        StudioProjectSummary[] summaries =
+        [
+            MenuSummary("exported", created: 10, isDraft: false),
+            MenuSummary("flat", created: 20, isFlat: true),
+            MenuSummary("missing", created: 20, sourceExists: false),
+            MenuSummary("untitled", created: 5) with { Name = " " },
+        ];
+        Assert.Equal(["flat", "missing", "exported", "untitled"],
+            StudioProjectSummary.LibraryProjects(summaries, "").Select(project => project.Id));
+        Assert.Equal(["flat"], StudioProjectSummary.LibraryProjects(summaries, " FLAT ").Select(project => project.Id));
+        Assert.Equal(["untitled"], StudioProjectSummary.LibraryProjects(summaries, "untitled").Select(project => project.Id));
+        Assert.Empty(StudioProjectSummary.LibraryProjects(summaries, "absent"));
+    }
+
+    [Fact]
     public void AProjectWasLastUsedWhenItWasOpenedOrFailingThatRecorded()
     {
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(100), MenuSummary("a", created: 100, opened: 0).LastUsedAt);
