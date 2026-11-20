@@ -82,7 +82,9 @@ public class ContractTests
     public void InputSchemasMarkRequiredParams()
     {
         var schema = Contract.InputSchema(Contract.Current.Find("editor.open")!);
-        Assert.Equal("path", schema["required"]![0]!.GetValue<string>());
+        var required = Assert.Single(schema["required"]!.AsArray());
+        Assert.Equal("path", required!.GetValue<string>());
+        Assert.Equal("boolean", schema["properties"]!["studio"]!["type"]!.GetValue<string>());
         Assert.False(schema["additionalProperties"]!.GetValue<bool>());
     }
 

@@ -352,6 +352,12 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
     private async Task<JsonNode> OpenEditorAsync(AutomationCommandContext context)
     {
         var raw = context.GetString("path") ?? string.Empty;
+        var studio = context.GetBoolean("studio");
+        if (studio && ActivatedFile.KindOf(raw) != ActivatedFileKind.StudioVideo)
+        {
+            throw new AutomationException(AutomationErrorCodes.InvalidParams, "studio=true requires an MP4 or MOV video.");
+        }
+
         if (ActivatedFile.KindOf(raw) == ActivatedFileKind.StudioProject)
         {
             var project = FullPathOrNotFound(raw);
@@ -364,8 +370,8 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             return new JsonObject { ["opened"] = true, ["editor"] = editor };
         }
 
-        var (path, type) = ResolveLibraryFile(raw);
-        var opened = await OnUiAsync(() => _app.OpenEditorForAutomationAsync(path, type));
+        var (path, type) = ResolveLibraryFile(raw, studioVideo: studio);
+        var opened = await OnUiAsync(() => _app.OpenEditorForAutomationAsync(path, type, studio));
         return new JsonObject { ["opened"] = true, ["editor"] = opened };
     }
 
@@ -449,10 +455,13 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
     /// Agents may only touch captures Tiny Clips knows about: files directly in a library folder
     /// or in the recent captures list, with a capture file type. Anything else is <c>not_found</c>.
     /// </summary>
-    private static (string Path, CaptureType Type) ResolveLibraryFile(string? raw)
+    private static (string Path, CaptureType Type) ResolveLibraryFile(string? raw, bool studioVideo = false)
     {
         var path = FullPathOrNotFound(raw);
-        if (!File.Exists(path) || ClipLibraryService.CaptureTypeFor(path) is not { } type)
+        var type = studioVideo && ActivatedFile.KindOf(path) == ActivatedFileKind.StudioVideo
+            ? CaptureType.Video
+            : ClipLibraryService.CaptureTypeFor(path);
+        if (!File.Exists(path) || type is null)
         {
             throw NotFound();
         }
@@ -468,7 +477,7 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             throw NotFound();
         }
 
-        return (path, type);
+        return (path, type.Value);
     }
 
     private static string FullPathOrNotFound(string? raw)

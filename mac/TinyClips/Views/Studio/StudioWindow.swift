@@ -18,6 +18,12 @@ enum StudioVideoOpenError: LocalizedError {
     var errorDescription: String? { "The file has no readable video." }
 }
 
+enum StudioVideoFile {
+    static func supports(_ url: URL) -> Bool {
+        url.isFileURL && ["mp4", "mov"].contains(url.pathExtension.lowercased())
+    }
+}
+
 /// Opens Studio editor windows, one per project, and knows which projects are open.
 @MainActor
 final class StudioWindowRegistry {
@@ -75,7 +81,7 @@ final class StudioWindowRegistry {
             }
             let request = try await Self.flatProjectRequest(for: url)
             guard CaptureSettings.shared.studioPreviewEnabled else {
-                SaveService.shared.showNotice("Tiny Clips Studio was turned off. The video remains in the trimmer.")
+                SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Studio settings to open this video.")
                 return false
             }
             let project = try StudioProjectStore.shared.getOrCreateFlatProject(request: request)

@@ -191,6 +191,8 @@ The corresponding MCP tools are `tinyclips_notifications_status`, `tinyclips_not
 
 Use headless capture and annotation commands for autonomous work. `editor.open` explicitly brings up UI for a person; reopening the same screenshot reuses its existing editor without losing edits. Different screenshots keep separate windows in the same application.
 
+To open an MP4 or MOV from the Clips Library directly in Studio, use `tinyclips editor.open path="<file>" studio=true`. This needs `edit` and Studio must be enabled. For videos outside the library, use **Open With → Tiny Clips** in Finder or File Explorer.
+
 `editor.list` needs `read` and returns `{"editors":[...]}`. Each screenshot session has `id`, `path`, and `canCloseSafely`, plus `reason` when unsafe: `unsavedChanges`, `unsavedCapture`, `saving`, `notReady`, or `busy`.
 
 `editor.closeAll` needs `edit` and takes no parameters. It closes only sessions that can close without saving or discarding work. It returns `{"closed":["session-id"],"remaining":[...]}`, where remaining objects have the same shape as `editor.list`. Remaining windows are a partial outcome, not a claim that everything closed. A new editor opened during cleanup is not included in that cleanup's targets, but is included in `remaining`. Review unsafe windows with the user; no force-discard option exists.

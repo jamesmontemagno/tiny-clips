@@ -69,7 +69,7 @@ final class AutomationCommandRouter {
         case "recording.togglePause": return try togglePause()
         case "recording.restart": return try restart()
         case "recording.discard": return try discard()
-        case "editor.open": return try openEditor(params)
+        case "editor.open": return try await openEditor(params, validateAccess: validateAccess)
         case "editor.list":
             guard params.isEmpty else { throw AutomationError(.invalidParams, "editor.list takes no parameters.") }
             return ["editors": ScreenshotEditorRegistry.shared.listEditors()]
@@ -577,7 +577,27 @@ final class AutomationCommandRouter {
         return url
     }
 
-    private func openEditor(_ params: [String: Any]) throws -> [String: Any] {
+    private func openEditor(_ params: [String: Any], validateAccess: () throws -> Void) async throws -> [String: Any] {
+        if let value = params["studio"] {
+            guard let studio = AutomationValue.bool(value) else {
+                throw AutomationError(.invalidParams, "studio must be true or false.")
+            }
+            if studio {
+                let path = try Self.requiredString(params, "path")
+                let candidate = URL(fileURLWithPath: path)
+                guard StudioVideoFile.supports(candidate) else {
+                    throw AutomationError(.invalidParams, "studio=true requires an MP4 or MOV video.")
+                }
+                let url = try libraryFile(params)
+                try requireStudioEnabled()
+                try validateAccess()
+                guard await StudioWindowRegistry.shared.openVideo(at: url) else {
+                    try requireStudioEnabled()
+                    throw AutomationError(.internal, "This video could not be opened in Studio.")
+                }
+                return ["opened": url.path, "editor": "studio"]
+            }
+        }
         let url = try existingFile(params)
         let manager = try captureManager()
         if url.pathExtension.lowercased() == StudioProjectStore.projectFileExtension

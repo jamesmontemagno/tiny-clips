@@ -1,7 +1,37 @@
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 import XCTest
 @testable import TinyClips
+
+final class StudioVideoAssociationTests: XCTestCase {
+    func testShellDispatchRecognizesLocalVideosOnly() throws {
+        XCTAssertTrue(StudioVideoFile.supports(URL(fileURLWithPath: "/tmp/My Video.MP4")))
+        XCTAssertTrue(StudioVideoFile.supports(URL(fileURLWithPath: "/tmp/My Video.mov")))
+        XCTAssertFalse(StudioVideoFile.supports(URL(fileURLWithPath: "/tmp/My Video.mp4.png")))
+        XCTAssertFalse(StudioVideoFile.supports(URL(fileURLWithPath: "/tmp/My Project.tinyclips")))
+        let remoteVideo = try XCTUnwrap(URL(string: "https://example.com/video.mp4"))
+        XCTAssertFalse(StudioVideoFile.supports(remoteVideo))
+    }
+
+    func testBothDistributionsRegisterVideosAsAlternateHandlers() throws {
+        let targetDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("TinyClips")
+        for name in ["Info.plist", "Info-MAS.plist"] {
+            let data = try Data(contentsOf: targetDirectory.appendingPathComponent(name))
+            let plist = try XCTUnwrap(
+                PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+            )
+            let types = try XCTUnwrap(plist["CFBundleDocumentTypes"] as? [[String: Any]])
+            for contentType in [UTType.mpeg4Movie.identifier, UTType.quickTimeMovie.identifier] {
+                let handlers = types.filter { ($0["LSItemContentTypes"] as? [String])?.contains(contentType) == true }
+                XCTAssertEqual(handlers.count, 1, "\(contentType) in \(name)")
+                XCTAssertEqual(handlers.first?["LSHandlerRank"] as? String, "Alternate", name)
+                XCTAssertEqual(handlers.first?["CFBundleTypeRole"] as? String, "Editor", name)
+            }
+        }
+    }
+}
 
 @MainActor
 final class WindowPresenterTests: XCTestCase {

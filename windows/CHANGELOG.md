@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- Open MP4 and MOV files directly in Studio from File Explorer with **Open with → Tiny Clips**, without changing the default player.
+
 ### Fixed
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 

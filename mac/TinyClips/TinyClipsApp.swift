@@ -108,28 +108,32 @@ final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
         open([URL(fileURLWithPath: filename)])
     }
 
-    /// A `.tinyclips` file is a Studio project and opens in Studio. Everything else is an image
-    /// for the screenshot editor, as before.
+    /// Studio opens project files and supported videos; images still open in the screenshot editor.
     @discardableResult
     private func open(_ urls: [URL]) -> Bool {
-        // The folder of a saved project, dropped on the app, opens as its file does.
-        let projectFiles = urls.filter {
-            $0.isFileURL
-                && ($0.pathExtension.lowercased() == StudioProjectStore.projectFileExtension
-                    || StudioProjectStore.shared.isSavedProjectFolder($0))
-        }
-        let others = urls.filter { !projectFiles.contains($0) }
-
-        if !projectFiles.isEmpty {
-            ExternalImageOpenCoordinator.shared.beginClipsManagerSuppressionWindow()
-            MainActor.assumeIsolated {
-                for url in projectFiles {
+        var imageCandidates: [URL] = []
+        var handled = false
+        for url in urls {
+            // The folder of a saved project, dropped on the app, opens as its file does.
+            if url.isFileURL && (url.pathExtension.lowercased() == StudioProjectStore.projectFileExtension
+                                 || StudioProjectStore.shared.isSavedProjectFolder(url)) {
+                ExternalImageOpenCoordinator.shared.beginClipsManagerSuppressionWindow()
+                MainActor.assumeIsolated {
                     StudioWindowRegistry.shared.openProjectFile(at: url)
                 }
+                handled = true
+            } else if StudioVideoFile.supports(url) {
+                ExternalImageOpenCoordinator.shared.beginClipsManagerSuppressionWindow()
+                Task { @MainActor in
+                    await StudioWindowRegistry.shared.openVideo(at: url)
+                }
+                handled = true
+            } else {
+                imageCandidates.append(url)
             }
         }
-        let openedOthers = others.isEmpty ? false : ExternalImageOpenCoordinator.shared.handleOpen(urls: others)
-        return !projectFiles.isEmpty || openedOthers
+        let openedImages = ExternalImageOpenCoordinator.shared.handleOpen(urls: imageCandidates)
+        return handled || openedImages
     }
 
     func applicationWillTerminate(_ notification: Notification) {

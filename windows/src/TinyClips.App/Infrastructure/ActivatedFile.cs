@@ -13,6 +13,9 @@ internal enum ActivatedFileKind
 
     /// <summary>The <c>.tinyclips</c> file of a Studio project that was saved as a folder, which opens in Studio.</summary>
     StudioProject,
+
+    /// <summary>A video, which opens in Studio.</summary>
+    StudioVideo,
 }
 
 /// <summary>
@@ -23,6 +26,8 @@ internal static class ActivatedFile
 {
     /// <summary>The pictures the screenshot editor opens, as the manifests' image association lists them.</summary>
     public static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg", ".webp"];
+
+    public static readonly string[] VideoExtensions = [".mp4", ".mov"];
 
     public static ActivatedFileKind KindOf(string? path)
     {
@@ -44,6 +49,11 @@ internal static class ActivatedFile
         if (extension.Equals(StudioProjectFolder.ProjectFileExtension, StringComparison.OrdinalIgnoreCase))
         {
             return ActivatedFileKind.StudioProject;
+        }
+
+        if (VideoExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        {
+            return ActivatedFileKind.StudioVideo;
         }
 
         return ImageExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase) ? ActivatedFileKind.Image : ActivatedFileKind.None;

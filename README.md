@@ -161,6 +161,8 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 4. For region recordings, confirm audio/mic options in the floating **Record** panel
 5. Click the floating **Stop** button when done (or use the stop shortcut)
 
+To edit an existing MP4 or MOV in Studio, right-click it in Finder or File Explorer and choose **Open With → Tiny Clips**. On Windows, choose **Just once** if prompted. Tiny Clips opens the video in Studio without changing your default player. Studio must be enabled in Settings.
+
 ## Settings
 
 | Option | Description |

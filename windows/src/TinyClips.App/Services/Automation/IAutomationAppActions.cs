@@ -60,7 +60,7 @@ internal interface IAutomationAppActions
     Task DiscardRecordingForAutomationAsync();
 
     /// <summary>Opens a clip or Studio project and returns the editor it opened in.</summary>
-    Task<string> OpenEditorForAutomationAsync(string path, CaptureType? type);
+    Task<string> OpenEditorForAutomationAsync(string path, CaptureType? type, bool studio = false);
 
     /// <summary>Reads or edits a Studio project, suggests zooms, or exports its current snapshot.</summary>
     Task<JsonNode> ExecuteStudioAutomationCommandAsync(string commandName, JsonObject parameters, CancellationToken cancellationToken);
