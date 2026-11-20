@@ -494,6 +494,17 @@ public partial class App : IAutomationAppActions
                     ["revision"] = ProjectRevision(project),
                 };
             }
+            case "studio.project.open":
+            {
+                var projectId = RequiredStudioString(parameters, "projectId");
+                _ = ReadAutomationProject(projectId, store);
+                if (OpenStudioWindow(projectId) is null)
+                {
+                    throw new AutomationException(AutomationErrorCodes.Busy, "The Studio project could not be opened.");
+                }
+
+                return new JsonObject { ["projectId"] = projectId, ["opened"] = true };
+            }
             case "studio.project.edit":
             {
                 var projectId = RequiredStudioString(parameters, "projectId");

@@ -67,6 +67,26 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task OpenStudioProjectToolForwardsIdAndRequiresEditScope()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["edit"];
+        await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>
+        {
+            var args = new Dictionary<string, object?> { ["projectId"] = "project" };
+            var result = await client.CallToolAsync("tinyclips_studio_project_open", args, cancellationToken: token);
+            Assert.False(result.IsError);
+            Assert.Equal("studio.project.open", (string?)Body(result)["command"]);
+            Assert.Equal("project", (string?)Body(result)["params"]!["projectId"]);
+            app.Clients["t"] = ["read"];
+            var denied = await client.CallToolAsync("tinyclips_studio_project_open", args, cancellationToken: token);
+            Assert.True(denied.IsError);
+            Assert.Equal("missing_scope", (string?)Body(denied)["error"]!["code"]);
+        });
+    }
+
+    [Fact]
     public async Task SafeEditorCleanupPreservesPartialResultsAndEnforcesScope()
     {
         if (OperatingSystem.IsWindows()) return;
