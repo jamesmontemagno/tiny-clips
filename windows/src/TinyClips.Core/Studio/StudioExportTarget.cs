@@ -20,16 +20,15 @@ public sealed partial record StudioExportTarget(string Path, long? Length, DateT
         }
 
         using var handle = File.OpenHandle(resolved, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        if (!GetFileIdentity(handle, FileInformationClass.Id, out var identity, (uint)Marshal.SizeOf<FileIdentity>())
-            || !GetFileBasicInfo(handle, FileInformationClass.Basic, out var basic, (uint)Marshal.SizeOf<FileBasicInfo>()))
+        if (ReadFileVersion(handle) is not { } version)
         {
             throw new IOException($"The selected output file could not be inspected: {fullPath}",
                 new Win32Exception(Marshal.GetLastPInvokeError()));
         }
-        return new(fullPath, RandomAccess.GetLength(handle), DateTime.FromFileTimeUtc(basic.LastWriteTime))
+        return new(fullPath, version.Length, DateTime.FromFileTimeUtc(version.LastWriteTime))
         {
             ResolvedPath = resolved,
-            Version = new(identity.VolumeSerialNumber, identity.IdLow, identity.IdHigh, basic.ChangeTime),
+            Version = version,
         };
     }
 
@@ -88,7 +87,13 @@ public sealed partial record StudioExportTarget(string Path, long? Length, DateT
         return System.IO.Path.TrimEndingDirectorySeparator(resolved);
     }
 
-    private sealed record FileVersion(ulong VolumeSerialNumber, ulong IdLow, ulong IdHigh, long ChangeTime);
+    internal sealed record FileVersion(ulong VolumeSerialNumber, ulong IdLow, ulong IdHigh, long ChangeTime, long LastWriteTime, long Length);
+
+    internal static FileVersion? ReadFileVersion(SafeFileHandle handle) =>
+        GetFileIdentity(handle, FileInformationClass.Id, out var identity, (uint)Marshal.SizeOf<FileIdentity>())
+        && GetFileBasicInfo(handle, FileInformationClass.Basic, out var basic, (uint)Marshal.SizeOf<FileBasicInfo>())
+            ? new(identity.VolumeSerialNumber, identity.IdLow, identity.IdHigh, basic.ChangeTime, basic.LastWriteTime, RandomAccess.GetLength(handle))
+            : null;
 
     private enum FileInformationClass
     {

@@ -60,6 +60,93 @@ public sealed class StudioProjectDestinationTests : StudioProjectFolderTestBase
         Assert.DoesNotContain(Directory.GetDirectories(folder), path => Path.GetFileName(path).StartsWith(".tinyclips", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MetadataOnlySaveNeitherStagesNorReplacesTheLinkedRecordings(bool external)
+    {
+        var folder = Path.Combine(Outside, "Demo");
+        var file = Path.Combine(folder, "Demo.tinyclips");
+        var original = Path.Combine(Outside, "Long recording.MOV");
+        File.WriteAllText(original, "video");
+        var id = external
+            ? Store.GetOrCreateFlatProject(original, new StudioRecordingSourceInfo(1920, 1080, 5), "1.0").Id
+            : MakeProject(camera: true, events: true, poster: true);
+        Save(id, folder);
+        if (!external) id = Open(file).Id;
+        var screen = Path.Combine(folder, external ? "screen.mov" : "screen.mp4");
+        // A reader allows verification but not deletion or replacement.
+        using (File.OpenRead(screen))
+        {
+            Store.Save(Store.Load(id) with { Name = "Renamed" });
+            StudioProjectDestination.Update(Store, id, file, progress: null, cancellationToken: TestContext.Current.CancellationToken,
+                beforeCommit: () => Assert.Equal(["Demo.tinyclips"], Names(Assert.Single(Directory.GetDirectories(folder)))));
+        }
+
+        var saved = StudioProjectFolder.ReadProjectFile(file);
+        Assert.Equal("Renamed", saved.Name);
+        Assert.False(saved.Sources.Screen.External);
+        if (external)
+        {
+            File.WriteAllText(original, "edited original");
+            Assert.Equal("video", File.ReadAllText(screen));
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MatchingLengthNameAndWriteTimeDoNotHideAChangedRecording(bool changeSource)
+    {
+        var (folder, file) = SaveNewProject("Demo", camera: true);
+        var opened = Open(file);
+        var source = Store.GetPaths(opened).ScreenPath;
+        var destination = Path.Combine(folder, "screen.mp4");
+        var timestamp = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        foreach (var path in new[] { source, destination })
+        {
+            using (var stream = File.OpenWrite(path)) stream.SetLength((1 << 20) + 1);
+            File.SetLastWriteTimeUtc(path, timestamp);
+        }
+        StudioProjectDestination.Update(Store, opened.Id, file, cancellationToken: TestContext.Current.CancellationToken);
+
+        var changed = changeSource ? source : destination;
+        using (var stream = File.OpenWrite(changed))
+        {
+            stream.Seek(-1, SeekOrigin.End);
+            stream.WriteByte(42);
+        }
+        File.SetLastWriteTimeUtc(changed, timestamp);
+
+        using var cameraReader = File.OpenRead(Path.Combine(folder, "camera.mp4"));
+        StudioProjectDestination.Update(Store, opened.Id, file, cancellationToken: TestContext.Current.CancellationToken);
+
+        using var saved = File.OpenRead(destination);
+        saved.Seek(-1, SeekOrigin.End);
+        Assert.Equal(changeSource ? 42 : 0, saved.ReadByte());
+    }
+
+    [Fact]
+    public void MissingLinkedRecordingIsRestoredButMissingSourceDoesNotCommitEdits()
+    {
+        var (folder, file) = SaveNewProject("Demo", camera: true);
+        var opened = Open(file);
+        var camera = Path.Combine(folder, "camera.mp4");
+        File.Delete(camera);
+        using var screenReader = File.OpenRead(Path.Combine(folder, "screen.mp4"));
+        StudioProjectDestination.Update(Store, opened.Id, file, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("camera", File.ReadAllText(camera));
+
+        var before = File.ReadAllBytes(file);
+        Store.Save(opened with { Name = "Uncommitted" });
+        File.Delete(Store.GetPaths(opened).CameraPath!);
+        AssertRefused(StudioProjectFolderProblem.MissingFile, () => StudioProjectDestination.Update(Store, opened.Id, file,
+            cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(before, File.ReadAllBytes(file));
+        Assert.Equal("camera", File.ReadAllText(camera));
+        Assert.Empty(Directory.GetDirectories(folder));
+    }
+
     [Fact]
     public void NewAssetCannotOverwriteAnUnrelatedFile()
     {
@@ -67,7 +154,8 @@ public sealed class StudioProjectDestinationTests : StudioProjectFolderTestBase
         var opened = Open(file);
         var before = File.ReadAllBytes(file);
         File.WriteAllText(Path.Combine(folder, "background.png"), "unrelated");
-        File.WriteAllText(Path.Combine(Store.GetPaths(opened).ProjectDirectory, "background.png"), "new asset");
+        // Even identical bytes do not make a new asset name ours to own or replace.
+        File.WriteAllText(Path.Combine(Store.GetPaths(opened).ProjectDirectory, "background.png"), "unrelated");
         Store.Save(opened with { Canvas = opened.Canvas with
         {
             Background = opened.Canvas.Background with { Image = "background.png" },
@@ -87,6 +175,7 @@ public sealed class StudioProjectDestinationTests : StudioProjectFolderTestBase
         var opened = Open(file);
         var before = File.ReadAllBytes(file);
         var screen = File.ReadAllBytes(Path.Combine(folder, "screen.mp4"));
+        File.WriteAllText(Store.GetPaths(opened).ScreenPath, "changed recording to roll back");
         var background = Path.Combine(folder, "background.png");
         File.WriteAllText(Path.Combine(Store.GetPaths(opened).ProjectDirectory, "background.png"), "new asset");
         Store.Save(opened with { Canvas = opened.Canvas with
@@ -116,6 +205,35 @@ public sealed class StudioProjectDestinationTests : StudioProjectFolderTestBase
             cancellationToken: cancellation.Token));
         Assert.Equal(before, File.ReadAllBytes(file));
         Assert.Equal(file, StudioProjectDestination.Read(Store, opened.Id));
+    }
+
+    [Fact]
+    public void CanCancelWhileVerifyingUnchangedMediaBeforeStaging()
+    {
+        var (folder, file) = SaveNewProject("Demo");
+        var opened = Open(file);
+        var before = File.ReadAllBytes(file);
+        foreach (var path in new[] { Store.GetPaths(opened).ScreenPath, Path.Combine(folder, "screen.mp4") })
+        {
+            using var stream = File.OpenWrite(path);
+            stream.SetLength(3 << 20);
+        }
+        Store.Save(opened with { Name = "Uncommitted" });
+        using var cancellation = new CancellationTokenSource();
+        var progress = new CancelOnProgress(cancellation);
+
+        Assert.Throws<OperationCanceledException>(() => StudioProjectDestination.Update(Store, opened.Id, file, progress, cancellation.Token));
+
+        Assert.Equal(before, File.ReadAllBytes(file));
+        Assert.Empty(Directory.GetDirectories(folder));
+    }
+
+    private sealed class CancelOnProgress(CancellationTokenSource cancellation) : IProgress<double>
+    {
+        public void Report(double value)
+        {
+            if (value is > 0 and < 1) cancellation.Cancel();
+        }
     }
 
     [Theory]

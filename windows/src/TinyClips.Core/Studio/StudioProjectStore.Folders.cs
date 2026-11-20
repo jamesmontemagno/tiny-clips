@@ -27,75 +27,10 @@ public sealed partial class StudioProjectStore
             throw new ArgumentException("A project is saved as a folder with a name, inside another folder.", nameof(folder));
         }
 
-        var names = new List<string>();
-        var files = new List<(string Source, string Name)>();
-        string json;
+        FolderSnapshot snapshot;
         lock (_sync)
         {
-            var project = LoadProjectFile(ProjectDirectory(projectId), projectId);
-            var paths = BuildPaths(projectId, project);
-            var directory = paths.ProjectDirectory;
-
-            void Require(string path, string? name = null)
-            {
-                if (!File.Exists(path))
-                {
-                    throw StudioProjectFolderException.MissingFile(Path.GetFileName(path));
-                }
-
-                IncludeIfPresent(path, name);
-            }
-
-            void IncludeIfPresent(string path, string? name = null)
-            {
-                var fileName = name ?? Path.GetFileName(path);
-                if (File.Exists(path) && !names.Contains(fileName, StringComparer.OrdinalIgnoreCase))
-                {
-                    names.Add(fileName);
-                    files.Add((path, fileName));
-                }
-            }
-
-            if (project.Sources.Screen.External)
-            {
-                var extension = Path.GetExtension(paths.ScreenPath).TrimStart('.').ToLowerInvariant();
-                var screenName = "screen."
-                    + (extension.Length > 0
-                        && !string.Equals(extension, StudioProjectFolder.ProjectFileExtension.TrimStart('.'), StringComparison.OrdinalIgnoreCase)
-                        && extension.All(char.IsAsciiLetterOrDigit)
-                            ? extension
-                            : "mp4");
-                Require(paths.ScreenPath, screenName);
-                // Only the portable snapshot owns the copy; the editor keeps its original source.
-                project = project with
-                {
-                    Sources = project.Sources with
-                    {
-                        Screen = project.Sources.Screen with { File = screenName, External = false },
-                    },
-                };
-            }
-            else
-            {
-                Require(paths.ScreenPath);
-            }
-
-            if (paths.CameraPath is { } cameraPath)
-            {
-                Require(cameraPath);
-            }
-
-            IncludeIfPresent(paths.EventsPath);
-            if (project.Canvas.Background.Image is { } image && StudioProjectJson.IsPlainFileName(image))
-            {
-                IncludeIfPresent(Path.Combine(directory, image));
-            }
-
-            IncludeIfPresent(paths.PosterPath);
-
-            // Where a video was exported to is a path on this computer, with its user's name in
-            // it, and means nothing on another one.
-            json = StudioProjectJson.WriteProject(project with { Exports = [] });
+            snapshot = PlanFolderSnapshot(this, projectId);
         }
 
         RefuseWhatMayNotBeReplaced(target, replaceSavedProject);
@@ -115,19 +50,15 @@ public sealed partial class StudioProjectStore
 
             // An editor that has a recording open reads it and nothing more, so reading beside
             // it is allowed for.
-            CopyFiles(filling, files, FileShare.ReadWrite | FileShare.Delete, progress, cancellationToken);
+            CopyFiles(filling, snapshot.Files, FileShare.ReadWrite | FileShare.Delete, progress, cancellationToken);
 
             // Written last, and the last to be put in place: a folder with its .tinyclips file
             // in it is a whole copy. The file has the name the folder will have.
             var projectFile = name + StudioProjectFolder.ProjectFileExtension;
-            using (var stream = new FileStream(Path.Combine(filling, projectFile), FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (var writer = new StreamWriter(stream))
-            {
-                writer.Write(json);
-            }
+            snapshot.WriteManifest(Path.Combine(filling, projectFile));
 
             cancellationToken.ThrowIfCancellationRequested();
-            PutInPlace(filling, [.. names, projectFile], target, replaceSavedProject);
+            PutInPlace(filling, [.. snapshot.Files.Select(file => file.Name), projectFile], target, replaceSavedProject);
         }
         finally
         {
@@ -135,6 +66,67 @@ public sealed partial class StudioProjectStore
             // the folder the files were moved out of.
             DeleteFolderQuietly(filling);
         }
+    }
+
+    internal sealed record FolderSnapshot(IReadOnlyList<(string Source, string Name)> Files, string Json)
+    {
+        internal void WriteManifest(string path)
+        {
+            using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            using var writer = new StreamWriter(stream);
+            writer.Write(Json);
+        }
+    }
+
+    internal static FolderSnapshot PlanFolderSnapshot(IStudioProjectStore store, string projectId)
+    {
+        var project = store.Load(projectId);
+        var paths = store.GetPaths(project);
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var files = new List<(string Source, string Name)>();
+
+        void Include(string path, bool required = false, string? name = null)
+        {
+            if (!File.Exists(path))
+            {
+                if (required) throw StudioProjectFolderException.MissingFile(Path.GetFileName(path));
+                return;
+            }
+
+            var fileName = name ?? Path.GetFileName(path);
+            if (names.Add(fileName)) files.Add((path, fileName));
+        }
+
+        if (project.Sources.Screen.External)
+        {
+            var extension = Path.GetExtension(paths.ScreenPath).TrimStart('.').ToLowerInvariant();
+            var screenName = "screen."
+                + (extension.Length > 0
+                    && !string.Equals(extension, StudioProjectFolder.ProjectFileExtension.TrimStart('.'), StringComparison.OrdinalIgnoreCase)
+                    && extension.All(char.IsAsciiLetterOrDigit)
+                        ? extension
+                        : "mp4");
+            Include(paths.ScreenPath, required: true, name: screenName);
+            // Only the portable snapshot owns the copy; the editor keeps its original source.
+            project = project with
+            {
+                Sources = project.Sources with { Screen = project.Sources.Screen with { File = screenName, External = false } },
+            };
+        }
+        else
+        {
+            Include(paths.ScreenPath, required: true);
+        }
+
+        if (paths.CameraPath is { } cameraPath) Include(cameraPath, required: true);
+        Include(paths.EventsPath);
+        if (project.Canvas.Background.Image is { } image && StudioProjectJson.IsPlainFileName(image))
+        {
+            Include(Path.Combine(paths.ProjectDirectory, image));
+        }
+        Include(paths.PosterPath);
+
+        return new(files, StudioProjectJson.WriteProject(project with { Exports = [] }));
     }
 
     public StudioProject OpenProjectFolder(
@@ -384,7 +376,7 @@ public sealed partial class StudioProjectStore
         CancellationToken cancellationToken)
         => CopyFiles(toFolder, names.Select(name => (Path.Combine(fromFolder, name), name)).ToArray(), sourceSharing, progress, cancellationToken);
 
-    private static void CopyFiles(
+    internal static void CopyFiles(
         string toFolder,
         IReadOnlyList<(string Source, string Name)> files,
         FileShare sourceSharing,
