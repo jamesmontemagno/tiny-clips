@@ -20,33 +20,6 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid.KeyboardAccelerators>
-            <KeyboardAccelerator
-                Key="F"
-                Invoked="OnFocusSearchAccelerator"
-                Modifiers="Control" />
-            <KeyboardAccelerator
-                Key="R"
-                Invoked="OnRefreshAccelerator"
-                Modifiers="Control" />
-            <KeyboardAccelerator
-                Key="G"
-                Invoked="OnGridViewAccelerator"
-                Modifiers="Control,Shift" />
-            <KeyboardAccelerator
-                Key="L"
-                Invoked="OnListViewAccelerator"
-                Modifiers="Control,Shift" />
-            <KeyboardAccelerator
-                Key="D"
-                Invoked="OnToggleDetailAccelerator"
-                Modifiers="Control,Shift" />
-            <KeyboardAccelerator
-                Key="E"
-                Invoked="OnToggleSelectionAccelerator"
-                Modifiers="Control,Shift" />
-        </Grid.KeyboardAccelerators>
-
         <!--  Title bar  -->
         <TitleBar
             x:Name="AppTitleBar"
@@ -54,7 +27,6 @@
             AutomationProperties.AutomationId="ClipsLibraryTitleBar"
             IsPaneToggleButtonVisible="True"
             PaneToggleRequested="OnPaneToggleRequested"
-            Subtitle="{x:Bind ViewModel.CountSubtitle, Mode=OneWay}"
             Title="Library">
             <TitleBar.IconSource>
                 <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
@@ -77,6 +49,15 @@
             SelectionChanged="OnNavigationSelectionChanged">
 
             <Grid>
+              <Grid x:Name="LibraryContent">
+                <Grid.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="F" Invoked="OnFocusSearchAccelerator" Modifiers="Control" />
+                    <KeyboardAccelerator Key="R" Invoked="OnRefreshAccelerator" Modifiers="Control" />
+                    <KeyboardAccelerator Key="G" Invoked="OnGridViewAccelerator" Modifiers="Control,Shift" />
+                    <KeyboardAccelerator Key="L" Invoked="OnListViewAccelerator" Modifiers="Control,Shift" />
+                    <KeyboardAccelerator Key="D" Invoked="OnToggleDetailAccelerator" Modifiers="Control,Shift" />
+                    <KeyboardAccelerator Key="E" Invoked="OnToggleSelectionAccelerator" Modifiers="Control,Shift" />
+                </Grid.KeyboardAccelerators>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -539,6 +520,29 @@
                         </ListView>
                     </Grid>
                 </SplitView>
+              </Grid>
+              <Grid x:Name="StudioContent" Padding="16" RowSpacing="12" Visibility="Collapsed">
+                  <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="*" />
+                  </Grid.RowDefinitions>
+                  <Grid ColumnSpacing="12">
+                      <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Studio Projects" />
+                      <Button Grid.Column="1" Click="OnRefreshStudioProjects" Content="Refresh" />
+                  </Grid>
+                  <TextBox x:Name="StudioSearch" Grid.Row="1" AutomationProperties.Name="Search Studio projects"
+                           PlaceholderText="Search Studio projects" TextChanged="OnStudioSearchChanged" />
+                  <TextBlock x:Name="StudioStatus" Grid.Row="2" TextWrapping="Wrap" />
+                  <ScrollViewer Grid.Row="3">
+                      <StackPanel x:Name="StudioProjectRows" Spacing="8" />
+                  </ScrollViewer>
+              </Grid>
             </Grid>
         </NavigationView>
     </Grid>

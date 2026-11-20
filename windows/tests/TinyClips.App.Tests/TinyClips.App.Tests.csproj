@@ -15,6 +15,7 @@
     <Compile Include="..\..\src\TinyClips.App\ViewModels\OnboardingViewModel.cs" Link="OnboardingViewModel.cs" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\Views\OnboardingWindow.xaml" Link="Settings\Markup\OnboardingWindow.xaml" LogicalName="SettingsMarkup.OnboardingWindow.xaml" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\Views\WhatsNewWindow.xaml" Link="Settings\Markup\WhatsNewWindow.xaml" LogicalName="SettingsMarkup.WhatsNewWindow.xaml" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\GuideWindow.xaml" Link="Settings\Markup\GuideWindow.xaml" LogicalName="SettingsMarkup.GuideWindow.xaml" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioDraftItem.cs" Link="Studio\StudioDraftItem.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\Studio\StudioProjectCleanupService.cs" Link="Studio\StudioProjectCleanupService.cs" />
     <Compile Include="..\..\src\TinyClips.App\Services\Studio\StudioProjectTracker.cs" Link="Studio\StudioProjectTracker.cs" />

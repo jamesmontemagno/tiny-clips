@@ -4,11 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
+
 ### Changed
+- The macOS Guide uses native Capture, Steps, Shortcuts, Tips, and Agents tabs with separately scrollable pages. The window is now resizable, with more room for help and agent setup.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 - Agents on macOS can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 
 ### Fixed
+- Scrolling screenshots now keep the lower viewport overlap until the final frame, preventing bottom-floating controls such as Teams' "New messages" badge from repeating throughout the image.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 - macOS Studio Save Project and Save Project As… now work for videos opened from the Clips Library or video editor, in both the Studio and File menus. The video is copied into the project folder; the original is left unchanged.
 
