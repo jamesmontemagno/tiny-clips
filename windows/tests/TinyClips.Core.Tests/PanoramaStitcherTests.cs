@@ -100,6 +100,7 @@ public sealed class PanoramaStitcherTests
 
     [Theory]
     [InlineData(4, 0, 2, 5)]
+    [InlineData(4, 0, 2, 25)]
     [InlineData(20, 0, 2, 5)]
     [InlineData(37, 0, 2, 5)]
     [InlineData(20, 1, 2, 5)]

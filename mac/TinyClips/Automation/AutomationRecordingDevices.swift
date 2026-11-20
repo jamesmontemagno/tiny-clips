@@ -53,6 +53,17 @@ struct AutomationRecordingDevices: Equatable {
         )
     }
 
+    /// The panel must honor the original agent request; an agent operating a manual take
+    /// must honor that take's actual device choices, not newly enabled defaults.
+    static func forContinuation(
+        original: Self?, initiatedByAgent: Bool, takeDevices: Self,
+        authorize: (Self) throws -> Void
+    ) rethrows -> Self? {
+        guard let devices = original ?? (initiatedByAgent ? takeDevices : nil) else { return nil }
+        try authorize(devices)
+        return devices
+    }
+
     static func targetParameters(from params: [String: Any]) -> [String: Any] {
         params.filter { !["studio", "microphone", "camera"].contains($0.key) }
     }

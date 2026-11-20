@@ -187,16 +187,17 @@ struct PanoramaAccumulator {
 
         let height = frame.height
         let isFirstCommit = committedRows == 0
-        let baseRows = isFirstCommit ? height - alignment.fixedBottomHeight : committedRows
         let previousBand = isFirstCommit ? alignment.fixedBottomHeight : heldBottomBand
-        let appendCount = alignment.shift + previousBand - alignment.fixedBottomHeight
+        let fixedBottomHeight = min(alignment.fixedBottomHeight, alignment.shift + previousBand)
+        let baseRows = isFirstCommit ? height - fixedBottomHeight : committedRows
+        let appendCount = alignment.shift + previousBand - fixedBottomHeight
         let sourceStartRow = height - previousBand - alignment.shift
-        guard appendCount > 0, sourceStartRow >= max(1, height / 20), baseRows >= 0 else {
+        guard appendCount >= 0, sourceStartRow >= max(1, height / 20), baseRows > 0 else {
             rejectedFrameCount += 1
             return .skipped
         }
 
-        let prospectiveHeight = baseRows + appendCount + alignment.fixedBottomHeight
+        let prospectiveHeight = baseRows + appendCount + fixedBottomHeight
         guard prospectiveHeight <= limits.maxOutputHeight else {
             limitReason = .outputHeight
             return .limitReached(.outputHeight)
@@ -213,7 +214,7 @@ struct PanoramaAccumulator {
         }
         appendRows(from: frame, startRow: sourceStartRow, rowCount: appendCount)
         committedRows += appendCount
-        heldBottomBand = alignment.fixedBottomHeight
+        heldBottomBand = fixedBottomHeight
         previousFrame = frame
         acceptedFrameCount += 1
 
@@ -376,8 +377,7 @@ struct PanoramaAccumulator {
         let minimumOverlap = ignoredTopBand + ignoredBottomBand + minimumSamples
         let fixedBottomHeight = max(minimumOverlap, stationaryBottomBand(
             previous: previous,
-            current: current,
-            maximumHeight: bestShift / 2
+            current: current
         ))
         guard bestShift + fixedBottomHeight + ignoredTopBand <= height else { return nil }
         return Alignment(shift: bestShift, score: Double(scores[bestShift]), fixedBottomHeight: fixedBottomHeight)
@@ -412,10 +412,9 @@ struct PanoramaAccumulator {
 
     private static func stationaryBottomBand(
         previous: PanoramaFrame,
-        current: PanoramaFrame,
-        maximumHeight: Int
+        current: PanoramaFrame
     ) -> Int {
-        let maximum = min(maximumHeight, previous.height / 4)
+        let maximum = previous.height / 4
         guard maximum > 0 else { return 0 }
         let columnStep = max(1, previous.width / 160)
         var stationaryRows = 0

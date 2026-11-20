@@ -1121,7 +1121,7 @@ final class CaptureMathTests: XCTestCase {
 
     func testPanoramaKeepsOnlyFinalFloatingBadgeWithoutLosingContent() throws {
         for (shift, firstBadgeFrame, lastBadgeFrame, footerHeight) in [
-            (4, 0, 2, 5), (20, 0, 2, 5), (37, 0, 2, 5),
+            (4, 0, 2, 5), (4, 0, 2, 25), (20, 0, 2, 5), (37, 0, 2, 5),
             (20, 1, 2, 5), (20, 0, 1, 5), (20, 0, 2, 0)
         ] {
             let frames = (0..<3).map { index in

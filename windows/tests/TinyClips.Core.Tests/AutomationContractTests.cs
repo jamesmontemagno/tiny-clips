@@ -176,6 +176,8 @@ public sealed class AutomationContractTests
 
         Assert.True(contract.TryGetCommand("editor.open", out var editor));
         Assert.True(editor.Parameters["path"].Required);
+        Assert.Equal("legacy", editor.Parameters["resultFormat"].DefaultValue!.Value.GetString());
+        Assert.Contains("standard", editor.Parameters["resultFormat"].AllowedValues!);
     }
 
     [Fact]
