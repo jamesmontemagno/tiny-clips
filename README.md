@@ -176,6 +176,8 @@ Onboarding offers only Screenshot, Record Video, and Record GIF.
 
 To edit an existing MP4 or MOV in Studio, right-click it in Finder or File Explorer and choose **Open With → Tiny Clips**. On Windows, choose **Just once** if prompted. Tiny Clips opens the video in Studio without changing your default player. Studio must be enabled in Settings.
 
+On macOS, opening the same unchanged video from Finder, the trimmer or Clips Library returns to the same draft. The Mac App Store build keeps its own copy so it can reopen the draft after access to the original ends.
+
 ## Settings
 
 | Option | Description |
