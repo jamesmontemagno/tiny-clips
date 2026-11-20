@@ -677,6 +677,25 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertEqual(try store.load(id: project.id).edits.trimStart, 1)
     }
 
+    func testImportedDraftIsListedAndReopensWithEditsWithoutChangingTheVideo() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let videoURL = directoryURL.appendingPathComponent("original.mp4")
+        let original = Data("original video".utf8)
+        try original.write(to: videoURL)
+        var project = try store.getOrCreateFlatProject(request: flatRequest(videoURL: videoURL))
+        project.edits.trimStart = 1
+        try store.save(project)
+
+        let reopenedStore = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let draft = try XCTUnwrap(reopenedStore.listSummaries().first(where: { $0.isDraftOrLostItsExport }))
+        XCTAssertEqual(draft.id, project.id)
+        XCTAssertTrue(draft.sourceExists)
+        XCTAssertEqual(try reopenedStore.load(id: draft.id).edits.trimStart, 1)
+        XCTAssertNil(reopenedStore.screenRecordingURL(id: draft.id))
+        try reopenedStore.delete(id: draft.id)
+        XCTAssertEqual(try Data(contentsOf: videoURL), original)
+    }
+
     func testEventsDefaultsMissingFileSaveAndUnsupportedVersion() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         let project = try store.completeRecording(id: validID, request: creationRequest(camera: nil))

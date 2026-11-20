@@ -280,16 +280,21 @@ struct StudioSpeedInspectorSection: View {
     @ViewBuilder
     private var selectedSpeedControls: some View {
         if let speed = viewModel.selectedSpeed {
-            Picker("Speed", selection: speedRateBinding(speed: speed)) {
-                ForEach(rateChoices(for: speed.rate), id: \.self) { rate in
-                    Text(StudioEditorModel.speedRateText(rate))
-                        .tag(rate)
-                        .accessibilityLabel(StudioEditorModel.speedRateName(rate))
+            StudioSliderRow(
+                title: "Speed",
+                value: speed.rate,
+                range: 0.25...8,
+                step: 0.25,
+                valueText: StudioEditorModel.speedRateText(speed.rate),
+                onChange: { viewModel.setSelectedSpeedRate($0) },
+                onEditingChanged: { isEditing in
+                    if isEditing {
+                        viewModel.beginGesture()
+                    } else {
+                        viewModel.endGesture()
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel("Speed")
+            )
             .help("How fast this part of the video plays")
 
             StudioInspectorSection(title: "Timing") {
@@ -393,20 +398,5 @@ struct StudioSpeedInspectorSection: View {
     private var selectionDetail: String? {
         guard let speed = viewModel.selectedSpeed else { return nil }
         return StudioEditorModel.speedRangeText(speed)
-    }
-
-    /// The rates the picker offers: the editor's own, and with them the rate of the selected
-    /// speed change when a project file gave it another one. A picker whose selection is none of
-    /// its choices is not defined to show anything.
-    private func rateChoices(for rate: Double) -> [Double] {
-        let rates = StudioEditorModel.speedRates
-        return rates.contains(rate) ? rates : (rates + [rate]).sorted()
-    }
-
-    private func speedRateBinding(speed: StudioSpeedRange) -> Binding<Double> {
-        Binding(
-            get: { speed.rate },
-            set: { viewModel.setSelectedSpeedRate($0) }
-        )
     }
 }

@@ -319,6 +319,18 @@ public sealed class AutomationProtocolTests : IDisposable
     }
 
     [Fact]
+    public async Task Host_DoesNotAdvertiseOrExecuteMacProjectCopy()
+    {
+        var host = CreateHost(new FakeHandler(), new FakeApprovals(true), () => true);
+        var hello = await HandleAsync(host, """{"command":"session.hello"}""");
+        Assert.DoesNotContain("studio.project.saveCopy", hello.Result!["commands"]!.AsArray().Select(value => value!.GetValue<string>()));
+        var pair = await HandleAsync(host, """{"command":"session.pair","params":{"clientName":"x","scopes":["export"]}}""");
+        var token = await WaitForTokenAsync(host, pair.Result!["pairingId"]!.GetValue<string>());
+        var response = await HandleAsync(host, $$$"""{"token":"{{{token}}}","command":"studio.project.saveCopy","params":{"projectId":"p","folderName":"copy"}}""");
+        Assert.Equal(AutomationErrorCodes.NotSupported, response.Error!.Code);
+    }
+
+    [Fact]
     public async Task LineReader_SplitsLines_AndCapsLength()
     {
         using var stream = new MemoryStream("one\r\ntwo\nthree"u8.ToArray());

@@ -152,16 +152,90 @@ final class StudioProjectFolderTests: XCTestCase {
         XCTAssertFalse(fileManager.fileExists(atPath: folder.path))
     }
 
-    func testAProjectAroundAVideoKeptElsewhereIsNotSavedAsAFolder() throws {
-        let video = outsideURL.appendingPathComponent("finished.mp4")
+    func testAProjectAroundAVideoKeptElsewhereSavesWithACopyOfTheVideo() throws {
+        let video = outsideURL.appendingPathComponent("finished.MOV")
         try Data("video".utf8).write(to: video)
         let flat = try store.getOrCreateFlatProject(
             request: StudioFlatProjectRequest(videoURL: video, width: 1920, height: 1080, duration: 5, appVersion: "1.0")
         )
+        let folder = outsideURL.appendingPathComponent("Flat")
 
-        XCTAssertThrowsError(try store.exportProjectFolder(id: flat.id, to: outsideURL.appendingPathComponent("Flat"))) { error in
-            XCTAssertEqual(error as? StudioProjectFolderError, .externalSource)
+        try store.exportProjectFolder(id: flat.id, to: folder)
+
+        XCTAssertEqual(try names(in: folder), ["Flat.tinyclips", "screen.mov"])
+        XCTAssertEqual(try Data(contentsOf: folder.appendingPathComponent("screen.mov")), Data("video".utf8))
+        XCTAssertEqual(try Data(contentsOf: video), Data("video".utf8))
+        XCTAssertTrue(try store.load(id: flat.id).sources.screen.external)
+
+        let projectFile = folder.appendingPathComponent("Flat.tinyclips")
+        let imported = try store.importProjectFolder(projectFile: projectFile)
+        XCTAssertFalse(imported.sources.screen.external)
+        XCTAssertEqual(try Data(contentsOf: try store.paths(for: imported).screenURL), Data("video".utf8))
+
+        var edited = try store.load(id: flat.id)
+        edited.zooms = [StudioZoom(start: 1, end: 2, scale: 2)]
+        try store.save(edited)
+        try store.updateSavedProject(id: flat.id, projectFile: projectFile)
+        let updated = try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(contentsOf: projectFile))
+        XCTAssertEqual(updated.zooms, edited.zooms)
+        XCTAssertEqual(try names(in: folder), ["Flat.tinyclips", "screen.mov"])
+    }
+
+    func testSavingAnImportedSymlinkCopiesTheVideoNotTheLink() throws {
+        let video = outsideURL.appendingPathComponent("source.mov")
+        let link = outsideURL.appendingPathComponent("alias.mov")
+        try Data("video".utf8).write(to: video)
+        try fileManager.createSymbolicLink(atPath: link.path, withDestinationPath: video.lastPathComponent)
+        let project = try store.getOrCreateFlatProject(
+            request: StudioFlatProjectRequest(videoURL: link, width: 1920, height: 1080, duration: 5, appVersion: "1.0")
+        )
+        let folder = outsideURL.appendingPathComponent("Symlink Copy")
+        try store.exportProjectFolder(id: project.id, to: folder)
+        let copied = folder.appendingPathComponent("screen.mov")
+        XCTAssertEqual(try copied.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink, false)
+        try fileManager.removeItem(at: link)
+        try fileManager.removeItem(at: video)
+        XCTAssertEqual(try Data(contentsOf: copied), Data("video".utf8))
+    }
+
+    @MainActor
+    func testAgentProjectCopyUsesOnlyANewFolderInTheVideoDirectory() throws {
+        let id = try makeProject(camera: false)
+        let projectDirectory = try store.paths(forID: id).projectDirectory
+        let folder = try AutomationCommandRouter.studioProjectCopyDestination(
+            name: "Agent Copy", videoFolder: outsideURL, projectDirectory: projectDirectory
+        )
+        try store.exportProjectFolder(id: id, to: folder)
+        let projectFile = folder.appendingPathComponent("Agent Copy.tinyclips")
+        let reopened = try store.importProjectFolder(projectFile: projectFile)
+        XCTAssertEqual(try Data(contentsOf: try store.paths(for: reopened).screenURL), Data("screen".utf8))
+        XCTAssertThrowsError(try store.exportProjectFolder(id: id, to: folder)) { error in
+            XCTAssertEqual(error as? StudioProjectFolderError, .destinationExists)
         }
+        XCTAssertTrue(fileManager.fileExists(atPath: projectFile.path))
+
+        for name in ["", ".", "..", "../other", "a/b", "a\\b", "bad\0name"] {
+            XCTAssertThrowsError(try AutomationCommandRouter.studioProjectCopyDestination(
+                name: name, videoFolder: outsideURL, projectDirectory: projectDirectory
+            )) { error in
+                XCTAssertEqual((error as? AutomationError)?.code, .invalidParams)
+            }
+        }
+        XCTAssertThrowsError(try AutomationCommandRouter.studioProjectCopyDestination(
+            name: "inside", videoFolder: projectDirectory, projectDirectory: projectDirectory
+        )) { error in
+            XCTAssertEqual((error as? AutomationError)?.code, .invalidParams)
+        }
+    }
+
+    func testSavingDoesNotReplaceABrokenDestinationSymlink() throws {
+        let id = try makeProject(camera: false)
+        let link = outsideURL.appendingPathComponent("Taken")
+        try fileManager.createSymbolicLink(atPath: link.path, withDestinationPath: "missing")
+        XCTAssertThrowsError(try store.exportProjectFolder(id: id, to: link)) { error in
+            XCTAssertEqual(error as? StudioProjectFolderError, .destinationExists)
+        }
+        XCTAssertEqual(try fileManager.destinationOfSymbolicLink(atPath: link.path), "missing")
     }
 
     // MARK: - Opening a Folder
@@ -411,6 +485,21 @@ final class StudioProjectFolderTests: XCTestCase {
         ]
 
         XCTAssertEqual(StudioProjectSummary.menuDrafts(from: summaries).map(\.id), ["draft", "lost-its-export"])
+    }
+
+    func testSettingsListsFlatDraftsAndMissingExportsWithoutDuplicatingTheRecentMenu() {
+        let summaries = [
+            menuSummary("flat-draft", isFlat: true),
+            menuSummary("flat-lost-export", isDraft: false, isFlat: true, exportMissing: true),
+            menuSummary("flat-offline", isFlat: true, sourceExists: false),
+            menuSummary("flat-exported", isDraft: false, isFlat: true),
+        ]
+
+        XCTAssertEqual(
+            summaries.filter(\.isDraftOrLostItsExport).map(\.id),
+            ["flat-draft", "flat-lost-export", "flat-offline"]
+        )
+        XCTAssertTrue(StudioProjectSummary.menuDrafts(from: summaries).isEmpty)
     }
 
     func testAProjectWasLastUsedWhenItWasOpenedOrFailingThatRecorded() {

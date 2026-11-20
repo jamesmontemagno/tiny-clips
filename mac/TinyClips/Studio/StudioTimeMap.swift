@@ -139,13 +139,13 @@ struct StudioTimeMap: Equatable, Sendable {
     /// to the end of the entry before it where the two overlapped. The trim and the cuts play no
     /// part here, so the rate at a source time is the same wherever they are. Every entry keeps
     /// what else its file said of it.
-    static func normalizedSpeed(_ speed: [StudioSpeedRange]) -> [StudioSpeedRange] {
+    static func normalizedSpeed(_ speed: [StudioSpeedRange], keepingNormalRate: Bool = false) -> [StudioSpeedRange] {
         var entries: [(entry: StudioSpeedRange, index: Int)] = []
         for (index, stored) in speed.enumerated() {
             guard stored.rate.isFinite, stored.rate > 0 else { continue }
             var entry = stored
             entry.rate = StudioCanvasMath.clamped(stored.rate, slowestRate, fastestRate)
-            if entry.end > entry.start, entry.rate != 1 {
+            if entry.end > entry.start, keepingNormalRate || entry.rate != 1 {
                 entries.append((entry, index))
             }
         }
@@ -157,17 +157,43 @@ struct StudioTimeMap: Equatable, Sendable {
             return first.index < second.index
         }
 
-        var result: [StudioSpeedRange] = []
-        for item in entries {
-            var entry = item.entry
-            if let last = result.last, entry.start < last.end {
-                entry.start = last.end
+        func resolveOverlaps(_ entries: [(entry: StudioSpeedRange, index: Int)]) -> [StudioSpeedRange] {
+            var result: [StudioSpeedRange] = []
+            for item in entries {
+                var entry = item.entry
+                if let last = result.last, entry.start < last.end {
+                    entry.start = last.end
+                }
+                if entry.end > entry.start {
+                    result.append(entry)
+                }
             }
-            if entry.end > entry.start {
-                result.append(entry)
+            return result
+        }
+
+        let effective = resolveOverlaps(entries.filter { $0.entry.rate != 1 })
+        guard keepingNormalRate else { return effective }
+
+        var result = effective
+        for normal in resolveOverlaps(entries.filter { $0.entry.rate == 1 }) {
+            var cursor = normal.start
+            for change in effective where change.end > cursor && change.start < normal.end {
+                if change.start > cursor {
+                    var part = normal
+                    part.start = cursor
+                    part.end = min(change.start, normal.end)
+                    result.append(part)
+                }
+                cursor = max(cursor, change.end)
+                if cursor >= normal.end { break }
+            }
+            if cursor < normal.end {
+                var part = normal
+                part.start = cursor
+                result.append(part)
             }
         }
-        return result
+        return result.sorted { $0.start < $1.start }
     }
 
     /// The kept segments divided where the rate changes inside them.

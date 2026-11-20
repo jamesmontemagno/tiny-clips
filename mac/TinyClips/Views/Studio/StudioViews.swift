@@ -1133,7 +1133,7 @@ struct StudioSliderRow: View {
                     .foregroundStyle(.secondary)
             }
             .accessibilityHidden(true)
-            Slider(value: binding, in: range, onEditingChanged: onEditingChanged)
+            Slider(value: binding, in: range, step: step, onEditingChanged: onEditingChanged)
                 .controlSize(.small)
                 .accessibilityLabel(accessibilityTitle ?? title)
                 .accessibilityValue(valueText)

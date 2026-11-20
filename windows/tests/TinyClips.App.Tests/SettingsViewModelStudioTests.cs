@@ -360,6 +360,32 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     }
 
     [Fact]
+    public async Task TheList_IncludesAnImportedDraftWithItsEdits_AndDeletingItKeepsTheOriginalVideo()
+    {
+        Directory.CreateDirectory(VideosFolder);
+        var videoPath = Path.Combine(VideosFolder, "Original.mp4");
+        File.WriteAllBytes(videoPath, Recording);
+        var project = _projects.GetOrCreateFlatProject(videoPath, new StudioRecordingSourceInfo(640, 360, 12), "1.0");
+        _projects.Save(project with { Edits = project.Edits with { TrimStart = 1 } });
+        var vm = CreateViewModel();
+        Show(vm, SettingsSectionKind.Studio);
+
+        await vm.EnsureStudioStorageInitializedAsync();
+
+        var draft = Assert.Single(vm.StudioDrafts);
+        Assert.Equal(project.Id, draft.Id);
+        Assert.True(draft.CanOpen);
+        Assert.False(draft.CanSaveRecording);
+        Assert.Equal(1, _projects.Load(draft.Id).Edits.TrimStart);
+        Assert.Equal(Visibility.Visible, vm.StudioDraftsVisibility);
+        Assert.StartsWith("1 project, ", vm.StudioStorageDisplay);
+        Assert.Null(await vm.DeleteStudioDraftAsync(draft));
+        Assert.Empty(vm.StudioDrafts);
+        Assert.Equal(Recording, File.ReadAllBytes(videoPath));
+        vm.NotifyClosed();
+    }
+
+    [Fact]
     public async Task TheNumbers_AreReadOnce_HoweverOftenTheStudioPageIsShown()
     {
         Record("First");

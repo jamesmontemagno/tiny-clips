@@ -342,7 +342,7 @@ struct StudioEditorModel: Equatable, Sendable {
 
     /// The rates the editor offers, slowest first. A project file may hold any rate from
     /// `StudioTimeMap.slowestRate` to `StudioTimeMap.fastestRate`.
-    static let speedRates: [Double] = [0.25, 0.5, 1.5, 2, 4, 8]
+    static let speedRates: [Double] = (1...32).map { Double($0) / 4 }
 
     /// What the Speed section says while there are speed changes and none is selected.
     static let selectSpeedHint = "Select a speed change on the timeline, or step to one with the arrows above."
@@ -1470,9 +1470,8 @@ struct StudioEditorModel: Equatable, Sendable {
     }
 
     /// Sets how fast a speed change plays: how many seconds of the recording pass in one second
-    /// of video. A rate outside what the time map plays counts as the nearer limit. A rate of 1 is
-    /// no speed change and is not taken; deleting it is how a stretch goes back to the recording's
-    /// own speed.
+    /// of video. A rate outside what the time map plays counts as the nearer limit. A rate of 1
+    /// keeps the range editable while playing at the recording's own speed.
     @discardableResult
     mutating func setSpeedRate(at index: Int, to rate: Double) -> StudioSpeedEditResult {
         let speed = project.edits.speed
@@ -1482,7 +1481,6 @@ struct StudioEditorModel: Equatable, Sendable {
         guard rate.isFinite, rate > 0 else { return StudioSpeedEditResult(changed: false, index: index) }
 
         let limited = StudioCanvasMath.clamped(rate, StudioTimeMap.slowestRate, StudioTimeMap.fastestRate)
-        guard limited != 1 else { return StudioSpeedEditResult(changed: false, index: index) }
         var entry = speed[index]
         entry.rate = limited
         return replaceSpeed(at: index, with: entry)
@@ -2252,7 +2250,7 @@ struct StudioEditorModel: Equatable, Sendable {
     /// inside the recording. So opening a project and saving it again does not change how it plays.
     private mutating func normalizeStoredSpeed() {
         let duration = sourceDuration
-        project.edits.speed = StudioTimeMap.normalizedSpeed(project.edits.speed).compactMap { entry -> StudioSpeedRange? in
+        project.edits.speed = StudioTimeMap.normalizedSpeed(project.edits.speed, keepingNormalRate: true).compactMap { entry -> StudioSpeedRange? in
             var inside = entry
             inside.start = StudioCanvasMath.clamped(entry.start, 0, duration)
             inside.end = StudioCanvasMath.clamped(entry.end, 0, duration)

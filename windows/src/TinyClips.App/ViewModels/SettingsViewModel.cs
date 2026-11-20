@@ -1190,12 +1190,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    // A recording that only its project holds: never exported, or exported to a video that is
-    // gone. The store's own rule, which the tray's recent captures go by as well.
+    // Include edits to external videos here; only the tray menu omits their duplicate entries.
     private static bool IsShownAsDraft(StudioProjectSummary summary) => summary.IsDraftOrLostItsExport;
 
     /// <summary>
-    /// Shows the recordings that only their project holds, newest first, and after them the
+    /// Shows projects without an available export, newest first, and after them the
     /// projects that cannot be read. Rows that are still there keep their place, and only what
     /// changes by itself is brought up to date, so a button in the list does not lose keyboard
     /// focus because another row changed.

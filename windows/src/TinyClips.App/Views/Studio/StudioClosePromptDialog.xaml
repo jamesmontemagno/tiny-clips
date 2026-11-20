@@ -11,7 +11,7 @@
 
     <StackPanel MinWidth="380" Spacing="16">
         <TextBlock
-            Text="It has not been saved as a project. Keep it as a draft to finish later from the Clips Library, or delete it."
+            Text="It has not been saved as a project. Keep it as a draft to finish later from Settings → Studio → Drafts, or delete it."
             TextWrapping="Wrap" />
 
         <!--

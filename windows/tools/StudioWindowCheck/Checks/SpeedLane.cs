@@ -733,7 +733,7 @@ internal sealed partial class WindowChecks
     /// <summary>
     /// A faster stretch makes the video shorter, so a trim can leave less than a tenth of a
     /// second of video although more than that of the recording is left. Such a trim is refused
-    /// as a whole, and so is a rate that would do the same: the handle and the choice of rate
+    /// as a whole, and so is a rate that would do the same: the handle and speed slider
     /// have to show what the editor holds.
     /// </summary>
     private void TrimThatASpeedChangeDoesNotAllow()
@@ -790,21 +790,21 @@ internal sealed partial class WindowChecks
         // At four times the speed the same half second is an eighth of a second of video, and the trim is granted.
         Find(editor, "StudioSpeed_0")?.Select();
         Until(() => SelectedSpeedOf(editor), index => index == 0, 1);
-        var eightChosen = RateChosen(editor, 5);
-        var four = Find(editor, "StudioSpeedRate_4")?.Select() ?? false;
+        var eightChosen = RateChosen(editor, 8);
+        var four = SetSlider(editor, "StudioSpeedRateSlider", 4);
         var rate = Until(() => SpeedsOf(editor)[0].Rate, value => value == 4, 1.5);
         SetSlider(editor, "StudioTrimEnd", 11.5);
         var ended = Until(End, value => value == 11.5, 1.5);
 
-        // Eight times the speed again would leave a sixteenth of a second: the rate is refused, and the choice goes back to the rate it has.
+        // Eight times the speed again would leave a sixteenth of a second: the rate is refused, and the slider returns to the rate it has.
         var mark = heard.Mark();
-        var eight = Find(editor, "StudioSpeedRate_5")?.Select() ?? false;
+        var eight = SetSlider(editor, "StudioSpeedRateSlider", 8);
         var back = RateChosen(editor, 4);
         var told = heard.WaitFor(mark, "notification", e => false, 0.5).Where(e => RateNames.Contains(e.Text)).Select(e => e.Text).ToArray();
         var held = SpeedsOf(editor)[0].Rate;
-        var index = OnUi(() => editor.Window.ViewModel.SpeedRateIndex);
+        var index = OnUi(() => editor.Window.ViewModel.SpeedRate);
         _report.Check(
-            "a rate is refused the same way: with the speed change at four times the speed, End at 11.5 s is granted; eight times the speed would then leave a sixteenth of a second of video, so choosing it changes nothing, is not read out, and the choice shows four times the speed again",
+            "a rate is refused the same way: with the speed change at four times the speed, End at 11.5 s is granted; eight times the speed would then leave a sixteenth of a second of video, so moving the slider there changes nothing, is not read out, and the slider shows four times the speed again",
             eightChosen is null && four && rate == 4 && ended == 11.5 && eight && back is null && told.Length == 0 && held == 4 && index == 4,
             $"opened: {eightChosen ?? "8× is the chosen one"}; 4× chosen: rate {F(rate)}, End {Seconds(ended)} s; 8× chosen again: the speed change plays at {F(held)}×, {back ?? "4× is the chosen one"} (the view model says {index}); {(told.Length == 0 ? "nothing read out" : "read out: " + string.Join(", ", told))}");
         CloseQuietly(editor);

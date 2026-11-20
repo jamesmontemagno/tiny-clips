@@ -25,6 +25,7 @@ video (MP4), and animated GIFs of a selected screen region — on **macOS** and 
 - **Region Selection** — Drag to select any portion of any screen
 - **Global Hotkeys** — Quick capture from anywhere
 - **Configurable** — Save location, clipboard, reveal-in-Finder/Explorer, GIF quality, trimmer toggles, and more
+- **Tabbed Guide** — Open Guide from the menu bar or tray for focused help topics, current keyboard shortcuts, and agent setup. Each topic scrolls separately so the tabs stay within reach; resize the window for more reading room.
 
 > macOS uses Sparkle for auto-updates. On Windows, installs made through the `.appinstaller` update automatically with MSIX App Installer, **winget** installs update with `winget upgrade`, and Microsoft Store installs update through the Store.
 

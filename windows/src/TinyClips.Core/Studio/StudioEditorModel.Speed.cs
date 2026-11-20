@@ -31,7 +31,8 @@ public sealed partial class StudioEditorModel
     /// The rates the editor offers, slowest first. A project file may hold any rate from
     /// <see cref="StudioTimeMap.SlowestRate"/> to <see cref="StudioTimeMap.FastestRate"/>.
     /// </summary>
-    public static IReadOnlyList<double> SpeedRates { get; } = [0.25, 0.5, 1.5, 2, 4, 8];
+    public static IReadOnlyList<double> SpeedRates { get; } =
+        Enumerable.Range(1, 32).Select(static quarter => quarter / 4d).ToArray();
 
     /// <summary>
     /// The speed change that contains <paramref name="sourceTime"/>, or null. It contains its
@@ -221,8 +222,7 @@ public sealed partial class StudioEditorModel
     /// <summary>
     /// Sets how fast a speed change plays: how many seconds of the recording pass in one second
     /// of video. A rate outside what the time map plays counts as the nearer limit. A rate of 1
-    /// is no speed change and is not taken; deleting it is how a stretch goes back to the
-    /// recording's own speed.
+    /// keeps the range editable while playing at the recording's own speed.
     /// </summary>
     public StudioSpeedEditResult SetSpeedRate(int index, double rate)
     {
@@ -237,9 +237,7 @@ public sealed partial class StudioEditorModel
         }
 
         var limited = Clamp(rate, StudioTimeMap.SlowestRate, StudioTimeMap.FastestRate);
-        return limited == 1
-            ? new StudioSpeedEditResult(false, index)
-            : ReplaceSpeed(index, entry with { Rate = limited });
+        return ReplaceSpeed(index, entry with { Rate = limited });
     }
 
     /// <summary>
@@ -335,9 +333,12 @@ public sealed partial class StudioEditorModel
     /// format), and inside the recording. So opening a project and saving it again does not
     /// change how it plays.
     /// </summary>
-    internal static StudioSpeedRange[] NormalizeStoredSpeed(IEnumerable<StudioSpeedRange?>? speed, double sourceDuration) =>
+    internal static StudioSpeedRange[] NormalizeStoredSpeed(
+        IEnumerable<StudioSpeedRange?>? speed,
+        double sourceDuration,
+        bool keepingNormalRate = false) =>
     [
-        .. StudioTimeMap.NormalizeSpeed(speed)
+        .. StudioTimeMap.NormalizeSpeed(speed, keepingNormalRate)
             .Select(entry => entry with { Start = Clamp(entry.Start, 0, sourceDuration), End = Clamp(entry.End, 0, sourceDuration) })
             .Where(static entry => entry.End > entry.Start),
     ];

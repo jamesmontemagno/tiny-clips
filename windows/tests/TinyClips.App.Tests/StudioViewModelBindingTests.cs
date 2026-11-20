@@ -67,6 +67,35 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
             binding => Assert.True(binding.Minimum < binding.Maximum, $"{binding} has no range in the markup"));
     }
 
+    [Fact]
+    public async Task SpeedSlider_CrossesNormalSpeed_AsOneUndoStep()
+    {
+        var viewModel = await OpenAsync(CreateEditedProject(), _controls);
+        viewModel.SelectSpeed(0);
+        Pump();
+        var original = viewModel.SpeedRate;
+        var slider = _controls.Find(nameof(StudioViewModel.SpeedRate));
+        Assert.Equal(0.25, slider.Minimum);
+        Assert.Equal(8, slider.Maximum);
+        viewModel.BeginGesture();
+        for (var quarter = 1; quarter <= 32; quarter++)
+        {
+            var rate = quarter / 4d;
+            _controls.Move(slider, rate);
+            Pump();
+            Assert.Equal(rate, viewModel.SpeedRate, Precision);
+            Assert.True(viewModel.HasSelectedSpeed);
+            Assert.Equal(StudioEditorText.GetSpeedRateText(rate), viewModel.SpeedRateText);
+        }
+
+        viewModel.EndGesture();
+        viewModel.Undo();
+        Pump();
+        Assert.Equal(original, viewModel.SpeedRate);
+        Assert.True(viewModel.HasSelectedSpeed);
+        Assert.Empty(_controls.OutOfStep());
+    }
+
     // ---- Opening
 
     [Theory]
@@ -777,7 +806,7 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
         var groups = _controls.Bindings.Where(binding => binding.Control == "StudioSegmented").ToArray();
-        Assert.Equal(13, groups.Length);
+        Assert.Equal(12, groups.Length);
 
         foreach (var group in groups)
         {
@@ -861,7 +890,10 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
         foreach (var list in lists)
         {
             // What is selected decides what a list has to show, and one thing is selected at a time.
-            Select(viewModel, list.Property.StartsWith("Annotation", StringComparison.Ordinal) ? list.Property : "SpeedRateIndex");
+            if (list.Property.StartsWith("Annotation", StringComparison.Ordinal))
+            {
+                Select(viewModel, list.Property);
+            }
             Pump();
             var shown = (int)_controls.Shown(list)!;
             Assert.True(shown >= 0, $"{list} has no choice to show in this project");

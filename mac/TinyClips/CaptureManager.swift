@@ -216,7 +216,6 @@ class CaptureManager: ObservableObject {
     private var pendingRecordingCountdownEnabled: Bool = true
     private var pendingRecordingCountdownDuration: Int = 3
     private var pendingVideoTimeLimitMinutes: Int = 0
-    private var activeRecordingRegion: CaptureRegion?
     private var recordPanelPosition: NSPoint?
     private var trimmerWindow: VideoTrimmerWindow?
     private var gifTrimmerWindow: GifTrimmerWindow?
@@ -1242,7 +1241,6 @@ class CaptureManager: ObservableObject {
                     self.videoRecorder = recorder
                     self.webcamRecorder = nil
                     self.studioRecordingCoordinator = studioCoordinator
-                    self.activeRecordingRegion = target.region
                     self.isRecording = true
                     self.isRecordingSetupInProgress = false
                     self.isRecordingPaused = false
@@ -1358,7 +1356,6 @@ class CaptureManager: ObservableObject {
                     self.isRecording = false
                     self.isRecordingPaused = false
                     self.activeRecordingRequest = nil
-                    self.activeRecordingRegion = nil
                     self.activeRecordingWasStartedByAutomation = false
                     self.dismissRegionIndicator()
                     self.dismissTeleprompter()
@@ -1442,7 +1439,6 @@ class CaptureManager: ObservableObject {
                         }
                     }
                     self.gifWriter = writer
-                    self.activeRecordingRegion = target.region
                     self.isRecording = true
                     self.isRecordingSetupInProgress = false
                     self.isRecordingPaused = false
@@ -1470,7 +1466,6 @@ class CaptureManager: ObservableObject {
                     self.isRecording = false
                     self.isRecordingPaused = false
                     self.activeRecordingRequest = nil
-                    self.activeRecordingRegion = nil
                     self.activeRecordingWasStartedByAutomation = false
                     self.dismissRegionIndicator()
                     self.activeRecordingSessionID = nil
@@ -1510,7 +1505,6 @@ class CaptureManager: ObservableObject {
         dismissStopPanel()
         dismissTeleprompter()
         resetRecordingAudioStatus()
-        activeRecordingRegion = nil
         isRecording = false
         isRecordingPaused = false
         activeRecordingRequest = nil
@@ -1622,7 +1616,6 @@ class CaptureManager: ObservableObject {
         activeWebcamOverlaySelection = nil
         self.webcamPositionEvents = []
         resetRecordingAudioStatus()
-        activeRecordingRegion = nil
         isRecording = false
         isRecordingPaused = false
         activeRecordingSessionID = nil
@@ -2942,10 +2935,9 @@ class CaptureManager: ObservableObject {
         return NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) })
     }
 
-    /// Replaces the provisional region with the geometry the stream was actually configured from.
+    /// Updates consumers that depend on the geometry the stream was actually configured from.
     private func adoptResolvedRecordingRegion(_ region: CaptureRegion?) {
         guard let region else { return }
-        activeRecordingRegion = region
         if activeMouseClickRegion != nil {
             activeMouseClickRegion = region
         }
