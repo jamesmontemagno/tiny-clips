@@ -67,10 +67,16 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   Preferences live in **Settings → Clips Library** (defaults, density, quick actions, confirm delete,
   auto-refresh, archive-old-clips). Metadata is stored in `clip-metadata.json` in the app's local
   data folder; the files themselves are never modified.
-- **Global hotkeys** — Screenshot `Ctrl+Shift+5`, Video `Ctrl+Shift+6`, GIF `Ctrl+Shift+7`,
-  Stop recording `Ctrl+Shift+S`. The Video hotkey always makes an ordinary recording; Studio
-  recording has no hotkey. Optional Recognize Text (OCR) and direct Screenshot region, screen,
-  and window shortcuts can be set in Settings → Keyboard shortcuts; they are unbound by default.
+- **Global hotkeys** — only Screenshot (`Ctrl+Shift+5`) is assigned by default. Record video,
+  Record GIF, Stop recording, Recognize Text (OCR), and direct Screenshot region, screen, and
+  window shortcuts start unassigned. All can be edited, cleared, or reset in
+  **Settings → Keyboard shortcuts**, grouped into Screenshots, Recording, and Text recognition.
+  Existing saved choices are preserved. An assigned Stop recording shortcut is registered only
+  during recording and released afterward; it never reserves a key while idle. The floating
+  Stop button and tray remain available without a shortcut. Record video always makes an ordinary
+  recording; Studio recording has no hotkey. Onboarding offers only Screenshot, Record video,
+  and Record GIF. Separate expandable references list the fixed, window-only screenshot editor,
+  Studio, Clips Library, and navigation shortcuts; they are not global bindings or remappable.
 - **Launch at login** — optionally start TinyClips when you sign in to Windows, from the welcome
   wizard or Settings.
 - **Pre-capture countdown** and **save toast notifications** (both opt-in via Settings).
@@ -213,8 +219,8 @@ menu: **Screenshot**, **Capture Region**, **Record Video**, **Record GIF**, **Se
 **Guide**, **Exit**, and, while Tiny Clips Studio is switched on, **Studio** as a fourth capture
 button, between Video and GIF. Capture items first show the **Region / Screen / Window** picker.
 Video/GIF captures then show a setup panel before countdown and recording. Recording items toggle
-to **Stop Recording** (also `Ctrl+Shift+S`) while active, and a floating recording indicator shows
-the elapsed time. Global hotkeys work app-wide.
+to **Stop Recording** while active, and a floating recording indicator shows the elapsed time.
+An optional Stop recording shortcut works globally only while a recording is active.
 
 For coordinate/DPI behaviour across mixed-DPI monitors, see
 [`docs/dpi-and-coordinates.md`](docs/dpi-and-coordinates.md).
@@ -296,8 +302,8 @@ With the switch on:
   `Delete` or `Backspace` remove the selected zoom, cut, speed change, or annotation, `Ctrl+D`
   duplicate the selected annotation, `1`–`4` layout of the scene the playhead is in,
   `Ctrl+Z`/`Ctrl+Y` (or `Ctrl+Shift+Z`) undo and redo, `Ctrl+E` export, `Ctrl+O` open a saved project, `Ctrl+S` save
-  this project, `Ctrl+Shift+S` save the project as a new name/location (the global Stop recording
-  hotkey retains priority while recording), `Esc` stop an export or a save, and otherwise close
+  this project, `Ctrl+Shift+S` save the project as a new name/location (if assigned to Stop recording,
+  that global shortcut takes priority only while recording), `Esc` stop an export or a save, and otherwise close
   the editor as its close button does: a recording that was never exported asks what to do with
   it, and a project that was exported asks first unless **Confirm before closing editors with
   Esc** is turned off in General settings. While a lane has the keyboard focus, `Left`/`Right`
@@ -335,7 +341,8 @@ With the switch on:
   The picker starts inside the saved project folder, or the configured video-save folder before a project is saved.
   Existing videos require overwrite confirmation and stay intact if rendering fails or is cancelled.
   Saving the project again preserves exported videos and unrelated content beside it.
-  While no recording is active, the default global Ctrl+Shift+S stop shortcut is routed to Save as when Studio is the foreground window.
+  While idle, Tiny Clips does not reserve a Stop recording shortcut; `Ctrl+Shift+S` reaches
+  Save as in Studio or the foreground app normally.
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
   choosing such a video in **Recent captures** opens its project instead of the trimmer. A
   recording kept as a draft is in **Recent captures** too, as "Name — Studio project" with its

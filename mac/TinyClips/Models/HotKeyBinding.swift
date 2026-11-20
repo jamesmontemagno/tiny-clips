@@ -10,6 +10,7 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
     case screenshotRegion = 5
     case screenshotWindow = 6
     case screenshotScreen = 7
+    case stopRecording = 8
 
     var displayName: String {
         switch self {
@@ -27,6 +28,8 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
             return "Screenshot Window"
         case .screenshotScreen:
             return "Screenshot Screen"
+        case .stopRecording:
+            return "Stop Recording"
         }
     }
 
@@ -46,7 +49,13 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
             return "macwindow"
         case .screenshotScreen:
             return "display"
+        case .stopRecording:
+            return "stop.circle"
         }
+    }
+
+    func isGloballyActive(isRecording: Bool) -> Bool {
+        self != .stopRecording || isRecording
     }
 }
 
@@ -72,21 +81,14 @@ struct HotKeyBinding: Hashable {
     /// ⌃⌥⌘ modifier mask shared by all default capture shortcuts.
     static let defaultCaptureModifiers: Int = Int(controlKey | optionKey | cmdKey)
 
-    static let stopRecording     = HotKeyBinding(keyCode: kVK_ANSI_Period, carbonModifiers: Int(cmdKey))
-
     private static let supportedModifierMask = Int(controlKey | optionKey | shiftKey | cmdKey)
 
     static func defaultBinding(for action: HotKeyAction) -> HotKeyBinding {
         switch action {
         case .screenshot:
             return HotKeyBinding(keyCode: 23, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘5
-        case .recordVideo:
-            return HotKeyBinding(keyCode: 22, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘6
-        case .recordGif:
-            return HotKeyBinding(keyCode: 26, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘7
-        // Only Screenshot, Record Video, and Record GIF ship with a default shortcut.
-        // Every other action starts unbound so users opt in from Settings.
-        case .copyTextFromRegion, .screenshotRegion, .screenshotWindow, .screenshotScreen:
+        case .recordVideo, .recordGif, .copyTextFromRegion,
+             .screenshotRegion, .screenshotWindow, .screenshotScreen, .stopRecording:
             return .unbound
         }
     }
@@ -104,10 +106,6 @@ struct HotKeyBinding: Hashable {
 
         guard proposedBinding.carbonModifiers & supportedModifierMask != 0 else {
             return "Add at least one modifier key (Control, Option, Shift, or Command)."
-        }
-
-        if proposedBinding == stopRecording {
-            return "That shortcut is reserved for Stop Recording (\(stopRecording.displayString)). Choose a different combination."
         }
 
         if let conflictingAction = bindings.first(where: {
@@ -145,8 +143,34 @@ struct HotKeyBinding: Hashable {
     var swiftUICharacter: Character? {
         guard !isUnbound,
               let str = Self.keyCodeToDisplayString(keyCode),
+              str.count == 1,
               let first = str.lowercased().first else { return nil }
         return first
+    }
+
+    var swiftUIShortcut: KeyboardShortcut? {
+        guard !isUnbound else { return nil }
+        let key: KeyEquivalent
+        switch keyCode {
+        case kVK_Return: key = .return
+        case kVK_Tab: key = .tab
+        case kVK_Space: key = .space
+        case kVK_Delete: key = .delete
+        case kVK_Escape: key = .escape
+        case kVK_ForwardDelete: key = .deleteForward
+        case kVK_LeftArrow: key = .leftArrow
+        case kVK_RightArrow: key = .rightArrow
+        case kVK_DownArrow: key = .downArrow
+        case kVK_UpArrow: key = .upArrow
+        case kVK_PageUp: key = .pageUp
+        case kVK_PageDown: key = .pageDown
+        case kVK_Home: key = .home
+        case kVK_End: key = .end
+        default:
+            guard let character = swiftUICharacter else { return nil }
+            key = KeyEquivalent(character)
+        }
+        return KeyboardShortcut(key, modifiers: swiftUIModifiers)
     }
 
     /// Returns SwiftUI `EventModifiers` equivalent to the stored Carbon modifiers.

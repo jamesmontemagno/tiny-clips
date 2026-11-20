@@ -56,6 +56,8 @@ public sealed class GifRecordingService : IGifRecordingService
 
     public event EventHandler<string?>? RecordingCompleted;
 
+    public event EventHandler? RecordingStopped;
+
     public async Task PrepareAsync(CaptureTarget? target = null, PixelRect? region = null, CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -319,6 +321,7 @@ public sealed class GifRecordingService : IGifRecordingService
             _capture?.Dispose();
             _capture = null;
             IsRecording = false;
+            RecordingStopped?.Invoke(this, EventArgs.Empty);
 
             if (ConsumeDiscardRequested(discard))
             {

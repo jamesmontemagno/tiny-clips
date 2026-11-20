@@ -23,6 +23,7 @@ public sealed partial class RecordingIndicatorWindow : Window
     private bool _finishRequested;
     private string _stopHintText = "Stop from tray";
     private bool _closed;
+    private bool _paused;
     private readonly FloatingWindowDragger _dragger;
 
     public RecordingIndicatorWindow(string stopHint)
@@ -30,10 +31,7 @@ public sealed partial class RecordingIndicatorWindow : Window
         InitializeComponent();
         WindowCaptureVisibility.Register(this);
 
-        _stopHintText = string.IsNullOrWhiteSpace(stopHint)
-            ? "Stop from tray"
-            : $"Stop: {stopHint}";
-        HotKeyText.Text = _stopHintText;
+        UpdateStopHint(stopHint);
 
         ConfigurePresenter();
         _dragger = new FloatingWindowDragger(AppWindow);
@@ -84,9 +82,21 @@ public sealed partial class RecordingIndicatorWindow : Window
 
     public void SetPaused(bool paused)
     {
+        _paused = paused;
         PauseButton.Visibility = paused ? Visibility.Collapsed : Visibility.Visible;
         ResumeButton.Visibility = paused ? Visibility.Visible : Visibility.Collapsed;
         HotKeyText.Text = paused ? "Paused" : _stopHintText;
+    }
+
+    public void UpdateStopHint(string stopHint)
+    {
+        _stopHintText = string.IsNullOrWhiteSpace(stopHint)
+            ? "Stop with button or tray"
+            : $"Stop: {stopHint}";
+        if (!_paused)
+        {
+            HotKeyText.Text = _stopHintText;
+        }
     }
 
     public void ConfigureAudioControls(

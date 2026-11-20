@@ -242,6 +242,7 @@ class StopRecordingPanel: NSPanel {
 
 private struct StopRecordingView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var settings = CaptureSettings.shared
 
     @ObservedObject var captureManager: CaptureManager
     let onPauseResume: () -> Void
@@ -312,7 +313,10 @@ private struct StopRecordingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             .buttonStyle(.plain)
-            .keyboardShortcut(".", modifiers: .command)
+            .keyboardShortcut(settings.hotKeyBinding(for: .stopRecording).swiftUIShortcut)
+            .help(settings.hotKeyBinding(for: .stopRecording).isUnbound
+                ? "Stop recording"
+                : "Stop recording (\(settings.hotKeyBinding(for: .stopRecording).displayString))")
             .accessibilityLabel("Stop recording")
             .accessibilityHint("Stops the current recording.")
         }

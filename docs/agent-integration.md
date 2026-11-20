@@ -120,6 +120,13 @@ as interactive captures, with no additional command or setting.
 
 Supporter plans are intentionally not available to agents, on either platform: spending money needs a person, and the store's purchase dialog is theirs to confirm. No command buys a plan or reports supporter status.
 
+Keyboard shortcut configuration is also intentionally UI-only on both platforms. Assign, clear,
+or reset bindings in Settings (or the three common capture actions in onboarding); `settings.get`
+and `settings.set`, the CLI, and MCP do not expose shortcut bindings. This is a deliberate exception
+to agent coverage: agents already invoke capture and recording commands directly and do not need
+to reserve or change the user's system-wide keys. Configuring a Stop Recording binding does not
+change the availability or permissions of `recording.stop`.
+
 ## Troubleshooting setup
 
 | Problem | Recovery |
