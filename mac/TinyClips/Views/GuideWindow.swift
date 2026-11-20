@@ -216,7 +216,7 @@ private struct GuideWindowView: View {
             }
             sectionCard(title: "Set up your demo", icon: "mic") {
                 feature("Audio and camera", "Video can include system audio, microphone audio, or both, plus a webcam overlay. Choose devices and overlay appearance in Settings → Video; review the options before each take.")
-                feature("Attention and timing", "Configure mouse-click highlights, countdown, time limit, and keep-awake behavior. Video uses H.264 MP4; GIF settings choose frame rate and maximum width.")
+                feature("Attention and timing", "Configure mouse-click highlights, countdown, time limit, and keep-awake behavior. Video saves as MP4; GIF settings choose frame rate and maximum width.")
                 feature("Teleprompter", "In Settings → Teleprompter, enter or load a script, choose its scroll speed, and preview it. The script panel stays on your screen and out of the recording.")
             }
             sectionCard(title: "Trim or take a frame", icon: "scissors") {
@@ -280,6 +280,14 @@ private struct GuideWindowView: View {
 
     private var helpContent: some View {
         VStack(alignment: .leading, spacing: 20) {
+            sectionCard(title: "Set your defaults", icon: "gearshape") {
+                steps([
+                    "Open Settings from the menu bar or press ⌘,.",
+                    "Choose Screenshot, Video, or GIF to set its save folder, clipboard behavior, and editor or trimmer preference.",
+                    "Visit Shortcuts to assign optional global bindings. Leave actions unassigned if you prefer the menu bar.",
+                    "Take a short test capture and check Recent Captures or Clips Library to confirm where it went."
+                ])
+            }
             sectionCard(title: "Your current global shortcuts", icon: "command") {
                 Text("Only Screenshot is assigned by default. Change, clear, or reset bindings in Settings → Shortcuts. An unassigned action is still available from the menu bar.")
                 shortcutRow(title: "Screenshot", action: .screenshot)

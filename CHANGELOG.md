@@ -15,7 +15,6 @@ All notable changes to this project will be documented in this file.
 - Only Screenshot has a global keyboard shortcut by default on macOS; Video, GIF, OCR, direct screenshots, and Stop Recording are optional. Saved bindings are preserved. Stop Recording can be recorded, cleared, or reset in Settings and is active globally only during recording.
 - Shortcuts settings groups Screenshots, Recording, and Text recognition separately from fixed editor, Studio, Clips Library, and navigation references. Onboarding offers only the three common capture actions and explains how to stop without a shortcut.
 - Shortcut configuration deliberately remains UI-only; agents continue to use capture and recording commands directly.
-- The macOS Guide uses native Capture, Steps, Shortcuts, Tips, and Agents tabs with separately scrollable pages. The window is now resizable, with more room for help and agent setup.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 - Agents on macOS and Windows can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 

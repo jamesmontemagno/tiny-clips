@@ -19,7 +19,9 @@ public sealed partial class GuideWindow : Window
     private readonly WindowChromeController _chromeController;
 
     /// <summary>The lower-case identifier of the currently selected topic.</summary>
-    public string SelectedTopic => (GuideTabs.SelectedItem as TabViewItem)?.Tag as string ?? "capture";
+    public string SelectedTopic => GuideTabs.SelectedItem is TabViewItem { Tag: string topic }
+        ? topic
+        : throw new InvalidOperationException("Guide topic invariant violated: the selected tab must have a string topic ID.");
 
     /// <summary>
     /// Selects a handbook topic on this window without reopening it or changing its page content.

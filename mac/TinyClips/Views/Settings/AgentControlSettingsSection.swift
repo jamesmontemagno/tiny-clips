@@ -254,7 +254,7 @@ struct AgentControlSetupSteps: View {
     var body: some View {
         AgentSetupStep(number: 1, title: "Before you begin") {
             Link("Install the .NET 10 SDK", destination: URL(string: "https://dotnet.microsoft.com/download/dotnet/10.0")!)
-            AgentSetupNote("Turn on Agent Control above and keep Tiny Clips running. Pairing prompts appear in the app so you can choose the permissions to grant.")
+            AgentSetupNote("Turn on Settings → Agent Control → Allow agents to control Tiny Clips and keep the app running. Pairing prompts appear in the app so you can choose the permissions to grant.")
         }
 
         AgentSetupStep(number: 2, title: "Install the Agent Plugin", badge: "Recommended") {
