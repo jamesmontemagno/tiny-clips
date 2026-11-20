@@ -728,6 +728,7 @@ internal sealed class CountingStore(IStudioProjectStore inner) : IStudioProjectS
     public IReadOnlyList<StudioProjectSummary> ListSummaries() => inner.ListSummaries();
 
     public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects() => inner.ListUnreadableProjects();
+    public StudioProjectListing ListLibraryProjects() => inner.ListLibraryProjects();
 
     public string? FindScreenRecording(string projectId) => inner.FindScreenRecording(projectId);
 

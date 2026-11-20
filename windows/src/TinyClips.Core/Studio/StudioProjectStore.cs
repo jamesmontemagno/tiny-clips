@@ -27,6 +27,8 @@ public interface IStudioProjectStore
 
     IReadOnlyList<StudioProjectSummary> ListSummaries();
 
+    StudioProjectListing ListLibraryProjects();
+
     /// <summary>
     /// The project folders whose <c>project.json</c> is there and cannot be read: damaged, or
     /// written by a newer version. <see cref="ListSummaries"/> leaves them out and cleanup leaves
@@ -346,24 +348,20 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
         }
     }
 
-    public IReadOnlyList<StudioProjectSummary> ListSummaries()
-    {
-        lock (_sync)
-        {
-            return EnumerateProjectFolders()
-                .Select(folder => TryLoadSummary(folder))
-                .Where(static summary => summary is not null)
-                .Select(static summary => summary!)
-                .OrderBy(summary => summary.CreatedAt)
-                .ThenBy(summary => summary.Id, StringComparer.Ordinal)
-                .ToArray();
-        }
-    }
+    public IReadOnlyList<StudioProjectSummary> ListSummaries() =>
+        ListProjects(includeSummaries: true, includeUnreadable: false).Summaries;
 
-    public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects()
+    public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects() =>
+        ListProjects(includeSummaries: false, includeUnreadable: true).Unreadable;
+
+    public StudioProjectListing ListLibraryProjects() =>
+        ListProjects(includeSummaries: true, includeUnreadable: true);
+
+    private StudioProjectListing ListProjects(bool includeSummaries, bool includeUnreadable)
     {
         lock (_sync)
         {
+            var summaries = new List<StudioProjectSummary>();
             var unreadable = new List<StudioUnreadableProject>();
             foreach (var folder in EnumerateProjectFolders())
             {
@@ -374,11 +372,15 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
                     continue;
                 }
 
-                try
+                var project = TryLoadProject(folder);
+                if (project is not null)
                 {
-                    LoadProjectFile(folder.Directory, folder.Id);
+                    if (includeSummaries)
+                    {
+                        summaries.Add(Summary(folder, project));
+                    }
                 }
-                catch (Exception ex) when (CanSkipProjectRead(ex))
+                else if (includeUnreadable)
                 {
                     unreadable.Add(new StudioUnreadableProject(
                         folder.Id,
@@ -388,10 +390,9 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
                 }
             }
 
-            return unreadable
-                .OrderBy(project => project.CreatedAt)
-                .ThenBy(project => project.Id, StringComparer.Ordinal)
-                .ToArray();
+            return new StudioProjectListing(
+                summaries.OrderBy(project => project.CreatedAt).ThenBy(project => project.Id, StringComparer.Ordinal).ToArray(),
+                unreadable.OrderBy(project => project.CreatedAt).ThenBy(project => project.Id, StringComparer.Ordinal).ToArray());
         }
     }
 
@@ -825,37 +826,34 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
         _exportIndexLoaded = true;
     }
 
-    private StudioProjectSummary? TryLoadSummary(ProjectFolder folder)
+    private StudioProject? TryLoadProject(ProjectFolder folder)
     {
         try
         {
-            var project = LoadProjectFile(folder.Directory, folder.Id);
-            var isFlat = project.Sources.Screen.External;
-            var externalExists = !isFlat || File.Exists(project.Sources.Screen.File);
-            var sourceExists = isFlat
-                ? externalExists
-                : File.Exists(Path.Combine(folder.Directory, project.Sources.Screen.File));
-
-            // Looked at where each video was saved. One on a drive that is not connected counts
-            // as not there, which keeps the project: the safe side of not knowing.
-            var exportMissing = project.Exports.Length > 0 && !project.Exports.Any(IsStillWhereItWasSaved);
-            return new StudioProjectSummary(
-                folder.Id,
-                project.Name,
-                project.CreatedAt,
-                project.LastOpenedAt,
-                project.Exports.Length == 0,
-                isFlat,
-                project.KeepSources,
-                DirectorySize(folder.Directory),
-                externalExists,
-                exportMissing,
-                sourceExists);
+            return LoadProjectFile(folder.Directory, folder.Id);
         }
         catch (Exception ex) when (CanSkipProjectRead(ex))
         {
             return null;
         }
+    }
+
+    private StudioProjectSummary? TryLoadSummary(ProjectFolder folder) =>
+        TryLoadProject(folder) is { } project ? Summary(folder, project) : null;
+
+    private static StudioProjectSummary Summary(ProjectFolder folder, StudioProject project)
+    {
+        var isFlat = project.Sources.Screen.External;
+        var externalExists = !isFlat || File.Exists(project.Sources.Screen.File);
+        var sourceExists = isFlat
+            ? externalExists
+            : File.Exists(Path.Combine(folder.Directory, project.Sources.Screen.File));
+
+        // A video on a drive that is not connected counts as missing, which keeps the project.
+        var exportMissing = project.Exports.Length > 0 && !project.Exports.Any(IsStillWhereItWasSaved);
+        return new StudioProjectSummary(
+            folder.Id, project.Name, project.CreatedAt, project.LastOpenedAt, project.Exports.Length == 0,
+            isFlat, project.KeepSources, DirectorySize(folder.Directory), externalExists, exportMissing, sourceExists);
     }
 
     /// <summary>
@@ -1122,6 +1120,8 @@ public sealed record StudioProjectSummary(
 /// <param name="CreatedAt">When the folder was made, which is when the recording started.</param>
 /// <param name="HasScreenRecording">Whether a screen recording is in the folder to be saved out of it.</param>
 public sealed record StudioUnreadableProject(string Id, DateTimeOffset CreatedAt, long SizeBytes, bool HasScreenRecording);
+
+public sealed record StudioProjectListing(IReadOnlyList<StudioProjectSummary> Summaries, IReadOnlyList<StudioUnreadableProject> Unreadable);
 
 public sealed record StudioStorageSummary(int ProjectCount, long TotalBytes);
 

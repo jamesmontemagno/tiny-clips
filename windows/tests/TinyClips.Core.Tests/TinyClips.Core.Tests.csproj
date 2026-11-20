@@ -11,6 +11,8 @@
     <!-- Exercise the UI-free diagnostic/coalescing helpers without loading WinUI in Core tests. -->
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\CoalescedAction.cs" Link="AppInfrastructure\CoalescedAction.cs" />
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\CoalescedRefresh.cs" Link="AppInfrastructure\CoalescedRefresh.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Views\ClipsLibrary\StudioLibraryRow.cs" Link="Library\StudioLibraryRow.cs" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\ClipsLibrary\ClipsLibraryWindow.xaml" LogicalName="Library.Window.xaml" />
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\TrayRecentItems.cs" Link="AppInfrastructure\TrayRecentItems.cs" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\App.xaml.cs" LogicalName="Tray.App.cs" />
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\WindowOpenTrace.cs" Link="AppInfrastructure\WindowOpenTrace.cs" />

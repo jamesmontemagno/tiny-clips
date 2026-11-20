@@ -36,15 +36,13 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     private readonly WindowChromeController _chromeController;
     private readonly WindowOpenTrace? _openTrace;
     private readonly CoalescedAction _navigationRebuild;
-    private readonly IStudioProjectStore _studioProjects;
+    private readonly CoalescedRefresh<(StudioLibraryRow[] Rows, Exception? Error)> _studioRefresh;
     private readonly StudioProjectTracker _studioTracker;
     private readonly object _studioNavigationTag = new();
-    private IReadOnlyList<StudioProjectSummary> _studioSummaries = [];
-    private IReadOnlyList<StudioUnreadableProject> _unreadableStudioProjects = [];
+    private StudioLibraryRow[]? _studioRows;
+    private volatile bool _studioReadsEnabled;
     private bool _showStudio;
-    private bool _studioLoaded;
     private bool _closed;
-    private int _studioLoadGeneration;
     private bool _syncingSelection;
     private bool _syncingNavigation;
 
@@ -63,7 +61,8 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
         using (_openTrace?.Measure(WindowOpenPhase.ServicesAndViewModel))
         {
             var services = App.Services;
-            _studioProjects = services.GetRequiredService<IStudioProjectStore>();
+            var studioProjects = services.GetRequiredService<IStudioProjectStore>();
+            _studioRefresh = new(() => ReadStudioProjects(studioProjects), PublishStudioProjects, OnStudioRefreshFailed);
             _studioTracker = services.GetRequiredService<StudioProjectTracker>();
             ViewModel = new ClipsLibraryViewModel(
                 services.GetRequiredService<IClipLibraryService>(),
@@ -74,7 +73,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
                 services.GetRequiredService<IClipArchiveService>(),
                 services.GetRequiredService<IClipLibraryWatcher>(),
                 services.GetRequiredService<IThumbnailCache>(),
-                _studioProjects,
+                studioProjects,
                 services.GetRequiredService<TimeProvider>(),
                 DispatcherQueue.GetForCurrentThread());
             ViewModel.Attach(this);
@@ -146,7 +145,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _closed = true;
-        _studioLoadGeneration++;
+        _studioRefresh.Dispose();
         Activated -= OnFirstActivated;
         Activated -= OnActivated;
         Closed -= OnClosed;
@@ -176,9 +175,9 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     {
         ApplyTheme();
         ViewModel.ReloadSettings();
-        if (_showStudio)
+        if (_showStudio || !ViewModel.IsStudioEnabled)
         {
-            _ = LoadStudioProjectsAsync();
+            RefreshStudioProjects();
         }
     }
 
@@ -329,11 +328,12 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
 
         if (args.SelectedItem is NavigationViewItem item && ReferenceEquals(item.Tag, _studioNavigationTag))
         {
+            var entering = !_showStudio;
             _showStudio = true;
             LibraryContent.Visibility = Visibility.Collapsed;
             StudioContent.Visibility = Visibility.Visible;
             UpdateSubtitle();
-            _ = LoadStudioProjectsAsync();
+            RefreshStudioProjects(invalidate: entering);
         }
         else if (args.SelectedItem is NavigationViewItem { Tag: NavigationEntryViewModel entry })
         {
@@ -353,7 +353,8 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     {
         if (_showStudio && e.WindowActivationState != WindowActivationState.Deactivated)
         {
-            _ = LoadStudioProjectsAsync();
+            // Files may have changed outside Studio while the window was inactive.
+            RefreshStudioProjects();
         }
     }
 
@@ -361,105 +362,98 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     {
         if (_showStudio && !_closed)
         {
-            _ = LoadStudioProjectsAsync();
+            RefreshStudioProjects();
         }
     }
 
-    private void OnRefreshStudioProjects(object sender, RoutedEventArgs e) => _ = LoadStudioProjectsAsync();
+    private void OnRefreshStudioProjects(object sender, RoutedEventArgs e) => RefreshStudioProjects();
 
     private void OnStudioSearchChanged(object sender, TextChangedEventArgs e)
     {
-        if (_showStudio && _studioLoaded)
+        if (_showStudio && _studioRows is { } rows)
         {
-            RenderStudioProjects();
+            FilterStudioProjects(rows);
         }
     }
 
-    private async Task LoadStudioProjectsAsync()
+    private void RefreshStudioProjects(bool invalidate = true)
     {
-        var generation = ++_studioLoadGeneration;
-        _studioLoaded = false;
-        StudioProjectRows.Children.Clear();
-        if (!ViewModel.IsStudioEnabled)
+        if (_closed) return;
+        var wasEnabled = _studioReadsEnabled;
+        _studioReadsEnabled = ViewModel.IsStudioEnabled;
+        if (!_studioReadsEnabled)
         {
-            _studioSummaries = [];
-            _unreadableStudioProjects = [];
+            _studioRows = null;
+            StudioProjectRows.ItemsSource = null;
             StudioStatus.Text = "Turn on Tiny Clips Studio in Settings to open projects.";
             return;
         }
 
-        StudioStatus.Text = "Loading Studio projects…";
+        if (_studioRows is null)
+        {
+            StudioStatus.Text = "Loading Studio projects…";
+        }
+        _studioRefresh.Request(invalidate || !wasEnabled);
+    }
+
+    private (StudioLibraryRow[], Exception?) ReadStudioProjects(IStudioProjectStore store)
+    {
         try
         {
-            var result = await Task.Run(() => (
-                _studioProjects.ListSummaries(),
-                _studioProjects.ListUnreadableProjects()));
-            if (_closed || generation != _studioLoadGeneration)
-            {
-                return;
-            }
-
-            _studioSummaries = result.Item1;
-            _unreadableStudioProjects = result.Item2.OrderByDescending(project => project.CreatedAt).ToArray();
-            _studioLoaded = true;
-            RenderStudioProjects();
+            return (_studioReadsEnabled ? StudioLibraryRow.FromListing(store.ListLibraryProjects()) : [], null);
         }
         catch (Exception ex)
         {
-            if (!_closed && generation == _studioLoadGeneration)
-            {
-                Debug.WriteLine($"Clips Library Studio projects failed: {ex}");
-                StudioStatus.Text = $"Couldn't read Studio projects: {ex.Message}";
-            }
+            // A read error, like a listing, must not replace the UI if a change superseded it.
+            return ([], ex);
         }
     }
 
-    private void RenderStudioProjects()
+    private void PublishStudioProjects((StudioLibraryRow[] Rows, Exception? Error) result)
     {
-        StudioProjectRows.Children.Clear();
+        if (!_studioReadsEnabled) return;
+        if (result.Error is { } error)
+        {
+            OnStudioRefreshFailed(error);
+            return;
+        }
+        _studioRows = result.Rows;
+        FilterStudioProjects(result.Rows);
+    }
+
+    private void OnStudioRefreshFailed(Exception ex)
+    {
+        if (!_studioReadsEnabled) return;
+        Debug.WriteLine($"Clips Library Studio projects failed: {ex}");
+        _studioRows = null;
+        StudioProjectRows.ItemsSource = null;
+        StudioStatus.Text = $"Couldn't read Studio projects: {ex.Message}";
+    }
+
+    private void FilterStudioProjects(StudioLibraryRow[] rows)
+    {
         var query = StudioSearch.Text.Trim();
-        var count = 0;
-        foreach (var project in StudioProjectSummary.LibraryProjects(_studioSummaries, query))
-        {
-            var name = project.LibraryName;
-            var row = new StackPanel { Spacing = 4, Margin = new Thickness(0, 0, 0, 12) };
-            row.Children.Add(new TextBlock { Text = name, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
-            var kind = project.ExportMissing ? "Export missing" : project.IsDraft ? "Draft" : "Project";
-            var missing = project.SourceExists ? "" : " · Recording is missing";
-            row.Children.Add(new TextBlock { Text = $"{kind} · {project.LastUsedAt.LocalDateTime:g}{missing}", TextWrapping = TextWrapping.Wrap });
-            var open = new Button { Content = "Open in Studio", HorizontalAlignment = HorizontalAlignment.Left };
-            AutomationProperties.SetName(open, $"Open {name}, {project.LastUsedAt.LocalDateTime:g}, in Studio");
-            open.Click += (_, _) =>
-            {
-                if ((Application.Current as App)?.OpenStudioWindow(project.Id) is null)
-                {
-                    StudioStatus.Text = "Couldn't open this project. Check that Studio is enabled and the project still exists.";
-                }
-            };
-            row.Children.Add(open);
-            StudioProjectRows.Children.Add(row);
-            count++;
-        }
-
-        if (query.Length == 0 || "Unreadable Project".Contains(query, StringComparison.CurrentCultureIgnoreCase))
-        {
-            foreach (var project in _unreadableStudioProjects)
-            {
-                var row = new StackPanel { Spacing = 4, Margin = new Thickness(0, 0, 0, 12) };
-                row.Children.Add(new TextBlock { Text = "Unreadable Project" });
-                row.Children.Add(new TextBlock
-                {
-                    Text = $"Studio cannot read this project from {project.CreatedAt.LocalDateTime:g}. It may be damaged or made by a newer version.",
-                    TextWrapping = TextWrapping.Wrap,
-                });
-                StudioProjectRows.Children.Add(row);
-                count++;
-            }
-        }
-
-        StudioStatus.Text = count > 0 ? "" : query.Length == 0
+        var matches = StudioLibraryRow.Matching(rows, query);
+        StudioProjectRows.ItemsSource = matches;
+        StudioStatus.Text = matches.Length > 0 ? "" : query.Length == 0
             ? "No Studio projects yet."
             : "No Studio projects match your search.";
+    }
+
+    private void OnStudioRowContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        if (!args.InRecycleQueue && args.Item is StudioLibraryRow row)
+        {
+            AutomationProperties.SetName(args.ItemContainer, row.AutomationName);
+        }
+    }
+
+    private void OnOpenStudioProject(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string id } && (Application.Current as App)?.OpenStudioWindow(id) is null)
+        {
+            StudioStatus.Text = "Couldn't open this project. Check that Studio is enabled and the project still exists.";
+        }
     }
 
     // ------------------------------------------------------------------ toolbar
