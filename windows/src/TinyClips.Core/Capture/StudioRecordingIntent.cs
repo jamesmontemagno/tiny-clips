@@ -94,7 +94,14 @@ public sealed class StudioRecordingIntent
     {
         ArgumentNullException.ThrowIfNull(setUp);
         return setUp.RecordForStudio && !_settings.StudioPreviewEnabled
-            ? VideoRecordingOptions.Default
+            ? setUp.RecordMicrophone is null && setUp.WebcamEnabled is null && setUp.ValidateDeviceAccess is null
+                ? VideoRecordingOptions.Default
+                : VideoRecordingOptions.Default with
+                {
+                    RecordMicrophone = setUp.RecordMicrophone,
+                    WebcamEnabled = setUp.WebcamEnabled,
+                    ValidateDeviceAccess = setUp.ValidateDeviceAccess,
+                }
             : setUp;
     }
 }

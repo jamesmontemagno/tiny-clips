@@ -22,6 +22,7 @@ public sealed class AudioCaptureService : IDisposable
     private readonly string? _micDeviceId;
     private readonly bool _limitMicrophone;
     private readonly TimeSpan _userOffset;
+    private readonly Action? _validateMicrophoneAccess;
     private readonly object _gate = new();
     private readonly List<TimelineAlignedWaveProvider> _buffers = new();
 
@@ -48,13 +49,14 @@ public sealed class AudioCaptureService : IDisposable
     /// <param name="userOffset">
     /// Manual A/V correction applied to every source. Positive delays audio relative to video.
     /// </param>
-    public AudioCaptureService(bool captureSystem, bool captureMic, string? micDeviceId, bool limitMicrophone, TimeSpan userOffset = default)
+    public AudioCaptureService(bool captureSystem, bool captureMic, string? micDeviceId, bool limitMicrophone, TimeSpan userOffset = default, Action? validateMicrophoneAccess = null)
     {
         _captureSystem = captureSystem;
         _captureMic = captureMic;
         _micDeviceId = micDeviceId;
         _limitMicrophone = limitMicrophone;
         _userOffset = userOffset;
+        _validateMicrophoneAccess = validateMicrophoneAccess;
     }
 
     /// <summary>True once at least one requested source started successfully.</summary>
@@ -63,6 +65,8 @@ public sealed class AudioCaptureService : IDisposable
     public bool CanMuteSystemAudio => _loopback is not null;
 
     public bool CanMuteMicrophone => _mic is not null;
+
+    public bool IsMicrophoneCapturing => _mic?.IsRunning == true;
 
     public bool IsSystemAudioMuted => Volatile.Read(ref _systemMuted) != 0;
 
@@ -103,6 +107,7 @@ public sealed class AudioCaptureService : IDisposable
 
         if (_captureMic)
         {
+            _validateMicrophoneAccess?.Invoke();
             TryStartSource(isLoopback: false);
         }
 

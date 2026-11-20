@@ -38,6 +38,23 @@ public class CliTests
         Assert.Equal(expectedCommands, listedCommands);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RecordingDeviceChoicesReachTheAppWithRecordingScopeOnly(bool studio)
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["record"];
+        var (output, error) = (new StringWriter(), new StringWriter());
+        Assert.Equal(0, await Cli.RunAsync(
+            ["recording.startVideo", "microphone=false", "camera=false", $"studio={studio.ToString().ToLowerInvariant()}"],
+            app.Environment(output, error, token: "t"), TestContext.Current.CancellationToken));
+        var parameters = app.Received[^1]["params"]!;
+        Assert.False(parameters["microphone"]!.GetValue<bool>());
+        Assert.False(parameters["camera"]!.GetValue<bool>());
+        Assert.Equal(studio, parameters["studio"]!.GetValue<bool>());
+    }
+
     [Fact]
     public async Task PairingSavesATokenAndLaterCommandsUseIt()
     {

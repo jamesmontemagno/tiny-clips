@@ -150,6 +150,33 @@ public sealed class StudioRecordingIntentTests
     }
 
     [Fact]
+    public void StudioFallbackAndRestartPreserveRecordingLocalDeviceRestrictions()
+    {
+        var intent = Create(out var settings, studioOn: true);
+        settings.RecordMicrophone = true;
+        settings.WebcamEnabled = true;
+        intent.Begin(VideoRecordingCommand.StudioRecording);
+        Action<VideoRecordingOptions> validate = _ => { };
+        var setUp = intent.CreateOptions(Version) with
+        {
+            RecordMicrophone = false,
+            WebcamEnabled = false,
+            ValidateDeviceAccess = validate,
+        };
+
+        settings.StudioPreviewEnabled = false;
+        var started = intent.OptionsAtStart(setUp);
+        var restarted = intent.OptionsAtStart(started);
+
+        Assert.False(started.RecordForStudio);
+        Assert.False(restarted.RecordMicrophone);
+        Assert.False(restarted.WebcamEnabled);
+        Assert.Same(validate, restarted.ValidateDeviceAccess);
+        Assert.True(settings.RecordMicrophone);
+        Assert.True(settings.WebcamEnabled);
+    }
+
+    [Fact]
     public void AStudioRecordingThatIsRestarted_AfterStudioWasSwitchedOff_IsRestartedAsAnOrdinaryOne()
     {
         var intent = Create(out var settings, studioOn: true);

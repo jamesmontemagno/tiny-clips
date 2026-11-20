@@ -23,6 +23,8 @@ public interface IVideoRecordingService
 
     bool CanMuteMicrophone { get; }
 
+    bool IsMicrophoneCapturing { get; }
+
     bool IsSystemAudioMuted { get; }
 
     bool IsMicrophoneMuted { get; }

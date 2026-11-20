@@ -135,7 +135,7 @@ change the availability or permissions of `recording.stop`.
 | Cannot connect | Start Tiny Clips and enable Agent Control. Check the listening status and endpoint in Settings. Local access does not bridge to a remote machine or container. |
 | `unauthorized` or revoked access | Run `tinyclips pair` again as the same OS account/environment used by the agent and approve it in Tiny Clips. |
 | `missing_scope` | Grant the scope to that agent in **Settings → Agent Control → Paired Agents → Permissions** (it applies immediately), or pair again requesting it with `--scopes`. |
-| `permission_required` | Grant the relevant OS screen/audio/camera permission. On macOS, follow System Settings → Privacy & Security and restart Tiny Clips if required. |
+| `permission_required` | Ask the user to grant the relevant OS screen/audio/camera permission. Recording also requires the user's saved Tiny Clips opt-in for each enabled device. On macOS, follow System Settings → Privacy & Security and restart Tiny Clips if required. |
 | `not_supported` | Check your app's version and feature settings; enable Studio for Studio commands. |
 | MCP connects but calls fail | Verify the server runs locally under the same account, can find the CLI/SDK, and shares the pairing configuration. Restart or reload the MCP connection. |
 | Studio edit returns `conflict` | Read the project again and reconcile changes with its latest `modifiedAt` and `revision`; do not blindly resend the old patch. |
@@ -218,6 +218,15 @@ These commands cover screenshot editors only, not Studio or video/GIF trimmers. 
 ### Targeted recording and scrolling capture
 
 `recording.startVideo` and `recording.startGif` accept the same target parameters as `capture.screenshot`. They start against the chosen screen, display region, or window without opening a picker or recording setup window, and use saved recording settings, including any configured countdown. `recording.status` reports progress; `recording.stop` saves the result without opening a trimmer. `studio: true` on `recording.startVideo` creates a Studio recording.
+
+On **macOS and Windows**, `recording.startVideo` also accepts optional `microphone` and `camera` booleans, including with `studio: true`. Omit either to use its saved preference, or set it to `false` to prevent that device from being captured in this take (not just mute the export). Only `record` scope is needed; saved preferences are never changed. `true` is allowed only when the user has already enabled that device in Tiny Clips **and** the OS has already granted device access; otherwise the command returns `permission_required`, without requesting permission. This also applies when omitted options resolve to an enabled saved preference; macOS permissions that have not yet been determined must be granted by the user first. Access and opt-in are checked again after the countdown and on restart. `recording.status` includes effective `microphone` and `camera` capture booleans, so a failed device start is not reported as enabled. Windows includes these booleans in its start response too. macOS preserves its asynchronous startup/countdown: `started: true` accepts the start request, not a guarantee that device startup has finished. Poll status for effective capture and check its optional `error: {code, message}` for permission or device failures after acceptance; the error clears at the next recording setup or restart. macOS device booleans reflect running sessions, so are false during countdown, startup, or pause until a session runs again. System audio is unchanged; disabling the microphone alone does not guarantee a silent video. GIFs capture neither device and do not accept these options.
+
+```sh
+tinyclips recording.startVideo mode=window windowId=<returned-window-id> microphone=false camera=false
+tinyclips recording.startVideo studio=true microphone=false camera=false
+```
+
+The MCP tool `tinyclips_recording_startVideo` accepts the same boolean arguments. Do not use `settings.set` to enable a device as a workaround for missing user consent.
 
 For long pages, call `capture.scrolling.start` with a target, scroll the page with the agent's own browser or UI tools, and call `capture.scrolling.stop` to save the stitched screenshot directly. Tiny Clips only captures and stitches frames; it does not send scroll input. `capture.scrolling.status` reports the active state and frame count. `capture.scrolling.cancel` discards the in-progress image and requires the sensitive `discard` approval.
 

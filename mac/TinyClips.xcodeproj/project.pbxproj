@@ -11,6 +11,8 @@
 		AC7000000000000000000001 /* AutomationContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000001 /* AutomationContract.swift */; };
 		AB7000000000000000000002 /* AutomationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000002 /* AutomationPolicy.swift */; };
 		AC7000000000000000000002 /* AutomationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000002 /* AutomationPolicy.swift */; };
+		AB7000000000000000000032 /* AutomationRecordingDevices.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000032 /* AutomationRecordingDevices.swift */; };
+		AC7000000000000000000032 /* AutomationRecordingDevices.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000032 /* AutomationRecordingDevices.swift */; };
 		AB7000000000000000000003 /* AutomationClientStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000003 /* AutomationClientStore.swift */; };
 		AC7000000000000000000003 /* AutomationClientStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000003 /* AutomationClientStore.swift */; };
 		AB7000000000000000000004 /* AutomationServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7000000000000000000004 /* AutomationServer.swift */; };
@@ -289,6 +291,7 @@
 /* Begin PBXFileReference section */
 		AA7000000000000000000001 /* AutomationContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationContract.swift; sourceTree = "<group>"; };
 		AA7000000000000000000002 /* AutomationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationPolicy.swift; sourceTree = "<group>"; };
+		AA7000000000000000000032 /* AutomationRecordingDevices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationRecordingDevices.swift; sourceTree = "<group>"; };
 		AA7000000000000000000003 /* AutomationClientStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationClientStore.swift; sourceTree = "<group>"; };
 		AA7000000000000000000004 /* AutomationServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationServer.swift; sourceTree = "<group>"; };
 		AA7000000000000000000005 /* AutomationApproval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutomationApproval.swift; sourceTree = "<group>"; };
@@ -477,6 +480,7 @@
 			children = (
 				AA7000000000000000000001 /* AutomationContract.swift */,
 				AA7000000000000000000002 /* AutomationPolicy.swift */,
+				AA7000000000000000000032 /* AutomationRecordingDevices.swift */,
 				AA7000000000000000000003 /* AutomationClientStore.swift */,
 				AA7000000000000000000004 /* AutomationServer.swift */,
 				AA7000000000000000000005 /* AutomationApproval.swift */,
@@ -863,6 +867,7 @@
 			files = (
 				AB7000000000000000000001 /* AutomationContract.swift in Sources */,
 				AB7000000000000000000002 /* AutomationPolicy.swift in Sources */,
+				AB7000000000000000000032 /* AutomationRecordingDevices.swift in Sources */,
 				AB7000000000000000000003 /* AutomationClientStore.swift in Sources */,
 				AB7000000000000000000004 /* AutomationServer.swift in Sources */,
 				AB7000000000000000000005 /* AutomationApproval.swift in Sources */,
@@ -984,6 +989,7 @@
 			files = (
 				AC7000000000000000000001 /* AutomationContract.swift in Sources */,
 				AC7000000000000000000002 /* AutomationPolicy.swift in Sources */,
+				AC7000000000000000000032 /* AutomationRecordingDevices.swift in Sources */,
 				AC7000000000000000000003 /* AutomationClientStore.swift in Sources */,
 				AC7000000000000000000004 /* AutomationServer.swift in Sources */,
 				AC7000000000000000000005 /* AutomationApproval.swift in Sources */,

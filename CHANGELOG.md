@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
 
 ### Changed
+- Agents on macOS and Windows can disable microphone and camera source capture for an individual video or Studio recording with `microphone=false camera=false`, without changing saved preferences or needing settings scope. Enabling requires existing user opt-in and OS permission, without permission prompts. Choices survive countdown, Studio fallback, and restart; recording status reports effective device capture and macOS startup/device errors.
 - Only Screenshot has a global keyboard shortcut by default on macOS; Video, GIF, OCR, direct screenshots, and Stop Recording are optional. Saved bindings are preserved. Stop Recording can be recorded, cleared, or reset in Settings and is active globally only during recording.
 - Shortcuts settings groups Screenshots, Recording, and Text recognition separately from fixed editor, Studio, Clips Library, and navigation references. Onboarding offers only the three common capture actions and explains how to stop without a shortcut.
 - Shortcut configuration deliberately remains UI-only; agents continue to use capture and recording commands directly.

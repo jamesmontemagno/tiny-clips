@@ -10,6 +10,7 @@ own `CHANGELOG.md` at the repository root.
 - The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
 
 ### Fixed
+- Agents can disable microphone and camera source capture for an individual video or Studio recording with `microphone=false camera=false`, using recording scope without changing saved settings. Enabling requires both the user's saved device opt-in and existing Windows permission; no permission prompt is shown. Consent is rechecked during preparation and restart, start/status report live device capture, and overrides survive countdown, Studio fallback, and restart.
 - Studio's Save project and Save project as commands now work for videos opened from the trimmer or Clips Library, copying the original into a portable project without moving or changing it.
 - Studio annotations added between frame boundaries now start on the displayed frame and appear immediately without advancing the playhead.
 - Tiny Clips no longer reserves `Ctrl+Shift+S` while idle. Stop recording is now an optional, editable shortcut, registered only during recording, so Save as shortcuts reach Studio and other apps normally.

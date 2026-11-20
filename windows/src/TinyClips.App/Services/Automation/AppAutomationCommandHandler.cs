@@ -153,6 +153,8 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         {
             ["state"] = snapshot.State,
             ["busy"] = snapshot.Busy,
+            ["microphone"] = snapshot.Microphone,
+            ["camera"] = snapshot.Camera,
         };
         if (snapshot.Kind is { } kind)
         {
@@ -198,21 +200,19 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
 
         var (target, region) = ResolveCaptureTarget(AutomationCaptureRequest.Parse(context.Params));
         var mediaPermissions = App.Services.GetRequiredService<IMediaDevicePermissionService>();
-        if (settings.RecordMicrophone && !mediaPermissions.HasMicrophoneAccess)
-        {
-            throw new AutomationException(AutomationErrorCodes.PermissionRequired,
-                "Microphone access is not granted. Allow it in Windows Settings before recording.");
-        }
-
-        if (settings.WebcamEnabled && !mediaPermissions.HasCameraAccess)
-        {
-            throw new AutomationException(AutomationErrorCodes.PermissionRequired,
-                "Camera access is not granted. Allow it in Windows Settings before recording.");
-        }
+        var options = AutomationRecordingOptions.Resolve(context.Params, settings,
+            mediaPermissions.HasMicrophoneAccess, mediaPermissions.HasCameraAccess);
 
         EnsureIdle();
-        await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Video, studio, target, region);
-        return new JsonObject { ["started"] = true, ["studio"] = studio };
+        await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Video, studio, target, region, options);
+        var snapshot = _app.GetRecordingSnapshot();
+        return new JsonObject
+        {
+            ["started"] = true,
+            ["studio"] = studio,
+            ["microphone"] = snapshot.Microphone,
+            ["camera"] = snapshot.Camera,
+        };
     }
 
     private async Task<JsonNode> StartGifAsync(AutomationCommandContext context)
