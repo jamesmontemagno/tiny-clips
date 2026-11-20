@@ -14,6 +14,9 @@ public interface IGifRecordingService
     /// <summary>Raised when a recording finishes (manual stop or time-limit), with the saved file path.</summary>
     event EventHandler<string?>? RecordingCompleted;
 
+    /// <summary>Raised after capture stops and before GIF encoding begins.</summary>
+    event EventHandler? RecordingStopped;
+
     /// <summary>
     /// Begins recording. When <paramref name="target"/> is null the primary monitor is
     /// recorded; pass a monitor or window target (and optional monitor-relative region)

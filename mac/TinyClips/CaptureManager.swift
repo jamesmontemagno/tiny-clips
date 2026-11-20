@@ -287,11 +287,25 @@ class CaptureManager: ObservableObject {
     }
 
     private func configureGlobalHotKeys() {
-        // A failed refresh must never restore the recording-only shortcut while idle.
+        let captureActions = HotKeyAction.allCases.filter { $0 != .stopRecording }
+        let result: HotKeyManager.RegistrationResult
+
         if !isRecording {
             hotKeyManager.unregisterAction(.stopRecording)
+            result = registerCaptureHotKeys(
+                CaptureSettings.shared.hotKeyBindings,
+                actions: captureActions
+            )
+        } else {
+            let bindings = CaptureSettings.shared.hotKeyBindings
+            let captureResult = registerCaptureHotKeys(bindings, actions: captureActions)
+            let stopResult = registerCaptureHotKeys(bindings, actions: [.stopRecording])
+            result = HotKeyManager.RegistrationResult(
+                failures: captureResult.failures + stopResult.failures,
+                restorationFailures: captureResult.restorationFailures + stopResult.restorationFailures
+            )
         }
-        let result = registerCaptureHotKeys(CaptureSettings.shared.hotKeyBindings)
+
         if isRecording, let error = result.errorMessage, error != captureHotKeyRegistrationError {
             SaveService.shared.showError("\(error) Use the floating Stop button or menu to stop recording.")
         }
@@ -362,9 +376,10 @@ class CaptureManager: ObservableObject {
     }
 
     private func registerCaptureHotKeys(
-        _ bindings: [HotKeyAction: HotKeyBinding]
+        _ bindings: [HotKeyAction: HotKeyBinding],
+        actions: [HotKeyAction] = HotKeyAction.allCases
     ) -> HotKeyManager.RegistrationResult {
-        let registrations = HotKeyAction.allCases.compactMap { action -> HotKeyManager.ActionRegistration? in
+        let registrations = actions.compactMap { action -> HotKeyManager.ActionRegistration? in
             guard let binding = bindings[action] else { return nil }
             return HotKeyManager.ActionRegistration(
                 action: action,

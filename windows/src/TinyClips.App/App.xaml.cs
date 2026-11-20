@@ -2370,7 +2370,19 @@ public partial class App : Application
         video.RecordingCompleted += OnRecordingCompleted;
         video.StudioRecordingCompleted += OnStudioRecordingCompleted;
         gif.RecordingCompleted += OnRecordingCompleted;
+        gif.RecordingStopped += OnGifRecordingStopped;
         video.WebcamCaptureFailed += OnWebcamCaptureFailed;
+    }
+
+    private void OnGifRecordingStopped(object? sender, EventArgs args)
+    {
+        _dispatcher?.TryEnqueue(() =>
+        {
+            if (!_isExiting)
+            {
+                UpdateRecordingState();
+            }
+        });
     }
 
     private void OnWebcamCaptureFailed(object? sender, string reason)
