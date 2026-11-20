@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- Open MP4 and MOV files directly in Studio from File Explorer with **Open with → Tiny Clips**, without changing the default player.
 - The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
 
 ### Fixed

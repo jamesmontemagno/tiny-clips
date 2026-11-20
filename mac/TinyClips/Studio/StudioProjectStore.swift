@@ -136,6 +136,7 @@ struct StudioFlatProjectRequest: Equatable, Sendable {
     var duration: Double
     var frameRate: Double
     var appVersion: String
+    var copyVideo = false
 
     init(videoURL: URL, name: String = "", width: Int, height: Int, duration: Double, frameRate: Double = 30, appVersion: String) {
         self.videoURL = videoURL
@@ -146,6 +147,12 @@ struct StudioFlatProjectRequest: Equatable, Sendable {
         self.frameRate = frameRate
         self.appVersion = appVersion
     }
+}
+
+private struct StudioCopiedVideoSource: Codable, Equatable {
+    var path: String
+    var size: UInt64
+    var modifiedAt: Date
 }
 
 /// Why a project could not be saved as a folder, or opened from one.
@@ -588,21 +595,56 @@ final class StudioProjectStore {
         }
     }
 
-    func getOrCreateFlatProject(request: StudioFlatProjectRequest) throws -> StudioProject {
-        try withLock {
-            _ = try StudioJSON.requirePositive(request.width, "sources.screen.width")
-            _ = try StudioJSON.requirePositive(request.height, "sources.screen.height")
-            _ = try StudioJSON.requireNonNegative(request.duration, "sources.screen.duration")
-            let needle = normalizedPath(request.videoURL.path)
-            for summary in try listSummariesUnlocked() {
-                let project = try loadUnlocked(id: summary.id)
-                if project.sources.screen.external && normalizedPath(project.sources.screen.file) == needle {
-                    return project
-                }
+    func getOrCreateFlatProject(
+        request: StudioFlatProjectRequest,
+        validateAccess: () throws -> Void = {}
+    ) throws -> StudioProject {
+        _ = try StudioJSON.requirePositive(request.width, "sources.screen.width")
+        _ = try StudioJSON.requirePositive(request.height, "sources.screen.height")
+        _ = try StudioJSON.requireNonNegative(request.duration, "sources.screen.duration")
+        let source = try request.copyVideo ? copiedVideoSource(at: request.videoURL) : nil
+        if request.copyVideo, let existing = try withLock({
+            let project = try flatProjectUnlocked(request: request, source: source)
+            try validateAccess()
+            return project
+        }) {
+            return existing
+        }
+
+        let screenFile = request.copyVideo ? "screen.\(request.videoURL.pathExtension.lowercased())" : request.videoURL.path
+        var stagingDirectory: URL?
+        var stagingID: String?
+        defer {
+            if let stagingDirectory { try? fileManager.removeItem(at: stagingDirectory) }
+            if let stagingID { endUse(id: stagingID) }
+        }
+        if let source {
+            _ = try StudioJSON.requirePlainFileName(screenFile, "sources.screen.file")
+            try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
+            let id = UUID().uuidString.lowercased()
+            beginUse(id: id)
+            stagingID = id
+            let staging = projectDirectoryUnchecked(for: id)
+            stagingDirectory = staging
+            try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
+            try fileManager.copyItem(at: request.videoURL, to: staging.appendingPathComponent(screenFile))
+            guard try copiedVideoSource(at: request.videoURL) == source else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            try JSONEncoder().encode(source).write(to: staging.appendingPathComponent("imported-video-source.json"), options: .atomic)
+        }
+
+        return try withLock {
+            try validateAccess()
+            let existing = try flatProjectUnlocked(request: request, source: source)
+            try validateAccess()
+            if let existing {
+                return existing
             }
 
             let id = UUID().uuidString.lowercased()
             let date = now()
+            let directory = projectDirectoryUnchecked(for: id)
             let project = StudioProject(
                 id: id,
                 name: request.name.isEmpty ? request.videoURL.deletingPathExtension().lastPathComponent : request.name,
@@ -612,20 +654,58 @@ final class StudioProjectStore {
                 app: StudioAppInfo(platform: "macos", version: request.appVersion),
                 sources: StudioSources(
                     screen: StudioScreenSource(
-                        file: request.videoURL.path,
+                        file: screenFile,
                         width: request.width,
                         height: request.height,
                         frameRate: request.frameRate,
                         duration: request.duration,
-                        external: true
+                        external: !request.copyVideo
                     ),
                     camera: nil,
                     events: nil
                 ),
                 scenes: [StudioScene(start: 0, layout: .screen)]
             )
-            return try saveUnlocked(project, updatingModifiedAt: false)
+            var movedCopy = false
+            do {
+                if let stagingDirectory {
+                    try fileManager.moveItem(at: stagingDirectory, to: directory)
+                    movedCopy = true
+                }
+                return try saveUnlocked(project, updatingModifiedAt: false)
+            } catch {
+                if movedCopy {
+                    try? fileManager.removeItem(at: directory)
+                }
+                throw error
+            }
         }
+    }
+
+    private func copiedVideoSource(at url: URL) throws -> StudioCopiedVideoSource {
+        let attributes = try fileManager.attributesOfItem(atPath: url.path)
+        guard let size = attributes[.size] as? NSNumber,
+              let modifiedAt = attributes[.modificationDate] as? Date else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return StudioCopiedVideoSource(path: normalizedPath(url.path), size: size.uint64Value, modifiedAt: modifiedAt)
+    }
+
+    private func flatProjectUnlocked(request: StudioFlatProjectRequest, source: StudioCopiedVideoSource?) throws -> StudioProject? {
+        let needle = normalizedPath(request.videoURL.path)
+        for summary in try listSummariesUnlocked() {
+            let project = try loadUnlocked(id: summary.id)
+            if let source {
+                let record = projectDirectoryUnchecked(for: project.id).appendingPathComponent("imported-video-source.json")
+                if let data = try? Data(contentsOf: record),
+                   (try? JSONDecoder().decode(StudioCopiedVideoSource.self, from: data)) == source {
+                    return project
+                }
+            } else if project.sources.screen.external && normalizedPath(project.sources.screen.file) == needle {
+                return project
+            }
+        }
+        return nil
     }
 
     func loadEvents(id: String) throws -> StudioEvents {

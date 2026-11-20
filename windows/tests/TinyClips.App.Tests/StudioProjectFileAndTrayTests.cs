@@ -9,9 +9,7 @@ using TinyClips.Core.Tests;
 namespace TinyClips.App.Tests;
 
 /// <summary>
-/// A <c>.tinyclips</c> file opens the app: the file type in the two package manifests, and how
-/// the app tells a project file from a picture. That Windows then starts the app with the
-/// file, and what the app shows, nobody has tried: the package was not installed for this.
+/// File associations in the two package manifests and how activation routes each file type.
 /// </summary>
 public sealed class StudioProjectFileTypeTests
 {
@@ -21,7 +19,7 @@ public sealed class StudioProjectFileTypeTests
 
     [Theory]
     [MemberData(nameof(Manifests))]
-    public void BothFlavoursOfThePackage_OpenTinyclipsFiles_BesideThePictures(string manifest)
+    public void BothFlavoursOfThePackage_RegisterStudioProjectsAndVideosBesideThePictures(string manifest)
     {
         var associations = Read(manifest).Descendants(Uap + "FileTypeAssociation")
             .Select(association => (
@@ -30,13 +28,15 @@ public sealed class StudioProjectFileTypeTests
                 Types: association.Descendants(Uap + "FileType").Select(type => type.Value).ToArray()))
             .ToList();
 
-        Assert.Equal(["image", "tinyclipsproject"], associations.Select(association => association.Name));
+        Assert.Equal(["image", "tinyclipsproject", "tinyclipsvideo"], associations.Select(association => association.Name));
         Assert.Equal("Tiny Clips project", associations[1].Display);
         Assert.Equal([StudioProjectFolder.ProjectFileExtension], associations[1].Types);
 
         // The pictures are as they were, and are the ones the app takes for pictures.
         Assert.Equal("Tiny Clips Image", associations[0].Display);
         Assert.Equal(ActivatedFile.ImageExtensions, associations[0].Types);
+        Assert.Equal("Tiny Clips Studio Video", associations[2].Display);
+        Assert.Equal(ActivatedFile.VideoExtensions, associations[2].Types);
 
         // Each association is an extension of its own, of the kind that opens files.
         Assert.All(
@@ -51,9 +51,11 @@ public sealed class StudioProjectFileTypeTests
     [InlineData(@"D:\Pictures\shot.JPG", "Image")]
     [InlineData(@"D:\Pictures\shot.jpeg", "Image")]
     [InlineData(@"D:\Pictures\shot.webp", "Image")]
-    [InlineData(@"D:\Saved\My Demo\screen.mp4", "None")]
+    [InlineData(@"D:\Saved\My Demo\screen.mp4", "StudioVideo")]
+    [InlineData(@"D:\Saved\My Demo\Screen.MOV", "StudioVideo")]
+    [InlineData(@"D:\Saved\My Demo\screen.mp4.txt", "None")]
     [InlineData(@"D:\Saved\My Demo\project.json", "None")]
-    [InlineData(@"D:\Saved\My Demo.tinyclips\screen.mp4", "None")]
+    [InlineData(@"D:\Saved\My Demo.tinyclips\screen.mp4", "StudioVideo")]
     [InlineData(@"D:\Saved\tinyclips", "None")]
     [InlineData("", "None")]
     [InlineData(null, "None")]
@@ -71,6 +73,9 @@ public sealed class StudioProjectFileTypeTests
         Assert.Equal(
             (ActivatedFileKind.Image, @"D:\c.png"),
             ActivatedFile.FirstSupported([@"D:\c.png", @"D:\b.tinyclips"]));
+        Assert.Equal(
+            (ActivatedFileKind.StudioVideo, @"D:\My Video.MP4"),
+            ActivatedFile.FirstSupported([null, @"D:\a.txt", @"D:\My Video.MP4", @"D:\b.tinyclips"]));
         Assert.Null(ActivatedFile.FirstSupported([@"D:\a.txt", null]));
         Assert.Null(ActivatedFile.FirstSupported([]));
     }

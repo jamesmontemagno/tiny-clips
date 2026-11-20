@@ -479,8 +479,7 @@ public partial class App : Application
     /// <summary>
     /// If the app was launched via "Open with → Tiny Clips" on an image file, open that image
     /// in the screenshot editor. Mirrors the macOS open-in-editor file-activation behaviour.
-    /// A <c>.tinyclips</c> file, the file of a Studio project that was saved as a folder, opens
-    /// in Studio instead.
+    /// A <c>.tinyclips</c> project or a supported video opens in Studio instead.
     /// </summary>
     private void HandleFileActivation()
     {
@@ -500,7 +499,7 @@ public partial class App : Application
 
     /// <summary>
     /// Opens the first file of a file activation that the app has an editor for: an image in
-    /// the screenshot editor, a Studio project file in Studio. No other window is shown with it.
+    /// the screenshot editor, a project or video in Studio.
     /// </summary>
     private bool TryOpenActivatedFile(IEnumerable<string?> paths)
     {
@@ -509,9 +508,13 @@ public partial class App : Application
             return false;
         }
 
-        return file.Kind == ActivatedFileKind.StudioProject
-            ? _dispatcher?.TryEnqueue(() => _ = OpenActivatedStudioProjectAsync(file.Path)) == true
-            : _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(file.Path)) == true;
+        return file.Kind switch
+        {
+            ActivatedFileKind.StudioProject => _dispatcher?.TryEnqueue(() => _ = OpenActivatedStudioProjectAsync(file.Path)) == true,
+            ActivatedFileKind.StudioVideo => _dispatcher?.TryEnqueue(() => _ = OpenVideoInStudioAsync(file.Path)) == true,
+            ActivatedFileKind.Image => _dispatcher?.TryEnqueue(() => OpenScreenshotEditor(file.Path)) == true,
+            _ => false,
+        };
     }
 
     /// <summary>

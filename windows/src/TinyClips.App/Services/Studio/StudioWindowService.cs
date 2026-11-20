@@ -343,12 +343,12 @@ public sealed class StudioWindowService : IStudioProjectHost
     }
 
     /// <summary>
-    /// Opens an existing video in the editor as a flat project (one per video). Never throws:
-    /// the result carries a failure message when nothing opened. With Studio switched off the
-    /// result says so.
+    /// Opens an existing video in the editor as a flat project (one per video).
+    /// The result carries a failure message when nothing opened. Cancellation propagates.
     /// </summary>
-    public async Task<StudioProjectOpenResult> OpenVideoAsync(string videoPath)
+    public async Task<StudioProjectOpenResult> OpenVideoAsync(string videoPath, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (_isExiting)
         {
             return new StudioProjectOpenResult(null, null);
@@ -361,7 +361,8 @@ public sealed class StudioWindowService : IStudioProjectHost
 
         try
         {
-            var projectId = await Task.Run(() => _store.FindProjectIdByExportPath(videoPath));
+            var projectId = await Task.Run(() => _store.FindProjectIdByExportPath(videoPath), cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             if (_isExiting || !_settings.StudioPreviewEnabled)
             {
                 return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
@@ -371,15 +372,22 @@ public sealed class StudioWindowService : IStudioProjectHost
                 return new StudioProjectOpenResult(Open(projectId), null);
             }
             var info = await StudioVideoProbe.ReadAsync(videoPath);
+            cancellationToken.ThrowIfCancellationRequested();
             if (_isExiting || !_settings.StudioPreviewEnabled)
             {
                 return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
             }
             var project = _store.GetOrCreateFlatProject(videoPath, info, AppVersionInfo.GetCurrentVersionText());
+            cancellationToken.ThrowIfCancellationRequested();
             return new StudioProjectOpenResult(Open(project.Id), null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             Debug.WriteLine($"StudioWindowService: opening a video failed: {ex}");
             return new StudioProjectOpenResult(null, $"This video could not be opened in Studio: {ex.Message}");
         }
