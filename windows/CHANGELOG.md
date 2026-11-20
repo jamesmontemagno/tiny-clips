@@ -9,6 +9,7 @@ own `CHANGELOG.md` at the repository root.
 - The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
 
 ### Fixed
+- Studio annotations added between frame boundaries now start on the displayed frame and appear immediately without advancing the playhead.
 - Tiny Clips no longer reserves `Ctrl+Shift+S` while idle. Stop recording is now an optional, editable shortcut, registered only during recording, so Save as shortcuts reach Studio and other apps normally.
 - Scrolling screenshots now keep the lower viewport overlap until the final frame, preventing bottom-floating controls such as Teams' "New messages" badge from repeating throughout the image.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
