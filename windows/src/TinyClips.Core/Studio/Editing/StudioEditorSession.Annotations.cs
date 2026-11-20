@@ -82,7 +82,9 @@ public sealed partial class StudioEditorSession
             var frame = StudioPreviewTimeMath.ClampFrame(
                 StudioPreviewTimeMath.FrameAt(time, frameRate),
                 StudioPreviewTimeMath.FrameCount(model.SourceDuration, frameRate));
-            result = model.AddAnnotation(kind, StudioPreviewTimeMath.FrameStart(frame, frameRate), _events);
+            var start = Math.Min(time, StudioPreviewTimeMath.FrameStart(frame, frameRate));
+            var sampleTime = StudioPreviewTimeMath.FrameMiddle(frame, frameRate);
+            result = model.AddAnnotation(kind, start, _events, sampleTime);
             return result.Index is { } index ? EditSelection.Annotation(index) : null;
         });
         return result;

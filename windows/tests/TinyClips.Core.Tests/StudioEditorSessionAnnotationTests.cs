@@ -40,6 +40,48 @@ public sealed class StudioEditorSessionAnnotationTests : StudioEditorSessionTest
     }
 
     [Fact]
+    public async Task AddingAtASceneCut_UsesTheDisplayedFrameLayout()
+    {
+        var id = CreateProject(camera: true);
+        var project = Projects.Load(id);
+        Projects.Save(project with
+        {
+            Scenes =
+            [
+                new StudioScene { Start = 0, Layout = StudioLayout.Bubble },
+                new StudioScene { Start = 4.01, Layout = StudioLayout.Camera },
+            ],
+        });
+        var session = await OpenAsync(id);
+        session.Scrub(4.03);
+        var renderTime = StudioPreviewTimeMath.FrameMiddle(120, 30);
+
+        Assert.True(session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Arrow).Changed);
+
+        var annotation = Assert.Single(Preview.LastProject!.Overlays.Annotations);
+        var frame = StudioLayoutResolver.Resolve(Preview.LastProject, null, renderTime, 1920, 1080);
+        Assert.Null(frame.Screen);
+        Assert.Equal(StudioAnnotationAttach.Frame, annotation.Attach);
+        Assert.True(StudioAnnotationGeometry.TryResolve(annotation, 0, frame, renderTime, 1920, 1080, out _));
+        Assert.Single(session.GetAnnotationHandles(1920, 1080));
+    }
+
+    [Fact]
+    public async Task AddingJustBeforeAFrameBoundary_KeepsTheStartAtThePlayhead_AndShowsAHandle()
+    {
+        var session = await OpenAsync(CreateProject(frameRate: 30));
+        const double playhead = 3.999999;
+        session.Scrub(playhead);
+
+        Assert.True(session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Arrow).Changed);
+
+        var annotation = Assert.Single(Preview.LastProject!.Overlays.Annotations);
+        Assert.True(annotation.Start <= playhead);
+        Assert.Single(session.GetAnnotationHandles(1920, 1080));
+        Assert.Equal(playhead, session.Playhead, Precision);
+    }
+
+    [Fact]
     public async Task Adding_SelectsIt_ShowsThePanel_AndLeavesThePlayhead()
     {
         var session = await OpenAsync(CreateProject());
