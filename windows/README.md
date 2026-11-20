@@ -52,7 +52,9 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   video and GIF without changing their saved durations, and shows Custom if they differ.
   Windows notification availability is separate from the save-notification preference.
   The final page illustrates where to find Tiny Clips in the taskbar's system tray.
-  An in-app Guide provides a help reference.
+  The in-app Guide splits help into **Capture**, **Shortcuts**, **Edit & record**,
+  **Library**, and **Agents** tabs, with capture help selected first. Each page scrolls
+  independently while the tabs stay visible; keyboard navigation uses the native tab control.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
   **Smart Collections** (All, Recent, This Week, This Month, Large Files, Favorites, Screenshots,
   Videos, GIFs), your **Collections**, and **Tags**; search across names, tags and notes; a
