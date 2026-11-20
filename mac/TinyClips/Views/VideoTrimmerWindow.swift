@@ -461,7 +461,7 @@ private struct VideoTrimmerView: View {
                 }
                 .help(viewModel.isPlaying ? "Pause the trimmed preview." : "Play the trimmed preview.")
 
-                if CaptureSettings.shared.studioPreviewEnabled && !discardsCaptureOnCancel {
+                if !discardsCaptureOnCancel {
                     Button {
                         viewModel.stopPlayback()
                         if viewModel.hasUnsavedChanges {

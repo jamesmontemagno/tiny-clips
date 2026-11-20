@@ -5,11 +5,6 @@ using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Tests;
 
-/// <summary>
-/// Which video recording is a Studio recording. The command it was asked for with decides,
-/// and only while Studio is switched on: Studio recording makes one, Record video and its
-/// hotkey never do.
-/// </summary>
 public sealed class StudioRecordingIntentTests
 {
     private const string Version = "1.9.0";
@@ -18,15 +13,14 @@ public sealed class StudioRecordingIntentTests
     [InlineData(VideoRecordingCommand.StudioRecording, true)]
     [InlineData(VideoRecordingCommand.RecordVideo, false)]
     [InlineData(VideoRecordingCommand.RecordVideoHotKey, false)]
-    public void DefaultOnStudio_RoutesOnlyTheStudioCommandToAProject(VideoRecordingCommand command, bool forStudio)
+    public void TheRequestedCommandDeterminesWhetherRecordingUsesStudio(VideoRecordingCommand command, bool forStudio)
     {
-        var settings = new CaptureSettings(new TestSettingsService());
-        var intent = new StudioRecordingIntent(settings);
+        var intent = Create();
 
-        Assert.True(settings.StudioPreviewEnabled);
         intent.Begin(command);
 
-        Assert.Equal(forStudio, intent.OptionsAtStart(intent.CreateOptions(Version)).RecordForStudio);
+        Assert.Equal(forStudio, intent.IsForStudio);
+        Assert.Equal(forStudio, intent.CreateOptions(Version).RecordForStudio);
     }
 
     [Theory]
@@ -36,7 +30,7 @@ public sealed class StudioRecordingIntentTests
     public void PickerPresentation_AgreesWithRecordingRouting(
         VideoRecordingCommand command, CapturePickerIntent expected, string label, bool recordsForStudio)
     {
-        var intent = Create(out _, studioOn: true);
+        var intent = Create();
         intent.Begin(command);
 
         var picker = intent.GetPickerIntent(CaptureType.Video);
@@ -44,9 +38,8 @@ public sealed class StudioRecordingIntentTests
         Assert.Equal(expected, picker);
         Assert.Equal(label, picker.GetLabel());
         Assert.Equal(CaptureType.Video, picker.GetCaptureType());
-        Assert.Equal(recordsForStudio, intent.OptionsAtStart(intent.CreateOptions(Version)).RecordForStudio);
+        Assert.Equal(recordsForStudio, intent.CreateOptions(Version).RecordForStudio);
 
-        // Returning from target selection or automatically reopening must retain the experience.
         intent.Begin(VideoRecordingCommand.PickerReturned);
         Assert.Equal(picker, intent.GetPickerIntent(CaptureType.Video));
         Assert.Equal(recordsForStudio, intent.CreateOptions(Version).RecordForStudio);
@@ -58,7 +51,7 @@ public sealed class StudioRecordingIntentTests
     public void OtherCaptureModes_DoNotInheritTheStudioPicker(
         CaptureType type, CapturePickerIntent expected, string label)
     {
-        var intent = Create(out _, studioOn: true);
+        var intent = Create();
         intent.Begin(VideoRecordingCommand.StudioRecording);
 
         var picker = intent.GetPickerIntent(type);
@@ -69,291 +62,69 @@ public sealed class StudioRecordingIntentTests
         Assert.Equal(CapturePickerIntent.Studio, intent.GetPickerIntent(CaptureType.Video));
     }
 
-    [Theory]
-    [InlineData(VideoRecordingCommand.RecordVideo)]
-    [InlineData(VideoRecordingCommand.RecordVideoHotKey)]
-    public void CancellingStudioThenAskingForVideo_ResetsPickerAndRecordingIntent(VideoRecordingCommand nextCommand)
-    {
-        var intent = Create(out _, studioOn: true);
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-        Assert.Equal("Studio", intent.GetPickerIntent(CaptureType.Video).GetLabel());
-
-        // Cancel before creating recording options; the next explicit command owns the intent.
-        intent.Begin(nextCommand);
-
-        Assert.Equal("Video", intent.GetPickerIntent(CaptureType.Video).GetLabel());
-        Assert.False(intent.CreateOptions(Version).RecordForStudio);
-    }
-
     [Fact]
-    public void StudioDisabledWhilePickerIsOpen_ReopenedPickerAndRecordingBothBecomeVideo()
+    public void ANewVideoCommandReplacesThePreviousIntent()
     {
-        var intent = Create(out var settings, studioOn: true);
+        var intent = Create();
         intent.Begin(VideoRecordingCommand.StudioRecording);
-        Assert.Equal(CapturePickerIntent.Studio, intent.GetPickerIntent(CaptureType.Video));
-
-        settings.StudioPreviewEnabled = false;
-        intent.Begin(VideoRecordingCommand.PickerReturned);
-
-        Assert.Equal(CapturePickerIntent.Video, intent.GetPickerIntent(CaptureType.Video));
-        Assert.Equal("Video", intent.GetPickerIntent(CaptureType.Video).GetLabel());
-        Assert.False(intent.CreateOptions(Version).RecordForStudio);
-    }
-
-    // ---- Asked for with Studio recording
-
-    [Fact]
-    public void StudioRecording_WhileStudioIsOn_IsAStudioRecording_WithTheLookNewProjectsStartWith()
-    {
-        var intent = Create(out var settings, studioOn: true);
-        settings.StudioDefaultLook = new StudioLook(new StudioCanvas { Padding = 0.2 }, new StudioScreenStyle(), new StudioCameraStyle());
-
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-
         Assert.True(intent.IsForStudio);
+
+        intent.Begin(VideoRecordingCommand.RecordVideo);
+
+        Assert.False(intent.IsForStudio);
+        Assert.Same(VideoRecordingOptions.Default, intent.CreateOptions(Version));
+    }
+
+    [Fact]
+    public void StudioRecording_UsesTheSavedLookAndAppVersion()
+    {
+        var settings = new CaptureSettings(new TestSettingsService())
+        {
+            StudioDefaultLook = new StudioLook(new StudioCanvas { Padding = 0.2 }, new StudioScreenStyle(), new StudioCameraStyle()),
+        };
+        var intent = new StudioRecordingIntent(settings);
+
+        intent.Begin(VideoRecordingCommand.StudioRecording);
         var options = intent.CreateOptions(Version);
+
         Assert.True(options.RecordForStudio);
         Assert.Equal(Version, options.AppVersion);
         Assert.Equal(0.2, Assert.IsType<StudioLook>(options.Look).Canvas.Padding);
-
-        // Studio is still on where the recording starts: it starts as it was set up.
-        Assert.Same(options, intent.OptionsAtStart(options));
     }
 
     [Fact]
-    public void StudioRecording_WithStudioSwitchedOffBeforeItIsSetUp_IsAnOrdinaryRecording()
+    public void RecordVideoAndItsHotKeyAlwaysUseOrdinaryRecordingOptions()
     {
-        var intent = Create(out var settings, studioOn: true);
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-
-        // The capture picker is open meanwhile, and Settings can be used.
-        settings.StudioPreviewEnabled = false;
-
-        Assert.False(intent.IsForStudio);
-        Assert.Same(VideoRecordingOptions.Default, intent.CreateOptions(Version));
-    }
-
-    [Fact]
-    public void StudioRecording_WithStudioSwitchedOffBetweenSetupAndStart_StartsAsAnOrdinaryRecording()
-    {
-        var intent = Create(out var settings, studioOn: true);
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-        var setUp = intent.CreateOptions(Version);
-        Assert.True(setUp.RecordForStudio);
-
-        // The countdown runs meanwhile.
-        settings.StudioPreviewEnabled = false;
-
-        var started = intent.OptionsAtStart(setUp);
-        Assert.Same(VideoRecordingOptions.Default, started);
-        Assert.False(started.RecordForStudio);
-    }
-
-    [Fact]
-    public void StudioFallbackAndRestartPreserveRecordingLocalDeviceRestrictions()
-    {
-        var intent = Create(out var settings, studioOn: true);
-        settings.RecordMicrophone = true;
-        settings.WebcamEnabled = true;
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-        Action<VideoRecordingOptions> validate = _ => { };
-        var setUp = intent.CreateOptions(Version) with
-        {
-            RecordMicrophone = false,
-            WebcamEnabled = false,
-            ValidateDeviceAccess = validate,
-        };
-
-        settings.StudioPreviewEnabled = false;
-        var started = intent.OptionsAtStart(setUp);
-        var restarted = intent.OptionsAtStart(started);
-
-        Assert.False(started.RecordForStudio);
-        Assert.False(restarted.RecordMicrophone);
-        Assert.False(restarted.WebcamEnabled);
-        Assert.Same(validate, restarted.ValidateDeviceAccess);
-        Assert.True(settings.RecordMicrophone);
-        Assert.True(settings.WebcamEnabled);
-    }
-
-    [Fact]
-    public void AStudioRecordingThatIsRestarted_AfterStudioWasSwitchedOff_IsRestartedAsAnOrdinaryOne()
-    {
-        var intent = Create(out var settings, studioOn: true);
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-        var recording = intent.OptionsAtStart(intent.CreateOptions(Version));
-        Assert.True(recording.RecordForStudio);
-
-        // Restarted with Studio still on: the same kind of recording again.
-        Assert.Same(recording, intent.OptionsAtStart(recording));
-
-        settings.StudioPreviewEnabled = false;
-
-        Assert.Same(VideoRecordingOptions.Default, intent.OptionsAtStart(recording));
-    }
-
-    [Fact]
-    public void StudioRecording_AskedForWhileStudioIsOff_IsOrdinary_AndStaysSoWhenStudioIsSwitchedOn()
-    {
-        var intent = Create(out var settings, studioOn: false);
+        var intent = Create();
 
         intent.Begin(VideoRecordingCommand.StudioRecording);
-
-        Assert.False(intent.IsForStudio);
-        Assert.Same(VideoRecordingOptions.Default, intent.CreateOptions(Version));
-
-        // What counts is whether Studio was on when the recording was asked for.
-        settings.StudioPreviewEnabled = true;
-
-        Assert.False(intent.IsForStudio);
-        Assert.Same(VideoRecordingOptions.Default, intent.CreateOptions(Version));
-    }
-
-    [Fact]
-    public void StudioSwitchedOffAndOnAgainWhileTheRecordingIsSetUp_LeavesItAStudioRecording()
-    {
-        var intent = Create(out var settings, studioOn: true);
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-
-        settings.StudioPreviewEnabled = false;
-        Assert.False(intent.IsForStudio);
-
-        settings.StudioPreviewEnabled = true;
-        Assert.True(intent.IsForStudio);
-        Assert.True(intent.CreateOptions(Version).RecordForStudio);
-    }
-
-    // ---- Asked for with Record video, from the tray menu or with its hotkey
-
-    [Theory]
-    [InlineData(VideoRecordingCommand.RecordVideo)]
-    [InlineData(VideoRecordingCommand.RecordVideoHotKey)]
-    public void RecordVideo_AndItsHotKey_AreAlwaysAnOrdinaryRecording(VideoRecordingCommand command)
-    {
-        var intent = Create(out _, studioOn: true);
-
-        intent.Begin(command);
-
-        Assert.False(intent.IsForStudio);
-        var options = intent.CreateOptions(Version);
-        Assert.Same(VideoRecordingOptions.Default, options);
-        Assert.False(options.RecordForStudio);
-        Assert.Same(options, intent.OptionsAtStart(options));
-    }
-
-    [Theory]
-    [InlineData(VideoRecordingCommand.RecordVideo)]
-    [InlineData(VideoRecordingCommand.RecordVideoHotKey)]
-    public void RecordVideo_AndItsHotKey_AfterAStudioRecording_AreAnOrdinaryRecordingAgain(VideoRecordingCommand command)
-    {
-        var intent = Create(out _, studioOn: true);
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-        Assert.True(intent.IsForStudio);
-
-        intent.Begin(command);
-
-        Assert.False(intent.IsForStudio);
-        Assert.Same(VideoRecordingOptions.Default, intent.CreateOptions(Version));
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void AnOrdinaryRecording_StartsAsOne_WhateverTheSwitchSays(bool studioOn)
-    {
-        var intent = Create(out _, studioOn);
-
-        Assert.Same(VideoRecordingOptions.Default, intent.OptionsAtStart(VideoRecordingOptions.Default));
-    }
-
-    // ---- How long what was asked for is kept
-
-    [Fact]
-    public void BeforeAnyRecordingIsAskedFor_NothingIsAStudioRecording()
-    {
-        var intent = Create(out _, studioOn: true);
-
-        Assert.False(intent.IsForStudio);
-        Assert.Same(VideoRecordingOptions.Default, intent.CreateOptions(Version));
-
-        // A picker that comes back has nothing to keep either.
-        intent.Begin(VideoRecordingCommand.PickerReturned);
-
-        Assert.False(intent.IsForStudio);
-    }
-
-    [Fact]
-    public void WhatWasAskedFor_IsKeptThroughThePickerTheSetupAndAPickerThatComesBack_UntilARecordingIsAskedForAgain()
-    {
-        var intent = Create(out _, studioOn: true);
-
-        // Studio recording: the picker, the recording setup panel, the countdown, the start.
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-        Assert.True(intent.IsForStudio);
-        var first = intent.OptionsAtStart(intent.CreateOptions(Version));
-        Assert.True(first.RecordForStudio);
-        Assert.True(intent.IsForStudio);
-
-        // The recording ends and the picker comes back by itself, twice: Studio recordings still.
-        intent.Begin(VideoRecordingCommand.PickerReturned);
-        Assert.True(intent.IsForStudio);
-        Assert.True(intent.CreateOptions(Version).RecordForStudio);
-        intent.Begin(VideoRecordingCommand.PickerReturned);
-        Assert.True(intent.IsForStudio);
-
-        // Record video is asked for: ordinary from here on, also when its picker comes back.
         intent.Begin(VideoRecordingCommand.RecordVideoHotKey);
-        Assert.False(intent.IsForStudio);
-        intent.Begin(VideoRecordingCommand.PickerReturned);
+
         Assert.False(intent.IsForStudio);
         Assert.Same(VideoRecordingOptions.Default, intent.CreateOptions(Version));
+    }
 
-        // And Studio recording once more.
+    [Fact]
+    public void PickerReturnedRetainsThePreviousCommandUntilAnotherRecordingIsRequested()
+    {
+        var intent = Create();
+
         intent.Begin(VideoRecordingCommand.StudioRecording);
+        intent.Begin(VideoRecordingCommand.PickerReturned);
         Assert.True(intent.IsForStudio);
-    }
+        Assert.True(intent.CreateOptions(Version).RecordForStudio);
 
-    [Fact]
-    public void APickerThatComesBack_AfterStudioWasSwitchedOff_IsForAnOrdinaryRecording()
-    {
-        var intent = Create(out var settings, studioOn: true);
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-
-        settings.StudioPreviewEnabled = false;
+        intent.Begin(VideoRecordingCommand.RecordVideo);
         intent.Begin(VideoRecordingCommand.PickerReturned);
-
         Assert.False(intent.IsForStudio);
         Assert.Same(VideoRecordingOptions.Default, intent.CreateOptions(Version));
     }
 
-    [Fact]
-    public void WhatIsAskedFor_StoresNothing()
-    {
-        var intent = Create(out _, out var service, studioOn: true);
-        var writes = service.Writes;
-
-        intent.Begin(VideoRecordingCommand.StudioRecording);
-        _ = intent.OptionsAtStart(intent.CreateOptions(Version));
-        intent.Begin(VideoRecordingCommand.RecordVideo);
-
-        Assert.Equal(writes, service.Writes);
-    }
-
-    private static StudioRecordingIntent Create(out CaptureSettings settings, bool studioOn) =>
-        Create(out settings, out _, studioOn);
-
-    private static StudioRecordingIntent Create(out CaptureSettings settings, out TestSettingsService service, bool studioOn)
-    {
-        service = new TestSettingsService();
-        settings = new CaptureSettings(service) { StudioPreviewEnabled = studioOn };
-        return new StudioRecordingIntent(settings);
-    }
+    private static StudioRecordingIntent Create() => new(new CaptureSettings(new TestSettingsService()));
 
     private sealed class TestSettingsService : ISettingsService
     {
         private readonly Dictionary<string, object> _values = new(StringComparer.OrdinalIgnoreCase);
-
-        public int Writes { get; private set; }
 
         public AppTheme Theme { get; set; }
 
@@ -362,10 +133,6 @@ public sealed class StudioRecordingIntentTests
         public T Get<T>(string key, T defaultValue) =>
             _values.TryGetValue(key, out var value) && value is T typedValue ? typedValue : defaultValue;
 
-        public void Set<T>(string key, T value)
-        {
-            _values[key] = value is null ? string.Empty : value;
-            Writes++;
-        }
+        public void Set<T>(string key, T value) => _values[key] = value is null ? string.Empty : value;
     }
 }

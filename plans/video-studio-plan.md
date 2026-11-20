@@ -1,5 +1,9 @@
 # Tiny Clips Studio: a compositing editor for video recordings (macOS + Windows)
 
+> **Current status (20 November 2026):** Studio is generally available on both platforms. Preview
+> switches, What's New promotion, and switch-on/off validation steps below describe earlier
+> releases and are historical, not current behavior.
+
 The feature is named **Tiny Clips Studio**. This plan, the UI, and the code call it "Studio" for short.
 
 ## Problem and approach

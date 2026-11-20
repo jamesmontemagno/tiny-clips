@@ -697,30 +697,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public bool VideoCapturePickerAfterCaptureEnabled => ShowVideoCapturePicker;
 
-    // Studio. Its switch is always shown. Everything else bound to these stays hidden unless the
-    // switch is on.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StudioPreviewVisibility))]
-    [NotifyPropertyChangedFor(nameof(StudioDraftsVisibility))]
-    [NotifyPropertyChangedFor(nameof(StudioKeptNoteVisibility))]
-    private bool _isStudioPreviewEnabled;
-
-    public Microsoft.UI.Xaml.Visibility StudioPreviewVisibility => IsStudioPreviewEnabled
-        ? Microsoft.UI.Xaml.Visibility.Visible
-        : Microsoft.UI.Xaml.Visibility.Collapsed;
-
-    /// <summary>
-    /// What is still on disk while Studio is switched off, such as "3 Studio projects are kept and
-    /// use 1.2 GB." Empty when there is nothing. Shown under the switch, only while it is off.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StudioKeptNoteVisibility))]
-    private string _studioKeptNote = string.Empty;
-
-    public Microsoft.UI.Xaml.Visibility StudioKeptNoteVisibility => !IsStudioPreviewEnabled && StudioKeptNote.Length > 0
-        ? Microsoft.UI.Xaml.Visibility.Visible
-        : Microsoft.UI.Xaml.Visibility.Collapsed;
-
+    // Studio
     [ObservableProperty]
     private double _studioSourceRetentionDays = CaptureSettings.DefaultStudioSourceRetentionDays;
 
@@ -804,7 +781,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     public System.Collections.ObjectModel.ObservableCollection<StudioDraftItem> StudioDrafts { get; } = new();
 
-    public Microsoft.UI.Xaml.Visibility StudioDraftsVisibility => IsStudioPreviewEnabled && StudioDrafts.Count > 0
+    public Microsoft.UI.Xaml.Visibility StudioDraftsVisibility => StudioDrafts.Count > 0
         ? Microsoft.UI.Xaml.Visibility.Visible
         : Microsoft.UI.Xaml.Visibility.Collapsed;
 
@@ -1106,9 +1083,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>
     /// Reads the Studio project count and size the first time they are shown. Idempotent, like the
-    /// analytics and media device loads. With Studio switched off it reads them all the same, for
-    /// the line under the switch that says what is still kept; where Studio was never used there
-    /// is no folder to read, and none is made.
+    /// analytics and media device loads. Where Studio was never used there is no folder to read,
+    /// and none is made.
     /// </summary>
     public Task EnsureStudioStorageInitializedAsync()
     {
@@ -1120,7 +1096,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (_studioProjects is null)
         {
             StudioStorageDisplay = "Couldn't read Studio project storage.";
-            StudioKeptNote = string.Empty;
             StudioDrafts.Clear();
             return Task.CompletedTask;
         }
@@ -1161,7 +1136,6 @@ public sealed partial class SettingsViewModel : ObservableObject
                     listed.Summaries.Count + listed.Unreadable.Count,
                     listed.Summaries.Sum(summary => summary.SizeBytes) + listed.Unreadable.Sum(project => project.SizeBytes));
                 StudioStorageDisplay = FormatStudioStorage(storage);
-                StudioKeptNote = FormatStudioKeptNote(storage);
                 ShowStudioDrafts(listed.Summaries, listed.Unreadable, listed.WithRecording);
             }
         }
@@ -1171,7 +1145,6 @@ public sealed partial class SettingsViewModel : ObservableObject
             if (!_closed && generation == _studioRefreshGeneration)
             {
                 StudioStorageDisplay = "Couldn't read Studio project storage.";
-                StudioKeptNote = string.Empty;
             }
         }
     }
@@ -1266,7 +1239,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <returns>Null when the draft is gone or was left alone, otherwise a sentence saying why not.</returns>
     public async Task<string?> DeleteStudioDraftAsync(StudioDraftItem draft)
     {
-        if (!IsStudioPreviewEnabled || _studioProjects is null || _studioTracker?.IsOpen(draft.Id) == true)
+        if (_studioProjects is null || _studioTracker?.IsOpen(draft.Id) == true)
         {
             return null;
         }
@@ -1299,7 +1272,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         var id = draft.Id;
         var projects = _studioProjects;
-        if (!IsStudioPreviewEnabled || projects is null || !_studioRecordingsBeingSaved.Add(id))
+        if (projects is null || !_studioRecordingsBeingSaved.Add(id))
         {
             return (null, null);
         }
@@ -1343,7 +1316,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     public async Task CleanUpStudioProjectsAsync()
     {
-        if (_studioCleanupRunning || !IsStudioPreviewEnabled || _studioCleanup is null)
+        if (_studioCleanupRunning || _studioCleanup is null)
         {
             return;
         }
@@ -1376,15 +1349,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         var projectLabel = summary.ProjectCount == 1 ? "project" : "projects";
         return $"{summary.ProjectCount:N0} {projectLabel}, {FormatFileSize(summary.TotalBytes)}";
     }
-
-    // What switching Studio off leaves on disk. Nothing is deleted by the switch, and nothing is
-    // cleaned up while it is off, so it is said where the switch is.
-    private static string FormatStudioKeptNote(StudioStorageSummary summary) => summary.ProjectCount switch
-    {
-        0 => string.Empty,
-        1 => $"1 Studio project is kept and uses {FormatFileSize(summary.TotalBytes)}. It is not cleaned up while Studio is off. Switch Studio on to open or delete it.",
-        _ => $"{summary.ProjectCount:N0} Studio projects are kept and use {FormatFileSize(summary.TotalBytes)}. They are not cleaned up while Studio is off. Switch Studio on to open or delete them.",
-    };
 
     private void RestoreScalarSettings(SettingsSectionKind? kind = null)
     {
@@ -1423,7 +1387,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
             if (kind is null or SettingsSectionKind.Studio)
             {
-                IsStudioPreviewEnabled = _settings.StudioPreviewEnabled;
                 StudioSourceRetentionDays = _settings.StudioSourceRetentionDays;
                 StudioStorageCapGigabytes = _settings.StudioStorageCapGigabytes;
             }
@@ -2049,17 +2012,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnShowTrimmerChanged(bool value) => Persist(SettingsSectionKind.Video, () => _settings.ShowTrimmer = value);
 
-    partial void OnIsStudioPreviewEnabledChanged(bool value)
-    {
-        if (!IsPersistenceSuppressed(SettingsSectionKind.Studio))
-        {
-            _settings.StudioPreviewEnabled = value;
-        }
-
-        // The numbers, the drafts, and the line that says what is kept while Studio is off.
-        RefreshStudioProjectsIfShown();
-    }
-
     partial void OnStudioSourceRetentionDaysChanged(double value)
     {
         // NumberBox reports NaN when its text is cleared; put the saved value back.
@@ -2069,7 +2021,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        PersistStudio(() => _settings.StudioSourceRetentionDays = (int)Math.Round(value));
+        Persist(SettingsSectionKind.Studio, () => _settings.StudioSourceRetentionDays = (int)Math.Round(value));
     }
 
     partial void OnStudioStorageCapGigabytesChanged(double value)
@@ -2080,7 +2032,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        PersistStudio(() => _settings.StudioStorageCapGigabytes = (int)Math.Round(value));
+        Persist(SettingsSectionKind.Studio, () => _settings.StudioStorageCapGigabytes = (int)Math.Round(value));
     }
 
     partial void OnShowVideoCapturePickerChanged(bool value) =>
@@ -2260,16 +2212,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         apply();
-    }
-
-    // The Studio controls are hidden while the preview is switched off, so nothing they are bound
-    // to may reach the saved settings then.
-    private void PersistStudio(Action apply)
-    {
-        if (IsStudioPreviewEnabled)
-        {
-            Persist(SettingsSectionKind.Studio, apply);
-        }
     }
 
     /// <summary>

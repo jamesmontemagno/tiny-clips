@@ -20,6 +20,7 @@ own `CHANGELOG.md` at the repository root.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 
 ### Changed
+- Tiny Clips Studio is generally available. What's New no longer presents it as a preview; it introduces Agent Control. Users who previously disabled Studio keep existing projects because upgrade migration disables automatic cleanup until they choose new limits.
 - Agent Control now supports `studio.project.saveCopy` with export scope, creating an unlinked portable snapshot in a new folder directly inside the configured video folder.
 - Only Screenshot has a global shortcut by default. Video, GIF, OCR, direct screenshots, and Stop recording start unassigned; saved bindings are preserved, and all global shortcuts can be edited, deleted, or reset.
 - Keyboard shortcuts settings groups Screenshots, Recording, and Text recognition, with separate fixed-shortcut references for the editors, Studio, Clips Library, and navigation. Onboarding offers only Screenshot, Record video, and Record GIF; recording controls and guides reflect the current Stop binding.

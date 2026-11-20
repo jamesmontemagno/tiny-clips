@@ -53,28 +53,26 @@ struct ShortcutsSettingsSection: View {
             fixedShortcutRow(label: "Apply crop / delete annotation", iconName: "checkmark", keys: "Return / Delete")
         }
 
-        if settings.studioPreviewEnabled {
-            SettingsFormSection(
-                "Studio playback",
-                icon: "square.stack.3d.up",
-                footer: "Reference only. Fixed shortcuts apply in Studio when the focused control is not using the key."
-            ) {
-                fixedShortcutRow(label: "Play / pause", iconName: "playpause", keys: "Space")
-                fixedShortcutRow(label: "Step frame / second", iconName: "forward.frame", keys: "← → / ⇧← ⇧→")
-                fixedShortcutRow(label: "Trim start / end", iconName: "scissors", keys: "I / O; Home / End to seek")
-            }
+        SettingsFormSection(
+            "Studio playback",
+            icon: "square.stack.3d.up",
+            footer: "Reference only. Fixed shortcuts apply in Studio when the focused control is not using the key."
+        ) {
+            fixedShortcutRow(label: "Play / pause", iconName: "playpause", keys: "Space")
+            fixedShortcutRow(label: "Step frame / second", iconName: "forward.frame", keys: "← → / ⇧← ⇧→")
+            fixedShortcutRow(label: "Trim start / end", iconName: "scissors", keys: "I / O; Home / End to seek")
+        }
 
-            SettingsFormSection(
-                "Studio editing & projects",
-                icon: "square.stack.3d.up",
-                footer: "Reference only. Fixed shortcuts apply in Studio when you are not typing or dragging."
-            ) {
-                fixedShortcutRow(label: "Scene / cut / speed / zoom", iconName: "timeline.selection", keys: "S / X / R / Z")
-                fixedShortcutRow(label: "Arrow / callout / text / box / ellipse / redact / emoji", iconName: "pencil", keys: "A / C / T / H / E / B / M")
-                fixedShortcutRow(label: "Layouts", iconName: "rectangle.3.group", keys: "1 / 2 / 3 / 4")
-                fixedShortcutRow(label: "Open / save / Save As / export", iconName: "square.and.arrow.up", keys: "⌘O / ⌘S / ⇧⌘S / ⌘E")
-                fixedShortcutRow(label: "Undo / redo / duplicate / delete", iconName: "arrow.uturn.backward", keys: "⌘Z / ⇧⌘Z / ⌘D / Delete")
-            }
+        SettingsFormSection(
+            "Studio editing & projects",
+            icon: "square.stack.3d.up",
+            footer: "Reference only. Fixed shortcuts apply in Studio when you are not typing or dragging."
+        ) {
+            fixedShortcutRow(label: "Scene / cut / speed / zoom", iconName: "timeline.selection", keys: "S / X / R / Z")
+            fixedShortcutRow(label: "Arrow / callout / text / box / ellipse / redact / emoji", iconName: "pencil", keys: "A / C / T / H / E / B / M")
+            fixedShortcutRow(label: "Layouts", iconName: "rectangle.3.group", keys: "1 / 2 / 3 / 4")
+            fixedShortcutRow(label: "Open / save / Save As / export", iconName: "square.and.arrow.up", keys: "⌘O / ⌘S / ⇧⌘S / ⌘E")
+            fixedShortcutRow(label: "Undo / redo / duplicate / delete", iconName: "arrow.uturn.backward", keys: "⌘Z / ⇧⌘Z / ⌘D / Delete")
         }
 
         SettingsFormSection(

@@ -132,7 +132,6 @@ struct AutomationSetting {
         .bool("showMouseClickVisualsInGif", \.showMouseClickVisualsInGif),
         .bool("showRegionIndicator", \.showRegionIndicator),
         .bool("includeTinyClipsInCapture", \.includeTinyClipsInCapture),
-        .bool("studioPreviewEnabled", \.studioPreviewEnabled),
         .bool("teleprompterEnabled", \.teleprompterEnabled),
     ]
 

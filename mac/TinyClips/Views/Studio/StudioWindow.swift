@@ -59,12 +59,11 @@ final class StudioWindowRegistry {
         }
     }
 
-    /// Opens the project a video was exported from. Returns false when Studio is off, or the video
-    /// did not come from a project that is still stored.
+    /// Opens the project a video was exported from. Returns false when the video did not come
+    /// from a project that is still stored.
     @discardableResult
     func openProject(forExportedVideoAt url: URL) -> Bool {
-        guard CaptureSettings.shared.studioPreviewEnabled,
-              let projectID = try? StudioProjectStore.shared.findProjectID(exportedPath: url.path)
+        guard let projectID = try? StudioProjectStore.shared.findProjectID(exportedPath: url.path)
         else {
             return false
         }
@@ -73,7 +72,7 @@ final class StudioWindowRegistry {
     }
 
     /// Opens an existing video in Studio as a flat project (one per video). Returns false when
-    /// Studio is off or the video cannot be read.
+    /// the video cannot be read.
     @discardableResult
     func openVideo(at url: URL) async -> Bool {
         (try? await openVideo(at: url, validateAccess: {})) ?? false
@@ -86,10 +85,6 @@ final class StudioWindowRegistry {
         validateAccess: () throws -> Void,
         prepare: ((URL) async throws -> StudioFlatProjectRequest)? = nil
     ) async throws -> Bool {
-        guard CaptureSettings.shared.studioPreviewEnabled else {
-            SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Studio settings to open this video.")
-            return false
-        }
         let exportedProjectID: String?
         do {
             exportedProjectID = try StudioProjectStore.shared.findProjectID(exportedPath: url.path)
@@ -111,10 +106,6 @@ final class StudioWindowRegistry {
             return false
         }
         try validateAccess()
-        guard CaptureSettings.shared.studioPreviewEnabled else {
-            SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Studio settings to open this video.")
-            return false
-        }
         request.copyVideo = copyVideo
         let store = StudioProjectStore.shared
         let project: StudioProject
@@ -140,7 +131,6 @@ final class StudioWindowRegistry {
                     prepared = try store.prepareFlatVideo(request: request)
                 }
                 try revalidate()
-                guard CaptureSettings.shared.studioPreviewEnabled else { return false }
                 project = try store.commitFlatVideo(prepared, preferredID: frontmostStudioID, validateAccess: revalidate)
             }
         } catch {
@@ -194,18 +184,6 @@ final class StudioWindowRegistry {
     /// Opens the editor for a project, or brings its window forward when it is already open.
     /// `onClose` runs once after that window has closed.
     func open(projectID: String, onClose: (@MainActor () -> Void)? = nil) {
-        guard CaptureSettings.shared.studioPreviewEnabled else {
-            // Straight after a recording the project has just been saved. From anywhere else
-            // someone asked to open one, from a menu that was built while Studio was still on.
-            SaveService.shared.showNotice(
-                onClose != nil
-                    ? "Recording saved as a Tiny Clips Studio project."
-                    : "Tiny Clips Studio is turned off. Turn it on in Studio settings to open this project."
-            )
-            onClose?()
-            return
-        }
-
         let window: StudioWindow
         if let existing = windows[projectID] {
             window = existing
@@ -235,7 +213,6 @@ final class StudioWindowRegistry {
 
     /// Asks for a project that was saved as a folder, and opens it.
     func chooseProjectFileToOpen() {
-        guard CaptureSettings.shared.studioPreviewEnabled else { return }
         let panel = NSOpenPanel()
         panel.title = "Open Project"
         panel.prompt = "Open"
@@ -261,10 +238,6 @@ final class StudioWindowRegistry {
     /// project is copied into Studio's own storage as a new draft, and that copy is opened. What
     /// was chosen is only read.
     func openProjectFile(at url: URL) {
-        guard CaptureSettings.shared.studioPreviewEnabled else {
-            SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Studio settings to open this project.")
-            return
-        }
         Task { [weak self] in
             let result: Result<String, Error> = await Task.detached(priority: .userInitiated) {
                 Result {

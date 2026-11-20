@@ -427,10 +427,7 @@ public partial class App : IAutomationAppActions
             case null:
                 if (await OpenStudioProjectFileAsync(path) is { } failure)
                 {
-                    var code = Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled
-                        ? AutomationErrorCodes.Internal
-                        : AutomationErrorCodes.NotSupported;
-                    throw new AutomationException(code, failure);
+                    throw new AutomationException(AutomationErrorCodes.Internal, failure);
                 }
 
                 return "studio";
@@ -441,10 +438,7 @@ public partial class App : IAutomationAppActions
                 var result = await StudioWindows().OpenVideoAsync(path, cancellationToken);
                 if (result.Window is null)
                 {
-                    var code = Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled
-                        ? AutomationErrorCodes.Internal
-                        : AutomationErrorCodes.NotSupported;
-                    throw new AutomationException(code, result.Failure ?? "This video could not be opened in Studio.");
+                    throw new AutomationException(AutomationErrorCodes.Internal, result.Failure ?? "This video could not be opened in Studio.");
                 }
                 return "studio";
             case CaptureType.Video when TryOpenStudioProjectForVideo(path):
@@ -471,12 +465,6 @@ public partial class App : IAutomationAppActions
     {
         cancellationToken.ThrowIfCancellationRequested();
         var settings = Services.GetRequiredService<ICaptureSettings>();
-        if (!settings.StudioPreviewEnabled)
-        {
-            throw new AutomationException(AutomationErrorCodes.NotSupported,
-                "Studio is turned off. Turn it on in Settings → Studio.");
-        }
-
         var store = Services.GetRequiredService<IStudioProjectStore>();
         switch (commandName)
         {
@@ -1072,14 +1060,6 @@ public partial class App : IAutomationAppActions
     void IAutomationAppActions.RevealForAutomation(string path) => RevealInExplorer(path);
 
     void IAutomationAppActions.RecordUploadLinkForAutomation(string path, string url) => RecordUploadLink(path, url);
-
-    void IAutomationAppActions.OnAutomationSettingChanged(string key)
-    {
-        if (key == "studioPreviewEnabled")
-        {
-            RefreshStudioPreviewSetting();
-        }
-    }
 
     /// <summary>Brings an agent approval prompt to the front, the way the app's other windows open.</summary>
     internal void ActivateAutomationWindow(Window window) => ActivateWindowToForeground(window);

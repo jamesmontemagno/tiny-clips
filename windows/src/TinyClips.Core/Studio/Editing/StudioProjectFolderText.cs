@@ -66,10 +66,6 @@ public static class StudioProjectFolderText
     /// <summary>What the Open recent menu shows when there is no other project.</summary>
     public const string NoOtherProjects = "No other projects";
 
-    /// <summary>Said when a <c>.tinyclips</c> file is opened while Studio is switched off. Nothing is imported then.</summary>
-    public const string StudioIsOffMessage =
-        "Tiny Clips Studio is switched off. Switch it on in Settings, under Studio, to open this project.";
-
     /// <summary>Said when the recordings of a project that is being opened take a while to copy.</summary>
     public static string GetOpeningMessage(string path) =>
         $"Opening {Path.GetFileName(Path.TrimEndingDirectorySeparator(path))}. Its recordings are being copied into Tiny Clips Studio.";

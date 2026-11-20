@@ -60,25 +60,21 @@ public sealed record RecentMenuEntry
     }
 
     /// <summary>
-    /// What the tray menu lists as recent captures: the saved captures and, while Studio is
-    /// switched on, the projects that hold the only copy of a recording
-    /// (<see cref="StudioProjectSummary.MenuDrafts"/>), mixed by date within one limit. With
-    /// Studio switched off no project is listed, as nothing else of Studio is shown then.
+    /// What the tray menu lists as recent captures: the saved captures and the projects that
+    /// hold the only copy of a recording (<see cref="StudioProjectSummary.MenuDrafts"/>),
+    /// mixed by date within one limit.
     /// </summary>
     /// <param name="captures">The saved captures, the newest first, as the recent captures service gives them.</param>
     /// <param name="projects">Every project of the store, in any order.</param>
     public static IReadOnlyList<RecentMenuEntry> ForMenu(
         IEnumerable<RecentCapture> captures,
         IEnumerable<StudioProjectSummary> projects,
-        bool studioEnabled,
         int limit)
     {
         ArgumentNullException.ThrowIfNull(projects);
-        var drafts = studioEnabled
-            ? StudioProjectSummary.MenuDrafts(projects)
-                .OrderByDescending(static draft => draft.LastUsedAt)
-                .ThenBy(static draft => draft.Id, StringComparer.Ordinal)
-            : Enumerable.Empty<StudioProjectSummary>();
+        var drafts = StudioProjectSummary.MenuDrafts(projects)
+            .OrderByDescending(static draft => draft.LastUsedAt)
+            .ThenBy(static draft => draft.Id, StringComparer.Ordinal);
         return Merged(captures, drafts, limit);
     }
 }

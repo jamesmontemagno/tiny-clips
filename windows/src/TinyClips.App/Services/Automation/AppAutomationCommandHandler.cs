@@ -182,9 +182,7 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
     {
         var key = context.GetString("key") ?? string.Empty;
         var value = context.Params["value"];
-        var result = SettingsCatalog().Set(key, value?.DeepClone());
-        _app.OnAutomationSettingChanged(key);
-        return result;
+        return SettingsCatalog().Set(key, value?.DeepClone());
     }
 
     // -- Capture and recording ---------------------------------------------------------------
@@ -193,11 +191,6 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
     {
         var studio = context.GetBoolean("studio");
         var settings = App.Services.GetRequiredService<ICaptureSettings>();
-        if (studio && !settings.StudioPreviewEnabled)
-        {
-            throw new AutomationException(AutomationErrorCodes.NotSupported, "Studio is turned off. Turn it on in Settings → Studio to record Studio projects.");
-        }
-
         var (target, region) = ResolveCaptureTarget(AutomationCaptureRequest.Parse(context.Params));
         var mediaPermissions = App.Services.GetRequiredService<IMediaDevicePermissionService>();
         var options = AutomationRecordingOptions.Resolve(context.Params, settings,

@@ -226,9 +226,6 @@ public sealed class StudioProjectFolderTextTests : StudioProjectFolderTestBase
             "Closing the window stops the save, and nothing is left of the folder that was being written. Your edits are kept.",
             StudioProjectFolderText.CloseWhileSavingMessage);
         Assert.Equal(
-            "Tiny Clips Studio is switched off. Switch it on in Settings, under Studio, to open this project.",
-            StudioProjectFolderText.StudioIsOffMessage);
-        Assert.Equal(
             "Project saved to the folder My Demo.",
             StudioProjectFolderText.GetSavedMessage(Path.Combine(Outside, "My Demo", "My Demo.tinyclips")));
         Assert.Equal(

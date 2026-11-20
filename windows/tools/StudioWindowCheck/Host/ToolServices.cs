@@ -39,9 +39,7 @@ internal sealed class ToolServices
         RawSettings.Set("videoSaveDirectory", ExportDirectory);
         RawSettings.Set("gifSaveDirectory", ExportDirectory);
 
-        // The app opens a Studio window only while the preview switch is on, and the cleanup that
-        // follows a closed window runs only then.
-        Settings = new CaptureSettings(RawSettings) { StudioPreviewEnabled = true, StudioExportResolution = StudioExportResolution.Source };
+        Settings = new CaptureSettings(RawSettings) { StudioExportResolution = StudioExportResolution.Source };
         Store = new GuardedStore(root);
         Storage = new TempClipStorage(ExportDirectory);
         Tracker = new StudioProjectTracker();

@@ -12,11 +12,8 @@ using TinyClips.Core.Studio.Editing;
 namespace TinyClips.App.Settings.Sections;
 
 /// <summary>
-/// Tiny Clips Studio's page of Settings: the switch that turns Studio on while it is a preview,
-/// and, while it is on, how a Studio recording is started, Open project for a project that
-/// was saved as a folder, project storage with its cleanup rules, and the recordings that
-/// only their project holds. It comes after Video in the
-/// navigation.
+/// Tiny Clips Studio's page of Settings: how to start a recording, open a saved project, manage
+/// project storage and cleanup, and recover recordings only their project holds.
 /// </summary>
 public sealed partial class StudioSettingsSection : UserControl, ISettingsSectionLifecycle
 {
@@ -33,8 +30,7 @@ public sealed partial class StudioSettingsSection : UserControl, ISettingsSectio
         InitializeComponent();
         SectionLifecycle.HookFirstLoad(this, viewModel, _realizationScope);
 
-        // Never faults. With Studio switched off it reads only what the line under the switch
-        // says. The projects are read when this page is first shown, and not when Settings opens.
+        // The projects are read when this page is first shown, not when Settings opens.
         _ = viewModel.EnsureStudioStorageInitializedAsync();
     }
 

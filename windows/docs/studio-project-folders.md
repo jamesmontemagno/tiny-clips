@@ -97,8 +97,8 @@ In the editor:
    behind.
 2. **The file type.** Register `.tinyclips` for the app in the package manifest (and for the
    unpackaged run, where that applies), and handle file activation: a `.tinyclips` file opens
-   Studio on a copy of its project. Studio switched off: say so and import nothing, as the Mac
-   does. The app is tray-first; opening a project file must not show another window with it.
+   Studio on a copy of its project. The app is tray-first; opening a project file must not
+   show another window with it.
 3. **The editor:** Open Recent, Open project…, Save project…, and Delete project… in the
    header and in the Project panel of the inspector, in sentence case. Ctrl+O and Ctrl+Shift+S,
    if they are free in the window.
@@ -122,8 +122,8 @@ editor open the only way back to it was the list in Settings.
 Now a draft is listed there too, mixed in by date, as "Name — Studio project, date", with the
 Studio icon (the tray reads no posters or thumbnails). A draft here is what the Settings list calls one: nothing exported, or
 what was exported is gone; not flat; and its recording still there to open. Its date is when it
-was last open, or failing that recorded. Still five lines in all. With Studio switched off none
-is listed. A folder a project was saved to is never listed: it is a copy.
+was last open, or failing that recorded. Still five lines in all. A folder a project was saved
+to is never listed: it is a copy.
 
 Reference: `StudioProjectSummary.menuDrafts` and `lastUsedAt` in
 `mac/TinyClips/Studio/StudioProjectStore.swift`; `RecentMenuEntry.merged` and
@@ -285,9 +285,7 @@ description above is not the whole of it:
   notification, and the same file asked for again meanwhile is not copied twice. Why a
   project was not opened is said in the editor's message bar when an editor asked, in a
   dialog in Settings, and in a notification when the file came from Explorer: "Studio could
-  not open this project:" and the store's sentence. With Studio switched off: "Tiny Clips
-  Studio is switched off. Switch it on in Settings, under Studio, to open this project.",
-  and nothing is copied.
+  not open this project:" and the store's sentence.
 - **The open picker takes a `.tinyclips` file**, not a folder. The app is full trust, so the
   recordings beside the file are read by their path, and no folder has to be chosen for them.
   Read from the manifest's `runFullTrust`; in the app, started under an identity of its own,
@@ -340,15 +338,15 @@ picker; a draft's line and a file opened from Explorer are the tray's ways in.
 flavor under a package identity of its own, worked through UI Automation, with the folder the
 owner saved on his Mac. The account is in the plan ("The app itself, started on a PC"). In
 short: the `.tinyclips` file, handed over as Explorer hands it, opened a Studio window on a
-new project, with the app running and with the app not running, and copied nothing while
-Studio was off; Save project… made a folder whose recordings are byte for byte the Mac's,
+new project, with the app running and with the app not running; Save project… made a folder
+whose recordings are byte for byte the Mac's,
 asked before replacing it, refused to replace it while a file of someone's own was in it,
 and replaced it once that was gone; the tray's Recent listed the draft; Delete project…
 asked and deleted; the folder Windows saved opened again.
 
 **Still not done by anyone:** a double-click in Explorer itself (the file was handed over by
-the same call, from a script); the notification for Studio switched off or for a file that
-cannot be opened, which no tool can read; Open project… in Settings and in the editor, which
+the same call, from a script); the notification for a file that cannot be opened, which no
+tool can read; Open project… in Settings and in the editor, which
 go through the open picker; Open recent; a save cancelled in the middle; a key pressed. A person's steps for all of it are step 22 of
 the hands-on checklist in [`plans/video-studio-plan.md`](../../plans/video-studio-plan.md),
 and rows A11Y-35 to A11Y-39 of the [accessibility gate](accessibility-release-gate.md).

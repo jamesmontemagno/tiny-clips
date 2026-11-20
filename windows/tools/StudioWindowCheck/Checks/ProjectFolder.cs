@@ -129,7 +129,6 @@ internal sealed partial class WindowChecks
         finally
         {
             _services.Store.HoldProjectSaves(null);
-            _services.Settings.StudioPreviewEnabled = true;
             _services.Settings.StudioProjectSaveFolder = placeBefore;
             try
             {
@@ -563,7 +562,7 @@ internal sealed partial class WindowChecks
         Thread.Sleep(QuestionSettles);
     }
 
-    /// <summary>Open project from a saved folder, a file that is no project, Studio switched off, and Open recent.</summary>
+    /// <summary>Open project from a saved folder, a file that is no project, and Open recent.</summary>
     private void OpeningASavedProject(Editor editor, TestFolder other, string target, string projectFile, string saveRoot)
     {
         Timeline.Mark("15: Open project");
@@ -624,7 +623,7 @@ internal sealed partial class WindowChecks
             copyWindow = null;
         }
 
-        // A file that is not a project, and Studio switched off.
+        // A file that is not a project.
         Timeline.Mark("15: a file that cannot be opened");
         var broken = Path.Combine(saveRoot, "Broken.tinyclips");
         File.WriteAllText(broken, "{ this is not a project");
@@ -636,29 +635,14 @@ internal sealed partial class WindowChecks
         var dismissed = close?.Invoke() ?? false;
         Gone(editor, "StudioErrorBar", 3);
 
-        _services.Settings.StudioPreviewEnabled = false;
-        string offMessage;
-        try
-        {
-            _services.AnswerProjectFilePicker(projectFile);
-            Key(editor, StudioShortcutKey.O, control: true);
-            MessageBar(editor, 10);
-            offMessage = ErrorOf(editor);
-        }
-        finally
-        {
-            _services.Settings.StudioPreviewEnabled = true;
-        }
-
         MessageBar(editor, 1).Close?.Invoke();
         Gone(editor, "StudioErrorBar", 3);
         var countAfter = _services.Store.ListSummaries().Count;
         _report.Check(
-            "a file that is not a project is not opened, and the window that asked says why in its message bar, in the store's sentence; with Studio switched off a project file is not opened either, the window says that Studio is switched off, and nothing is copied",
+            "a file that is not a project is not opened, and the window that asked says why in its message bar, in the store's sentence",
             bar is not null && brokenMessage == "Studio could not open this project: This file could not be read as a Tiny Clips project. It may be damaged." && texts.Contains(brokenMessage) && dismissed
-                && offMessage == "Tiny Clips Studio is switched off. Switch it on in Settings, under Studio, to open this project."
                 && countAfter == countBefore && _services.Tracker.OpenProjectIds.Count == 1,
-            $"for the file that is no project the window says \"{brokenMessage}\"; with Studio switched off it says \"{offMessage}\"; the store had {countBefore} project(s) before and has {countAfter}; {_services.Tracker.OpenProjectIds.Count} project(s) open");
+            $"for the file that is no project the window says \"{brokenMessage}\"; the store had {countBefore} project(s) before and has {countAfter}; {_services.Tracker.OpenProjectIds.Count} project(s) open");
     }
 
     /// <summary>Delete project: what it asks, Cancel, and Delete.</summary>

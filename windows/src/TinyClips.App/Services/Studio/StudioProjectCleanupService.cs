@@ -6,8 +6,7 @@ using TinyClips.Core.Studio;
 namespace TinyClips.App.Services.Studio;
 
 /// <summary>
-/// Runs the Studio project cleanup rules (age, then the storage limit) off the calling thread. Does
-/// nothing while the Studio preview is switched off.
+/// Runs the Studio project cleanup rules (age, then the storage limit) off the calling thread.
 /// </summary>
 public sealed class StudioProjectCleanupService
 {
@@ -36,18 +35,12 @@ public sealed class StudioProjectCleanupService
 
     /// <summary>
     /// Deletes what the current settings allow, skipping every project that is open in an editor
-    /// or being recorded into. Returns null when Studio is switched off or the cleanup failed. A
-    /// failure is logged, never thrown.
+    /// or being recorded into. Returns null when the cleanup failed. A failure is logged, never thrown.
     /// </summary>
     public async Task<StudioCleanupResult?> RunAsync()
     {
         try
         {
-            if (!_settings.StudioPreviewEnabled)
-            {
-                return null;
-            }
-
             var options = _settings.GetStudioCleanupOptions();
             var inUseProjectIds = new List<string>(_tracker.OpenProjectIds);
             if (_recorder.ActiveStudioProjectId is { } recordingProjectId)

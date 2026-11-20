@@ -80,8 +80,6 @@ public sealed partial class VideoTrimmerWindow : Window
             _ => ElementTheme.Default,
         };
 
-        OpenInStudioButton.Visibility = settings.StudioPreviewEnabled ? Visibility.Visible : Visibility.Collapsed;
-
         RootGrid.KeyDown += OnRootKeyDown;
         Closed += OnWindowClosed;
         AppWindow.Closing += (_, args) => args.Cancel = _isOpeningStudio;

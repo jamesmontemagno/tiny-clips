@@ -13,14 +13,12 @@ namespace TinyClips.App.Services.Studio;
 public sealed class StudioRecentDrafts
 {
     private readonly IStudioProjectStore _store;
-    private readonly ICaptureSettings _settings;
     private Task? _reading;
     private bool _readAgain;
 
-    public StudioRecentDrafts(IStudioProjectStore store, ICaptureSettings settings)
+    public StudioRecentDrafts(IStudioProjectStore store)
     {
         _store = store;
-        _settings = settings;
     }
 
     /// <summary>
@@ -30,18 +28,17 @@ public sealed class StudioRecentDrafts
     public event EventHandler? Changed;
 
     /// <summary>
-    /// Every project of the store, as it was read last. Empty until the first read, and while
-    /// Studio is switched off, when nothing of Studio is shown.
+    /// Every project of the store, as it was read last. Empty until the first read.
     /// </summary>
     public IReadOnlyList<StudioProjectSummary> Projects { get; private set; } = [];
 
     /// <summary>
-    /// The lines of the tray's recent captures: the saved captures and, while Studio is
-    /// switched on, the projects that hold the only copy of a recording, mixed by date within
+    /// The lines of the tray's recent captures: the saved captures and the projects that hold
+    /// the only copy of a recording, mixed by date within
     /// one limit (<see cref="RecentMenuEntry.ForMenu"/>). Asked on the UI thread; reads nothing.
     /// </summary>
     public IReadOnlyList<RecentMenuEntry> EntriesFor(IEnumerable<RecentCapture> captures, int limit) =>
-        RecentMenuEntry.ForMenu(captures, Projects, _settings.StudioPreviewEnabled, limit);
+        RecentMenuEntry.ForMenu(captures, Projects, limit);
 
     /// <summary>
     /// Reads the projects again, off the calling thread, and finishes when
@@ -65,30 +62,22 @@ public sealed class StudioRecentDrafts
         do
         {
             _readAgain = false;
-            IReadOnlyList<StudioProjectSummary> projects = [];
-            if (_settings.StudioPreviewEnabled)
+            IReadOnlyList<StudioProjectSummary> projects;
+            try
             {
-                try
-                {
-                    projects = await Task.Run(_store.ListSummaries);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"The Studio projects could not be listed for the recent captures: {ex.Message}");
-                    continue;
-                }
+                projects = await Task.Run(_store.ListSummaries);
             }
-
-            // A switch or a newer editor notification arrived during the read. Do not publish
-            // its stale projects, even briefly; the pending pass will read fresh state.
-            if (_readAgain)
+            catch (Exception ex)
             {
+                Debug.WriteLine($"The Studio projects could not be listed for the recent captures: {ex.Message}");
                 continue;
             }
 
-            if (!_settings.StudioPreviewEnabled)
+            // A newer editor notification arrived during the read; the pending pass will
+            // read fresh state.
+            if (_readAgain)
             {
-                projects = [];
+                continue;
             }
 
             var isChanged = !projects.SequenceEqual(Projects);

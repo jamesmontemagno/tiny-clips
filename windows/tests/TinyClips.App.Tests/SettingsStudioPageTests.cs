@@ -6,7 +6,7 @@ namespace TinyClips.App.Tests;
 
 /// <summary>
 /// The Studio page of Settings, read from its markup and its code: what is on it, where it is
-/// in the navigation, and that the General page, where all of it was until 7 October 2026, has
+/// in the navigation, and that the General page, where some of it used to be, has
 /// nothing of Studio left. What the page's values do is in <see cref="SettingsViewModelStudioTests"/>.
 /// None of this shows that the page looks right or can be used: nobody has opened it.
 /// </summary>
@@ -19,8 +19,6 @@ public sealed partial class SettingsStudioPageTests
     // What the General page's Studio card held, in its order. The last three are one a row.
     private static readonly string[] MovedIds =
     [
-        "StudioKeptNoteText",
-        "StudioPreviewToggle",
         "StudioStorageSummaryText",
         "StudioUninstallNoteText",
         "StudioCleanupStatusText",
@@ -88,25 +86,17 @@ public sealed partial class SettingsStudioPageTests
     }
 
     [Fact]
-    public void TheStudioPage_ShowsTheSwitchAlways_AndEverythingElseOnlyWhileStudioIsOn()
+    public void TheStudioPageShowsStudioFeaturesWithoutAPreviewSwitch()
     {
         var column = SettingsMarkup.Elements(StudioPage).First(element => element.Name.LocalName == "StackPanel");
         var parts = column.Elements().ToList();
 
-        // The page's name, the first heading, the card with the switch, and one panel for the rest.
+        // The page's name, its first heading and introduction, then its settings.
         Assert.Equal(["TextBlock", "TextBlock", "SettingsCard", "StackPanel"], parts.Select(part => part.Name.LocalName));
-        var switchCard = parts[2];
-        var whileOn = parts[3];
-        Assert.Null(switchCard.Attr("Visibility"));
-        Assert.Contains(switchCard.Descendants(), element => element.Attr(Id) == "StudioPreviewToggle");
-        Assert.Equal("{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}", whileOn.Attr("Visibility"));
-
-        // The line that says what is kept while Studio is off is with the switch, where it can show.
-        Assert.Contains(switchCard.Descendants(), element => element.Attr(Id) == "StudioKeptNoteText");
-
-        var others = Controls(column).Where(control => control.Attr(Id) != "StudioPreviewToggle").ToList();
-        Assert.NotEmpty(others);
-        Assert.All(others, control => Assert.Contains(whileOn, control.Ancestors()));
+        Assert.DoesNotContain(Controls(column), control => control.Name.LocalName == "ToggleSwitch");
+        Assert.DoesNotContain("StudioPreviewVisibility", SettingsMarkup.Read(StudioPage), StringComparison.Ordinal);
+        Assert.Contains("Studio recording", parts[2].Attr("Description"), StringComparison.Ordinal);
+        Assert.Contains(Controls(parts[3]), control => control.Attr(Id) == "StudioOpenProjectButton");
     }
 
     [Fact]
@@ -182,9 +172,6 @@ public sealed partial class SettingsStudioPageTests
         Assert.Null(button.Attr("Content"));
         var headerIcon = Assert.Single(elements, element => element.Name.LocalName == "SettingsCard.HeaderIcon" && element.Parent == card);
         Assert.Equal("{x:Bind editing:StudioGlyphs.OpenProject}", Assert.Single(headerIcon.Elements()).Attr("Glyph"));
-
-        // Shown only while Studio is on, like everything else below the switch.
-        Assert.Contains(card.Ancestors(), element => element.Attr("Visibility") == "{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}");
 
         // The page asks the app, which owns the picker and says why a project was not opened.
         var code = SettingsMarkup.Read(StudioPage + ".cs");

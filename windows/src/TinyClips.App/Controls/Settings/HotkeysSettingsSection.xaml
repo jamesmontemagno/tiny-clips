@@ -382,8 +382,7 @@
 
             <controls:SettingsExpander
                 Header="Studio"
-                HeaderIcon="{ui:FontIcon Glyph=&#xE8B7;}"
-                Visibility="{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}">
+                HeaderIcon="{ui:FontIcon Glyph=&#xE8B7;}">
                 <controls:SettingsExpander.Items>
                     <controls:SettingsCard Header="Play / pause; step frame / second">
                         <TextBlock FontFamily="Consolas" Text="Space; Left/Right / Shift+Left/Right" TextWrapping="Wrap" />

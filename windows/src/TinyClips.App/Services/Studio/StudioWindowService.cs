@@ -283,8 +283,7 @@ public sealed class StudioWindowService : IStudioProjectHost
     /// <summary>
     /// Opens a project that was saved as a folder, from its <c>.tinyclips</c> file or from the
     /// folder that holds one: the project is copied into the store as a new draft, and the
-    /// editor opens on the copy. What was chosen is only read. With Studio switched off
-    /// nothing is copied, and the result says so. Never fails.
+    /// editor opens on the copy. What was chosen is only read. Never fails.
     /// </summary>
     /// <remarks>
     /// The copy runs off the UI thread and takes as long as the recordings are large. Nothing
@@ -297,11 +296,6 @@ public sealed class StudioWindowService : IStudioProjectHost
         if (_isExiting)
         {
             return new StudioProjectOpenResult(null, null);
-        }
-
-        if (!_settings.StudioPreviewEnabled)
-        {
-            return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
         }
 
         string key;
@@ -354,18 +348,13 @@ public sealed class StudioWindowService : IStudioProjectHost
             return new StudioProjectOpenResult(null, null);
         }
 
-        if (!_settings.StudioPreviewEnabled)
-        {
-            return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
-        }
-
         try
         {
             var projectId = await Task.Run(() => _store.FindProjectIdByExportPath(videoPath), cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            if (_isExiting || !_settings.StudioPreviewEnabled)
+            if (_isExiting)
             {
-                return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
+                return new StudioProjectOpenResult(null, null);
             }
             if (projectId is not null)
             {
@@ -373,9 +362,9 @@ public sealed class StudioWindowService : IStudioProjectHost
             }
             var info = await StudioVideoProbe.ReadAsync(videoPath);
             cancellationToken.ThrowIfCancellationRequested();
-            if (_isExiting || !_settings.StudioPreviewEnabled)
+            if (_isExiting)
             {
-                return new StudioProjectOpenResult(null, StudioProjectFolderText.StudioIsOffMessage);
+                return new StudioProjectOpenResult(null, null);
             }
             var project = _store.GetOrCreateFlatProject(videoPath, info, AppVersionInfo.GetCurrentVersionText());
             cancellationToken.ThrowIfCancellationRequested();

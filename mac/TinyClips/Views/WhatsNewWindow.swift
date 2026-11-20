@@ -49,7 +49,6 @@ final class WhatsNewWindow: NSWindow, NSWindowDelegate {
 }
 
 private struct WhatsNewView: View {
-    @ObservedObject private var settings = CaptureSettings.shared
     let onOpenAgentSettings: () -> Void
     let onDone: () -> Void
 
@@ -88,52 +87,6 @@ private struct WhatsNewView: View {
                     .padding(18)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
-
-                    sectionHeading("Tiny Clips Studio")
-
-                    Image("WhatsNewStudio")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxHeight: 150)
-                        .padding(16)
-                        .frame(maxWidth: .infinity)
-                        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 20))
-                        .accessibilityLabel("Studio illustration: a screen recording and camera bubble above a colorful editing timeline")
-
-                    Text("Record your screen and camera as separate layers. Shape the story afterward with layouts, backgrounds and a timeline, then export an MP4. Your project stays editable.")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Toggle("Enable Tiny Clips Studio (Preview)", isOn: $settings.studioPreviewEnabled)
-                            .toggleStyle(.switch)
-                            .font(.headline)
-                            .accessibilityIdentifier("WhatsNewStudioToggle")
-                            .accessibilityHint("Adds Studio Recording to the menu bar menu. Ordinary video recording is unchanged.")
-                        Text("Choose Studio Recording in the menu bar menu when Studio is on. Record Video and its shortcut still make ordinary recordings.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        Text("Studio is on by default unless you turned it off. Your choice is kept, and you can change it here or in Settings → Studio at any time. Your projects are kept.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
-
-                    sectionHeading("New in Studio")
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        feature("Captions", icon: "captions.bubble",
-                                detail: "Generate captions on this Mac, correct them, draw them on the video, or export SRT and WebVTT. Generating needs macOS 26 or later on a supported Mac.")
-                        feature("Annotations", icon: "pencil.tip",
-                                detail: "Add arrows, callouts, text, shapes, emoji, and redactions that can follow your zooms.")
-                        feature("Export your way", icon: "square.and.arrow.up",
-                                detail: "Choose the resolution and quality, and see the estimated file size first.")
-                        feature("Open any video", icon: "video",
-                                detail: "Bring a video into Studio from the trimmer or the Clips Manager to add zooms, backgrounds, cuts, and speed changes.")
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     sectionHeading("More to try")
 

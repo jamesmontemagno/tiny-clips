@@ -29,31 +29,12 @@
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="Tiny Clips Studio" />
 
-            <!--  The switch is always there. What follows it shows once Studio is switched on.  -->
             <controls:SettingsCard
-                Header="Tiny Clips Studio (Preview)"
-                HeaderIcon="{ui:FontIcon Glyph=&#xE714;}">
-                <controls:SettingsCard.Description>
-                    <StackPanel>
-                        <TextBlock
-                            Text="An editor for video recordings. A recording made for Studio keeps the screen, the camera, and the clicks apart, so you can arrange them over a background, zoom, cut, and change the layout before you export. It is a preview: parts of it are unfinished."
-                            TextWrapping="Wrap" />
-                        <!--  What switching it off left on disk. Nothing is deleted by the switch.  -->
-                        <TextBlock
-                            Margin="0,4,0,0"
-                            AutomationProperties.AutomationId="StudioKeptNoteText"
-                            Text="{x:Bind ViewModel.StudioKeptNote, Mode=OneWay}"
-                            TextWrapping="Wrap"
-                            Visibility="{x:Bind ViewModel.StudioKeptNoteVisibility, Mode=OneWay}" />
-                    </StackPanel>
-                </controls:SettingsCard.Description>
-                <ToggleSwitch
-                    AutomationProperties.AutomationId="StudioPreviewToggle"
-                    AutomationProperties.Name="Tiny Clips Studio (Preview)"
-                    IsOn="{x:Bind ViewModel.IsStudioPreviewEnabled, Mode=TwoWay}" />
-            </controls:SettingsCard>
+                Description="A Studio recording keeps the screen, camera, and clicks apart, so you can arrange them over a background, zoom, cut, and change the layout before you export."
+                Header="Tiny Clips Studio"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE714;}" />
 
-            <StackPanel Spacing="4" Visibility="{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}">
+            <StackPanel Spacing="4">
                 <TextBlock
                     Margin="4,16,0,0"
                     AutomationProperties.HeadingLevel="Level2"

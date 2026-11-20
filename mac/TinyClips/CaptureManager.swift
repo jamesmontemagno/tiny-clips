@@ -283,12 +283,10 @@ class CaptureManager: ObservableObject {
             self?.showOnboardingIfNeeded()
         }
 
-        if CaptureSettings.shared.studioPreviewEnabled {
-            // Old Studio project sources are removed by the storage settings, shortly after launch.
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-                StudioMaintenance.cleanUp()
-            }
+        // Old Studio project sources are removed by the storage settings, shortly after launch.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            StudioMaintenance.cleanUp()
         }
     }
 
@@ -984,12 +982,11 @@ class CaptureManager: ObservableObject {
     }
 
     /// Starts setting up a video recording. `forStudio` makes it a Studio recording: the screen
-    /// and the camera are kept as separate layers and the Studio editor opens when it ends. It
-    /// counts only while Studio is switched on.
+    /// and the camera are kept as separate layers and the Studio editor opens when it ends.
     func startVideoRecording(forStudio: Bool = false) {
         guard !isCaptureActionInProgress else { return }
         activeRecordingWasStartedByAutomation = false
-        pendingVideoIsForStudio = forStudio && CaptureSettings.shared.studioPreviewEnabled
+        pendingVideoIsForStudio = forStudio
 
         isCapturePreparationInProgress = true
         let cursorScreen = screenUnderMouseCursor()
@@ -1035,7 +1032,7 @@ class CaptureManager: ObservableObject {
         automationRecordingError = nil
 
         let settings = CaptureSettings.shared
-        pendingVideoIsForStudio = forStudio && settings.studioPreviewEnabled
+        pendingVideoIsForStudio = forStudio
         shouldReturnToPickerAfterRecording = false
         if target.studioCaptureKind != .display && settings.showRegionIndicator {
             let panel = RegionIndicatorPanel(region: target.region)
@@ -1164,8 +1161,7 @@ class CaptureManager: ObservableObject {
                     }
                 }
                 let webcamEnabled = webcamSelection.enabled
-                // The countdown may have given the user time to turn Studio or device access off.
-                let isStudioRecording = studioModeEnabled && settings.studioPreviewEnabled
+                let isStudioRecording = studioModeEnabled
                 let studioCoordinator: StudioRecordingCoordinator?
                 do {
                     try automationDevices?.requireCurrentAuthorization()
@@ -2816,7 +2812,7 @@ class CaptureManager: ObservableObject {
 
         let intent = CapturePickerIntent(
             captureType: type,
-            forStudio: pendingVideoIsForStudio && settings.studioPreviewEnabled
+            forStudio: pendingVideoIsForStudio
         )
         let panel = CapturePickerPanel(
             intent: intent,
