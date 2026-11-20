@@ -444,42 +444,42 @@ private class ClipsViewModel: ObservableObject {
             if !studioProjectIDs.isEmpty {
                 studioProjectIDs = [:]
             }
-
-            func loadStudioProjects() {
-                studioLoadGeneration += 1
-                let generation = studioLoadGeneration
-                guard CaptureSettings.shared.studioPreviewEnabled else {
-                    studioProjects = []
-                    unreadableStudioProjects = []
-                    studioLoadError = nil
-                    isLoadingStudio = false
-                    return
-                }
-                _ = SaveService.shared.outputDirectoryURL(for: .video)
-                isLoadingStudio = true
-                Task {
-                    do {
-                        let result = try await Task.detached(priority: .utility) {
-                            let store = StudioProjectStore.shared
-                            return (try store.listSummaries(), try store.listUnreadableProjects())
-                        }.value
-                        guard generation == studioLoadGeneration else { return }
-                        studioProjects = result.0
-                        unreadableStudioProjects = result.1.sorted { $0.createdAt > $1.createdAt }
-                        studioLoadError = nil
-                    } catch {
-                        guard generation == studioLoadGeneration else { return }
-                        studioLoadError = "Couldn't read Studio projects: \(error.localizedDescription)"
-                    }
-                    isLoadingStudio = false
-                }
-            }
             return
         }
         // Reads every project file, so it stays off the main thread.
         studioProjectIDs = await Task.detached(priority: .utility) {
             (try? StudioProjectStore.shared.exportedPathIndex()) ?? [:]
         }.value
+    }
+
+    func loadStudioProjects() {
+        studioLoadGeneration += 1
+        let generation = studioLoadGeneration
+        guard CaptureSettings.shared.studioPreviewEnabled else {
+            studioProjects = []
+            unreadableStudioProjects = []
+            studioLoadError = nil
+            isLoadingStudio = false
+            return
+        }
+        _ = SaveService.shared.outputDirectoryURL(for: .video)
+        isLoadingStudio = true
+        Task {
+            do {
+                let result = try await Task.detached(priority: .utility) {
+                    let store = StudioProjectStore.shared
+                    return (try store.listSummaries(), try store.listUnreadableProjects())
+                }.value
+                guard generation == studioLoadGeneration else { return }
+                studioProjects = result.0
+                unreadableStudioProjects = result.1.sorted { $0.createdAt > $1.createdAt }
+                studioLoadError = nil
+            } catch {
+                guard generation == studioLoadGeneration else { return }
+                studioLoadError = "Couldn't read Studio projects: \(error.localizedDescription)"
+            }
+            isLoadingStudio = false
+        }
     }
 
     /// The Studio project a video was exported from, when it is still stored.

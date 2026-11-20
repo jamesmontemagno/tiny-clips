@@ -665,7 +665,9 @@ final class AutomationCommandRouter {
     private func openStudioProject(_ params: [String: Any]) throws -> [String: Any] {
         try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
-        _ = try currentStudioProject(id)
+        if StudioWindowRegistry.shared.automationViewModel(forProjectID: id) == nil {
+            _ = try currentStudioProject(id)
+        }
         StudioWindowRegistry.shared.open(projectID: id)
         return ["projectId": id, "opened": true]
     }
