@@ -6,6 +6,11 @@ See [docs/agent-integration.md](../../docs/agent-integration.md) for the protoco
 
 When adding or changing an app capability, expose its meaningful actions and state to agents in the same change. Add or update commands in `commands.json`, implement and advertise them on each platform where the feature exists (otherwise return `not_supported`), and add a policy case if it introduces a new scope. Preserve pairing, scopes, sensitive-action approvals, and platform permissions; update CLI/MCP coverage, relevant Skills, and the integration guide as needed. If safe agent access is not feasible, get user direction instead of silently omitting it.
 
+Keyboard shortcut configuration is an agreed exception on both platforms: bindings remain
+UI-only and are not exposed through `settings.get`, `settings.set`, CLI, or MCP. Agents use
+capture and recording commands directly without reserving or changing the user's keyboard
+bindings. An unassigned Stop Recording shortcut does not disable `recording.stop`.
+
 Autonomous capture commands use ephemeral target IDs from `capture.targets`; refresh them after app restarts. Region rectangles are display-local physical pixels with a top-left origin. Annotation bounds and point lists are source-image pixels from the top left. `editor.annotate`, `editor.trim`, and `editor.saveFrame` always save a new library item and must not overwrite or delete their source. Media times are seconds from the start; GIF frame indexes are zero-based. Optimistic Studio edits that lose a race return `conflict`, not `busy`.
 
 `recording.startVideo` and `recording.startGif` use the same screen/region/window target parameters, saved recording settings, and bypass interactive pickers and setup UI. Agent-started recordings save without opening a trimmer. Scrolling capture is a start/status/stop/cancel lifecycle; the agent performs the scrolling with its own UI tools, and Tiny Clips only captures and stitches frames.

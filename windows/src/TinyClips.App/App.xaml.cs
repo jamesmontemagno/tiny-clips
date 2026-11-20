@@ -148,6 +148,8 @@ public partial class App : Application
     private static readonly TimeSpan StudioCleanupStartupDelay = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan StudioStaleExportAge = TimeSpan.FromMinutes(10);
     private GlobalHotKeyManager? _hotKeyManager;
+    private bool _hotKeysRegisteredForRecording;
+    private GlobalHotKeyRegistrationResult _hotKeyRegistrationResult = GlobalHotKeyRegistrationResult.Success;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
     private bool _isInStartupPhase = true;
@@ -2368,7 +2370,19 @@ public partial class App : Application
         video.RecordingCompleted += OnRecordingCompleted;
         video.StudioRecordingCompleted += OnStudioRecordingCompleted;
         gif.RecordingCompleted += OnRecordingCompleted;
+        gif.RecordingStopped += OnGifRecordingStopped;
         video.WebcamCaptureFailed += OnWebcamCaptureFailed;
+    }
+
+    private void OnGifRecordingStopped(object? sender, EventArgs args)
+    {
+        _dispatcher?.TryEnqueue(() =>
+        {
+            if (!_isExiting)
+            {
+                UpdateRecordingState();
+            }
+        });
     }
 
     private void OnWebcamCaptureFailed(object? sender, string reason)
@@ -3342,6 +3356,22 @@ public partial class App : Application
         var video = Services.GetRequiredService<IVideoRecordingService>();
         var gif = Services.GetRequiredService<IGifRecordingService>();
         var hotKeys = Services.GetRequiredService<IHotKeyService>();
+        var isRecording = video.IsRecording || gif.IsRecording;
+        if (_hotKeysRegisteredForRecording != isRecording)
+        {
+            var result = RegisterGlobalHotKeys();
+            if (!result.IsSuccess)
+            {
+                ShowMessageNotification(
+                    GlobalHotKeyFailureFormatter.FormatApply(result.Failures) +
+                    " Use the floating Stop button or tray to stop recording.");
+            }
+        }
+
+        var stopShortcut = _hotKeyRegistrationResult.BlockingFailuresFor(HotKeyAction.StopRecording).Count == 0
+            ? hotKeys.StopRecordingDisplayString
+            : string.Empty;
+        _recordingIndicator?.UpdateStopHint(stopShortcut);
 
         if (_taskbarIcon is { } icon)
         {
@@ -3354,7 +3384,8 @@ public partial class App : Application
             var recording = video.IsRecording;
             _videoTile.Label.Text = recording ? "Stop" : "Video";
             _videoTile.Icon.Glyph = recording ? GlyphStop : GlyphVideo;
-            var accel = recording ? hotKeys.StopRecordingDisplayString : hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
+            var binding = hotKeys.GetBinding(HotKeyAction.RecordVideo);
+            var accel = recording ? stopShortcut : binding.IsUnbound ? string.Empty : binding.DisplayString;
             var label = recording ? "Stop recording" : "Record video";
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_videoTile.Button, label);
             ToolTipService.SetToolTip(_videoTile.Button, string.IsNullOrEmpty(accel) ? label : $"{label} ({accel})");
@@ -3366,7 +3397,8 @@ public partial class App : Application
             var recording = gif.IsRecording;
             _gifTile.Label.Text = recording ? "Stop" : "GIF";
             _gifTile.Icon.Glyph = recording ? GlyphStop : GlyphGif;
-            var accel = recording ? hotKeys.StopRecordingDisplayString : hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
+            var binding = hotKeys.GetBinding(HotKeyAction.RecordGif);
+            var accel = recording ? stopShortcut : binding.IsUnbound ? string.Empty : binding.DisplayString;
             var label = recording ? "Stop recording" : "Record GIF";
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_gifTile.Button, label);
             ToolTipService.SetToolTip(_gifTile.Button, string.IsNullOrEmpty(accel) ? label : $"{label} ({accel})");
@@ -3800,97 +3832,43 @@ public partial class App : Application
         // Allow re-registration after the user edits a shortcut: tear down the old manager first.
         _hotKeyManager?.Dispose();
         _hotKeyManager = null;
+        var isRecording = IsAnyRecordingActive();
+        _hotKeysRegisteredForRecording = isRecording;
         try
         {
             var hotKeys = Services.GetRequiredService<IHotKeyService>();
             var manager = new GlobalHotKeyManager(_dispatcher);
 
-            var screenshot = hotKeys.GetBinding(HotKeyAction.Screenshot);
-            manager.Add(
-                HotKeyAction.Screenshot,
-                $"Screenshot ({screenshot.DisplayString})",
-                screenshot.ModifiersValue,
-                screenshot.VirtualKey,
-                () => _ = CaptureScreenshotAsync());
-
-            var screenshotRegion = hotKeys.GetBinding(HotKeyAction.ScreenshotRegion);
-            if (!screenshotRegion.IsUnbound)
+            foreach (var (action, binding) in hotKeys.GetActiveBindings(isRecording))
             {
-                manager.Add(
-                    HotKeyAction.ScreenshotRegion,
-                    $"Screenshot region ({screenshotRegion.DisplayString})",
-                    screenshotRegion.ModifiersValue,
-                    screenshotRegion.VirtualKey,
-                    () => _ = CaptureScreenshotRegionAsync());
-            }
-
-            var screenshotWindow = hotKeys.GetBinding(HotKeyAction.ScreenshotWindow);
-            if (!screenshotWindow.IsUnbound)
-            {
-                manager.Add(
-                    HotKeyAction.ScreenshotWindow,
-                    $"Screenshot window ({screenshotWindow.DisplayString})",
-                    screenshotWindow.ModifiersValue,
-                    screenshotWindow.VirtualKey,
-                    () => _ = CaptureScreenshotWindowAsync());
-            }
-
-            var screenshotScreen = hotKeys.GetBinding(HotKeyAction.ScreenshotScreen);
-            if (!screenshotScreen.IsUnbound)
-            {
-                manager.Add(
-                    HotKeyAction.ScreenshotScreen,
-                    $"Screenshot screen ({screenshotScreen.DisplayString})",
-                    screenshotScreen.ModifiersValue,
-                    screenshotScreen.VirtualKey,
-                    () => _ = CaptureScreenshotScreenAsync());
-            }
-
-            var videoBinding = hotKeys.GetBinding(HotKeyAction.RecordVideo);
-            manager.Add(
-                HotKeyAction.RecordVideo,
-                $"Record video ({videoBinding.DisplayString})",
-                videoBinding.ModifiersValue,
-                videoBinding.VirtualKey,
-                () => _ = ToggleVideoAsync(VideoRecordingCommand.RecordVideoHotKey));
-
-            var gifBinding = hotKeys.GetBinding(HotKeyAction.RecordGif);
-            manager.Add(
-                HotKeyAction.RecordGif,
-                $"Record GIF ({gifBinding.DisplayString})",
-                gifBinding.ModifiersValue,
-                gifBinding.VirtualKey,
-                () => _ = ToggleGifAsync());
-
-            var ocrBinding = hotKeys.GetBinding(HotKeyAction.RecognizeText);
-            manager.Add(
-                HotKeyAction.RecognizeText,
-                $"Recognize text ({ocrBinding.DisplayString})",
-                ocrBinding.ModifiersValue,
-                ocrBinding.VirtualKey,
-                () => _ = RecognizeTextAsync());
-
-            var stopBinding = hotKeys.GetStopBinding();
-            manager.Add(
-                HotKeyAction.StopRecording,
-                $"Stop recording ({stopBinding.DisplayString})",
-                stopBinding.ModifiersValue,
-                stopBinding.VirtualKey,
-                () =>
+                Action callback = action switch
                 {
-                    var isSaveAs = stopBinding.VirtualKey == (uint)Windows.System.VirtualKey.S
-                        && stopBinding.ModifiersValue == (int)(HotKeyModifiers.Control | HotKeyModifiers.Shift);
-                    if (isSaveAs
-                        && !Services.GetRequiredService<IVideoRecordingService>().IsRecording
-                        && !Services.GetRequiredService<IGifRecordingService>().IsRecording
-                        && _studioWindows?.SaveAsForForegroundWindow() == true)
+                    HotKeyAction.Screenshot => () => _ = CaptureScreenshotAsync(),
+                    HotKeyAction.ScreenshotRegion => () => _ = CaptureScreenshotRegionAsync(),
+                    HotKeyAction.ScreenshotWindow => () => _ = CaptureScreenshotWindowAsync(),
+                    HotKeyAction.ScreenshotScreen => () => _ = CaptureScreenshotScreenAsync(),
+                    HotKeyAction.RecordVideo => () => _ = ToggleVideoAsync(VideoRecordingCommand.RecordVideoHotKey),
+                    HotKeyAction.RecordGif => () => _ = ToggleGifAsync(),
+                    HotKeyAction.RecognizeText => () => _ = RecognizeTextAsync(),
+                    HotKeyAction.StopRecording => () =>
                     {
-                        return;
-                    }
-                    _ = StopActiveRecordingAsync();
-                });
+                        if (IsAnyRecordingActive())
+                        {
+                            _ = StopActiveRecordingAsync();
+                        }
+                    },
+                    _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
+                };
+                manager.Add(
+                    action,
+                    $"{HotKeyEditOperation.ActionName(action)} ({binding.DisplayString})",
+                    binding.ModifiersValue,
+                    binding.VirtualKey,
+                    callback);
+            }
 
             var result = manager.Start();
+            _hotKeyRegistrationResult = result;
             if (!result.IsSuccess)
             {
                 foreach (var failure in result.Failures)
@@ -3912,12 +3890,13 @@ public partial class App : Application
         catch (Exception ex)
         {
             Debug.WriteLine($"Global hotkey registration failed: {ex}");
-            return GlobalHotKeyRegistrationResult.Failed(
+            _hotKeyRegistrationResult = GlobalHotKeyRegistrationResult.Failed(
                 new GlobalHotKeyRegistrationFailure(
                     null,
                     "TinyClips hotkey service",
                     ex.HResult,
                     ex.Message));
+            return _hotKeyRegistrationResult;
         }
     }
 

@@ -168,6 +168,10 @@
                             Style="{StaticResource SubtitleTextBlockStyle}"
                             Text="Keyboard shortcuts" />
 
+                        <TextBlock
+                            Text="Only Screenshot is assigned by default. Change or clear global bindings in Settings → Keyboard shortcuts. Stop recording is optional and active only during recording; the floating Stop button is always available."
+                            TextWrapping="Wrap" />
+
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="8">
                                 <Grid ColumnSpacing="16">

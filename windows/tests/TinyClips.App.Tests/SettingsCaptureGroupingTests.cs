@@ -59,6 +59,23 @@ public sealed class SettingsCaptureGroupingTests
             controls["Show" + kind + "CapturePickerAfterCaptureToggle"].Attr("IsEnabled"));
     }
 
+    [Fact]
+    public void ShortcutReferences_PopulateTheExpanderItemsCollection()
+    {
+        var expanders = SettingsMarkup.Elements("HotkeysSettingsSection.xaml")
+            .Where(element => element.Name.LocalName == "SettingsExpander")
+            .ToList();
+
+        Assert.NotEmpty(expanders);
+        Assert.All(expanders, expander =>
+        {
+            var items = Assert.Single(expander.Elements());
+            Assert.Equal("SettingsExpander.Items", items.Name.LocalName);
+            Assert.NotEmpty(items.Elements());
+            Assert.All(items.Elements(), card => Assert.Equal("SettingsCard", card.Name.LocalName));
+        });
+    }
+
     private static Dictionary<string, string[]> Groups(string page, string title)
     {
         var column = SettingsMarkup.Elements(page).First(element => element.Name.LocalName == "StackPanel");
