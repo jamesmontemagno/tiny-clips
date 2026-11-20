@@ -291,6 +291,7 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
     [InlineData("finished.MOV", "screen.mov")]
     [InlineData("finished", "screen.mp4")]
     [InlineData("finished.bad-extension", "screen.mp4")]
+    [InlineData("finished.tinyclips", "screen.mp4")]
     public void AProjectAroundAVideoKeptElsewhereSavesAPortableCopy(string originalName, string copiedName)
     {
         var video = Path.Combine(Outside, originalName);

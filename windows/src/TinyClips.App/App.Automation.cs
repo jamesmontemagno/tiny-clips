@@ -498,6 +498,7 @@ public partial class App : IAutomationAppActions
             {
                 var projectId = RequiredStudioString(parameters, "projectId");
                 var folderName = RequiredStudioString(parameters, "folderName");
+                using var projectUse = store.AcquireProjectUse(projectId);
                 _ = ReadAutomationProject(projectId, store);
                 if (StudioWindows().FindOpenViewModel(projectId) is { } openEditor
                     && !openEditor.PrepareAutomationProjectCopy())

@@ -22,11 +22,6 @@ public static class AutomationStudioProjectCopy
         }
 
         var root = StudioExportTarget.ResolvePath(videoFolder);
-        if (!Directory.Exists(root))
-        {
-            throw new AutomationException(AutomationErrorCodes.Internal, "The configured video-save folder does not exist.");
-        }
-
         var projectDirectory = StudioExportTarget.ResolvePath(store.GetPaths(projectId).ProjectDirectory);
         if (string.Equals(root, projectDirectory, StringComparison.OrdinalIgnoreCase)
             || root.StartsWith(Path.TrimEndingDirectorySeparator(projectDirectory) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
@@ -37,6 +32,7 @@ public static class AutomationStudioProjectCopy
         var folder = Path.Combine(root, folderName);
         try
         {
+            Directory.CreateDirectory(root);
             await Task.Run(
                 () => store.SaveProjectFolder(projectId, folder, cancellationToken: cancellationToken),
                 cancellationToken).ConfigureAwait(false);

@@ -15,6 +15,8 @@ public interface IStudioProjectStore
     StudioProject Load(string projectId);
     StudioProject Save(StudioProject project);
     void Delete(string projectId);
+    /// <summary>Keeps a project protected from cleanup and deletion until the lease is disposed.</summary>
+    IDisposable AcquireProjectUse(string projectId);
     StudioProject MarkOpened(string projectId);
 
     /// <summary>
@@ -176,6 +178,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
     private readonly TimeProvider _timeProvider;
     private readonly object _sync = new();
     private readonly Dictionary<string, string> _exportIndex = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _projectUseCounts = new(StringComparer.Ordinal);
     private bool _exportIndexLoaded;
 
     public StudioProjectStore(string? rootDirectory = null, TimeProvider? timeProvider = null)
@@ -264,6 +267,11 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
         ValidateProjectId(projectId);
         lock (_sync)
         {
+            if (_projectUseCounts.ContainsKey(projectId))
+            {
+                throw new IOException("The project is being used by another operation.");
+            }
+
             var directory = ProjectDirectory(projectId);
             if (Directory.Exists(directory))
             {
@@ -271,6 +279,41 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
                 _exportIndexLoaded = false;
             }
         }
+    }
+
+    public IDisposable AcquireProjectUse(string projectId)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            _projectUseCounts.TryGetValue(projectId, out var useCount);
+            _projectUseCounts[projectId] = useCount + 1;
+            return new ProjectUseLease(this, projectId);
+        }
+    }
+
+    private void ReleaseProjectUse(string projectId)
+    {
+        lock (_sync)
+        {
+            var useCount = _projectUseCounts[projectId] - 1;
+            if (useCount == 0)
+            {
+                _projectUseCounts.Remove(projectId);
+            }
+            else
+            {
+                _projectUseCounts[projectId] = useCount;
+            }
+        }
+    }
+
+    private sealed class ProjectUseLease(StudioProjectStore store, string projectId) : IDisposable
+    {
+        private StudioProjectStore? _store = store;
+
+        public void Dispose() =>
+            Interlocked.Exchange(ref _store, null)?.ReleaseProjectUse(projectId);
     }
 
     public StudioProject MarkOpened(string projectId)
@@ -614,6 +657,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
         {
             var now = _timeProvider.GetUtcNow().ToUniversalTime();
             var inUse = new HashSet<string>(inUseProjectIds ?? [], StringComparer.Ordinal);
+            inUse.UnionWith(_projectUseCounts.Keys);
             var summaries = new List<StudioProjectSummary>();
             var unfinishedRecordings = new List<string>();
 

@@ -59,7 +59,12 @@ public sealed partial class StudioProjectStore
             if (project.Sources.Screen.External)
             {
                 var extension = Path.GetExtension(paths.ScreenPath).TrimStart('.').ToLowerInvariant();
-                var screenName = "screen." + (extension.Length > 0 && extension.All(char.IsAsciiLetterOrDigit) ? extension : "mp4");
+                var screenName = "screen."
+                    + (extension.Length > 0
+                        && !string.Equals(extension, StudioProjectFolder.ProjectFileExtension.TrimStart('.'), StringComparison.OrdinalIgnoreCase)
+                        && extension.All(char.IsAsciiLetterOrDigit)
+                            ? extension
+                            : "mp4");
                 Require(paths.ScreenPath, screenName);
                 // Only the portable snapshot owns the copy; the editor keeps its original source.
                 project = project with

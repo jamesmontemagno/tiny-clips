@@ -105,15 +105,20 @@ public sealed class AutomationStudioProjectCopyTests : StudioProjectFolderTestBa
     }
 
     [Fact]
-    public async Task CopyReportsMissingSourcesAndVideoFolderWithoutLeavingAPartialProject()
+    public async Task CopyCreatesMissingVideoFolderAndReportsMissingSourcesWithoutLeavingAPartialProject()
     {
         var id = MakeProject(camera: false);
-        var error = await Assert.ThrowsAsync<AutomationException>(() =>
-            AutomationStudioProjectCopy.SaveAsync(Store, id, "Copy", Path.Combine(Outside, "missing"), TestContext.Current.CancellationToken));
-        Assert.Equal(AutomationErrorCodes.Internal, error.Code);
+        var missingFolder = Path.Combine(Outside, "missing");
+
+        var copied = await AutomationStudioProjectCopy.SaveAsync(
+            Store, id, "Copy", missingFolder, TestContext.Current.CancellationToken);
+
+        Assert.Equal(Path.Combine(missingFolder, "Copy"), copied["folderPath"]!.GetValue<string>());
+        Assert.True(File.Exists(copied["projectFile"]!.GetValue<string>()));
+        Directory.Delete(missingFolder, recursive: true);
 
         File.Delete(Store.GetPaths(id).ScreenPath);
-        error = await Assert.ThrowsAsync<AutomationException>(() => CopyAsync(id, "Copy"));
+        var error = await Assert.ThrowsAsync<AutomationException>(() => CopyAsync(id, "Copy"));
         Assert.Equal(AutomationErrorCodes.Internal, error.Code);
         Assert.Empty(Names(Outside));
     }

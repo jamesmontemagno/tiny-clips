@@ -370,6 +370,26 @@ public sealed class StudioProjectStoreTests : IDisposable
     }
 
     [Fact]
+    public void ProjectUseLeasesProtectAProjectFromCleanupAndExplicitDeletionUntilAllAreReleased()
+    {
+        var store = CreateStore();
+        var project = CreateOldExportedProject(store, "in use");
+        using var firstUse = store.AcquireProjectUse(project.Id);
+        using var secondUse = store.AcquireProjectUse(project.Id);
+
+        Assert.Empty(store.Cleanup(new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0)).ProjectIdsDeleted);
+        Assert.Throws<IOException>(() => store.Delete(project.Id));
+
+        firstUse.Dispose();
+        Assert.Empty(store.Cleanup(new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0)).ProjectIdsDeleted);
+        Assert.Throws<IOException>(() => store.Delete(project.Id));
+
+        secondUse.Dispose();
+        store.Delete(project.Id);
+        Assert.False(store.Exists(project.Id));
+    }
+
+    [Fact]
     public void Cleanup_AsksAboutAProjectWhenItsTurnToBeDeletedHasCome_AndAboutNoOther()
     {
         var store = CreateStore();
