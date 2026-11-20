@@ -18,7 +18,7 @@ internal interface IAutomationAppActions
     AutomationRecordingSnapshot GetRecordingSnapshot();
 
     /// <summary>Opens <c>settings</c>, <c>library</c>, or <c>guide</c>.</summary>
-    void OpenAutomationWindow(string window);
+    string? OpenAutomationWindow(string window, string? guideTopic);
 
     /// <summary>The display a screen capture uses when no displayId is given.</summary>
     MonitorInfo? GetPreferredAutomationMonitor();

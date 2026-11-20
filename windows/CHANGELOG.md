@@ -24,7 +24,7 @@ own `CHANGELOG.md` at the repository root.
 - Only Screenshot has a global shortcut by default. Video, GIF, OCR, direct screenshots, and Stop recording start unassigned; saved bindings are preserved, and all global shortcuts can be edited, deleted, or reset.
 - Keyboard shortcuts settings groups Screenshots, Recording, and Text recognition, with separate fixed-shortcut references for the editors, Studio, Clips Library, and navigation. Onboarding offers only Screenshot, Record video, and Record GIF; recording controls and guides reflect the current Stop binding.
 - Shortcut configuration deliberately remains UI-only; agents continue to use capture and recording commands directly.
-- The Guide opens to capture help in a shorter window, with native Capture, Shortcuts, Edit & record, Library, and Agents tabs instead of one long page. Each topic scrolls independently while the tabs remain visible, and shortcut labels and agent setup remain available in their own tabs.
+- The Guide is now an offline feature handbook with seven native tabs: Capture, Editor, Recording, Studio, Library, Agents, and Help. Original theme-aware illustrations and numbered workflows cover editing, scrolling/OCR, recording, Studio projects/captions, Library organization/sharing, Agent permissions, and troubleshooting. Each page scrolls independently; Help retains live shortcut bindings and Agents retains selectable setup commands. Stable lower-case topic IDs support selecting and inspecting a topic on the same Guide window.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 
 ## [v2.1.1-windows] - 2026-11-14
