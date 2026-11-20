@@ -286,16 +286,57 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
         Assert.Empty(Names(Outside));
     }
 
-    [Fact]
-    public void AProjectAroundAVideoKeptElsewhereIsNotSavedAsAFolder()
+    [Theory]
+    [InlineData("finished.mp4", "screen.mp4")]
+    [InlineData("finished.MOV", "screen.mov")]
+    [InlineData("finished", "screen.mp4")]
+    [InlineData("finished.bad-extension", "screen.mp4")]
+    [InlineData("finished.tinyclips", "screen.mp4")]
+    public void AProjectAroundAVideoKeptElsewhereSavesAPortableCopy(string originalName, string copiedName)
     {
-        var video = Path.Combine(Outside, "finished.mp4");
+        var video = Path.Combine(Outside, originalName);
         File.WriteAllText(video, "video");
         var flat = Store.GetOrCreateFlatProject(video, new StudioRecordingSourceInfo(1920, 1080, 5), "1.0");
+        Store.Save(flat with { Edits = flat.Edits with { TrimStart = 1 } });
+        Store.RecordExport(flat.Id, Path.Combine(Outside, "exported.mp4"));
+        var storedJson = File.ReadAllText(Store.GetPaths(flat.Id).ProjectJsonPath);
+        var originalWriteTime = File.GetLastWriteTimeUtc(video);
+        var folder = Path.Combine(Outside, "Flat");
 
-        AssertRefused(StudioProjectFolderProblem.ExternalSource, () => Save(flat.Id, Path.Combine(Outside, "Flat")));
+        Save(flat.Id, folder);
 
-        Assert.Equal(["finished.mp4"], Names(Outside));
+        Assert.Equal(["Flat.tinyclips", copiedName], Names(folder));
+        Assert.Equal("video", File.ReadAllText(Path.Combine(folder, copiedName)));
+        var json = File.ReadAllText(Path.Combine(folder, "Flat.tinyclips"));
+        var snapshot = StudioProjectJson.ReadProject(json);
+        Assert.Equal(copiedName, snapshot.Sources.Screen.File);
+        Assert.False(snapshot.Sources.Screen.External);
+        Assert.Equal(1, snapshot.Edits.TrimStart);
+        Assert.Empty(snapshot.Exports);
+        Assert.DoesNotContain(video, json, StringComparison.Ordinal);
+        Assert.Equal(storedJson, File.ReadAllText(Store.GetPaths(flat.Id).ProjectJsonPath));
+        Assert.Equal("video", File.ReadAllText(video));
+        Assert.Equal(originalWriteTime, File.GetLastWriteTimeUtc(video));
+
+        // A saved project remains usable after the original video is no longer available.
+        File.Delete(video);
+        var opened = Open(folder);
+        Assert.NotEqual(flat.Id, opened.Id);
+        Assert.Equal(1, opened.Edits.TrimStart);
+        Assert.Equal("video", File.ReadAllText(Store.GetPaths(opened).ScreenPath));
+    }
+
+    [Fact]
+    public void AnImportedVideoWithAMissingSourceCannotSaveAHalfProject()
+    {
+        var video = Path.Combine(Outside, "missing.mp4");
+        var flat = Store.GetOrCreateFlatProject(video, new StudioRecordingSourceInfo(1920, 1080, 5), "1.0");
+
+        var refusal = AssertRefused(StudioProjectFolderProblem.MissingFile, () => Save(flat.Id, Path.Combine(Outside, "Flat")));
+
+        Assert.Equal("missing.mp4", refusal.FileName);
+        Assert.Empty(Names(Outside));
+        Assert.True(Store.Load(flat.Id).Sources.Screen.External);
     }
 
     // Opening a folder

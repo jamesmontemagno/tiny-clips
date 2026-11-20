@@ -34,7 +34,7 @@ public class McpServerTests
         var tools = McpServer.ListTools("windows");
         Assert.DoesNotContain(tools, tool => tool.Name.StartsWith("tinyclips_notifications_", StringComparison.Ordinal));
         Assert.DoesNotContain(tools, tool => tool.Name is "tinyclips_editor_list" or "tinyclips_editor_closeAll");
-        Assert.DoesNotContain(tools, tool => tool.Name == "tinyclips_studio_project_saveCopy");
+        Assert.Contains(tools, tool => tool.Name == "tinyclips_studio_project_saveCopy");
         Assert.Contains(tools, tool => tool.Name == "tinyclips_app_status");
 
         var macTools = McpServer.ListTools("macos");

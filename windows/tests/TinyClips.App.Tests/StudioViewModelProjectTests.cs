@@ -19,7 +19,7 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
     }
 
     [Fact]
-    public async Task ImportedVideoKeepsEditingButDisablesPortableFolderCommandsWithExplanation()
+    public async Task ImportedVideoSupportsSaveSaveAsAndLinkedSavesWithoutChangingOriginal()
     {
         var path = Path.Combine(_outside, "external.mp4");
         File.WriteAllBytes(path, [1]);
@@ -28,11 +28,48 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
         var asked = Listen(viewModel);
 
         Assert.True(viewModel.IsEditable);
-        Assert.False(viewModel.CanSaveProject);
-        Assert.Contains("stored externally", viewModel.ProjectFolderHelp, StringComparison.Ordinal);
+        Assert.True(viewModel.CanSaveProject);
         viewModel.RequestSaveProject();
         viewModel.RequestSaveProjectAs();
-        Assert.Empty(asked);
+        Assert.Equal(["save", "saveAs"], asked);
+
+        viewModel.CanvasPadding = 0.12;
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved,
+            await RunToEndAsync(viewModel.SaveProjectAsync(viewModel.CheckSaveTarget(_outside, "First"))));
+        var firstFile = viewModel.SavedProjectFile!;
+        viewModel.CanvasPadding = 0.2;
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved,
+            await RunToEndAsync(viewModel.SaveLinkedProjectAsync(firstFile)));
+        Assert.Equal(0.2, Projects.OpenProjectFolder(firstFile,
+            cancellationToken: TestContext.Current.CancellationToken).Canvas.Padding, Precision);
+        var firstBytes = File.ReadAllBytes(firstFile);
+
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved,
+            await RunToEndAsync(viewModel.SaveProjectAsync(viewModel.CheckSaveTarget(_outside, "Second"))));
+        Assert.Equal(Path.Combine(_outside, "Second", "Second.tinyclips"), viewModel.SavedProjectFile);
+        Assert.Equal(firstBytes, File.ReadAllBytes(firstFile));
+        Assert.True(Projects.Load(project.Id).Sources.Screen.External);
+        Assert.Equal(path, Projects.GetPaths(Projects.Load(project.Id)).ScreenPath);
+        Assert.Equal(new byte[] { 1 }, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public async Task AutomationCopyFlushesCurrentEditsWithoutLinkingAndRefusesAnActiveGesture()
+    {
+        var id = CreateProject();
+        var viewModel = await OpenAsync(id);
+        viewModel.CanvasPadding = 0.12;
+        Assert.True(viewModel.PrepareAutomationProjectCopy());
+        Assert.Equal(0.12, Projects.Load(id).Canvas.Padding, Precision);
+        Assert.Null(viewModel.SavedProjectFile);
+
+        viewModel.BeginGesture();
+        viewModel.CanvasPadding = 0.2;
+        Assert.False(viewModel.PrepareAutomationProjectCopy());
+        Assert.Equal(0.12, Projects.Load(id).Canvas.Padding, Precision);
+        viewModel.EndGesture();
+        Assert.True(viewModel.PrepareAutomationProjectCopy());
+        Assert.Equal(0.2, Projects.Load(id).Canvas.Padding, Precision);
     }
 
     [Fact]
@@ -342,6 +379,7 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
         var asked = new List<string>();
         viewModel.OpenProjectRequested += (_, _) => asked.Add("open");
         viewModel.SaveProjectRequested += (_, _) => asked.Add("save");
+        viewModel.SaveProjectAsRequested += (_, _) => asked.Add("saveAs");
         viewModel.DeleteProjectRequested += (_, _) => asked.Add("delete");
         return asked;
     }

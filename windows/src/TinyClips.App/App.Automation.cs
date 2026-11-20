@@ -511,6 +511,23 @@ public partial class App : IAutomationAppActions
                     ["revision"] = ProjectRevision(project),
                 };
             }
+            case "studio.project.saveCopy":
+            {
+                var projectId = RequiredStudioString(parameters, "projectId");
+                var folderName = RequiredStudioString(parameters, "folderName");
+                using var projectUse = store.AcquireProjectUse(projectId);
+                _ = ReadAutomationProject(projectId, store);
+                if (StudioWindows().FindOpenViewModel(projectId) is { } openEditor
+                    && !openEditor.PrepareAutomationProjectCopy())
+                {
+                    throw new AutomationException(AutomationErrorCodes.Busy, "The Studio project is not ready to save.");
+                }
+
+                return await AutomationStudioProjectCopy.SaveAsync(
+                    store, projectId, folderName,
+                    Services.GetRequiredService<IClipStorageService>().OutputDirectory(CaptureType.Video),
+                    cancellationToken);
+            }
             case "studio.project.open":
             {
                 var projectId = RequiredStudioString(parameters, "projectId");

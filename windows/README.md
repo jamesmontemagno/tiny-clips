@@ -330,6 +330,8 @@ With the switch on:
   its folder holds nothing else; the save can be cancelled, and the editor takes no edits
   while it runs.   **Save project** (Ctrl+S) then updates that same folder without asking again, including after an app restart.
   **Save project as…** (Ctrl+Shift+S) chooses a new name/location and makes it the current destination.
+  Both commands also work for ordinary videos opened from the trimmer or Clips Library:
+  the video is copied into the portable project, and the original is never moved or changed.
   **Open project…**, or a `.tinyclips` file opened from File Explorer, copies
   the project into Studio as a new draft and opens that; opening and internal autosave only read the original folder, while explicit Save updates it. **Delete
   project…** asks first, and leaves exported videos and saved folders alone.

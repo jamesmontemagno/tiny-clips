@@ -10,12 +10,14 @@ own `CHANGELOG.md` at the repository root.
 
 ### Fixed
 - Agents can disable microphone and camera source capture for an individual video or Studio recording with `microphone=false camera=false`, using recording scope without changing saved settings. Enabling requires both the user's saved device opt-in and existing Windows permission; no permission prompt is shown. Start/status report effective device capture, and overrides survive countdown, Studio fallback, and restart.
+- Studio's Save project and Save project as commands now work for videos opened from the trimmer or Clips Library, copying the original into a portable project without moving or changing it.
 - Studio annotations added between frame boundaries now start on the displayed frame and appear immediately without advancing the playhead.
 - Tiny Clips no longer reserves `Ctrl+Shift+S` while idle. Stop recording is now an optional, editable shortcut, registered only during recording, so Save as shortcuts reach Studio and other apps normally.
 - Scrolling screenshots now keep the lower viewport overlap until the final frame, preventing bottom-floating controls such as Teams' "New messages" badge from repeating throughout the image.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 
 ### Changed
+- Agent Control now supports `studio.project.saveCopy` with export scope, creating an unlinked portable snapshot in a new folder directly inside the configured video folder.
 - Only Screenshot has a global shortcut by default. Video, GIF, OCR, direct screenshots, and Stop recording start unassigned; saved bindings are preserved, and all global shortcuts can be edited, deleted, or reset.
 - Keyboard shortcuts settings groups Screenshots, Recording, and Text recognition, with separate fixed-shortcut references for the editors, Studio, Clips Library, and navigation. Onboarding offers only Screenshot, Record video, and Record GIF; recording controls and guides reflect the current Stop binding.
 - Shortcut configuration deliberately remains UI-only; agents continue to use capture and recording commands directly.
