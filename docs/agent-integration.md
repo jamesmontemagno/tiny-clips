@@ -214,7 +214,7 @@ For long pages, call `capture.scrolling.start` with a target, scroll the page wi
 
 ### Studio projects
 
-Studio commands work on both platforms when Studio is enabled. `studio.projects.list` discovers stored projects, including drafts made from existing videos (`isDraft: true`, `isFlat: true`) that also appear in Settings → Studio → Drafts; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths.
+Studio commands work on both platforms when Studio is enabled. `studio.projects.list` discovers stored projects, including drafts made from existing videos (`isDraft: true`, `isFlat: true`) that also appear in Library → Studio → Projects and Settings → Studio → Drafts; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths. With `edit` scope, `studio.project.open` opens a stored project by ID or brings its existing Studio editor forward.
 
 On macOS, `studio.project.saveCopy` needs `export` and writes a portable snapshot, including source recordings, into a new `folderName` directly in the configured video folder. It returns `folderPath` and `projectFile`, never replaces an existing destination, and does not link the copy for subsequent saves. An open editor must be ready and its pending changes are saved first. On Windows this command is not advertised and returns `not_supported`.
 

@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
+
 ### Fixed
 - Scrolling screenshots now keep the lower viewport overlap until the final frame, preventing bottom-floating controls such as Teams' "New messages" badge from repeating throughout the image.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.

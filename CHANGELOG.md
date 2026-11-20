@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
+
 ### Changed
 - The macOS Guide uses native Capture, Steps, Shortcuts, Tips, and Agents tabs with separately scrollable pages. The window is now resizable, with more room for help and agent setup.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
