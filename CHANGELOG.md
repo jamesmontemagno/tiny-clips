@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
 - Agents on macOS and Windows can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 
 ### Fixed
+- Pausing an agent-controlled video and withdrawing device consent keeps the take paused on resume. Restart checks consent before discarding the take, including from the floating control.
+- Finder and Clips Library reuse the same Studio edits for an unchanged imported video. Recovering a copied MOV preserves its format.
+- Studio Projects refreshes no longer read every project twice. `editor.open` supports a standard result with a separate file path on both platforms (`resultFormat=standard`).
+- Tall sticky footers no longer repeat during slow scrolling captures on macOS.
 - Scrolling screenshots now keep the lower viewport overlap until the final frame, preventing bottom-floating controls such as Teams' "New messages" badge from repeating throughout the image.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 - macOS Studio Save Project and Save Project As… now work for videos opened from the Clips Library or video editor, in both the Studio and File menus. The video is copied into the project folder; the original is left unchanged.

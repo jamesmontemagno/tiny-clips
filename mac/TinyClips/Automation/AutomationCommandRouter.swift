@@ -67,7 +67,7 @@ final class AutomationCommandRouter {
         case "capture.scrolling.cancel": return try cancelScrollingCapture()
         case "recording.stop": return try stop()
         case "recording.togglePause": return try togglePause()
-        case "recording.restart": return try restart()
+        case "recording.restart": return try await restart()
         case "recording.discard": return try discard()
         case "editor.open": return try await openEditor(params, validateAccess: validateAccess)
         case "editor.list":
@@ -529,14 +529,14 @@ final class AutomationCommandRouter {
     private func togglePause() throws -> [String: Any] {
         let manager = try captureManager()
         try requireRecording(manager)
-        manager.togglePauseRecording()
+        try manager.togglePauseRecording(forAutomation: true)
         return ["paused": manager.isRecordingPaused]
     }
 
-    private func restart() throws -> [String: Any] {
+    private func restart() async throws -> [String: Any] {
         let manager = try captureManager()
         try requireRecording(manager)
-        try manager.restartRecordingForAutomation()
+        try await manager.restartRecording(forAutomation: true)
         return ["restarted": true]
     }
 
@@ -576,6 +576,7 @@ final class AutomationCommandRouter {
     }
 
     private func openEditor(_ params: [String: Any], validateAccess: () throws -> Void) async throws -> [String: Any] {
+        let standardResult = try Self.standardEditorOpenRequested(params["resultFormat"])
         if let value = params["studio"] {
             guard let studio = AutomationValue.bool(value) else {
                 throw AutomationError(.invalidParams, "studio must be true or false.")
@@ -593,7 +594,7 @@ final class AutomationCommandRouter {
                     try requireStudioEnabled()
                     throw AutomationError(.internal, "This video could not be opened in Studio.")
                 }
-                return ["opened": url.path, "editor": "studio"]
+                return Self.editorOpenResult(url, editor: "studio", standard: standardResult)
             }
         }
         let url = try existingFile(params)
@@ -604,7 +605,7 @@ final class AutomationCommandRouter {
                 throw AutomationError(.notSupported, "Tiny Clips Studio is turned off. Turn it on in Settings → Studio.")
             }
             StudioWindowRegistry.shared.openProjectFile(at: url)
-            return ["opened": url.path, "editor": "studio"]
+            return Self.editorOpenResult(url, editor: "studio", standard: standardResult)
         }
         let editor: String
         let type: CaptureType
@@ -616,6 +617,20 @@ final class AutomationCommandRouter {
             throw AutomationError(.invalidParams, "Tiny Clips cannot edit .\(url.pathExtension) files.")
         }
         manager.openRecentCapture(RecentCaptureItem(path: url.path, type: type))
+        return Self.editorOpenResult(url, editor: editor, standard: standardResult)
+    }
+
+    static func standardEditorOpenRequested(_ value: Any?) throws -> Bool {
+        guard let value, !(value is NSNull) else { return false }
+        switch value as? String {
+        case "standard": return true
+        case "legacy": return false
+        default: throw AutomationError(.invalidParams, "resultFormat must be legacy or standard.")
+        }
+    }
+
+    static func editorOpenResult(_ url: URL, editor: String, standard: Bool) -> [String: Any] {
+        if standard { return ["opened": true, "path": url.path, "editor": editor] }
         return ["opened": url.path, "editor": editor]
     }
 

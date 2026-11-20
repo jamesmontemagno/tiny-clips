@@ -1584,9 +1584,24 @@ class CaptureManager: ObservableObject {
         stopRecording(streamFailureMessage: message)
     }
 
-    func togglePauseRecording() {
+    private func authorizedContinuationDevices(forAutomation: Bool) throws -> AutomationRecordingDevices? {
+        guard case let .video(_, _, mic, _, webcam, _, _, _, original) = activeRecordingRequest else { return nil }
+        do {
+            return try AutomationRecordingDevices.forContinuation(
+                original: original, initiatedByAgent: forAutomation,
+                takeDevices: .init(microphone: mic, camera: webcam.enabled)
+            ) { try $0.requireCurrentAuthorization() }
+        } catch let error as AutomationError {
+            automationRecordingError = error
+            throw error
+        }
+    }
+
+    func togglePauseRecording(forAutomation: Bool = false) throws {
         guard isRecording else { return }
         if isRecordingPaused {
+            _ = try authorizedContinuationDevices(forAutomation: forAutomation)
+            if automationRecordingError?.code == .permissionRequired { automationRecordingError = nil }
             videoRecorder?.resume()
             webcamRecorder?.resume()
             gifWriter?.resume()
@@ -1613,50 +1628,38 @@ class CaptureManager: ObservableObject {
         videoRecorder?.setMicrophoneMuted(isRecordingMicrophoneMuted)
     }
 
-    func restartRecording(forAutomation: Bool = false) {
-        guard let request = activeRecordingRequest else { return }
+    func restartRecording(forAutomation: Bool = false) async throws {
+        guard isRecording, let request = activeRecordingRequest else { return }
+        let devices = try authorizedContinuationDevices(forAutomation: forAutomation)
         let draggedWebcamSelection = activeWebcamOverlaySelection
-        Task {
-            await discardRecording(clearActiveRequest: false)
-            switch request {
-            case let .video(target, systemAudio, microphone, selectedMicrophoneID, webcamSelection, mouseClicksEnabled, timeLimitMinutes, studioModeEnabled, automationDevices):
-                automationRecordingError = nil
-                let devices = forAutomation
-                    ? AutomationRecordingDevices(microphone: microphone, camera: webcamSelection.enabled)
-                    : automationDevices
-                if forAutomation {
-                    activeRecordingWasStartedByAutomation = true
-                }
-                beginVideoRecording(
-                    target: target,
-                    systemAudio: systemAudio,
-                    microphone: microphone,
-                    selectedMicrophoneID: selectedMicrophoneID,
-                    webcamSelection: draggedWebcamSelection ?? webcamSelection,
-                    mouseClicksEnabled: mouseClicksEnabled,
-                    timeLimitMinutes: timeLimitMinutes,
-                    countdownEnabled: false,
-                    countdownDuration: 0,
-                    studioModeEnabled: studioModeEnabled,
-                    automationDevices: devices
-                )
-            case let .gif(target, mouseClicksEnabled):
-                beginGifRecording(
-                    target: target,
-                    mouseClicksEnabled: mouseClicksEnabled,
-                    countdownEnabled: false,
-                    countdownDuration: 0
-                )
-            }
+        await discardRecording(clearActiveRequest: false)
+        if forAutomation {
+            activeRecordingWasStartedByAutomation = true
         }
-    }
-
-    func restartRecordingForAutomation() throws {
-        if case let .video(_, _, microphone, _, webcamSelection, _, _, _, _) = activeRecordingRequest {
-            try AutomationRecordingDevices(microphone: microphone, camera: webcamSelection.enabled)
-                .requireCurrentAuthorization()
+        switch request {
+        case let .video(target, systemAudio, microphone, selectedMicrophoneID, webcamSelection, mouseClicksEnabled, timeLimitMinutes, studioModeEnabled, _):
+            automationRecordingError = nil
+            beginVideoRecording(
+                target: target,
+                systemAudio: systemAudio,
+                microphone: microphone,
+                selectedMicrophoneID: selectedMicrophoneID,
+                webcamSelection: draggedWebcamSelection ?? webcamSelection,
+                mouseClicksEnabled: mouseClicksEnabled,
+                timeLimitMinutes: timeLimitMinutes,
+                countdownEnabled: false,
+                countdownDuration: 0,
+                studioModeEnabled: studioModeEnabled,
+                automationDevices: devices
+            )
+        case let .gif(target, mouseClicksEnabled):
+            beginGifRecording(
+                target: target,
+                mouseClicksEnabled: mouseClicksEnabled,
+                countdownEnabled: false,
+                countdownDuration: 0
+            )
         }
-        restartRecording(forAutomation: true)
     }
 
     func discardRecording() {
@@ -2493,10 +2496,14 @@ class CaptureManager: ObservableObject {
         let panel = StopRecordingPanel(
             captureManager: self,
             onPauseResume: { [weak self] in
-                self?.togglePauseRecording()
+                do { try self?.togglePauseRecording() }
+                catch { SaveService.shared.showError(error.localizedDescription) }
             },
             onRestart: { [weak self] in
-                self?.restartRecording()
+                Task { @MainActor [weak self] in
+                    do { try await self?.restartRecording() }
+                    catch { SaveService.shared.showError(error.localizedDescription) }
+                }
             },
             onDiscard: { [weak self] in
                 self?.discardRecording()

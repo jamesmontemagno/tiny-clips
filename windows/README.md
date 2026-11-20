@@ -332,6 +332,7 @@ With the switch on:
   **Save project as…** (Ctrl+Shift+S) chooses a new name/location and makes it the current destination.
   Both commands also work for ordinary videos opened from the trimmer or Clips Library:
   the video is copied into the portable project, and the original is never moved or changed.
+  Later linked saves leave verified unchanged recordings in place; **Save project as…** still creates a full independent copy.
   **Open project…**, or a `.tinyclips` file opened from File Explorer, copies
   the project into Studio as a new draft and opens that; opening and internal autosave only read the original folder, while explicit Save updates it. **Delete
   project…** asks first, and leaves exported videos and saved folders alone.

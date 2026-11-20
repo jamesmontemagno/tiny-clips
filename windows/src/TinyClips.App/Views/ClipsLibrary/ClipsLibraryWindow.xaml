@@ -534,14 +534,29 @@
                           <ColumnDefinition Width="Auto" />
                       </Grid.ColumnDefinitions>
                       <TextBlock Style="{ThemeResource TitleTextBlockStyle}" Text="Studio Projects" />
-                      <Button Grid.Column="1" Click="OnRefreshStudioProjects" Content="Refresh" />
+                      <Button Grid.Column="1" Click="OnRefreshStudioProjects" Content="Refresh"
+                              AutomationProperties.AutomationId="RefreshStudioProjects" AutomationProperties.Name="Refresh Studio projects" />
                   </Grid>
-                  <TextBox x:Name="StudioSearch" Grid.Row="1" AutomationProperties.Name="Search Studio projects"
+                  <TextBox x:Name="StudioSearch" Grid.Row="1" AutomationProperties.AutomationId="StudioSearch"
+                           AutomationProperties.Name="Search Studio projects"
                            PlaceholderText="Search Studio projects" TextChanged="OnStudioSearchChanged" />
                   <TextBlock x:Name="StudioStatus" Grid.Row="2" TextWrapping="Wrap" />
-                  <ScrollViewer Grid.Row="3">
-                      <StackPanel x:Name="StudioProjectRows" Spacing="8" />
-                  </ScrollViewer>
+                  <ListView x:Name="StudioProjectRows" Grid.Row="3" SelectionMode="None"
+                            ContainerContentChanging="OnStudioRowContentChanging"
+                            AutomationProperties.AutomationId="StudioProjectList" AutomationProperties.Name="Studio projects">
+                      <ListView.ItemTemplate>
+                          <DataTemplate x:DataType="local:StudioLibraryRow">
+                              <StackPanel Spacing="4" Margin="0,4,0,8">
+                                  <TextBlock Text="{x:Bind Name}" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                  <TextBlock Text="{x:Bind Detail}" TextWrapping="Wrap" />
+                                  <Button HorizontalAlignment="Left" Content="Open in Studio" Visibility="{x:Bind CanOpen}"
+                                          Tag="{x:Bind OpenProjectId}" Click="OnOpenStudioProject"
+                                          AutomationProperties.AutomationId="{x:Bind OpenAutomationId}"
+                                          AutomationProperties.Name="{x:Bind OpenAutomationName}" />
+                              </StackPanel>
+                          </DataTemplate>
+                      </ListView.ItemTemplate>
+                  </ListView>
               </Grid>
             </Grid>
         </NavigationView>

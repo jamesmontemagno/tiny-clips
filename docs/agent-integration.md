@@ -205,6 +205,8 @@ Use headless capture and annotation commands for autonomous work. `editor.open` 
 
 To open an MP4 or MOV from the Clips Library directly in Studio, use `tinyclips editor.open path="<file>" studio=true`. This needs `edit` and Studio must be enabled. For videos outside the library, use **Open With → Tiny Clips** in Finder or File Explorer.
 
+For scripts and MCP calls, pass `resultFormat=standard` to get `{"opened":true,"path":"<absolute path>","editor":"studio"}` on either OS. Omit it for compatibility with older apps and clients: the legacy `opened` field is a path on macOS and a boolean on Windows.
+
 `editor.list` needs `read` and returns `{"editors":[...]}`. Each screenshot session has `id`, `path`, and `canCloseSafely`, plus `reason` when unsafe: `unsavedChanges`, `unsavedCapture`, `saving`, `notReady`, or `busy`.
 
 `editor.closeAll` needs `edit` and takes no parameters. It closes only sessions that can close without saving or discarding work. It returns `{"closed":["session-id"],"remaining":[...]}`, where remaining objects have the same shape as `editor.list`. Remaining windows are a partial outcome, not a claim that everything closed. A new editor opened during cleanup is not included in that cleanup's targets, but is included in `remaining`. Review unsafe windows with the user; no force-discard option exists.
@@ -226,7 +228,7 @@ tinyclips recording.startVideo mode=window windowId=<returned-window-id> microph
 tinyclips recording.startVideo studio=true microphone=false camera=false
 ```
 
-The MCP tool `tinyclips_recording_startVideo` accepts the same boolean arguments. Do not use `settings.set` to enable a device as a workaround for missing user consent.
+The MCP tool `tinyclips_recording_startVideo` accepts the same boolean arguments. Do not use `settings.set` to enable a device as a workaround for missing user consent. On macOS, if a device opt-in or permission has been withdrawn, resuming an agent-controlled take leaves it paused, and restart refuses before discarding it. Stop can still save the existing take.
 
 For long pages, call `capture.scrolling.start` with a target, scroll the page with the agent's own browser or UI tools, and call `capture.scrolling.stop` to save the stitched screenshot directly. Tiny Clips only captures and stitches frames; it does not send scroll input. `capture.scrolling.status` reports the active state and frame count. `capture.scrolling.cancel` discards the in-progress image and requires the sensitive `discard` approval.
 

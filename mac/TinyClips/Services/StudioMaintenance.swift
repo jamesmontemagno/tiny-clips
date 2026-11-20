@@ -57,17 +57,11 @@ enum StudioMaintenance {
     ///
     /// - Returns: Where the video went.
     static func saveScreenRecording(projectID: String) async throws -> URL {
-        // The first name is made here, on the main actor, as every other saved video's is.
-        let firstURL = SaveService.shared.generateURL(for: .video)
+        let directory = SaveService.shared.outputDirectoryURL(for: .video)
+        let stem = SaveService.shared.generatedFileName(for: .video, fileExtension: "")
         let url = try await Task.detached(priority: .userInitiated) { () throws -> URL in
-            var isFirstName = true
-            return try StudioScreenRecording.save(store: StudioProjectStore.shared, id: projectID) {
-                if isFirstName {
-                    isFirstName = false
-                    return firstURL
-                }
-                // Only when a file took the first name while the recording was being copied.
-                return SaveService.shared.generateURL(for: .video)
+            try StudioScreenRecording.save(store: StudioProjectStore.shared, id: projectID) { ext in
+                SaveService.uniqueURL(in: directory, filename: "\(stem).\(ext)")
             }
         }.value
         SaveService.shared.handleSavedFile(url: url, type: .video)

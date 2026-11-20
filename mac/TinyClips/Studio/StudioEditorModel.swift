@@ -1795,6 +1795,11 @@ struct StudioEditorModel: Equatable, Sendable {
         exportedState = exported
     }
 
+    mutating func adoptOwnedScreen(from saved: StudioProject) {
+        guard saved.id == project.id, project.sources.screen.external, !saved.sources.screen.external else { return }
+        project.sources.screen = saved.sources.screen
+    }
+
     /// Takes the fields the store or other windows own from the saved project, leaving edits alone.
     mutating func refreshBookkeeping(from saved: StudioProject) {
         project.exports = saved.exports

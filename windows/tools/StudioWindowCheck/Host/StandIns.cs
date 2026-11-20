@@ -348,6 +348,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
         public IReadOnlyList<StudioProjectSummary> ListSummaries() => _inner.ListSummaries();
 
         public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects() => _inner.ListUnreadableProjects();
+        public StudioProjectListing ListLibraryProjects() => _inner.ListLibraryProjects();
 
         public string? FindScreenRecording(string projectId)
         {

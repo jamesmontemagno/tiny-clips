@@ -354,6 +354,12 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
     private async Task<JsonNode> OpenEditorAsync(AutomationCommandContext context, CancellationToken cancellationToken)
     {
         var raw = context.GetString("path") ?? string.Empty;
+        JsonObject Result(string path, string editor)
+        {
+            var result = new JsonObject { ["opened"] = true, ["editor"] = editor };
+            if (context.GetString("resultFormat") == "standard") result["path"] = path;
+            return result;
+        }
         var studio = context.GetBoolean("studio");
         if (studio && ActivatedFile.KindOf(raw) != ActivatedFileKind.StudioVideo)
         {
@@ -369,12 +375,12 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             }
 
             var editor = await OnUiAsync(() => _app.OpenEditorForAutomationAsync(project, null));
-            return new JsonObject { ["opened"] = true, ["editor"] = editor };
+            return Result(project, editor);
         }
 
-        var (path, type) = ResolveLibraryFile(raw, studioVideo: studio);
+        var (path, type) = ResolveLibraryFile(raw);
         var opened = await OnUiAsync(() => _app.OpenEditorForAutomationAsync(path, type, studio, cancellationToken), cancellationToken);
-        return new JsonObject { ["opened"] = true, ["editor"] = opened };
+        return Result(path, opened);
     }
 
     private JsonNode Reveal(AutomationCommandContext context)
@@ -457,12 +463,10 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
     /// Agents may only touch captures Tiny Clips knows about: files directly in a library folder
     /// or in the recent captures list, with a capture file type. Anything else is <c>not_found</c>.
     /// </summary>
-    private static (string Path, CaptureType Type) ResolveLibraryFile(string? raw, bool studioVideo = false)
+    private static (string Path, CaptureType Type) ResolveLibraryFile(string? raw)
     {
         var path = FullPathOrNotFound(raw);
-        var type = studioVideo && ActivatedFile.KindOf(path) == ActivatedFileKind.StudioVideo
-            ? CaptureType.Video
-            : ClipLibraryService.CaptureTypeFor(path);
+        var type = ClipLibraryService.CaptureTypeFor(path);
         if (!File.Exists(path) || type is null)
         {
             throw NotFound();

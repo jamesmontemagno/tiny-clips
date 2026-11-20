@@ -843,9 +843,12 @@ public sealed class StudioProjectStoreTests : IDisposable
         Directory.SetCreationTimeUtc(store.GetPaths(damaged.Id).ProjectDirectory, damagedCreated);
         Directory.SetCreationTimeUtc(store.GetPaths(newer.Id).ProjectDirectory, newerCreated);
 
-        var unreadable = store.ListUnreadableProjects();
+        var listing = store.ListLibraryProjects();
+        var unreadable = listing.Unreadable;
 
-        Assert.Equal([readable.Id], store.ListSummaries().Select(summary => summary.Id));
+        Assert.Equal([readable.Id], listing.Summaries.Select(summary => summary.Id));
+        Assert.Equal(store.ListSummaries(), listing.Summaries);
+        Assert.Equal(store.ListUnreadableProjects(), unreadable);
         Assert.Equal([damaged.Id, newer.Id], unreadable.Select(project => project.Id));
         Assert.DoesNotContain(unfinished.ProjectId, unreadable.Select(project => project.Id));
         Assert.True(unreadable[0].HasScreenRecording);
@@ -862,6 +865,10 @@ public sealed class StudioProjectStoreTests : IDisposable
         Assert.Equal(store.GetPaths(damaged.Id).ScreenPath, store.FindScreenRecording(damaged.Id));
         store.Delete(damaged.Id);
         Assert.Equal([newer.Id], store.ListUnreadableProjects().Select(project => project.Id));
+        File.WriteAllText(store.GetPaths(readable.Id).ProjectJsonPath, "{");
+        var changed = store.ListLibraryProjects();
+        Assert.Empty(changed.Summaries);
+        Assert.Equal(new[] { newer.Id, readable.Id }.Order(), changed.Unreadable.Select(project => project.Id).Order());
     }
 
     [Fact]

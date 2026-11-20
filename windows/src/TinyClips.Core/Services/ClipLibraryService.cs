@@ -8,7 +8,7 @@ public sealed class ClipLibraryService : IClipLibraryService
     /// <summary>Prefix Tiny Clips stamps on every generated file name (see FileNameService).</summary>
     public const string TinyClipsFilePrefix = "TinyClips";
 
-    // Extensions that identify each capture type. Keep in sync with FileNameService.
+    // Includes supported imports as well as formats Tiny Clips generates.
     private static readonly IReadOnlyDictionary<string, CaptureType> ExtensionMap =
         new Dictionary<string, CaptureType>(StringComparer.OrdinalIgnoreCase)
         {
@@ -17,6 +17,7 @@ public sealed class ClipLibraryService : IClipLibraryService
             ["jpeg"] = CaptureType.Screenshot,
             ["webp"] = CaptureType.Screenshot,
             ["mp4"]  = CaptureType.Video,
+            ["mov"]  = CaptureType.Video,
             ["gif"]  = CaptureType.Gif,
         };
 

@@ -1035,24 +1035,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string StopRecordingHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.StopRecording).DisplayString;
 
-    public HotKeyDefinition GetHotKey(HotKeyAction action) => _hotKeys.GetBinding(action);
-
-    public HotKeyDefinition GetDefaultHotKey(HotKeyAction action) => _hotKeys.DefaultFor(action);
-
-    public HotKeyValidationResult ValidateHotKey(HotKeyAction action, HotKeyDefinition binding)
-        => _hotKeys.ValidateBinding(action, binding);
-
     /// <summary>Persists a new global shortcut for the given action and refreshes the display.</summary>
     public void SetHotKey(HotKeyAction action, HotKeyModifiers modifiers, uint virtualKey)
     {
         _hotKeys.SetBinding(action, new HotKeyDefinition(modifiers, virtualKey));
-        RefreshHotKeyDisplays();
-    }
-
-    /// <summary>Restores the default shortcut for the given action.</summary>
-    public void ResetHotKey(HotKeyAction action)
-    {
-        _hotKeys.SetBinding(action, _hotKeys.DefaultFor(action));
         RefreshHotKeyDisplays();
     }
 

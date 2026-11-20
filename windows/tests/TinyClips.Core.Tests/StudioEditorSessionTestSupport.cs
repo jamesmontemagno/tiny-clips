@@ -534,6 +534,7 @@ internal sealed class RecordingStore(StudioProjectStore inner, List<string> log)
     }
 
     public IReadOnlyList<StudioProjectSummary> ListSummaries() => inner.ListSummaries();
+    public StudioProjectListing ListLibraryProjects() => inner.ListLibraryProjects();
 
     public IReadOnlyList<StudioUnreadableProject> ListUnreadableProjects() => inner.ListUnreadableProjects();
 

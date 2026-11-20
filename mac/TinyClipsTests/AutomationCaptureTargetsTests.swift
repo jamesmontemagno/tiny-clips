@@ -27,6 +27,21 @@ final class AutomationCaptureTargetsTests: XCTestCase {
     // MARK: - Contract
 
     @MainActor
+    func testStandardEditorOpenResultDoesNotChangeLegacyPath() throws {
+        let url = URL(fileURLWithPath: "/Library/Clips/clip.mov")
+        let standard = AutomationCommandRouter.editorOpenResult(url, editor: "studio",
+            standard: try AutomationCommandRouter.standardEditorOpenRequested("standard"))
+        XCTAssertEqual(standard["opened"] as? Bool, true)
+        XCTAssertEqual(standard["path"] as? String, url.path)
+        XCTAssertEqual(standard["editor"] as? String, "studio")
+        let legacy = AutomationCommandRouter.editorOpenResult(url, editor: "studio",
+            standard: try AutomationCommandRouter.standardEditorOpenRequested(nil))
+        XCTAssertEqual(legacy["opened"] as? String, url.path)
+        XCTAssertNil(legacy["path"])
+        assertInvalid { _ = try AutomationCommandRouter.standardEditorOpenRequested("unknown") }
+    }
+
+    @MainActor
     func testContractDecodesNestedSchemaAndSupportsAutonomousCommands() throws {
         let contract = try AutomationContract.load(from: Self.repoRoot.appendingPathComponent("shared/automation/commands.json"))
         for name in [
@@ -180,6 +195,27 @@ final class AutomationCaptureTargetsTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testPanelAndAgentContinuationPreflightHonorsTakeOwnership() throws {
+        let mic = AutomationRecordingDevices(microphone: true, camera: false)
+        let off = AutomationRecordingDevices(microphone: false, camera: false)
+        let revoked: (AutomationRecordingDevices) throws -> Void = {
+            try $0.requireAuthorization(savedMicrophone: false, savedCamera: false,
+                                        microphoneAuthorized: true, cameraAuthorized: true)
+        }
+        XCTAssertThrowsError(try AutomationRecordingDevices.forContinuation(
+            original: mic, initiatedByAgent: false, takeDevices: off, authorize: revoked
+        ))
+        XCTAssertThrowsError(try AutomationRecordingDevices.forContinuation(
+            original: nil, initiatedByAgent: true, takeDevices: mic, authorize: revoked
+        ))
+        XCTAssertEqual(try AutomationRecordingDevices.forContinuation(
+            original: off, initiatedByAgent: true, takeDevices: mic, authorize: revoked
+        ), off)
+        XCTAssertNil(try AutomationRecordingDevices.forContinuation(
+            original: nil, initiatedByAgent: false, takeDevices: mic, authorize: revoked
+        ))
     }
 
     func testRecordingOptionsAreRemovedWithoutWeakeningTargetValidation() throws {

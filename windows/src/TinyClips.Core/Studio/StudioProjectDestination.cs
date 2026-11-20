@@ -55,53 +55,85 @@ public static class StudioProjectDestination
     {
         lock (SaveLock)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var target = Path.GetFullPath(file);
-            var folder = Path.GetDirectoryName(target)!;
-            RequirePlain(target);
-            if (!Directory.Exists(folder) || StudioProjectFolder.IsLink(folder))
+            var linkedFolder = Path.GetDirectoryName(target)!;
+            if (!Directory.Exists(linkedFolder) || StudioProjectFolder.IsLink(linkedFolder))
             {
                 throw new IOException("The saved project folder is unavailable. Use Save as to choose a destination.");
             }
 
-            var original = File.ReadAllBytes(target);
-            var oldProject = StudioProjectFolder.ReadProjectFile(target);
-            var owned = OwnedFiles(oldProject);
-            owned.Add(Path.GetFileName(target));
+            var folder = StudioExportTarget.ResolvePath(linkedFolder);
+            var manifest = Path.GetFileName(target);
+            target = Path.Combine(folder, manifest);
+            RequirePlain(target);
+            byte[] original;
+            HashSet<string> owned;
+            // The ownership decision and the bytes compared at commit must describe the same manifest.
+            using (File.Open(target, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                owned = OwnedFiles(StudioProjectFolder.ReadProjectFile(target));
+                original = File.ReadAllBytes(target);
+            }
+
             var staging = Path.Combine(folder, $".tinyclips-update-{Guid.NewGuid():N}");
             var backups = Path.Combine(staging, "backups");
             var installed = new List<string>();
             var moved = new List<string>();
             var keepBackup = false;
+            using var media = new StudioLinkedMedia();
             try
             {
-                store.SaveProjectFolder(id, staging, progress: progress, cancellationToken: cancellationToken);
-                var stagedFile = Path.Combine(staging, Path.GetFileName(staging) + StudioProjectFolder.ProjectFileExtension);
-                File.Move(stagedFile, Path.Combine(staging, Path.GetFileName(target)));
-                var names = Directory.GetFiles(staging).Select(Path.GetFileName).OfType<string>()
-                    .Where(name => !string.Equals(name, Path.GetFileName(target), StringComparison.OrdinalIgnoreCase))
-                    .Append(Path.GetFileName(target)).ToArray();
-                foreach (var name in names)
+                var snapshot = StudioProjectStore.PlanFolderSnapshot(store, id);
+                var changed = new List<(string Source, string Name)>();
+                var replace = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { manifest };
+                for (var index = 0; index < snapshot.Files.Count; index++)
                 {
+                    var asset = snapshot.Files[index];
+                    var name = asset.Name;
+                    if (!StudioProjectFolder.IsFileNameInFolder(name) || string.Equals(name, manifest, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new IOException($"The project cannot be saved with the asset name {name}. Use Save as.");
+                    }
+
                     var destination = Path.Combine(folder, name);
-                    if (Directory.Exists(destination) || StudioProjectFolder.IsLink(destination)
-                        || (File.Exists(destination) && !owned.Contains(name)))
+                    var exists = File.Exists(destination);
+                    if (Directory.Exists(destination) || StudioProjectFolder.IsLink(destination) || (exists && !owned.Contains(name)))
                     {
                         throw new IOException($"The project was not saved because {name} is not a replaceable project file. Use Save as.");
                     }
+
+                    if (exists)
+                    {
+                        replace.Add(name);
+                        if (media.CanKeep(asset.Source, destination,
+                            progress is null ? null : fraction => progress.Report((index + fraction) / (2 * snapshot.Files.Count)),
+                            cancellationToken)) continue;
+                    }
+                    changed.Add(asset);
                 }
 
+                Directory.CreateDirectory(staging);
+                StudioProjectStore.CopyFiles(staging, changed, FileShare.ReadWrite | FileShare.Delete,
+                    progress is null ? null : new CopyProgress(progress), cancellationToken);
+                snapshot.WriteManifest(Path.Combine(staging, manifest));
+                beforeCommit?.Invoke();
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!File.ReadAllBytes(target).SequenceEqual(original))
+                RequirePlain(target);
+                if (!string.Equals(folder, StudioExportTarget.ResolvePath(linkedFolder), StringComparison.OrdinalIgnoreCase)
+                    || !File.ReadAllBytes(target).SequenceEqual(original))
                 {
                     throw new IOException("The saved project changed while saving. Save again or use Save as.");
                 }
-                beforeCommit?.Invoke();
+
                 Directory.CreateDirectory(backups);
-                foreach (var name in names)
+                foreach (var name in changed.Select(asset => asset.Name).Append(manifest))
                 {
                     var destination = Path.Combine(folder, name);
-                    if (owned.Contains(name) && File.Exists(destination))
+                    if (replace.Contains(name))
                     {
+                        RequirePlain(destination);
+                        media.ReleaseForReplacement(destination);
                         File.Move(destination, Path.Combine(backups, name));
                         moved.Add(name);
                     }
@@ -141,6 +173,12 @@ public static class StudioProjectDestination
                 }
             }
         }
+    }
+
+    private sealed class CopyProgress(IProgress<double> progress) : IProgress<double>
+    {
+        // Verification uses the first half, staging the files that differed uses the rest.
+        public void Report(double value) => progress.Report((1 + value) / 2);
     }
 
     public static HashSet<string> OwnedFiles(StudioProject project)

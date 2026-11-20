@@ -85,6 +85,8 @@ public class ContractTests
         var required = Assert.Single(schema["required"]!.AsArray());
         Assert.Equal("path", required!.GetValue<string>());
         Assert.Equal("boolean", schema["properties"]!["studio"]!["type"]!.GetValue<string>());
+        Assert.Contains("standard", schema["properties"]!["resultFormat"]!["enum"]!.AsArray()
+            .Select(item => item!.GetValue<string>()));
         Assert.False(schema["additionalProperties"]!.GetValue<bool>());
     }
 

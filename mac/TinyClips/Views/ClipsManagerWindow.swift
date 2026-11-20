@@ -203,16 +203,66 @@ final class ClipMetadataStore {
 // MARK: - Clips View Model
 
 @MainActor
+final class StudioLibraryProjects: ObservableObject {
+    @Published private(set) var listing = StudioProjectListing()
+    @Published private(set) var loadError: String?
+    @Published private(set) var isLoading = false
+
+    private let read: @MainActor () async throws -> StudioProjectListing
+    private var readTask: Task<Void, Never>?
+    private var needsRead = false
+
+    init(read: @escaping @MainActor () async throws -> StudioProjectListing = {
+        _ = SaveService.shared.outputDirectoryURL(for: .video)
+        return try await Task.detached(priority: .utility) {
+            var result = try StudioProjectStore.shared.listLibraryProjects()
+            result.unreadable.sort { $0.createdAt > $1.createdAt }
+            return result
+        }.value
+    }) {
+        self.read = read
+    }
+
+    @discardableResult
+    func refresh(enabled: Bool, invalidate: Bool = true) -> Task<Void, Never>? {
+        guard enabled else {
+            needsRead = false
+            listing = StudioProjectListing()
+            loadError = nil
+            isLoading = false
+            return readTask
+        }
+
+        // A change during a scan needs one trailing read. Other requests can share the scan.
+        needsRead = needsRead || invalidate || !isLoading
+        if !isLoading { isLoading = true }
+        if let readTask { return readTask }
+        readTask = Task {
+            while needsRead {
+                needsRead = false
+                do {
+                    let result = try await read()
+                    guard isLoading, !needsRead else { continue }
+                    listing = result
+                    loadError = nil
+                } catch {
+                    guard isLoading, !needsRead else { continue }
+                    loadError = "Couldn't read Studio projects: \(error.localizedDescription)"
+                }
+            }
+            readTask = nil
+            isLoading = false
+        }
+        return readTask
+    }
+}
+
+@MainActor
 private class ClipsViewModel: ObservableObject {
     @Published var clips: [ClipItem] = []
     /// Videos exported from a Tiny Clips Studio project, keyed by
     /// `StudioProjectStore.exportKey(forPath:)`, with the id of that project.
     @Published private(set) var studioProjectIDs: [String: String] = [:]
-    @Published private(set) var studioProjects: [StudioProjectSummary] = []
-    @Published private(set) var unreadableStudioProjects: [StudioUnreadableProject] = []
-    @Published private(set) var studioLoadError: String?
-    @Published private(set) var isLoadingStudio = false
-    private var studioLoadGeneration = 0
     @Published var thumbnails: [String: NSImage] = [:]
     @Published var isLoading = false
     @Published var sortOption: SortOption = .newest { didSet { persistUIStateIfNeeded() } }
@@ -450,36 +500,6 @@ private class ClipsViewModel: ObservableObject {
         studioProjectIDs = await Task.detached(priority: .utility) {
             (try? StudioProjectStore.shared.exportedPathIndex()) ?? [:]
         }.value
-    }
-
-    func loadStudioProjects() {
-        studioLoadGeneration += 1
-        let generation = studioLoadGeneration
-        guard CaptureSettings.shared.studioPreviewEnabled else {
-            studioProjects = []
-            unreadableStudioProjects = []
-            studioLoadError = nil
-            isLoadingStudio = false
-            return
-        }
-        _ = SaveService.shared.outputDirectoryURL(for: .video)
-        isLoadingStudio = true
-        Task {
-            do {
-                let result = try await Task.detached(priority: .utility) {
-                    let store = StudioProjectStore.shared
-                    return (try store.listSummaries(), try store.listUnreadableProjects())
-                }.value
-                guard generation == studioLoadGeneration else { return }
-                studioProjects = result.0
-                unreadableStudioProjects = result.1.sorted { $0.createdAt > $1.createdAt }
-                studioLoadError = nil
-            } catch {
-                guard generation == studioLoadGeneration else { return }
-                studioLoadError = "Couldn't read Studio projects: \(error.localizedDescription)"
-            }
-            isLoadingStudio = false
-        }
     }
 
     /// The Studio project a video was exported from, when it is still stored.
@@ -1086,6 +1106,7 @@ private class ClipsViewModel: ObservableObject {
 private struct ClipsManagerContentView: View {
     @ObservedObject private var settings = CaptureSettings.shared
     @StateObject private var viewModel = ClipsViewModel()
+    @StateObject private var studioLibrary = StudioLibraryProjects()
     @State private var renameClip: ClipItem?
     @State private var tagEditorClip: ClipItem?
     @State private var notesClip: ClipItem?
@@ -1109,8 +1130,8 @@ private struct ClipsManagerContentView: View {
             set: { selection in
                 switch selection {
                 case .studio:
+                    studioLibrary.refresh(enabled: settings.studioPreviewEnabled, invalidate: !showStudio)
                     showStudio = true
-                    viewModel.loadStudioProjects()
                 case .collection(let collection):
                     showStudio = false
                     viewModel.smartCollection = collection
@@ -1269,11 +1290,11 @@ private struct ClipsManagerContentView: View {
             viewModel.applyStatePreferences()
             viewModel.load()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .studioProjectsDidChange)) { _ in
-            if showStudio { viewModel.loadStudioProjects() }
+        .onReceive(NotificationCenter.default.publisher(for: .studioProjectsDidChange).receive(on: DispatchQueue.main)) { _ in
+            if showStudio { studioLibrary.refresh(enabled: settings.studioPreviewEnabled) }
         }
-        .onChange(of: settings.studioPreviewEnabled) { _, _ in
-            if showStudio { viewModel.loadStudioProjects() }
+        .onChange(of: settings.studioPreviewEnabled) { _, enabled in
+            if showStudio || !enabled { studioLibrary.refresh(enabled: enabled) }
         }
         .task(id: settings.clipsManagerAutoRefreshSeconds) {
             let interval = settings.clipsManagerAutoRefreshSeconds
@@ -1406,8 +1427,8 @@ private struct ClipsManagerContentView: View {
 
     private var studioContent: some View {
         let query = studioSearch.trimmingCharacters(in: .whitespacesAndNewlines)
-        let projects = StudioProjectSummary.libraryProjects(from: viewModel.studioProjects, matching: query)
-        let unreadable = viewModel.unreadableStudioProjects.filter { _ in
+        let projects = StudioProjectSummary.libraryProjects(from: studioLibrary.listing.summaries, matching: query)
+        let unreadable = studioLibrary.listing.unreadable.filter { _ in
             query.isEmpty || "Unreadable Project".localizedStandardContains(query)
         }
         return VStack(alignment: .leading, spacing: 12) {
@@ -1415,18 +1436,18 @@ private struct ClipsManagerContentView: View {
                 Text("Studio Projects").font(.title2.weight(.semibold))
                 Spacer()
                 Button {
-                    viewModel.loadStudioProjects()
+                    studioLibrary.refresh(enabled: settings.studioPreviewEnabled)
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .disabled(viewModel.isLoadingStudio)
+                .disabled(studioLibrary.isLoading)
             }
             if !settings.studioPreviewEnabled {
                 Text("Turn on Tiny Clips Studio in Settings to open projects.")
                     .foregroundStyle(.secondary)
-            } else if let error = viewModel.studioLoadError {
+            } else if let error = studioLibrary.loadError {
                 Text(error).foregroundStyle(.secondary)
-            } else if viewModel.isLoadingStudio && viewModel.studioProjects.isEmpty {
+            } else if studioLibrary.isLoading && studioLibrary.listing.summaries.isEmpty && studioLibrary.listing.unreadable.isEmpty {
                 ProgressView("Loading Studio projects…")
             } else if projects.isEmpty && unreadable.isEmpty {
                 Text(query.isEmpty ? "No Studio projects yet." : "No Studio projects match your search.")

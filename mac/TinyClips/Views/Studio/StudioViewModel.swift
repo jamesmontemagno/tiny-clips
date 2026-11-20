@@ -112,6 +112,7 @@ final class StudioViewModel: ObservableObject {
     private let store: StudioProjectStore
     private var events = StudioEvents()
     private var paths: StudioProjectPaths?
+    private var pendingPlaybackPaths: StudioProjectPaths?
     private var playback: StudioPlayback?
     private var isInGesture = false
     private var needsPreviewRefresh = false
@@ -307,7 +308,7 @@ final class StudioViewModel: ObservableObject {
     // MARK: - Loading
 
     func load() async {
-        guard state == .loading, editor == nil else { return }
+        guard !isTornDown, state == .loading, editor == nil else { return }
         do {
             let opened = try store.markOpened(id: projectID)
             let openedPaths = try store.paths(for: opened)
@@ -342,11 +343,38 @@ final class StudioViewModel: ObservableObject {
             player = newPlayback.player
             inspectorPanel = StudioInspectorPanel.initial(hasCamera: model.hasCamera)
             state = .ready
+            if pendingPlaybackPaths != nil { refreshPreview() }
             refreshRecentProjects()
             seek(to: model.trimStart)
         } catch {
-            becomeUnavailable(error.localizedDescription)
+            if pendingPlaybackPaths != nil && !isTornDown {
+                retryInitialLoadFromCopy()
+            } else {
+                becomeUnavailable(error.localizedDescription)
+            }
         }
+    }
+
+    /// Keep the live editing session (including typing, undo and pending autosave). Only
+    /// the location of the unchanged footage has changed, not the editor's editable state.
+    func adoptOwnedScreen(of project: StudioProject, paths: StudioProjectPaths) {
+        guard editor?.project.sources.screen.external == true else { return }
+        editor?.adoptOwnedScreen(from: project)
+        self.paths = paths
+        pendingPlaybackPaths = paths
+        switch state {
+        case .ready: refreshPreview()
+        case .unavailable: retryInitialLoadFromCopy()
+        case .loading: break
+        }
+    }
+
+    // The original failed before the editor became editable. Retry with the now-owned file.
+    private func retryInitialLoadFromCopy() {
+        pendingPlaybackPaths = nil
+        editor = nil
+        state = .loading
+        Task { [weak self] in await self?.load() }
     }
 
     /// The project cannot be shown. Whether its screen recording is still there is looked up
@@ -2959,7 +2987,9 @@ final class StudioViewModel: ObservableObject {
 
         do {
             let previousItem = playback.player.currentItem
-            let item = try await playback.apply(project: model.previewProject, renderSize: newSize)
+            let newPaths = pendingPlaybackPaths
+            pendingPlaybackPaths = nil
+            let item = try await playback.apply(project: model.previewProject, paths: newPaths, renderSize: newSize)
             guard !isTornDown else { return }
             if item !== previousItem {
                 // A new player item starts at zero, so put the playhead back. Whether to go on

@@ -20,8 +20,9 @@ public class CliTests
         var open = Cli.BuildParams(Contract.Current.Find("editor.open"), ["path=123"], null);
         Assert.Equal("123", open["path"]!.GetValue<string>());
 
-        var openInStudio = Cli.BuildParams(Contract.Current.Find("editor.open"), ["path=My Clip.mp4", "studio=true"], null);
+        var openInStudio = Cli.BuildParams(Contract.Current.Find("editor.open"), ["path=My Clip.mp4", "studio=true", "resultFormat=standard"], null);
         Assert.True(openInStudio["studio"]!.GetValue<bool>());
+        Assert.Equal("standard", openInStudio["resultFormat"]!.GetValue<string>());
     }
 
     [Fact]
