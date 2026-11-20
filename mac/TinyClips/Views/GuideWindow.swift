@@ -230,7 +230,7 @@ private struct GuideWindowView: View {
     private var studioContent: some View {
         VStack(alignment: .leading, spacing: 20) {
             sectionCard(title: "Start with separate layers", icon: "square.stack.3d.up") {
-                feature("Studio is a preview", "Enable Tiny Clips Studio (Preview) in Settings → Studio. Your saved choice is kept, and turning the preview off does not remove projects.")
+                feature("Studio", "Record once, then change the composition and refine your video with editable layers and a timeline.")
                 steps([
                     "Choose Studio Recording… in the menu bar, select a target, and confirm screen, camera, and audio options.",
                     "Stop the recording to open Studio. You can also open an existing MP4 or MOV with Tiny Clips or from Clips Library to edit it in Studio.",

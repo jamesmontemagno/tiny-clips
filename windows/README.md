@@ -37,12 +37,12 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   off in General settings; in the editor it clears a crop selection first.
   The video trimmer's **Copy frame** copies the selected frame at source resolution without
   saving a file; **Export frame** still saves a PNG.
-- **Tiny Clips Studio (early preview, on by default unless a preference is saved)** — records the screen and the camera as
+- **Tiny Clips Studio** — records the screen and the camera as
   separate layers and opens a compositing editor when the recording ends: background and padding,
   a rounded screen card, camera shape and four layouts, a draggable camera bubble, scenes that
   change the layout partway through, zooms (added by hand or suggested from your clicks), crops
   for the screen and the camera, cuts, speed changes, trim, and MP4 export.
-  The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio-preview).
+  The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio).
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard with five quick preferences: launch at
   login, copy screenshots to clipboard, open the screenshot editor, video/GIF countdown, and
@@ -249,26 +249,17 @@ encoder selection, and the local collector's target-process architecture evidenc
 helper source, see the [diagnostic contract](docs/gpu-recording-pipeline.md#41-diagnostic-contract-schema-2).
 Historical benchmark values are not verified encoder/output-frame measurements.
 
-## Tiny Clips Studio (preview)
+## Tiny Clips Studio
 
-Studio has a page of its own in Settings, **Studio**, after Video. For 2.0, Studio defaults on
-for fresh installs and returning users with no saved `studioPreviewEnabled` preference.
-Every saved on/off choice is preserved, including false from an older reset, which cannot be
-distinguished from an intentional opt-out. Resetting settings restores the new on default.
-You can switch it off or on in **Settings › Studio › Tiny Clips Studio (Preview)** or in the
-illustrated **What's New** window. Existing users see the 2.1 What's New, which leads with Agent
-control and never turns it on, once per content revision; opening or dismissing it never changes
-the Studio preference.
-New installs get the onboarding tour instead. To replace the highlights in a future release,
-bump `WhatsNewViewModel.ContentRevision`, not the package version. With the switch off
-the page shows nothing else, nothing else of Studio is shown anywhere, and a recording is made
-as it always was.
-Switching it off again deletes nothing: the projects stay where they are, are not cleaned up while
-it is off, and the line under the switch says how many there are and how much room they take.
-The switch leaves **Open trimmer after recording** in Settings › Video alone: it says what it
-said before, and decides what an ordinary recording does with Studio on or off.
+Studio is available to everyone; it has no preview switch. Choose **Studio** in the tray menu
+to record a project that opens in the editor. **Record video** and its hotkey remain ordinary
+recordings. Settings › Studio contains project storage, retention, saved-project, and draft
+controls. On upgrade, a legacy opt-out disables automatic cleanup by setting both cleanup limits
+to zero, preserving existing projects and recordings; users can choose new limits there.
 
-With the switch on:
+Existing users see What's New once per content revision; it introduces Agent Control, not
+Studio. New installs get the onboarding tour instead. Bump `WhatsNewViewModel.ContentRevision`,
+not the package version, when replacing the highlights.
 
 - **The tray menu** has a fourth capture button, **Studio**: Screenshot, Video, Studio, GIF.
   It is the Studio recording command: it starts a video recording that is saved as a project
@@ -278,8 +269,7 @@ With the switch on:
   **Studio** for such a recording, and nothing for any other. **Record video**, from the tray
   menu or with its hotkey, is always an ordinary recording, and Studio recording has no hotkey
   yet. A capture picker that comes back after a Studio recording is for another one, until a
-  recording is asked for again. If Studio is switched off before the recording starts, it is
-  made as an ordinary recording. A Studio recording that cannot be saved as a project is kept
+  recording is asked for again. A Studio recording that cannot be saved as a project is kept
   as an ordinary video, which then opens the trimmer or is saved, as the trimmer switch says.
 - **Captions** can be generated from a recording's sound with **Generate** in the Captions
   panel. It runs on this computer with [Whisper.net](https://github.com/sandrohanea/whisper.net),
@@ -366,7 +356,7 @@ With the switch on:
   counts as gone), and any project Studio cannot read. Each can be deleted, and has **Save
   recording** to save its screen recording as an ordinary video. Cleanup never removes them.
   The storage limit counts only what cleanup may remove, and never removes the project that was
-  opened last.
+  opened last. With both cleanup limits set to 0, automatic cleanup is disabled.
 
 Projects are kept in the app's local data folder under `TinyClips\Projects`. That folder belongs
 to the installed app: uninstalling Tiny Clips, or resetting it in Windows Settings, deletes it,

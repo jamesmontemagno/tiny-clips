@@ -220,7 +220,7 @@ private struct OnboardingWizardView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Screen Recording is required to capture your screen.", systemImage: "display")
                 Label("Microphone and Notifications are optional.", systemImage: "slider.horizontal.3")
-                Label("With Studio enabled in Settings, choose Studio Recording... from the menu bar to record your screen and optional camera separately, edit the project, and export an MP4.", systemImage: "square.stack.3d.up")
+                Label("Choose Studio Recording... from the menu bar to record your screen and optional camera separately, edit the project, and export an MP4.", systemImage: "square.stack.3d.up")
                 Label("This setup only takes a moment.", systemImage: "sparkles")
             }
             .font(.callout)

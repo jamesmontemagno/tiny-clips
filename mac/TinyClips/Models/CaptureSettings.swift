@@ -425,12 +425,6 @@ class CaptureSettings: ObservableObject {
     @AppStorage("gifMouseClickOpacity") var gifMouseClickOpacity: Double = 0.85
     @AppStorage("gifMouseClickDuration") var gifMouseClickDuration: Double = 0.45
     @AppStorage("showTrimmer") var showTrimmer: Bool = true
-    /// Whether Tiny Clips Studio is switched on, while it is in preview. It is the
-    /// "Tiny Clips Studio (Preview)" switch in Studio settings; with it off, nothing else of
-    /// Studio is shown. Switched on, the menu has Studio Recording beside Record Video, and
-    /// that command is the one way to record for Studio: Record Video is always an ordinary
-    /// recording.
-    @AppStorage("studioPreviewEnabled") var studioPreviewEnabled: Bool = true
     @AppStorage("studioDefaultLook") private var storedStudioDefaultLook: String = ""
     /// The look new Studio recordings start with, or nil for the built-in one.
     var studioDefaultLook: StudioLook? {
@@ -925,11 +919,6 @@ class CaptureSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
         self.defaults = defaults
-        _studioPreviewEnabled = AppStorage(
-            wrappedValue: true,
-            "studioPreviewEnabled",
-            store: defaults
-        )
         _excludeClickLightFromScreenshots = AppStorage(
             wrappedValue: false,
             "excludeClickLightFromScreenshots",
@@ -937,6 +926,14 @@ class CaptureSettings: ObservableObject {
         )
         audioOffsetMs = audioOffsetMs
         guard performMigrations else { return }
+
+        if defaults.object(forKey: "studioPreviewEnabled") != nil,
+           !defaults.bool(forKey: "studioPreviewEnabled") {
+            // Studio used to suspend cleanup while disabled. Preserve those sources on upgrade.
+            defaults.set(0, forKey: "studioSourceRetentionDays")
+            defaults.set(0, forKey: "studioStorageCapGigabytes")
+            defaults.removeObject(forKey: "studioPreviewEnabled")
+        }
 
         migrateSaveDirectorySettings(defaults)
         ensureSaveDirectoryDefaults(defaults)

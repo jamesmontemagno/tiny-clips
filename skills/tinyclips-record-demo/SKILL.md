@@ -17,7 +17,7 @@ Needs scope `record` (`edit` to open editors, `discard` to throw a take away).
 3. Perform or wait for the demo steps. Poll `tinyclips recording.status` instead of sleeping blindly.
 4. Pause/resume with `tinyclips recording.togglePause`; finish with `tinyclips recording.stop`. On macOS, a `permission_required` response to resume or restart leaves the current take intact. Agent-started recordings save directly without opening a trimmer.
 5. Find the file: `tinyclips library.list limit=1`.
-6. Trim without a window: `tinyclips call editor.trim --params '{"path":"<file>","start":1.5,"end":8}'` (video or GIF; add `"removeAudio":true` for silent video). Save a still: `tinyclips call editor.saveFrame --params '{"path":"<file>","time":3.2}'` (GIFs also accept `"frame":<index>`). Both need scope `edit` and save new files; the original stays. To edit interactively, use `tinyclips editor.open path="<file>"`; add `studio=true` to open a library MP4 or MOV directly in Studio when Studio is enabled.
+6. Trim without a window: `tinyclips call editor.trim --params '{"path":"<file>","start":1.5,"end":8}'` (video or GIF; add `"removeAudio":true` for silent video). Save a still: `tinyclips call editor.saveFrame --params '{"path":"<file>","time":3.2}'` (GIFs also accept `"frame":<index>`). Both need scope `edit` and save new files; the original stays. To edit interactively, use `tinyclips editor.open path="<file>"`; add `studio=true` to open a library MP4 or MOV directly in Studio.
 
 For a machine-readable `editor.open` result, pass `resultFormat=standard`: `opened` is a boolean and `path` is the opened file on either OS.
 

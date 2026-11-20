@@ -7,8 +7,8 @@ using TinyClips.Core.Services;
 namespace TinyClips.App;
 
 /// <summary>
-/// Shown once per content revision to introduce the release's highlights. It offers Studio's saved
-/// preview switch and a way to Agent control settings, but never turns Agent control on. New installations see onboarding instead. Closing by any route marks this revision as seen.
+/// Shown once per content revision to introduce the release's highlights. It links to Agent
+/// control settings without turning it on. New installations see onboarding instead.
 /// </summary>
 public sealed partial class WhatsNewWindow : Window
 {
@@ -18,12 +18,9 @@ public sealed partial class WhatsNewWindow : Window
     private readonly ICaptureSettings _settings;
     private readonly WindowChromeController _chromeController;
 
-    public WhatsNewViewModel ViewModel { get; }
-
     public WhatsNewWindow()
     {
         _settings = App.Services.GetRequiredService<ICaptureSettings>();
-        ViewModel = new WhatsNewViewModel(_settings);
 
         InitializeComponent();
         WindowCaptureVisibility.Register(this);
@@ -44,30 +41,7 @@ public sealed partial class WhatsNewWindow : Window
         var version = AppVersionInfo.GetCurrentVersion();
         VersionText.Text = $"Version {version.Major}.{version.Minor}{(version.Build > 0 ? $".{version.Build}" : string.Empty)}";
 
-        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
-        Activated += OnActivated;
-        Closed += (_, _) =>
-        {
-            ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
-            Activated -= OnActivated;
-            MarkSeen();
-        };
-    }
-
-    private void OnActivated(object sender, WindowActivatedEventArgs args)
-    {
-        if (args.WindowActivationState != WindowActivationState.Deactivated)
-        {
-            ViewModel.IsStudioEnabled = _settings.StudioPreviewEnabled;
-        }
-    }
-
-    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
-    {
-        if (args.PropertyName == nameof(WhatsNewViewModel.IsStudioEnabled))
-        {
-            ((App)Application.Current).RefreshStudioPreviewSetting();
-        }
+        Closed += (_, _) => MarkSeen();
     }
 
     /// <summary>
@@ -100,9 +74,4 @@ public sealed partial class WhatsNewWindow : Window
         Close();
     }
 
-    private void OnOpenStudioSettingsClicked(object sender, RoutedEventArgs e)
-    {
-        ((App)Application.Current).OpenSettingsWindow(SettingsSectionKind.Studio);
-        Close();
-    }
 }

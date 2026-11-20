@@ -40,7 +40,6 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     private readonly StudioProjectTracker _studioTracker;
     private readonly object _studioNavigationTag = new();
     private StudioLibraryRow[]? _studioRows;
-    private volatile bool _studioReadsEnabled;
     private bool _showStudio;
     private bool _closed;
     private bool _syncingSelection;
@@ -175,7 +174,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     {
         ApplyTheme();
         ViewModel.ReloadSettings();
-        if (_showStudio || !ViewModel.IsStudioEnabled)
+        if (_showStudio)
         {
             RefreshStudioProjects();
         }
@@ -379,28 +378,18 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     private void RefreshStudioProjects(bool invalidate = true)
     {
         if (_closed) return;
-        var wasEnabled = _studioReadsEnabled;
-        _studioReadsEnabled = ViewModel.IsStudioEnabled;
-        if (!_studioReadsEnabled)
-        {
-            _studioRows = null;
-            StudioProjectRows.ItemsSource = null;
-            StudioStatus.Text = "Turn on Tiny Clips Studio in Settings to open projects.";
-            return;
-        }
-
         if (_studioRows is null)
         {
             StudioStatus.Text = "Loading Studio projects…";
         }
-        _studioRefresh.Request(invalidate || !wasEnabled);
+        _studioRefresh.Request(invalidate);
     }
 
     private (StudioLibraryRow[], Exception?) ReadStudioProjects(IStudioProjectStore store)
     {
         try
         {
-            return (_studioReadsEnabled ? StudioLibraryRow.FromListing(store.ListLibraryProjects()) : [], null);
+            return (StudioLibraryRow.FromListing(store.ListLibraryProjects()), null);
         }
         catch (Exception ex)
         {
@@ -411,7 +400,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
 
     private void PublishStudioProjects((StudioLibraryRow[] Rows, Exception? Error) result)
     {
-        if (!_studioReadsEnabled) return;
+        if (_closed) return;
         if (result.Error is { } error)
         {
             OnStudioRefreshFailed(error);
@@ -423,7 +412,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
 
     private void OnStudioRefreshFailed(Exception ex)
     {
-        if (!_studioReadsEnabled) return;
+        if (_closed) return;
         Debug.WriteLine($"Clips Library Studio projects failed: {ex}");
         _studioRows = null;
         StudioProjectRows.ItemsSource = null;
@@ -452,7 +441,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     {
         if (sender is Button { Tag: string id } && (Application.Current as App)?.OpenStudioWindow(id) is null)
         {
-            StudioStatus.Text = "Couldn't open this project. Check that Studio is enabled and the project still exists.";
+            StudioStatus.Text = "Couldn't open this project. Check that the project still exists.";
         }
     }
 

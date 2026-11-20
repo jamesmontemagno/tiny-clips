@@ -21,7 +21,7 @@ Video. `mac/TinyClips/Views/Settings/StudioSettingsSection.swift` is the page:
 
 | Section | Holds |
 |---|---|
-| **Tiny Clips Studio** | The **Tiny Clips Studio (Preview)** switch and what Studio is. Always there. Everything below shows only while it is on |
+| **Tiny Clips Studio** | Describes the generally available Studio feature |
 | **Recording** | A line saying that a Studio recording is started with **Studio Recording…** in the menu bar menu (see `studio-recording-command.md`). No control: for a few hours on 7 October there was a switch here, the After recording choice over again, and it went when that choice did |
 | **Projects** | **Open Project…**, which opens a project saved as a folder (see `studio-project-folders.md`) |
 | **Storage** | Keep exported projects for, Storage limit, Storage used, Clean Up Now, and the note about what is kept |
@@ -49,10 +49,10 @@ Studio now says "Studio settings".
 | What | Where |
 |---|---|
 | A **Studio** item in the Settings navigation, right after Video, and its section kind | `Views/SettingsWindow.xaml`, `Settings/SettingsSectionKind.cs`, `Views/SettingsWindow.xaml.cs`: `GetOrCreateSection` |
-| The page: **Tiny Clips Studio** (the switch, what Studio is, and the line that says what is kept while it is off), and, only while Studio is on, **Recording** (one card, no control), **Storage**, and **Drafts**. The markup and the handlers were moved from the General page, whose markup is the file `main` has again. Every `AutomationId` is kept; `StudioRecordingHowToCard` and `StudioNavigationItem` are new. The drafts heading says "Drafts" where it said "Studio drafts" | `Controls/Settings/StudioSettingsSection.xaml`, `.xaml.cs` |
-| The view model's Studio members are the same. What changed is the page they belong to: the switch and the two storage rules are restored, and kept from being saved while the page is first shown, with the Studio page and no longer with General | `ViewModels/SettingsViewModel.Studio.cs`: `RestoreStudioSettings`, `OnIsStudioPreviewEnabledChanged`, `PersistStudio` |
+| The page: **Tiny Clips Studio**, **Recording**, **Projects**, **Storage**, and **Drafts**. The markup and handlers were moved from the General page. The storage and drafts are available without a preview switch. | `Controls/Settings/StudioSettingsSection.xaml`, `.xaml.cs` |
+| The view model reads the storage rules when the Studio page is first shown, and protects their values from being saved while the page is being realized | `ViewModels/SettingsViewModel.cs`: Studio storage settings and section realization |
 | The projects are read when the Studio page is first chosen. They were read whenever Settings opened, because General is the page it opens on | `StudioSettingsSection` constructor: `EnsureStudioStorageInitializedAsync` |
-| The Clips Library's notice for Open in Studio with Studio off says Settings › Studio | `ViewModels/ClipsLibrary/ClipsLibraryViewModel.cs` |
+| Open in Studio is available without a preview preference | `ViewModels/ClipsLibrary/ClipsLibraryViewModel.cs` |
 
 **Projects** is between Recording and Storage since the night of 7 October (#429): a heading
 like the others and one card with **Open project…**, which asks for a `.tinyclips` file with

@@ -323,6 +323,19 @@ public sealed class StudioProjectStoreTests : IDisposable
     }
 
     [Fact]
+    public void Cleanup_WithBothRulesDisabledKeepsUnfinishedRecordings()
+    {
+        var store = CreateStore();
+        var unfinished = store.BeginRecording();
+        Directory.SetCreationTimeUtc(unfinished.ProjectDirectory, (_time.GetUtcNow() - TimeSpan.FromHours(25)).UtcDateTime);
+
+        var result = store.Cleanup(new StudioCleanupOptions(RetentionDays: 0, SizeCapBytes: 0));
+
+        Assert.Empty(result.ProjectIdsDeleted);
+        Assert.True(Directory.Exists(unfinished.ProjectDirectory));
+    }
+
+    [Fact]
     public void Cleanup_LeavesUnreadableProjectJsonAloneAndContinuesAfterLockedFolder()
     {
         var store = CreateStore();

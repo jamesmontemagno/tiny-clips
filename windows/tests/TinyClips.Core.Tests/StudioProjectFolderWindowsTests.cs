@@ -1029,7 +1029,7 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
     // The tray menu's recent captures
 
     [Fact]
-    public void TheTrayMenuListsNoProjectWhileStudioIsSwitchedOff_AndTheOnesWorkedOnLastWhileItIsOn()
+    public void TheTrayMenuListsTheProjectsWorkedOnLast()
     {
         var noon = new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
         StudioProjectSummary Project(string id, int created, int? opened = null, bool isDraft = true, bool isFlat = false, bool sourceExists = true, bool exportMissing = false) =>
@@ -1062,13 +1062,10 @@ public sealed class StudioProjectFolderWindowsTests : StudioProjectFolderTestBas
 
         Assert.Equal(
             ["capture:C:\\Videos\\new.mp4", "studio:opened-since", "studio:lost-its-export", "studio:recorded-earlier", "capture:C:\\Pictures\\old.png"],
-            RecentMenuEntry.ForMenu(captures, projects, studioEnabled: true, limit: 5).Select(entry => entry.Id));
+            RecentMenuEntry.ForMenu(captures, projects, limit: 5).Select(entry => entry.Id));
         Assert.Equal(
             ["capture:C:\\Videos\\new.mp4", "studio:opened-since"],
-            RecentMenuEntry.ForMenu(captures, projects, studioEnabled: true, limit: 2).Select(entry => entry.Id));
-        Assert.Equal(
-            ["capture:C:\\Videos\\new.mp4", "capture:C:\\Pictures\\old.png"],
-            RecentMenuEntry.ForMenu(captures, projects, studioEnabled: false, limit: 5).Select(entry => entry.Id));
+            RecentMenuEntry.ForMenu(captures, projects, limit: 2).Select(entry => entry.Id));
     }
 
     [Fact]

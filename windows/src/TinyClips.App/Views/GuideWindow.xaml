@@ -276,7 +276,7 @@
                               HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                     <StackPanel MaxWidth="720" HorizontalAlignment="Stretch" Margin="0,8,8,24" Spacing="12">
                         <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Studio overview" />
-                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Studio is an early preview: record once, then change the composition. It is on by default unless you saved another choice. Settings → Studio → Tiny Clips Studio (Preview) controls availability; switching it off does not delete projects." />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Studio lets you record once, then change the composition and refine your video with editable layers and a timeline." />
                         <Border Style="{StaticResource GuideDiagramStyle}" AutomationProperties.AutomationId="GuideStudioDrawing"
                                 AutomationProperties.Name="Studio illustration: separate screen and camera layers feed a composited preview. Scene, zoom, cut, and speed lanes organize edits below the preview; captions sit over the finished frame.">
                             <Viewbox Stretch="Uniform" StretchDirection="DownOnly" AutomationProperties.AccessibilityView="Raw">
@@ -442,7 +442,7 @@
                         <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Permissions and safe use" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow Glyph="&#xE73E;" Title="Scopes and approvals" Subtitle="Choose the scopes granted during pairing; adjust them in Paired Agents → Permissions. Delete, upload, and discard always require an in-app approval even with the scope. OS permissions and saved device opt-ins still apply; Studio must be enabled for Studio tools." />
+                                <local:GuideRow Glyph="&#xE73E;" Title="Scopes and approvals" Subtitle="Choose the scopes granted during pairing; adjust them in Paired Agents → Permissions. Delete, upload, and discard always require an in-app approval even with the scope. OS permissions and saved device opt-ins still apply." />
                                 <local:GuideRow Glyph="&#xE7BA;" Title="Revoke, audit, and protect tokens" Subtitle="Revoke an agent or turn access off in Settings → Agent control. The audit log records requests. Keep pairing tokens private. Local transport does not mean your agent's AI service is offline: review what it sends to its provider." />
                                 <local:GuideRow Glyph="&#xE943;" Title="Other clients" Subtitle="Agents without plugin support can use the manual MCP setup in Settings or the standalone CLI. Pair and launch MCP under the same account/environment; restarting or reloading the agent session can resolve a stale connection." />
                                 <HyperlinkButton AutomationProperties.AutomationId="GuideAgentDocumentationLink"

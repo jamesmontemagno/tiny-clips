@@ -47,8 +47,7 @@ private final class StudioSettingsProjects: ObservableObject {
     }
 }
 
-/// Settings for Tiny Clips Studio: the switch that turns it on while it is in preview, how long
-/// project sources are kept, and drafts without an available exported video.
+/// Settings for Tiny Clips Studio: project storage and drafts without an available exported video.
 struct StudioSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
 
@@ -104,86 +103,73 @@ struct StudioSettingsSection: View {
 
     var body: some View {
         SettingsFormSection(
-            "Tiny Clips Studio",
+            "Recording",
             icon: "square.stack.3d.up",
-            footer: settings.studioPreviewEnabled
-                ? "To record for Studio, choose Studio Recording… in the menu bar menu. It keeps the screen and camera as separate layers and opens the editor when the recording ends. Record Video is always an ordinary recording."
-                : keptText
+            footer: "Studio keeps the screen and camera as separate layers and opens the editor when the recording ends. Record Video is always an ordinary recording."
         ) {
-            // The task hangs off this one row so it exists once, whether Studio is on or off.
-            // What an editor changes is heard by the list itself, not by a row.
-            SettingsToggleRow(
-                title: "Tiny Clips Studio (Preview)",
-                description: "An editor for video recordings that keeps the screen, camera, and clicks as separate layers. Parts of it are unfinished.",
-                isOn: $settings.studioPreviewEnabled,
-                help: "Turns on Tiny Clips Studio, an editor for video recordings that is still being built."
-            )
-            .task {
-                studioProjects.reload()
+            LabeledContent("Studio recording") {
+                Text("Choose Studio Recording… in the menu bar.")
+                    .foregroundStyle(.secondary)
             }
-            .onChange(of: settings.studioPreviewEnabled) { _, _ in
-                studioProjects.reload()
+            .task { studioProjects.reload() }
+        }
+
+        SettingsFormSection(
+            "Projects",
+            icon: "folder",
+            footer: "Recordings you kept as drafts are listed below. Exported videos reopen their project from the Clips Library."
+        ) {
+            SettingsActionRow(
+                title: "Open a saved project",
+                description: "Opens a project saved with Save Project, from its .tinyclips file."
+            ) {
+                Button("Open Project…") {
+                    StudioWindowRegistry.shared.chooseProjectFileToOpen()
+                }
+                .help("Open a project that was saved as a folder, from its .tinyclips file.")
             }
         }
 
-        if settings.studioPreviewEnabled {
-            SettingsFormSection(
-                "Projects",
-                icon: "folder",
-                footer: "Recordings you kept as drafts are listed below. Exported videos reopen their project from the Clips Library."
-            ) {
-                SettingsActionRow(
-                    title: "Open a saved project",
-                    description: "Opens a project saved with Save Project, from its .tinyclips file."
-                ) {
-                    Button("Open Project…") {
-                        StudioWindowRegistry.shared.chooseProjectFileToOpen()
-                    }
-                    .help("Open a project that was saved as a folder, from its .tinyclips file.")
-                }
+        SettingsFormSection(
+            "Storage",
+            icon: "internaldrive",
+            footer: "Studio keeps the original screen and camera recordings so a video can be rearranged later. Removing a project does not remove the videos you exported from it. Drafts are never removed automatically, and neither is a project whose exported video is gone."
+        ) {
+            Picker("Keep exported projects for", selection: $settings.studioSourceRetentionDays) {
+                Text("7 days").tag(7)
+                Text("14 days").tag(14)
+                Text("30 days").tag(30)
+                Text("90 days").tag(90)
+                Text("Until I delete them").tag(0)
+            }
+            .help("How long a project stays editable after you last opened it.")
+
+            Picker("Storage limit", selection: $settings.studioStorageCapGigabytes) {
+                Text("5 GB").tag(5)
+                Text("10 GB").tag(10)
+                Text("20 GB").tag(20)
+                Text("50 GB").tag(50)
+                Text("No limit").tag(0)
+            }
+            .help("When exported projects use more than this, the ones opened longest ago are removed first, and the one you opened last is always kept. Drafts and projects you keep are not counted.")
+
+            LabeledContent("Storage used") {
+                Text(storageText)
             }
 
-            SettingsFormSection(
-                "Storage",
-                icon: "internaldrive",
-                footer: "Studio keeps the original screen and camera recordings so a video can be rearranged later. Removing a project does not remove the videos you exported from it. Drafts are never removed automatically, and neither is a project whose exported video is gone."
+            SettingsActionRow(
+                title: "Clean up",
+                description: cleanUpResult ?? "Removes the projects that are past these limits."
             ) {
-                Picker("Keep exported projects for", selection: $settings.studioSourceRetentionDays) {
-                    Text("7 days").tag(7)
-                    Text("14 days").tag(14)
-                    Text("30 days").tag(30)
-                    Text("90 days").tag(90)
-                    Text("Until I delete them").tag(0)
+                Button(isCleaningUp ? "Cleaning Up…" : "Clean Up Now") {
+                    cleanUpNow()
                 }
-                .help("How long a project stays editable after you last opened it.")
-
-                Picker("Storage limit", selection: $settings.studioStorageCapGigabytes) {
-                    Text("5 GB").tag(5)
-                    Text("10 GB").tag(10)
-                    Text("20 GB").tag(20)
-                    Text("50 GB").tag(50)
-                    Text("No limit").tag(0)
-                }
-                .help("When exported projects use more than this, the ones opened longest ago are removed first, and the one you opened last is always kept. Drafts and projects you keep are not counted.")
-
-                LabeledContent("Storage used") {
-                    Text(storageText)
-                }
-
-                SettingsActionRow(
-                    title: "Clean up",
-                    description: cleanUpResult ?? "Removes the projects that are past these limits."
-                ) {
-                    Button(isCleaningUp ? "Cleaning Up…" : "Clean Up Now") {
-                        cleanUpNow()
-                    }
-                    .disabled(isCleaningUp)
-                    .help("Remove the projects that are past these limits now.")
-                }
+                .disabled(isCleaningUp)
+                .help("Remove the projects that are past these limits now.")
             }
         }
 
-        if settings.studioPreviewEnabled, !draftRows.isEmpty {
+        if !draftRows.isEmpty {
             SettingsFormSection("Drafts", icon: "doc.on.doc", footer: savedRecordingNoteText) {
                 ForEach(draftRows) { row in
                     draftRow(row)
@@ -301,19 +287,6 @@ struct StudioSettingsSection: View {
             return "\(projectCount) projects, \(sizeText(totalBytes))"
         }
     }
-
-    /// What is still on disk while Studio is off, or nil when there is nothing.
-    private var keptText: String? {
-        switch projectCount {
-        case 0:
-            return nil
-        case 1:
-            return "1 Studio project is kept and uses \(sizeText(totalBytes)). It is not cleaned up while Studio is off. Turn Studio on to open or delete it."
-        default:
-            return "\(projectCount) Studio projects are kept and use \(sizeText(totalBytes)). They are not cleaned up while Studio is off. Turn Studio on to open or delete them."
-        }
-    }
-
 
     private func displayName(_ project: StudioProjectSummary) -> String {
         let name = project.name.trimmingCharacters(in: .whitespacesAndNewlines)

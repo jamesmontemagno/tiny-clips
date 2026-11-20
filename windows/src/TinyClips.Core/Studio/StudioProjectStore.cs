@@ -656,6 +656,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
 
         lock (_sync)
         {
+            options ??= new StudioCleanupOptions();
             var now = _timeProvider.GetUtcNow().ToUniversalTime();
             var inUse = new HashSet<string>(inUseProjectIds ?? [], StringComparer.Ordinal);
             inUse.UnionWith(_projectUseCounts.Keys);
@@ -666,7 +667,8 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
             {
                 if (!File.Exists(Path.Combine(folder.Directory, ProjectFileName)))
                 {
-                    if (!inUse.Contains(folder.Id) && IsOlderThanUnfinishedRecordingLimit(folder.Directory, now))
+                    if ((options.RetentionDays > 0 || options.SizeCapBytes > 0)
+                        && !inUse.Contains(folder.Id) && IsOlderThanUnfinishedRecordingLimit(folder.Directory, now))
                     {
                         unfinishedRecordings.Add(folder.Id);
                     }

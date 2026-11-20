@@ -1038,6 +1038,17 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: directoryURL.appendingPathComponent(inUseID).path))
     }
 
+    func testCleanupWithBothRulesDisabledKeepsUnfinishedRecordings() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate }, folderDateProvider: { _ in
+            self.fixedDate.addingTimeInterval(-(25 * 60 * 60))
+        })
+        let unfinished = directoryURL.appendingPathComponent(validID)
+        try FileManager.default.createDirectory(at: unfinished, withIntermediateDirectories: true)
+
+        XCTAssertTrue(try store.cleanup(options: StudioCleanupOptions(retentionDays: 0, sizeCapBytes: 0)).isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unfinished.path))
+    }
+
     func testCleanupLeavesAProjectAnEditorOpenedAfterTheListOfThoseInUseWasMade() throws {
         // Two folders that the cleanup would delete. Which rule selects a project makes no
         // difference here: every project that is to go is looked at once more before it does.
@@ -1506,9 +1517,9 @@ final class StudioProjectTests: XCTestCase {
             StudioUnreadableProject(id: validID, createdAt: fixedDate, sizeOnDisk: 9, hasScreenRecording: true)
         ])
 
-        let task = library.refresh(enabled: true)
+        let task = library.refresh()
         await fulfillment(of: [first], timeout: 2)
-        for _ in 0..<10 { library.refresh(enabled: true) }
+        for _ in 0..<10 { library.refresh() }
         XCTAssertEqual(reads, 1)
         finish?.resume(returning: result)
         finish = nil
@@ -1516,40 +1527,13 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertTrue(library.isLoading)
         XCTAssertEqual(library.listing, StudioProjectListing())
         // Incidental requests while the replacement scan is running share its result.
-        library.refresh(enabled: true, invalidate: false)
+        library.refresh(invalidate: false)
         result.unreadable[0].id = otherID
         finish?.resume(returning: result)
         await task?.value
         XCTAssertEqual(library.listing, result)
         XCTAssertEqual(reads, 2)
         XCTAssertFalse(library.isLoading)
-    }
-
-    @MainActor
-    func testDisablingStudioDuringALibraryReadDiscardsItAndItsPendingRefresh() async {
-        let first = expectation(description: "Initial listing")
-        var finish: CheckedContinuation<StudioProjectListing, Never>?
-        var reads = 0
-        let library = StudioLibraryProjects {
-            reads += 1
-            guard reads == 1 else { return StudioProjectListing() }
-            return await withCheckedContinuation { continuation in
-                finish = continuation
-                first.fulfill()
-            }
-        }
-        XCTAssertNil(library.refresh(enabled: false))
-        let task = library.refresh(enabled: true)
-        await fulfillment(of: [first], timeout: 2)
-        library.refresh(enabled: true)
-        library.refresh(enabled: false)
-        finish?.resume(returning: StudioProjectListing(unreadable: [
-            StudioUnreadableProject(id: validID, createdAt: fixedDate, sizeOnDisk: 9, hasScreenRecording: true)
-        ]))
-        await task?.value
-        XCTAssertEqual(reads, 1)
-        XCTAssertFalse(library.isLoading)
-        XCTAssertEqual(library.listing, StudioProjectListing())
     }
 
     func testSavingAScreenRecordingCopiesItAndNeverReplacesAFile() throws {

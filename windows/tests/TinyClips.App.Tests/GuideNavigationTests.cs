@@ -176,7 +176,7 @@ public sealed class GuideNavigationTests
     [InlineData("capture", "WebP|Scroll (P)|overlap|Recognize Text|clipboard")]
     [InlineData("editor", "curved arrows|Solid|Find sensitive text|Fill or Fit|9:16|Save a copy")]
     [InlineData("recording", "system audio|microphone|GIF captures neither|Teleprompter|pause/resume|Copy frame|Export frame")]
-    [InlineData("studio", "early preview|separate|0.25×|SRT|WebVTT|downloaded|.tinyclips|Drafts|Export")]
+    [InlineData("studio", "editable layers|separate|0.25×|SRT|WebVTT|downloaded|.tinyclips|Drafts|Export")]
     [InlineData("library", "Smart Collections|notes|batch|Archive|Delete|Windows Share|Uploadcare|Upload automatically|not remote deletion")]
     [InlineData("agents", ".NET 10 SDK|same OS account|Scopes|approval|Revoke|audit log|tokens")]
     [InlineData("help", "saved bindings|Fixed keys|Privacy & security|Microphone|shortcut conflict|Store-managed|winget")]
@@ -191,5 +191,16 @@ public sealed class GuideNavigationTests
         {
             Assert.Contains(term, copy, StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    [Fact]
+    public void Guide_DoesNotDescribeStudioAsAnOptInPreview()
+    {
+        var copy = string.Join("\n", Elements.SelectMany(element => element.Attributes())
+            .Where(attribute => attribute.Name.LocalName is "Text" or "Title" or "Subtitle")
+            .Select(attribute => attribute.Value));
+        Assert.DoesNotContain("early preview", copy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Studio must be enabled", copy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Studio (Preview)", copy, StringComparison.OrdinalIgnoreCase);
     }
 }

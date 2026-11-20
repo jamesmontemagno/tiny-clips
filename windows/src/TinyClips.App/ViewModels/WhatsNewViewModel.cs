@@ -1,36 +1,11 @@
-using CommunityToolkit.Mvvm.ComponentModel;
 using TinyClips.Core.Services;
 
 namespace TinyClips.App;
 
-public sealed class WhatsNewViewModel : ObservableObject
+public static class WhatsNewViewModel
 {
     // Bump when release highlights change, independently of the package version.
     internal const int ContentRevision = 4;
-
-    private readonly ICaptureSettings _settings;
-    private bool _isStudioEnabled;
-
-    public WhatsNewViewModel(ICaptureSettings settings)
-    {
-        _settings = settings;
-        _isStudioEnabled = settings.StudioPreviewEnabled;
-    }
-
-    public bool IsStudioEnabled
-    {
-        get => _isStudioEnabled;
-        set
-        {
-            if (_isStudioEnabled == value)
-            {
-                return;
-            }
-
-            _settings.StudioPreviewEnabled = value;
-            SetProperty(ref _isStudioEnabled, value);
-        }
-    }
 
     public static bool ShouldShow(ICaptureSettings settings) =>
         ParseSeenRevision(settings.LastSeenWhatsNewVersion) < ContentRevision;

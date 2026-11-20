@@ -70,20 +70,8 @@ public interface ICaptureSettings
     double GifMouseClickDuration { get; set; }
     bool ShowTrimmer { get; set; }
 
-    /// <summary>
-    /// Whether Tiny Clips Studio is switched on, while it is in preview. Default false. It is the
-    /// "Tiny Clips Studio (Preview)" switch in Settings; with it off, nothing of Studio is shown
-    /// and a recording is made as it always was. With it on, a recording is one for Studio only
-    /// when it was started with the Studio recording command; see
-    /// <see cref="TinyClips.Core.Capture.StudioRecordingIntent"/>.
-    /// </summary>
-    bool StudioPreviewEnabled { get; set; }
-
     /// <summary>The id of the Whisper model captions are generated with. See <see cref="TinyClips.Core.Studio.Transcription.StudioCaptionModels"/>.</summary>
     string StudioCaptionModelId { get; set; }
-
-    /// <summary>Raised when <see cref="StudioPreviewEnabled"/> changes value, on the thread that changed it.</summary>
-    event EventHandler? StudioPreviewEnabledChanged;
 
     /// <summary>
     /// Days after an exported Studio project was last opened before its sources are deleted.

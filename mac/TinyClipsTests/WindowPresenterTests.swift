@@ -7,11 +7,6 @@ import XCTest
 final class StudioVideoAssociationTests: XCTestCase {
     @MainActor
     func testStudioVideoOpenRechecksAccessAfterPreparation() async throws {
-        let settings = CaptureSettings.shared
-        let wasEnabled = settings.studioPreviewEnabled
-        settings.studioPreviewEnabled = true
-        defer { settings.studioPreviewEnabled = wasEnabled }
-
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).mp4")
         let before = try Set(StudioProjectStore.shared.listSummaries().map(\.id))
         var revoked = false

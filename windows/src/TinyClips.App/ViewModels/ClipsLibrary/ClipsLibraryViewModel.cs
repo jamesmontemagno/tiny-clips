@@ -124,9 +124,6 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
 
     public IClipsLibrarySettings Settings => _settings;
 
-    /// <summary>Whether videos offer Open in Studio: any video can be opened, not only exported ones.</summary>
-    public bool IsStudioEnabled => _captureSettings.StudioPreviewEnabled;
-
     public bool IsUploadcareEnabled => _captureSettings.UploadcareEnabled;
 
     public bool ShowUploadActions => IsUploadcareEnabled;
@@ -404,22 +401,12 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     }
 
     /// <summary>
-    /// Marks the videos that were exported from a Studio project still in the store, so they
-    /// offer Open in Studio. While the Studio preview is switched off no video offers it.
+    /// Marks the videos that were exported from a Studio project still in the store.
     /// </summary>
     private async Task UpdateStudioLinksAsync()
     {
-        // Each call replaces the one before it. A lookup that is still running when the next
-        // call starts, or when Studio is switched off, has been asked about a library that is
-        // no longer the one on screen, and must not mark anything when it comes back.
+        // Each call replaces the one before it; a superseded lookup must not mark stale items.
         var lookup = ++_studioLinkLookup;
-        if (!_captureSettings.StudioPreviewEnabled)
-        {
-            // Also the ones that were marked while it was still on.
-            ClearStudioLinks();
-            return;
-        }
-
         var videoPaths = _itemsByPath.Values.Where(item => item.IsVideo).Select(item => item.Path).ToList();
         if (videoPaths.Count == 0)
         {
@@ -446,13 +433,6 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        if (!_captureSettings.StudioPreviewEnabled)
-        {
-            // Switched off while the projects were read, and nothing has refreshed since.
-            ClearStudioLinks();
-            return;
-        }
-
         foreach (var (path, projectId) in projectIds)
         {
             if (_itemsByPath.TryGetValue(path, out var item))
@@ -462,19 +442,9 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
         }
     }
 
-    private void ClearStudioLinks()
-    {
-        foreach (var item in _itemsByPath.Values)
-        {
-            item.StudioProjectId = null;
-        }
-    }
-
     /// <summary>
-    /// Keeps a Studio project's export link pointing at a video that was renamed or moved. Also
-    /// while the Studio preview is switched off: the project is still on disk, and one that has
-    /// lost track of its video counts as holding the only copy from then on. Where Studio was
-    /// never used there is no project folder and this reads nothing.
+    /// Keeps a Studio project's export link pointing at a video that was renamed or moved.
+    /// Where Studio was never used there is no project folder and this reads nothing.
     /// </summary>
     private void MoveStudioExportLink(string oldPath, string newPath)
     {
@@ -987,15 +957,6 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
         var target = item ?? SelectedClip;
         if (target is null || !target.IsVideo)
         {
-            return;
-        }
-
-        if (!_captureSettings.StudioPreviewEnabled)
-        {
-            // Switched off since this list was read. Nothing would open, so it is said why, and
-            // the videos stop offering it.
-            ClearStudioLinks();
-            ShowStatus("Tiny Clips Studio is switched off. Switch it on in Settings \u203A Studio to open this project.");
             return;
         }
 

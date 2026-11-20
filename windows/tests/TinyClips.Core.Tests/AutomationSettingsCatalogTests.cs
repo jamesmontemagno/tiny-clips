@@ -59,6 +59,16 @@ public sealed class AutomationSettingsCatalogTests
         AssertInvalid(() => catalog.Get("automationEnabled"));
     }
 
+    [Fact]
+    public void StudioPreviewSwitch_IsNotExposedToAgents()
+    {
+        var catalog = new AutomationSettingsCatalog(new CaptureSettings(new MemorySettings()));
+
+        Assert.DoesNotContain("studioPreviewEnabled", catalog.Keys);
+        AssertInvalid(() => catalog.Get("studioPreviewEnabled"));
+        AssertInvalid(() => catalog.Set("studioPreviewEnabled", JsonValue.Create(false)));
+    }
+
     private static void AssertInvalid(Action action)
     {
         var ex = Assert.Throws<AutomationException>(action);

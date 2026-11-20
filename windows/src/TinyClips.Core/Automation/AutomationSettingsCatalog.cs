@@ -67,7 +67,6 @@ public sealed class AutomationSettingsCatalog
             Bool("showMouseClickVisualsInGif", () => s.ShowMouseClickVisualsInGif, v => s.ShowMouseClickVisualsInGif = v),
             Bool("showRegionIndicator", () => s.ShowRegionIndicator, v => s.ShowRegionIndicator = v),
             Bool("includeTinyClipsInCapture", () => s.IncludeTinyClipsInCapture, v => s.IncludeTinyClipsInCapture = v),
-            Bool("studioPreviewEnabled", () => s.StudioPreviewEnabled, v => s.StudioPreviewEnabled = v),
             Bool("teleprompterEnabled", () => s.TeleprompterEnabled, v => s.TeleprompterEnabled = v),
         ]);
         _entries = entries;

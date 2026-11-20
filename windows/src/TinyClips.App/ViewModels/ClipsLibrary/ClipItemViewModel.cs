@@ -135,7 +135,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
 
     /// <summary>
     /// The Studio project this video was exported from, while that project is still stored. Null
-    /// for everything else, and always null while the Studio preview is switched off.
+    /// for everything else.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasStudioProject))]

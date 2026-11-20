@@ -12,7 +12,7 @@ public enum VideoRecordingCommand
     /// <summary>The global hotkey of Record video. Always an ordinary recording.</summary>
     RecordVideoHotKey,
 
-    /// <summary>Studio recording in the tray menu, which is there while Studio is switched on.</summary>
+    /// <summary>Studio recording in the tray menu.</summary>
     StudioRecording,
 
     /// <summary>
@@ -30,9 +30,7 @@ public enum VideoRecordingCommand
 /// The command the recording was asked for with decides, and nothing else does: Studio
 /// recording makes one, Record video and its hotkey never do. What was asked for is kept
 /// through the capture picker, the recording setup panel, and a picker that comes back after
-/// the recording, until a recording is asked for again. It counts only while Studio is switched
-/// on. That is asked when the recording is asked for, when it is set up, and again where it
-/// starts, because Settings can be used in between.
+/// the recording, until a recording is asked for again.
 /// Not thread-safe: the app uses it on its UI thread.
 /// </remarks>
 public sealed class StudioRecordingIntent
@@ -54,14 +52,14 @@ public sealed class StudioRecordingIntent
     {
         _askedForStudio = command switch
         {
-            VideoRecordingCommand.StudioRecording => _settings.StudioPreviewEnabled,
+            VideoRecordingCommand.StudioRecording => true,
             VideoRecordingCommand.PickerReturned => _askedForStudio,
             _ => false,
         };
     }
 
-    /// <summary>Whether the recording being set up is a Studio recording, as Settings are now.</summary>
-    public bool IsForStudio => _askedForStudio && _settings.StudioPreviewEnabled;
+    /// <summary>Whether the recording being set up is a Studio recording.</summary>
+    public bool IsForStudio => _askedForStudio;
 
     public CapturePickerIntent GetPickerIntent(CaptureType type) => type switch
     {
@@ -85,23 +83,4 @@ public sealed class StudioRecordingIntent
         }
         : VideoRecordingOptions.Default;
 
-    /// <summary>
-    /// The options a recording starts with, asked where it starts: after the countdown, and
-    /// when a recording is restarted. A recording that was set up for Studio starts as an
-    /// ordinary one when Studio has been switched off since.
-    /// </summary>
-    public VideoRecordingOptions OptionsAtStart(VideoRecordingOptions setUp)
-    {
-        ArgumentNullException.ThrowIfNull(setUp);
-        return setUp.RecordForStudio && !_settings.StudioPreviewEnabled
-            ? setUp.RecordMicrophone is null && setUp.WebcamEnabled is null && setUp.ValidateDeviceAccess is null
-                ? VideoRecordingOptions.Default
-                : VideoRecordingOptions.Default with
-                {
-                    RecordMicrophone = setUp.RecordMicrophone,
-                    WebcamEnabled = setUp.WebcamEnabled,
-                    ValidateDeviceAccess = setUp.ValidateDeviceAccess,
-                }
-            : setUp;
-    }
 }
