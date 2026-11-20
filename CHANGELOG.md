@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
-- Agents on macOS can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
+- Agents on macOS and Windows can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 
 ### Fixed
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.

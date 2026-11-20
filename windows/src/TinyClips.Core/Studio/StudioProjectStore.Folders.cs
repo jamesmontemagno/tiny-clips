@@ -27,40 +27,54 @@ public sealed partial class StudioProjectStore
             throw new ArgumentException("A project is saved as a folder with a name, inside another folder.", nameof(folder));
         }
 
-        string directory;
         var names = new List<string>();
+        var files = new List<(string Source, string Name)>();
         string json;
         lock (_sync)
         {
             var project = LoadProjectFile(ProjectDirectory(projectId), projectId);
-            if (project.Sources.Screen.External)
-            {
-                throw StudioProjectFolderException.ExternalSource();
-            }
-
             var paths = BuildPaths(projectId, project);
-            directory = paths.ProjectDirectory;
+            var directory = paths.ProjectDirectory;
 
-            void Require(string path)
+            void Require(string path, string? name = null)
             {
                 if (!File.Exists(path))
                 {
                     throw StudioProjectFolderException.MissingFile(Path.GetFileName(path));
                 }
 
-                IncludeIfPresent(path);
+                IncludeIfPresent(path, name);
             }
 
-            void IncludeIfPresent(string path)
+            void IncludeIfPresent(string path, string? name = null)
             {
-                var fileName = Path.GetFileName(path);
+                var fileName = name ?? Path.GetFileName(path);
                 if (File.Exists(path) && !names.Contains(fileName, StringComparer.OrdinalIgnoreCase))
                 {
                     names.Add(fileName);
+                    files.Add((path, fileName));
                 }
             }
 
-            Require(paths.ScreenPath);
+            if (project.Sources.Screen.External)
+            {
+                var extension = Path.GetExtension(paths.ScreenPath).TrimStart('.').ToLowerInvariant();
+                var screenName = "screen." + (extension.Length > 0 && extension.All(char.IsAsciiLetterOrDigit) ? extension : "mp4");
+                Require(paths.ScreenPath, screenName);
+                // Only the portable snapshot owns the copy; the editor keeps its original source.
+                project = project with
+                {
+                    Sources = project.Sources with
+                    {
+                        Screen = project.Sources.Screen with { File = screenName, External = false },
+                    },
+                };
+            }
+            else
+            {
+                Require(paths.ScreenPath);
+            }
+
             if (paths.CameraPath is { } cameraPath)
             {
                 Require(cameraPath);
@@ -96,7 +110,7 @@ public sealed partial class StudioProjectStore
 
             // An editor that has a recording open reads it and nothing more, so reading beside
             // it is allowed for.
-            CopyFiles(directory, filling, names, FileShare.ReadWrite | FileShare.Delete, progress, cancellationToken);
+            CopyFiles(filling, files, FileShare.ReadWrite | FileShare.Delete, progress, cancellationToken);
 
             // Written last, and the last to be put in place: a folder with its .tinyclips file
             // in it is a whole copy. The file has the name the folder will have.
@@ -363,17 +377,25 @@ public sealed partial class StudioProjectStore
         FileShare sourceSharing,
         IProgress<double>? progress,
         CancellationToken cancellationToken)
+        => CopyFiles(toFolder, names.Select(name => (Path.Combine(fromFolder, name), name)).ToArray(), sourceSharing, progress, cancellationToken);
+
+    private static void CopyFiles(
+        string toFolder,
+        IReadOnlyList<(string Source, string Name)> files,
+        FileShare sourceSharing,
+        IProgress<double>? progress,
+        CancellationToken cancellationToken)
     {
-        var total = names.Sum(name => new FileInfo(Path.Combine(fromFolder, name)).Length);
+        var total = files.Sum(file => new FileInfo(file.Source).Length);
         long copied = 0;
         var buffer = ArrayPool<byte>.Shared.Rent(FolderCopyPieceBytes);
         try
         {
-            foreach (var name in names)
+            foreach (var file in files)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                using var source = new FileStream(Path.Combine(fromFolder, name), FileMode.Open, FileAccess.Read, sourceSharing, bufferSize: 1, FileOptions.SequentialScan);
-                using var target = new FileStream(Path.Combine(toFolder, name), FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 1);
+                using var source = new FileStream(file.Source, FileMode.Open, FileAccess.Read, sourceSharing, bufferSize: 1, FileOptions.SequentialScan);
+                using var target = new FileStream(Path.Combine(toFolder, file.Name), FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 1);
                 int read;
                 while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
                 {

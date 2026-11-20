@@ -75,7 +75,8 @@ public interface IStudioProjectStore
     /// computer (section 14 of the project format): the files the project names, and beside
     /// them a <c>.tinyclips</c> file named after the folder. That file is the project as
     /// <c>project.json</c> has it, without its list of exported videos. The project in the
-    /// store is not changed.
+    /// store is not changed. An imported video is copied into the folder as a local screen
+    /// source; its original file is not moved or modified.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -107,8 +108,7 @@ public interface IStudioProjectStore
     /// runs on.
     /// </param>
     /// <exception cref="StudioProjectFolderException">
-    /// <see cref="StudioProjectFolderProblem.ExternalSource"/> for a project built around a
-    /// video kept elsewhere, <see cref="StudioProjectFolderProblem.MissingFile"/> when a
+    /// <see cref="StudioProjectFolderProblem.MissingFile"/> when a
     /// recording of the project is gone, <see cref="StudioProjectFolderProblem.DestinationExists"/>
     /// when something that is not a saved project is where the folder would go, or a saved
     /// project that was not to be replaced, and

@@ -6,9 +6,11 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Studio's Save project and Save project as commands now work for videos opened from the trimmer or Clips Library, copying the original into a portable project without moving or changing it.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 
 ### Changed
+- Agent Control now supports `studio.project.saveCopy` with export scope, creating an unlinked portable snapshot in a new folder directly inside the configured video folder.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 
 ## [v2.1.1-windows] - 2026-11-14

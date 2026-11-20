@@ -66,11 +66,20 @@ public sealed partial class StudioViewModel
     public string SavingProjectText => StudioProjectFolderText.SavingMessage;
 
     /// <summary>Whether the project can be saved as a folder: it is open, and neither exporting nor being saved.</summary>
-    public bool CanSaveProject => IsEditable && !IsGeneratingCaptions && Project?.Sources.Screen.External == false;
+    public bool CanSaveProject => IsEditable && !IsGeneratingCaptions;
 
-    public string ProjectFolderHelp => Project?.Sources.Screen.External == true
-        ? "Imported video edits are saved automatically in Studio. Saving a portable project folder is unavailable because the source video is stored externally. Keep the original video."
-        : "Save includes the recordings and a .tinyclips file in a project folder.";
+    public string ProjectFolderHelp => "Save includes copies of the recordings and a .tinyclips file in a project folder. Original videos are not moved or changed.";
+
+    internal bool PrepareAutomationProjectCopy()
+    {
+        if (!CanSaveProject || _session.IsInGesture)
+        {
+            return false;
+        }
+
+        CommitCaptionText();
+        return _session.SaveNow();
+    }
 
     /// <summary>
     /// Whether the project can be deleted from here: also one that cannot be shown, but not
