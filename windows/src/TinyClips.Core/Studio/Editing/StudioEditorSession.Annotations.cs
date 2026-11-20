@@ -1,3 +1,4 @@
+using TinyClips.Core.Studio.Preview;
 using TinyClips.Core.Studio.Rendering;
 namespace TinyClips.Core.Studio.Editing;
 
@@ -75,7 +76,13 @@ public sealed partial class StudioEditorSession
         var result = new StudioAnnotationEditResult(false, null);
         EditAndSelect(model =>
         {
-            result = model.AddAnnotation(kind, time, _events);
+            // A scrub may stop between frame boundaries. Start on the displayed frame, not
+            // after its render time, without moving the playhead.
+            var frameRate = StudioPreviewTimeMath.NormalizeFrameRate(model.Project.Sources.Screen.FrameRate);
+            var frame = StudioPreviewTimeMath.ClampFrame(
+                StudioPreviewTimeMath.FrameAt(time, frameRate),
+                StudioPreviewTimeMath.FrameCount(model.SourceDuration, frameRate));
+            result = model.AddAnnotation(kind, StudioPreviewTimeMath.FrameStart(frame, frameRate), _events);
             return result.Index is { } index ? EditSelection.Annotation(index) : null;
         });
         return result;
