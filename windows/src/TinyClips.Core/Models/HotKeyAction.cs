@@ -11,8 +11,7 @@ public enum HotKeyAction
     ScreenshotScreen,
 
     /// <summary>
-    /// Stops the active recording. Not user-configurable; its binding is fixed
-    /// and is not persisted in settings.
+    /// Stops the active recording. Its optional global binding is registered only while recording.
     /// </summary>
     StopRecording,
 }

@@ -30,7 +30,8 @@ public sealed class SettingsViewModelTests
         Assert.Equal(hotKeys.DefaultFor(HotKeyAction.RecordGif).DisplayString, vm.GifHotKeyDisplay);
         Assert.Equal(
             ["ScreenshotHotKeyDisplay", "VideoHotKeyDisplay", "GifHotKeyDisplay", "OcrHotKeyDisplay",
-                "ScreenshotRegionHotKeyDisplay", "ScreenshotWindowHotKeyDisplay", "ScreenshotScreenHotKeyDisplay"],
+                "ScreenshotRegionHotKeyDisplay", "ScreenshotWindowHotKeyDisplay", "ScreenshotScreenHotKeyDisplay",
+                "StopRecordingHotKeyDisplay"],
             notifications);
         Assert.Equal(writesBefore, fixture.Store.Writes);
     }
@@ -1244,6 +1245,7 @@ public sealed class SettingsViewModelTests
 
     private sealed class FakeHotKeys : IHotKeyService
     {
+        public IReadOnlyList<KeyValuePair<HotKeyAction, HotKeyDefinition>> GetActiveBindings(bool isRecording) => throw new NotSupportedException();
         public HotKeyDefinition GetBinding(HotKeyAction action) => new(HotKeyModifiers.Control, 53);
         public HotKeyDefinition GetStopBinding() => new(HotKeyModifiers.Control, 83);
         public string StopRecordingDisplayString => "Ctrl+S";

@@ -1,11 +1,86 @@
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
+using TinyClips.Core.Studio.Preview;
 
 namespace TinyClips.Core.Tests;
 
 /// <summary>Annotations in the editor session: adding and selecting one, one selection, undo, and the panel.</summary>
 public sealed class StudioEditorSessionAnnotationTests : StudioEditorSessionTestBase
 {
+    [Theory]
+    [InlineData(30, 120, 0.9)]
+    [InlineData(60, 239, 0.9)]
+    [InlineData(29.97, 121, 0.9)]
+    [InlineData(30, 121, 0)]
+    [InlineData(30, 0, 0.9)]
+    public async Task AddingBetweenFrameBoundaries_IsVisibleOnTheDisplayedFrame_WithoutSeeking(
+        double frameRate, long displayedFrame, double fractionIntoFrame)
+    {
+        var session = await OpenAsync(CreateProject(frameRate: frameRate));
+        var playhead = (displayedFrame + fractionIntoFrame) / frameRate;
+        session.Scrub(playhead);
+        Preview.Calls.Clear();
+
+        Assert.True(session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Arrow).Changed);
+
+        var annotation = Assert.Single(Preview.LastProject!.Overlays.Annotations);
+        var renderTime = StudioPreviewTimeMath.FrameMiddle(displayedFrame, frameRate);
+        var frame = StudioLayoutResolver.Resolve(Preview.LastProject, null, renderTime, 1920, 1080);
+        Assert.True(StudioAnnotationGeometry.TryResolve(annotation, 0, frame, renderTime, 1920, 1080, out _));
+        Assert.Equal(displayedFrame / frameRate, annotation.Start, Precision);
+        Assert.Single(session.GetAnnotationHandles(1920, 1080));
+        Assert.Equal(playhead, session.Playhead, Precision);
+        Assert.Equal(["UpdateProject"], Preview.Calls);
+
+        session.Undo();
+        Assert.Empty(Preview.LastProject.Overlays.Annotations);
+        session.Redo();
+        Assert.Equal(annotation, Assert.Single(Preview.LastProject.Overlays.Annotations));
+        Assert.Equal(playhead, session.Playhead, Precision);
+    }
+
+    [Fact]
+    public async Task AddingAtASceneCut_UsesTheDisplayedFrameLayout()
+    {
+        var id = CreateProject(camera: true);
+        var project = Projects.Load(id);
+        Projects.Save(project with
+        {
+            Scenes =
+            [
+                new StudioScene { Start = 0, Layout = StudioLayout.Bubble },
+                new StudioScene { Start = 4.01, Layout = StudioLayout.Camera },
+            ],
+        });
+        var session = await OpenAsync(id);
+        session.Scrub(4.03);
+        var renderTime = StudioPreviewTimeMath.FrameMiddle(120, 30);
+
+        Assert.True(session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Arrow).Changed);
+
+        var annotation = Assert.Single(Preview.LastProject!.Overlays.Annotations);
+        var frame = StudioLayoutResolver.Resolve(Preview.LastProject, null, renderTime, 1920, 1080);
+        Assert.Null(frame.Screen);
+        Assert.Equal(StudioAnnotationAttach.Frame, annotation.Attach);
+        Assert.True(StudioAnnotationGeometry.TryResolve(annotation, 0, frame, renderTime, 1920, 1080, out _));
+        Assert.Single(session.GetAnnotationHandles(1920, 1080));
+    }
+
+    [Fact]
+    public async Task AddingJustBeforeAFrameBoundary_KeepsTheStartAtThePlayhead_AndShowsAHandle()
+    {
+        var session = await OpenAsync(CreateProject(frameRate: 30));
+        const double playhead = 3.999999;
+        session.Scrub(playhead);
+
+        Assert.True(session.AddAnnotationAtPlayhead(StudioAnnotationKinds.Arrow).Changed);
+
+        var annotation = Assert.Single(Preview.LastProject!.Overlays.Annotations);
+        Assert.True(annotation.Start <= playhead);
+        Assert.Single(session.GetAnnotationHandles(1920, 1080));
+        Assert.Equal(playhead, session.Playhead, Precision);
+    }
+
     [Fact]
     public async Task Adding_SelectsIt_ShowsThePanel_AndLeavesThePlayhead()
     {

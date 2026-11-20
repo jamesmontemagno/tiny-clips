@@ -203,6 +203,8 @@ public interface ICaptureSettings
     int ScreenshotWindowHotKeyModifiers { get; set; }
     int ScreenshotScreenHotKeyCode { get; set; }
     int ScreenshotScreenHotKeyModifiers { get; set; }
+    int StopRecordingHotKeyCode { get; set; }
+    int StopRecordingHotKeyModifiers { get; set; }
 
     ImageFormat ImageFormat { get; set; }
     bool ShouldCopyToClipboard(CaptureType type);

@@ -767,25 +767,25 @@ public sealed class CaptureSettings : ICaptureSettings
 
     public int VideoHotKeyCode
     {
-        get => _settings.Get("videoHotKeyCode", 54);
+        get => _settings.Get("videoHotKeyCode", 0);
         set => _settings.Set("videoHotKeyCode", value);
     }
 
     public int VideoHotKeyModifiers
     {
-        get => _settings.Get("videoHotKeyModifiers", 6);
+        get => _settings.Get("videoHotKeyModifiers", 0);
         set => _settings.Set("videoHotKeyModifiers", value);
     }
 
     public int GifHotKeyCode
     {
-        get => _settings.Get("gifHotKeyCode", 55);
+        get => _settings.Get("gifHotKeyCode", 0);
         set => _settings.Set("gifHotKeyCode", value);
     }
 
     public int GifHotKeyModifiers
     {
-        get => _settings.Get("gifHotKeyModifiers", 6);
+        get => _settings.Get("gifHotKeyModifiers", 0);
         set => _settings.Set("gifHotKeyModifiers", value);
     }
 
@@ -835,6 +835,18 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         get => _settings.Get("screenshotScreenHotKeyModifiers", 0);
         set => _settings.Set("screenshotScreenHotKeyModifiers", value);
+    }
+
+    public int StopRecordingHotKeyCode
+    {
+        get => _settings.Get("stopRecordingHotKeyCode", 0);
+        set => _settings.Set("stopRecordingHotKeyCode", value);
+    }
+
+    public int StopRecordingHotKeyModifiers
+    {
+        get => _settings.Get("stopRecordingHotKeyModifiers", 0);
+        set => _settings.Set("stopRecordingHotKeyModifiers", value);
     }
 
     public ImageFormat ImageFormat
@@ -1017,10 +1029,12 @@ public sealed class CaptureSettings : ICaptureSettings
         UploadcareCopyUrl = false;
         ScreenshotHotKeyCode = 53;
         ScreenshotHotKeyModifiers = 6;
-        VideoHotKeyCode = 54;
-        VideoHotKeyModifiers = 6;
-        GifHotKeyCode = 55;
-        GifHotKeyModifiers = 6;
+        VideoHotKeyCode = 0;
+        VideoHotKeyModifiers = 0;
+        GifHotKeyCode = 0;
+        GifHotKeyModifiers = 0;
+        StopRecordingHotKeyCode = 0;
+        StopRecordingHotKeyModifiers = 0;
         OcrHotKeyCode = 0;
         OcrHotKeyModifiers = 0;
         ScreenshotRegionHotKeyCode = 0;

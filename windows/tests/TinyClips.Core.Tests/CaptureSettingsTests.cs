@@ -148,6 +148,8 @@ public sealed class CaptureSettingsTests
         settingsService.Set("ocrHotKeyModifiers", 6);
         settingsService.Set("screenshotScreenHotKeyCode", 65);
         settingsService.Set("screenshotScreenHotKeyModifiers", 6);
+        settingsService.Set("stopRecordingHotKeyCode", 83);
+        settingsService.Set("stopRecordingHotKeyModifiers", 6);
 
         var settings = new CaptureSettings(settingsService);
 
@@ -161,15 +163,19 @@ public sealed class CaptureSettingsTests
         Assert.Equal(6, settings.OcrHotKeyModifiers);
         Assert.Equal(65, settings.ScreenshotScreenHotKeyCode);
         Assert.Equal(6, settings.ScreenshotScreenHotKeyModifiers);
+        Assert.Equal(83, settings.StopRecordingHotKeyCode);
+        Assert.Equal(6, settings.StopRecordingHotKeyModifiers);
 
         settings.ResetToDefaults();
 
         Assert.Equal(53, settings.ScreenshotHotKeyCode);
         Assert.Equal(6, settings.ScreenshotHotKeyModifiers);
-        Assert.Equal(54, settings.VideoHotKeyCode);
-        Assert.Equal(6, settings.VideoHotKeyModifiers);
-        Assert.Equal(55, settings.GifHotKeyCode);
-        Assert.Equal(6, settings.GifHotKeyModifiers);
+        Assert.Equal(0, settings.VideoHotKeyCode);
+        Assert.Equal(0, settings.VideoHotKeyModifiers);
+        Assert.Equal(0, settings.GifHotKeyCode);
+        Assert.Equal(0, settings.GifHotKeyModifiers);
+        Assert.Equal(0, settings.StopRecordingHotKeyCode);
+        Assert.Equal(0, settings.StopRecordingHotKeyModifiers);
         Assert.Equal(0, settings.OcrHotKeyCode);
         Assert.Equal(0, settings.OcrHotKeyModifiers);
         Assert.Equal(0, settings.ScreenshotScreenHotKeyCode);

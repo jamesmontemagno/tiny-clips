@@ -52,7 +52,7 @@ public sealed partial class StudioEditorModel
     /// frame, and an arrow and a callout to the screen, unless the frame has no screen then. It
     /// goes in the middle of what is in view.
     /// </summary>
-    public StudioAnnotationEditResult AddAnnotation(string kind, double sourceTime, StudioEvents? events)
+    public StudioAnnotationEditResult AddAnnotation(string kind, double sourceTime, StudioEvents? events, double? layoutSampleTime = null)
     {
         ArgumentNullException.ThrowIfNull(kind);
         if (!CanAddAnnotation || !double.IsFinite(sourceTime))
@@ -63,7 +63,10 @@ public sealed partial class StudioEditorModel
         var start = Math.Min(Math.Max(0, sourceTime), SourceDuration - MinimumAnnotationDuration);
         var end = Math.Min(start + NewAnnotationDuration, SourceDuration);
         var canvas = StudioCanvasMath.NaturalSize(Project);
-        var frame = StudioLayoutResolver.Resolve(Project, events, start, canvas.Width, canvas.Height);
+        var sampleTime = layoutSampleTime is { } time && double.IsFinite(time)
+            ? Math.Clamp(time, 0, SourceDuration)
+            : start;
+        var frame = StudioLayoutResolver.Resolve(Project, events, sampleTime, canvas.Width, canvas.Height);
         var attach = kind != StudioAnnotationKinds.Text && frame.Screen is not null
             ? StudioAnnotationAttach.Screen
             : StudioAnnotationAttach.Frame;

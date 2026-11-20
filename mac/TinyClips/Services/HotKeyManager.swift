@@ -51,6 +51,7 @@ final class HotKeyManager {
     struct ActionRegistration {
         let action: HotKeyAction
         let binding: HotKeyBinding
+        let isEnabled: Bool
         let handler: () -> Void
     }
 
@@ -67,7 +68,6 @@ final class HotKeyManager {
 
     private var eventHandlerRef: EventHandlerRef?
     private var registeredHotKeys: [UInt32: RegisteredHotKey] = [:]
-    private let stopRecordingID: UInt32 = 99
 
     // MARK: - Lifecycle
 
@@ -92,30 +92,11 @@ final class HotKeyManager {
                 name: $0.action.displayName,
                 keyCode: UInt32($0.binding.isUnbound ? 0 : $0.binding.keyCode),
                 modifiers: UInt32($0.binding.carbonModifiers),
-                isEnabled: !$0.binding.isUnbound,
+                isEnabled: $0.isEnabled && !$0.binding.isUnbound,
                 action: $0.handler
             )
         }
         return replace(hotKeys: hotKeys)
-    }
-
-    func registerStopHotKey(onStopRecording: @escaping () -> Void) -> RegistrationResult {
-        replace(
-            hotKeys: [
-                HotKeyRegistration(
-                    id: stopRecordingID,
-                    name: "Stop Recording",
-                    keyCode: UInt32(HotKeyBinding.stopRecording.keyCode),
-                    modifiers: UInt32(HotKeyBinding.stopRecording.carbonModifiers),
-                    isEnabled: true,
-                    action: onStopRecording
-                )
-            ]
-        )
-    }
-
-    func unregisterStopHotKey() {
-        unregister(id: stopRecordingID)
     }
 
     func unregisterAll() {
@@ -125,6 +106,10 @@ final class HotKeyManager {
         for hotKeyRef in hotKeyRefs {
             UnregisterEventHotKey(hotKeyRef)
         }
+    }
+
+    func unregisterAction(_ action: HotKeyAction) {
+        unregister(id: action.rawValue)
     }
 
     // MARK: - Registration
