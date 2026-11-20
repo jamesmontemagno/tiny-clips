@@ -95,7 +95,7 @@ public sealed partial class SettingsStudioPageTests
         Assert.Equal(["TextBlock", "TextBlock", "SettingsCard", "StackPanel"], parts.Select(part => part.Name.LocalName));
         Assert.DoesNotContain(Controls(column), control => control.Name.LocalName == "ToggleSwitch");
         Assert.DoesNotContain("StudioPreviewVisibility", SettingsMarkup.Read(StudioPage), StringComparison.Ordinal);
-        Assert.Contains(parts[2].Attr("Description"), "Studio recording", StringComparison.Ordinal);
+        Assert.Contains("Studio recording", parts[2].Attr("Description"), StringComparison.Ordinal);
         Assert.Contains(Controls(parts[3]), control => control.Attr(Id) == "StudioOpenProjectButton");
     }
 

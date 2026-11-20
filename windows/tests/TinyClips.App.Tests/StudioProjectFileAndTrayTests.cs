@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Xml.Linq;
 using TinyClips.App.Services.Studio;
 using TinyClips.Core.Models;
+using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Tests;
 
