@@ -21,7 +21,7 @@ public sealed class StudioProjectFolderTextTests : StudioProjectFolderTestBase
     // enum is here: a new one fails the first test until it has words.
     public static TheoryData<StudioProjectFolderProblem, string> Sentences => new()
     {
-        { StudioProjectFolderProblem.ExternalSource, "This project is built around a video that is kept somewhere else, so it cannot be saved as a folder or opened from one." },
+        { StudioProjectFolderProblem.ExternalSource, "This project refers to a video outside its folder, so it cannot be opened as a portable project." },
         { StudioProjectFolderProblem.MissingFile, "camera.mp4 is not in the project's folder. A .tinyclips file opens only next to the recordings it was saved with." },
         { StudioProjectFolderProblem.DestinationExists, "There is already something with that name, and it is not a saved Tiny Clips project. Choose another name." },
         { StudioProjectFolderProblem.DestinationHasOtherFiles, "This folder holds budget.xlsx, which is not part of the project, so it was not replaced. Choose another name." },

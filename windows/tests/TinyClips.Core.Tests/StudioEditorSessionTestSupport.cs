@@ -519,6 +519,8 @@ internal sealed class RecordingStore(StudioProjectStore inner, List<string> log)
         inner.Delete(projectId);
     }
 
+    public IDisposable AcquireProjectUse(string projectId) => inner.AcquireProjectUse(projectId);
+
     public StudioProject MarkOpened(string projectId)
     {
         log.Add("store.markOpened");

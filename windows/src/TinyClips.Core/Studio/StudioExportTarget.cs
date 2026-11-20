@@ -70,7 +70,7 @@ public sealed partial record StudioExportTarget(string Path, long? Length, DateT
         }
     }
 
-    private static string ResolvePath(string path, int depth = 0)
+    internal static string ResolvePath(string path, int depth = 0)
     {
         if (depth >= 64) throw new IOException("The selected path contains too many directory aliases.");
         var fullPath = System.IO.Path.GetFullPath(path);
