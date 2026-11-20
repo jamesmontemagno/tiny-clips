@@ -91,6 +91,20 @@ public class ContractTests
     }
 
     [Fact]
+    public void GuideNavigationSchemaIsOptionalAndSharedAcrossPlatforms()
+    {
+        var command = Contract.Current.Find("app.open")!;
+        var schema = Contract.InputSchema(command);
+        Assert.Equal("read", command.Scope);
+        Assert.Equal(["window"], schema["required"]!.AsArray().Select(item => item!.GetValue<string>()));
+        Assert.Equal(["capture", "editor", "recording", "studio", "library", "agents", "help"],
+            schema["properties"]!["guideTopic"]!["enum"]!.AsArray().Select(item => item!.GetValue<string>()));
+        Assert.Null(command.Params["guideTopic"].Default);
+        Assert.Contains(command, Contract.Current.CommandsForPlatform("macos"));
+        Assert.Contains(command, Contract.Current.CommandsForPlatform("windows"));
+    }
+
+    [Fact]
     public void InputSchemaIncludesNestedAnnotationShape()
     {
         var schema = Contract.InputSchema(Contract.Current.Find("editor.annotate")!);
@@ -207,6 +221,13 @@ public class ContractTests
     [InlineData("studio.export.options", "{\"projectId\":\"p\",\"resolution\":\"720p\"}", null)]
     [InlineData("editor.open", "{}", "Missing required")]
     [InlineData("app.status", "{\"extra\":1}", "Unknown parameter")]
+    [InlineData("app.open", "{\"window\":\"guide\",\"guideTopic\":\"studio\"}", null)]
+    [InlineData("app.open", "{\"window\":\"guide\"}", null)]
+    [InlineData("app.open", "{\"window\":\"guide\",\"guideTopic\":\"unknown\"}", "one of")]
+    [InlineData("app.open", "{\"window\":\"guide\",\"guideTopic\":1}", "string")]
+    [InlineData("app.open", "{\"window\":\"guide\",\"guideTopic\":null}", "string")]
+    [InlineData("app.open", "{\"window\":\"settings\",\"guideTopic\":\"studio\"}", "only when")]
+    [InlineData("app.open", "{\"window\":\"library\",\"guideTopic\":\"studio\"}", "only when")]
     [InlineData("recording.startVideo", "{\"studio\":\"yes\"}", "true or false")]
     [InlineData("recording.startVideo", "{\"microphone\":false,\"camera\":false,\"studio\":true}", null)]
     [InlineData("recording.startVideo", "{\"microphone\":true,\"camera\":true}", null)]

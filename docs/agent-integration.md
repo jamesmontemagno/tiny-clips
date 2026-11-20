@@ -142,6 +142,24 @@ change the availability or permissions of `recording.stop`.
 
 Change what an individual agent may do with **Permissions**, or revoke it, in **Settings → Agent Control → Paired Agents**. Turn Agent Control off to stop all connections. **Activity → Open Audit Log** shows local request history.
 
+### Open a feature's Guide
+
+The in-app Guide is an offline, illustrated handbook on both platforms. With the `read`
+scope, open it directly to a topic for the user:
+
+```sh
+dnx TinyClips --yes -- app.open window=guide guideTopic=studio
+```
+
+Topics are `capture`, `editor`, `recording`, `studio`, `library`, `agents`, and `help`.
+Help includes the user's current shortcut reference. The MCP equivalent is
+`tinyclips_app_open` with `{"window":"guide","guideTopic":"studio"}`.
+This selects the topic even if the Guide is already open and returns
+`{"opened":"guide","guideTopic":"studio"}`. Omit `guideTopic` to keep the current
+selection (Capture in a newly opened Guide). Invalid values or a topic supplied for
+another window return `invalid_params`. The Guide is read-only: opening a topic
+does not start that feature or change its settings.
+
 ## Security model
 
 1. **Off by default.** Turn on **Settings → Agent control → Allow agents to control Tiny Clips**. The local listener exists only while enabled; when off, clients cannot connect.

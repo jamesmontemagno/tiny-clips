@@ -160,6 +160,7 @@ final class AutomationCommandRouter {
 
     private func openWindow(_ params: [String: Any]) throws -> [String: Any] {
         let window = try Self.requiredString(params, "window")
+        let topic = try Self.guideTopic(window: window, value: params["guideTopic"])
         switch window {
         case "settings":
             guard AutomationWindowOpener.shared.open(id: "settings-window", title: "Tiny Clips Settings") else {
@@ -170,11 +171,23 @@ final class AutomationCommandRouter {
                 throw AutomationError(.busy, "Tiny Clips is still starting.")
             }
         case "guide":
-            try captureManager().showGuide()
+            let selected = try captureManager().showGuide(topic: topic)
+            return ["opened": window, "guideTopic": selected.rawValue]
         default:
             throw AutomationError(.invalidParams, "window must be settings, library, or guide.")
         }
         return ["opened": window]
+    }
+
+    static func guideTopic(window: String, value: Any?) throws -> GuideSection? {
+        guard let value else { return nil }
+        guard window == "guide" else {
+            throw AutomationError(.invalidParams, "guideTopic is valid only when window is guide.")
+        }
+        guard let name = value as? String, let topic = GuideSection(rawValue: name) else {
+            throw AutomationError(.invalidParams, "guideTopic must be capture, editor, recording, studio, library, agents, or help.")
+        }
+        return topic
     }
 
     private func listLibrary(_ params: [String: Any]) async throws -> [String: Any] {

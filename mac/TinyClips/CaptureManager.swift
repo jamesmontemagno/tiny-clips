@@ -2775,11 +2775,16 @@ class CaptureManager: ObservableObject {
     }
 
     func showGuide() {
+        _ = showGuide(topic: nil)
+    }
+
+    func showGuide(topic: GuideSection?) -> GuideSection {
         if let guideWindow {
+            if let topic { guideWindow.selectTopic(topic) }
             DispatchQueue.main.async {
                 self.bringWindowToFront(guideWindow)
             }
-            return
+            return guideWindow.selectedTopic
         }
 
         let window = GuideWindow(onDismiss: { [weak self] in
@@ -2788,10 +2793,12 @@ class CaptureManager: ObservableObject {
             }
         })
 
+        if let topic { window.selectTopic(topic) }
         self.guideWindow = window
         DispatchQueue.main.async {
             self.bringWindowToFront(window)
         }
+        return window.selectedTopic
     }
 
     private func showRecordingPicker(for type: CaptureType, cursorScreen: NSScreen? = nil) {
