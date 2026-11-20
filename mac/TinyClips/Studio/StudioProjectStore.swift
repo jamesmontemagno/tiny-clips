@@ -869,7 +869,9 @@ final class StudioProjectStore {
                 options: options,
                 inUseProjectIDs: inUse
             )
-            candidateIDs.append(contentsOf: try unfinishedRecordingIDsUnlocked(inUseProjectIDs: inUse))
+            if options.retentionDays > 0 || options.sizeCapBytes > 0 {
+                candidateIDs.append(contentsOf: try unfinishedRecordingIDsUnlocked(inUseProjectIDs: inUse))
+            }
 
             var deletedIDs: [String] = []
             for id in candidateIDs where !deletedIDs.contains(id) {

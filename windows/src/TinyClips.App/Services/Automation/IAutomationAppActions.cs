@@ -71,6 +71,4 @@ internal interface IAutomationAppActions
 
     void RecordUploadLinkForAutomation(string path, string url);
 
-    /// <summary>Lets open windows pick up a setting an agent changed.</summary>
-    void OnAutomationSettingChanged(string key);
 }

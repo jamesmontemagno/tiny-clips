@@ -225,10 +225,9 @@ final class StudioRecentDrafts: ObservableObject {
         reload()
     }
 
-    /// Reads the projects off the main thread: sizing each one reads the disk. With Studio
-    /// switched off there are none to show, as nothing else of Studio is shown then.
+    /// Reads the projects off the main thread: sizing each one reads the disk.
     func reload() {
-        guard CaptureSettings.shared.studioPreviewEnabled, !TinyClipsRuntime.isRunningUnitTests else {
+        guard !TinyClipsRuntime.isRunningUnitTests else {
             if !drafts.isEmpty { drafts = [] }
             if !thumbnails.isEmpty { thumbnails = [:] }
             return

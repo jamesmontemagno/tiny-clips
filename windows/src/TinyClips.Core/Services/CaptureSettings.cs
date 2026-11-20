@@ -15,6 +15,14 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         _settings = settings;
         _analytics = analytics;
+        if (!_settings.Get("studioPreviewEnabled", true))
+        {
+            // Studio used to suspend cleanup while disabled. Preserve those sources on upgrade.
+            _settings.Set("studioSourceRetentionDays", 0);
+            _settings.Set("studioStorageCapGigabytes", 0);
+            _settings.Set("studioPreviewEnabled", true);
+        }
+
         MigrateLegacySaveDirectory();
     }
 
@@ -317,22 +325,6 @@ public sealed class CaptureSettings : ICaptureSettings
         get => _settings.Get("showTrimmer", true);
         set => _settings.Set("showTrimmer", value);
     }
-
-    public bool StudioPreviewEnabled
-    {
-        get => _settings.Get("studioPreviewEnabled", true);
-        set
-        {
-            var changed = StudioPreviewEnabled != value;
-            _settings.Set("studioPreviewEnabled", value);
-            if (changed)
-            {
-                StudioPreviewEnabledChanged?.Invoke(this, EventArgs.Empty);
-            }
-        }
-    }
-
-    public event EventHandler? StudioPreviewEnabledChanged;
 
     public string StudioCaptionModelId
     {
@@ -968,7 +960,6 @@ public sealed class CaptureSettings : ICaptureSettings
         GifMouseClickOpacity = 0.85;
         GifMouseClickDuration = 0.45;
         ShowTrimmer = true;
-        StudioPreviewEnabled = true;
         StudioSourceRetentionDays = DefaultStudioSourceRetentionDays;
         StudioCaptionModelId = TinyClips.Core.Studio.Transcription.StudioCaptionModels.Default.Id;
         StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;

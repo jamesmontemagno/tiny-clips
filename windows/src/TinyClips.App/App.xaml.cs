@@ -121,7 +121,6 @@ public partial class App : Application
     private bool _isTrayTilesRefreshPending;
     private bool _isTrayWidthRefreshPending;
     private CoalescedAction? _trayWidthInvalidation;
-    private CoalescedAction? _trayStudioInvalidation;
     private Windows.UI.ViewManagement.UISettings? _trayUiSettings;
     private DispatcherQueueTimer? _trayRefreshTimer;
     private CoalescedRefresh<IReadOnlyList<RecentCapture>>? _trayRecentRefresh;
@@ -215,15 +214,9 @@ public partial class App : Application
 
     /// <summary>
     /// Queues the Studio project cleanup for a short while after launch, on a background thread.
-    /// Does nothing while the Studio preview is switched off.
     /// </summary>
     private static void ScheduleStudioProjectCleanup()
     {
-        if (!Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
-        {
-            return;
-        }
-
         _ = Task.Run(async () =>
         {
             await Task.Delay(StudioCleanupStartupDelay).ConfigureAwait(false);
@@ -252,21 +245,6 @@ public partial class App : Application
                 RefreshRecentCapturesButton();
             },
             ex => Debug.WriteLine($"Tray recent capture refresh failed: {ex}"));
-        _trayStudioInvalidation = new CoalescedAction(
-            callback => _dispatcher!.TryEnqueue(() => callback()),
-            () =>
-            {
-                if (_isExiting)
-                {
-                    return;
-                }
-
-                RefreshTrayTiles();
-                RefreshRecentCapturesButton();
-                ReloadStudioDrafts();
-            });
-        Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabledChanged += OnTrayStudioPreviewChanged;
-
         _trayUiSettings = new Windows.UI.ViewManagement.UISettings();
         _trayUiSettings.TextScaleFactorChanged += OnTrayTextScaleChanged;
         _trayUiSettings.ColorValuesChanged += OnTrayColorValuesChanged;
@@ -333,9 +311,6 @@ public partial class App : Application
 
     private void OnRecentCapturesChanged(object? sender, EventArgs args) =>
         _dispatcher?.TryEnqueue(() => _trayRecentRefresh?.Request());
-
-    private void OnTrayStudioPreviewChanged(object? sender, EventArgs args) =>
-        _dispatcher?.TryEnqueue(() => _trayStudioInvalidation?.Request());
 
     private void OnIncludeTinyClipsInCaptureChanged(object? sender, EventArgs args) =>
         _dispatcher?.TryEnqueue(() =>
@@ -520,7 +495,7 @@ public partial class App : Application
     /// <summary>
     /// Opens a Studio project file the system handed over. The app has no window to say in
     /// why a project was not opened, so it says it in a notification, as it says that a
-    /// recording was saved: that Studio is switched off, or the store's sentence for the file.
+    /// recording was saved: the store's sentence for the file.
     /// Never fails. Must be called on the UI thread.
     /// </summary>
     private async Task OpenActivatedStudioProjectAsync(string path)
@@ -547,7 +522,7 @@ public partial class App : Application
     /// <summary>
     /// Opens a Studio project that was saved as a folder, from its <c>.tinyclips</c> file: the
     /// project is copied into Studio's own storage as a new draft, and the editor opens on the
-    /// copy. With Studio switched off nothing is copied. Must be called on the UI thread.
+    /// copy. Must be called on the UI thread.
     /// </summary>
     /// <returns>Why the project was not opened, as a sentence for the user, or null.</returns>
     internal async Task<string?> OpenStudioProjectFileAsync(string path)
@@ -555,11 +530,6 @@ public partial class App : Application
         if (_isExiting)
         {
             return null;
-        }
-
-        if (!Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
-        {
-            return StudioProjectFolderText.StudioIsOffMessage;
         }
 
         return (await StudioWindows().OpenProjectFileAsync(path)).Failure;
@@ -832,12 +802,8 @@ public partial class App : Application
         }
 
         _isTrayTilesRefreshPending = false;
-        var hasStudio = Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled;
-        var focusedStudio = _studioTile.Button.FocusState != FocusState.Unfocused;
-        _captureTiles = hasStudio
-            ? [_screenshotTile, _videoTile, _studioTile, _gifTile]
-            : [_screenshotTile, _videoTile, _gifTile];
-        _studioTile.Button.Visibility = hasStudio ? Visibility.Visible : Visibility.Collapsed;
+        _captureTiles = [_screenshotTile, _videoTile, _studioTile, _gifTile];
+        _studioTile.Button.Visibility = Visibility.Visible;
         _trayTiles.ColumnDefinitions.Clear();
         for (var column = 0; column < _captureTiles.Count; column++)
         {
@@ -846,11 +812,6 @@ public partial class App : Application
         }
 
         UpdateRecordingState();
-        if (focusedStudio && !hasStudio && !_videoTile.Button.Focus(FocusState.Programmatic))
-        {
-            _screenshotTile.Button.Focus(FocusState.Programmatic);
-        }
-
         UpdateTrayPopupWidth();
     }
 
@@ -1531,9 +1492,6 @@ public partial class App : Application
                 case CaptureType.Video:
                     captureFlowCts.Token.ThrowIfCancellationRequested();
 
-                    // Studio may have been switched off since the recording was set up. The
-                    // recorder then builds its pipeline again, for an ordinary recording.
-                    videoOptions = StudioRecording.OptionsAtStart(videoOptions);
                     if (automationOptions is not null)
                     {
                         EnsureAutomationDevicePermissions(videoOptions);
@@ -2616,38 +2574,22 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Opens a Studio project for editing, as a finished Studio recording asks for. While the
-    /// Studio preview is switched off the project stays in the store as a draft and the user is
-    /// only told that it was saved. A recording started from the capture picker goes back to the
-    /// picker afterwards, as it does after the trimmer: here, once the editor window has closed.
+    /// Opens a Studio project for editing, as a finished Studio recording asks for. A recording
+    /// started from the capture picker goes back to the picker once the editor window has closed.
     /// Must be called on the UI thread.
     /// </summary>
     private void OpenStudioProject(string projectId, bool pickerInitiated)
     {
-        if (Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        if (OpenStudioWindow(projectId) is { } window && pickerInitiated)
         {
-            if (OpenStudioWindow(projectId) is { } window && pickerInitiated)
+            void OnEditorClosed(object sender, WindowEventArgs args)
             {
-                void OnEditorClosed(object sender, WindowEventArgs args)
-                {
-                    window.Closed -= OnEditorClosed;
-                    ReopenPickerAfterCaptureIfNeeded(CaptureType.Video, pickerInitiated: true);
-                }
-
-                window.Closed += OnEditorClosed;
+                window.Closed -= OnEditorClosed;
+                ReopenPickerAfterCaptureIfNeeded(CaptureType.Video, pickerInitiated: true);
             }
 
-            return;
+            window.Closed += OnEditorClosed;
         }
-
-        Debug.WriteLine($"Studio project ready: {projectId}");
-        Announce(
-            AutomationNotificationKind.ActionCompleted,
-            AutomationNotificationProcessing.MostRecent,
-            "Video saved as a Tiny Clips Studio project.",
-            "StudioProjectSaved");
-        ShowMessageNotification("Saved as a Tiny Clips Studio project");
-        ReopenPickerAfterCaptureIfNeeded(CaptureType.Video, pickerInitiated);
     }
 
     /// <summary>
@@ -2673,12 +2615,11 @@ public partial class App : Application
     /// called on the UI thread.
     /// </summary>
     /// <returns>
-    /// The window, or null when none was opened: the Studio preview is switched off, the app is
-    /// exiting, or the project is being deleted.
+    /// The window, or null when the app is exiting or the project is being deleted.
     /// </returns>
     internal Window? OpenStudioWindow(string projectId)
     {
-        if (_isExiting || !Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
+        if (_isExiting)
         {
             return null;
         }
@@ -2878,8 +2819,7 @@ public partial class App : Application
         {
             try
             {
-                restartOptions = StudioRecording.OptionsAtStart(restartOptions)
-                    .ResolveDevices(Services.GetRequiredService<ICaptureSettings>()) with
+                restartOptions = restartOptions.ResolveDevices(Services.GetRequiredService<ICaptureSettings>()) with
                     {
                         ValidateDeviceAccess = EnsureAutomationDevicePermissions,
                     };
@@ -2911,9 +2851,8 @@ public partial class App : Application
             {
                 var settings = Services.GetRequiredService<ICaptureSettings>();
                 AcquireDisplaySleepAssertionIfEnabled();
-                // A restart records the same kind of video again, so a Studio recording stays
-                // one, unless Studio has been switched off since it started.
-                _activeVideoRecordingOptions = StudioRecording.OptionsAtStart(restartOptions);
+                // A restart records the same kind of video again.
+                _activeVideoRecordingOptions = restartOptions;
                 await Services.GetRequiredService<IVideoRecordingService>()
                     .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes, _activeVideoRecordingOptions);
             }
@@ -4055,16 +3994,11 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Opens the Studio project a video was exported from. Returns false when Studio is switched
-    /// off, or the video did not come from a project that is still stored.
+    /// Opens the Studio project a video was exported from. Returns false when the video did not
+    /// come from a project that is still stored.
     /// </summary>
     private bool TryOpenStudioProjectForVideo(string path)
     {
-        if (!Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled)
-        {
-            return false;
-        }
-
         try
         {
             var projectId = Services.GetRequiredService<IStudioProjectStore>().FindProjectIdByExportPath(path);
@@ -4078,15 +4012,6 @@ public partial class App : Application
     }
 
     private void OpenSettingsWindow() => OpenSettingsWindow(section: null);
-
-    internal void RefreshStudioPreviewSetting()
-    {
-        if (_settingsWindow is not null)
-        {
-            _settingsWindow.ViewModel.IsStudioPreviewEnabled =
-                Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled;
-        }
-    }
 
     internal void OpenSettingsWindow(SettingsSectionKind? section)
     {
@@ -4273,7 +4198,6 @@ public partial class App : Application
 
         _trayRecentRefresh?.Dispose();
         _trayWidthInvalidation?.Dispose();
-        _trayStudioInvalidation?.Dispose();
         if (_trayUiSettings is { } uiSettings)
         {
             uiSettings.TextScaleFactorChanged -= OnTrayTextScaleChanged;
@@ -4300,7 +4224,6 @@ public partial class App : Application
             settingsWindow.ViewModel.ThemeChanged -= ApplyTrayTheme;
         }
 
-        Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabledChanged -= OnTrayStudioPreviewChanged;
         Services.GetRequiredService<ICaptureSettings>().IncludeTinyClipsInCaptureChanged -= OnIncludeTinyClipsInCaptureChanged;
 
         await StopAgentControlForExitAsync();

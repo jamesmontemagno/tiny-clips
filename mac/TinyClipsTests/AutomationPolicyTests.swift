@@ -96,6 +96,11 @@ final class AutomationPolicyTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testStudioPreviewSwitchIsNotAnAgentSetting() {
+        XCTAssertNil(AutomationSetting.named("studioPreviewEnabled"))
+    }
+
     func testErrorCodesMatchContract() throws {
         let contract = try loadContract()
         XCTAssertEqual(Set(AutomationErrorCode.allCases.map(\.rawValue)), Set(contract.errors.keys))

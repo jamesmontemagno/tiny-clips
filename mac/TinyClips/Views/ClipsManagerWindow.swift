@@ -224,15 +224,7 @@ final class StudioLibraryProjects: ObservableObject {
     }
 
     @discardableResult
-    func refresh(enabled: Bool, invalidate: Bool = true) -> Task<Void, Never>? {
-        guard enabled else {
-            needsRead = false
-            listing = StudioProjectListing()
-            loadError = nil
-            isLoading = false
-            return readTask
-        }
-
+    func refresh(invalidate: Bool = true) -> Task<Void, Never>? {
         // A change during a scan needs one trailing read. Other requests can share the scan.
         needsRead = needsRead || invalidate || !isLoading
         if !isLoading { isLoading = true }
@@ -489,13 +481,6 @@ private class ClipsViewModel: ObservableObject {
     }
 
     private func loadStudioLinks() async {
-        guard CaptureSettings.shared.studioPreviewEnabled else {
-            // Published, so it is left alone when there is nothing to take away.
-            if !studioProjectIDs.isEmpty {
-                studioProjectIDs = [:]
-            }
-            return
-        }
         // Reads every project file, so it stays off the main thread.
         studioProjectIDs = await Task.detached(priority: .utility) {
             (try? StudioProjectStore.shared.exportedPathIndex()) ?? [:]
@@ -1130,7 +1115,7 @@ private struct ClipsManagerContentView: View {
             set: { selection in
                 switch selection {
                 case .studio:
-                    studioLibrary.refresh(enabled: settings.studioPreviewEnabled, invalidate: !showStudio)
+                    studioLibrary.refresh(invalidate: !showStudio)
                     showStudio = true
                 case .collection(let collection):
                     showStudio = false
@@ -1291,10 +1276,7 @@ private struct ClipsManagerContentView: View {
             viewModel.load()
         }
         .onReceive(NotificationCenter.default.publisher(for: .studioProjectsDidChange).receive(on: DispatchQueue.main)) { _ in
-            if showStudio { studioLibrary.refresh(enabled: settings.studioPreviewEnabled) }
-        }
-        .onChange(of: settings.studioPreviewEnabled) { _, enabled in
-            if showStudio || !enabled { studioLibrary.refresh(enabled: enabled) }
+            if showStudio { studioLibrary.refresh() }
         }
         .task(id: settings.clipsManagerAutoRefreshSeconds) {
             let interval = settings.clipsManagerAutoRefreshSeconds
@@ -1436,16 +1418,13 @@ private struct ClipsManagerContentView: View {
                 Text("Studio Projects").font(.title2.weight(.semibold))
                 Spacer()
                 Button {
-                    studioLibrary.refresh(enabled: settings.studioPreviewEnabled)
+                    studioLibrary.refresh()
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(studioLibrary.isLoading)
             }
-            if !settings.studioPreviewEnabled {
-                Text("Turn on Tiny Clips Studio in Settings to open projects.")
-                    .foregroundStyle(.secondary)
-            } else if let error = studioLibrary.loadError {
+            if let error = studioLibrary.loadError {
                 Text(error).foregroundStyle(.secondary)
             } else if studioLibrary.isLoading && studioLibrary.listing.summaries.isEmpty && studioLibrary.listing.unreadable.isEmpty {
                 ProgressView("Loading Studio projects…")
@@ -1664,9 +1643,9 @@ private struct ClipsManagerContentView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The action for a video when Studio is on: its project, or a new one made from the video.
+    /// The action for a video: its project, or a new one made from the video.
     private func openInStudioAction(for item: ClipItem) -> (() -> Void)? {
-        guard item.type == .video, CaptureSettings.shared.studioPreviewEnabled else { return nil }
+        guard item.type == .video else { return nil }
         return { viewModel.openInStudio(item) }
     }
 

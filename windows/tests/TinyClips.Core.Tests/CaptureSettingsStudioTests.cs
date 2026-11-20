@@ -9,11 +9,10 @@ public sealed class CaptureSettingsStudioTests
     private const long BytesPerGigabyte = 1024L * 1024 * 1024;
 
     [Fact]
-    public void Defaults_EnableStudioWithoutChangingOrdinaryVideoSettings()
+    public void Defaults_KeepOrdinaryVideoAndStudioStorageSettings()
     {
         var settings = Create(out _);
 
-        Assert.True(settings.StudioPreviewEnabled);
         Assert.True(settings.ShowTrimmer);
         Assert.Equal(30, settings.StudioSourceRetentionDays);
         Assert.Equal(10, settings.StudioStorageCapGigabytes);
@@ -32,52 +31,40 @@ public sealed class CaptureSettingsStudioTests
         Assert.Equal("Small", new CaptureSettings(service).StudioCaptionModelId);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void LegacyStoredChoice_IsPreservedAcrossLaunches(bool enabled)
+    [Fact]
+    public void PreviouslyDisabledStudio_PreservesProjectsWithoutRepeatedlyResettingStorageRules()
     {
         var service = new TestSettingsService();
-        service.Set("studioPreviewEnabled", enabled);
+        service.Set("studioPreviewEnabled", false);
+        service.Set("studioSourceRetentionDays", 14);
+        service.Set("studioStorageCapGigabytes", 5);
+        service.Set("showTrimmer", false);
         service.Set("hasCompletedOnboarding", true);
 
-        Assert.Equal(enabled, new CaptureSettings(service).StudioPreviewEnabled);
-        Assert.Equal(enabled, new CaptureSettings(service).StudioPreviewEnabled);
+        var settings = new CaptureSettings(service);
+        Assert.Equal(0, settings.StudioSourceRetentionDays);
+        Assert.Equal(0, settings.StudioStorageCapGigabytes);
+        Assert.False(settings.ShowTrimmer);
+
+        settings.StudioSourceRetentionDays = 7;
+        settings.StudioStorageCapGigabytes = 2;
+        var reopened = new CaptureSettings(service);
+        Assert.Equal(7, reopened.StudioSourceRetentionDays);
+        Assert.Equal(2, reopened.StudioStorageCapGigabytes);
     }
 
     [Fact]
-    public void StudioPreviewEnabled_RoundTripsThroughItsOwnKey()
+    public void PreviouslyEnabledStudio_KeepsItsStorageRules()
     {
-        var settings = Create(out var service);
+        var service = new TestSettingsService();
+        service.Set("studioPreviewEnabled", true);
+        service.Set("studioSourceRetentionDays", 14);
+        service.Set("studioStorageCapGigabytes", 5);
 
-        settings.StudioPreviewEnabled = true;
+        var settings = new CaptureSettings(service);
 
-        Assert.True(settings.StudioPreviewEnabled);
-        Assert.True(service.Get("studioPreviewEnabled", false));
-
-        settings.StudioPreviewEnabled = false;
-
-        Assert.False(settings.StudioPreviewEnabled);
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void SwitchingStudioOnOrOff_LeavesTheTrimmerSwitchAsItIs(bool showTrimmer)
-    {
-        var settings = Create(out var service);
-        settings.ShowTrimmer = showTrimmer;
-
-        settings.StudioPreviewEnabled = true;
-        Assert.Equal(showTrimmer, settings.ShowTrimmer);
-
-        // The switch is what decides while Studio is on as well, and it is used.
-        settings.ShowTrimmer = !showTrimmer;
-        Assert.Equal(!showTrimmer, settings.ShowTrimmer);
-
-        settings.StudioPreviewEnabled = false;
-        Assert.Equal(!showTrimmer, settings.ShowTrimmer);
-        Assert.Equal(!showTrimmer, service.Get("showTrimmer", showTrimmer));
+        Assert.Equal(14, settings.StudioSourceRetentionDays);
+        Assert.Equal(5, settings.StudioStorageCapGigabytes);
     }
 
     /// <summary>
@@ -96,12 +83,6 @@ public sealed class CaptureSettingsStudioTests
         service.Set("videoAfterRecording", stored);
         service.Set("showTrimmer", showTrimmer);
 
-        Assert.Equal(showTrimmer, settings.ShowTrimmer);
-
-        settings.StudioPreviewEnabled = true;
-        Assert.Equal(showTrimmer, settings.ShowTrimmer);
-
-        settings.StudioPreviewEnabled = false;
         Assert.Equal(showTrimmer, settings.ShowTrimmer);
 
         settings.ShowTrimmer = !showTrimmer;
@@ -388,7 +369,6 @@ public sealed class CaptureSettingsStudioTests
     {
         var settings = Create(out var service);
         settings.ShowTrimmer = false;
-        settings.StudioPreviewEnabled = false;
         settings.StudioSourceRetentionDays = 90;
         settings.StudioStorageCapGigabytes = 250;
         settings.StudioDefaultLook = new StudioLook(new StudioCanvas { Padding = 0.2 }, new StudioScreenStyle(), new StudioCameraStyle());
@@ -398,11 +378,9 @@ public sealed class CaptureSettingsStudioTests
 
         Assert.Equal(string.Empty, settings.StudioProjectSaveFolder);
         Assert.True(settings.ShowTrimmer);
-        Assert.True(settings.StudioPreviewEnabled);
         Assert.Equal(30, settings.StudioSourceRetentionDays);
         Assert.Equal(10, settings.StudioStorageCapGigabytes);
         Assert.Null(settings.StudioDefaultLook);
-        Assert.True(service.Get("studioPreviewEnabled", false));
         Assert.Equal(30, service.Get("studioSourceRetentionDays", -1));
         Assert.Equal(10, service.Get("studioStorageCapGigabytes", -1));
         Assert.Equal(string.Empty, service.Get("studioDefaultLook", "unset"));

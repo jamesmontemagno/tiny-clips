@@ -456,9 +456,6 @@ final class AutomationCommandRouter {
             }
             studio = bool
         }
-        if studio, !CaptureSettings.shared.studioPreviewEnabled {
-            throw AutomationError(.notSupported, "Tiny Clips Studio is turned off. Turn it on in Settings → Studio.")
-        }
         let manager = try captureManager()
         try requireIdle(manager)
         try requireScreenRecordingPermission()
@@ -588,10 +585,8 @@ final class AutomationCommandRouter {
                     throw AutomationError(.invalidParams, "studio=true requires an MP4 or MOV video.")
                 }
                 let url = try libraryFile(params)
-                try requireStudioEnabled()
                 try validateAccess()
                 guard try await StudioWindowRegistry.shared.openVideo(at: url, validateAccess: validateAccess) else {
-                    try requireStudioEnabled()
                     throw AutomationError(.internal, "This video could not be opened in Studio.")
                 }
                 return Self.editorOpenResult(url, editor: "studio", standard: standardResult)
@@ -601,9 +596,6 @@ final class AutomationCommandRouter {
         let manager = try captureManager()
         if url.pathExtension.lowercased() == StudioProjectStore.projectFileExtension
             || StudioProjectStore.shared.isSavedProjectFolder(url) {
-            guard CaptureSettings.shared.studioPreviewEnabled else {
-                throw AutomationError(.notSupported, "Tiny Clips Studio is turned off. Turn it on in Settings → Studio.")
-            }
             StudioWindowRegistry.shared.openProjectFile(at: url)
             return Self.editorOpenResult(url, editor: "studio", standard: standardResult)
         }
@@ -636,12 +628,6 @@ final class AutomationCommandRouter {
 
     // MARK: - Studio
 
-    private func requireStudioEnabled() throws {
-        guard CaptureSettings.shared.studioPreviewEnabled else {
-            throw AutomationError(.notSupported, "Tiny Clips Studio is turned off. Turn it on in Settings → Studio.")
-        }
-    }
-
     private func studioProject(_ id: String) throws -> StudioProject {
         let store = StudioProjectStore.shared
         guard store.exists(id: id) else {
@@ -661,7 +647,6 @@ final class AutomationCommandRouter {
     }
 
     private func listStudioProjects(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let limit = params["limit"] as? Int ?? 20
         guard (1...100).contains(limit) else {
             throw AutomationError(.invalidParams, "limit must be a whole number from 1 to 100.")
@@ -685,7 +670,6 @@ final class AutomationCommandRouter {
     }
 
     private func getStudioProject(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let project = try currentStudioProject(id)
         return [
@@ -695,7 +679,6 @@ final class AutomationCommandRouter {
     }
 
     private func openStudioProject(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         if StudioWindowRegistry.shared.automationViewModel(forProjectID: id) == nil {
             _ = try currentStudioProject(id)
@@ -726,7 +709,6 @@ final class AutomationCommandRouter {
     }
 
     private func saveStudioProjectCopy(_ params: [String: Any]) async throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let name = try Self.requiredString(params, "folderName")
         let store = StudioProjectStore.shared
@@ -755,7 +737,6 @@ final class AutomationCommandRouter {
     }
 
     private func editStudioProject(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let expectedModifiedAt = try Self.requiredString(params, "expectedModifiedAt")
         let expectedRevision = try Self.requiredString(params, "expectedRevision")
@@ -820,7 +801,6 @@ final class AutomationCommandRouter {
     }
 
     private func checkStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let project = try currentStudioProject(id)
         var result = Self.captionFindingsObject(
@@ -841,7 +821,6 @@ final class AutomationCommandRouter {
     }
 
     private func importStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let current = try checkedStudioProject(params, id: id)
         let contents = StudioCaptionFiles.read(
@@ -865,7 +844,6 @@ final class AutomationCommandRouter {
     }
 
     private func listCaptionModels() async throws -> [String: Any] {
-        try requireStudioEnabled()
         guard StudioAppleSpeech.isAvailable else {
             throw AutomationError(.notSupported, StudioCaptionText.needsNewerMac)
         }
@@ -886,7 +864,6 @@ final class AutomationCommandRouter {
     }
 
     private func generateStudioCaptions(_ params: [String: Any]) async throws -> [String: Any] {
-        try requireStudioEnabled()
         guard StudioAppleSpeech.isAvailable else {
             throw AutomationError(.notSupported, StudioCaptionText.needsNewerMac)
         }
@@ -939,7 +916,6 @@ final class AutomationCommandRouter {
     }
 
     private func fixStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let current = try checkedStudioProject(params, id: id)
         let duration = current.sources.screen.duration
@@ -958,7 +934,6 @@ final class AutomationCommandRouter {
     }
 
     private func exportStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let rawPath = try Self.requiredString(params, "outputPath")
         let outputURL = URL(fileURLWithPath: (rawPath as NSString).expandingTildeInPath).standardizedFileURL
@@ -989,7 +964,6 @@ final class AutomationCommandRouter {
     }
 
     private func suggestStudioZooms(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let project = try currentStudioProject(id)
         let events = try StudioProjectStore.shared.loadEvents(id: id)
@@ -1023,7 +997,6 @@ final class AutomationCommandRouter {
     }
 
     private func studioExportOptions(_ params: [String: Any]) throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let project = try currentStudioProject(id)
         let isHEVC = CaptureSettings.shared.videoCodec == .hevc
@@ -1057,7 +1030,6 @@ final class AutomationCommandRouter {
     }
 
     private func exportStudioProject(_ params: [String: Any]) async throws -> [String: Any] {
-        try requireStudioEnabled()
         let id = try Self.requiredString(params, "projectId")
         let choice = try Self.studioExportChoice(params)
         let rawPath = try Self.requiredString(params, "outputPath")

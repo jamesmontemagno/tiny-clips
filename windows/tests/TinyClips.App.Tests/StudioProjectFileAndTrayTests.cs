@@ -2,7 +2,6 @@ using System.Reflection;
 using System.Xml.Linq;
 using TinyClips.App.Services.Studio;
 using TinyClips.Core.Models;
-using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Tests;
 
@@ -89,9 +88,8 @@ public sealed class StudioProjectFileTypeTests
 }
 
 /// <summary>
-/// The Studio projects the tray's recent captures list: read ahead of time and off the thread
-/// that asks, none while Studio is switched off, and mixed in with the saved captures by date.
-/// The popup itself cannot be pictured, and was not opened for this.
+/// The Studio projects in the tray's recent captures list are read off the thread that asks
+/// and mixed in with saved captures by date. The popup itself cannot be pictured.
 /// </summary>
 public sealed class StudioRecentDraftsTests : IDisposable
 {
@@ -99,7 +97,6 @@ public sealed class StudioRecentDraftsTests : IDisposable
     private readonly ManualTimeProvider _time = new(new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.Zero));
     private readonly StudioProjectStore _projects;
     private readonly IStudioProjectStore _store;
-    private readonly CaptureSettings _settings = new(new MemorySettings()) { StudioPreviewEnabled = true };
 
     public StudioRecentDraftsTests()
     {
@@ -114,7 +111,7 @@ public sealed class StudioRecentDraftsTests : IDisposable
     public async Task NothingIsListed_UntilTheProjectsWereRead_AndTheReadIsNotOnTheThreadThatAsks()
     {
         var draft = Record("A draft");
-        var drafts = new StudioRecentDrafts(_store, _settings);
+        var drafts = new StudioRecentDrafts(_store);
         var changes = 0;
         drafts.Changed += (_, _) => changes++;
 
@@ -146,30 +143,6 @@ public sealed class StudioRecentDraftsTests : IDisposable
     }
 
     [Fact]
-    public async Task WithStudioSwitchedOff_NothingIsRead_AndNothingIsListed_AlsoOfWhatWasReadBefore()
-    {
-        var draft = Record("A draft");
-        var drafts = new StudioRecentDrafts(_store, _settings);
-        await drafts.ReloadAsync();
-        Assert.Single(drafts.EntriesFor([], 5));
-        var capture = new RecentCapture(@"D:\Videos\clip.mp4", CaptureType.Video, _time.GetUtcNow());
-
-        // Switched off after the read: the popup that is built now lists no project.
-        _settings.StudioPreviewEnabled = false;
-        Assert.Equal(["capture:D:\\Videos\\clip.mp4"], drafts.EntriesFor([capture], 5).Select(entry => entry.Id));
-
-        // And the next read reads nothing and forgets what there was.
-        var listings = Listings;
-        await drafts.ReloadAsync();
-        Assert.Equal(listings, Listings);
-        Assert.Empty(drafts.Projects);
-
-        _settings.StudioPreviewEnabled = true;
-        await drafts.ReloadAsync();
-        Assert.Equal([draft], drafts.Projects.Select(project => project.Id));
-    }
-
-    [Fact]
     public async Task DraftsAreMixedInWithTheSavedCapturesByDate_FiveLinesInAll_AndAnExportedProjectIsNotOneOfThem()
     {
         var start = _time.GetUtcNow();
@@ -191,7 +164,7 @@ public sealed class StudioRecentDraftsTests : IDisposable
             new(@"D:\c0.png", CaptureType.Screenshot, start.AddHours(-1)),
             new(@"D:\c-2.png", CaptureType.Screenshot, start.AddHours(-2)),
         ];
-        var drafts = new StudioRecentDrafts(_store, _settings);
+        var drafts = new StudioRecentDrafts(_store);
         await drafts.ReloadAsync();
 
         var entries = drafts.EntriesFor(captures, 5);
@@ -210,7 +183,7 @@ public sealed class StudioRecentDraftsTests : IDisposable
     {
         Record("A draft");
         var counting = (CountingStore)_store;
-        var drafts = new StudioRecentDrafts(_store, _settings);
+        var drafts = new StudioRecentDrafts(_store);
         counting.HoldTheFirstListOfProjects();
 
         var first = drafts.ReloadAsync();
@@ -228,31 +201,12 @@ public sealed class StudioRecentDraftsTests : IDisposable
     }
 
     [Fact]
-    public async Task SwitchOffDuringAReadDoesNotPublishItsLateProjects()
-    {
-        var project = Record("Pending draft");
-        var counting = (CountingStore)_store;
-        counting.HoldTheFirstListOfProjects();
-        var drafts = new StudioRecentDrafts(_store, _settings);
-        var publishedCounts = new List<int>();
-        drafts.Changed += (_, _) => publishedCounts.Add(drafts.Projects.Count);
-        var read = drafts.ReloadAsync();
-        Assert.True(counting.FirstListWasRead.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
-        _settings.StudioPreviewEnabled = false;
-        _ = drafts.ReloadAsync();
-        counting.HandOverTheFirstListOfProjects();
-        await read.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
-        Assert.Empty(drafts.Projects);
-        Assert.DoesNotContain(publishedCounts, count => count > 0);
-    }
-
-    [Fact]
     public async Task PeriodicProbeReusesInFlightDraftListing()
     {
         Record("Draft");
         var counting = (CountingStore)_store;
         counting.HoldTheFirstListOfProjects();
-        var drafts = new StudioRecentDrafts(_store, _settings);
+        var drafts = new StudioRecentDrafts(_store);
         var read = drafts.ReloadAsync();
         Assert.True(counting.FirstListWasRead.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
         for (var index = 0; index < 100; index++)
@@ -318,17 +272,4 @@ public sealed class StudioRecentDraftsTests : IDisposable
         }
     }
 
-    private sealed class MemorySettings : ISettingsService
-    {
-        private readonly Dictionary<string, object?> _values = new(StringComparer.OrdinalIgnoreCase);
-
-        public AppTheme Theme { get; set; }
-
-        public string SaveDirectory { get; set; } = string.Empty;
-
-        public T Get<T>(string key, T defaultValue) =>
-            _values.TryGetValue(key, out var value) && value is T typed ? typed : defaultValue;
-
-        public void Set<T>(string key, T value) => _values[key] = value;
-    }
 }

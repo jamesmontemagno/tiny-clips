@@ -19,16 +19,12 @@ enum StudioMaintenance {
     }
 
     /// Removes old project sources on a background task, following the storage settings. Projects
-    /// open in an editor or being recorded are left alone. While Studio is switched off nothing
-    /// is removed: the rules that would remove are not on the screen then, and Settings says
-    /// that the projects are kept.
+    /// open in an editor or being recorded are left alone.
     ///
     /// - Parameter completion: Called on the main actor with the number of projects removed, or
-    ///   nil when nothing was started: a cleanup was already running, or Studio is switched off.
+    ///   nil when nothing was started because a cleanup was already running.
     static func cleanUp(completion: (@MainActor (Int?) -> Void)? = nil) {
-        // Asked here and not by the callers. They are several (launch, a closing editor, the
-        // button in Settings), and the switch can change between a caller's look at it and now.
-        guard CaptureSettings.shared.studioPreviewEnabled, !isCleaningUp else {
+        guard !isCleaningUp else {
             completion?(nil)
             return
         }

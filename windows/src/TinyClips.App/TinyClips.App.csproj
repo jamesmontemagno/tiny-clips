@@ -85,7 +85,6 @@
   -->
   <ItemGroup>
     <Content Include="Assets\Studio\selfie_segmentation.onnx" />
-    <Content Include="Assets\Studio\whats-new-studio.svg" />
     <Content Include="Assets\THIRD-PARTY-NOTICES.txt" />
   </ItemGroup>
 

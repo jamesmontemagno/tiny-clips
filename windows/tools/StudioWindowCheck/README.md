@@ -232,8 +232,8 @@ Someone may be working on the machine while the tool runs, so:
     window through Windows.Graphics.Capture, independent of the app's capture inclusion setting.
   - `WindowIcon`: the app's class writes to the app's crash log when the icon cannot be set. The
     tool's windows are not in the taskbar and need no icon.
-  - `MemorySettings`: the app's settings, in memory. They start with the Studio preview switch on,
-    because the cleanup that follows a closed window runs only then.
+  - `MemorySettings`: the app's settings, in memory. Studio is available, and cleanup follows
+    the configured project-retention rules.
   - `TempClipStorage`: exported videos go to `exports` in the temp folder, not to the Videos
     folder. It writes down every name it gives out. A check can have the next name it gives
     out taken, by a file it writes under that name before handing it back, and can have

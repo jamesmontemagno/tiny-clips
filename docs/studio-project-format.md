@@ -899,11 +899,11 @@ Each export adds `{ path, exportedAt, bytes }` to `exports`, where `bytes` is th
 - **Size rule**: applied after the age rule. When the eligible projects that remain total more than 10 GB (10 × 1024³ bytes), they are deleted in ascending `lastOpenedAt` order, ties broken by id, until their total is at or under the cap or only the last in that order is left. That one, the project opened most recently, is never deleted by this rule: it is what was just worked on, and where it is over the cap by itself the rule would otherwise delete it the moment its editor closed. Only eligible projects are counted. A draft, a pinned project and a flat project are never removed, so counting them would only use the room up: with more drafts than the cap allows, every exported project would lose its sources the moment it was exported. An eligible project that is open counts and is not the one that goes. The cap is a setting; 0 disables the rule.
 - A draft (no exports) is never deleted automatically. Neither is a project whose exported videos are all gone: it holds the only copy of the recording, as a draft does, and is listed with the drafts. A video on a drive that is not connected, or in a folder the app may not read, counts as gone for as long as that lasts.
 - A flat project is never automatically deleted, including when its external video is unavailable. A disconnected drive or temporary access failure must not delete saved edits. Restore the video at its saved path to reopen it; projects can be deleted explicitly.
-- A folder with no `project.json` is a recording that never finished. It is deleted once it is more than 24 hours old.
+- A folder with no `project.json` is a recording that never finished. It is deleted once it is more than 24 hours old, unless both cleanup limits are 0.
 - A folder whose `project.json` cannot be read (for example, it was written by a newer version) is left alone. It is listed with the drafts, where its screen recording can be saved as an ordinary video and the folder deleted.
 - Cleanup deletes the whole project folder. The exported video is untouched, and opening it in Studio later creates a flat project.
 - A folder that cannot be deleted because a file is in use is skipped and tried again next time. One failure does not stop the rest.
-- Cleanup runs shortly after app launch, each time an editor window closes, and when asked for in Settings. While Studio is switched off nothing is cleaned up: its storage settings are not shown then, so nothing they would delete is deleted.
+- Cleanup runs shortly after app launch, each time an editor window closes, and when asked for in Settings. When both cleanup limits are 0, no project or unfinished recording folder is deleted automatically.
 
 ## 13. Fixtures
 
