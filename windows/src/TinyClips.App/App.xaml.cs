@@ -1448,6 +1448,7 @@ public partial class App : Application
                     {
                         RecordMicrophone = automationOptions.RecordMicrophone,
                         WebcamEnabled = automationOptions.WebcamEnabled,
+                        ValidateDeviceAccess = EnsureAutomationDevicePermissions,
                     };
                     EnsureAutomationDevicePermissions(videoOptions);
                 }
@@ -1547,6 +1548,7 @@ public partial class App : Application
                     }
                     AcquireDisplaySleepAssertionIfEnabled();
                     await AwaitRecorderPrepareAsync(recorderPrepare);
+                    videoOptions.ValidateDeviceAccess?.Invoke(videoOptions);
                     await Services.GetRequiredService<IVideoRecordingService>()
                         .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, videoOptions, captureFlowCts.Token);
                     CaptureFlowTrace.Mark("video: StartAsync returned");
@@ -1583,7 +1585,14 @@ public partial class App : Application
                 Services.GetRequiredService<IScrollingCaptureService>().Cancel();
                 FinishScrollingCapture(null);
             }
-            _ = DiscardPreparedRecordersAsync(recorderPrepare);
+            if (automationSelection is not null)
+            {
+                await DiscardPreparedRecordersAsync(recorderPrepare);
+            }
+            else
+            {
+                _ = DiscardPreparedRecordersAsync(recorderPrepare);
+            }
             CloseRecordingRegionIndicator();
             HideRecordingIndicatorIfNotRecording();
             _activeRecordingSelection = null;
@@ -1609,7 +1618,14 @@ public partial class App : Application
                 Services.GetRequiredService<IScrollingCaptureService>().Cancel();
                 FinishScrollingCapture(null);
             }
-            _ = DiscardPreparedRecordersAsync(recorderPrepare);
+            if (automationSelection is not null)
+            {
+                await DiscardPreparedRecordersAsync(recorderPrepare);
+            }
+            else
+            {
+                _ = DiscardPreparedRecordersAsync(recorderPrepare);
+            }
             if (ex is CaptureVisibilityException)
             {
                 ShowMessageNotification($"{ex.Message} Capture was cancelled.");
@@ -2853,7 +2869,32 @@ public partial class App : Application
             return;
         }
 
-        var wasStartedByAutomation = _activeRecordingWasStartedByAutomation;
+        var wasStartedByAutomation = _activeRecordingWasStartedByAutomation || throwOnFailure;
+        var restartOptions = _activeVideoRecordingOptions;
+        if (type == CaptureType.Video && wasStartedByAutomation)
+        {
+            try
+            {
+                restartOptions = StudioRecording.OptionsAtStart(restartOptions)
+                    .ResolveDevices(Services.GetRequiredService<ICaptureSettings>()) with
+                    {
+                        ValidateDeviceAccess = EnsureAutomationDevicePermissions,
+                    };
+                EnsureAutomationDevicePermissions(restartOptions);
+            }
+            catch (Exception ex)
+            {
+                if (throwOnFailure)
+                {
+                    throw;
+                }
+
+                Debug.WriteLine($"Failed to authorize {type} restart: {ex}");
+                ShowSaveFailureNotification(CaptureOutputDescription(type));
+                return;
+            }
+        }
+
         try
         {
             await DiscardActiveRecordingAsync(clearActiveSelection: false);
@@ -2869,8 +2910,7 @@ public partial class App : Application
                 AcquireDisplaySleepAssertionIfEnabled();
                 // A restart records the same kind of video again, so a Studio recording stays
                 // one, unless Studio has been switched off since it started.
-                _activeVideoRecordingOptions = StudioRecording.OptionsAtStart(_activeVideoRecordingOptions);
-                EnsureAutomationDevicePermissions(_activeVideoRecordingOptions);
+                _activeVideoRecordingOptions = StudioRecording.OptionsAtStart(restartOptions);
                 await Services.GetRequiredService<IVideoRecordingService>()
                     .StartAsync(selection.Target, selection.Region, settings.VideoRecordingTimeLimitMinutes, _activeVideoRecordingOptions);
             }

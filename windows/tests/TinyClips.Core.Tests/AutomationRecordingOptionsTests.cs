@@ -136,7 +136,35 @@ public sealed class AutomationRecordingOptionsTests
         Assert.False(prepared.MatchesCaptureOptions(prepared with { RecordMicrophone = false }));
         Assert.False(prepared.MatchesCaptureOptions(prepared with { WebcamEnabled = false }));
         Assert.False(prepared.MatchesCaptureOptions(prepared with { RecordForStudio = true }));
+        Assert.False(prepared.MatchesCaptureOptions(prepared with { ValidateDeviceAccess = _ => { } }));
         Assert.True(screenOnly.MatchesCaptureOptions(screenOnly.ResolveDevices(settings)));
+    }
+
+    [Fact]
+    public void RestartOfManualRecordingResolvesSavedChoicesBeforeAuthorization()
+    {
+        var (settings, _) = Create(true, false);
+        var restart = VideoRecordingOptions.Default.ResolveDevices(settings);
+
+        var error = Assert.Throws<AutomationException>(() =>
+            AutomationRecordingOptions.EnsureAuthorized(restart, settings, false, true));
+
+        Assert.True(restart.RecordMicrophone);
+        Assert.False(restart.WebcamEnabled);
+        Assert.Equal(AutomationErrorCodes.PermissionRequired, error.Code);
+    }
+
+    [Fact]
+    public void MicrophoneAuthorizationIsRecheckedBeforeOpeningAudioSource()
+    {
+        using var audio = new AudioCaptureService(false, true, null, false,
+            validateMicrophoneAccess: () => throw new AutomationException(
+                AutomationErrorCodes.PermissionRequired, "Microphone consent was revoked."));
+
+        var error = Assert.Throws<AutomationException>(() => audio.TryStart());
+
+        Assert.Equal(AutomationErrorCodes.PermissionRequired, error.Code);
+        Assert.False(audio.IsMicrophoneCapturing);
     }
 
     private static (CaptureSettings Settings, MemorySettings Store) Create(bool microphone, bool camera)

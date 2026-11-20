@@ -1,4 +1,5 @@
 using System.Reflection;
+using TinyClips.Core.Automation;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
@@ -79,6 +80,29 @@ public sealed class VideoRecordingServiceStartTests : IDisposable
         await CancelAsItBegins(token => _recorder.PrepareAsync(null, null, token));
         await CancelAsItBegins(token => _recorder.StartAsync(null, null, null, token));
 
+        Assert.True(File.Exists(_lastRecording));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RevokedConsentStopsPreparationAndStartBeforeDevicesOpen(bool prepare)
+    {
+        _saved.MayBeRead = true;
+        var options = new VideoRecordingOptions
+        {
+            RecordMicrophone = true,
+            WebcamEnabled = false,
+            ValidateDeviceAccess = _ => throw new AutomationException(
+                AutomationErrorCodes.PermissionRequired, "Microphone consent was revoked."),
+        };
+
+        var error = await Assert.ThrowsAsync<AutomationException>(() => prepare
+            ? _recorder.PrepareAsync(null, null, options, TestContext.Current.CancellationToken)
+            : _recorder.StartAsync(null, null, null, options, TestContext.Current.CancellationToken));
+
+        Assert.Equal(AutomationErrorCodes.PermissionRequired, error.Code);
+        Assert.False(_recorder.IsRecording);
         Assert.True(File.Exists(_lastRecording));
     }
 

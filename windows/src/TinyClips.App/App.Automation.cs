@@ -201,7 +201,7 @@ public partial class App : IAutomationAppActions
         if (video.IsRecording)
         {
             return new(video.IsPaused ? "paused" : "recording", true, CaptureType.Video,
-                video.CanMuteMicrophone,
+                video.IsMicrophoneCapturing,
                 Services.GetRequiredService<IWebcamCaptureService>().IsRunning
                     && _activeVideoRecordingOptions.WebcamEnabled != false);
         }
@@ -308,11 +308,6 @@ public partial class App : IAutomationAppActions
 
     private static void EnsureAutomationDevicePermissions(VideoRecordingOptions options)
     {
-        if (options.RecordMicrophone is null && options.WebcamEnabled is null)
-        {
-            return;
-        }
-
         var permissions = Services.GetRequiredService<IMediaDevicePermissionService>();
         AutomationRecordingOptions.EnsureAuthorized(options, Services.GetRequiredService<ICaptureSettings>(),
             permissions.HasMicrophoneAccess, permissions.HasCameraAccess);

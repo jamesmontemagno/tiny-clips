@@ -14,6 +14,9 @@ public sealed record VideoRecordingOptions
 
     public bool? WebcamEnabled { get; init; }
 
+    /// <summary>Revalidates consent for agent-initiated capture at device-start boundaries.</summary>
+    public Action<VideoRecordingOptions>? ValidateDeviceAccess { get; init; }
+
     public string? AppVersion { get; init; }
 
     /// <summary>The look a Studio project created from this recording starts with; null uses the built-in default.</summary>
@@ -28,5 +31,6 @@ public sealed record VideoRecordingOptions
     public bool MatchesCaptureOptions(VideoRecordingOptions other) =>
         RecordForStudio == other.RecordForStudio &&
         RecordMicrophone == other.RecordMicrophone &&
-        WebcamEnabled == other.WebcamEnabled;
+        WebcamEnabled == other.WebcamEnabled &&
+        (ValidateDeviceAccess is null) == (other.ValidateDeviceAccess is null);
 }

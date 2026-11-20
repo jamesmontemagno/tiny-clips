@@ -156,7 +156,13 @@ public sealed class StudioRecordingIntentTests
         settings.RecordMicrophone = true;
         settings.WebcamEnabled = true;
         intent.Begin(VideoRecordingCommand.StudioRecording);
-        var setUp = intent.CreateOptions(Version) with { RecordMicrophone = false, WebcamEnabled = false };
+        Action<VideoRecordingOptions> validate = _ => { };
+        var setUp = intent.CreateOptions(Version) with
+        {
+            RecordMicrophone = false,
+            WebcamEnabled = false,
+            ValidateDeviceAccess = validate,
+        };
 
         settings.StudioPreviewEnabled = false;
         var started = intent.OptionsAtStart(setUp);
@@ -165,6 +171,7 @@ public sealed class StudioRecordingIntentTests
         Assert.False(started.RecordForStudio);
         Assert.False(restarted.RecordMicrophone);
         Assert.False(restarted.WebcamEnabled);
+        Assert.Same(validate, restarted.ValidateDeviceAccess);
         Assert.True(settings.RecordMicrophone);
         Assert.True(settings.WebcamEnabled);
     }

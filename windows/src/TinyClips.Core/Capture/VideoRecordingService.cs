@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
+using TinyClips.Core.Automation;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
@@ -124,6 +125,8 @@ public sealed class VideoRecordingService : IVideoRecordingService
 
     public bool CanMuteMicrophone => _audio?.CanMuteMicrophone == true;
 
+    public bool IsMicrophoneCapturing => _audio?.IsMicrophoneCapturing == true;
+
     public bool IsSystemAudioMuted => _audio?.IsSystemAudioMuted == true;
 
     public bool IsMicrophoneMuted => _audio?.IsMicrophoneMuted == true;
@@ -164,6 +167,15 @@ public sealed class VideoRecordingService : IVideoRecordingService
             {
                 if (existing.Matches(captureTarget, region, options.ResolveDevices(_settings)))
                 {
+                    try
+                    {
+                        options.ValidateDeviceAccess?.Invoke(options);
+                    }
+                    catch
+                    {
+                        await CleanupFailedStartAsync().ConfigureAwait(false);
+                        throw;
+                    }
                     return;
                 }
 
@@ -232,6 +244,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
                 }
                 else
                 {
+                    options.ValidateDeviceAccess?.Invoke(options);
                     CaptureFlowTrace.Mark("video: using pre-warmed pipeline");
                 }
 
@@ -266,6 +279,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         _outputPath = null;
         cancellationToken.ThrowIfCancellationRequested();
         options = options.ResolveDevices(_settings);
+        options.ValidateDeviceAccess?.Invoke(options);
         WebcamDiagnostics.BeginRecording();
         Interlocked.Exchange(ref _discardRequested, 0);
         _activeOptions = options;
@@ -327,8 +341,10 @@ public sealed class VideoRecordingService : IVideoRecordingService
         // replaced by the CPU one, with a geometry of its own.
         InitializeStudioCaptureGeometry(captureTarget, region);
         StartMouseClickOverlay(captureTarget);
+        _activeOptions.ValidateDeviceAccess?.Invoke(_activeOptions);
         await StartWebcamOverlayAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+        _activeOptions.ValidateDeviceAccess?.Invoke(_activeOptions);
         CaptureFlowTrace.Mark("video: webcam overlay started");
 
         _outputPath = options.RecordForStudio
@@ -573,6 +589,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
         // bounded frame channel so real frames near the end were dropped.
         await WaitForFirstWebcamFrameAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+        _activeOptions.ValidateDeviceAccess?.Invoke(_activeOptions);
         _recordingTimeline = RecordingTimeline.StartNow();
         _studioInitialCorner = _settings.WebcamCornerPosition;
         _webcamPlacements = new WebcamPlacementTimeline(_studioInitialCorner);
@@ -1345,6 +1362,7 @@ public sealed class VideoRecordingService : IVideoRecordingService
             }
         }
 
+        _activeOptions.ValidateDeviceAccess?.Invoke(_activeOptions);
         try
         {
             _webcamCapture.CaptureFailed += OnWebcamCaptureFailed;
@@ -1889,12 +1907,16 @@ public sealed class VideoRecordingService : IVideoRecordingService
             return;
         }
 
+        _activeOptions.ValidateDeviceAccess?.Invoke(_activeOptions);
+        AudioCaptureService? audio = null;
         try
         {
-            var audio = new AudioCaptureService(wantSystem, wantMic, _settings.SelectedMicrophoneId, limitMic, userOffset);
+            audio = new AudioCaptureService(wantSystem, wantMic, _settings.SelectedMicrophoneId, limitMic, userOffset,
+                () => _activeOptions.ValidateDeviceAccess?.Invoke(_activeOptions));
             if (audio.TryStart())
             {
                 _audio = audio;
+                audio = null;
                 // The AudioStreamDescriptor itself is built per-MediaStreamSource in
                 // CreateMediaStreamSource; here we only record that audio is available.
                 _hasAudio = true;
@@ -1903,15 +1925,18 @@ public sealed class VideoRecordingService : IVideoRecordingService
             else
             {
                 WebcamDiagnostics.Log("StartAudioCapture: AudioCaptureService.TryStart returned false; NO audio source started.");
-                audio.Dispose();
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not AutomationException)
         {
             WebcamDiagnostics.Log($"StartAudioCapture: exception starting audio capture: {ex.GetType().Name}: {ex.Message}");
             _audio = null;
             _hasAudio = false;
             _audioDescriptor = null;
+        }
+        finally
+        {
+            audio?.Dispose();
         }
     }
 

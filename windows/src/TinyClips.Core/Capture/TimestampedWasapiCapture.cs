@@ -27,6 +27,7 @@ internal sealed class TimestampedWasapiCapture : IDisposable
     private readonly WaveFormat _mixFormat;
     private Thread? _captureThread;
     private volatile bool _capturing;
+    private volatile bool _running;
     private bool _initialized;
 
     public TimestampedWasapiCapture(MMDevice device, bool isLoopback)
@@ -47,6 +48,8 @@ internal sealed class TimestampedWasapiCapture : IDisposable
     }
 
     public WaveFormat WaveFormat { get; }
+
+    public bool IsRunning => _capturing && _running;
 
     /// <summary>
     /// The engine's capture latency (device period), available after <see cref="Start"/>.
@@ -143,6 +146,7 @@ internal sealed class TimestampedWasapiCapture : IDisposable
             var bufferFrameCount = _audioClient.BufferSize;
 
             _audioClient.Start();
+            _running = true;
             WebcamDiagnostics.Log($"Audio capture loop started ({(_isLoopback ? "loopback" : "microphone")}): bufferFrames={bufferFrameCount} pollMs={PollIntervalMs} latencyMs={CaptureLatency.TotalMilliseconds:F1}.");
             while (_capturing)
             {
@@ -157,6 +161,7 @@ internal sealed class TimestampedWasapiCapture : IDisposable
         }
         finally
         {
+            _running = false;
             WebcamDiagnostics.Log($"Audio capture loop ended ({(_isLoopback ? "loopback" : "microphone")}): packets={packetCount} nonSilentPackets={nonSilentPackets}.");
             try
             {
