@@ -688,6 +688,30 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directoryURL.path).isEmpty)
     }
 
+    func testReplacedVideoGetsANewCopiedDraft() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let videoURL = directoryURL.appendingPathComponent("external.mp4")
+        try Data("first".utf8).write(to: videoURL)
+        var request = flatRequest(videoURL: videoURL)
+        request.copyVideo = true
+        let first = try store.getOrCreateFlatProject(request: request)
+        let replacement = Data("replacement video".utf8)
+        try replacement.write(to: videoURL, options: .atomic)
+
+        let second = try store.getOrCreateFlatProject(request: request)
+        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertEqual(try Data(contentsOf: store.paths(for: second).screenURL), replacement)
+    }
+
+    func testFlatProjectAccessFailureDoesNotCreateDraft() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let request = flatRequest(videoURL: directoryURL.appendingPathComponent("external.mp4"))
+        XCTAssertThrowsError(try store.getOrCreateFlatProject(request: request) {
+            throw AutomationError(.unauthorized)
+        })
+        XCTAssertTrue(try store.listSummaries().isEmpty)
+    }
+
     func testMovingImportedVideoRetainsItsProjectAndEdits() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         let original = directoryURL.appendingPathComponent("original.mp4")

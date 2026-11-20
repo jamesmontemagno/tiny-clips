@@ -111,6 +111,7 @@ final class StudioWindowRegistry {
         }
         request.copyVideo = copyVideo
         let projectID: String
+        var validationFailure: Error?
         do {
             if copyVideo {
                 let copyRequest = request
@@ -118,15 +119,22 @@ final class StudioWindowRegistry {
                     try StudioProjectStore.shared.getOrCreateFlatProject(request: copyRequest).id
                 }.value
             } else {
-                projectID = try StudioProjectStore.shared.getOrCreateFlatProject(request: request).id
+                projectID = try StudioProjectStore.shared.getOrCreateFlatProject(request: request) {
+                    do {
+                        try validateAccess()
+                    } catch {
+                        validationFailure = error
+                        throw error
+                    }
+                }.id
             }
         } catch {
+            if let validationFailure { throw validationFailure }
+            try validateAccess()
             SaveService.shared.showError("This video could not be opened in Studio: \(error.localizedDescription)")
             return false
         }
-        if copyVideo {
-            try validateAccess()
-        }
+        try validateAccess()
         open(projectID: projectID)
         return windows[projectID] != nil
     }
