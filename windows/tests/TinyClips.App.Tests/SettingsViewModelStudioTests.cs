@@ -1040,6 +1040,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
 
     private sealed class HotKeys : IHotKeyService
     {
+        public IReadOnlyList<KeyValuePair<HotKeyAction, HotKeyDefinition>> GetActiveBindings(bool isRecording) => throw new NotSupportedException();
         public HotKeyDefinition GetBinding(HotKeyAction action) => new(HotKeyModifiers.Control, 53);
 
         public HotKeyDefinition GetStopBinding() => new(HotKeyModifiers.Control, 83);

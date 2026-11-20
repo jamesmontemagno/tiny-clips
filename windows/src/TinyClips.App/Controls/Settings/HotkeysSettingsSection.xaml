@@ -16,6 +16,7 @@
             Spacing="8">
             <TextBlock
                 Margin="4,8,0,4"
+                AutomationProperties.HeadingLevel="Level1"
                 Style="{StaticResource SubtitleTextBlockStyle}"
                 Text="Keyboard shortcuts" />
 
@@ -23,7 +24,7 @@
                 AutomationProperties.AutomationId="HotKeyInstructionsInfoBar"
                 IsClosable="False"
                 IsOpen="True"
-                Message="Choose Edit to set a shortcut, Delete to remove it, or Reset to restore its default."
+                Message="Global shortcuts work in other apps too. Only Screenshot is assigned by default. Choose Edit to set one, Delete to remove it, or Reset to restore its default."
                 Severity="Informational" />
 
             <InfoBar
@@ -33,6 +34,11 @@
                 IsOpen="False" />
 
             <StackPanel Spacing="2">
+                <TextBlock
+                    Margin="4,16,0,8"
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="Screenshots - global" />
                 <controls:SettingsCard
                     Header="Screenshot"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE722;}">
@@ -180,7 +186,13 @@
                     </StackPanel>
                 </controls:SettingsCard>
 
+                <TextBlock
+                    Margin="4,16,0,8"
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="Recording - global" />
                 <controls:SettingsCard
+                    Description="Optional, not set by default. Makes an ordinary recording, not Studio."
                     Header="Record video"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE714;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
@@ -217,6 +229,7 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Description="Optional, not set by default."
                     Header="Record GIF"
                     HeaderIcon="{ui:FontIcon Glyph=&#xF4A9;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
@@ -253,6 +266,49 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Description="Optional, not set by default. Active only during recording. You can always use the floating Stop button or tray."
+                    Header="Stop recording"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE71A;}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border
+                            MinWidth="120"
+                            Padding="10,4"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource ControlFillColorDefaultBrush}"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                FontFamily="Consolas"
+                                Text="{x:Bind ViewModel.StopRecordingHotKeyDisplay, Mode=OneWay}" />
+                        </Border>
+                        <Button
+                            AutomationProperties.AutomationId="EditStopRecordingHotKeyButton"
+                            AutomationProperties.Name="Edit stop recording shortcut"
+                            Click="OnEditHotKey"
+                            Content="Edit"
+                            Tag="StopRecording" />
+                        <Button
+                            AutomationProperties.AutomationId="ResetStopRecordingHotKeyButton"
+                            AutomationProperties.Name="Reset stop recording shortcut"
+                            Click="OnResetHotKey"
+                            Content="Reset"
+                            Tag="StopRecording" />
+                        <Button
+                            AutomationProperties.AutomationId="DeleteStopRecordingHotKeyButton"
+                            AutomationProperties.Name="Delete stop recording shortcut"
+                            Click="OnDeleteHotKey"
+                            Content="Delete"
+                            Tag="StopRecording" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <TextBlock
+                    Margin="4,16,0,8"
+                    AutomationProperties.HeadingLevel="Level2"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="Text recognition - global" />
+                <controls:SettingsCard
+                    Description="Optional, not set by default."
                     Header="Recognize text"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE8D2;}">
                     <StackPanel Orientation="Horizontal" Spacing="12">
@@ -288,6 +344,103 @@
                     </StackPanel>
                 </controls:SettingsCard>
             </StackPanel>
+
+            <TextBlock
+                Margin="4,16,0,8"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="Window &amp; navigation shortcuts" />
+            <TextBlock
+                Margin="4,0,4,8"
+                Text="Reference only. These fixed shortcuts work in the active Tiny Clips window, not in other apps. Text fields and focused controls keep their normal keyboard behavior."
+                TextWrapping="Wrap" />
+
+            <controls:SettingsExpander
+                Header="Screenshot editor"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}">
+                <controls:SettingsCard Header="Undo / copy">
+                    <TextBlock FontFamily="Consolas" Text="Ctrl+Z / Ctrl+C" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Zoom in / out / fit">
+                    <TextBlock FontFamily="Consolas" Text="Ctrl++ / Ctrl+- / Ctrl+0" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Select / crop / rectangle / ellipse">
+                    <TextBlock FontFamily="Consolas" Text="V / C / R / O" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Arrow / line / pen / text">
+                    <TextBlock FontFamily="Consolas" Text="A / L / D / T" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Counter / emoji / redact">
+                    <TextBlock FontFamily="Consolas" Text="N / E / B" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Pan / delete annotation">
+                    <TextBlock FontFamily="Consolas" Text="Hold Space / Delete or Backspace" />
+                </controls:SettingsCard>
+            </controls:SettingsExpander>
+
+            <controls:SettingsExpander
+                Header="Studio"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE8B7;}"
+                Visibility="{x:Bind ViewModel.StudioPreviewVisibility, Mode=OneWay}">
+                <controls:SettingsCard Header="Play / pause; step frame / second">
+                    <TextBlock FontFamily="Consolas" Text="Space; Left/Right / Shift+Left/Right" TextWrapping="Wrap" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Trim start / end; seek start / end">
+                    <TextBlock FontFamily="Consolas" Text="I / O; Home / End" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Scene / cut / speed / zoom">
+                    <TextBlock FontFamily="Consolas" Text="S / X / R / Z" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Arrow / callout / text / box / ellipse / redact / emoji">
+                    <TextBlock FontFamily="Consolas" Text="A / C / T / H / E / B / M" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Layouts">
+                    <TextBlock FontFamily="Consolas" Text="1 / 2 / 3 / 4" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Open / save / Save as / export">
+                    <TextBlock FontFamily="Consolas" Text="Ctrl+O / Ctrl+S / Ctrl+Shift+S / Ctrl+E" TextWrapping="Wrap" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Undo / redo / duplicate / delete">
+                    <TextBlock FontFamily="Consolas" Text="Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z / Ctrl+D / Delete" TextWrapping="Wrap" />
+                </controls:SettingsCard>
+            </controls:SettingsExpander>
+
+            <controls:SettingsExpander
+                Header="Clips Library"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE8B7;}">
+                <controls:SettingsCard Header="Search / refresh">
+                    <TextBlock FontFamily="Consolas" Text="Ctrl+F / Ctrl+R" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Select all / copy / open">
+                    <TextBlock FontFamily="Consolas" Text="Ctrl+A / Ctrl+C / Enter" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Rename / delete / play-pause">
+                    <TextBlock FontFamily="Consolas" Text="F2 / Delete / Space" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Grid / list">
+                    <TextBlock FontFamily="Consolas" Text="Ctrl+Shift+G / Ctrl+Shift+L" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Details / selection mode">
+                    <TextBlock FontFamily="Consolas" Text="Ctrl+Shift+D / Ctrl+Shift+E" />
+                </controls:SettingsCard>
+            </controls:SettingsExpander>
+
+            <controls:SettingsExpander
+                Header="Navigation &amp; application"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE765;}">
+                <controls:SettingsCard Header="Picker: region / screen / window / scroll">
+                    <TextBlock FontFamily="Consolas" Text="R / S / W / P" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Scrolling capture: done / cancel" Description="While the scrolling-capture panel has focus.">
+                    <TextBlock FontFamily="Consolas" Text="Enter / Esc" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Video and GIF trim bar" Description="Arrows seek. Ctrl adjusts the start, Shift adjusts the end, and Page Up/Down move the range. Home/End seek to the beginning/end.">
+                    <TextBlock FontFamily="Consolas" Text="Left / Right / Page Up / Page Down / Home / End" TextWrapping="Wrap" />
+                </controls:SettingsCard>
+                <controls:SettingsCard Header="Close / cancel" Description="Editors use your Escape confirmation preference.">
+                    <TextBlock FontFamily="Consolas" Text="Esc" />
+                </controls:SettingsCard>
+            </controls:SettingsExpander>
         </StackPanel>
     </Border>
 </UserControl>

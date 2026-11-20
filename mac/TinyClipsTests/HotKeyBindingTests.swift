@@ -10,15 +10,7 @@ final class HotKeyBindingTests: XCTestCase {
             HotKeyBinding.defaultBinding(for: .screenshot),
             HotKeyBinding(keyCode: 23, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
         )
-        XCTAssertEqual(
-            HotKeyBinding.defaultBinding(for: .recordVideo),
-            HotKeyBinding(keyCode: 22, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
-        )
-        XCTAssertEqual(
-            HotKeyBinding.defaultBinding(for: .recordGif),
-            HotKeyBinding(keyCode: 26, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
-        )
-        for action in [HotKeyAction.copyTextFromRegion, .screenshotRegion, .screenshotWindow, .screenshotScreen] {
+        for action in HotKeyAction.allCases where action != .screenshot {
             XCTAssertTrue(
                 HotKeyBinding.defaultBinding(for: action).isUnbound,
                 "\(action.displayName) should be unbound by default"
@@ -26,12 +18,21 @@ final class HotKeyBindingTests: XCTestCase {
         }
     }
 
-    func testOnlyScreenshotVideoAndGifAreBoundByDefault() {
+    func testOnlyScreenshotIsBoundByDefault() {
         let boundActions = HotKeyAction.allCases.filter {
             !HotKeyBinding.defaultBinding(for: $0).isUnbound
         }
 
-        XCTAssertEqual(Set(boundActions), [.screenshot, .recordVideo, .recordGif])
+        XCTAssertEqual(Set(boundActions), [.screenshot])
+    }
+
+    func testStopShortcutIsGlobalOnlyDuringRecording() {
+        XCTAssertFalse(HotKeyAction.stopRecording.isGloballyActive(isRecording: false))
+        XCTAssertTrue(HotKeyAction.stopRecording.isGloballyActive(isRecording: true))
+        for action in HotKeyAction.allCases where action != .stopRecording {
+            XCTAssertTrue(action.isGloballyActive(isRecording: false))
+            XCTAssertTrue(action.isGloballyActive(isRecording: true))
+        }
     }
 
     func testUnboundBindingRepresentsAClearedShortcut() {
@@ -93,7 +94,7 @@ final class HotKeyBindingTests: XCTestCase {
         XCTAssertEqual(binding.modifiersString, "⌃⌥⇧⌘")
     }
 
-    func testValidationRejectsUnmodifiedReservedAndConflictingBindings() {
+    func testValidationRejectsUnmodifiedAndConflictingBindings() {
         let unmodified = HotKeyBinding(keyCode: kVK_ANSI_A, carbonModifiers: 0)
         XCTAssertNotNil(
             HotKeyBinding.validationError(
@@ -103,15 +104,7 @@ final class HotKeyBindingTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(
-            HotKeyBinding.validationError(
-                for: .stopRecording,
-                action: .screenshot,
-                bindings: [:]
-            )?.contains("reserved") == true
-        )
-
-        let duplicate = HotKeyBinding.defaultBinding(for: .recordVideo)
+        let duplicate = HotKeyBinding(keyCode: kVK_ANSI_6, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
         XCTAssertTrue(
             HotKeyBinding.validationError(
                 for: duplicate,
@@ -130,6 +123,33 @@ final class HotKeyBindingTests: XCTestCase {
                 action: .screenshotWindow,
                 bindings: [.screenshotRegion: regionDuplicate]
             )?.contains("Screenshot Region") == true
+        )
+    }
+
+    func testStopShortcutUsesOrdinaryConflictValidationAndCanBeReassigned() {
+        let stop = HotKeyBinding(keyCode: kVK_ANSI_Period, carbonModifiers: Int(cmdKey))
+        XCTAssertNil(HotKeyBinding.validationError(for: stop, action: .stopRecording, bindings: [:]))
+        XCTAssertTrue(
+            HotKeyBinding.validationError(
+                for: stop,
+                action: .screenshot,
+                bindings: [.stopRecording: stop]
+            )?.contains("Stop Recording") == true
+        )
+        XCTAssertNil(HotKeyBinding.validationError(for: stop, action: .stopRecording, bindings: [.stopRecording: stop]))
+        XCTAssertNil(HotKeyBinding.validationError(for: stop, action: .screenshot, bindings: [.stopRecording: .unbound]))
+    }
+
+    func testMenuShortcutsDoNotInventFallbackKeysForUnboundOrSpecialBindings() {
+        XCTAssertNil(HotKeyBinding.unbound.swiftUIShortcut)
+        XCTAssertNil(HotKeyBinding(keyCode: kVK_F5, carbonModifiers: Int(cmdKey)).swiftUIShortcut)
+        XCTAssertEqual(
+            HotKeyBinding(keyCode: kVK_Space, carbonModifiers: Int(cmdKey)).swiftUIShortcut,
+            KeyboardShortcut(.space, modifiers: .command)
+        )
+        XCTAssertEqual(
+            HotKeyBinding(keyCode: kVK_LeftArrow, carbonModifiers: Int(controlKey)).swiftUIShortcut,
+            KeyboardShortcut(.leftArrow, modifiers: .control)
         )
     }
 

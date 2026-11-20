@@ -38,6 +38,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
         "ScreenshotRegion" => HotKeyAction.ScreenshotRegion,
         "ScreenshotWindow" => HotKeyAction.ScreenshotWindow,
         "ScreenshotScreen" => HotKeyAction.ScreenshotScreen,
+        "StopRecording" => HotKeyAction.StopRecording,
         _ => throw new ArgumentException("Unknown shortcut action.", nameof(tag)),
     };
 

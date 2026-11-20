@@ -11,7 +11,7 @@ internal sealed class HotKeyEditOperation(
     public bool TryApply(HotKeyAction action, HotKeyDefinition candidate, out string error)
     {
         var validation = hotKeys.ValidateBinding(action, candidate);
-        if (!candidate.IsUnbound && !validation.IsValid)
+        if (!validation.IsValid)
         {
             error = ValidationMessage(validation);
             return false;
@@ -44,8 +44,6 @@ internal sealed class HotKeyEditOperation(
             "Include one non-modifier key with the modifier.",
         HotKeyValidationError.DuplicateBinding =>
             $"That shortcut is already assigned to {ActionName(result.ConflictingAction!.Value)}.",
-        HotKeyValidationError.StopRecordingConflict =>
-            "That shortcut is reserved for Stop recording (Ctrl+Shift+S). Choose a different combination.",
         _ => string.Empty,
     };
 
@@ -58,6 +56,7 @@ internal sealed class HotKeyEditOperation(
         HotKeyAction.ScreenshotRegion => "Screenshot region",
         HotKeyAction.ScreenshotWindow => "Screenshot window",
         HotKeyAction.ScreenshotScreen => "Screenshot screen",
+        HotKeyAction.StopRecording => "Stop recording",
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 }

@@ -11,27 +11,26 @@ public sealed class HotKeyTests
         var service = CreateService();
 
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35), service.DefaultFor(HotKeyAction.Screenshot));
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36), service.DefaultFor(HotKeyAction.RecordVideo));
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37), service.DefaultFor(HotKeyAction.RecordGif));
+        Assert.True(service.DefaultFor(HotKeyAction.RecordVideo).IsUnbound);
+        Assert.True(service.DefaultFor(HotKeyAction.RecordGif).IsUnbound);
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.DefaultFor(HotKeyAction.RecognizeText));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.DefaultFor(HotKeyAction.ScreenshotRegion));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.DefaultFor(HotKeyAction.ScreenshotWindow));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.DefaultFor(HotKeyAction.ScreenshotScreen));
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53), service.DefaultFor(HotKeyAction.StopRecording));
+        Assert.True(service.DefaultFor(HotKeyAction.StopRecording).IsUnbound);
     }
 
     [Fact]
-    public void DefaultFor_BindsOnlyScreenshotVideoAndGif()
+    public void DefaultFor_BindsOnlyScreenshot()
     {
         var service = CreateService();
 
         var bound = Enum.GetValues<HotKeyAction>()
-            .Where(action => action != HotKeyAction.StopRecording)
             .Where(action => !service.DefaultFor(action).IsUnbound)
             .ToArray();
 
         Assert.Equal(
-            new[] { HotKeyAction.Screenshot, HotKeyAction.RecordVideo, HotKeyAction.RecordGif },
+            new[] { HotKeyAction.Screenshot },
             bound);
     }
 
@@ -54,10 +53,11 @@ public sealed class HotKeyTests
         var service = CreateService();
 
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35), service.GetBinding(HotKeyAction.Screenshot));
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36), service.GetBinding(HotKeyAction.RecordVideo));
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37), service.GetBinding(HotKeyAction.RecordGif));
+        Assert.True(service.GetBinding(HotKeyAction.RecordVideo).IsUnbound);
+        Assert.True(service.GetBinding(HotKeyAction.RecordGif).IsUnbound);
         Assert.True(service.GetBinding(HotKeyAction.RecognizeText).IsUnbound);
-        Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53), service.GetBinding(HotKeyAction.StopRecording));
+        Assert.True(service.GetBinding(HotKeyAction.StopRecording).IsUnbound);
+        Assert.Empty(service.StopRecordingDisplayString);
     }
 
     [Fact]
@@ -76,18 +76,18 @@ public sealed class HotKeyTests
         var service = CreateService();
         var unbound = new HotKeyDefinition(HotKeyModifiers.None, 0);
 
-        service.SetBinding(HotKeyAction.RecordVideo, unbound);
+        service.SetBinding(HotKeyAction.Screenshot, unbound);
 
-        Assert.Equal(unbound, service.GetBinding(HotKeyAction.RecordVideo));
-        Assert.True(service.GetBinding(HotKeyAction.RecordVideo).IsUnbound);
+        Assert.Equal(unbound, service.GetBinding(HotKeyAction.Screenshot));
+        Assert.True(service.GetBinding(HotKeyAction.Screenshot).IsUnbound);
 
         service.SetBinding(
-            HotKeyAction.RecordVideo,
-            service.DefaultFor(HotKeyAction.RecordVideo));
+            HotKeyAction.Screenshot,
+            service.DefaultFor(HotKeyAction.Screenshot));
 
         Assert.Equal(
-            new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36),
-            service.GetBinding(HotKeyAction.RecordVideo));
+            new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35),
+            service.GetBinding(HotKeyAction.Screenshot));
     }
 
     [Theory]
@@ -112,7 +112,8 @@ public sealed class HotKeyTests
     public void ValidateBinding_RejectsAnotherCaptureBinding()
     {
         var service = CreateService();
-        var videoBinding = service.GetBinding(HotKeyAction.RecordVideo);
+        var videoBinding = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36);
+        service.SetBinding(HotKeyAction.RecordVideo, videoBinding);
 
         var result = service.ValidateBinding(HotKeyAction.Screenshot, videoBinding);
 
@@ -121,13 +122,21 @@ public sealed class HotKeyTests
     }
 
     [Fact]
-    public void ValidateBinding_RejectsFixedStopRecordingBinding()
+    public void ValidateBinding_RejectsAssignedStopRecordingBindingButNotTheOldFixedChord()
     {
         var service = CreateService();
 
-        var result = service.ValidateBinding(HotKeyAction.RecordGif, service.GetStopBinding());
+        var chord = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53);
+        Assert.True(service.ValidateBinding(HotKeyAction.RecordGif, chord).IsValid);
+        service.SetBinding(HotKeyAction.StopRecording, chord);
+        var result = service.ValidateBinding(HotKeyAction.RecordGif, chord);
 
-        Assert.Equal(HotKeyValidationError.StopRecordingConflict, result.Error);
+        Assert.Equal(HotKeyValidationError.DuplicateBinding, result.Error);
+        Assert.Equal(HotKeyAction.StopRecording, result.ConflictingAction);
+        Assert.True(service.ValidateBinding(HotKeyAction.StopRecording, chord).IsValid);
+        Assert.Equal(
+            HotKeyAction.Screenshot,
+            service.ValidateBinding(HotKeyAction.StopRecording, service.GetBinding(HotKeyAction.Screenshot)).ConflictingAction);
     }
 
     [Fact]
@@ -139,12 +148,43 @@ public sealed class HotKeyTests
     }
 
     [Fact]
-    public void SetBinding_ThrowsForStopRecording()
+    public void StopRecordingBinding_CanBeEditedClearedAndReset()
     {
         var service = CreateService();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            service.SetBinding(HotKeyAction.StopRecording, new HotKeyDefinition(HotKeyModifiers.Alt, 0x41)));
+        var binding = new HotKeyDefinition(HotKeyModifiers.Alt, 0x41);
+        service.SetBinding(HotKeyAction.StopRecording, binding);
+        Assert.Equal(binding, service.GetStopBinding());
+        Assert.Equal("Alt+A", service.StopRecordingDisplayString);
+        Assert.True(service.ValidateBinding(HotKeyAction.StopRecording, default).IsValid);
+        service.SetBinding(HotKeyAction.StopRecording, default);
+        Assert.True(service.GetStopBinding().IsUnbound);
+        service.SetBinding(HotKeyAction.StopRecording, binding);
+        service.SetBinding(HotKeyAction.StopRecording, service.DefaultFor(HotKeyAction.StopRecording));
+        Assert.True(service.GetStopBinding().IsUnbound);
+    }
+
+    [Fact]
+    public void ActiveBindings_IncludeStopOnlyDuringRecordingAndRespectEditsAndClearing()
+    {
+        var service = CreateService();
+        Assert.Equal([HotKeyAction.Screenshot], service.GetActiveBindings(false).Select(pair => pair.Key));
+        Assert.Equal([HotKeyAction.Screenshot], service.GetActiveBindings(true).Select(pair => pair.Key));
+
+        var stop = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53);
+        var video = new HotKeyDefinition(HotKeyModifiers.Alt, 0x56);
+        service.SetBinding(HotKeyAction.RecordVideo, video);
+        service.SetBinding(HotKeyAction.StopRecording, stop);
+        Assert.DoesNotContain(service.GetActiveBindings(false), pair => pair.Key == HotKeyAction.StopRecording);
+        Assert.Contains(new KeyValuePair<HotKeyAction, HotKeyDefinition>(HotKeyAction.StopRecording, stop), service.GetActiveBindings(true));
+        Assert.Contains(new KeyValuePair<HotKeyAction, HotKeyDefinition>(HotKeyAction.RecordVideo, video), service.GetActiveBindings(false));
+        Assert.DoesNotContain(service.GetActiveBindings(false), pair => pair.Key == HotKeyAction.StopRecording);
+
+        var replacement = new HotKeyDefinition(HotKeyModifiers.Alt, 0x53);
+        service.SetBinding(HotKeyAction.StopRecording, replacement);
+        Assert.Contains(new KeyValuePair<HotKeyAction, HotKeyDefinition>(HotKeyAction.StopRecording, replacement), service.GetActiveBindings(true));
+        service.SetBinding(HotKeyAction.StopRecording, default);
+        Assert.DoesNotContain(service.GetActiveBindings(true), pair => pair.Key == HotKeyAction.StopRecording);
     }
 
     [Fact]

@@ -5,29 +5,32 @@ namespace TinyClips.App.Tests;
 
 public sealed class HotKeyEditOperationTests
 {
-    [Fact]
-    public void EditClearAndReset_PersistThroughTheSharedService()
+    [Theory]
+    [InlineData(HotKeyAction.Screenshot)]
+    [InlineData(HotKeyAction.StopRecording)]
+    public void EditClearAndReset_PersistThroughTheSharedService(HotKeyAction action)
     {
         var hotKeys = CreateHotKeys();
         var operation = new HotKeyEditOperation(hotKeys, () => GlobalHotKeyRegistrationResult.Success, hotKeys.SetBinding);
         var candidate = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Alt, 0x41);
 
-        Assert.True(operation.TryApply(HotKeyAction.Screenshot, candidate, out var error));
+        Assert.True(operation.TryApply(action, candidate, out var error));
         Assert.Empty(error);
-        Assert.Equal(candidate, hotKeys.GetBinding(HotKeyAction.Screenshot));
+        Assert.Equal(candidate, hotKeys.GetBinding(action));
 
-        Assert.True(operation.TryApply(HotKeyAction.Screenshot, new(HotKeyModifiers.None, 0), out error));
-        Assert.True(hotKeys.GetBinding(HotKeyAction.Screenshot).IsUnbound);
-        Assert.True(operation.TryApply(HotKeyAction.Screenshot, hotKeys.DefaultFor(HotKeyAction.Screenshot), out error));
-        Assert.Equal(hotKeys.DefaultFor(HotKeyAction.Screenshot), hotKeys.GetBinding(HotKeyAction.Screenshot));
+        Assert.True(operation.TryApply(action, new(HotKeyModifiers.None, 0), out error));
+        Assert.True(hotKeys.GetBinding(action).IsUnbound);
+        Assert.True(operation.TryApply(action, hotKeys.DefaultFor(action), out error));
+        Assert.Equal(hotKeys.DefaultFor(action), hotKeys.GetBinding(action));
     }
 
     [Fact]
-    public void HiddenActionConflictAndReservedStop_AreRejectedWithoutWritingOrRegistering()
+    public void HiddenActionAndStopConflicts_AreRejectedWithoutWritingOrRegistering()
     {
         var hotKeys = CreateHotKeys();
         var hiddenBinding = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Alt, 0x41);
         hotKeys.SetBinding(HotKeyAction.RecognizeText, hiddenBinding);
+        hotKeys.SetBinding(HotKeyAction.StopRecording, new(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53));
         var calls = 0;
         var operation = new HotKeyEditOperation(hotKeys, () =>
         {
@@ -38,35 +41,37 @@ public sealed class HotKeyEditOperationTests
         Assert.False(operation.TryApply(HotKeyAction.Screenshot, hiddenBinding, out var error));
         Assert.Contains("Recognize text", error);
         Assert.False(operation.TryApply(HotKeyAction.Screenshot, hotKeys.GetStopBinding(), out error));
-        Assert.Contains("reserved", error);
+        Assert.Contains("Stop recording", error);
         Assert.False(operation.TryApply(HotKeyAction.Screenshot, new(HotKeyModifiers.None, 0x41), out error));
         Assert.Contains("modifier", error);
         Assert.Equal(0, calls);
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void RegistrationFailure_RestoresSavedBindingAndReportsRollbackFailure(bool rollbackFails)
+    [InlineData(false, HotKeyAction.Screenshot)]
+    [InlineData(true, HotKeyAction.Screenshot)]
+    [InlineData(false, HotKeyAction.StopRecording)]
+    [InlineData(true, HotKeyAction.StopRecording)]
+    public void RegistrationFailure_RestoresSavedBindingAndReportsRollbackFailure(bool rollbackFails, HotKeyAction action)
     {
         var hotKeys = CreateHotKeys();
-        var previous = hotKeys.GetBinding(HotKeyAction.Screenshot);
+        var previous = hotKeys.GetBinding(action);
         var candidate = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Alt, 0x41);
         var calls = 0;
         var seen = new List<HotKeyDefinition>();
         var failure = GlobalHotKeyRegistrationResult.Failed(new(
-            HotKeyAction.Screenshot, "Screenshot", 1409, "Shortcut unavailable."));
+            action, HotKeyEditOperation.ActionName(action), 1409, "Shortcut unavailable."));
         var operation = new HotKeyEditOperation(hotKeys, () =>
         {
-            seen.Add(hotKeys.GetBinding(HotKeyAction.Screenshot));
+            seen.Add(hotKeys.GetBinding(action));
             calls++;
             return calls == 1 || rollbackFails ? failure : GlobalHotKeyRegistrationResult.Success;
         }, hotKeys.SetBinding);
 
-        Assert.False(operation.TryApply(HotKeyAction.Screenshot, candidate, out var error));
+        Assert.False(operation.TryApply(action, candidate, out var error));
 
         Assert.Equal([candidate, previous], seen);
-        Assert.Equal(previous, hotKeys.GetBinding(HotKeyAction.Screenshot));
+        Assert.Equal(previous, hotKeys.GetBinding(action));
         Assert.Contains("could not register", error);
         Assert.Equal(rollbackFails, error.Contains("could not reactivate", StringComparison.Ordinal));
     }

@@ -5,6 +5,14 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Fixed
+- Tiny Clips no longer reserves `Ctrl+Shift+S` while idle. Stop recording is now an optional, editable shortcut, registered only during recording, so Save as shortcuts reach Studio and other apps normally.
+
+### Changed
+- Only Screenshot has a global shortcut by default. Video, GIF, OCR, direct screenshots, and Stop recording start unassigned; saved bindings are preserved, and all global shortcuts can be edited, deleted, or reset.
+- Keyboard shortcuts settings groups Screenshots, Recording, and Text recognition, with separate fixed-shortcut references for the editors, Studio, Clips Library, and navigation. Onboarding offers only Screenshot, Record video, and Record GIF; recording controls and guides reflect the current Stop binding.
+- Shortcut configuration deliberately remains UI-only; agents continue to use capture and recording commands directly.
+
 ## [v2.1.1-windows] - 2026-11-14
 
 ### Fixed

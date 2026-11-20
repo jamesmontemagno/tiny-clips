@@ -29,8 +29,7 @@ public sealed partial class GuideWindow : Window
         AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(AppWindow, hwnd, 720, 860);
 
         // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
-        // scale tracking, and cleanup of all three on Closed. GuideWindow has no other
-        // subscriptions so no additive Closed handler is needed.
+        // scale tracking, and cleanup of all three on Closed.
         _chromeController = new WindowChromeController(this, RootGrid, MinimumWidthDip, MinimumHeightDip);
 
         var settings = App.Services.GetRequiredService<ICaptureSettings>();
@@ -41,6 +40,18 @@ public sealed partial class GuideWindow : Window
             _ => ElementTheme.Default,
         };
 
+        RefreshShortcuts();
+        Activated += (_, args) =>
+        {
+            if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                RefreshShortcuts();
+            }
+        };
+    }
+
+    private void RefreshShortcuts()
+    {
         var hotKeys = App.Services.GetRequiredService<IHotKeyService>();
         ScreenshotShortcut.Text = hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString;
         ScreenshotRegionShortcut.Text = hotKeys.GetBinding(HotKeyAction.ScreenshotRegion).DisplayString;
@@ -49,6 +60,6 @@ public sealed partial class GuideWindow : Window
         VideoShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
         GifShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
         OcrShortcut.Text = hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString;
-        StopRecordingShortcut.Text = hotKeys.StopRecordingDisplayString;
+        StopRecordingShortcut.Text = hotKeys.GetStopBinding().DisplayString;
     }
 }

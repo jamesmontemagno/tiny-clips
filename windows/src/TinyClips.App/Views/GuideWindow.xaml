@@ -149,6 +149,9 @@
 
                 <Border Style="{StaticResource SettingCardStyle}">
                     <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="Only Screenshot is assigned by default. Change or clear global bindings in Settings → Keyboard shortcuts. Stop recording is optional and active only during recording; the floating Stop button is always available."
+                            TextWrapping="Wrap" />
                         <Grid ColumnSpacing="16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />

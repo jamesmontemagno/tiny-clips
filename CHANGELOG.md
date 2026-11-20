@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- Only Screenshot has a global keyboard shortcut by default on macOS; Video, GIF, OCR, direct screenshots, and Stop Recording are optional. Saved bindings are preserved. Stop Recording can be recorded, cleared, or reset in Settings and is active globally only during recording.
+- Shortcuts settings groups Screenshots, Recording, and Text recognition separately from fixed editor, Studio, Clips Library, and navigation references. Onboarding offers only the three common capture actions and explains how to stop without a shortcut.
+- Shortcut configuration deliberately remains UI-only; agents continue to use capture and recording commands directly.
+
 ## v2.1.0.5-mac - 2026-11-15
 
 ### Fixed

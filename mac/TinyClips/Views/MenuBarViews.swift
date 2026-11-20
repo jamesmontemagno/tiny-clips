@@ -17,19 +17,6 @@ class SettingsWindowManager: ObservableObject {
 
 // MARK: - Menu Bar Content
 
-/// Applies a keyboard shortcut only when the action has a bound key, so menu items for
-/// unassigned shortcuts do not pick up a bare key equivalent.
-private extension View {
-    @ViewBuilder
-    func captureKeyboardShortcut(_ key: KeyEquivalent?, modifiers: SwiftUI.EventModifiers) -> some View {
-        if let key {
-            keyboardShortcut(key, modifiers: modifiers)
-        } else {
-            self
-        }
-    }
-}
-
 struct MenuBarContentView: View {
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var sparkleController: SparkleController
@@ -52,7 +39,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Screenshot…", systemImage: "camera")
             }
-            .captureKeyboardShortcut(key(for: .screenshot, fallback: "5"), modifiers: modifiers(for: .screenshot))
+            .keyboardShortcut(settings.hotKeyBinding(for: .screenshot).swiftUIShortcut)
             .accessibilityHint("Starts screenshot capture.")
             .disabled(captureManager.isCaptureActionInProgress)
 
@@ -61,7 +48,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Copy Text from Region…", systemImage: "text.viewfinder")
             }
-            .captureKeyboardShortcut(key(for: .copyTextFromRegion, fallback: "8"), modifiers: modifiers(for: .copyTextFromRegion))
+            .keyboardShortcut(settings.hotKeyBinding(for: .copyTextFromRegion).swiftUIShortcut)
             .accessibilityHint("Selects a screen region and copies recognized text to the clipboard.")
             .disabled(captureManager.isCaptureActionInProgress)
 
@@ -70,7 +57,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Record Video...", systemImage: "video")
             }
-            .captureKeyboardShortcut(key(for: .recordVideo, fallback: "6"), modifiers: modifiers(for: .recordVideo))
+            .keyboardShortcut(settings.hotKeyBinding(for: .recordVideo).swiftUIShortcut)
             .accessibilityHint("Starts video recording.")
             .disabled(captureManager.isCaptureActionInProgress)
 
@@ -91,7 +78,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Record GIF...", systemImage: "photo.on.rectangle")
             }
-            .captureKeyboardShortcut(key(for: .recordGif, fallback: "7"), modifiers: modifiers(for: .recordGif))
+            .keyboardShortcut(settings.hotKeyBinding(for: .recordGif).swiftUIShortcut)
             .accessibilityHint("Starts GIF recording.")
             .disabled(captureManager.isCaptureActionInProgress)
 
@@ -102,7 +89,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Stop Recording", systemImage: "stop.circle")
             }
-            .keyboardShortcut(".", modifiers: .command)
+            .keyboardShortcut(settings.hotKeyBinding(for: .stopRecording).swiftUIShortcut)
             .accessibilityHint("Stops the current recording.")
 
             Divider()
@@ -373,31 +360,6 @@ struct MenuBarContentView: View {
                 clipsWindow.orderFrontRegardless()
             }
         }
-    }
-
-    // MARK: - Dynamic Shortcut Keys
-
-    private func key(for action: HotKeyAction, fallback: Character) -> KeyEquivalent? {
-        let binding = settings.hotKeyBinding(for: action)
-        guard !binding.isUnbound else { return nil }
-        return keyEquivalent(for: binding.keyCode, fallback: fallback)
-    }
-
-    private func modifiers(for action: HotKeyAction) -> EventModifiers {
-        settings.hotKeyBinding(for: action).swiftUIModifiers
-    }
-
-    private func keyEquivalent(for keyCode: Int, fallback: Character) -> KeyEquivalent {
-        // Only use UCKeyTranslate result when it produces a single letter or digit —
-        // this avoids passing multi-char strings (e.g. "Space", "Esc") or symbol
-        // characters (e.g. "←") to SwiftUI's KeyEquivalent.
-        guard let str = HotKeyBinding.keyCodeToDisplayString(keyCode),
-              str.count == 1,
-              let ch = str.lowercased().first,
-              ch.isLetter || ch.isNumber else {
-            return KeyEquivalent(fallback)
-        }
-        return KeyEquivalent(ch)
     }
 
 }

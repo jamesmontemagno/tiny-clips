@@ -400,6 +400,9 @@ final class CaptureSettingsTests: XCTestCase {
 
     func testUnboundDefaultHotKeysTreatLegacyZeroPairAsUnbound() {
         let legacyZeroActions: [(HotKeyAction, String)] = [
+            (.recordVideo, "video"),
+            (.recordGif, "gif"),
+            (.stopRecording, "stopRecording"),
             (.screenshotScreen, "screenshotScreen"),
             (.screenshotRegion, "screenshotRegion"),
             (.screenshotWindow, "screenshotWindow"),
@@ -414,6 +417,28 @@ final class CaptureSettingsTests: XCTestCase {
                 CaptureSettings.hotKeyBinding(for: action, defaults: defaults).isUnbound,
                 "\(action.displayName) should resolve a legacy zero pair as unbound"
             )
+        }
+    }
+
+    func testSavedRecordingBindingsSurviveNewDefaultsAndResetCanClearThem() {
+        let video = HotKeyBinding(keyCode: kVK_ANSI_6, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+        let gif = HotKeyBinding(keyCode: kVK_ANSI_7, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+        let stop = HotKeyBinding(keyCode: kVK_ANSI_Period, carbonModifiers: Int(cmdKey))
+        for (action, binding) in [(HotKeyAction.recordVideo, video), (.recordGif, gif), (.stopRecording, stop)] {
+            CaptureSettings.setHotKeyBinding(binding, for: action, defaults: defaults)
+        }
+
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        XCTAssertEqual(settings.hotKeyBinding(for: .recordVideo), video)
+        XCTAssertEqual(settings.hotKeyBinding(for: .recordGif), gif)
+        XCTAssertEqual(settings.hotKeyBinding(for: .stopRecording), stop)
+
+        CaptureSettings.resetStoredDefaults(defaults, preservingHotKeys: true)
+        XCTAssertEqual(settings.hotKeyBinding(for: .stopRecording), stop)
+        CaptureSettings.resetStoredDefaults(defaults)
+        XCTAssertFalse(settings.hotKeyBinding(for: .screenshot).isUnbound)
+        for action in HotKeyAction.allCases where action != .screenshot {
+            XCTAssertTrue(settings.hotKeyBinding(for: action).isUnbound)
         }
     }
 }

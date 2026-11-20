@@ -127,7 +127,7 @@ private struct GuideWindowView: View {
         case .shortcuts:
             sectionCard(title: "Keyboard Shortcuts", icon: "command") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Screenshot, Record Video, and Record GIF show your current bindings. Change them anytime in Settings → Shortcuts.")
+                    Text("Only Screenshot is assigned by default. These are your current bindings; change or clear them in Settings → Shortcuts. Stop Recording works globally only during recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -141,7 +141,8 @@ private struct GuideWindowView: View {
                     shortcutRow(title: "Picker: Screen", keys: "S")
                     shortcutRow(title: "Picker: Window", keys: "W")
                     shortcutRow(title: "Picker: Cancel", keys: "Esc")
-                    shortcutRow(title: "Stop Recording", keys: "⌘.")
+                    shortcutRow(title: "Stop Recording", keys: settings.hotKeyBinding(for: .stopRecording).displayString)
+                    shortcutRow(title: "Copy Text from Region", keys: settings.hotKeyBinding(for: .copyTextFromRegion).displayString)
                     shortcutRow(title: "Settings", keys: "⌘,")
                     shortcutRow(title: "Quit", keys: "⌘Q")
                 }

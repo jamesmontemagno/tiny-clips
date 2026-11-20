@@ -91,8 +91,8 @@ TinyClips requires **Screen Recording** permission. On first launch, macOS will 
 | Action | Shortcut |
 |--------|----------|
 | Screenshot | ⌃⌥⌘5 |
-| Record Video | ⌃⌥⌘6 |
-| Record GIF | ⌃⌥⌘7 |
+| Record Video | Not set by default; configure in Settings → Shortcuts |
+| Record GIF | Not set by default; configure in Settings → Shortcuts |
 | Screenshot Region (no picker) | Not set by default; configure in Settings → Shortcuts |
 | Screenshot Window (no picker) | Not set by default; configure in Settings → Shortcuts |
 | Screenshot Screen (no picker) | Not set by default; configure in Settings → Shortcuts |
@@ -100,8 +100,14 @@ TinyClips requires **Screen Recording** permission. On first launch, macOS will 
 | Picker: Region / Screen / Window | R / S / W |
 | Picker: Cancel | Esc |
 | Screenshot editor: Close | Esc / ⌘W |
-| Stop Recording | ⌘. |
+| Stop Recording | Not set by default; optional, active only during recording |
 | Settings | ⌘, |
+
+Only Screenshot has a global binding by default. Existing saved bindings are preserved.
+Settings groups editable global shortcuts into Screenshots, Recording, and Text recognition,
+with separate fixed-shortcut references for the editors, Studio, Clips Library, and navigation.
+Onboarding offers only Screenshot, Record Video, and Record GIF; all actions remain available
+from the menu bar and capture controls without a keyboard binding.
 
 ## Windows
 
@@ -147,11 +153,17 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 | Screenshot Region (no picker) | Not set by default; configure in Settings → Keyboard shortcuts |
 | Screenshot Window (no picker) | Not set by default; configure in Settings → Keyboard shortcuts |
 | Screenshot Screen (no picker) | Not set by default; configure in Settings → Keyboard shortcuts |
-| Record Video | Ctrl+Shift+6 |
-| Record GIF | Ctrl+Shift+7 |
+| Record Video | Not set by default; configure in Settings → Keyboard shortcuts |
+| Record GIF | Not set by default; configure in Settings → Keyboard shortcuts |
+| Recognize Text | Not set by default; configure in Settings → Keyboard shortcuts |
 | Picker: Region / Screen / Window | R / S / W |
 | Picker: Cancel | Esc |
-| Stop Recording | Ctrl+Shift+S |
+| Stop Recording | Not set by default; optional, active only during recording |
+
+Only Screenshot has a global binding by default. Edit or clear any global shortcut, including
+Stop Recording, in **Settings → Keyboard shortcuts**. Existing saved bindings are preserved.
+The same categorized layout separates global shortcuts from fixed window-only references.
+Onboarding offers only Screenshot, Record Video, and Record GIF.
 
 ## Usage
 
@@ -159,7 +171,7 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 2. Choose **Screenshot**, **Record Video**, or **Record GIF**
 3. Choose **Region**, **Screen**, or **Window** in the capture picker (with an optional countdown)
 4. For region recordings, confirm audio/mic options in the floating **Record** panel
-5. Click the floating **Stop** button when done (or use the stop shortcut)
+5. Click the floating **Stop** button when done (or use a stop shortcut you have configured)
 
 ## Settings
 

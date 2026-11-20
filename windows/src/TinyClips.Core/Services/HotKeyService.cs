@@ -13,15 +13,17 @@ public sealed class HotKeyService : IHotKeyService
 
     public HotKeyDefinition GetBinding(HotKeyAction action)
     {
-        if (action == HotKeyAction.StopRecording)
-        {
-            return DefaultFor(action);
-        }
-
         var modifiers = GetStoredModifiers(action);
         var virtualKey = GetStoredVirtualKey(action);
         return new HotKeyDefinition((HotKeyModifiers)modifiers, virtualKey);
     }
+
+    public IReadOnlyList<KeyValuePair<HotKeyAction, HotKeyDefinition>> GetActiveBindings(bool isRecording)
+        => Enum.GetValues<HotKeyAction>()
+            .Where(action => action != HotKeyAction.StopRecording || isRecording)
+            .Select(action => new KeyValuePair<HotKeyAction, HotKeyDefinition>(action, GetBinding(action)))
+            .Where(pair => !pair.Value.IsUnbound)
+            .ToArray();
 
     public void SetBinding(HotKeyAction action, HotKeyDefinition binding)
     {
@@ -55,6 +57,10 @@ public sealed class HotKeyService : IHotKeyService
                 _settings.ScreenshotScreenHotKeyModifiers = (int)binding.Modifiers;
                 _settings.ScreenshotScreenHotKeyCode = (int)binding.VirtualKey;
                 break;
+            case HotKeyAction.StopRecording:
+                _settings.StopRecordingHotKeyModifiers = (int)binding.Modifiers;
+                _settings.StopRecordingHotKeyCode = (int)binding.VirtualKey;
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(action), action, null);
         }
@@ -62,42 +68,31 @@ public sealed class HotKeyService : IHotKeyService
 
     public HotKeyDefinition GetStopBinding() => GetBinding(HotKeyAction.StopRecording);
 
-    public string StopRecordingDisplayString => GetStopBinding().DisplayString;
+    public string StopRecordingDisplayString => GetStopBinding().IsUnbound ? string.Empty : GetStopBinding().DisplayString;
 
     public HotKeyDefinition DefaultFor(HotKeyAction action) => action switch
     {
         HotKeyAction.Screenshot => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35),
-        HotKeyAction.RecordVideo => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x36),
-        HotKeyAction.RecordGif => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x37),
+        HotKeyAction.RecordVideo => new HotKeyDefinition(HotKeyModifiers.None, 0),
+        HotKeyAction.RecordGif => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.RecognizeText => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.ScreenshotRegion => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.ScreenshotWindow => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.ScreenshotScreen => new HotKeyDefinition(HotKeyModifiers.None, 0),
-        HotKeyAction.StopRecording => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x53),
+        HotKeyAction.StopRecording => new HotKeyDefinition(HotKeyModifiers.None, 0),
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
     public HotKeyValidationResult ValidateBinding(HotKeyAction action, HotKeyDefinition binding)
     {
-        var actions = new[]
-        {
-            HotKeyAction.Screenshot,
-            HotKeyAction.RecordVideo,
-            HotKeyAction.RecordGif,
-            HotKeyAction.RecognizeText,
-            HotKeyAction.ScreenshotRegion,
-            HotKeyAction.ScreenshotWindow,
-            HotKeyAction.ScreenshotScreen,
-        };
-
         // Skip the unbound sentinel (no modifiers, no key) so two unbound actions are not
         // reported as conflicting with each other.
-        var bindings = actions
+        var bindings = Enum.GetValues<HotKeyAction>()
             .Select(a => new KeyValuePair<HotKeyAction, HotKeyDefinition>(a, GetBinding(a)))
             .Where(pair => !pair.Value.IsUnbound)
             .ToArray();
 
-        return HotKeyValidator.Validate(action, binding, bindings, GetStopBinding());
+        return HotKeyValidator.Validate(action, binding, bindings);
     }
 
     private int GetStoredModifiers(HotKeyAction action) => action switch
@@ -109,7 +104,7 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.ScreenshotRegion => _settings.ScreenshotRegionHotKeyModifiers,
         HotKeyAction.ScreenshotWindow => _settings.ScreenshotWindowHotKeyModifiers,
         HotKeyAction.ScreenshotScreen => _settings.ScreenshotScreenHotKeyModifiers,
-        HotKeyAction.StopRecording => 0,
+        HotKeyAction.StopRecording => _settings.StopRecordingHotKeyModifiers,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
@@ -122,7 +117,7 @@ public sealed class HotKeyService : IHotKeyService
         HotKeyAction.ScreenshotRegion => (uint)_settings.ScreenshotRegionHotKeyCode,
         HotKeyAction.ScreenshotWindow => (uint)_settings.ScreenshotWindowHotKeyCode,
         HotKeyAction.ScreenshotScreen => (uint)_settings.ScreenshotScreenHotKeyCode,
-        HotKeyAction.StopRecording => 0,
+        HotKeyAction.StopRecording => (uint)_settings.StopRecordingHotKeyCode,
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 }

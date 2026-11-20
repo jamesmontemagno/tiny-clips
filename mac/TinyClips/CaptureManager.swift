@@ -121,7 +121,7 @@ private enum ActiveRecordingRequest {
 class CaptureManager: ObservableObject {
     @Published var isRecording = false {
         didSet {
-            updateStopHotKeyRegistration()
+            configureGlobalHotKeys()
         }
     }
     @Published var isRecordingPaused = false
@@ -138,10 +138,9 @@ class CaptureManager: ObservableObject {
     @Published private(set) var isScreenshotCaptureInProgress = false
     @Published private(set) var isRecordingSetupInProgress = false
     @Published private(set) var captureHotKeyRegistrationError: String?
-    @Published private(set) var stopHotKeyRegistrationError: String?
 
     var hotKeyRegistrationError: String? {
-        captureHotKeyRegistrationError ?? stopHotKeyRegistrationError
+        captureHotKeyRegistrationError
     }
 
     var isCaptureActionInProgress: Bool {
@@ -289,10 +288,15 @@ class CaptureManager: ObservableObject {
     }
 
     private func configureGlobalHotKeys() {
+        // A failed refresh must never restore the recording-only shortcut while idle.
+        if !isRecording {
+            hotKeyManager.unregisterAction(.stopRecording)
+        }
         let result = registerCaptureHotKeys(CaptureSettings.shared.hotKeyBindings)
+        if isRecording, let error = result.errorMessage, error != captureHotKeyRegistrationError {
+            SaveService.shared.showError("\(error) Use the floating Stop button or menu to stop recording.")
+        }
         captureHotKeyRegistrationError = result.errorMessage
-
-        updateStopHotKeyRegistration()
     }
 
     @discardableResult
@@ -366,8 +370,12 @@ class CaptureManager: ObservableObject {
             return HotKeyManager.ActionRegistration(
                 action: action,
                 binding: binding,
+                isEnabled: action.isGloballyActive(isRecording: isRecording),
                 handler: { [weak self] in
-                    guard let self, !self.isRecording, !self.isCaptureActionInProgress else { return }
+                    guard let self else { return }
+                    if action != .stopRecording && (self.isRecording || self.isCaptureActionInProgress) {
+                        return
+                    }
                     switch action {
                     case .screenshot:
                         self.takeScreenshot()
@@ -383,24 +391,15 @@ class CaptureManager: ObservableObject {
                         self.takeScreenshotInMode(.window)
                     case .screenshotScreen:
                         self.takeScreenshotInMode(.screen)
+                    case .stopRecording:
+                        if self.isRecording {
+                            self.stopRecording()
+                        }
                     }
                 }
             )
         }
         return hotKeyManager.registerActionHotKeys(registrations)
-    }
-
-    private func updateStopHotKeyRegistration() {
-        if isRecording {
-            let result = hotKeyManager.registerStopHotKey { [weak self] in
-                guard let self, self.isRecording else { return }
-                self.stopRecording()
-            }
-            stopHotKeyRegistrationError = result.errorMessage
-        } else {
-            hotKeyManager.unregisterStopHotKey()
-            stopHotKeyRegistrationError = nil
-        }
     }
 
     func takeScreenshot() {
