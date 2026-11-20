@@ -23,8 +23,8 @@ public sealed record PanoramaResult(CapturedFrame Image, int FrameCount, int Out
 /// Stitches scrolling-capture frames into the output buffer as they arrive so that peak memory
 /// tracks the size of the panorama instead of the number of captured frames. Direct port of the
 /// macOS <c>PanoramaAccumulator</c>: vertical shift is found by comparing per-row luma
-/// signatures, verified against real pixels, and a stationary bottom band (sticky footer) is
-/// held back and written once at the end.
+/// signatures, verified against real pixels, and a bottom overlap band is held back and written
+/// once at the end so sticky footers and bottom-floating controls are not repeated.
 /// </summary>
 public sealed class PanoramaAccumulator
 {
@@ -97,8 +97,8 @@ public sealed class PanoramaAccumulator
         var height = frame.Height;
         var isFirstCommit = _committedRows == 0;
         var previousBand = isFirstCommit ? alignment.FixedBottomHeight : _heldBottomBand;
-        // The stationary band is detected independently of the scroll step, so a footer taller
-        // than the step is still fully suppressed. It can only grow by the rows that scrolled in
+        // The deferred band is independent of the scroll step, so slow scrolls don't commit
+        // floating controls. It can only grow by the rows that scrolled in
         // since the last frame, which keeps every committed row accounted for exactly once.
         var fixedBottomHeight = isFirstCommit
             ? alignment.FixedBottomHeight
@@ -106,7 +106,7 @@ public sealed class PanoramaAccumulator
         var baseRows = isFirstCommit ? height - fixedBottomHeight : _committedRows;
         var appendCount = alignment.Shift + previousBand - fixedBottomHeight;
         var sourceStartRow = height - previousBand - alignment.Shift;
-        if (appendCount < 0 || sourceStartRow < 0 || baseRows <= 0)
+        if (appendCount < 0 || sourceStartRow < Math.Max(1, height / 20) || baseRows <= 0)
         {
             return PanoramaAppendOutcome.Skipped;
         }
@@ -343,10 +343,11 @@ public sealed class PanoramaAccumulator
             return null;
         }
 
-        // Sticky footers are detected independently of the scroll step (bounded to a quarter of
-        // the frame) so slow scrolls under a tall footer still suppress it completely.
-        var fixedBottomHeight = StationaryBottomBand(previous, current, previous.Height / 4);
-        if (bestShift + fixedBottomHeight > height)
+        // Stitch above bottom-floating UI, even if it appears after capture starts or has moving
+        // content beside it. Recover page content from the overlap and write this band only once.
+        var minimumOverlap = ignoredTopBand + ignoredBottomBand + minimumSamples;
+        var fixedBottomHeight = Math.Max(minimumOverlap, StationaryBottomBand(previous, current, height / 4));
+        if (bestShift + fixedBottomHeight + ignoredTopBand > height)
         {
             return null;
         }

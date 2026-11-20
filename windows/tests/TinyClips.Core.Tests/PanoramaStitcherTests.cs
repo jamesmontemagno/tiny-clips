@@ -98,6 +98,46 @@ public sealed class PanoramaStitcherTests
         }
     }
 
+    [Theory]
+    [InlineData(4, 0, 2, 5)]
+    [InlineData(20, 0, 2, 5)]
+    [InlineData(37, 0, 2, 5)]
+    [InlineData(20, 1, 2, 5)]
+    [InlineData(20, 0, 1, 5)]
+    [InlineData(20, 0, 2, 0)]
+    public void KeepsOnlyFinalFloatingBadgeWithoutLosingContent(int shift, int firstBadgeFrame, int lastBadgeFrame, int footerHeight)
+    {
+        var frames = Enumerable.Range(0, 3)
+            .Select(i => PanoramaFrameAt(
+                globalStartRow: i * shift,
+                fixedFooterHeight: footerHeight,
+                floatingBadge: i >= firstBadgeFrame && i <= lastBadgeFrame))
+            .ToArray();
+
+        var result = new PanoramaStitcher(TestLimits()).Stitch(frames);
+
+        var finalStart = 2 * shift;
+        Assert.Equal(3, result.FrameCount);
+        Assert.Equal(100 + finalStart, result.OutputHeight);
+        var expected = new byte[40 * result.OutputHeight * 4];
+        for (var y = 0; y < result.OutputHeight; y++)
+        {
+            for (var x = 0; x < 40; x++)
+            {
+                var index = ((y * 40) + x) * 4;
+                var value = y >= finalStart + 100 - footerHeight ? (byte)32 : ExpectedValue(y, x);
+                var isBadge = lastBadgeFrame == 2 && x >= 28 && x < 38
+                    && y >= finalStart + 80 && y < finalStart + 90;
+                expected[index] = isBadge ? (byte)200 : value;
+                expected[index + 1] = isBadge ? (byte)30 : value;
+                expected[index + 2] = isBadge ? (byte)160 : value;
+                expected[index + 3] = 255;
+            }
+        }
+
+        Assert.Equal(expected, result.Image.BgraPixels);
+    }
+
     [Fact]
     public void EnforcesPeakMemoryBudget()
     {
@@ -232,6 +272,19 @@ public sealed class PanoramaStitcherTests
         var result = new PanoramaStitcher(TestLimits()).Stitch(new[] { first, second });
 
         Assert.Equal(104, result.OutputHeight);
+    }
+
+    [Fact]
+    public void RejectsScrollJumpsWithoutClearOverlapAboveDeferredBottomUi()
+    {
+        var first = PanoramaFrameAt(globalStartRow: 0);
+        var second = PanoramaFrameAt(globalStartRow: 76);
+
+        Assert.Null(PanoramaAccumulator.EstimateVerticalShift(first, second));
+
+        var result = new PanoramaStitcher(TestLimits()).Stitch(new[] { first, second });
+        Assert.Equal(1, result.FrameCount);
+        Assert.Equal(first.BgraPixels, result.Image.BgraPixels);
     }
 
     [Theory]
@@ -369,7 +422,7 @@ public sealed class PanoramaStitcherTests
 
     private static byte ExpectedValue(int globalRow, int x) => (byte)(((globalRow * 7) + (x * 13)) % 251);
 
-    private static PanoramaFrame PanoramaFrameAt(int globalStartRow, int fixedFooterHeight = 0)
+    private static PanoramaFrame PanoramaFrameAt(int globalStartRow, int fixedFooterHeight = 0, bool floatingBadge = false)
     {
         const int width = 40;
         const int height = 100;
@@ -381,9 +434,10 @@ public sealed class PanoramaStitcherTests
                 var index = ((y * width) + x) * 4;
                 var isFooter = fixedFooterHeight > 0 && y >= height - fixedFooterHeight;
                 var value = isFooter ? (byte)32 : ExpectedValue(globalStartRow + y, x);
-                pixels[index] = value;
-                pixels[index + 1] = value;
-                pixels[index + 2] = value;
+                var isBadge = floatingBadge && x >= 28 && x < 38 && y >= 80 && y < 90;
+                pixels[index] = isBadge ? (byte)200 : value;
+                pixels[index + 1] = isBadge ? (byte)30 : value;
+                pixels[index + 2] = isBadge ? (byte)160 : value;
                 pixels[index + 3] = 255;
             }
         }

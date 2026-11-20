@@ -1119,6 +1119,48 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(redValue(in: result.image, x: 0, y: 119), 32)
     }
 
+    func testPanoramaKeepsOnlyFinalFloatingBadgeWithoutLosingContent() throws {
+        for (shift, firstBadgeFrame, lastBadgeFrame, footerHeight) in [
+            (4, 0, 2, 5), (20, 0, 2, 5), (37, 0, 2, 5),
+            (20, 1, 2, 5), (20, 0, 1, 5), (20, 0, 2, 0)
+        ] {
+            let frames = (0..<3).map { index in
+                panoramaFrame(
+                    globalStartRow: index * shift,
+                    fixedFooterHeight: footerHeight,
+                    floatingBadge: index >= firstBadgeFrame && index <= lastBadgeFrame
+                )
+            }
+
+            let result = try PanoramaStitcher(limits: panoramaLimits()).stitch(frames)
+
+            let finalStart = 2 * shift
+            XCTAssertEqual(result.frameCount, 3)
+            XCTAssertEqual(result.outputHeight, 100 + finalStart)
+            var expected = [UInt8](repeating: 255, count: 40 * result.outputHeight * 4)
+            for y in 0..<result.outputHeight {
+                for x in 0..<40 {
+                    let index = (y * 40 + x) * 4
+                    let value = y >= finalStart + 100 - footerHeight
+                        ? UInt8(32) : UInt8((y * 7 + x * 13) % 251)
+                    let isBadge = lastBadgeFrame == 2 && x >= 28 && x < 38
+                        && y >= finalStart + 80 && y < finalStart + 90
+                    expected[index] = isBadge ? 200 : value
+                    expected[index + 1] = isBadge ? 30 : value
+                    expected[index + 2] = isBadge ? 160 : value
+                }
+            }
+
+            let data = try XCTUnwrap(result.image.dataProvider?.data)
+            let bytes = try XCTUnwrap(CFDataGetBytePtr(data))
+            XCTAssertEqual(
+                Array(UnsafeBufferPointer(start: bytes, count: expected.count)),
+                expected,
+                "shift \(shift), badge frames \(firstBadgeFrame)...\(lastBadgeFrame), footer \(footerHeight)"
+            )
+        }
+    }
+
     func testPanoramaEnforcesPeakMemoryBudget() {
         let first = panoramaFrame(globalStartRow: 0)
         let second = panoramaFrame(globalStartRow: 20)
@@ -1213,6 +1255,13 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(result.outputHeight, 104)
     }
 
+    func testPanoramaRejectsScrollJumpsWithoutClearOverlapAboveDeferredBottomUI() {
+        XCTAssertNil(PanoramaAccumulator.estimateVerticalShift(
+            previous: panoramaFrame(globalStartRow: 0),
+            current: panoramaFrame(globalStartRow: 76)
+        ))
+    }
+
     func testTimelineExcludesCompletedAndActivePauses() {
         let timeline = RecordingTimelineMath.timelineTime(
             now: CMTime(seconds: 20, preferredTimescale: 600),
@@ -1239,7 +1288,11 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(adjusted.seconds, 13.5, accuracy: 0.0001)
     }
 
-    private func panoramaFrame(globalStartRow: Int, fixedFooterHeight: Int = 0) -> PanoramaFrame {
+    private func panoramaFrame(
+        globalStartRow: Int,
+        fixedFooterHeight: Int = 0,
+        floatingBadge: Bool = false
+    ) -> PanoramaFrame {
         let width = 40
         let height = 100
         var pixels = [UInt8](repeating: 255, count: width * height * 4)
@@ -1250,9 +1303,10 @@ final class CaptureMathTests: XCTestCase {
                 let value = isFooter
                     ? UInt8(32)
                     : UInt8(((globalStartRow + y) * 7 + x * 13) % 251)
-                pixels[index] = value
-                pixels[index + 1] = value
-                pixels[index + 2] = value
+                let isBadge = floatingBadge && x >= 28 && x < 38 && y >= 80 && y < 90
+                pixels[index] = isBadge ? 200 : value
+                pixels[index + 1] = isBadge ? 30 : value
+                pixels[index + 2] = isBadge ? 160 : value
                 pixels[index + 3] = 255
             }
         }
