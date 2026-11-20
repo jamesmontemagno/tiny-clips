@@ -112,7 +112,8 @@ private enum ActiveRecordingRequest {
         webcamSelection: StartRecordingPanel.WebcamSelection,
         mouseClicksEnabled: Bool,
         timeLimitMinutes: Int,
-        studioModeEnabled: Bool
+        studioModeEnabled: Bool,
+        automationDevices: AutomationRecordingDevices?
     )
     case gif(target: CaptureTarget, mouseClicksEnabled: Bool)
 }
@@ -165,6 +166,15 @@ class CaptureManager: ObservableObject {
 
     /// True while a stopped recording is still being finalized and saved.
     var isFinalizingRecording: Bool { isStoppingRecording }
+
+    private(set) var automationRecordingError: AutomationError?
+
+    var automationRecordingDevices: AutomationRecordingDevices {
+        AutomationRecordingDevices(
+            microphone: isRecording && videoRecorder?.isMicrophoneCaptureRunning == true,
+            camera: isRecording && webcamRecorder?.previewSession?.isRunning == true
+        )
+    }
 
     var automationScrollingCaptureStatus: (active: Bool, stopping: Bool, frameCount: Int) {
         (scrollingCaptureSession != nil, isStoppingScrollingCapture, scrollingCaptureFrameCount)
@@ -992,7 +1002,11 @@ class CaptureManager: ObservableObject {
         }
     }
 
-    func startAutomationVideoRecording(forStudio: Bool, target: CaptureTarget) async throws {
+    func startAutomationVideoRecording(
+        forStudio: Bool,
+        target: CaptureTarget,
+        devices: AutomationRecordingDevices
+    ) async throws {
         guard !isCaptureActionInProgress else {
             throw AutomationError(.busy, "Tiny Clips is already capturing or recording.")
         }
@@ -1004,6 +1018,8 @@ class CaptureManager: ObservableObject {
         guard PermissionManager.shared.hasScreenRecordingPermission() else {
             throw AutomationError(.permissionRequired, "Screen Recording permission is not granted.")
         }
+        try devices.requireCurrentAuthorization()
+        automationRecordingError = nil
 
         let settings = CaptureSettings.shared
         pendingVideoIsForStudio = forStudio && settings.studioPreviewEnabled
@@ -1014,31 +1030,24 @@ class CaptureManager: ObservableObject {
             regionIndicatorPanel = panel
         }
 
-        let microphones = MicrophoneDeviceCatalog.availableOptions()
+        let microphones = devices.microphone ? MicrophoneDeviceCatalog.availableOptions() : []
         let microphoneID = settings.selectedMicrophoneID.isEmpty
             || microphones.contains(where: { $0.id == settings.selectedMicrophoneID })
             ? settings.selectedMicrophoneID
             : ""
-        if !settings.selectedMicrophoneID.isEmpty && microphoneID.isEmpty {
-            settings.selectedMicrophoneID = ""
-        }
-        let webcams = WebcamDeviceCatalog.availableOptions()
+        let webcams = devices.camera ? WebcamDeviceCatalog.availableOptions() : []
         let webcamID = settings.selectedWebcamID.isEmpty
             || webcams.contains(where: { $0.id == settings.selectedWebcamID })
             ? settings.selectedWebcamID
             : ""
-        if !settings.selectedWebcamID.isEmpty && webcamID.isEmpty {
-            settings.selectedWebcamID = ""
-        }
-
         activeRecordingWasStartedByAutomation = true
         beginVideoRecording(
             target: target,
             systemAudio: settings.recordAudio,
-            microphone: settings.recordMicrophone,
+            microphone: devices.microphone,
             selectedMicrophoneID: microphoneID,
             webcamSelection: StartRecordingPanel.WebcamSelection(
-                enabled: settings.webcamEnabled,
+                enabled: devices.camera,
                 deviceID: webcamID,
                 shape: settings.webcamShape,
                 corner: settings.webcamCorner,
@@ -1048,7 +1057,8 @@ class CaptureManager: ObservableObject {
             timeLimitMinutes: settings.videoRecordingTimeLimitMinutes,
             countdownEnabled: settings.videoCountdownEnabled,
             countdownDuration: settings.videoCountdownDuration,
-            studioModeEnabled: pendingVideoIsForStudio
+            studioModeEnabled: pendingVideoIsForStudio,
+            automationDevices: devices
         )
     }
 
@@ -1123,12 +1133,10 @@ class CaptureManager: ObservableObject {
         timeLimitMinutes: Int,
         countdownEnabled: Bool,
         countdownDuration: Int,
-        studioModeEnabled: Bool = false
+        studioModeEnabled: Bool = false,
+        automationDevices: AutomationRecordingDevices? = nil
     ) {
         let settings = CaptureSettings.shared
-        // Asked again here: Studio may have been switched off since the recording was set up.
-        let isStudioRecording = studioModeEnabled && settings.studioPreviewEnabled
-
         let doRecord = { [weak self] in
             guard let self else { return }
             self.isRecordingSetupInProgress = true
@@ -1143,8 +1151,11 @@ class CaptureManager: ObservableObject {
                     }
                 }
                 let webcamEnabled = webcamSelection.enabled
+                // The countdown may have given the user time to turn Studio or device access off.
+                let isStudioRecording = studioModeEnabled && settings.studioPreviewEnabled
                 let studioCoordinator: StudioRecordingCoordinator?
                 do {
+                    try automationDevices?.requireCurrentAuthorization()
                     if isStudioRecording {
                         studioCoordinator = try StudioRecordingCoordinator(
                             captureRegion: target.region,
@@ -1157,7 +1168,12 @@ class CaptureManager: ObservableObject {
                         studioCoordinator = nil
                     }
                 } catch {
-                    SaveService.shared.showError("Studio project could not be created: \(error.localizedDescription)")
+                    if automationDevices != nil {
+                        self.automationRecordingError = error as? AutomationError
+                            ?? AutomationError(.internal, error.localizedDescription)
+                    }
+                    self.activeRecordingWasStartedByAutomation = false
+                    SaveService.shared.showError("Video recording could not start: \(error.localizedDescription)")
                     // Nothing is being recorded, so the outline of the region must not stay up.
                     self.dismissRegionIndicator()
                     return
@@ -1216,6 +1232,9 @@ class CaptureManager: ObservableObject {
                     recorder.onMicrophoneError = { [weak captureManager] message in
                         DispatchQueue.main.async { [weak captureManager] in
                             captureManager?.microphoneWarningMessage = message
+                            if automationDevices != nil, captureManager?.activeRecordingSessionID == sessionID {
+                                captureManager?.automationRecordingError = AutomationError(.internal, message)
+                            }
                             SaveService.shared.showError("Microphone error: \(message)")
                         }
                     }
@@ -1255,7 +1274,8 @@ class CaptureManager: ObservableObject {
                         webcamSelection: webcamSelection,
                         mouseClicksEnabled: mouseClicksEnabled,
                         timeLimitMinutes: timeLimitMinutes,
-                        studioModeEnabled: isStudioRecording
+                        studioModeEnabled: isStudioRecording,
+                        automationDevices: automationDevices
                     )
                     self.activeMouseClickCaptureEnabledOverride = isStudioRecording || mouseClicksEnabled
                     self.startMouseClickMonitoringIfNeeded(for: .video, region: target.region)
@@ -1282,13 +1302,15 @@ class CaptureManager: ObservableObject {
                           self.videoRecorder === recorder else {
                         return
                     }
+                    try automationDevices?.requireCurrentAuthorization()
                     try await recorder.start(
                         target: target,
                         alwaysExcludedWindows: teleprompterWindow.map { [$0] } ?? [],
                         outputURL: url,
                         recordSystemAudio: systemAudio,
                         recordMicrophone: microphone,
-                        selectedMicrophoneID: selectedMicrophoneID
+                        selectedMicrophoneID: selectedMicrophoneID,
+                        requestMicrophonePermission: automationDevices == nil
                     )
                     guard self.isRecording,
                           self.activeRecordingSessionID == sessionID,
@@ -1316,7 +1338,8 @@ class CaptureManager: ObservableObject {
                                 outputURL: webcamOutputURL,
                                 selectedWebcamID: webcamSelection.deviceID,
                                 // Keep the companion webcam track aligned with the completed screen writer setup.
-                                videoCodec: companionVideoCodec
+                                videoCodec: companionVideoCodec,
+                                requestPermission: automationDevices == nil
                             )
                             guard self.activeRecordingSessionID == sessionID else {
                                 await webcamRecorder.cancel()
@@ -1337,6 +1360,10 @@ class CaptureManager: ObservableObject {
                             self.activeWebcamName = nil
                             self.activeWebcamOverlaySelection = nil
                             self.webcamPositionEvents = []
+                            if automationDevices != nil {
+                                self.automationRecordingError = error as? AutomationError
+                                    ?? AutomationError(.internal, error.localizedDescription)
+                            }
                             SaveService.shared.showError("Webcam recording was not started: \(error.localizedDescription). Screen recording will continue without webcam.")
                         }
                     }
@@ -1347,6 +1374,10 @@ class CaptureManager: ObservableObject {
                     self.showStopPanel()
                     self.scheduleVideoAutoStopIfNeeded(timeLimitMinutes: timeLimitMinutes, sessionID: sessionID)
                 } catch {
+                    if automationDevices != nil {
+                        self.automationRecordingError = error as? AutomationError
+                            ?? AutomationError(.internal, error.localizedDescription)
+                    }
                     self.endIdleSleepAssertion()
                     studioCoordinator?.deleteUnfinishedProject()
                     await recorder.cancel()
@@ -1574,13 +1605,20 @@ class CaptureManager: ObservableObject {
         videoRecorder?.setMicrophoneMuted(isRecordingMicrophoneMuted)
     }
 
-    func restartRecording() {
+    func restartRecording(forAutomation: Bool = false) {
         guard let request = activeRecordingRequest else { return }
         let draggedWebcamSelection = activeWebcamOverlaySelection
         Task {
             await discardRecording(clearActiveRequest: false)
             switch request {
-            case let .video(target, systemAudio, microphone, selectedMicrophoneID, webcamSelection, mouseClicksEnabled, timeLimitMinutes, studioModeEnabled):
+            case let .video(target, systemAudio, microphone, selectedMicrophoneID, webcamSelection, mouseClicksEnabled, timeLimitMinutes, studioModeEnabled, automationDevices):
+                automationRecordingError = nil
+                let devices = forAutomation
+                    ? AutomationRecordingDevices(microphone: microphone, camera: webcamSelection.enabled)
+                    : automationDevices
+                if forAutomation {
+                    activeRecordingWasStartedByAutomation = true
+                }
                 beginVideoRecording(
                     target: target,
                     systemAudio: systemAudio,
@@ -1591,7 +1629,8 @@ class CaptureManager: ObservableObject {
                     timeLimitMinutes: timeLimitMinutes,
                     countdownEnabled: false,
                     countdownDuration: 0,
-                    studioModeEnabled: studioModeEnabled
+                    studioModeEnabled: studioModeEnabled,
+                    automationDevices: devices
                 )
             case let .gif(target, mouseClicksEnabled):
                 beginGifRecording(
@@ -1602,6 +1641,14 @@ class CaptureManager: ObservableObject {
                 )
             }
         }
+    }
+
+    func restartRecordingForAutomation() throws {
+        if case let .video(_, _, microphone, _, webcamSelection, _, _, _, _) = activeRecordingRequest {
+            try AutomationRecordingDevices(microphone: microphone, camera: webcamSelection.enabled)
+                .requireCurrentAuthorization()
+        }
+        restartRecording(forAutomation: true)
     }
 
     func discardRecording() {
@@ -2207,6 +2254,7 @@ class CaptureManager: ObservableObject {
         activeRecordingRequest = nil
         isRecordingPaused = false
         activeRecordingWasStartedByAutomation = false
+        automationRecordingError = nil
 
         _ = stopMouseClickMonitoring()
 

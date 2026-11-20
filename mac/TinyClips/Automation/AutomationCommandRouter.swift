@@ -133,8 +133,13 @@ final class AutomationCommandRouter {
         let manager = try captureManager()
         var result: [String: Any] = [
             "state": Self.recordingState(manager),
-            "busy": Self.isBusy(manager)
+            "busy": Self.isBusy(manager),
+            "microphone": manager.automationRecordingDevices.microphone,
+            "camera": manager.automationRecordingDevices.camera
         ]
+        if let error = manager.automationRecordingError {
+            result["error"] = ["code": error.code.rawValue, "message": error.message]
+        }
         if let type = manager.activeRecordingType {
             result["kind"] = type == .gif ? "gif" : "video"
         }
@@ -257,19 +262,6 @@ final class AutomationCommandRouter {
     private func requireScreenRecordingPermission() throws {
         guard PermissionManager.shared.hasScreenRecordingPermission() else {
             throw AutomationError(.permissionRequired, "Screen Recording permission is not granted. Grant it in System Settings → Privacy & Security → Screen & System Audio Recording.")
-        }
-    }
-
-    private func requireDevicePermissionIfUsed(_ settings: CaptureSettings) throws {
-        let blocked: (AVMediaType) -> Bool = { type in
-            let status = AVCaptureDevice.authorizationStatus(for: type)
-            return status == .denied || status == .restricted
-        }
-        if settings.recordMicrophone, blocked(.audio) {
-            throw AutomationError(.permissionRequired, "Microphone recording is on but Microphone permission is denied.")
-        }
-        if settings.webcamEnabled, blocked(.video) {
-            throw AutomationError(.permissionRequired, "Camera overlay is on but Camera permission is denied.")
         }
     }
 
@@ -456,9 +448,6 @@ final class AutomationCommandRouter {
     }
 
     private func startVideo(_ params: [String: Any]) async throws -> [String: Any] {
-        if params["microphone"] != nil || params["camera"] != nil {
-            throw AutomationError(.notSupported, "Per-recording microphone and camera overrides are currently supported only on Windows.")
-        }
         var studio = false
         if let value = params["studio"] {
             guard let bool = AutomationValue.bool(value) else {
@@ -472,9 +461,16 @@ final class AutomationCommandRouter {
         let manager = try captureManager()
         try requireIdle(manager)
         try requireScreenRecordingPermission()
-        try requireDevicePermissionIfUsed(CaptureSettings.shared)
+        let settings = CaptureSettings.shared
+        let devices = try AutomationRecordingDevices.resolve(
+            params,
+            savedMicrophone: settings.recordMicrophone,
+            savedCamera: settings.webcamEnabled,
+            microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+            cameraAuthorized: AVCaptureDevice.authorizationStatus(for: .video) == .authorized
+        )
         let target = try await manager.resolveAutomationCaptureTarget(targetParams(from: params))
-        try await manager.startAutomationVideoRecording(forStudio: studio, target: target)
+        try await manager.startAutomationVideoRecording(forStudio: studio, target: target, devices: devices)
         return ["started": true, "studio": studio]
     }
 
@@ -488,9 +484,7 @@ final class AutomationCommandRouter {
     }
 
     private func targetParams(from params: [String: Any]) throws -> AutomationCaptureTarget {
-        var targetParams = params
-        targetParams.removeValue(forKey: "studio")
-        return try AutomationCaptureTargets.parse(targetParams)
+        try AutomationCaptureTargets.parse(AutomationRecordingDevices.targetParameters(from: params))
     }
 
     private func startScrollingCapture(_ params: [String: Any]) async throws -> [String: Any] {
@@ -541,7 +535,7 @@ final class AutomationCommandRouter {
     private func restart() throws -> [String: Any] {
         let manager = try captureManager()
         try requireRecording(manager)
-        manager.restartRecording()
+        try manager.restartRecordingForAutomation()
         return ["restarted": true]
     }
 

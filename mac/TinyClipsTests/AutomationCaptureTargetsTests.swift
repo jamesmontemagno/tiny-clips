@@ -41,10 +41,161 @@ final class AutomationCaptureTargetsTests: XCTestCase {
         for name in ["recording.startVideo", "recording.startGif", "capture.scrolling.start"] {
             XCTAssertNotNil(contract.command(named: name)?.params["mode"])
         }
+        let video = try XCTUnwrap(contract.command(named: "recording.startVideo"))
+        for device in ["microphone", "camera"] {
+            XCTAssertEqual(video.params[device]?.type, "boolean")
+            XCTAssertNotEqual(video.params[device]?.required, true)
+        }
+        XCTAssertEqual(
+            AutomationPolicy.decide(enabled: true, clientScopes: ["record"], command: video.name, contract: contract),
+            .allow
+        )
         XCTAssertEqual(contract.command(named: "editor.annotate")?.params["path"]?.required, true)
         XCTAssertNotEqual(contract.command(named: "capture.screenshot")?.params["region"]?.required, true)
         let names = Set(contract.commands.map(\.name))
         XCTAssertTrue(AutomationCommandRouter.supportedCommands.isSubset(of: names))
+    }
+
+    // MARK: - Recording devices (no hardware or permission requests)
+
+    func testRecordingDeviceOmissionUsesSavedChoices() throws {
+        for microphone in [false, true] {
+            for camera in [false, true] {
+                let devices = try AutomationRecordingDevices.resolve(
+                    [:], savedMicrophone: microphone, savedCamera: camera,
+                    microphoneAuthorized: true, cameraAuthorized: true
+                )
+                XCTAssertEqual(devices, AutomationRecordingDevices(microphone: microphone, camera: camera))
+            }
+        }
+    }
+
+    func testRecordingDeviceOffNeedsNoPermissionAndLeavesPreferencesUntouched() throws {
+        let suiteName = "AutomationRecordingDevicesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        settings.recordMicrophone = true
+        settings.webcamEnabled = true
+        settings.selectedMicrophoneID = "saved-microphone"
+        settings.selectedWebcamID = "saved-camera"
+        let saved = defaults.dictionaryRepresentation() as NSDictionary
+
+        let devices = try AutomationRecordingDevices.resolve(
+            ["microphone": false, "camera": false],
+            savedMicrophone: settings.recordMicrophone, savedCamera: settings.webcamEnabled,
+            microphoneAuthorized: false, cameraAuthorized: false
+        )
+        XCTAssertEqual(devices, AutomationRecordingDevices(microphone: false, camera: false))
+        XCTAssertEqual(defaults.dictionaryRepresentation() as NSDictionary, saved)
+
+        let next = try AutomationRecordingDevices.resolve(
+            [:], savedMicrophone: settings.recordMicrophone, savedCamera: settings.webcamEnabled,
+            microphoneAuthorized: true, cameraAuthorized: true
+        )
+        XCTAssertEqual(next, AutomationRecordingDevices(microphone: true, camera: true))
+    }
+
+    func testRecordingDeviceOnRequiresBothSavedOptInAndExistingOsAuthorization() throws {
+        for device in ["microphone", "camera"] {
+            for optedIn in [false, true] {
+                for authorized in [false, true] {
+                    let resolve = {
+                        try AutomationRecordingDevices.resolve(
+                            [device: true],
+                            savedMicrophone: device == "microphone" && optedIn,
+                            savedCamera: device == "camera" && optedIn,
+                            microphoneAuthorized: authorized, cameraAuthorized: authorized
+                        )
+                    }
+                    if optedIn && authorized {
+                        let devices = try resolve()
+                        XCTAssertEqual(devices.microphone, device == "microphone")
+                        XCTAssertEqual(devices.camera, device == "camera")
+                    } else {
+                        XCTAssertThrowsError(try resolve()) {
+                            XCTAssertEqual(($0 as? AutomationError)?.code, .permissionRequired)
+                            XCTAssertEqual($0.localizedDescription, ($0 as? AutomationError)?.message)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testOmittedDeviceCannotBypassMissingAuthorization() {
+        for device in ["microphone", "camera"] {
+            XCTAssertThrowsError(try AutomationRecordingDevices.resolve(
+                [:], savedMicrophone: device == "microphone", savedCamera: device == "camera",
+                microphoneAuthorized: false, cameraAuthorized: false
+            )) {
+                XCTAssertEqual(($0 as? AutomationError)?.code, .permissionRequired)
+            }
+        }
+    }
+
+    func testRecordingDeviceOverrideDoesNotChangeTheOtherDevice() throws {
+        for device in ["microphone", "camera"] {
+            let devices = try AutomationRecordingDevices.resolve(
+                [device: false], savedMicrophone: true, savedCamera: true,
+                microphoneAuthorized: true, cameraAuthorized: true
+            )
+            XCTAssertEqual(devices.microphone, device != "microphone")
+            XCTAssertEqual(devices.camera, device != "camera")
+        }
+    }
+
+    func testRecordingDevicesRecheckConsentForCountdownAndRestart() throws {
+        let devices = try AutomationRecordingDevices.resolve(
+            [:], savedMicrophone: true, savedCamera: true,
+            microphoneAuthorized: true, cameraAuthorized: true
+        )
+        for device in ["microphone", "camera"] {
+            for revokeOsPermission in [false, true] {
+                XCTAssertThrowsError(try devices.requireAuthorization(
+                    savedMicrophone: device != "microphone" || revokeOsPermission,
+                    savedCamera: device != "camera" || revokeOsPermission,
+                    microphoneAuthorized: device != "microphone" || !revokeOsPermission,
+                    cameraAuthorized: device != "camera" || !revokeOsPermission
+                )) {
+                    XCTAssertEqual(($0 as? AutomationError)?.code, .permissionRequired)
+                }
+            }
+        }
+        let off = AutomationRecordingDevices(microphone: false, camera: false)
+        XCTAssertNoThrow(try off.requireAuthorization(
+            savedMicrophone: false, savedCamera: false,
+            microphoneAuthorized: false, cameraAuthorized: false
+        ))
+    }
+
+    func testRecordingDevicesRejectMalformedBooleans() {
+        for device in ["microphone", "camera"] {
+            for value: Any in ["false", 1, 0, [], [:]] {
+                assertInvalid {
+                    _ = try AutomationRecordingDevices.resolve(
+                        [device: value], savedMicrophone: true, savedCamera: true,
+                        microphoneAuthorized: true, cameraAuthorized: true
+                    )
+                }
+            }
+        }
+    }
+
+    func testRecordingOptionsAreRemovedWithoutWeakeningTargetValidation() throws {
+        let params: [String: Any] = [
+            "mode": "window", "windowId": "window:42",
+            "studio": true, "microphone": false, "camera": false
+        ]
+        XCTAssertEqual(
+            try AutomationCaptureTargets.parse(AutomationRecordingDevices.targetParameters(from: params)),
+            .window(windowID: 42)
+        )
+        var unknown = params
+        unknown["camrea"] = false
+        assertInvalid {
+            _ = try AutomationCaptureTargets.parse(AutomationRecordingDevices.targetParameters(from: unknown))
+        }
     }
 
     // MARK: - Target parsing

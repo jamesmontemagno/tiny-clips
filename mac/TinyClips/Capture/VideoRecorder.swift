@@ -320,9 +320,18 @@ final class WebcamRecorder: NSObject, @unchecked Sendable {
     var onVideoCodecFallback: ((String) -> Void)?
     var previewSession: AVCaptureSession? { session }
 
-    func start(outputURL: URL, selectedWebcamID: String, videoCodec: VideoCodec) async throws {
-        guard await PermissionManager.shared.requestCameraPermission() else {
-            throw CaptureError.webcamPermissionDenied
+    func start(
+        outputURL: URL,
+        selectedWebcamID: String,
+        videoCodec: VideoCodec,
+        requestPermission: Bool = true
+    ) async throws {
+        if requestPermission {
+            guard await PermissionManager.shared.requestCameraPermission() else {
+                throw CaptureError.webcamPermissionDenied
+            }
+        } else {
+            try await AutomationRecordingDevices(microphone: false, camera: true).requireCurrentAuthorization()
         }
 
         let device: AVCaptureDevice
@@ -680,6 +689,10 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         microphoneSession != nil && recordMicrophone
     }
 
+    var isMicrophoneCaptureRunning: Bool {
+        microphoneSession?.isRunning == true && recordMicrophone
+    }
+
     var isSystemAudioCaptureActive: Bool {
         systemAudioInput != nil && recordSystemAudio
     }
@@ -722,7 +735,8 @@ class VideoRecorder: NSObject, @unchecked Sendable {
         outputURL: URL,
         recordSystemAudio: Bool,
         recordMicrophone: Bool,
-        selectedMicrophoneID: String
+        selectedMicrophoneID: String,
+        requestMicrophonePermission: Bool = true
     ) async throws {
         debugLifecycle("start requested")
         let preparedTarget = try await target.prepare(alwaysExcluding: alwaysExcludedWindows)
@@ -831,7 +845,13 @@ class VideoRecorder: NSObject, @unchecked Sendable {
             debugLifecycle("stream started")
 
             if recordMicrophone {
-                let micGranted = await AVCaptureDevice.requestAccess(for: .audio)
+                let micGranted: Bool
+                if requestMicrophonePermission {
+                    micGranted = await AVCaptureDevice.requestAccess(for: .audio)
+                } else {
+                    try await AutomationRecordingDevices(microphone: true, camera: false).requireCurrentAuthorization()
+                    micGranted = true
+                }
                 if micGranted {
                     try startMicCapture(selectedMicrophoneID: self.selectedMicrophoneID)
                 } else {

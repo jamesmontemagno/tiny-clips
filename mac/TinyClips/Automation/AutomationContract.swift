@@ -88,9 +88,11 @@ enum AutomationErrorCode: String, Error, CaseIterable {
 }
 
 /// A failure returned to an automation client.
-struct AutomationError: Error, Equatable {
+struct AutomationError: LocalizedError, Equatable {
     var code: AutomationErrorCode
     var message: String
+
+    var errorDescription: String? { message }
 
     init(_ code: AutomationErrorCode, _ message: String? = nil) {
         self.code = code
