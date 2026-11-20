@@ -591,7 +591,7 @@ final class AutomationCommandRouter {
                 let url = try libraryFile(params)
                 try requireStudioEnabled()
                 try validateAccess()
-                guard await StudioWindowRegistry.shared.openVideo(at: url) else {
+                guard try await StudioWindowRegistry.shared.openVideo(at: url, validateAccess: validateAccess) else {
                     try requireStudioEnabled()
                     throw AutomationError(.internal, "This video could not be opened in Studio.")
                 }

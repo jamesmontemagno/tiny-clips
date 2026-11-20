@@ -658,6 +658,36 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertNil(first.sources.events)
     }
 
+    func testCopiedVideoDraftSurvivesReopeningWithoutOriginal() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let videoURL = directoryURL.appendingPathComponent("external.mov")
+        let video = Data("original video".utf8)
+        try video.write(to: videoURL)
+        let external = try store.getOrCreateFlatProject(request: flatRequest(videoURL: videoURL))
+        var request = flatRequest(videoURL: videoURL)
+        request.copyVideo = true
+        let copied = try store.getOrCreateFlatProject(request: request)
+        XCTAssertNotEqual(copied.id, external.id)
+        XCTAssertFalse(copied.sources.screen.external)
+        XCTAssertEqual(copied.sources.screen.file, "screen.mov")
+        XCTAssertEqual(try store.getOrCreateFlatProject(request: request).id, copied.id)
+
+        try FileManager.default.removeItem(at: videoURL)
+        let reopened = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let project = try reopened.load(id: copied.id)
+        XCTAssertEqual(try Data(contentsOf: reopened.paths(for: project).screenURL), video)
+        XCTAssertTrue(try XCTUnwrap(reopened.listSummaries().first { $0.id == copied.id }).sourceExists)
+    }
+
+    func testFailedVideoCopyLeavesNoDraft() throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        var request = flatRequest(videoURL: directoryURL.appendingPathComponent("missing.mp4"))
+        request.copyVideo = true
+        XCTAssertThrowsError(try store.getOrCreateFlatProject(request: request))
+        XCTAssertTrue(try store.listSummaries().isEmpty)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directoryURL.path).isEmpty)
+    }
+
     func testMovingImportedVideoRetainsItsProjectAndEdits() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         let original = directoryURL.appendingPathComponent("original.mp4")

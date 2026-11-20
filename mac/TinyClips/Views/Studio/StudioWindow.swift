@@ -69,28 +69,66 @@ final class StudioWindowRegistry {
     /// Opens an existing video in Studio as a flat project (one per video). Returns false when
     /// Studio is off or the video cannot be read.
     @discardableResult
-    func openVideo(at url: URL) async -> Bool {
+    func openVideo(at url: URL, copyVideo: Bool = false) async -> Bool {
+        (try? await openVideo(at: url, copyVideo: copyVideo, validateAccess: {})) ?? false
+    }
+
+    @discardableResult
+    func openVideo(
+        at url: URL,
+        copyVideo: Bool = false,
+        validateAccess: () throws -> Void,
+        prepare: ((URL) async throws -> StudioFlatProjectRequest)? = nil
+    ) async throws -> Bool {
         guard CaptureSettings.shared.studioPreviewEnabled else {
             SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Studio settings to open this video.")
             return false
         }
+        let exportedProjectID: String?
         do {
-            if let projectID = try StudioProjectStore.shared.findProjectID(exportedPath: url.path) {
-                open(projectID: projectID)
-                return windows[projectID] != nil
-            }
-            let request = try await Self.flatProjectRequest(for: url)
-            guard CaptureSettings.shared.studioPreviewEnabled else {
-                SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Studio settings to open this video.")
-                return false
-            }
-            let project = try StudioProjectStore.shared.getOrCreateFlatProject(request: request)
-            open(projectID: project.id)
-            return windows[project.id] != nil
+            exportedProjectID = try StudioProjectStore.shared.findProjectID(exportedPath: url.path)
         } catch {
             SaveService.shared.showError("This video could not be opened in Studio: \(error.localizedDescription)")
             return false
         }
+        if let projectID = exportedProjectID {
+            try validateAccess()
+            open(projectID: projectID)
+            return windows[projectID] != nil
+        }
+        var request: StudioFlatProjectRequest
+        do {
+            request = try await (prepare ?? Self.flatProjectRequest)(url)
+        } catch {
+            try validateAccess()
+            SaveService.shared.showError("This video could not be opened in Studio: \(error.localizedDescription)")
+            return false
+        }
+        try validateAccess()
+        guard CaptureSettings.shared.studioPreviewEnabled else {
+            SaveService.shared.showNotice("Tiny Clips Studio is turned off. Turn it on in Studio settings to open this video.")
+            return false
+        }
+        request.copyVideo = copyVideo
+        let projectID: String
+        do {
+            if copyVideo {
+                let copyRequest = request
+                projectID = try await Task.detached(priority: .userInitiated) {
+                    try StudioProjectStore.shared.getOrCreateFlatProject(request: copyRequest).id
+                }.value
+            } else {
+                projectID = try StudioProjectStore.shared.getOrCreateFlatProject(request: request).id
+            }
+        } catch {
+            SaveService.shared.showError("This video could not be opened in Studio: \(error.localizedDescription)")
+            return false
+        }
+        if copyVideo {
+            try validateAccess()
+        }
+        open(projectID: projectID)
+        return windows[projectID] != nil
     }
 
     private static func flatProjectRequest(for url: URL) async throws -> StudioFlatProjectRequest {

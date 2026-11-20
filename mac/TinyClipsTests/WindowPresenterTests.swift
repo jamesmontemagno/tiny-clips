@@ -5,6 +5,31 @@ import XCTest
 @testable import TinyClips
 
 final class StudioVideoAssociationTests: XCTestCase {
+    @MainActor
+    func testStudioVideoOpenRechecksAccessAfterPreparation() async throws {
+        let settings = CaptureSettings.shared
+        let wasEnabled = settings.studioPreviewEnabled
+        settings.studioPreviewEnabled = true
+        defer { settings.studioPreviewEnabled = wasEnabled }
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).mp4")
+        let before = try Set(StudioProjectStore.shared.listSummaries().map(\.id))
+        var revoked = false
+        do {
+            _ = try await StudioWindowRegistry.shared.openVideo(at: url, validateAccess: {
+                if revoked { throw AutomationError(.unauthorized) }
+            }, prepare: { url in
+                await Task.yield()
+                revoked = true
+                return StudioFlatProjectRequest(videoURL: url, width: 10, height: 10, duration: 1, appVersion: "")
+            })
+            XCTFail("Expected revoked access to prevent opening")
+        } catch let error as AutomationError {
+            XCTAssertEqual(error.code, .unauthorized)
+        }
+        XCTAssertEqual(try Set(StudioProjectStore.shared.listSummaries().map(\.id)), before)
+    }
+
     func testShellDispatchRecognizesLocalVideosOnly() throws {
         XCTAssertTrue(StudioVideoFile.supports(URL(fileURLWithPath: "/tmp/My Video.MP4")))
         XCTAssertTrue(StudioVideoFile.supports(URL(fileURLWithPath: "/tmp/My Video.mov")))

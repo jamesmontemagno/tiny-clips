@@ -124,8 +124,16 @@ final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
                 handled = true
             } else if StudioVideoFile.supports(url) {
                 ExternalImageOpenCoordinator.shared.beginClipsManagerSuppressionWindow()
+#if APPSTORE
+                let hasAccess = url.startAccessingSecurityScopedResource()
+#endif
                 Task { @MainActor in
+#if APPSTORE
+                    defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
+                    await StudioWindowRegistry.shared.openVideo(at: url, copyVideo: true)
+#else
                     await StudioWindowRegistry.shared.openVideo(at: url)
+#endif
                 }
                 handled = true
             } else {

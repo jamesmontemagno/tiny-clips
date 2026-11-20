@@ -136,6 +136,7 @@ struct StudioFlatProjectRequest: Equatable, Sendable {
     var duration: Double
     var frameRate: Double
     var appVersion: String
+    var copyVideo = false
 
     init(videoURL: URL, name: String = "", width: Int, height: Int, duration: Double, frameRate: Double = 30, appVersion: String) {
         self.videoURL = videoURL
@@ -584,13 +585,21 @@ final class StudioProjectStore {
             let needle = normalizedPath(request.videoURL.path)
             for summary in try listSummariesUnlocked() {
                 let project = try loadUnlocked(id: summary.id)
-                if project.sources.screen.external && normalizedPath(project.sources.screen.file) == needle {
+                let sourceRecord = projectDirectoryUnchecked(for: project.id).appendingPathComponent("imported-video-path")
+                let copiedSource = try? String(contentsOf: sourceRecord, encoding: .utf8)
+                if (!request.copyVideo && project.sources.screen.external && normalizedPath(project.sources.screen.file) == needle)
+                    || (copiedSource.map { normalizedPath($0) == needle } ?? false) {
                     return project
                 }
             }
 
             let id = UUID().uuidString.lowercased()
             let date = now()
+            let directory = projectDirectoryUnchecked(for: id)
+            let screenFile = request.copyVideo ? "screen.\(request.videoURL.pathExtension.lowercased())" : request.videoURL.path
+            if request.copyVideo {
+                _ = try StudioJSON.requirePlainFileName(screenFile, "sources.screen.file")
+            }
             let project = StudioProject(
                 id: id,
                 name: request.name.isEmpty ? request.videoURL.deletingPathExtension().lastPathComponent : request.name,
@@ -600,19 +609,33 @@ final class StudioProjectStore {
                 app: StudioAppInfo(platform: "macos", version: request.appVersion),
                 sources: StudioSources(
                     screen: StudioScreenSource(
-                        file: request.videoURL.path,
+                        file: screenFile,
                         width: request.width,
                         height: request.height,
                         frameRate: request.frameRate,
                         duration: request.duration,
-                        external: true
+                        external: !request.copyVideo
                     ),
                     camera: nil,
                     events: nil
                 ),
                 scenes: [StudioScene(start: 0, layout: .screen)]
             )
-            return try saveUnlocked(project, updatingModifiedAt: false)
+            do {
+                if request.copyVideo {
+                    try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try fileManager.copyItem(at: request.videoURL, to: directory.appendingPathComponent(screenFile))
+                    try request.videoURL.path.write(
+                        to: directory.appendingPathComponent("imported-video-path"), atomically: true, encoding: .utf8
+                    )
+                }
+                return try saveUnlocked(project, updatingModifiedAt: false)
+            } catch {
+                if request.copyVideo {
+                    try? fileManager.removeItem(at: directory)
+                }
+                throw error
+            }
         }
     }
 

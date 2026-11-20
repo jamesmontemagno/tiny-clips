@@ -408,7 +408,7 @@ public partial class App : IAutomationAppActions
 
     Task IAutomationAppActions.DiscardRecordingForAutomationAsync() => DiscardActiveRecordingAsync();
 
-    async Task<string> IAutomationAppActions.OpenEditorForAutomationAsync(string path, CaptureType? type, bool studio)
+    async Task<string> IAutomationAppActions.OpenEditorForAutomationAsync(string path, CaptureType? type, bool studio, CancellationToken cancellationToken)
     {
         switch (type)
         {
@@ -426,7 +426,7 @@ public partial class App : IAutomationAppActions
                 OpenScreenshotEditor(path, reopenPickerAfterClose: false);
                 return "screenshot";
             case CaptureType.Video when studio:
-                var result = await StudioWindows().OpenVideoAsync(path);
+                var result = await StudioWindows().OpenVideoAsync(path, cancellationToken);
                 if (result.Window is null)
                 {
                     var code = Services.GetRequiredService<ICaptureSettings>().StudioPreviewEnabled
