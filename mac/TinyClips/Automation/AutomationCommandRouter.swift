@@ -15,7 +15,7 @@ final class AutomationCommandRouter {
         "recording.startVideo", "recording.startGif", "recording.stop", "recording.togglePause",
         "recording.restart", "recording.discard",
         "editor.open", "editor.list", "editor.closeAll", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
-        "library.delete", "library.upload", "studio.projects.list", "studio.project.get", "studio.project.saveCopy",
+        "library.delete", "library.upload", "studio.projects.list", "studio.project.open", "studio.project.get", "studio.project.saveCopy",
         "studio.project.edit", "studio.zoom.suggest", "studio.export.options", "studio.export",
         "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
     ]).union(StudioAppleSpeech.isAvailable ? ["studio.captions.models", "studio.captions.generate"] : [])
@@ -79,6 +79,7 @@ final class AutomationCommandRouter {
             let result = try await registry.closeAll(mode: .safeOnly, validateAccess: validateAccess)
             return ["closed": result.closed, "remaining": registry.listEditors()]
         case "studio.projects.list": return try listStudioProjects(params)
+        case "studio.project.open": return try openStudioProject(params)
         case "studio.project.get": return try getStudioProject(params)
         case "studio.project.edit": return try editStudioProject(params)
         case "studio.project.saveCopy":
@@ -679,6 +680,16 @@ final class AutomationCommandRouter {
             "project": try studioProjectObject(project),
             "revision": try studioProjectRevision(project)
         ]
+    }
+
+    private func openStudioProject(_ params: [String: Any]) throws -> [String: Any] {
+        try requireStudioEnabled()
+        let id = try Self.requiredString(params, "projectId")
+        if StudioWindowRegistry.shared.automationViewModel(forProjectID: id) == nil {
+            _ = try currentStudioProject(id)
+        }
+        StudioWindowRegistry.shared.open(projectID: id)
+        return ["projectId": id, "opened": true]
     }
 
     static func studioProjectCopyDestination(

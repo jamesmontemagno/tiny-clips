@@ -8,8 +8,8 @@ class GuideWindow: NSWindow, NSWindowDelegate {
 
     convenience init(onDismiss: @escaping () -> Void) {
         self.init(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 420),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -18,6 +18,7 @@ class GuideWindow: NSWindow, NSWindowDelegate {
         self.delegate = self
         self.isReleasedWhenClosed = false
         self.title = "TinyClips Guide"
+        self.contentMinSize = NSSize(width: 560, height: 420)
         self.center()
         self.contentView = NSHostingView(rootView: GuideWindowView())
     }
@@ -77,20 +78,21 @@ private struct GuideWindowView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
-            Picker("Guide Section", selection: $selectedSection) {
+            TabView(selection: $selectedSection) {
                 ForEach(GuideSection.allCases) { section in
-                    Text(section.segmentTitle).tag(section)
+                    ScrollView {
+                        sectionContent(for: section)
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .tabItem { Text(section.tabTitle) }
+                    .tag(section)
                 }
             }
-            .pickerStyle(.segmented)
-
-            ScrollView {
-                selectedSectionContent
-                    .padding(2)
-            }
+            .accessibilityLabel("Guide topics")
         }
         .padding(24)
-        .frame(width: 560, height: 420, alignment: .topLeading)
+        .frame(minWidth: 560, maxWidth: .infinity, minHeight: 420, maxHeight: .infinity, alignment: .topLeading)
         .background(.background)
     }
 
@@ -104,8 +106,8 @@ private struct GuideWindowView: View {
     }
 
     @ViewBuilder
-    private var selectedSectionContent: some View {
-        switch selectedSection {
+    private func sectionContent(for section: GuideSection) -> some View {
+        switch section {
         case .captureModes:
             sectionCard(title: "Capture Modes", icon: "camera.aperture") {
                 VStack(alignment: .leading, spacing: 10) {
@@ -127,7 +129,7 @@ private struct GuideWindowView: View {
         case .shortcuts:
             sectionCard(title: "Keyboard Shortcuts", icon: "command") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Screenshot, Record Video, and Record GIF show your current bindings. Change them anytime in Settings → Shortcuts.")
+                    Text("Only Screenshot is assigned by default. These are your current bindings; change or clear them in Settings → Shortcuts. Stop Recording works globally only during recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -141,7 +143,8 @@ private struct GuideWindowView: View {
                     shortcutRow(title: "Picker: Screen", keys: "S")
                     shortcutRow(title: "Picker: Window", keys: "W")
                     shortcutRow(title: "Picker: Cancel", keys: "Esc")
-                    shortcutRow(title: "Stop Recording", keys: "⌘.")
+                    shortcutRow(title: "Stop Recording", keys: settings.hotKeyBinding(for: .stopRecording).displayString)
+                    shortcutRow(title: "Copy Text from Region", keys: settings.hotKeyBinding(for: .copyTextFromRegion).displayString)
                     shortcutRow(title: "Settings", keys: "⌘,")
                     shortcutRow(title: "Quit", keys: "⌘Q")
                 }
@@ -221,10 +224,10 @@ private enum GuideSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var segmentTitle: String {
+    var tabTitle: String {
         switch self {
         case .captureModes:
-            return "Modes"
+            return "Capture"
         case .howItWorks:
             return "Steps"
         case .shortcuts:

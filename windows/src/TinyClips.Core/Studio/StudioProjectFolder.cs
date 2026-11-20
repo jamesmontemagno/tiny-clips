@@ -7,7 +7,7 @@ namespace TinyClips.Core.Studio;
 /// <summary>Why a project could not be saved as a folder, or opened from one.</summary>
 public enum StudioProjectFolderProblem
 {
-    /// <summary>The project is built around a video that is kept elsewhere, which a folder would not hold.</summary>
+    /// <summary>A portable project file still refers to an external video instead of a copy in its folder.</summary>
     ExternalSource,
 
     /// <summary>
@@ -86,7 +86,7 @@ public sealed class StudioProjectFolderException : Exception
     internal static StudioProjectFolderException ExternalSource() =>
         new(
             StudioProjectFolderProblem.ExternalSource,
-            "This project is built around a video that is kept somewhere else, so it cannot be saved as a folder or opened from one.");
+            "This project refers to a video outside its folder, so it cannot be opened as a portable project.");
 
     internal static StudioProjectFolderException MissingFile(string fileName) =>
         new(

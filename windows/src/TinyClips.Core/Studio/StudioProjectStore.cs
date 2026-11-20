@@ -15,6 +15,8 @@ public interface IStudioProjectStore
     StudioProject Load(string projectId);
     StudioProject Save(StudioProject project);
     void Delete(string projectId);
+    /// <summary>Keeps a project protected from cleanup and deletion until the lease is disposed.</summary>
+    IDisposable AcquireProjectUse(string projectId);
     StudioProject MarkOpened(string projectId);
 
     /// <summary>
@@ -75,7 +77,8 @@ public interface IStudioProjectStore
     /// computer (section 14 of the project format): the files the project names, and beside
     /// them a <c>.tinyclips</c> file named after the folder. That file is the project as
     /// <c>project.json</c> has it, without its list of exported videos. The project in the
-    /// store is not changed.
+    /// store is not changed. An imported video is copied into the folder as a local screen
+    /// source; its original file is not moved or modified.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -107,8 +110,7 @@ public interface IStudioProjectStore
     /// runs on.
     /// </param>
     /// <exception cref="StudioProjectFolderException">
-    /// <see cref="StudioProjectFolderProblem.ExternalSource"/> for a project built around a
-    /// video kept elsewhere, <see cref="StudioProjectFolderProblem.MissingFile"/> when a
+    /// <see cref="StudioProjectFolderProblem.MissingFile"/> when a
     /// recording of the project is gone, <see cref="StudioProjectFolderProblem.DestinationExists"/>
     /// when something that is not a saved project is where the folder would go, or a saved
     /// project that was not to be replaced, and
@@ -176,6 +178,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
     private readonly TimeProvider _timeProvider;
     private readonly object _sync = new();
     private readonly Dictionary<string, string> _exportIndex = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _projectUseCounts = new(StringComparer.Ordinal);
     private bool _exportIndexLoaded;
 
     public StudioProjectStore(string? rootDirectory = null, TimeProvider? timeProvider = null)
@@ -264,6 +267,11 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
         ValidateProjectId(projectId);
         lock (_sync)
         {
+            if (_projectUseCounts.ContainsKey(projectId))
+            {
+                throw new IOException("The project is being used by another operation.");
+            }
+
             var directory = ProjectDirectory(projectId);
             if (Directory.Exists(directory))
             {
@@ -271,6 +279,41 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
                 _exportIndexLoaded = false;
             }
         }
+    }
+
+    public IDisposable AcquireProjectUse(string projectId)
+    {
+        ValidateProjectId(projectId);
+        lock (_sync)
+        {
+            _projectUseCounts.TryGetValue(projectId, out var useCount);
+            _projectUseCounts[projectId] = useCount + 1;
+            return new ProjectUseLease(this, projectId);
+        }
+    }
+
+    private void ReleaseProjectUse(string projectId)
+    {
+        lock (_sync)
+        {
+            var useCount = _projectUseCounts[projectId] - 1;
+            if (useCount == 0)
+            {
+                _projectUseCounts.Remove(projectId);
+            }
+            else
+            {
+                _projectUseCounts[projectId] = useCount;
+            }
+        }
+    }
+
+    private sealed class ProjectUseLease(StudioProjectStore store, string projectId) : IDisposable
+    {
+        private StudioProjectStore? _store = store;
+
+        public void Dispose() =>
+            Interlocked.Exchange(ref _store, null)?.ReleaseProjectUse(projectId);
     }
 
     public StudioProject MarkOpened(string projectId)
@@ -614,6 +657,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
         {
             var now = _timeProvider.GetUtcNow().ToUniversalTime();
             var inUse = new HashSet<string>(inUseProjectIds ?? [], StringComparer.Ordinal);
+            inUse.UnionWith(_projectUseCounts.Keys);
             var summaries = new List<StudioProjectSummary>();
             var unfinishedRecordings = new List<string>();
 
@@ -1026,6 +1070,20 @@ public sealed record StudioProjectSummary(
     /// lists these as drafts even when the original video is already in the Clips Library.
     /// </summary>
     public bool IsDraftOrLostItsExport => IsDraft || ExportMissing;
+
+    public string LibraryName => string.IsNullOrWhiteSpace(Name) ? "Untitled Recording" : Name.Trim();
+
+    public static IReadOnlyList<StudioProjectSummary> LibraryProjects(
+        IEnumerable<StudioProjectSummary> summaries, string search)
+    {
+        ArgumentNullException.ThrowIfNull(summaries);
+        var query = search.Trim();
+        return summaries
+            .Where(summary => query.Length == 0 || summary.LibraryName.Contains(query, StringComparison.CurrentCultureIgnoreCase))
+            .OrderByDescending(summary => summary.LastUsedAt)
+            .ThenBy(summary => summary.Id, StringComparer.Ordinal)
+            .ToArray();
+    }
 
     /// <summary>
     /// The projects the tray menu lists beside the saved captures: those that hold the only

@@ -319,7 +319,7 @@ public sealed class AutomationProtocolTests : IDisposable
     }
 
     [Fact]
-    public async Task Host_DoesNotAdvertiseOrExecuteMacProjectCopy()
+    public async Task Host_DoesNotAdvertiseOrExecuteProjectCopyWhenHandlerDoesNotSupportIt()
     {
         var host = CreateHost(new FakeHandler(), new FakeApprovals(true), () => true);
         var hello = await HandleAsync(host, """{"command":"session.hello"}""");
@@ -328,6 +328,31 @@ public sealed class AutomationProtocolTests : IDisposable
         var token = await WaitForTokenAsync(host, pair.Result!["pairingId"]!.GetValue<string>());
         var response = await HandleAsync(host, $$$"""{"token":"{{{token}}}","command":"studio.project.saveCopy","params":{"projectId":"p","folderName":"copy"}}""");
         Assert.Equal(AutomationErrorCodes.NotSupported, response.Error!.Code);
+    }
+
+    [Theory]
+    [InlineData("edit", false)]
+    [InlineData("export", true)]
+    public async Task Host_AdvertisesSupportedProjectCopyButRequiresExportScope(string scope, bool allowed)
+    {
+        var handler = new FakeHandler { SupportedCommands = ["studio.project.saveCopy"] };
+        var host = CreateHost(handler, new FakeApprovals(true), () => true);
+        var hello = await HandleAsync(host, """{"command":"session.hello"}""");
+        Assert.Contains("studio.project.saveCopy", hello.Result!["commands"]!.AsArray().Select(value => value!.GetValue<string>()));
+        var pair = await HandleAsync(host, $$$"""{"command":"session.pair","params":{"clientName":"x","scopes":["{{{scope}}}"]}}""");
+        var token = await WaitForTokenAsync(host, pair.Result!["pairingId"]!.GetValue<string>());
+
+        var response = await HandleAsync(host, $$$"""{"token":"{{{token}}}","command":"studio.project.saveCopy","params":{"projectId":"p","folderName":"copy"}}""");
+
+        if (allowed)
+        {
+            Assert.Null(response.Error);
+            Assert.NotNull(response.Result);
+        }
+        else
+        {
+            Assert.Equal(AutomationErrorCodes.MissingScope, response.Error!.Code);
+        }
     }
 
     [Fact]
@@ -382,7 +407,7 @@ public sealed class AutomationProtocolTests : IDisposable
 
         public string BuildFlavor => "direct";
 
-        public IReadOnlyCollection<string> SupportedCommands { get; } = ["app.status", "library.delete"];
+        public IReadOnlyCollection<string> SupportedCommands { get; init; } = ["app.status", "library.delete"];
 
         public Task<JsonNode?> ExecuteAsync(AutomationCommandContext context, CancellationToken cancellationToken)
         {

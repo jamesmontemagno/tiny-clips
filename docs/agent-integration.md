@@ -113,7 +113,19 @@ Give these to an agent with Tiny Clips CLI or MCP access. Tell it which app or p
 
 An agent needs its own browser/desktop tools to click, type, or scroll in other apps; Tiny Clips does not provide those actions. Studio must be enabled for Studio commands. On macOS, Agent Control does not require a supporter tip. OS permissions still apply, and sensitive commands still ask for approval.
 
+For scrolling screenshots on both platforms, scroll gradually with overlapping content. Stitching
+keeps the lower viewport overlap until the final frame so bottom-floating controls are not repeated;
+large jumps without enough clear overlap are skipped. Agent-started captures use the same stitcher
+as interactive captures, with no additional command or setting.
+
 Supporter plans are intentionally not available to agents, on either platform: spending money needs a person, and the store's purchase dialog is theirs to confirm. No command buys a plan or reports supporter status.
+
+Keyboard shortcut configuration is also intentionally UI-only on both platforms. Assign, clear,
+or reset bindings in Settings (or the three common capture actions in onboarding); `settings.get`
+and `settings.set`, the CLI, and MCP do not expose shortcut bindings. This is a deliberate exception
+to agent coverage: agents already invoke capture and recording commands directly and do not need
+to reserve or change the user's system-wide keys. Configuring a Stop Recording binding does not
+change the availability or permissions of `recording.stop`.
 
 ## Troubleshooting setup
 
@@ -211,9 +223,9 @@ For long pages, call `capture.scrolling.start` with a target, scroll the page wi
 
 ### Studio projects
 
-Studio commands work on both platforms when Studio is enabled. `studio.projects.list` discovers stored projects, including drafts made from existing videos (`isDraft: true`, `isFlat: true`) that also appear in Settings → Studio → Drafts; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths.
+Studio commands work on both platforms when Studio is enabled. `studio.projects.list` discovers stored projects, including drafts made from existing videos (`isDraft: true`, `isFlat: true`) that also appear in Library → Studio → Projects and Settings → Studio → Drafts; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths. With `edit` scope, `studio.project.open` opens a stored project by ID or brings its existing Studio editor forward.
 
-On macOS, `studio.project.saveCopy` needs `export` and writes a portable snapshot, including source recordings, into a new `folderName` directly in the configured video folder. It returns `folderPath` and `projectFile`, never replaces an existing destination, and does not link the copy for subsequent saves. An open editor must be ready and its pending changes are saved first. On Windows this command is not advertised and returns `not_supported`.
+On macOS and Windows, `studio.project.saveCopy` needs `export` and writes a portable snapshot, including source recordings, into a new `folderName` directly in the configured video folder. Imported videos are copied into the snapshot without moving or changing the originals. It returns `folderPath` and `projectFile`, never replaces an existing destination, and does not link the copy for subsequent saves. An open editor must be ready and its pending changes are saved first.
 
 `studio.project.edit` accepts a partial `patch` with any of `canvas`, `screen`, `camera`, `scenes`, `zooms`, `edits`, `audio`, `overlays`, and `captions`. Object values merge recursively; arrays replace their whole field. Send both the current project's `modifiedAt` as `expectedModifiedAt` and the opaque `revision` returned by `studio.project.get` as `expectedRevision`. Identity, name, source recordings, cleanup pinning, and export bookkeeping are protected. Edits to an open Studio window use its undo history; edits to a closed project are saved directly. A stale revision is rejected, so fetch the project again before retrying.
 

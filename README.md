@@ -25,6 +25,7 @@ video (MP4), and animated GIFs of a selected screen region — on **macOS** and 
 - **Region Selection** — Drag to select any portion of any screen
 - **Global Hotkeys** — Quick capture from anywhere
 - **Configurable** — Save location, clipboard, reveal-in-Finder/Explorer, GIF quality, trimmer toggles, and more
+- **Tabbed Guide** — Open Guide from the menu bar or tray for focused help topics, current keyboard shortcuts, and agent setup. Each topic scrolls separately so the tabs stay within reach; resize the window for more reading room.
 
 > macOS uses Sparkle for auto-updates. On Windows, installs made through the `.appinstaller` update automatically with MSIX App Installer, **winget** installs update with `winget upgrade`, and Microsoft Store installs update through the Store.
 
@@ -91,8 +92,8 @@ TinyClips requires **Screen Recording** permission. On first launch, macOS will 
 | Action | Shortcut |
 |--------|----------|
 | Screenshot | ⌃⌥⌘5 |
-| Record Video | ⌃⌥⌘6 |
-| Record GIF | ⌃⌥⌘7 |
+| Record Video | Not set by default; configure in Settings → Shortcuts |
+| Record GIF | Not set by default; configure in Settings → Shortcuts |
 | Screenshot Region (no picker) | Not set by default; configure in Settings → Shortcuts |
 | Screenshot Window (no picker) | Not set by default; configure in Settings → Shortcuts |
 | Screenshot Screen (no picker) | Not set by default; configure in Settings → Shortcuts |
@@ -100,8 +101,14 @@ TinyClips requires **Screen Recording** permission. On first launch, macOS will 
 | Picker: Region / Screen / Window | R / S / W |
 | Picker: Cancel | Esc |
 | Screenshot editor: Close | Esc / ⌘W |
-| Stop Recording | ⌘. |
+| Stop Recording | Not set by default; optional, active only during recording |
 | Settings | ⌘, |
+
+Only Screenshot has a global binding by default. Existing saved bindings are preserved.
+Settings groups editable global shortcuts into Screenshots, Recording, and Text recognition,
+with separate fixed-shortcut references for the editors, Studio, Clips Library, and navigation.
+Onboarding offers only Screenshot, Record Video, and Record GIF; all actions remain available
+from the menu bar and capture controls without a keyboard binding.
 
 ## Windows
 
@@ -147,11 +154,17 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 | Screenshot Region (no picker) | Not set by default; configure in Settings → Keyboard shortcuts |
 | Screenshot Window (no picker) | Not set by default; configure in Settings → Keyboard shortcuts |
 | Screenshot Screen (no picker) | Not set by default; configure in Settings → Keyboard shortcuts |
-| Record Video | Ctrl+Shift+6 |
-| Record GIF | Ctrl+Shift+7 |
+| Record Video | Not set by default; configure in Settings → Keyboard shortcuts |
+| Record GIF | Not set by default; configure in Settings → Keyboard shortcuts |
+| Recognize Text | Not set by default; configure in Settings → Keyboard shortcuts |
 | Picker: Region / Screen / Window | R / S / W |
 | Picker: Cancel | Esc |
-| Stop Recording | Ctrl+Shift+S |
+| Stop Recording | Not set by default; optional, active only during recording |
+
+Only Screenshot has a global binding by default. Edit or clear any global shortcut, including
+Stop Recording, in **Settings → Keyboard shortcuts**. Existing saved bindings are preserved.
+The same categorized layout separates global shortcuts from fixed window-only references.
+Onboarding offers only Screenshot, Record Video, and Record GIF.
 
 ## Usage
 
@@ -159,7 +172,7 @@ See the [Windows README](windows/README.md) for full build, layout, and CI detai
 2. Choose **Screenshot**, **Record Video**, or **Record GIF**
 3. Choose **Region**, **Screen**, or **Window** in the capture picker (with an optional countdown)
 4. For region recordings, confirm audio/mic options in the floating **Record** panel
-5. Click the floating **Stop** button when done (or use the stop shortcut)
+5. Click the floating **Stop** button when done (or use a stop shortcut you have configured)
 
 To edit an existing MP4 or MOV in Studio, right-click it in Finder or File Explorer and choose **Open With → Tiny Clips**. On Windows, choose **Just once** if prompted. Tiny Clips opens the video in Studio without changing your default player. Studio must be enabled in Settings.
 

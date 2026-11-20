@@ -99,6 +99,19 @@ public class CliTests
     }
 
     [Fact]
+    public async Task OpenStudioProjectCommandForwardsId()
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["edit"];
+        var (output, error) = (new StringWriter(), new StringWriter());
+        Assert.Equal(0, await Cli.RunAsync(
+            ["studio.project.open", "projectId=project"],
+            app.Environment(output, error, token: "t"), TestContext.Current.CancellationToken));
+        Assert.Equal("studio.project.open", Json(output)["command"]!.GetValue<string>());
+        Assert.Equal("project", Json(output)["params"]!["projectId"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task NamedPipeAcceptsSameUserAndCarriesAuthenticatedRequests()
     {
         await using var app = new FakeApp(useNamedPipe: true);

@@ -167,18 +167,6 @@ public sealed class StudioWindowService : IStudioProjectHost
     /// <summary>Whether Export asks for a resolution and quality, or uses the saved ones.</summary>
     public bool AsksForExportOptions { get; set; } = true;
 
-    public bool SaveAsForForegroundWindow()
-    {
-        var foreground = GetForegroundWindow();
-        var window = _windows.Values.FirstOrDefault(window => WindowNative.GetWindowHandle(window) == foreground);
-        if (window is null) return false;
-        window.ViewModel.RequestSaveProjectAs();
-        return true;
-    }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern nint GetForegroundWindow();
-
     Task<string?> IStudioProjectHost.ChooseExportFileAsync(Window owner, string folder, string filename) =>
         ChooseExportFile(owner, folder, filename);
 

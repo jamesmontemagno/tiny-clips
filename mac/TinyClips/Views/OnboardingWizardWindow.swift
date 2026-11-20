@@ -399,7 +399,7 @@ private struct OnboardingWizardView: View {
 
     private var shortcutsContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("These shortcuts work system-wide. Record Video makes an ordinary recording, not Studio.")
+            Text("Only Screenshot has a shortcut by default. Add optional Video and GIF shortcuts here. Record Video makes an ordinary recording, not Studio.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -422,8 +422,7 @@ private struct OnboardingWizardView: View {
                 )
             }
 
-            Text("Stop Recording: \(HotKeyBinding.stopRecording.displayString) (fixed)")
-            Text("More shortcuts are available in Settings → Shortcuts. Changes already made remain if you skip setup.")
+            Text("Stop with the floating Stop button. More shortcuts, including an optional Stop Recording shortcut, are in Settings → Shortcuts. Changes already made remain if you skip setup.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

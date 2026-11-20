@@ -34,7 +34,7 @@ public class McpServerTests
         var tools = McpServer.ListTools("windows");
         Assert.DoesNotContain(tools, tool => tool.Name.StartsWith("tinyclips_notifications_", StringComparison.Ordinal));
         Assert.DoesNotContain(tools, tool => tool.Name is "tinyclips_editor_list" or "tinyclips_editor_closeAll");
-        Assert.DoesNotContain(tools, tool => tool.Name == "tinyclips_studio_project_saveCopy");
+        Assert.Contains(tools, tool => tool.Name == "tinyclips_studio_project_saveCopy");
         Assert.Contains(tools, tool => tool.Name == "tinyclips_app_status");
 
         var macTools = McpServer.ListTools("macos");
@@ -61,6 +61,26 @@ public class McpServerTests
             Assert.Equal("Copy", (string?)Body(result)["params"]!["folderName"]);
             app.Clients["t"] = ["edit"];
             var denied = await client.CallToolAsync("tinyclips_studio_project_saveCopy", args, cancellationToken: token);
+            Assert.True(denied.IsError);
+            Assert.Equal("missing_scope", (string?)Body(denied)["error"]!["code"]);
+        });
+    }
+
+    [Fact]
+    public async Task OpenStudioProjectToolForwardsIdAndRequiresEditScope()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["edit"];
+        await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>
+        {
+            var args = new Dictionary<string, object?> { ["projectId"] = "project" };
+            var result = await client.CallToolAsync("tinyclips_studio_project_open", args, cancellationToken: token);
+            Assert.False(result.IsError);
+            Assert.Equal("studio.project.open", (string?)Body(result)["command"]);
+            Assert.Equal("project", (string?)Body(result)["params"]!["projectId"]);
+            app.Clients["t"] = ["read"];
+            var denied = await client.CallToolAsync("tinyclips_studio_project_open", args, cancellationToken: token);
             Assert.True(denied.IsError);
             Assert.Equal("missing_scope", (string?)Body(denied)["error"]!["code"]);
         });
