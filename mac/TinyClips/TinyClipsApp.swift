@@ -130,10 +130,8 @@ final class TinyClipsAppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
 #if APPSTORE
                     defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
-                    await StudioWindowRegistry.shared.openVideo(at: url, copyVideo: true)
-#else
-                    await StudioWindowRegistry.shared.openVideo(at: url)
 #endif
+                    await StudioWindowRegistry.shared.openVideo(at: url)
                 }
                 handled = true
             } else {

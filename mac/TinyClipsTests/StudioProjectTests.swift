@@ -658,19 +658,38 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertNil(first.sources.events)
     }
 
-    func testCopiedVideoDraftSurvivesReopeningWithoutOriginal() throws {
+    func testCopyPromotesEditedReferenceInPlaceAndSurvivesWithoutOriginal() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         let videoURL = directoryURL.appendingPathComponent("external.mov")
         let video = Data("original video".utf8)
         try video.write(to: videoURL)
-        let external = try store.getOrCreateFlatProject(request: flatRequest(videoURL: videoURL))
-        var request = flatRequest(videoURL: videoURL)
+        let reference = flatRequest(videoURL: videoURL)
+        var external = try store.getOrCreateFlatProject(request: reference)
+        var request = reference
         request.copyVideo = true
-        let copied = try store.getOrCreateFlatProject(request: request)
-        XCTAssertNotEqual(copied.id, external.id)
+        let prepared = try store.prepareFlatVideo(request: request)
+        // The user edits during the copy, and has another edit pending in the open window.
+        external.name = "Edited draft"
+        external.keepSources = true
+        external.edits.trimStart = 1
+        try store.save(external)
+        var liveEditor = StudioEditorModel(project: external)
+        liveEditor.setTrimStart(2)
+        let copied = try store.commitFlatVideo(prepared, validateAccess: {})
+        XCTAssertEqual(copied.id, external.id)
+        XCTAssertEqual(copied.name, "Edited draft")
+        XCTAssertEqual(copied.edits.trimStart, 1)
+        XCTAssertTrue(copied.keepSources)
         XCTAssertFalse(copied.sources.screen.external)
         XCTAssertEqual(copied.sources.screen.file, "screen.mov")
+        liveEditor.adoptOwnedScreen(from: copied)
+        XCTAssertEqual(liveEditor.project.edits.trimStart, 2)
+        liveEditor.undo()
+        XCTAssertEqual(liveEditor.project.edits.trimStart, 1)
+        XCTAssertFalse(liveEditor.project.sources.screen.external)
         XCTAssertEqual(try store.getOrCreateFlatProject(request: request).id, copied.id)
+        XCTAssertEqual(try store.getOrCreateFlatProject(request: reference).id, copied.id)
+        XCTAssertEqual(try store.listSummaries().map(\.id), [copied.id])
 
         try FileManager.default.removeItem(at: videoURL)
         let reopened = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
@@ -695,12 +714,107 @@ final class StudioProjectTests: XCTestCase {
         var request = flatRequest(videoURL: videoURL)
         request.copyVideo = true
         let first = try store.getOrCreateFlatProject(request: request)
-        let replacement = Data("replacement video".utf8)
+        let modified = try XCTUnwrap(videoURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        let replacement = Data("other".utf8)
         try replacement.write(to: videoURL, options: .atomic)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: videoURL.path)
 
+        let reference = try store.getOrCreateFlatProject(request: flatRequest(videoURL: videoURL))
+        XCTAssertNotEqual(first.id, reference.id)
         let second = try store.getOrCreateFlatProject(request: request)
-        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertEqual(reference.id, second.id)
         XCTAssertEqual(try Data(contentsOf: store.paths(for: second).screenURL), replacement)
+        XCTAssertEqual(try Data(contentsOf: store.paths(for: first).screenURL), Data("first".utf8))
+    }
+
+    func testReferenceOpensExactLegacyCopyBeforePathOnlyDraftAndFollowsLibraryMove() throws {
+        let store = StudioProjectStore(rootURL: directoryURL)
+        let original = directoryURL.appendingPathComponent("source.mov")
+        let renamed = directoryURL.appendingPathComponent("renamed.mov")
+        try Data([1]).write(to: original)
+        let reference = flatRequest(videoURL: original)
+        var copy = reference
+        copy.copyVideo = true
+        var copied = try store.getOrCreateFlatProject(request: copy)
+        copied.edits.trimStart = 1
+        try store.save(copied)
+        // Simulate the old installation's copy receipt and independent path-only project.
+        let record = try store.paths(for: copied).projectDirectory.appendingPathComponent("imported-video-source.json")
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: record)) as? [String: Any])
+        legacy.removeValue(forKey: "volume")
+        legacy.removeValue(forKey: "fileNumber")
+        try JSONSerialization.data(withJSONObject: legacy).write(to: record)
+        var duplicate = copied
+        duplicate.id = validID
+        duplicate.sources.screen.external = true
+        duplicate.sources.screen.file = original.path
+        duplicate.edits.trimStart = 2
+        try store.save(duplicate)
+
+        let reopened = try store.getOrCreateFlatProject(request: reference)
+        XCTAssertEqual(reopened.id, copied.id)
+        XCTAssertEqual(reopened.edits.trimStart, 1)
+        XCTAssertEqual(try store.load(id: duplicate.id).edits.trimStart, 2)
+        try FileManager.default.moveItem(at: original, to: renamed)
+        XCTAssertTrue(try store.updateExportPath(from: original.path, to: renamed.path))
+        let moved = flatRequest(videoURL: renamed)
+        XCTAssertEqual(try store.getOrCreateFlatProject(request: moved).id, copied.id)
+
+        // The reference is open: don't silently switch to the copy and leave edits behind.
+        store.beginUse(id: duplicate.id)
+        defer { store.endUse(id: duplicate.id) }
+        XCTAssertEqual(try store.getOrCreateFlatProject(request: moved).id, duplicate.id)
+        store.beginUse(id: copied.id)
+        defer { store.endUse(id: copied.id) }
+        var finder = moved
+        finder.copyVideo = true
+        XCTAssertNil(try store.existingOwnedFlatVideo(request: finder, preferredID: duplicate.id, validateAccess: {}))
+        let promoted = try store.commitFlatVideo(store.prepareFlatVideo(request: finder),
+                                                 preferredID: duplicate.id, validateAccess: {})
+        XCTAssertEqual(promoted.id, duplicate.id)
+        XCTAssertFalse(promoted.sources.screen.external)
+        XCTAssertEqual(promoted.edits.trimStart, 2)
+        XCTAssertEqual(try store.load(id: copied.id).edits.trimStart, 1)
+        XCTAssertEqual(Set(try store.listSummaries().map(\.id)), [copied.id, duplicate.id])
+    }
+
+    func testRevocationAfterStagingDoesNotCreateOrPromoteADraft() throws {
+        let store = StudioProjectStore(rootURL: directoryURL)
+        let video = directoryURL.appendingPathComponent("source.mov")
+        try Data([1]).write(to: video)
+        var request = flatRequest(videoURL: video)
+        request.copyVideo = true
+        func deniedCommit() throws {
+            let prepared = try store.prepareFlatVideo(request: request)
+            var checked = false
+            XCTAssertThrowsError(try store.commitFlatVideo(prepared) {
+                if checked { throw AutomationError(.unauthorized) }
+                checked = true
+            }) { error in
+                XCTAssertEqual((error as? AutomationError)?.code, .unauthorized)
+            }
+        }
+        try deniedCommit()
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directoryURL.path), ["source.mov"])
+        let external = try store.getOrCreateFlatProject(request: flatRequest(videoURL: video))
+        try deniedCommit()
+        XCTAssertTrue(try store.load(id: external.id).sources.screen.external)
+        XCTAssertNil(store.screenRecordingURL(id: external.id))
+        XCTAssertEqual(try store.listSummaries().map(\.id), [external.id])
+    }
+
+    func testReplacementDuringMetadataReadOrCopyCannotPublishStaleDraft() throws {
+        let store = StudioProjectStore(rootURL: directoryURL)
+        let video = directoryURL.appendingPathComponent("source.mp4")
+        try Data([1]).write(to: video)
+        var request = flatRequest(videoURL: video)
+        request.copyVideo = true
+        request.identityBeforeReadingMetadata = try store.videoSourceIdentity(at: video)
+        let staged = try store.prepareFlatVideo(request: request)
+        try Data([1, 2]).write(to: video, options: .atomic)
+        XCTAssertThrowsError(try store.commitFlatVideo(staged, validateAccess: {}))
+        XCTAssertThrowsError(try store.getOrCreateFlatProject(request: request))
+        XCTAssertTrue(try store.listSummaries().isEmpty)
     }
 
     func testFlatProjectAccessFailureDoesNotCreateDraft() throws {
@@ -1348,9 +1462,12 @@ final class StudioProjectTests: XCTestCase {
         try Data(count: 1_000).write(to: damagedURL.appendingPathComponent("screen.mp4"))
         try Data("{ \"schemaVersion\": 99 }".utf8).write(to: newerURL.appendingPathComponent("project.json"))
 
-        let unreadable = try store.listUnreadableProjects()
+        let listing = try store.listLibraryProjects()
+        let unreadable = listing.unreadable
 
-        XCTAssertEqual(try store.listSummaries().map(\.id), [readable.id])
+        XCTAssertEqual(listing.summaries.map(\.id), [readable.id])
+        XCTAssertEqual(try store.listSummaries(), listing.summaries)
+        XCTAssertEqual(try store.listUnreadableProjects(), unreadable)
         XCTAssertEqual(unreadable.map(\.id), [damagedID, newerID])
         XCTAssertFalse(unreadable.map(\.id).contains(unfinished.id))
         XCTAssertEqual(unreadable.map(\.hasScreenRecording), [true, false])
@@ -1365,6 +1482,74 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertEqual(store.screenRecordingURL(id: damagedID)?.lastPathComponent, "screen.mp4")
         try store.delete(id: damagedID)
         XCTAssertEqual(try store.listUnreadableProjects().map(\.id), [newerID])
+        try Data("{".utf8).write(to: readable.projectJSONURL)
+        let changed = try store.listLibraryProjects()
+        XCTAssertTrue(changed.summaries.isEmpty)
+        XCTAssertEqual(Set(changed.unreadable.map(\.id)), [newerID, readable.id])
+    }
+
+    @MainActor
+    func testLibraryRefreshCoalescesChangesAndNeverPublishesTheSupersededListing() async {
+        let first = expectation(description: "Initial listing")
+        let next = expectation(description: "Follow-up listing")
+        var finish: CheckedContinuation<StudioProjectListing, Never>?
+        var reads = 0
+        let library = StudioLibraryProjects {
+            reads += 1
+            guard reads <= 2 else { return StudioProjectListing() }
+            return await withCheckedContinuation { continuation in
+                finish = continuation
+                (reads == 1 ? first : next).fulfill()
+            }
+        }
+        var result = StudioProjectListing(unreadable: [
+            StudioUnreadableProject(id: validID, createdAt: fixedDate, sizeOnDisk: 9, hasScreenRecording: true)
+        ])
+
+        let task = library.refresh(enabled: true)
+        await fulfillment(of: [first], timeout: 2)
+        for _ in 0..<10 { library.refresh(enabled: true) }
+        XCTAssertEqual(reads, 1)
+        finish?.resume(returning: result)
+        finish = nil
+        await fulfillment(of: [next], timeout: 2)
+        XCTAssertTrue(library.isLoading)
+        XCTAssertEqual(library.listing, StudioProjectListing())
+        // Incidental requests while the replacement scan is running share its result.
+        library.refresh(enabled: true, invalidate: false)
+        result.unreadable[0].id = otherID
+        finish?.resume(returning: result)
+        await task?.value
+        XCTAssertEqual(library.listing, result)
+        XCTAssertEqual(reads, 2)
+        XCTAssertFalse(library.isLoading)
+    }
+
+    @MainActor
+    func testDisablingStudioDuringALibraryReadDiscardsItAndItsPendingRefresh() async {
+        let first = expectation(description: "Initial listing")
+        var finish: CheckedContinuation<StudioProjectListing, Never>?
+        var reads = 0
+        let library = StudioLibraryProjects {
+            reads += 1
+            guard reads == 1 else { return StudioProjectListing() }
+            return await withCheckedContinuation { continuation in
+                finish = continuation
+                first.fulfill()
+            }
+        }
+        XCTAssertNil(library.refresh(enabled: false))
+        let task = library.refresh(enabled: true)
+        await fulfillment(of: [first], timeout: 2)
+        library.refresh(enabled: true)
+        library.refresh(enabled: false)
+        finish?.resume(returning: StudioProjectListing(unreadable: [
+            StudioUnreadableProject(id: validID, createdAt: fixedDate, sizeOnDisk: 9, hasScreenRecording: true)
+        ]))
+        await task?.value
+        XCTAssertEqual(reads, 1)
+        XCTAssertFalse(library.isLoading)
+        XCTAssertEqual(library.listing, StudioProjectListing())
     }
 
     func testSavingAScreenRecordingCopiesItAndNeverReplacesAFile() throws {
@@ -1382,7 +1567,8 @@ final class StudioProjectTests: XCTestCase {
 
         // The name is free: the copy gets it, and the project is as it was.
         var asked = 0
-        let saved = try StudioScreenRecording.save(store: store, id: paths.id) {
+        let saved = try StudioScreenRecording.save(store: store, id: paths.id) { ext in
+            XCTAssertEqual(ext, "mp4")
             asked += 1
             return firstURL
         }
@@ -1397,7 +1583,7 @@ final class StudioProjectTests: XCTestCase {
         // The name is taken: what has it keeps it, and the copy gets the next name.
         try Data([42]).write(to: firstURL)
         asked = 0
-        let savedAgain = try StudioScreenRecording.save(store: store, id: paths.id) {
+        let savedAgain = try StudioScreenRecording.save(store: store, id: paths.id) { _ in
             asked += 1
             return asked == 1 ? firstURL : secondURL
         }
@@ -1408,7 +1594,7 @@ final class StudioProjectTests: XCTestCase {
 
         // No name is free: nothing is replaced and nothing is left behind.
         asked = 0
-        XCTAssertThrowsError(try StudioScreenRecording.save(store: store, id: paths.id, makeOutputURL: {
+        XCTAssertThrowsError(try StudioScreenRecording.save(store: store, id: paths.id, makeOutputURL: { _ in
             asked += 1
             return firstURL
         })) { error in
@@ -1420,6 +1606,36 @@ final class StudioProjectTests: XCTestCase {
             try FileManager.default.contentsOfDirectory(atPath: videosURL.path).sorted(),
             ["Clip 2.mp4", "Clip.mp4"]
         )
+    }
+
+    func testMOVRecoveryPreservesExtensionAndRejectsAmbiguousOrUnsafeFallbacks() throws {
+        let store = StudioProjectStore(rootURL: directoryURL)
+        let source = directoryURL.appendingPathComponent("source.MOV")
+        try Data([42]).write(to: source)
+        var request = flatRequest(videoURL: source)
+        request.copyVideo = true
+        let project = try store.getOrCreateFlatProject(request: request)
+        let paths = try store.paths(for: project)
+        let mp4 = paths.projectDirectory.appendingPathComponent("screen.mp4")
+        try Data([1]).write(to: mp4)
+        // Readable metadata is authoritative, even with both names present.
+        XCTAssertEqual(store.screenRecordingURL(id: project.id), paths.screenURL)
+        try Data("{".utf8).write(to: paths.projectJSONURL)
+        XCTAssertNil(store.screenRecordingURL(id: project.id))
+        XCTAssertEqual(try store.listUnreadableProjects().map(\.hasScreenRecording), [false])
+        try FileManager.default.removeItem(at: mp4)
+        XCTAssertEqual(try store.listUnreadableProjects().map(\.hasScreenRecording), [true])
+        let saved = try StudioScreenRecording.save(store: store, id: project.id) { ext in
+            self.directoryURL.appendingPathComponent("recovered").appendingPathExtension(ext)
+        }
+        XCTAssertEqual(saved.lastPathComponent, "recovered.mov")
+        XCTAssertEqual(try Data(contentsOf: saved), Data([42]))
+
+        try FileManager.default.removeItem(at: paths.screenURL)
+        try FileManager.default.createSymbolicLink(at: paths.screenURL, withDestinationURL: source)
+        try FileManager.default.createDirectory(at: mp4, withIntermediateDirectories: false)
+        XCTAssertNil(store.screenRecordingURL(id: project.id))
+        XCTAssertEqual(try store.listUnreadableProjects().map(\.hasScreenRecording), [false])
     }
 
     func testASavedScreenRecordingIsDatedWhenItWasSaved() throws {
@@ -1439,7 +1655,7 @@ final class StudioProjectTests: XCTestCase {
         let outputURL = directoryURL.appendingPathComponent("Videos", isDirectory: true).appendingPathComponent("Clip.mp4")
 
         let before = Date()
-        let saved = try StudioScreenRecording.save(store: store, id: paths.id) { outputURL }
+        let saved = try StudioScreenRecording.save(store: store, id: paths.id) { _ in outputURL }
 
         // The Clips Library goes by the day a file was made, to sort and to archive.
         let values = try saved.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
@@ -1458,7 +1674,7 @@ final class StudioProjectTests: XCTestCase {
         let outputURL = directoryURL.appendingPathComponent("Videos", isDirectory: true).appendingPathComponent("Clip.mp4")
         var asked = 0
 
-        XCTAssertThrowsError(try StudioScreenRecording.save(store: store, id: validID, makeOutputURL: {
+        XCTAssertThrowsError(try StudioScreenRecording.save(store: store, id: validID, makeOutputURL: { _ in
             asked += 1
             return outputURL
         })) { error in

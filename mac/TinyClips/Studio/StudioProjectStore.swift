@@ -137,6 +137,7 @@ struct StudioFlatProjectRequest: Equatable, Sendable {
     var frameRate: Double
     var appVersion: String
     var copyVideo = false
+    var identityBeforeReadingMetadata: StudioVideoSourceIdentity?
 
     init(videoURL: URL, name: String = "", width: Int, height: Int, duration: Double, frameRate: Double = 30, appVersion: String) {
         self.videoURL = videoURL
@@ -149,10 +150,19 @@ struct StudioFlatProjectRequest: Equatable, Sendable {
     }
 }
 
-private struct StudioCopiedVideoSource: Codable, Equatable {
+struct StudioVideoSourceIdentity: Codable, Equatable, Sendable {
     var path: String
     var size: UInt64
     var modifiedAt: Date
+    // Older copy records only have path, size and date.
+    var volume: UInt64?
+    var fileNumber: UInt64?
+
+    func matches(_ current: Self) -> Bool {
+        path == current.path && size == current.size && modifiedAt == current.modifiedAt
+            && (volume == nil || volume == current.volume)
+            && (fileNumber == nil || fileNumber == current.fileNumber)
+    }
 }
 
 /// Why a project could not be saved as a folder, or opened from one.
@@ -285,6 +295,11 @@ struct StudioStorageSummary: Equatable, Sendable {
     var totalBytes: Int64
 }
 
+struct StudioProjectListing: Equatable, Sendable {
+    var summaries: [StudioProjectSummary] = []
+    var unreadable: [StudioUnreadableProject] = []
+}
+
 // MARK: - Store
 
 final class StudioProjectStore {
@@ -412,58 +427,46 @@ final class StudioProjectStore {
         }
     }
 
+    /// Both sections of the Library, from the same directory walk and decode of each project.
+    func listLibraryProjects() throws -> StudioProjectListing {
+        try withLock {
+            try listProjectsUnlocked(includingSummaries: true, includingUnreadable: true)
+        }
+    }
+
     /// The project folders whose `project.json` is there and cannot be read: damaged, or written
     /// by a newer version. `listSummaries()` leaves them out and cleanup leaves them alone, so
     /// this list is the only place they show up.
     func listUnreadableProjects() throws -> [StudioUnreadableProject] {
         try withLock {
-            guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
-            let contents = try fileManager.contentsOfDirectory(
-                at: rootURL,
-                includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey],
-                options: [.skipsHiddenFiles]
-            )
-            var unreadable: [StudioUnreadableProject] = []
-            for directory in contents {
-                let values = try directory.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey])
-                let id = directory.lastPathComponent
-                guard values.isDirectory == true, Self.isValidProjectID(id) else { continue }
-                // Without the file it is a recording that never finished, which cleanup removes
-                // after a day.
-                let projectURL = directory.appendingPathComponent("project.json")
-                guard fileManager.fileExists(atPath: projectURL.path),
-                      (try? loadUnlocked(id: id)) == nil else {
-                    continue
-                }
-                unreadable.append(StudioUnreadableProject(
-                    id: id,
-                    createdAt: folderDateProvider?(directory) ?? values.creationDate ?? Date(timeIntervalSince1970: 0),
-                    sizeOnDisk: sizeOnDisk(at: directory),
-                    hasScreenRecording: fileManager.fileExists(atPath: directory.appendingPathComponent("screen.mp4").path)
-                ))
-            }
-            return unreadable.sorted { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
+            try listProjectsUnlocked(includingSummaries: false, includingUnreadable: true).unreadable
         }
     }
 
     /// The screen recording a project keeps in its own folder, or nil when it has none there:
     /// the project is built around a video kept elsewhere, the file is gone, or there is no
-    /// such project. A project whose `project.json` cannot be read is looked for under the name
-    /// every recording gets.
+    /// such project. Without readable metadata only an unambiguous conventional name is used.
     func screenRecordingURL(id: String) -> URL? {
         guard Self.isValidProjectID(id) else { return nil }
         return withLock {
             let directory = projectDirectoryUnchecked(for: id)
-            var file = "screen.mp4"
-            if let project = try? loadUnlocked(id: id) {
-                guard !project.sources.screen.external else { return nil }
-                if StudioJSON.isPlainFileName(project.sources.screen.file) {
-                    file = project.sources.screen.file
-                }
-            }
-            let url = directory.appendingPathComponent(file)
-            return fileManager.fileExists(atPath: url.path) ? url : nil
+            return recoveryRecording(in: directory, project: try? loadUnlocked(id: id))
         }
+    }
+
+    private func recoveryRecording(in directory: URL, project: StudioProject?) -> URL? {
+        guard (try? directory.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == false else { return nil }
+        let names: [String]
+        if let source = project?.sources.screen {
+            guard !source.external, StudioJSON.isPlainFileName(source.file) else { return nil }
+            names = [source.file]
+        } else {
+            names = ["screen.mp4", "screen.mov"]
+        }
+        let files = names.map { directory.appendingPathComponent($0) }.filter {
+            ["mp4", "mov"].contains($0.pathExtension.lowercased()) && (try? isPlainFile($0)) == true
+        }
+        return files.count == 1 ? files[0] : nil
     }
 
     func storageSummary() throws -> StudioStorageSummary {
@@ -539,11 +542,22 @@ final class StudioProjectStore {
         try withLock {
             let oldNeedle = normalizedPath(oldPath)
             let newNeedle = normalizedPath(newPath)
+            let movedIdentity = try? videoSourceIdentity(at: URL(fileURLWithPath: newPath))
             var changed = false
             for summary in try listSummariesUnlocked() {
                 var project = try loadUnlocked(id: summary.id)
-                let movedSource = project.sources.screen.external
+                var movedSource = project.sources.screen.external
                     && normalizedPath(project.sources.screen.file) == oldNeedle
+                if var identity = sourceIdentity(for: project), identity.path == oldNeedle {
+                    identity.path = newNeedle
+                    if let movedIdentity, identity.matches(movedIdentity) {
+                        try saveSourceIdentity(movedIdentity, for: project)
+                        changed = true
+                    } else {
+                        // The file that moved was a replacement, not this draft's source.
+                        movedSource = false
+                    }
+                }
                 if movedSource {
                     project.sources.screen.file = newPath
                 }
@@ -595,50 +609,106 @@ final class StudioProjectStore {
         }
     }
 
+    /// Preparation can copy a large video off the main thread. Nothing becomes a project until
+    /// commit, where the caller can check its current authorization without an intervening await.
+    final class PreparedFlatVideo: @unchecked Sendable {
+        fileprivate let request: StudioFlatProjectRequest
+        fileprivate let source: StudioVideoSourceIdentity?
+        fileprivate let staging: URL?
+        private let discard: () -> Void
+
+        fileprivate init(_ request: StudioFlatProjectRequest, source: StudioVideoSourceIdentity?,
+                         staging: URL? = nil, discard: @escaping () -> Void = {}) {
+            self.request = request
+            self.source = source
+            self.staging = staging
+            self.discard = discard
+        }
+
+        deinit { discard() }
+    }
+
+    func prepareFlatVideo(request: StudioFlatProjectRequest) throws -> PreparedFlatVideo {
+        _ = try StudioJSON.requirePositive(request.width, "sources.screen.width")
+        _ = try StudioJSON.requirePositive(request.height, "sources.screen.height")
+        _ = try StudioJSON.requireNonNegative(request.duration, "sources.screen.duration")
+        let source = try importIdentity(for: request)
+        guard request.copyVideo else { return PreparedFlatVideo(request, source: source) }
+        guard let source else { throw CocoaError(.fileReadUnknown) }
+        let staging = try beginRecording()
+        beginUse(id: staging.id)
+        let prepared = PreparedFlatVideo(request, source: source, staging: staging.projectDirectory) {
+            try? self.fileManager.removeItem(at: staging.projectDirectory)
+            self.endUse(id: staging.id)
+        }
+        let file = staging.projectDirectory.appendingPathComponent(Self.copiedScreenFileName(for: request.videoURL))
+        try fileManager.copyItem(at: request.videoURL.resolvingSymlinksInPath(), to: file)
+        guard try isPlainFile(file), try videoSourceIdentity(at: request.videoURL) == source else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return prepared
+    }
+
     func getOrCreateFlatProject(
         request: StudioFlatProjectRequest,
         validateAccess: () throws -> Void = {}
     ) throws -> StudioProject {
-        _ = try StudioJSON.requirePositive(request.width, "sources.screen.width")
-        _ = try StudioJSON.requirePositive(request.height, "sources.screen.height")
-        _ = try StudioJSON.requireNonNegative(request.duration, "sources.screen.duration")
-        let source = try request.copyVideo ? copiedVideoSource(at: request.videoURL) : nil
-        if request.copyVideo, let existing = try withLock({
-            let project = try flatProjectUnlocked(request: request, source: source)
-            try validateAccess()
-            return project
-        }) {
-            return existing
-        }
+        try validateAccess()
+        if let owned = try existingOwnedFlatVideo(request: request, validateAccess: validateAccess) { return owned }
+        return try commitFlatVideo(prepareFlatVideo(request: request), validateAccess: validateAccess)
+    }
 
-        let screenFile = request.copyVideo ? "screen.\(request.videoURL.pathExtension.lowercased())" : request.videoURL.path
-        var stagingDirectory: URL?
-        var stagingID: String?
-        defer {
-            if let stagingDirectory { try? fileManager.removeItem(at: stagingDirectory) }
-            if let stagingID { endUse(id: stagingID) }
-        }
-        if let source {
-            _ = try StudioJSON.requirePlainFileName(screenFile, "sources.screen.file")
-            try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
-            let id = UUID().uuidString.lowercased()
-            beginUse(id: id)
-            stagingID = id
-            let staging = projectDirectoryUnchecked(for: id)
-            stagingDirectory = staging
-            try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
-            try fileManager.copyItem(at: request.videoURL, to: staging.appendingPathComponent(screenFile))
-            guard try copiedVideoSource(at: request.videoURL) == source else {
+    func existingOwnedFlatVideo(request: StudioFlatProjectRequest, preferredID: String? = nil,
+                                validateAccess: () throws -> Void) throws -> StudioProject? {
+        guard request.copyVideo else { return nil }
+        return try withLock {
+            let source = try importIdentity(for: request)
+            let match = try flatProjectUnlocked(request: request, source: source, preferredID: preferredID)
+            if let source, try videoSourceIdentity(at: request.videoURL) != source {
                 throw CocoaError(.fileReadUnknown)
             }
-            try JSONEncoder().encode(source).write(to: staging.appendingPathComponent("imported-video-source.json"), options: .atomic)
+            try validateAccess()
+            return match?.sources.screen.external == false ? match : nil
         }
+    }
 
+    func commitFlatVideo(_ prepared: PreparedFlatVideo, preferredID: String? = nil,
+                         validateAccess: () throws -> Void) throws -> StudioProject {
+        defer { withExtendedLifetime(prepared) {} } // Discard staging only after releasing the store lock.
+        let request = prepared.request
+        let source = prepared.source
+        let screenFile = request.copyVideo ? Self.copiedScreenFileName(for: request.videoURL) : request.videoURL.path
         return try withLock {
             try validateAccess()
-            let existing = try flatProjectUnlocked(request: request, source: source)
+            let existing = try flatProjectUnlocked(request: request, source: source, preferredID: preferredID)
+            if let source, try videoSourceIdentity(at: request.videoURL) != source {
+                throw CocoaError(.fileReadUnknown)
+            }
             try validateAccess()
             if let existing {
+                if request.copyVideo && existing.sources.screen.external {
+                    // Re-read under this lock, not from preparation: even an editor opened or
+                    // changed during the copy must keep its identity, edits and bookkeeping.
+                    guard let staging = prepared.staging, let source else { throw CocoaError(.fileReadUnknown) }
+                    var promoted = existing
+                    let directory = projectDirectoryUnchecked(for: existing.id)
+                    let file = directory.appendingPathComponent(screenFile)
+                    guard !ownedFiles(existing).contains(where: { $0.caseInsensitiveCompare(screenFile) == .orderedSame })
+                    else { throw StudioProjectFolderError.destinationExists }
+                    try fileManager.moveItem(at: staging.appendingPathComponent(screenFile), to: file)
+                    do {
+                        try saveSourceIdentity(source, for: existing)
+                        promoted.sources.screen.external = false
+                        promoted.sources.screen.file = screenFile
+                        return try saveUnlocked(promoted, updatingModifiedAt: false)
+                    } catch {
+                        try? fileManager.removeItem(at: file)
+                        throw error
+                    }
+                }
+                if existing.sources.screen.external, let source, sourceIdentity(for: existing) == nil {
+                    try saveSourceIdentity(source, for: existing)
+                }
                 return existing
             }
 
@@ -666,46 +736,109 @@ final class StudioProjectStore {
                 ),
                 scenes: [StudioScene(start: 0, layout: .screen)]
             )
-            var movedCopy = false
+            if let staging = prepared.staging {
+                try fileManager.moveItem(at: staging, to: directory)
+            } else {
+                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            }
             do {
-                if let stagingDirectory {
-                    try fileManager.moveItem(at: stagingDirectory, to: directory)
-                    movedCopy = true
-                }
+                if let source { try saveSourceIdentity(source, for: project) }
                 return try saveUnlocked(project, updatingModifiedAt: false)
             } catch {
-                if movedCopy {
-                    try? fileManager.removeItem(at: directory)
-                }
+                try? fileManager.removeItem(at: directory)
                 throw error
             }
         }
     }
 
-    private func copiedVideoSource(at url: URL) throws -> StudioCopiedVideoSource {
-        let attributes = try fileManager.attributesOfItem(atPath: url.path)
-        guard let size = attributes[.size] as? NSNumber,
+    private func importIdentity(for request: StudioFlatProjectRequest) throws -> StudioVideoSourceIdentity? {
+        // Offline reference-only requests historically match by path. UI opens always have a
+        // version from before AVFoundation read dimensions/duration; never use those for a replacement.
+        if !request.copyVideo && request.identityBeforeReadingMetadata == nil {
+            return try? videoSourceIdentity(at: request.videoURL)
+        }
+        let current = try videoSourceIdentity(at: request.videoURL)
+        if let expected = request.identityBeforeReadingMetadata, current != expected { throw CocoaError(.fileReadUnknown) }
+        return current
+    }
+
+    func videoSourceIdentity(at url: URL) throws -> StudioVideoSourceIdentity {
+        let attributes = try fileManager.attributesOfItem(atPath: url.resolvingSymlinksInPath().path)
+        guard attributes[.type] as? FileAttributeType == .typeRegular,
+              let size = attributes[.size] as? NSNumber,
               let modifiedAt = attributes[.modificationDate] as? Date else {
             throw CocoaError(.fileReadUnknown)
         }
-        return StudioCopiedVideoSource(path: normalizedPath(url.path), size: size.uint64Value, modifiedAt: modifiedAt)
+        return StudioVideoSourceIdentity(path: normalizedPath(url.path), size: size.uint64Value, modifiedAt: modifiedAt,
+                                         volume: (attributes[.systemNumber] as? NSNumber)?.uint64Value,
+                                         fileNumber: (attributes[.systemFileNumber] as? NSNumber)?.uint64Value)
     }
 
-    private func flatProjectUnlocked(request: StudioFlatProjectRequest, source: StudioCopiedVideoSource?) throws -> StudioProject? {
+    private static let sourceRecord = "imported-video-source.json"
+
+    private func sourceIdentity(for project: StudioProject) -> StudioVideoSourceIdentity? {
+        guard !ownedFiles(project).contains(where: { $0.caseInsensitiveCompare(Self.sourceRecord) == .orderedSame })
+        else { return nil }
+        let url = projectDirectoryUnchecked(for: project.id).appendingPathComponent(Self.sourceRecord)
+        guard (try? isPlainFile(url)) == true, let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(StudioVideoSourceIdentity.self, from: data)
+    }
+
+    private func saveSourceIdentity(_ source: StudioVideoSourceIdentity, for project: StudioProject) throws {
+        let url = projectDirectoryUnchecked(for: project.id).appendingPathComponent(Self.sourceRecord)
+        try JSONEncoder().encode(source).write(to: url, options: .atomic)
+    }
+
+    private func flatProjectUnlocked(request: StudioFlatProjectRequest, source: StudioVideoSourceIdentity?,
+                                     preferredID: String?) throws -> StudioProject? {
+        guard fileManager.fileExists(atPath: rootURL.path) else { return nil }
         let needle = normalizedPath(request.videoURL.path)
-        for summary in try listSummariesUnlocked() {
-            let project = try loadUnlocked(id: summary.id)
-            if let source {
-                let record = projectDirectoryUnchecked(for: project.id).appendingPathComponent("imported-video-source.json")
-                if let data = try? Data(contentsOf: record),
-                   (try? JSONDecoder().decode(StudioCopiedVideoSource.self, from: data)) == source {
-                    return project
+        var best: StudioProject?
+        var bestRank = -1
+        // Matching never needs a recursive size calculation or export checks. In particular,
+        // the final authorization/identity check runs on the editor's actor.
+        let directories = try fileManager.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: [.isSymbolicLinkKey],
+                                                              options: [.skipsHiddenFiles])
+        for directory in directories.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let id = directory.lastPathComponent
+            guard Self.isValidProjectID(id), (try? directory.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == false,
+                  let project = try? loadUnlocked(id: id) else { continue }
+            let screen = project.sources.screen
+            guard !ownedFiles(project).contains(where: { $0.caseInsensitiveCompare(Self.sourceRecord) == .orderedSame })
+            else { continue }
+            if !screen.external {
+                // A portable copy imported as its own project has no local import receipt.
+                guard let source, screen.file == Self.copiedScreenFileName(for: request.videoURL),
+                      sourceIdentity(for: project)?.matches(source) == true,
+                      (try? isPlainFile(directory.appendingPathComponent(screen.file))) == true else { continue }
+            } else if normalizedPath(screen.file) == needle {
+                if let source {
+                    if let recorded = sourceIdentity(for: project) {
+                        guard recorded.matches(source) else { continue }
+                    } else {
+                        // Pre-identity references: never attach obviously different footage or
+                        // reinterpret a damaged receipt as permission to match by path alone.
+                        let record = projectDirectoryUnchecked(for: project.id).appendingPathComponent(Self.sourceRecord)
+                        guard !fileManager.fileExists(atPath: record.path),
+                              screen.width == request.width, screen.height == request.height,
+                              abs(screen.duration - request.duration) < 0.001,
+                              source.modifiedAt < project.createdAt.addingTimeInterval(1) else { continue }
+                    }
                 }
-            } else if project.sources.screen.external && normalizedPath(project.sources.screen.file) == needle {
-                return project
+            } else {
+                continue
+            }
+            // Legacy installations can have two separately edited drafts. Never merge them.
+            // Keep the frontmost matching session, then any open match; otherwise prefer a
+            // verified copy over a reference. Sorted IDs break ties deterministically.
+            let rank = (project.id == preferredID ? 4 : 0) + (idsInUse.contains(project.id) ? 2 : 0)
+                + (screen.external ? 0 : 1)
+            if rank > bestRank {
+                best = project
+                bestRank = rank
             }
         }
-        return nil
+        return best
     }
 
     func loadEvents(id: String) throws -> StudioEvents {
@@ -1287,25 +1420,41 @@ final class StudioProjectStore {
     }
 
     private func listSummariesUnlocked() throws -> [StudioProjectSummary] {
-        guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
+        try listProjectsUnlocked(includingSummaries: true, includingUnreadable: false).summaries
+    }
+
+    private func listProjectsUnlocked(includingSummaries: Bool, includingUnreadable: Bool) throws -> StudioProjectListing {
+        var listing = StudioProjectListing()
+        guard fileManager.fileExists(atPath: rootURL.path) else { return listing }
+        let keys: Set<URLResourceKey> = includingUnreadable ? [.isDirectoryKey, .creationDateKey] : [.isDirectoryKey]
         let contents = try fileManager.contentsOfDirectory(
             at: rootURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
+            includingPropertiesForKeys: Array(keys),
             options: [.skipsHiddenFiles]
         )
-        var summaries: [StudioProjectSummary] = []
         for directory in contents {
-            let values = try directory.resourceValues(forKeys: [.isDirectoryKey])
+            let values = try directory.resourceValues(forKeys: keys)
             let id = directory.lastPathComponent
             guard values.isDirectory == true, Self.isValidProjectID(id) else { continue }
+            // A recording that hasn't finished has no manifest and belongs in neither list.
             let projectURL = directory.appendingPathComponent("project.json")
-            guard fileManager.fileExists(atPath: projectURL.path),
-                  let project = try? loadUnlocked(id: id) else {
-                continue
+            guard fileManager.fileExists(atPath: projectURL.path) else { continue }
+            if let project = try? loadUnlocked(id: id) {
+                if includingSummaries {
+                    listing.summaries.append(summary(for: project, directory: directory))
+                }
+            } else if includingUnreadable {
+                listing.unreadable.append(StudioUnreadableProject(
+                    id: id,
+                    createdAt: folderDateProvider?(directory) ?? values.creationDate ?? Date(timeIntervalSince1970: 0),
+                    sizeOnDisk: sizeOnDisk(at: directory),
+                    hasScreenRecording: recoveryRecording(in: directory, project: nil) != nil
+                ))
             }
-            summaries.append(summary(for: project, directory: directory))
         }
-        return summaries.sorted { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
+        listing.summaries.sort { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
+        listing.unreadable.sort { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
+        return listing
     }
 
     private func deleteUnlocked(id: String) throws {
@@ -1517,13 +1666,14 @@ enum StudioScreenRecording {
         store: StudioProjectStore,
         id: String,
         fileManager: FileManager = .default,
-        makeOutputURL: () -> URL
+        makeOutputURL: (_ fileExtension: String) -> URL
     ) throws -> URL {
         guard let sourceURL = store.screenRecordingURL(id: id) else {
             throw SaveError.nothingToSave
         }
 
-        var targetURL = makeOutputURL()
+        let fileExtension = sourceURL.pathExtension.lowercased()
+        var targetURL = makeOutputURL(fileExtension)
         let folderURL = targetURL.deletingLastPathComponent()
         try fileManager.createDirectory(at: folderURL, withIntermediateDirectories: true)
 
@@ -1532,6 +1682,8 @@ enum StudioScreenRecording {
         let stagedURL = folderURL.appendingPathComponent(".studio-copy.\(UUID().uuidString.lowercased()).tmp")
         do {
             try fileManager.copyItem(at: sourceURL, to: stagedURL)
+            let values = try stagedURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true else { throw SaveError.nothingToSave }
             // A copy keeps the dates of what it was copied from. The Clips Library sorts by
             // the day a file was made and archives the old ones, and this video is made now.
             let savedAt = Date()
@@ -1548,7 +1700,7 @@ enum StudioScreenRecording {
                     guard attempt < attempts else {
                         throw SaveError.noFreeName(targetURL.lastPathComponent)
                     }
-                    targetURL = makeOutputURL()
+                    targetURL = makeOutputURL(fileExtension)
                 }
             }
             throw SaveError.noFreeName(targetURL.lastPathComponent)

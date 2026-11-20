@@ -19,6 +19,12 @@ enum StudioVideoOpenError: LocalizedError {
 }
 
 enum StudioVideoFile {
+    #if APPSTORE
+    static let needsOwnedSource = true
+    #else
+    static let needsOwnedSource = false
+    #endif
+
     static func supports(_ url: URL) -> Bool {
         url.isFileURL && ["mp4", "mov"].contains(url.pathExtension.lowercased())
     }
@@ -69,14 +75,14 @@ final class StudioWindowRegistry {
     /// Opens an existing video in Studio as a flat project (one per video). Returns false when
     /// Studio is off or the video cannot be read.
     @discardableResult
-    func openVideo(at url: URL, copyVideo: Bool = false) async -> Bool {
-        (try? await openVideo(at: url, copyVideo: copyVideo, validateAccess: {})) ?? false
+    func openVideo(at url: URL) async -> Bool {
+        (try? await openVideo(at: url, validateAccess: {})) ?? false
     }
 
     @discardableResult
     func openVideo(
         at url: URL,
-        copyVideo: Bool = false,
+        copyVideo: Bool = StudioVideoFile.needsOwnedSource,
         validateAccess: () throws -> Void,
         prepare: ((URL) async throws -> StudioFlatProjectRequest)? = nil
     ) async throws -> Bool {
@@ -110,23 +116,32 @@ final class StudioWindowRegistry {
             return false
         }
         request.copyVideo = copyVideo
-        let projectID: String
+        let store = StudioProjectStore.shared
+        let project: StudioProject
         var validationFailure: Error?
+        func revalidate() throws {
+            do { try validateAccess() } catch {
+                validationFailure = error
+                throw error
+            }
+        }
         do {
-            if copyVideo {
-                let copyRequest = request
-                projectID = try await Task.detached(priority: .userInitiated) {
-                    try StudioProjectStore.shared.getOrCreateFlatProject(request: copyRequest).id
-                }.value
+            if let owned = try store.existingOwnedFlatVideo(request: request, preferredID: frontmostStudioID,
+                                                            validateAccess: revalidate) {
+                project = owned
             } else {
-                projectID = try StudioProjectStore.shared.getOrCreateFlatProject(request: request) {
-                    do {
-                        try validateAccess()
-                    } catch {
-                        validationFailure = error
-                        throw error
-                    }
-                }.id
+                let prepared: StudioProjectStore.PreparedFlatVideo
+                if copyVideo {
+                    let copyRequest = request
+                    prepared = try await Task.detached(priority: .userInitiated) {
+                        try StudioProjectStore.shared.prepareFlatVideo(request: copyRequest)
+                    }.value
+                } else {
+                    prepared = try store.prepareFlatVideo(request: request)
+                }
+                try revalidate()
+                guard CaptureSettings.shared.studioPreviewEnabled else { return false }
+                project = try store.commitFlatVideo(prepared, preferredID: frontmostStudioID, validateAccess: revalidate)
             }
         } catch {
             if let validationFailure { throw validationFailure }
@@ -134,12 +149,20 @@ final class StudioWindowRegistry {
             SaveService.shared.showError("This video could not be opened in Studio: \(error.localizedDescription)")
             return false
         }
-        try validateAccess()
-        open(projectID: projectID)
-        return windows[projectID] != nil
+        if let model = windows[project.id]?.automationViewModel, !project.sources.screen.external,
+           let paths = try? store.paths(for: project) {
+            model.adoptOwnedScreen(of: project, paths: paths)
+        }
+        open(projectID: project.id)
+        return windows[project.id] != nil
+    }
+
+    private var frontmostStudioID: String? {
+        NSApp.orderedWindows.compactMap { ($0 as? StudioWindow)?.projectID }.first
     }
 
     private static func flatProjectRequest(for url: URL) async throws -> StudioFlatProjectRequest {
+        let source = try StudioProjectStore.shared.videoSourceIdentity(at: url)
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw StudioVideoOpenError.noVideoTrack
@@ -156,7 +179,7 @@ final class StudioWindowRegistry {
         }
         let width = Int(size.width.rounded())
         let height = Int(size.height.rounded())
-        return StudioFlatProjectRequest(
+        var request = StudioFlatProjectRequest(
             videoURL: url,
             width: width,
             height: height,
@@ -164,6 +187,8 @@ final class StudioWindowRegistry {
             frameRate: nominalFrameRate > 0 ? Double(nominalFrameRate) : 30,
             appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         )
+        request.identityBeforeReadingMetadata = source
+        return request
     }
 
     /// Opens the editor for a project, or brings its window forward when it is already open.
@@ -463,7 +488,7 @@ final class StudioRecentProjectsMenu: NSObject, NSMenuDelegate {
 // MARK: - Window
 
 final class StudioWindow: NSWindow, NSWindowDelegate {
-    private let projectID: String
+    fileprivate let projectID: String
     private let viewModel: StudioViewModel
     private var onClose: ((String) -> Void)?
     var automationViewModel: StudioViewModel { viewModel }
