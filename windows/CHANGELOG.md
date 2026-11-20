@@ -5,11 +5,16 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
+
 ### Fixed
 - Agents can disable microphone and camera source capture for an individual video or Studio recording with `microphone=false camera=false`, using recording scope without changing saved settings. Enabling requires both the user's saved device opt-in and existing Windows permission; no permission prompt is shown. Start/status report effective device capture, and overrides survive countdown, Studio fallback, and restart.
+- Scrolling screenshots now keep the lower viewport overlap until the final frame, preventing bottom-floating controls such as Teams' "New messages" badge from repeating throughout the image.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 
 ### Changed
+- The Guide opens to capture help in a shorter window, with native Capture, Shortcuts, Edit & record, Library, and Agents tabs instead of one long page. Each topic scrolls independently while the tabs remain visible, and shortcut labels and agent setup remain available in their own tabs.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 
 ## [v2.1.1-windows] - 2026-11-14

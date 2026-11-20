@@ -89,6 +89,9 @@ public sealed class AutomationContractTests
         var contract = AutomationContract.Default;
         Assert.True(contract.TryGetCommand("studio.projects.list", out var list));
         Assert.Equal("read", list.Scope);
+        Assert.True(contract.TryGetCommand("studio.project.open", out var open));
+        Assert.Equal("edit", open.Scope);
+        Assert.True(open.Parameters["projectId"].Required);
         Assert.True(contract.TryGetCommand("studio.project.get", out var get));
         Assert.Equal("read", get.Scope);
         Assert.True(contract.TryGetCommand("studio.project.saveCopy", out var copy));

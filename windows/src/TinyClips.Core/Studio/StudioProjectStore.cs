@@ -1027,6 +1027,20 @@ public sealed record StudioProjectSummary(
     /// </summary>
     public bool IsDraftOrLostItsExport => IsDraft || ExportMissing;
 
+    public string LibraryName => string.IsNullOrWhiteSpace(Name) ? "Untitled Recording" : Name.Trim();
+
+    public static IReadOnlyList<StudioProjectSummary> LibraryProjects(
+        IEnumerable<StudioProjectSummary> summaries, string search)
+    {
+        ArgumentNullException.ThrowIfNull(summaries);
+        var query = search.Trim();
+        return summaries
+            .Where(summary => query.Length == 0 || summary.LibraryName.Contains(query, StringComparison.CurrentCultureIgnoreCase))
+            .OrderByDescending(summary => summary.LastUsedAt)
+            .ThenBy(summary => summary.Id, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     /// <summary>
     /// The projects the tray menu lists beside the saved captures: those that hold the only
     /// copy of a recording that is still there to open. A project with an exported video is in

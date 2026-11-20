@@ -113,6 +113,11 @@ Give these to an agent with Tiny Clips CLI or MCP access. Tell it which app or p
 
 An agent needs its own browser/desktop tools to click, type, or scroll in other apps; Tiny Clips does not provide those actions. Studio must be enabled for Studio commands. On macOS, Agent Control does not require a supporter tip. OS permissions still apply, and sensitive commands still ask for approval.
 
+For scrolling screenshots on both platforms, scroll gradually with overlapping content. Stitching
+keeps the lower viewport overlap until the final frame so bottom-floating controls are not repeated;
+large jumps without enough clear overlap are skipped. Agent-started captures use the same stitcher
+as interactive captures, with no additional command or setting.
+
 Supporter plans are intentionally not available to agents, on either platform: spending money needs a person, and the store's purchase dialog is theirs to confirm. No command buys a plan or reports supporter status.
 
 ## Troubleshooting setup
@@ -218,7 +223,7 @@ For long pages, call `capture.scrolling.start` with a target, scroll the page wi
 
 ### Studio projects
 
-Studio commands work on both platforms when Studio is enabled. `studio.projects.list` discovers stored projects, including drafts made from existing videos (`isDraft: true`, `isFlat: true`) that also appear in Settings → Studio → Drafts; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths.
+Studio commands work on both platforms when Studio is enabled. `studio.projects.list` discovers stored projects, including drafts made from existing videos (`isDraft: true`, `isFlat: true`) that also appear in Library → Studio → Projects and Settings → Studio → Drafts; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths. With `edit` scope, `studio.project.open` opens a stored project by ID or brings its existing Studio editor forward.
 
 On macOS, `studio.project.saveCopy` needs `export` and writes a portable snapshot, including source recordings, into a new `folderName` directly in the configured video folder. It returns `folderPath` and `projectFile`, never replaces an existing destination, and does not link the copy for subsequent saves. An open editor must be ready and its pending changes are saved first. On Windows this command is not advertised and returns `not_supported`.
 

@@ -20,8 +20,11 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   The region selector shows a live snapshot of the screen and dims only outside the selection.
 - **Scrolling capture** — pick **Scroll** (P) in the Screenshot picker, select a region, then scroll
   the page; a floating panel shows the frame count with **Done** (Enter) to stitch everything into
-  one tall image and **Cancel** (Esc) to discard. Sticky headers/footers are suppressed and memory
-  use is bounded (the capture stops and saves automatically when a limit is reached). Enter/Esc
+  one tall image and **Cancel** (Esc) to discard. The lower viewport overlap is kept until the
+  final frame so sticky footers and nearby floating controls (such as Teams' **New messages**)
+  appear only once. Scroll gradually with overlapping content; large jumps without enough clear
+  overlap are skipped rather than stitched through fixed UI. Memory use is bounded (the capture
+  stops and saves automatically when a limit is reached). Enter/Esc
   apply while the panel has focus; use its buttons after clicking into the page.
 - **Video recording** → hardware-accelerated **H.264 MP4** (configurable frame rate, audio sources,
   microphone device, mouse-click visuals, and time limit before each recording).
@@ -49,7 +52,9 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   video and GIF without changing their saved durations, and shows Custom if they differ.
   Windows notification availability is separate from the save-notification preference.
   The final page illustrates where to find Tiny Clips in the taskbar's system tray.
-  An in-app Guide provides a help reference.
+  The in-app Guide splits help into **Capture**, **Shortcuts**, **Edit & record**,
+  **Library**, and **Agents** tabs, with capture help selected first. Each page scrolls
+  independently while the tabs stay visible; keyboard navigation uses the native tab control.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
   **Smart Collections** (All, Recent, This Week, This Month, Large Files, Favorites, Screenshots,
   Videos, GIFs), your **Collections**, and **Tags**; search across names, tags and notes; a

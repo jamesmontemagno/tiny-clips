@@ -132,6 +132,14 @@ public class ContractTests
     {
         var contract = Contract.Current;
         Assert.Equal("read", contract.Find("studio.projects.list")!.Scope);
+        var open = contract.Find("studio.project.open")!;
+        Assert.Equal("edit", open.Scope);
+        Assert.Equal(["projectId"], Contract.InputSchema(open)["required"]!.AsArray()
+            .Select(parameter => parameter!.GetValue<string>()));
+        Assert.Contains("Missing required", Contract.Validate(open, new JsonObject()));
+        Assert.Null(Contract.Validate(open, new JsonObject { ["projectId"] = "project" }));
+        Assert.Contains(open, contract.CommandsForPlatform("macos"));
+        Assert.Contains(open, contract.CommandsForPlatform("windows"));
         Assert.Equal("read", contract.Find("studio.project.get")!.Scope);
         var copy = contract.Find("studio.project.saveCopy")!;
         Assert.Equal("export", copy.Scope);

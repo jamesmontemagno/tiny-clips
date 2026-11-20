@@ -216,6 +216,18 @@ struct StudioProjectSummary: Equatable, Sendable {
 
 /// A project folder whose `project.json` is there and cannot be read.
 extension StudioProjectSummary {
+    var libraryName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Untitled Recording" : trimmed
+    }
+
+    static func libraryProjects(from summaries: [StudioProjectSummary], matching search: String) -> [StudioProjectSummary] {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        return summaries
+            .filter { query.isEmpty || $0.libraryName.localizedStandardContains(query) }
+            .sorted { $0.lastUsedAt == $1.lastUsedAt ? $0.id < $1.id : $0.lastUsedAt > $1.lastUsedAt }
+    }
+
     /// When the project was last worked on: when it was last open, or failing that recorded.
     var lastUsedAt: Date { max(createdAt, lastOpenedAt) }
 
