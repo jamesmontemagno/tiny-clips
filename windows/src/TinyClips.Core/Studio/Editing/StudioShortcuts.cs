@@ -302,10 +302,8 @@ public static class StudioShortcuts
         // Plain O sets the trim end and plain S splits the scene. With Ctrl they are about
         // the project as a whole. Each asks something first, so a key that is held asks once.
         //
-        // Saving is Ctrl+S on Windows, not the Mac's key with Shift: Ctrl+Shift+S is the
-        // app's own global hotkey for Stop recording, which Windows hands to the app and
-        // not to the window that has the keyboard, so in the app it never arrives here.
-        // Where it does arrive, because the hotkey could not be registered, it saves too.
+        // Stop recording is optional and registered only during recording, leaving these
+        // project shortcuts with the active editor while idle.
         StudioShortcutKey.O when !input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.OpenProject,
         StudioShortcutKey.S when !input.IsRepeat => input.IsShiftDown ? StudioShortcutAction.SaveProjectAs : StudioShortcutAction.SaveProject,
         _ => StudioShortcutAction.None,

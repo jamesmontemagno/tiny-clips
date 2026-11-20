@@ -16,9 +16,13 @@ public static class HotKeyValidator
     public static HotKeyValidationResult Validate(
         HotKeyAction targetAction,
         HotKeyDefinition candidate,
-        IEnumerable<KeyValuePair<HotKeyAction, HotKeyDefinition>> bindings,
-        HotKeyDefinition stopRecordingBinding)
+        IEnumerable<KeyValuePair<HotKeyAction, HotKeyDefinition>> bindings)
     {
+        if (candidate.IsUnbound)
+        {
+            return HotKeyValidationResult.Valid;
+        }
+
         if (candidate.Modifiers == HotKeyModifiers.None)
         {
             return new HotKeyValidationResult(HotKeyValidationError.ModifierRequired);
@@ -42,11 +46,6 @@ public static class HotKeyValidator
                     HotKeyValidationError.DuplicateBinding,
                     binding.Key);
             }
-        }
-
-        if (candidate == stopRecordingBinding)
-        {
-            return new HotKeyValidationResult(HotKeyValidationError.StopRecordingConflict);
         }
 
         return HotKeyValidationResult.Valid;

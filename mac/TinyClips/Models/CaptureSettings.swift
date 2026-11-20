@@ -558,14 +558,16 @@ class CaptureSettings: ObservableObject {
     @AppStorage("teleprompterFontSize") var teleprompterFontSize: String = TeleprompterDisplaySize.medium.rawValue
     @AppStorage("teleprompterPanelHeight") var teleprompterPanelHeight: String = TeleprompterDisplaySize.medium.rawValue
     // Custom global hotkeys (stored as Carbon keyCode + modifiers bitmask).
-    // Defaults: ⌃⌥⌘5 / ⌃⌥⌘6 / ⌃⌥⌘7; every other action is unbound (-1 / 0) by default.
+    // Only Screenshot (⌃⌥⌘5) is bound by default.
     // 6400 = controlKey (4096) | optionKey (2048) | cmdKey (256)
     @AppStorage("screenshotHotKeyCode") var screenshotHotKeyCode: Int = 23      // kVK_ANSI_5
     @AppStorage("screenshotHotKeyModifiers") var screenshotHotKeyModifiers: Int = 6400
-    @AppStorage("videoHotKeyCode") var videoHotKeyCode: Int = 22                // kVK_ANSI_6
-    @AppStorage("videoHotKeyModifiers") var videoHotKeyModifiers: Int = 6400
-    @AppStorage("gifHotKeyCode") var gifHotKeyCode: Int = 26                    // kVK_ANSI_7
-    @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 6400
+    @AppStorage("videoHotKeyCode") var videoHotKeyCode: Int = -1
+    @AppStorage("videoHotKeyModifiers") var videoHotKeyModifiers: Int = 0
+    @AppStorage("gifHotKeyCode") var gifHotKeyCode: Int = -1
+    @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 0
+    @AppStorage("stopRecordingHotKeyCode") var stopRecordingHotKeyCode: Int = -1
+    @AppStorage("stopRecordingHotKeyModifiers") var stopRecordingHotKeyModifiers: Int = 0
     @AppStorage("copyTextFromRegionHotKeyCode") var copyTextFromRegionHotKeyCode: Int = -1
     @AppStorage("copyTextFromRegionHotKeyModifiers") var copyTextFromRegionHotKeyModifiers: Int = 0
     // Direct-to-mode screenshot shortcuts (skip the capture picker); all unbound by default.
@@ -708,6 +710,8 @@ class CaptureSettings: ObservableObject {
             return ("screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers")
         case .screenshotScreen:
             return ("screenshotScreenHotKeyCode", "screenshotScreenHotKeyModifiers")
+        case .stopRecording:
+            return ("stopRecordingHotKeyCode", "stopRecordingHotKeyModifiers")
         }
     }
 
@@ -900,6 +904,7 @@ class CaptureSettings: ObservableObject {
         "screenshotHotKeyCode", "screenshotHotKeyModifiers",
         "videoHotKeyCode", "videoHotKeyModifiers",
         "gifHotKeyCode", "gifHotKeyModifiers",
+        "stopRecordingHotKeyCode", "stopRecordingHotKeyModifiers",
         "copyTextFromRegionHotKeyCode", "copyTextFromRegionHotKeyModifiers",
         "screenshotRegionHotKeyCode", "screenshotRegionHotKeyModifiers",
         "screenshotWindowHotKeyCode", "screenshotWindowHotKeyModifiers",

@@ -7,7 +7,6 @@ public enum HotKeyValidationError
     KeyRequired,
     ModifierKeyNotAllowed,
     DuplicateBinding,
-    StopRecordingConflict,
 }
 
 public readonly record struct HotKeyValidationResult(

@@ -182,7 +182,9 @@ TinyClips requires **Screen Recording** permission at runtime. On first launch, 
 The macOS welcome wizard offers launch at login followed by separate Screenshots, Videos,
 and GIFs cards for editor/trimmer, save-immediately, and clipboard preferences, plus editable
 Screenshot/Record Video/Record GIF shortcuts. Explicit changes apply immediately and remain
-if setup is skipped; opening or revisiting setup preserves saved choices. Turning off an
+if setup is skipped; only Screenshot is assigned by default, and opening or revisiting setup
+preserves saved choices. Optional Stop Recording and other global shortcuts belong in Settings,
+not onboarding. Turning off an
 editor or trimmer keeps saving enabled. Countdown and save-notification preferences remain
 in Settings. The wizard opens at 460 × 390 points and remains resizable, with scrollable content.
 The final page illustrates the menu bar camera icon used to open Tiny Clips.
