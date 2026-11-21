@@ -12,7 +12,7 @@ public enum VideoRecordingCommand
     /// <summary>The global hotkey of Record video. Always an ordinary recording.</summary>
     RecordVideoHotKey,
 
-    /// <summary>Studio recording in the tray menu.</summary>
+    /// <summary>Studio recording in the tray menu or from its global hotkey.</summary>
     StudioRecording,
 
     /// <summary>

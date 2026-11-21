@@ -140,6 +140,26 @@ final class HotKeyBindingTests: XCTestCase {
         XCTAssertNil(HotKeyBinding.validationError(for: stop, action: .screenshot, bindings: [.stopRecording: .unbound]))
     }
 
+    func testStudioShortcutConflictsWithVideoAndCanBeCleared() {
+        let binding = HotKeyBinding(keyCode: kVK_ANSI_8, carbonModifiers: Int(cmdKey | shiftKey))
+        XCTAssertTrue(
+            HotKeyBinding.validationError(
+                for: binding,
+                action: .studioRecording,
+                bindings: [.recordVideo: binding]
+            )?.contains("Record Video") == true
+        )
+        XCTAssertTrue(
+            HotKeyBinding.validationError(
+                for: binding,
+                action: .recordVideo,
+                bindings: [.studioRecording: binding]
+            )?.contains("Studio Recording") == true
+        )
+        XCTAssertNil(HotKeyBinding.validationError(for: .unbound, action: .studioRecording, bindings: [.recordVideo: binding]))
+        XCTAssertNil(HotKeyBinding.validationError(for: binding, action: .studioRecording, bindings: [.studioRecording: binding]))
+    }
+
     func testMenuShortcutsDoNotInventFallbackKeysForUnboundOrSpecialBindings() {
         XCTAssertNil(HotKeyBinding.unbound.swiftUIShortcut)
         XCTAssertNil(HotKeyBinding(keyCode: kVK_F5, carbonModifiers: Int(cmdKey)).swiftUIShortcut)

@@ -769,6 +769,18 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("videoHotKeyModifiers", value);
     }
 
+    public int StudioRecordingHotKeyCode
+    {
+        get => _settings.Get("studioRecordingHotKeyCode", 0);
+        set => _settings.Set("studioRecordingHotKeyCode", value);
+    }
+
+    public int StudioRecordingHotKeyModifiers
+    {
+        get => _settings.Get("studioRecordingHotKeyModifiers", 0);
+        set => _settings.Set("studioRecordingHotKeyModifiers", value);
+    }
+
     public int GifHotKeyCode
     {
         get => _settings.Get("gifHotKeyCode", 0);
@@ -1022,6 +1034,8 @@ public sealed class CaptureSettings : ICaptureSettings
         ScreenshotHotKeyModifiers = 6;
         VideoHotKeyCode = 0;
         VideoHotKeyModifiers = 0;
+        StudioRecordingHotKeyCode = 0;
+        StudioRecordingHotKeyModifiers = 0;
         GifHotKeyCode = 0;
         GifHotKeyModifiers = 0;
         StopRecordingHotKeyCode = 0;

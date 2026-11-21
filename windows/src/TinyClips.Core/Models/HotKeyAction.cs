@@ -14,4 +14,5 @@ public enum HotKeyAction
     /// Stops the active recording. Its optional global binding is registered only while recording.
     /// </summary>
     StopRecording,
+    StudioRecording,
 }

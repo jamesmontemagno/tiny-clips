@@ -51,6 +51,7 @@ internal sealed class HotKeyEditOperation(
     {
         HotKeyAction.Screenshot => "Screenshot",
         HotKeyAction.RecordVideo => "Record video",
+        HotKeyAction.StudioRecording => "Studio recording",
         HotKeyAction.RecordGif => "Record GIF",
         HotKeyAction.RecognizeText => "Recognize text",
         HotKeyAction.ScreenshotRegion => "Screenshot region",

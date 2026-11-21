@@ -295,6 +295,7 @@ private struct GuideWindowView: View {
                 shortcutRow(title: "Screenshot Window (no picker)", action: .screenshotWindow)
                 shortcutRow(title: "Screenshot Screen (no picker)", action: .screenshotScreen)
                 shortcutRow(title: "Record Video", action: .recordVideo)
+                shortcutRow(title: "Studio Recording", action: .studioRecording)
                 shortcutRow(title: "Record GIF", action: .recordGif)
                 shortcutRow(title: "Stop Recording (during recording only)", action: .stopRecording)
                 shortcutRow(title: "Copy Text from Region", action: .copyTextFromRegion)

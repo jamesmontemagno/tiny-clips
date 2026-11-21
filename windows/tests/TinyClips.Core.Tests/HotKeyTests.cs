@@ -12,6 +12,7 @@ public sealed class HotKeyTests
 
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35), service.DefaultFor(HotKeyAction.Screenshot));
         Assert.True(service.DefaultFor(HotKeyAction.RecordVideo).IsUnbound);
+        Assert.True(service.DefaultFor(HotKeyAction.StudioRecording).IsUnbound);
         Assert.True(service.DefaultFor(HotKeyAction.RecordGif).IsUnbound);
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.DefaultFor(HotKeyAction.RecognizeText));
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.None, 0), service.DefaultFor(HotKeyAction.ScreenshotRegion));
@@ -54,6 +55,7 @@ public sealed class HotKeyTests
 
         Assert.Equal(new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35), service.GetBinding(HotKeyAction.Screenshot));
         Assert.True(service.GetBinding(HotKeyAction.RecordVideo).IsUnbound);
+        Assert.True(service.GetBinding(HotKeyAction.StudioRecording).IsUnbound);
         Assert.True(service.GetBinding(HotKeyAction.RecordGif).IsUnbound);
         Assert.True(service.GetBinding(HotKeyAction.RecognizeText).IsUnbound);
         Assert.True(service.GetBinding(HotKeyAction.StopRecording).IsUnbound);
@@ -284,6 +286,36 @@ public sealed class HotKeyTests
             new HotKeyDefinition(HotKeyModifiers.Alt, 0x41));
 
         Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void StudioBinding_PersistsIndependentlyAndCanBeClearedAndReset()
+    {
+        var store = new TestSettingsService();
+        var settings = new CaptureSettings(store);
+        var service = new HotKeyService(settings);
+        var video = new HotKeyDefinition(HotKeyModifiers.Alt, 0x56);
+        var studio = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x38);
+        service.SetBinding(HotKeyAction.RecordVideo, video);
+        service.SetBinding(HotKeyAction.StudioRecording, studio);
+
+        var reopened = new HotKeyService(new CaptureSettings(store));
+        Assert.Equal(studio, reopened.GetBinding(HotKeyAction.StudioRecording));
+        Assert.Equal(video, reopened.GetBinding(HotKeyAction.RecordVideo));
+        Assert.Contains(new KeyValuePair<HotKeyAction, HotKeyDefinition>(HotKeyAction.StudioRecording, studio), reopened.GetActiveBindings(false));
+        Assert.Equal(HotKeyAction.StudioRecording, reopened.ValidateBinding(HotKeyAction.RecordGif, studio).ConflictingAction);
+        Assert.Equal(HotKeyAction.RecordVideo, reopened.ValidateBinding(HotKeyAction.StudioRecording, video).ConflictingAction);
+        Assert.True(reopened.ValidateBinding(HotKeyAction.StudioRecording, studio).IsValid);
+
+        reopened.SetBinding(HotKeyAction.StudioRecording, default);
+        Assert.DoesNotContain(reopened.GetActiveBindings(false), pair => pair.Key == HotKeyAction.StudioRecording);
+        Assert.True(reopened.ValidateBinding(HotKeyAction.RecordGif, studio).IsValid);
+        reopened.SetBinding(HotKeyAction.StudioRecording, studio);
+        reopened.SetBinding(HotKeyAction.StudioRecording, reopened.DefaultFor(HotKeyAction.StudioRecording));
+        Assert.True(reopened.GetBinding(HotKeyAction.StudioRecording).IsUnbound);
+        reopened.SetBinding(HotKeyAction.StudioRecording, studio);
+        settings.ResetToDefaults();
+        Assert.True(reopened.GetBinding(HotKeyAction.StudioRecording).IsUnbound);
     }
 
     private static IHotKeyService CreateService()

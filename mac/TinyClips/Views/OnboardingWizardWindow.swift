@@ -233,6 +233,7 @@ private struct OnboardingWizardView: View {
 
                 shortcutRow("Screenshot", action: .screenshot)
                 shortcutRow("Record Video", action: .recordVideo)
+                shortcutRow("Studio Recording", action: .studioRecording)
                 shortcutRow("Record GIF", action: .recordGif)
 
                 Text("Change these anytime in Settings → Shortcuts.")
@@ -399,7 +400,7 @@ private struct OnboardingWizardView: View {
 
     private var shortcutsContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Only Screenshot has a shortcut by default. Add optional Video and GIF shortcuts here. Record Video makes an ordinary recording, not Studio.")
+            Text("Only Screenshot has a shortcut by default. Add optional Video, Studio, and GIF shortcuts here. Record Video makes an ordinary recording; Studio Recording keeps editable layers and opens Studio.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -409,7 +410,7 @@ private struct OnboardingWizardView: View {
                     .accessibilityLabel("Shortcut error: \(shortcutError)")
             }
 
-            ForEach([HotKeyAction.screenshot, .recordVideo, .recordGif], id: \.self) { action in
+            ForEach([HotKeyAction.screenshot, .recordVideo, .studioRecording, .recordGif], id: \.self) { action in
                 ShortcutRecorderField(
                     label: action.displayName,
                     iconName: action.iconName,
@@ -484,6 +485,7 @@ private struct OnboardingWizardView: View {
                 .font(.subheadline.weight(.semibold))
             shortcutRow("Screenshot", action: .screenshot)
             shortcutRow("Record Video", action: .recordVideo)
+            shortcutRow("Studio Recording", action: .studioRecording)
             shortcutRow("Record GIF", action: .recordGif)
             Text("You can change your preferences and shortcuts anytime in Settings.")
                 .font(.caption)

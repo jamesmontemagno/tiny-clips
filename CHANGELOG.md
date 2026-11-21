@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- Studio Recording has its own configurable global shortcut, unassigned by default, in Settings and onboarding on macOS and Windows. Record Video remains an ordinary recording.
 - Open MP4 and MOV files directly in Studio from Finder with **Open With → Tiny Clips**, without changing the default player.
 - The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
 
@@ -14,7 +15,7 @@ All notable changes to this project will be documented in this file.
 - Tiny Clips Studio is generally available on macOS and Windows. What's New no longer presents it as a preview; it introduces Agent Control. Users who previously disabled Studio keep existing projects because upgrade migration disables automatic cleanup until they choose new limits.
 - Agents on macOS and Windows can disable microphone and camera source capture for an individual video or Studio recording with `microphone=false camera=false`, without changing saved preferences or needing settings scope. Enabling requires existing user opt-in and OS permission, without permission prompts. Choices survive countdown, Studio fallback, and restart; recording status reports effective device capture and macOS startup/device errors.
 - Only Screenshot has a global keyboard shortcut by default on macOS; Video, GIF, OCR, direct screenshots, and Stop Recording are optional. Saved bindings are preserved. Stop Recording can be recorded, cleared, or reset in Settings and is active globally only during recording.
-- Shortcuts settings groups Screenshots, Recording, and Text recognition separately from fixed editor, Studio, Clips Library, and navigation references. Onboarding offers only the three common capture actions and explains how to stop without a shortcut.
+- Shortcuts settings groups Screenshots, Recording, and Text recognition separately from fixed editor, Studio, Clips Library, and navigation references. Onboarding offers Screenshot, Record Video, Studio Recording, and Record GIF, and explains how to stop without a shortcut.
 - Shortcut configuration deliberately remains UI-only; agents continue to use capture and recording commands directly.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.
 - Agents on macOS and Windows can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.

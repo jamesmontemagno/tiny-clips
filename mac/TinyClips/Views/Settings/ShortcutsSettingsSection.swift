@@ -27,9 +27,9 @@ struct ShortcutsSettingsSection: View {
         SettingsFormSection(
             "Recording",
             icon: "video",
-            footer: "Optional global shortcuts, not assigned by default. Record Video makes an ordinary recording, not Studio. Stop Recording is active only during recording; the floating Stop button is always available."
+            footer: "Optional global shortcuts, not assigned by default. Record Video makes an ordinary recording; Studio Recording keeps editable layers and opens Studio. Stop Recording is active only during recording; the floating Stop button is always available."
         ) {
-            shortcutRows([.recordVideo, .recordGif, .stopRecording])
+            shortcutRows([.recordVideo, .studioRecording, .recordGif, .stopRecording])
         }
 
         SettingsFormSection(

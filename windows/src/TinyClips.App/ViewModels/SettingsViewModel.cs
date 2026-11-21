@@ -1000,6 +1000,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string VideoHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
 
+    public string StudioRecordingHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.StudioRecording).DisplayString;
+
     public string GifHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
 
     public string OcrHotKeyDisplay => _hotKeys.GetBinding(HotKeyAction.RecognizeText).DisplayString;
@@ -1023,6 +1025,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ScreenshotHotKeyDisplay));
         OnPropertyChanged(nameof(VideoHotKeyDisplay));
+        OnPropertyChanged(nameof(StudioRecordingHotKeyDisplay));
         OnPropertyChanged(nameof(GifHotKeyDisplay));
         OnPropertyChanged(nameof(OcrHotKeyDisplay));
         OnPropertyChanged(nameof(ScreenshotRegionHotKeyDisplay));

@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- Studio recording has its own configurable global shortcut, unassigned by default, in Keyboard shortcuts settings and onboarding. Record video remains an ordinary recording.
 - Open MP4 and MOV files directly in Studio from File Explorer with **Open with → Tiny Clips**, without changing the default player.
 - The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
 
@@ -23,7 +24,7 @@ own `CHANGELOG.md` at the repository root.
 - Tiny Clips Studio is generally available. What's New no longer presents it as a preview; it introduces Agent Control. Users who previously disabled Studio keep existing projects because upgrade migration disables automatic cleanup until they choose new limits.
 - Agent Control now supports `studio.project.saveCopy` with export scope, creating an unlinked portable snapshot in a new folder directly inside the configured video folder.
 - Only Screenshot has a global shortcut by default. Video, GIF, OCR, direct screenshots, and Stop recording start unassigned; saved bindings are preserved, and all global shortcuts can be edited, deleted, or reset.
-- Keyboard shortcuts settings groups Screenshots, Recording, and Text recognition, with separate fixed-shortcut references for the editors, Studio, Clips Library, and navigation. Onboarding offers only Screenshot, Record video, and Record GIF; recording controls and guides reflect the current Stop binding.
+- Keyboard shortcuts settings groups Screenshots, Recording, and Text recognition, with separate fixed-shortcut references for the editors, Studio, Clips Library, and navigation. Onboarding offers Screenshot, Record video, Studio recording, and Record GIF; recording controls and guides reflect the current Stop binding.
 - Shortcut configuration deliberately remains UI-only; agents continue to use capture and recording commands directly.
 - The Guide is now an offline feature handbook with seven native tabs: Capture, Editor, Recording, Studio, Library, Agents, and Help. Original theme-aware illustrations and numbered workflows cover editing, scrolling/OCR, recording, Studio projects/captions, Library organization/sharing, Agent permissions, and troubleshooting. Each page scrolls independently; Help retains live shortcut bindings and Agents retains selectable setup commands. Stable lower-case topic IDs support selecting and inspecting a topic on the same Guide window.
 - Studio speed is now a slider from 0.25x to 8x in 0.25x steps, including normal speed without losing the selected range.

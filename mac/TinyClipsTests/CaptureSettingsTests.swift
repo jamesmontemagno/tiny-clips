@@ -397,6 +397,7 @@ final class CaptureSettingsTests: XCTestCase {
     func testUnboundDefaultHotKeysTreatLegacyZeroPairAsUnbound() {
         let legacyZeroActions: [(HotKeyAction, String)] = [
             (.recordVideo, "video"),
+            (.studioRecording, "studioRecording"),
             (.recordGif, "gif"),
             (.stopRecording, "stopRecording"),
             (.screenshotScreen, "screenshotScreen"),
@@ -418,18 +419,21 @@ final class CaptureSettingsTests: XCTestCase {
 
     func testSavedRecordingBindingsSurviveNewDefaultsAndResetCanClearThem() {
         let video = HotKeyBinding(keyCode: kVK_ANSI_6, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
+        let studio = HotKeyBinding(keyCode: kVK_ANSI_8, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
         let gif = HotKeyBinding(keyCode: kVK_ANSI_7, carbonModifiers: HotKeyBinding.defaultCaptureModifiers)
         let stop = HotKeyBinding(keyCode: kVK_ANSI_Period, carbonModifiers: Int(cmdKey))
-        for (action, binding) in [(HotKeyAction.recordVideo, video), (.recordGif, gif), (.stopRecording, stop)] {
+        for (action, binding) in [(HotKeyAction.recordVideo, video), (.studioRecording, studio), (.recordGif, gif), (.stopRecording, stop)] {
             CaptureSettings.setHotKeyBinding(binding, for: action, defaults: defaults)
         }
 
         let settings = CaptureSettings(defaults: defaults, performMigrations: false)
         XCTAssertEqual(settings.hotKeyBinding(for: .recordVideo), video)
+        XCTAssertEqual(settings.hotKeyBinding(for: .studioRecording), studio)
         XCTAssertEqual(settings.hotKeyBinding(for: .recordGif), gif)
         XCTAssertEqual(settings.hotKeyBinding(for: .stopRecording), stop)
 
         CaptureSettings.resetStoredDefaults(defaults, preservingHotKeys: true)
+        XCTAssertEqual(settings.hotKeyBinding(for: .studioRecording), studio)
         XCTAssertEqual(settings.hotKeyBinding(for: .stopRecording), stop)
         CaptureSettings.resetStoredDefaults(defaults)
         XCTAssertFalse(settings.hotKeyBinding(for: .screenshot).isUnbound)
