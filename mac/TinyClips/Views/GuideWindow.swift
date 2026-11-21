@@ -271,7 +271,7 @@ private struct GuideWindowView: View {
                 feature("Library preferences", "Settings → Clips Library controls default views, quick actions, refresh, and archiving old clips. Review delete prompts carefully; deletion cannot be undone from the library on macOS.")
             }
             sectionCard(title: "Share deliberately", icon: "square.and.arrow.up") {
-                feature("Local sharing", "Copy a clip, drag it into another app, use Share, or reveal it in Finder. Saving a capture does not upload it.")
+                feature("Local sharing", "Copy a clip, drag it into another app, use Share, or reveal it in Finder. Saving stays local unless Auto-upload new captures to Uploadcare is enabled; review or disable it in Clips Library settings before saving sensitive content.")
                 feature("Uploadcare links", "Configure your own Uploadcare account in Clips Library settings before uploading. Credentials stay in the macOS Keychain; selected files go to your Uploadcare project under its terms.")
                 feature("Review the output", "Check images for private details and play videos through before sharing. Sharing an exported MP4 is different from sharing an editable project folder containing source media.")
             }
