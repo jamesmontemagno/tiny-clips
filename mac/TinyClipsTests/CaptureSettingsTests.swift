@@ -472,6 +472,9 @@ final class CaptureSettingsTests: XCTestCase {
 
         try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
         XCTAssertEqual(StudioProjectSaveLocation.prepare(configured: chosen.path, videoFolder: videos).path, chosen.path)
+        XCTAssertEqual(StudioProjectSaveLocation.resolve(configured: chosen.path, videoFolder: videos, useDefaults: true).path, videos.appendingPathComponent("Studio").path)
+        XCTAssertEqual(StudioProjectSaveLocation.prepare(configured: chosen.path, videoFolder: videos, useDefaults: true, trustChosenFolder: true).path, videos.appendingPathComponent("Studio").path)
+        XCTAssertEqual(StudioProjectSaveLocation.resolve(configured: chosen.path, videoFolder: videos, useDefaults: false).path, chosen.path)
 
         let chosenWithSpace = root.appendingPathComponent("Projects ", isDirectory: true)
         try FileManager.default.createDirectory(at: chosenWithSpace, withIntermediateDirectories: true)

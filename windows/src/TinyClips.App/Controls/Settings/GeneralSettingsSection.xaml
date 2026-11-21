@@ -52,7 +52,7 @@
                         <controls:SettingsCard ContentAlignment="Left">
                             <CheckBox
                                 AutomationProperties.AutomationId="UseDefaultSaveDirectoriesToggle"
-                                AutomationProperties.Name="Use default capture folders"
+                                AutomationProperties.Name="Use default save locations"
                                 Content="Use default save locations"
                                 IsChecked="{x:Bind ViewModel.UseDefaultSaveDirectories, Mode=TwoWay}" />
                         </controls:SettingsCard>
@@ -86,10 +86,10 @@
                                 Click="OnBrowseGifSaveDirectory"
                                 Content="Choose&#x2026;" />
                         </controls:SettingsCard>
-                        <!--  Its own setting, not one of the defaults above: its default follows the videos folder.  -->
                         <controls:SettingsCard
                             AutomationProperties.AutomationId="StudioProjectFolderCard"
-                            Header="Studio projects">
+                            Header="Studio projects"
+                            Visibility="{x:Bind ViewModel.CustomSaveLocationsVisibility, Mode=OneWay}">
                             <controls:SettingsCard.Description>
                                 <StackPanel>
                                     <TextBlock

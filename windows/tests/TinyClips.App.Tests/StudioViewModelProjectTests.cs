@@ -261,6 +261,12 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
 
         // A folder chosen in Settings is where it starts instead.
         Settings.StudioProjectFolder = _outside;
+        Settings.UseDefaultSaveDirectories = false;
+        Assert.Equal(_outside, viewModel.ProjectSaveFolder);
+        Settings.UseDefaultSaveDirectories = true;
+        Assert.Equal(studioFolder, viewModel.ProjectSaveFolder);
+        Assert.Equal(_outside, Settings.StudioProjectFolder);
+        Settings.UseDefaultSaveDirectories = false;
         Assert.Equal(_outside, viewModel.ProjectSaveFolder);
     }
 
