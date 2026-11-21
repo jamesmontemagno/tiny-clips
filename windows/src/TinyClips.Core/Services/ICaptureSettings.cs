@@ -93,10 +93,11 @@ public interface ICaptureSettings
     StudioLook? StudioDefaultLook { get; set; }
 
     /// <summary>
-    /// The folder a Studio project was last saved in as a folder, which is where Save project
-    /// starts the next time. Empty until one has been saved: the app then starts in Documents.
+    /// The folder Save project and Save project as start in, chosen in Settings. Empty for the
+    /// default, a <c>Studio</c> folder inside the videos folder. See
+    /// <see cref="StudioProjectSaveLocation"/>.
     /// </summary>
-    string StudioProjectSaveFolder { get; set; }
+    string StudioProjectFolder { get; set; }
 
     bool RecordAudio { get; set; }
     bool RecordMicrophone { get; set; }

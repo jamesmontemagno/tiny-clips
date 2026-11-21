@@ -94,6 +94,33 @@ struct StudioSettingsSection: View {
         #endif
     }
 
+    /// The folder Save Project starts in, and what the setting does and does not move.
+    private var projectFolderDescription: String {
+        let folder = StudioProjectSaveLocation.resolve(
+            configured: settings.studioProjectFolder,
+            videoFolder: SaveService.shared.outputDirectoryURL(for: .video)
+        )
+        let suffix = StudioProjectSaveLocation.isCustom(settings.studioProjectFolder) ? "" : " (default)"
+        return "\(folder.path)\(suffix)\nWhere Save Project and Save Project As start. A project already saved to a folder keeps saving there. Drafts and recordings stay in Studio's own storage."
+    }
+
+    private func chooseProjectFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Save Project Folder"
+        panel.message = "Save Project and Save Project As will start in this folder."
+        panel.prompt = "Choose"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = StudioProjectSaveLocation.resolve(
+            configured: settings.studioProjectFolder,
+            videoFolder: SaveService.shared.outputDirectoryURL(for: .video)
+        )
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        settings.studioProjectFolder = url.path
+    }
+
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -127,6 +154,24 @@ struct StudioSettingsSection: View {
                     StudioWindowRegistry.shared.chooseProjectFileToOpen()
                 }
                 .help("Open a project that was saved as a folder, from its .tinyclips file.")
+            }
+
+            SettingsActionRow(
+                title: "Save Project folder",
+                description: projectFolderDescription
+            ) {
+                if StudioProjectSaveLocation.isCustom(settings.studioProjectFolder) {
+                    Button("Use Default") {
+                        settings.studioProjectFolder = ""
+                    }
+                    .help("Start Save Project in the Studio folder inside your video folder.")
+                    .accessibilityLabel("Use the default Save Project folder")
+                }
+                Button("Choose…") {
+                    chooseProjectFolder()
+                }
+                .help("Choose where Save Project and Save Project As start.")
+                .accessibilityLabel("Choose Save Project folder")
             }
         }
 

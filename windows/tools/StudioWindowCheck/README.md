@@ -2169,7 +2169,7 @@ and leaves nothing, is in the store's tests and not here.
 
 What the checks save goes to a folder of the run beside the store, in the temp folder
 (`TinyClipsStudioWindowCheck-saved-<process id>`), which is removed when the group is over.
-The folder a save starts in is a setting (`StudioProjectSaveFolder`), and the group sets it
+The folder a save starts in is the Studio projects folder setting (`StudioProjectFolder`), and the group sets it
 there: no check writes to Documents.
 
 Pictures for a person, in the out folder, from which nothing is read: `project-panel.png`,

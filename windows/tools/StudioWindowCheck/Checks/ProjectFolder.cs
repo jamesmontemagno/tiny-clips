@@ -119,8 +119,8 @@ internal sealed partial class WindowChecks
         // the store and not in it, gone when the group is over.
         var saveRoot = Path.Combine(Path.GetTempPath(), $"TinyClipsStudioWindowCheck-saved-{Environment.ProcessId}");
         Directory.CreateDirectory(saveRoot);
-        var placeBefore = _services.Settings.StudioProjectSaveFolder;
-        _services.Settings.StudioProjectSaveFolder = saveRoot;
+        var placeBefore = _services.Settings.StudioProjectFolder;
+        _services.Settings.StudioProjectFolder = saveRoot;
         try
         {
             ProjectCommands(saveRoot);
@@ -129,7 +129,7 @@ internal sealed partial class WindowChecks
         finally
         {
             _services.Store.HoldProjectSaves(null);
-            _services.Settings.StudioProjectSaveFolder = placeBefore;
+            _services.Settings.StudioProjectFolder = placeBefore;
             try
             {
                 Directory.Delete(saveRoot, recursive: true);
@@ -268,8 +268,8 @@ internal sealed partial class WindowChecks
         _report.Check(
             "Choose folder\u2026 asks the folder picker, and the folder that was chosen is the place; a picker that is closed without a choice leaves the place as it was; Cancel saves nothing and remembers nothing",
             chose && placeAfter == $"In {elsewhere}" && cancelledPick && placeKept == placeAfter && !HasDialog(editor)
-                && NamesIn(elsewhere).Length == 0 && _services.Store.ProjectSavesBegun == savesAtStart && _services.Settings.StudioProjectSaveFolder == saveRoot,
-            $"after the picker answered {elsewhere} the place read \"{placeAfter}\", and after it answered nothing \"{placeKept}\"; saves begun {_services.Store.ProjectSavesBegun - savesAtStart}; the place a save starts in is {_services.Settings.StudioProjectSaveFolder}");
+                && NamesIn(elsewhere).Length == 0 && _services.Store.ProjectSavesBegun == savesAtStart && _services.Settings.StudioProjectFolder == saveRoot,
+            $"after the picker answered {elsewhere} the place read \"{placeAfter}\", and after it answered nothing \"{placeKept}\"; saves begun {_services.Store.ProjectSavesBegun - savesAtStart}; the place a save starts in is {_services.Settings.StudioProjectFolder}");
 
         // The save itself, held before anything is copied so that the editor can be looked at.
         Timeline.Mark("15: while the project is saved");
@@ -367,9 +367,9 @@ internal sealed partial class WindowChecks
             "when the copy is done the overlay goes and the editor works again, with the focus back on the button the save was asked from; the folder holds the recording and a .tinyclips file of the folder's name; the store opens that file again as a project of its own, with the edit, the same recording and no exports; the file is shown in its folder; a screen reader is told where the project was saved; and the next save starts in the same place",
             overlayGone && working && files.SequenceEqual(new[] { "events.json", folderName + ".tinyclips", "screen.mp4" }, StringComparer.OrdinalIgnoreCase) && opened == "ok"
                 && revealed.SequenceEqual([projectFile]) && saidSaved.Any(e => e.Text == $"Project saved to the folder {folderName}.") && focusedFirst == SaveProjectId && focusAfter == SaveProjectId
-                && ErrorOf(editor).Length == 0 && _services.Settings.StudioProjectSaveFolder == saveRoot && _services.Notices.IsEmpty,
+                && ErrorOf(editor).Length == 0 && _services.Settings.StudioProjectFolder == saveRoot && _services.Notices.IsEmpty,
             $"the overlay went: {overlayGone}; the editor works: {working}; the folder holds {string.Join(", ", files)}; opened again by the store: {opened}; shown in its folder: {(revealed.Length == 0 ? "nothing" : string.Join(", ", revealed))}; "
-                + $"read out: {Heard(saidSaved)}; the focus is on \"{focusAfter}\"; the next save starts in {_services.Settings.StudioProjectSaveFolder}{(ErrorOf(editor) is { Length: > 0 } saveError ? $"; the window says \"{saveError}\"" : string.Empty)}");
+                + $"read out: {Heard(saidSaved)}; the focus is on \"{focusAfter}\"; the next save starts in {_services.Settings.StudioProjectFolder}{(ErrorOf(editor) is { Length: > 0 } saveError ? $"; the window says \"{saveError}\"" : string.Empty)}");
         if (reopenedId is not null)
         {
             _services.Store.Delete(reopenedId);

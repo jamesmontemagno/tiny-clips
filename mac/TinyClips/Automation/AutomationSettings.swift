@@ -98,6 +98,12 @@ struct AutomationSetting {
         .readOnly("screenshotFolder") { SaveService.shared.outputDirectoryURL(for: .screenshot).path },
         .readOnly("videoFolder") { SaveService.shared.outputDirectoryURL(for: .video).path },
         .readOnly("gifFolder") { SaveService.shared.outputDirectoryURL(for: .gif).path },
+        .readOnly(StudioProjectSaveLocation.settingsKey) {
+            StudioProjectSaveLocation.resolve(
+                configured: CaptureSettings.shared.studioProjectFolder,
+                videoFolder: SaveService.shared.outputDirectoryURL(for: .video)
+            ).path
+        },
         .string("fileNameTemplate", \.fileNameTemplate),
         .string("studioExportResolution", \.studioExportResolution, allowed: StudioExportResolution.allCases.map(\.rawValue)),
         .string("studioExportQuality", \.studioExportQuality, allowed: StudioExportQuality.allCases.map(\.rawValue)),

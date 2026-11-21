@@ -7,7 +7,7 @@ namespace TinyClips.App.Views.Studio;
 
 /// <summary>
 /// Asks where a project is saved as a folder: a name, suggested from the project's, and the
-/// folder it is made in, which starts where the last project went. Save looks at what is
+/// folder it is made in, which starts in the Save project folder from Settings. Save looks at what is
 /// there before the dialog closes, and where a project cannot be saved the dialog stays and
 /// says why, under the name. A saved project that would be replaced is not asked about here:
 /// the dialog closes with it as its target, and the window asks.

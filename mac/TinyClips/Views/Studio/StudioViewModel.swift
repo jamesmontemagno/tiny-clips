@@ -2471,6 +2471,21 @@ final class StudioViewModel: ObservableObject {
         }
     }
 
+    /// Where the save panel opens: the folder chosen in Settings → Studio, or Studio inside the
+    /// video folder, created when missing.
+    private static func projectSaveStartFolder() -> URL {
+        #if APPSTORE
+        let trustChosenFolder = true
+        #else
+        let trustChosenFolder = false
+        #endif
+        return StudioProjectSaveLocation.prepare(
+            configured: CaptureSettings.shared.studioProjectFolder,
+            videoFolder: SaveService.shared.outputDirectoryURL(for: .video),
+            trustChosenFolder: trustChosenFolder
+        )
+    }
+
     /// Updates the linked project folder, or chooses one for the first save and Save As.
     /// Editing and autosave continue to use Studio's internal working copy. Saved from the close
     /// prompt, the window closes once the folder has the project, and the folder is not shown.
@@ -2499,6 +2514,7 @@ final class StudioViewModel: ObservableObject {
                 panel.nameFieldStringValue = StudioProjectStore.folderName(for: clipName)
                 panel.canCreateDirectories = true
                 panel.isExtensionHidden = false
+                panel.directoryURL = Self.projectSaveStartFolder()
                 guard panel.runModal() == .OK, let chosen = panel.url else { return }
                 folder = chosen
             }

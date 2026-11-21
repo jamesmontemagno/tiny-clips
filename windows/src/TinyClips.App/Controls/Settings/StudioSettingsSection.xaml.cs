@@ -36,6 +36,17 @@ public sealed partial class StudioSettingsSection : UserControl, ISettingsSectio
 
     public void NotifyWindowClosed() => _closed = true;
 
+    /// <summary>
+    /// Asks the window to show a folder picker for Save project, which needs the window's handle.
+    /// </summary>
+    public event EventHandler? ChooseStudioProjectFolderRequested;
+
+    private void OnChooseStudioProjectFolder(object sender, RoutedEventArgs e) =>
+        ChooseStudioProjectFolderRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnUseDefaultStudioProjectFolder(object sender, RoutedEventArgs e) =>
+        ViewModel.UseDefaultStudioProjectFolder();
+
     private async void OnDeleteCaptionModels(object sender, RoutedEventArgs e)
     {
         DeleteCaptionModelsFlyout.Hide();
