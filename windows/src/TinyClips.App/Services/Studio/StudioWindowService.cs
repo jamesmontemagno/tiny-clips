@@ -280,6 +280,36 @@ public sealed class StudioWindowService : IStudioProjectHost
     internal StudioViewModel? FindOpenViewModel(string projectId) =>
         _windows.TryGetValue(projectId, out var window) ? window.ViewModel : null;
 
+    internal async Task OpenLibraryFolderAsync(string projectId)
+    {
+        var folder = StudioProjectDestination.LibraryFolder(_store, projectId);
+        if (!await Windows.System.Launcher.LaunchFolderPathAsync(folder))
+            throw new IOException("File Explorer could not open the project folder.");
+    }
+
+    internal async Task<bool> TryDeleteLibraryProjectAsync(string projectId)
+    {
+        if (_cleanup.IsInUse(projectId) || !_deletingProjectIds.Add(projectId)) return false;
+        try
+        {
+            await Task.Run(() =>
+            {
+                if (!_store.Exists(projectId)) throw new DirectoryNotFoundException("The Studio project no longer exists.");
+                _store.Delete(projectId);
+            });
+            _tracker.NotifyProjectDeleted();
+            return true;
+        }
+        catch (StudioProjectInUseException)
+        {
+            return false;
+        }
+        finally
+        {
+            _deletingProjectIds.Remove(projectId);
+        }
+    }
+
     /// <summary>
     /// Opens a project that was saved as a folder, from its <c>.tinyclips</c> file or from the
     /// folder that holds one: the project is copied into the store as a new draft, and the

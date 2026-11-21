@@ -42,6 +42,8 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         "editor.open",
         "studio.projects.list",
         "studio.project.open",
+        "studio.project.openFolder",
+        "studio.project.delete",
         "studio.project.get",
         "studio.project.saveCopy",
         "studio.project.edit",
@@ -107,6 +109,7 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             "recording.discard" => await OnUiAsync(DiscardRecordingAsync, cancellationToken),
             "editor.open" => await OpenEditorAsync(context, cancellationToken),
             "studio.projects.list" or "studio.project.open" or "studio.project.get" or "studio.project.saveCopy" or "studio.project.edit"
+                or "studio.project.openFolder" or "studio.project.delete"
                 or "studio.zoom.suggest" or "studio.export.options" or "studio.export"
                 or "studio.captions.check" or "studio.captions.import" or "studio.captions.fix" or "studio.captions.export"
                 or "studio.captions.models" or "studio.captions.generate"

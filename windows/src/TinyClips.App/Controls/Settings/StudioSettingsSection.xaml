@@ -74,35 +74,13 @@
                     </Button>
                 </controls:SettingsCard>
 
-                <!--  Where Save project and Save project as open. Drafts and recordings stay in the app's own storage.  -->
                 <controls:SettingsCard
-                    AutomationProperties.AutomationId="StudioProjectFolderCard"
-                    Header="Save project folder"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE8B7;}">
-                    <controls:SettingsCard.Description>
-                        <StackPanel>
-                            <TextBlock
-                                AutomationProperties.AutomationId="StudioProjectFolderText"
-                                IsTextSelectionEnabled="True"
-                                Text="{x:Bind ViewModel.StudioProjectFolderDisplay, Mode=OneWay}"
-                                TextWrapping="Wrap" />
-                            <TextBlock Text="Where Save project and Save project as start. A project already saved to a folder keeps saving there. Drafts and recordings stay in Studio's own storage." TextWrapping="Wrap" />
-                        </StackPanel>
-                    </controls:SettingsCard.Description>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button
-                            AutomationProperties.AutomationId="StudioProjectFolderDefaultButton"
-                            AutomationProperties.Name="Use the default Save project folder"
-                            Click="OnUseDefaultStudioProjectFolder"
-                            Content="Use default"
-                            ToolTipService.ToolTip="Start Save project in the Studio folder inside your videos folder"
-                            Visibility="{x:Bind ViewModel.IsStudioProjectFolderCustom, Mode=OneWay}" />
-                        <Button
-                            AutomationProperties.AutomationId="StudioProjectFolderChooseButton"
-                            AutomationProperties.Name="Choose Save project folder"
-                            Click="OnChooseStudioProjectFolder"
-                            Content="Choose&#x2026;" />
-                    </StackPanel>
+                    Header="Show project in File Explorer after first save"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE838;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="StudioRevealAfterFirstSaveToggle"
+                        AutomationProperties.Name="Show project in File Explorer after first save"
+                        IsOn="{x:Bind ViewModel.StudioRevealAfterFirstSave, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
                 <TextBlock

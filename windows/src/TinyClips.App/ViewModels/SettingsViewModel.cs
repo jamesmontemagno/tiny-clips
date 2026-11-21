@@ -723,6 +723,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Goes back to the default folder for Save project: Studio inside the videos folder.</summary>
     public void UseDefaultStudioProjectFolder() => StudioProjectFolder = string.Empty;
 
+    [ObservableProperty]
+    private bool _studioRevealAfterFirstSave;
+
     /// <summary>What the speech models for captions take up, such as "1 model downloaded, using 141 MB."</summary>
     [ObservableProperty]
     private string _studioCaptionModelsDisplay = string.Empty;
@@ -1412,6 +1415,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 StudioSourceRetentionDays = _settings.StudioSourceRetentionDays;
                 StudioStorageCapGigabytes = _settings.StudioStorageCapGigabytes;
                 StudioProjectFolder = _settings.StudioProjectFolder;
+                StudioRevealAfterFirstSave = _settings.StudioRevealAfterFirstSave;
             }
 
             if (kind is null or SettingsSectionKind.Uploadcare)
@@ -2048,7 +2052,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnStudioProjectFolderChanged(string value) =>
-        Persist(SettingsSectionKind.Studio, () => _settings.StudioProjectFolder = value);
+        Persist(SettingsSectionKind.General, () => _settings.StudioProjectFolder = value);
+
+    partial void OnStudioRevealAfterFirstSaveChanged(bool value) =>
+        Persist(SettingsSectionKind.Studio, () => _settings.StudioRevealAfterFirstSave = value);
 
     partial void OnStudioStorageCapGigabytesChanged(double value)
     {

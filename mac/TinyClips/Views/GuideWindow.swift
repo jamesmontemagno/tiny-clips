@@ -249,7 +249,7 @@ private struct GuideWindowView: View {
                 feature("Export MP4", "Choose a resolution and quality in Export. Check the shown pixel size and estimated file size; Studio remembers your choices and does not upscale the canvas.")
             }
             sectionCard(title: "Keep your work editable", icon: "folder") {
-                feature("Save Project and Save Project As", "Save an editable project folder with its media and .tinyclips file, or save another portable copy without changing the original video. Both start in Settings → Studio → Save Project folder, Studio inside your video folder by default.")
+                feature("Save Project and Save Project As", "Save an editable project folder with its media and .tinyclips file, or save another portable copy without changing the original video. Both start in the Studio projects folder under Settings → General → Save Location, Studio inside your video folder by default.")
                 feature("Reopen and manage", "Find projects in Clips Library → Studio Projects or Settings → Studio → Drafts. Open a .tinyclips project with Tiny Clips. Review draft/source-retention choices before closing unsaved work.")
             }
         }

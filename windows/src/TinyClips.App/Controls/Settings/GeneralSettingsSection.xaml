@@ -86,6 +86,35 @@
                                 Click="OnBrowseGifSaveDirectory"
                                 Content="Choose&#x2026;" />
                         </controls:SettingsCard>
+                        <!--  Its own setting, not one of the defaults above: its default follows the videos folder.  -->
+                        <controls:SettingsCard
+                            AutomationProperties.AutomationId="StudioProjectFolderCard"
+                            Header="Studio projects">
+                            <controls:SettingsCard.Description>
+                                <StackPanel>
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="StudioProjectFolderText"
+                                        IsTextSelectionEnabled="True"
+                                        Text="{x:Bind ViewModel.StudioProjectFolderDisplay, Mode=OneWay}"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock Text="Where Save project and Save project as start. A project already saved to a folder keeps saving there." TextWrapping="Wrap" />
+                                </StackPanel>
+                            </controls:SettingsCard.Description>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button
+                                    AutomationProperties.AutomationId="StudioProjectFolderDefaultButton"
+                                    AutomationProperties.Name="Use the default Studio projects folder"
+                                    Click="OnUseDefaultStudioProjectFolder"
+                                    Content="Use default"
+                                    ToolTipService.ToolTip="Start Save project in the Studio folder inside your videos folder"
+                                    Visibility="{x:Bind ViewModel.IsStudioProjectFolderCustom, Mode=OneWay}" />
+                                <Button
+                                    AutomationProperties.AutomationId="StudioProjectFolderChooseButton"
+                                    AutomationProperties.Name="Choose Studio projects folder"
+                                    Click="OnChooseStudioProjectFolder"
+                                    Content="Choose&#x2026;" />
+                            </StackPanel>
+                        </controls:SettingsCard>
                     </controls:SettingsExpander.Items>
                 </controls:SettingsExpander>
 

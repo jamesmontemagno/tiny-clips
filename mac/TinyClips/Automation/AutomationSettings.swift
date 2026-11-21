@@ -114,6 +114,7 @@ struct AutomationSetting {
         .bool("copyVideoToClipboard", \.copyVideoToClipboard),
         .bool("copyGifToClipboard", \.copyGifToClipboard),
         .bool("showInFinder", \.showInFinder),
+        .bool("studioRevealAfterFirstSave", \.studioRevealAfterFirstSave),
         .bool("showSaveNotifications", \.showSaveNotifications),
         .bool("showScreenshotEditor", \.showScreenshotEditor),
         .bool("showTrimmer", \.showTrimmer),

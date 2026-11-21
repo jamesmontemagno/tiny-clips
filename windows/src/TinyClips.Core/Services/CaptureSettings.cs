@@ -375,6 +375,12 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("studioProjectFolder", value ?? string.Empty);
     }
 
+    public bool StudioRevealAfterFirstSave
+    {
+        get => _settings.Get("studioRevealAfterFirstSave", false);
+        set => _settings.Set("studioRevealAfterFirstSave", value);
+    }
+
     public bool RecordAudio
     {
         get => _settings.Get("recordAudio", false);
@@ -977,6 +983,7 @@ public sealed class CaptureSettings : ICaptureSettings
         StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;
         StudioDefaultLook = null;
         StudioProjectFolder = string.Empty;
+        StudioRevealAfterFirstSave = false;
         RecordAudio = false;
         RecordMicrophone = false;
         SelectedMicrophoneId = string.Empty;

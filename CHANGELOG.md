@@ -5,10 +5,13 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- Each Studio project in the Clips Library has buttons to open its folder in Finder or delete the Library copy without removing separately saved projects or exported videos.
+- Studio can show a project in Finder after its first save. The switch is off by default; later saves do not open Finder.
 - Studio Recording has its own configurable global shortcut, unassigned by default, in Settings and onboarding on macOS and Windows. Record Video remains an ordinary recording.
 - Open MP4 and MOV files directly in Studio from Finder with **Open With → Tiny Clips**, without changing the default player.
 - The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
-- Settings → Studio has a **Save Project folder** for Studio's **Save Project** and **Save Project As**, defaulting to a `Studio` folder inside the video save folder. Projects already saved to a folder keep saving there, and drafts and recordings stay in Studio's own storage. Agents can read it as the read-only `studioProjectFolder` setting.
+- Agents can discover unreadable Studio Library projects, including their IDs and readability status, before deleting a damaged copy.
+- Settings → General → Save Location has a **Studio projects folder** for Studio's **Save Project** and **Save Project As**, defaulting to a `Studio` folder inside the video save folder. Projects already saved to a folder keep saving there, and drafts and recordings stay in Studio's own storage. Agents can read it as the read-only `studioProjectFolder` setting.
 
 ### Changed
 - The macOS Guide is now a feature-first handbook with Capture, Editor, Recording, Studio, Library, Agents, and Help tabs, offline overview drawings, practical walkthroughs, and website documentation links. Help retains your live shortcut reference.
@@ -22,6 +25,8 @@ All notable changes to this project will be documented in this file.
 - Agents on macOS and Windows can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 
 ### Fixed
+- Reset All Settings now restores capture and Studio preferences in the running app without a relaunch, including the recording display-sleep preference.
+- **Use default folders** on macOS no longer turns itself off on the launch after installing or resetting settings, and is turned back on once for anyone it was turned off for without choosing a folder. The App Store build shows your Pictures/TinyClips and Movies/TinyClips folders in Settings instead of its sandbox container path.
 - Studio's Save Project folder setting refreshes immediately and preserves spaces in chosen folder names.
 - Pausing an agent-controlled video and withdrawing device consent keeps the take paused on resume. Restart checks consent before discarding the take, including from the floating control.
 - Finder and Clips Library reuse the same Studio edits for an unchanged imported video. Recovering a copied MOV preserves its format.

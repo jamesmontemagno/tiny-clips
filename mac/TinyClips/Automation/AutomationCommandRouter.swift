@@ -16,6 +16,7 @@ final class AutomationCommandRouter {
         "recording.restart", "recording.discard",
         "editor.open", "editor.list", "editor.closeAll", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
         "library.delete", "library.upload", "studio.projects.list", "studio.project.open", "studio.project.get", "studio.project.saveCopy",
+        "studio.project.openFolder", "studio.project.delete",
         "studio.project.edit", "studio.zoom.suggest", "studio.export.options", "studio.export",
         "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
     ]).union(StudioAppleSpeech.isAvailable ? ["studio.captions.models", "studio.captions.generate"] : [])
@@ -80,6 +81,23 @@ final class AutomationCommandRouter {
             return ["closed": result.closed, "remaining": registry.listEditors()]
         case "studio.projects.list": return try listStudioProjects(params)
         case "studio.project.open": return try openStudioProject(params)
+        case "studio.project.openFolder", "studio.project.delete":
+            let id = try Self.requiredString(params, "projectId")
+            try validateAccess()
+            do {
+                if command == "studio.project.openFolder" {
+                    try StudioMaintenance.openLibraryFolder(id: id)
+                    return ["projectId": id, "opened": true]
+                }
+                try await StudioMaintenance.deleteLibraryProject(id: id)
+                return ["projectId": id, "deleted": true]
+            } catch StudioLibraryActionError.inUse {
+                throw AutomationError(.busy, StudioLibraryActionError.inUse.localizedDescription)
+            } catch CocoaError.fileNoSuchFile {
+                throw AutomationError(.notFound, "No Studio project with ID \(id).")
+            } catch StudioProjectError.invalidProject(let message) {
+                throw AutomationError(.invalidParams, message)
+            }
         case "studio.project.get": return try getStudioProject(params)
         case "studio.project.edit": return try editStudioProject(params)
         case "studio.project.saveCopy":
@@ -664,11 +682,15 @@ final class AutomationCommandRouter {
         guard (1...100).contains(limit) else {
             throw AutomationError(.invalidParams, "limit must be a whole number from 1 to 100.")
         }
-        let projects = try StudioProjectStore.shared.listSummaries()
-            .sorted { max($0.createdAt, $0.lastOpenedAt) > max($1.createdAt, $1.lastOpenedAt) }
-            .prefix(limit)
-            .map { summary in
-                [
+        return Self.studioProjectListResult(from: try StudioProjectStore.shared.listLibraryProjects(), limit: limit)
+    }
+
+    static func studioProjectListResult(from listing: StudioProjectListing, limit: Int) -> [String: Any] {
+        var projects: [(id: String, activity: Date, value: [String: Any])] = listing.summaries.map { summary in
+            (
+                id: summary.id,
+                activity: max(summary.createdAt, summary.lastOpenedAt),
+                value: [
                     "projectId": summary.id,
                     "name": summary.name,
                     "createdAt": StudioJSON.timestampString(from: summary.createdAt),
@@ -676,10 +698,30 @@ final class AutomationCommandRouter {
                     "isDraft": summary.isDraft,
                     "isFlat": summary.isFlat,
                     "keepSources": summary.keepSources,
-                    "sourceExists": summary.sourceExists
-                ] as [String: Any]
+                    "sourceExists": summary.sourceExists,
+                    "isReadable": true
+                ]
+            )
+        }
+        projects.append(contentsOf: listing.unreadable.map { project in
+            (
+                id: project.id,
+                activity: project.createdAt,
+                value: [
+                    "projectId": project.id,
+                    "name": "Unreadable project",
+                    "createdAt": StudioJSON.timestampString(from: project.createdAt),
+                    "isReadable": false
+                ]
+            )
+        })
+        let ordered = projects
+            .sorted {
+                $0.activity == $1.activity ? $0.id < $1.id : $0.activity > $1.activity
             }
-        return ["projects": projects]
+            .prefix(limit)
+            .map(\.value)
+        return ["projects": ordered]
     }
 
     private func getStudioProject(_ params: [String: Any]) throws -> [String: Any] {

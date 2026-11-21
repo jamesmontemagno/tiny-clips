@@ -124,6 +124,11 @@ public sealed class AutomationContractTests
         var contract = AutomationContract.Default;
         Assert.True(contract.TryGetCommand("studio.projects.list", out var list));
         Assert.Equal("read", list.Scope);
+        Assert.Contains("isReadable", list.Description);
+        Assert.Contains("studio.project.delete", list.Description);
+        Assert.True(contract.TryGetCommand("studio.project.delete", out var delete));
+        Assert.Equal("delete", delete.Scope);
+        Assert.True(delete.Parameters["projectId"].Required);
         Assert.True(contract.TryGetCommand("studio.project.open", out var open));
         Assert.Equal("edit", open.Scope);
         Assert.True(open.Parameters["projectId"].Required);

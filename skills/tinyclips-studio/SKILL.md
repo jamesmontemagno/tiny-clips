@@ -7,8 +7,9 @@ description: Inspect, edit, suggest zooms for, and export Tiny Clips Studio proj
 
 Needs `read` to inspect, `edit` to change a project, and `export` to render a video. If access is missing, use the tinyclips-setup skill.
 
-1. Discover projects with `tinyclips studio.projects.list`; use the returned `projectId`, never a guessed ID or project-file path.
+1. Discover projects with `tinyclips studio.projects.list`; use the returned `projectId`, never a guessed ID or project-file path. Unreadable entries are included with `isReadable: false`; they can be deleted by ID even though `studio.project.get` cannot read them.
    To show a project in its Studio editor, use `tinyclips studio.project.open projectId=<id>` with `edit` scope.
+   To open its folder in Finder or File Explorer, use `studio.project.openFolder` with `read` scope. Use `studio.project.delete` only when asked to permanently remove the Library copy; it requires `delete` scope and in-app approval. Both take `projectId`.
 2. Read the current project with `tinyclips studio.project.get projectId=<id>`. Keep both its `project.modifiedAt` and the opaque `revision` value for the next edit.
 3. Apply only the fields needed with `studio.project.edit`, passing a partial `patch` and the fetched `expectedModifiedAt`. For example:
 

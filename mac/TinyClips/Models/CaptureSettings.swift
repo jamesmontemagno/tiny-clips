@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SwiftUI
 import AppKit
 import ScreenCaptureKit
@@ -336,7 +337,54 @@ extension NSColor {
     }
 }
 
+/// Unlike AppStorage in a long-lived ObservableObject, this reads through to the store even
+/// after a reset or a write from another view. SwiftUI views can still observe the same keys.
+@propertyWrapper
+struct CapturePreference<Value> {
+    let key: String
+    let fallback: Value
+    private let decode: (Any?) -> Value?
+    private let encode: (Value) -> Any
+
+    init(wrappedValue: Value, _ key: String) {
+        self.key = key
+        fallback = wrappedValue
+        decode = { $0 as? Value }
+        encode = { $0 }
+    }
+
+    init(wrappedValue: Value, _ key: String) where Value: RawRepresentable, Value.RawValue == String {
+        self.key = key
+        fallback = wrappedValue
+        decode = { ($0 as? String).flatMap(Value.init(rawValue:)) }
+        encode = { $0.rawValue }
+    }
+
+    @available(*, unavailable, message: "Use only on CaptureSettings")
+    var wrappedValue: Value {
+        get { fatalError() }
+        set { fatalError() }
+    }
+
+    static subscript(
+        _enclosingInstance settings: CaptureSettings,
+        wrapped wrappedKeyPath: ReferenceWritableKeyPath<CaptureSettings, Value>,
+        storage storageKeyPath: ReferenceWritableKeyPath<CaptureSettings, Self>
+    ) -> Value {
+        get {
+            let preference = settings[keyPath: storageKeyPath]
+            return preference.decode(settings.defaults.object(forKey: preference.key)) ?? preference.fallback
+        }
+        set {
+            let preference = settings[keyPath: storageKeyPath]
+            settings.objectWillChange.send()
+            settings.defaults.set(preference.encode(newValue), forKey: preference.key)
+        }
+    }
+}
+
 class CaptureSettings: ObservableObject {
+    let objectWillChange = ObservableObjectPublisher()
     static let shared = CaptureSettings()
     // Bump when release highlights change, independently of the app version.
     static let whatsNewContentRevision = 3
@@ -359,87 +407,87 @@ class CaptureSettings: ObservableObject {
     /// empty for the system's.
     static let studioCaptionLanguageKey = "studioCaptionLanguage"
     static let audioOffsetRangeMs: ClosedRange<Int> = -500...500
-    private let defaults: UserDefaults
+    fileprivate let defaults: UserDefaults
 
-    @AppStorage("saveDirectory") var saveDirectory: String = NSHomeDirectory() + "/Desktop"
-    @AppStorage("screenshotSaveDirectory") var screenshotSaveDirectory: String = defaultSaveDirectoryURL(for: .screenshot).path
-    @AppStorage("videoSaveDirectory") var videoSaveDirectory: String = defaultSaveDirectoryURL(for: .video).path
-    @AppStorage("gifSaveDirectory") var gifSaveDirectory: String = defaultSaveDirectoryURL(for: .gif).path
-    @AppStorage("videoGifSaveDirectory") var videoGifSaveDirectory: String = ""
-    @AppStorage("useDefaultSaveDirectories") var useDefaultSaveDirectories: Bool = true
+    @CapturePreference("saveDirectory") var saveDirectory: String = NSHomeDirectory() + "/Desktop"
+    @CapturePreference("screenshotSaveDirectory") var screenshotSaveDirectory: String = defaultSaveDirectoryURL(for: .screenshot).path
+    @CapturePreference("videoSaveDirectory") var videoSaveDirectory: String = defaultSaveDirectoryURL(for: .video).path
+    @CapturePreference("gifSaveDirectory") var gifSaveDirectory: String = defaultSaveDirectoryURL(for: .gif).path
+    @CapturePreference("videoGifSaveDirectory") var videoGifSaveDirectory: String = ""
+    @CapturePreference("useDefaultSaveDirectories") var useDefaultSaveDirectories: Bool = true
 #if APPSTORE
-    @AppStorage("saveDirectoryBookmark") var saveDirectoryBookmark: Data = Data()
-    @AppStorage("saveDirectoryDisplayPath") var saveDirectoryDisplayPath: String = ""
-    @AppStorage("screenshotSaveDirectoryBookmark") var screenshotSaveDirectoryBookmark: Data = Data()
-    @AppStorage("screenshotSaveDirectoryDisplayPath") var screenshotSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .screenshot).path
-    @AppStorage("videoSaveDirectoryBookmark") var videoSaveDirectoryBookmark: Data = Data()
-    @AppStorage("videoSaveDirectoryDisplayPath") var videoSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .video).path
-    @AppStorage("gifSaveDirectoryBookmark") var gifSaveDirectoryBookmark: Data = Data()
-    @AppStorage("gifSaveDirectoryDisplayPath") var gifSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .gif).path
-    @AppStorage("videoGifSaveDirectoryBookmark") var videoGifSaveDirectoryBookmark: Data = Data()
-    @AppStorage("videoGifSaveDirectoryDisplayPath") var videoGifSaveDirectoryDisplayPath: String = ""
+    @CapturePreference("saveDirectoryBookmark") var saveDirectoryBookmark: Data = Data()
+    @CapturePreference("saveDirectoryDisplayPath") var saveDirectoryDisplayPath: String = ""
+    @CapturePreference("screenshotSaveDirectoryBookmark") var screenshotSaveDirectoryBookmark: Data = Data()
+    @CapturePreference("screenshotSaveDirectoryDisplayPath") var screenshotSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .screenshot).path
+    @CapturePreference("videoSaveDirectoryBookmark") var videoSaveDirectoryBookmark: Data = Data()
+    @CapturePreference("videoSaveDirectoryDisplayPath") var videoSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .video).path
+    @CapturePreference("gifSaveDirectoryBookmark") var gifSaveDirectoryBookmark: Data = Data()
+    @CapturePreference("gifSaveDirectoryDisplayPath") var gifSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .gif).path
+    @CapturePreference("videoGifSaveDirectoryBookmark") var videoGifSaveDirectoryBookmark: Data = Data()
+    @CapturePreference("videoGifSaveDirectoryDisplayPath") var videoGifSaveDirectoryDisplayPath: String = ""
 #endif
-    @AppStorage("copyScreenshotToClipboard") var copyScreenshotToClipboard: Bool = true
-    @AppStorage("copyVideoToClipboard") var copyVideoToClipboard: Bool = false
-    @AppStorage("copyGifToClipboard") var copyGifToClipboard: Bool = false
-    @AppStorage("showInFinder") var showInFinder: Bool = false
-    @AppStorage("showSaveNotifications") var showSaveNotifications: Bool = false
-    @AppStorage("showInDock") var showInDock: Bool = false
-    @AppStorage("fileNameTemplate") var fileNameTemplate: String = "TinyClips {date} at {time}"
-    @AppStorage("uploadcareEnabled") var uploadcareEnabled: Bool = false
-    @AppStorage("clipsManagerShowAutoTags") var clipsManagerShowAutoTags: Bool = true
-    @AppStorage("clipsManagerShowNotesPreview") var clipsManagerShowNotesPreview: Bool = true
-    @AppStorage("clipsManagerShowQuickActions") var clipsManagerShowQuickActions: Bool = true
-    @AppStorage("clipsManagerShowUploadStatus") var clipsManagerShowUploadStatus: Bool = true
-    @AppStorage("clipsManagerConfirmDelete") var clipsManagerConfirmDelete: Bool = true
-    @AppStorage("clipsManagerCompactListDensity") var clipsManagerCompactListDensity: Bool = false
-    @AppStorage("clipsManagerSelectionRowTapSelects") var clipsManagerSelectionRowTapSelects: Bool = true
-    @AppStorage("clipsManagerIgnoreNonTinyClipsFiles") var clipsManagerIgnoreNonTinyClipsFiles: Bool = false
-    @AppStorage("clipsManagerRememberLastState") var clipsManagerRememberLastState: Bool = true
-    @AppStorage("clipsManagerDefaultViewMode") var clipsManagerDefaultViewMode: String = "grid"
-    @AppStorage("clipsManagerDefaultSortOption") var clipsManagerDefaultSortOption: String = "Newest First"
-    @AppStorage("clipsManagerDefaultFilterType") var clipsManagerDefaultFilterType: String = "All"
-    @AppStorage("clipsManagerDefaultDateFilter") var clipsManagerDefaultDateFilter: String = "Any Date"
-    @AppStorage("clipsManagerAutoRefreshSeconds") var clipsManagerAutoRefreshSeconds: Int = 0
-    @AppStorage("clipsManagerArchiveOldClips") var clipsManagerArchiveOldClips: Bool = false
-    @AppStorage("clipsManagerArchiveAfterDays") var clipsManagerArchiveAfterDays: Int = 30
-    @AppStorage("clipsManagerAutoUploadAfterSave") var clipsManagerAutoUploadAfterSave: Bool = false
-    @AppStorage("clipsManagerAutoCopyUploadLink") var clipsManagerAutoCopyUploadLink: Bool = false
-    @AppStorage("clipsManagerShowInspector") var clipsManagerShowInspector: Bool = true
-    @AppStorage("gifFrameRate") var gifFrameRate: Double = 10
-    @AppStorage("gifMaxWidth") var gifMaxWidth: Int = 640
-    @AppStorage("videoFrameRate") var videoFrameRate: Int = 30
-    // AppStorage-backed user-facing settings use UserDefaults.standard; helpers below accept explicit stores for tests.
-    @AppStorage(CaptureSettingsDefaultsKey.videoCodec) var videoCodec: VideoCodec = .h264
-    @AppStorage("showMouseClickVisualsInVideo") var showMouseClickVisualsInVideo: Bool = false
-    @AppStorage("showMouseClickVisualsInGif") var showMouseClickVisualsInGif: Bool = false
-    @AppStorage("gifMouseClicksUseVideoSettings") var gifMouseClicksUseVideoSettings: Bool = false
-    @AppStorage("videoMouseClickColorHex") var videoMouseClickColorHex: String = "#0A84FF"
-    @AppStorage("videoMouseClickSize") var videoMouseClickSize: Double = 40
-    @AppStorage("videoMouseClickStrokeWidth") var videoMouseClickStrokeWidth: Double = 3
-    @AppStorage("videoMouseClickOpacity") var videoMouseClickOpacity: Double = 0.85
-    @AppStorage("videoMouseClickDuration") var videoMouseClickDuration: Double = 0.45
-    @AppStorage("gifMouseClickColorHex") var gifMouseClickColorHex: String = "#0A84FF"
-    @AppStorage("gifMouseClickSize") var gifMouseClickSize: Double = 40
-    @AppStorage("gifMouseClickStrokeWidth") var gifMouseClickStrokeWidth: Double = 3
-    @AppStorage("gifMouseClickOpacity") var gifMouseClickOpacity: Double = 0.85
-    @AppStorage("gifMouseClickDuration") var gifMouseClickDuration: Double = 0.45
-    @AppStorage("showTrimmer") var showTrimmer: Bool = true
-    @AppStorage("studioDefaultLook") private var storedStudioDefaultLook: String = ""
+    @CapturePreference("copyScreenshotToClipboard") var copyScreenshotToClipboard: Bool = true
+    @CapturePreference("copyVideoToClipboard") var copyVideoToClipboard: Bool = false
+    @CapturePreference("copyGifToClipboard") var copyGifToClipboard: Bool = false
+    @CapturePreference("showInFinder") var showInFinder: Bool = false
+    @CapturePreference("showSaveNotifications") var showSaveNotifications: Bool = false
+    @CapturePreference("showInDock") var showInDock: Bool = false
+    @CapturePreference("fileNameTemplate") var fileNameTemplate: String = "TinyClips {date} at {time}"
+    @CapturePreference("uploadcareEnabled") var uploadcareEnabled: Bool = false
+    @CapturePreference("clipsManagerShowAutoTags") var clipsManagerShowAutoTags: Bool = true
+    @CapturePreference("clipsManagerShowNotesPreview") var clipsManagerShowNotesPreview: Bool = true
+    @CapturePreference("clipsManagerShowQuickActions") var clipsManagerShowQuickActions: Bool = true
+    @CapturePreference("clipsManagerShowUploadStatus") var clipsManagerShowUploadStatus: Bool = true
+    @CapturePreference("clipsManagerConfirmDelete") var clipsManagerConfirmDelete: Bool = true
+    @CapturePreference("clipsManagerCompactListDensity") var clipsManagerCompactListDensity: Bool = false
+    @CapturePreference("clipsManagerSelectionRowTapSelects") var clipsManagerSelectionRowTapSelects: Bool = true
+    @CapturePreference("clipsManagerIgnoreNonTinyClipsFiles") var clipsManagerIgnoreNonTinyClipsFiles: Bool = false
+    @CapturePreference("clipsManagerRememberLastState") var clipsManagerRememberLastState: Bool = true
+    @CapturePreference("clipsManagerDefaultViewMode") var clipsManagerDefaultViewMode: String = "grid"
+    @CapturePreference("clipsManagerDefaultSortOption") var clipsManagerDefaultSortOption: String = "Newest First"
+    @CapturePreference("clipsManagerDefaultFilterType") var clipsManagerDefaultFilterType: String = "All"
+    @CapturePreference("clipsManagerDefaultDateFilter") var clipsManagerDefaultDateFilter: String = "Any Date"
+    @CapturePreference("clipsManagerAutoRefreshSeconds") var clipsManagerAutoRefreshSeconds: Int = 0
+    @CapturePreference("clipsManagerArchiveOldClips") var clipsManagerArchiveOldClips: Bool = false
+    @CapturePreference("clipsManagerArchiveAfterDays") var clipsManagerArchiveAfterDays: Int = 30
+    @CapturePreference("clipsManagerAutoUploadAfterSave") var clipsManagerAutoUploadAfterSave: Bool = false
+    @CapturePreference("clipsManagerAutoCopyUploadLink") var clipsManagerAutoCopyUploadLink: Bool = false
+    @CapturePreference("clipsManagerShowInspector") var clipsManagerShowInspector: Bool = true
+    @CapturePreference("gifFrameRate") var gifFrameRate: Double = 10
+    @CapturePreference("gifMaxWidth") var gifMaxWidth: Int = 640
+    @CapturePreference("videoFrameRate") var videoFrameRate: Int = 30
+    @CapturePreference(CaptureSettingsDefaultsKey.videoCodec) var videoCodec: VideoCodec = .h264
+    @CapturePreference("showMouseClickVisualsInVideo") var showMouseClickVisualsInVideo: Bool = false
+    @CapturePreference("showMouseClickVisualsInGif") var showMouseClickVisualsInGif: Bool = false
+    @CapturePreference("gifMouseClicksUseVideoSettings") var gifMouseClicksUseVideoSettings: Bool = false
+    @CapturePreference("videoMouseClickColorHex") var videoMouseClickColorHex: String = "#0A84FF"
+    @CapturePreference("videoMouseClickSize") var videoMouseClickSize: Double = 40
+    @CapturePreference("videoMouseClickStrokeWidth") var videoMouseClickStrokeWidth: Double = 3
+    @CapturePreference("videoMouseClickOpacity") var videoMouseClickOpacity: Double = 0.85
+    @CapturePreference("videoMouseClickDuration") var videoMouseClickDuration: Double = 0.45
+    @CapturePreference("gifMouseClickColorHex") var gifMouseClickColorHex: String = "#0A84FF"
+    @CapturePreference("gifMouseClickSize") var gifMouseClickSize: Double = 40
+    @CapturePreference("gifMouseClickStrokeWidth") var gifMouseClickStrokeWidth: Double = 3
+    @CapturePreference("gifMouseClickOpacity") var gifMouseClickOpacity: Double = 0.85
+    @CapturePreference("gifMouseClickDuration") var gifMouseClickDuration: Double = 0.45
+    @CapturePreference("showTrimmer") var showTrimmer: Bool = true
+    @CapturePreference("studioDefaultLook") private var storedStudioDefaultLook: String = ""
     /// The look new Studio recordings start with, or nil for the built-in one.
     var studioDefaultLook: StudioLook? {
         get { StudioLook(settingsText: storedStudioDefaultLook) }
         set { storedStudioDefaultLook = newValue?.settingsText() ?? "" }
     }
     /// Days an exported Studio project is kept after it was last opened. Zero keeps it until deleted.
-    @AppStorage("studioSourceRetentionDays") var studioSourceRetentionDays: Int = 30
+    @CapturePreference("studioSourceRetentionDays") var studioSourceRetentionDays: Int = 30
     /// The most disk space the Studio projects that cleanup may remove can use before the ones
     /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
-    @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
+    @CapturePreference("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
     /// Where Save Project and Save Project As start, or empty for Studio inside the video folder.
-    @AppStorage(StudioProjectSaveLocation.settingsKey) var studioProjectFolder: String = ""
-    @AppStorage(CaptureSettingsDefaultsKey.studioExportResolution) var studioExportResolution: String = StudioExportChoice.default.resolution.rawValue
-    @AppStorage(CaptureSettingsDefaultsKey.studioExportQuality) var studioExportQuality: String = StudioExportChoice.default.quality.rawValue
+    @CapturePreference(StudioProjectSaveLocation.settingsKey) var studioProjectFolder: String = ""
+    @CapturePreference("studioRevealAfterFirstSave") var studioRevealAfterFirstSave = false
+    @CapturePreference(CaptureSettingsDefaultsKey.studioExportResolution) var studioExportResolution: String = StudioExportChoice.default.resolution.rawValue
+    @CapturePreference(CaptureSettingsDefaultsKey.studioExportQuality) var studioExportQuality: String = StudioExportChoice.default.quality.rawValue
 
     /// What the Export popover offers first: the last choice made there.
     var studioExportChoice: StudioExportChoice {
@@ -457,124 +505,124 @@ class CaptureSettings: ObservableObject {
     var studioCleanupOptions: StudioCleanupOptions {
         StudioCleanupOptions(retentionDays: studioSourceRetentionDays, sizeCapGigabytes: studioStorageCapGigabytes)
     }
-    @AppStorage("recordAudio") var recordAudio: Bool = false
-    @AppStorage("recordMicrophone") var recordMicrophone: Bool = false
-    @AppStorage("audioOffsetMs") private var storedAudioOffsetMs: Int = 0
+    @CapturePreference("recordAudio") var recordAudio: Bool = false
+    @CapturePreference("recordMicrophone") var recordMicrophone: Bool = false
+    @CapturePreference("audioOffsetMs") private var storedAudioOffsetMs: Int = 0
     var audioOffsetMs: Int {
         get { Self.clampedAudioOffsetMs(storedAudioOffsetMs) }
         set { storedAudioOffsetMs = Self.clampedAudioOffsetMs(newValue) }
     }
-    @AppStorage("microphoneLimiterEnabled") var microphoneLimiterEnabled: Bool = true
-    @AppStorage("windNoiseRemovalEnabled") var windNoiseRemovalEnabled: Bool = false
-    @AppStorage("selectedMicrophoneID") var selectedMicrophoneID: String = ""
-    @AppStorage("webcamEnabled") var webcamEnabled: Bool = false
-    @AppStorage("selectedWebcamID") var selectedWebcamID: String = ""
-    @AppStorage("webcamShape") var webcamShape: String = "circle"
-    @AppStorage("webcamSize") var webcamSize: String = "medium"
-    @AppStorage("webcamCorner") var webcamCorner: String = "bottomRight"
+    @CapturePreference("microphoneLimiterEnabled") var microphoneLimiterEnabled: Bool = true
+    @CapturePreference("windNoiseRemovalEnabled") var windNoiseRemovalEnabled: Bool = false
+    @CapturePreference("selectedMicrophoneID") var selectedMicrophoneID: String = ""
+    @CapturePreference("webcamEnabled") var webcamEnabled: Bool = false
+    @CapturePreference("selectedWebcamID") var selectedWebcamID: String = ""
+    @CapturePreference("webcamShape") var webcamShape: String = "circle"
+    @CapturePreference("webcamSize") var webcamSize: String = "medium"
+    @CapturePreference("webcamCorner") var webcamCorner: String = "bottomRight"
     // Negative values indicate no explicit corner radius/factor is set.
-    @AppStorage("webcamCornerRadius") var webcamCornerRadius: Double = -1
-    @AppStorage("showScreenshotEditor") var showScreenshotEditor: Bool = true
-    @AppStorage("screenshotEditorNativeSize") var screenshotEditorNativeSize: Bool = false
-    @AppStorage(CaptureSettingsDefaultsKey.confirmEditorEscape) var confirmEditorEscape: Bool = true
-    @AppStorage("showGifTrimmer") var showGifTrimmer: Bool = true
-    @AppStorage("saveImmediatelyScreenshot") var saveImmediatelyScreenshot: Bool = true
-    @AppStorage("saveImmediatelyVideo") var saveImmediatelyVideo: Bool = true
-    @AppStorage("saveImmediatelyGif") var saveImmediatelyGif: Bool = true
-    @AppStorage("showScreenshotCapturePicker") var showScreenshotCapturePicker: Bool = true {
+    @CapturePreference("webcamCornerRadius") var webcamCornerRadius: Double = -1
+    @CapturePreference("showScreenshotEditor") var showScreenshotEditor: Bool = true
+    @CapturePreference("screenshotEditorNativeSize") var screenshotEditorNativeSize: Bool = false
+    @CapturePreference(CaptureSettingsDefaultsKey.confirmEditorEscape) var confirmEditorEscape: Bool = true
+    @CapturePreference("showGifTrimmer") var showGifTrimmer: Bool = true
+    @CapturePreference("saveImmediatelyScreenshot") var saveImmediatelyScreenshot: Bool = true
+    @CapturePreference("saveImmediatelyVideo") var saveImmediatelyVideo: Bool = true
+    @CapturePreference("saveImmediatelyGif") var saveImmediatelyGif: Bool = true
+    @CapturePreference("showScreenshotCapturePicker") var showScreenshotCapturePicker: Bool = true {
         didSet {
             if !showScreenshotCapturePicker {
                 showScreenshotCapturePickerAfterCapture = false
             }
         }
     }
-    @AppStorage("showScreenshotCapturePickerAfterCapture") var showScreenshotCapturePickerAfterCapture: Bool = false {
+    @CapturePreference("showScreenshotCapturePickerAfterCapture") var showScreenshotCapturePickerAfterCapture: Bool = false {
         didSet {
             if showScreenshotCapturePickerAfterCapture && !showScreenshotCapturePicker {
                 showScreenshotCapturePickerAfterCapture = false
             }
         }
     }
-    @AppStorage("showVideoCapturePicker") var showVideoCapturePicker: Bool = true {
+    @CapturePreference("showVideoCapturePicker") var showVideoCapturePicker: Bool = true {
         didSet {
             if !showVideoCapturePicker {
                 showVideoCapturePickerAfterCapture = false
             }
         }
     }
-    @AppStorage("showVideoCapturePickerAfterCapture") var showVideoCapturePickerAfterCapture: Bool = false {
+    @CapturePreference("showVideoCapturePickerAfterCapture") var showVideoCapturePickerAfterCapture: Bool = false {
         didSet {
             if showVideoCapturePickerAfterCapture && !showVideoCapturePicker {
                 showVideoCapturePickerAfterCapture = false
             }
         }
     }
-    @AppStorage("showGifCapturePicker") var showGifCapturePicker: Bool = true {
+    @CapturePreference("showGifCapturePicker") var showGifCapturePicker: Bool = true {
         didSet {
             if !showGifCapturePicker {
                 showGifCapturePickerAfterCapture = false
             }
         }
     }
-    @AppStorage("showGifCapturePickerAfterCapture") var showGifCapturePickerAfterCapture: Bool = false {
+    @CapturePreference("showGifCapturePickerAfterCapture") var showGifCapturePickerAfterCapture: Bool = false {
         didSet {
             if showGifCapturePickerAfterCapture && !showGifCapturePicker {
                 showGifCapturePickerAfterCapture = false
             }
         }
     }
-    @AppStorage("screenshotFormat") var screenshotFormat: String = ImageFormat.jpeg.rawValue
-    @AppStorage("screenshotScale") var screenshotScale: Int = 100
-    @AppStorage("excludeClickLightFromScreenshots") var excludeClickLightFromScreenshots: Bool = false
+    @CapturePreference("screenshotFormat") var screenshotFormat: String = ImageFormat.jpeg.rawValue
+    @CapturePreference("screenshotScale") var screenshotScale: Int = 100
+    @CapturePreference("excludeClickLightFromScreenshots") var excludeClickLightFromScreenshots: Bool = false
     var screenshotExcludedApplicationBundleIdentifiers: Set<String> {
         excludeClickLightFromScreenshots ? ["com.aurorascharff.ClickLight"] : []
     }
-    @AppStorage("jpegQuality") var jpegQuality: Double = 0.85
-    @AppStorage("videoCountdownEnabled") var videoCountdownEnabled: Bool = true
-    @AppStorage("videoCountdownDuration") var videoCountdownDuration: Int = 3
-    @AppStorage("videoRecordingTimeLimitMinutes") var videoRecordingTimeLimitMinutes: Int = 0
-    @AppStorage("gifCountdownEnabled") var gifCountdownEnabled: Bool = true
-    @AppStorage("gifCountdownDuration") var gifCountdownDuration: Int = 3
+    @CapturePreference("jpegQuality") var jpegQuality: Double = 0.85
+    @CapturePreference("videoCountdownEnabled") var videoCountdownEnabled: Bool = true
+    @CapturePreference("videoCountdownDuration") var videoCountdownDuration: Int = 3
+    @CapturePreference("videoRecordingTimeLimitMinutes") var videoRecordingTimeLimitMinutes: Int = 0
+    @CapturePreference("gifCountdownEnabled") var gifCountdownEnabled: Bool = true
+    @CapturePreference("gifCountdownDuration") var gifCountdownDuration: Int = 3
 
     func setRecordingCountdown(_ enabled: Bool) {
         videoCountdownEnabled = enabled
         gifCountdownEnabled = enabled
     }
-    @AppStorage("screenshotCountdownEnabled") var screenshotCountdownEnabled: Bool = false
-    @AppStorage("screenshotCountdownDuration") var screenshotCountdownDuration: Int = 3
-    @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
-    @AppStorage("multiMonitorCaptureMode") var multiMonitorCaptureMode: MultiMonitorCaptureMode = .askEveryTime
-    @AppStorage("showRegionIndicator") var showRegionIndicator: Bool = true
-    @AppStorage("preventDisplaySleepWhileRecording") var preventDisplaySleepWhileRecording: Bool = true
-    @AppStorage("includeTinyClipsInCapture") var includeTinyClipsInCapture: Bool = false
-    @AppStorage("showBrandingOverlay") var showBrandingOverlay: Bool = false
-    @AppStorage("teleprompterEnabled") var teleprompterEnabled: Bool = false
-    @AppStorage("teleprompterTranscript") var teleprompterTranscript: String = ""
-    @AppStorage("teleprompterScrollSpeed") var teleprompterScrollSpeed: Double = 50
-    @AppStorage("teleprompterFontSize") var teleprompterFontSize: String = TeleprompterDisplaySize.medium.rawValue
-    @AppStorage("teleprompterPanelHeight") var teleprompterPanelHeight: String = TeleprompterDisplaySize.medium.rawValue
+    @CapturePreference("screenshotCountdownEnabled") var screenshotCountdownEnabled: Bool = false
+    @CapturePreference("screenshotCountdownDuration") var screenshotCountdownDuration: Int = 3
+    @CapturePreference("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
+    @CapturePreference("multiMonitorCaptureMode") var multiMonitorCaptureMode: MultiMonitorCaptureMode = .askEveryTime
+    @CapturePreference("showRegionIndicator") var showRegionIndicator: Bool = true
+    @CapturePreference("preventDisplaySleepWhileRecording") var preventDisplaySleepWhileRecording: Bool = true
+    @CapturePreference("includeTinyClipsInCapture") var includeTinyClipsInCapture: Bool = false
+    @CapturePreference("showBrandingOverlay") var showBrandingOverlay: Bool = false
+    @CapturePreference("teleprompterEnabled") var teleprompterEnabled: Bool = false
+    @CapturePreference("teleprompterTranscript") var teleprompterTranscript: String = ""
+    @CapturePreference("teleprompterScrollSpeed") var teleprompterScrollSpeed: Double = 50
+    @CapturePreference("teleprompterFontSize") var teleprompterFontSize: String = TeleprompterDisplaySize.medium.rawValue
+    @CapturePreference("teleprompterPanelHeight") var teleprompterPanelHeight: String = TeleprompterDisplaySize.medium.rawValue
     // Custom global hotkeys (stored as Carbon keyCode + modifiers bitmask).
     // Only Screenshot (⌃⌥⌘5) is bound by default.
     // 6400 = controlKey (4096) | optionKey (2048) | cmdKey (256)
-    @AppStorage("screenshotHotKeyCode") var screenshotHotKeyCode: Int = 23      // kVK_ANSI_5
-    @AppStorage("screenshotHotKeyModifiers") var screenshotHotKeyModifiers: Int = 6400
-    @AppStorage("videoHotKeyCode") var videoHotKeyCode: Int = -1
-    @AppStorage("videoHotKeyModifiers") var videoHotKeyModifiers: Int = 0
-    @AppStorage("studioRecordingHotKeyCode") var studioRecordingHotKeyCode: Int = -1
-    @AppStorage("studioRecordingHotKeyModifiers") var studioRecordingHotKeyModifiers: Int = 0
-    @AppStorage("gifHotKeyCode") var gifHotKeyCode: Int = -1
-    @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 0
-    @AppStorage("stopRecordingHotKeyCode") var stopRecordingHotKeyCode: Int = -1
-    @AppStorage("stopRecordingHotKeyModifiers") var stopRecordingHotKeyModifiers: Int = 0
-    @AppStorage("copyTextFromRegionHotKeyCode") var copyTextFromRegionHotKeyCode: Int = -1
-    @AppStorage("copyTextFromRegionHotKeyModifiers") var copyTextFromRegionHotKeyModifiers: Int = 0
+    @CapturePreference("screenshotHotKeyCode") var screenshotHotKeyCode: Int = 23      // kVK_ANSI_5
+    @CapturePreference("screenshotHotKeyModifiers") var screenshotHotKeyModifiers: Int = 6400
+    @CapturePreference("videoHotKeyCode") var videoHotKeyCode: Int = -1
+    @CapturePreference("videoHotKeyModifiers") var videoHotKeyModifiers: Int = 0
+    @CapturePreference("studioRecordingHotKeyCode") var studioRecordingHotKeyCode: Int = -1
+    @CapturePreference("studioRecordingHotKeyModifiers") var studioRecordingHotKeyModifiers: Int = 0
+    @CapturePreference("gifHotKeyCode") var gifHotKeyCode: Int = -1
+    @CapturePreference("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 0
+    @CapturePreference("stopRecordingHotKeyCode") var stopRecordingHotKeyCode: Int = -1
+    @CapturePreference("stopRecordingHotKeyModifiers") var stopRecordingHotKeyModifiers: Int = 0
+    @CapturePreference("copyTextFromRegionHotKeyCode") var copyTextFromRegionHotKeyCode: Int = -1
+    @CapturePreference("copyTextFromRegionHotKeyModifiers") var copyTextFromRegionHotKeyModifiers: Int = 0
     // Direct-to-mode screenshot shortcuts (skip the capture picker); all unbound by default.
-    @AppStorage("screenshotRegionHotKeyCode") var screenshotRegionHotKeyCode: Int = -1
-    @AppStorage("screenshotRegionHotKeyModifiers") var screenshotRegionHotKeyModifiers: Int = 0
-    @AppStorage("screenshotWindowHotKeyCode") var screenshotWindowHotKeyCode: Int = -1
-    @AppStorage("screenshotWindowHotKeyModifiers") var screenshotWindowHotKeyModifiers: Int = 0
-    @AppStorage("screenshotScreenHotKeyCode") var screenshotScreenHotKeyCode: Int = -1
-    @AppStorage("screenshotScreenHotKeyModifiers") var screenshotScreenHotKeyModifiers: Int = 0
+    @CapturePreference("screenshotRegionHotKeyCode") var screenshotRegionHotKeyCode: Int = -1
+    @CapturePreference("screenshotRegionHotKeyModifiers") var screenshotRegionHotKeyModifiers: Int = 0
+    @CapturePreference("screenshotWindowHotKeyCode") var screenshotWindowHotKeyCode: Int = -1
+    @CapturePreference("screenshotWindowHotKeyModifiers") var screenshotWindowHotKeyModifiers: Int = 0
+    @CapturePreference("screenshotScreenHotKeyCode") var screenshotScreenHotKeyCode: Int = -1
+    @CapturePreference("screenshotScreenHotKeyModifiers") var screenshotScreenHotKeyModifiers: Int = 0
 
     static func defaultSaveDirectoryURL(for captureType: CaptureType) -> URL {
         let fallbackBase = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
@@ -583,6 +631,34 @@ class CaptureSettings: ObservableObject {
             : .moviesDirectory
         let baseURL = FileManager.default.urls(for: searchPath, in: .userDomainMask).first ?? fallbackBase
         return baseURL.appendingPathComponent("TinyClips", isDirectory: true)
+    }
+
+    /// The path to show people for a folder. In the App Store sandbox, Pictures and Movies are
+    /// links from the app's container to the person's own folders, so show where they lead.
+    static func displayPath(for url: URL) -> String {
+#if APPSTORE
+        return resolvingSymlinksInExistingPath(url).path
+#else
+        return url.path
+#endif
+    }
+
+    /// Resolves links in the part of the path that exists, keeping folders not yet created.
+    static func resolvingSymlinksInExistingPath(_ url: URL) -> URL {
+        var existing = url.standardizedFileURL
+        var missingComponents: [String] = []
+        while existing.path != "/", !FileManager.default.fileExists(atPath: existing.path) {
+            missingComponents.insert(existing.lastPathComponent, at: 0)
+            existing.deleteLastPathComponent()
+        }
+        return missingComponents.reduce(existing.resolvingSymlinksInPath()) {
+            $0.appendingPathComponent($1, isDirectory: true)
+        }
+    }
+
+    static func isSameDirectory(_ path: String, as url: URL) -> Bool {
+        resolvingSymlinksInExistingPath(URL(fileURLWithPath: path, isDirectory: true)).path ==
+            resolvingSymlinksInExistingPath(url).path
     }
 
     func saveDirectoryPath(for captureType: CaptureType) -> String {
@@ -834,15 +910,7 @@ class CaptureSettings: ObservableObject {
     }
 
     func resetToDefaults(preservingHotKeys: Bool = false) {
-        Self.resetStoredDefaults(.standard, preservingHotKeys: preservingHotKeys)
-        screenshotSaveDirectory = Self.defaultSaveDirectoryURL(for: .screenshot).path
-        videoSaveDirectory = Self.defaultSaveDirectoryURL(for: .video).path
-        gifSaveDirectory = Self.defaultSaveDirectoryURL(for: .gif).path
-#if APPSTORE
-        screenshotSaveDirectoryDisplayPath = Self.defaultSaveDirectoryURL(for: .screenshot).path
-        videoSaveDirectoryDisplayPath = Self.defaultSaveDirectoryURL(for: .video).path
-        gifSaveDirectoryDisplayPath = Self.defaultSaveDirectoryURL(for: .gif).path
-#endif
+        resetPreferences(preservingHotKeys: preservingHotKeys)
 #if APPSTORE
         SaveService.shared.invalidateAllSaveDirectoryBookmarks()
 #endif
@@ -850,7 +918,13 @@ class CaptureSettings: ObservableObject {
         Task { @MainActor in
             CaptureAnalyticsStore.shared.clear()
         }
+    }
+
+    func resetPreferences(preservingHotKeys: Bool = false) {
         objectWillChange.send()
+        Self.resetStoredDefaults(defaults, preservingHotKeys: preservingHotKeys)
+        defaults.set(true, forKey: Self.useDefaultSaveDirectoriesKey)
+        ensureSaveDirectoryDefaults(defaults)
     }
 
     static func resetStoredDefaults(_ defaults: UserDefaults, preservingHotKeys: Bool = false) {
@@ -880,6 +954,7 @@ class CaptureSettings: ObservableObject {
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
         "studioSourceRetentionDays", "studioStorageCapGigabytes", StudioProjectSaveLocation.settingsKey, studioCaptionLanguageKey,
+        "studioRevealAfterFirstSave", "preventDisplaySleepWhileRecording",
         studioExportResolutionKey, CaptureSettingsDefaultsKey.studioExportQuality,
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
@@ -926,11 +1001,6 @@ class CaptureSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
         self.defaults = defaults
-        _excludeClickLightFromScreenshots = AppStorage(
-            wrappedValue: false,
-            "excludeClickLightFromScreenshots",
-            store: defaults
-        )
         audioOffsetMs = audioOffsetMs
         guard performMigrations else { return }
 
@@ -942,7 +1012,7 @@ class CaptureSettings: ObservableObject {
             defaults.removeObject(forKey: "studioPreviewEnabled")
         }
 
-        migrateSaveDirectorySettings(defaults)
+        Self.migrateSaveDirectorySettings(in: defaults)
         ensureSaveDirectoryDefaults(defaults)
 
         guard defaults.object(forKey: "multiMonitorCaptureMode") == nil else { return }
@@ -953,46 +1023,91 @@ class CaptureSettings: ObservableObject {
         defaults.removeObject(forKey: "alwaysCaptureMainDisplay")
     }
 
-    private func migrateSaveDirectorySettings(_ defaults: UserDefaults) {
-        guard defaults.object(forKey: "useDefaultSaveDirectories") == nil else { return }
+    static let useDefaultSaveDirectoriesKey = "useDefaultSaveDirectories"
+    /// Marks the one-time repair of "Use default folders" turned off by older builds. Not reset.
+    static let restoredDefaultSaveDirectoriesKey = "restoredDefaultSaveDirectories"
 
-        let legacySharedDirectory = defaults.string(forKey: "saveDirectory") ?? ""
-        let legacyVideoGifDirectory = defaults.string(forKey: "videoGifSaveDirectory") ?? ""
-        let legacyScreenshotDirectory = defaults.string(forKey: "screenshotSaveDirectory") ?? ""
-        let hasCustomDirectory = !legacySharedDirectory.isEmpty ||
-            !legacyScreenshotDirectory.isEmpty ||
-            !legacyVideoGifDirectory.isEmpty
+    static func migrateSaveDirectorySettings(in defaults: UserDefaults) {
+        let hasCustomFolder = hasCustomSaveDirectory(in: defaults)
+        let needsRepair = defaults.object(forKey: restoredDefaultSaveDirectoriesKey) == nil
+        defaults.set(true, forKey: restoredDefaultSaveDirectoriesKey)
+
+        if defaults.object(forKey: useDefaultSaveDirectoriesKey) != nil {
+            // Older builds saved the default folders, then read them back on the next launch as
+            // chosen folders and turned this off. No folder was chosen, so turn it back on.
+            if needsRepair, !hasCustomFolder, !defaults.bool(forKey: useDefaultSaveDirectoriesKey) {
+                defaults.set(true, forKey: useDefaultSaveDirectoriesKey)
+            }
+            return
+        }
+
+        guard hasCustomFolder else {
+            defaults.set(true, forKey: useDefaultSaveDirectoriesKey)
+            return
+        }
+
+        let string = { defaults.string(forKey: $0) ?? "" }
+        let legacySharedDirectory = string("saveDirectory")
+        let legacyVideoGifDirectory = string("videoGifSaveDirectory")
+        let legacyScreenshotDirectory = string("screenshotSaveDirectory")
+        let videoGifDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
+        let screenshotDirectory = legacyScreenshotDirectory.isEmpty ? legacySharedDirectory : legacyScreenshotDirectory
+
+        defaults.set(false, forKey: useDefaultSaveDirectoriesKey)
+        for (key, path) in [
+            ("screenshotSaveDirectory", screenshotDirectory),
+            ("videoSaveDirectory", videoGifDirectory),
+            ("gifSaveDirectory", videoGifDirectory)
+        ] where !path.isEmpty {
+            defaults.set(path, forKey: key)
+        }
+
 #if APPSTORE
-        let hasCustomBookmark = !saveDirectoryBookmark.isEmpty ||
-            !screenshotSaveDirectoryBookmark.isEmpty ||
-            !videoGifSaveDirectoryBookmark.isEmpty
+        let data = { defaults.data(forKey: $0) ?? Data() }
+        let sharedBookmark = data("saveDirectoryBookmark")
+        let sharedDisplayPath = string("saveDirectoryDisplayPath")
+        if data("screenshotSaveDirectoryBookmark").isEmpty, !sharedBookmark.isEmpty {
+            defaults.set(sharedBookmark, forKey: "screenshotSaveDirectoryBookmark")
+            defaults.set(sharedDisplayPath, forKey: "screenshotSaveDirectoryDisplayPath")
+        }
+        let legacyVideoGifBookmark = data("videoGifSaveDirectoryBookmark")
+        let legacyVideoGifDisplayPath = string("videoGifSaveDirectoryDisplayPath")
+        let videoGifBookmark = legacyVideoGifBookmark.isEmpty ? sharedBookmark : legacyVideoGifBookmark
+        let videoGifDisplayPath = legacyVideoGifDisplayPath.isEmpty ? sharedDisplayPath : legacyVideoGifDisplayPath
+        if !videoGifBookmark.isEmpty {
+            defaults.set(videoGifBookmark, forKey: "videoSaveDirectoryBookmark")
+            defaults.set(videoGifDisplayPath, forKey: "videoSaveDirectoryDisplayPath")
+            defaults.set(videoGifBookmark, forKey: "gifSaveDirectoryBookmark")
+            defaults.set(videoGifDisplayPath, forKey: "gifSaveDirectoryDisplayPath")
+        }
+#endif
+    }
+
+    /// Whether someone chose a save folder, as opposed to the default folders saved for them.
+    static func hasCustomSaveDirectory(in defaults: UserDefaults) -> Bool {
+        let string = { defaults.string(forKey: $0) ?? "" }
+        if !string("saveDirectory").isEmpty || !string("videoGifSaveDirectory").isEmpty {
+            return true
+        }
+        let typedDirectories: [(String, CaptureType)] = [
+            ("screenshotSaveDirectory", .screenshot),
+            ("videoSaveDirectory", .video),
+            ("gifSaveDirectory", .gif)
+        ]
+        let hasCustomPath = typedDirectories.contains { key, type in
+            let path = string(key)
+            return !path.isEmpty && !isSameDirectory(path, as: defaultSaveDirectoryURL(for: type))
+        }
+#if APPSTORE
+        let bookmarkKeys = [
+            "saveDirectoryBookmark", "screenshotSaveDirectoryBookmark", "videoSaveDirectoryBookmark",
+            "gifSaveDirectoryBookmark", "videoGifSaveDirectoryBookmark"
+        ]
+        let hasBookmark = bookmarkKeys.contains { !(defaults.data(forKey: $0) ?? Data()).isEmpty }
 #else
-        let hasCustomBookmark = false
+        let hasBookmark = false
 #endif
-
-        guard hasCustomDirectory || hasCustomBookmark else { return }
-
-        useDefaultSaveDirectories = false
-        if legacyScreenshotDirectory.isEmpty {
-            screenshotSaveDirectory = legacySharedDirectory
-        } else {
-            screenshotSaveDirectory = legacyScreenshotDirectory
-        }
-        videoSaveDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
-        gifSaveDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
-
-#if APPSTORE
-        if screenshotSaveDirectoryBookmark.isEmpty, !saveDirectoryBookmark.isEmpty {
-            screenshotSaveDirectoryBookmark = saveDirectoryBookmark
-            screenshotSaveDirectoryDisplayPath = saveDirectoryDisplayPath
-        }
-        let videoGifBookmark = videoGifSaveDirectoryBookmark.isEmpty ? saveDirectoryBookmark : videoGifSaveDirectoryBookmark
-        let videoGifDisplayPath = videoGifSaveDirectoryDisplayPath.isEmpty ? saveDirectoryDisplayPath : videoGifSaveDirectoryDisplayPath
-        videoSaveDirectoryBookmark = videoGifBookmark
-        videoSaveDirectoryDisplayPath = videoGifDisplayPath
-        gifSaveDirectoryBookmark = videoGifBookmark
-        gifSaveDirectoryDisplayPath = videoGifDisplayPath
-#endif
+        return hasCustomPath || hasBookmark
     }
 
     private func ensureSaveDirectoryDefaults(_ defaults: UserDefaults) {

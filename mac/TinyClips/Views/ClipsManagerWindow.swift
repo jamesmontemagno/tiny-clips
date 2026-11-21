@@ -1449,21 +1449,56 @@ private struct ClipsManagerContentView: View {
                                 StudioWindowRegistry.shared.open(projectID: project.id)
                             }
                             .accessibilityLabel("Open \(project.libraryName), \(project.lastUsedAt.formatted(date: .abbreviated, time: .shortened)), in Studio")
+                            studioRowActions(id: project.id, name: project.libraryName, date: project.lastUsedAt)
                         }
                     }
                     ForEach(unreadable, id: \.id) { project in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Unreadable Project")
-                            Text("Studio cannot read this project from \(project.createdAt.formatted(date: .abbreviated, time: .shortened)). It may be damaged or made by a newer version.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Unreadable Project")
+                                Text("Studio cannot read this project from \(project.createdAt.formatted(date: .abbreviated, time: .shortened)). It may be damaged or made by a newer version.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            studioRowActions(id: project.id, name: "Unreadable Project", date: project.createdAt)
                         }
                     }
                 }
+                .buttonStyle(.bordered)
             }
             Spacer(minLength: 0)
         }
         .padding()
+    }
+
+    @ViewBuilder
+    private func studioRowActions(id: String, name: String, date: Date) -> some View {
+        let label = "\(name), \(date.formatted(date: .abbreviated, time: .shortened))"
+        Button {
+            do { try StudioMaintenance.openLibraryFolder(id: id) }
+            catch { SaveService.shared.showError(error.localizedDescription) }
+        } label: { Image(systemName: "folder") }
+        .help("Open project folder in Finder")
+        .accessibilityLabel("Open folder for \(label)")
+
+        Button {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Delete “\(name)”?"
+            alert.informativeText = "The recording and edits in Tiny Clips Studio will be permanently deleted. Exported videos and separately saved project folders are kept."
+            let cancel = alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Delete")
+            alert.layout()
+            alert.window.initialFirstResponder = cancel
+            guard alert.runModal() == .alertSecondButtonReturn else { return }
+            Task {
+                do { try await StudioMaintenance.deleteLibraryProject(id: id) }
+                catch { SaveService.shared.showError(error.localizedDescription) }
+            }
+        } label: { Image(systemName: "trash") }
+        .help("Delete project from Studio")
+        .accessibilityLabel("Delete \(label) from Studio")
     }
 
     // MARK: - Sidebar

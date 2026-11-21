@@ -273,9 +273,12 @@ final class AutomationController: ObservableObject {
         let description = contract.command(named: command)?.description ?? command
         var details = ["Command: \(command)"]
         if let path = params["path"] as? String { details.append(path) }
+        if command == "studio.project.delete", let id = params["projectId"] as? String {
+            details.append("Studio project: \(id)")
+        }
         let allowTitle: String
         switch contract.command(named: command)?.scope {
-        case "delete": allowTitle = "Move to Trash"
+        case "delete": allowTitle = command == "studio.project.delete" ? "Delete Project" : "Move to Trash"
         case "upload": allowTitle = "Upload"
         case "discard": allowTitle = "Discard"
         default: allowTitle = "Allow"

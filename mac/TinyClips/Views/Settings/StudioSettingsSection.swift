@@ -50,7 +50,6 @@ private final class StudioSettingsProjects: ObservableObject {
 /// Settings for Tiny Clips Studio: project storage and drafts without an available exported video.
 struct StudioSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
-    @AppStorage(StudioProjectSaveLocation.settingsKey) private var studioProjectFolder = ""
 
     @StateObject private var studioProjects = StudioSettingsProjects()
     @State private var isCleaningUp = false
@@ -95,33 +94,6 @@ struct StudioSettingsSection: View {
         #endif
     }
 
-    /// The folder Save Project starts in, and what the setting does and does not move.
-    private var projectFolderDescription: String {
-        let folder = StudioProjectSaveLocation.resolve(
-            configured: studioProjectFolder,
-            videoFolder: SaveService.shared.outputDirectoryURL(for: .video)
-        )
-        let suffix = StudioProjectSaveLocation.isCustom(studioProjectFolder) ? "" : " (default)"
-        return "\(folder.path)\(suffix)\nWhere Save Project and Save Project As start. A project already saved to a folder keeps saving there. Drafts and recordings stay in Studio's own storage."
-    }
-
-    private func chooseProjectFolder() {
-        let panel = NSOpenPanel()
-        panel.title = "Choose Save Project Folder"
-        panel.message = "Save Project and Save Project As will start in this folder."
-        panel.prompt = "Choose"
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = StudioProjectSaveLocation.resolve(
-            configured: studioProjectFolder,
-            videoFolder: SaveService.shared.outputDirectoryURL(for: .video)
-        )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        studioProjectFolder = url.path
-    }
-
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -157,23 +129,10 @@ struct StudioSettingsSection: View {
                 .help("Open a project that was saved as a folder, from its .tinyclips file.")
             }
 
-            SettingsActionRow(
-                title: "Save Project folder",
-                description: projectFolderDescription
-            ) {
-                if StudioProjectSaveLocation.isCustom(studioProjectFolder) {
-                    Button("Use Default") {
-                        studioProjectFolder = ""
-                    }
-                    .help("Start Save Project in the Studio folder inside your video folder.")
-                    .accessibilityLabel("Use the default Save Project folder")
-                }
-                Button("Choose…") {
-                    chooseProjectFolder()
-                }
-                .help("Choose where Save Project and Save Project As start.")
-                .accessibilityLabel("Choose Save Project folder")
-            }
+            SettingsToggleRow(
+                title: "Show project in Finder after first save",
+                isOn: $settings.studioRevealAfterFirstSave
+            )
         }
 
         SettingsFormSection(

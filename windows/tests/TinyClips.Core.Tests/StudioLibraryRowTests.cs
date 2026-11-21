@@ -15,11 +15,12 @@ public sealed class StudioLibraryRowTests
         var bad = new StudioUnreadableProject("c", date.AddDays(-1), 2, false);
         var rows = StudioLibraryRow.FromListing(new StudioProjectListing([draft, other], [bad]));
         Assert.Equal(["My Project", "Untitled Recording", "Unreadable Project"], rows.Select(row => row.Name));
-        Assert.Equal("a", rows[0].OpenProjectId);
+        Assert.Equal("a", rows[0].ProjectId);
         Assert.Contains("Export missing", rows[0].Detail);
         Assert.Contains("Recording is missing", rows[1].Detail);
         Assert.Contains("Untitled Recording", rows[1].OpenAutomationName);
         Assert.False(rows[2].CanOpen);
+        Assert.Equal("c", rows[2].ProjectId);
         Assert.Contains("cannot read", rows[2].Detail);
 
         Assert.Same(rows, StudioLibraryRow.Matching(rows, " "));
@@ -39,9 +40,12 @@ public sealed class StudioLibraryRowTests
             (string?)element.Attribute("AutomationProperties.AutomationId") == "StudioProjectList");
         Assert.Empty(list.Ancestors(ui + "ScrollViewer"));
         Assert.Empty(list.Elements(ui + "ListView.ItemsPanel")); // WinUI's virtualizing default.
-        var button = Assert.Single(list.Descendants(ui + "Button"));
+        var buttons = list.Descendants(ui + "Button").ToDictionary(element => (string)element.Attribute("Click")!);
+        var button = buttons["OnOpenStudioProject"];
         Assert.Equal("{x:Bind OpenAutomationName}", (string?)button.Attribute("AutomationProperties.Name"));
-        Assert.Equal("{x:Bind OpenProjectId}", (string?)button.Attribute("Tag"));
+        Assert.Equal("{x:Bind ProjectId}", (string?)button.Attribute("Tag"));
         Assert.Equal("{x:Bind CanOpen}", (string?)button.Attribute("Visibility"));
+        Assert.Equal("{x:Bind ProjectId}", (string?)buttons["OnOpenStudioFolder"].Attribute("Tag"));
+        Assert.Equal("{x:Bind DeleteAutomationName}", (string?)buttons["OnDeleteStudioProject"].Attribute("AutomationProperties.Name"));
     }
 }

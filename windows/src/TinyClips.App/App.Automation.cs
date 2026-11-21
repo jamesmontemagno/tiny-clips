@@ -483,23 +483,7 @@ public partial class App : IAutomationAppActions
                     throw new AutomationException(AutomationErrorCodes.InvalidParams, "limit must be from 1 to 100.");
                 }
 
-                var projects = new JsonArray();
-                foreach (var summary in store.ListSummaries().OrderByDescending(static item => item.LastUsedAt).Take(limit))
-                {
-                    projects.Add(new JsonObject
-                    {
-                        ["projectId"] = summary.Id,
-                        ["name"] = summary.Name,
-                        ["createdAt"] = FormatStudioTimestamp(summary.CreatedAt),
-                        ["lastOpenedAt"] = FormatStudioTimestamp(summary.LastOpenedAt),
-                        ["isDraft"] = summary.IsDraft,
-                        ["isFlat"] = summary.IsFlat,
-                        ["keepSources"] = summary.KeepSources,
-                        ["sourceExists"] = summary.SourceExists,
-                    });
-                }
-
-                return new JsonObject { ["projects"] = projects };
+                return StudioProjectAutomationListing.Create(store.ListLibraryProjects(), limit);
             }
             case "studio.project.get":
             {
@@ -542,6 +526,30 @@ public partial class App : IAutomationAppActions
                 }
 
                 return new JsonObject { ["projectId"] = projectId, ["opened"] = true };
+            }
+            case "studio.project.openFolder":
+            case "studio.project.delete":
+            {
+                var id = RequiredStudioString(parameters, "projectId");
+                try
+                {
+                    if (commandName == "studio.project.openFolder")
+                    {
+                        await StudioWindows().OpenLibraryFolderAsync(id);
+                        return new JsonObject { ["projectId"] = id, ["opened"] = true };
+                    }
+                    if (!await StudioWindows().TryDeleteLibraryProjectAsync(id))
+                        throw new AutomationException(AutomationErrorCodes.Busy, "The Studio project is in use.");
+                    return new JsonObject { ["projectId"] = id, ["deleted"] = true };
+                }
+                catch (DirectoryNotFoundException ex)
+                {
+                    throw new AutomationException(AutomationErrorCodes.NotFound, ex.Message);
+                }
+                catch (ArgumentException ex)
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams, ex.Message);
+                }
             }
             case "studio.project.edit":
             {

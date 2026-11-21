@@ -29,6 +29,20 @@ public sealed class StudioEditorSessionProjectFolderTests : StudioEditorSessionT
     private string ProjectFile => Path.Combine(Folder, "My Demo.tinyclips");
 
     [Fact]
+    public async Task OnlyTheFirstSuccessfulSaveIsAFirstSave()
+    {
+        var session = await OpenAsync(CreateProject());
+        var first = await RunToEndAsync(session.SaveProjectFolderAsync(Folder));
+        var linked = await RunToEndAsync(session.SaveProjectFolderAsync(Folder, projectFile: ProjectFile));
+        var saveAs = await RunToEndAsync(session.SaveProjectFolderAsync(Path.Combine(Parent, "Copy")));
+        Assert.True(first.IsFirstSave);
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved, linked.Outcome);
+        Assert.False(linked.IsFirstSave);
+        Assert.Equal(StudioProjectFolderSaveOutcome.Saved, saveAs.Outcome);
+        Assert.False(saveAs.IsFirstSave);
+    }
+
+    [Fact]
     public async Task Save_WritesTheEditsFirst_ThenMakesAFolderTheStoreOpensAgain()
     {
         var id = CreateProject(camera: true);

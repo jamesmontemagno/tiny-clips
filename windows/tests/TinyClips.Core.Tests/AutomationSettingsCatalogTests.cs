@@ -50,6 +50,20 @@ public sealed class AutomationSettingsCatalogTests
     }
 
     [Fact]
+    public void FirstSaveRevealIsOptInAndResetRestoresItInTheLiveCatalog()
+    {
+        var store = new MemorySettings();
+        var settings = new CaptureSettings(store);
+        var catalog = new AutomationSettingsCatalog(settings);
+        const string key = "studioRevealAfterFirstSave";
+        Assert.False(catalog.Get(key)["value"]!.GetValue<bool>());
+        catalog.Set(key, JsonValue.Create(true));
+        Assert.True(new CaptureSettings(store).StudioRevealAfterFirstSave);
+        settings.ResetToDefaults();
+        Assert.False(catalog.Get(key)["value"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public void ReadOnlySettings_CannotBeChanged()
     {
         var catalog = new AutomationSettingsCatalog(new CaptureSettings(new MemorySettings()), _ => "C:/out");

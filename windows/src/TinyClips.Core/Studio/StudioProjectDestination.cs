@@ -29,14 +29,35 @@ public static class StudioProjectDestination
         return file;
     }
 
-    public static void Remember(IStudioProjectStore store, string id, string file)
+    public static string LibraryFolder(IStudioProjectStore store, string id)
+    {
+        if (!store.Exists(id)) throw new DirectoryNotFoundException("The Studio project no longer exists.");
+        try
+        {
+            if (Read(store, id) is { } savedFile && Path.GetDirectoryName(savedFile) is { } folder
+                && Directory.Exists(folder))
+                return folder;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
+            or InvalidDataException or StudioProjectInvalidException or StudioUnsupportedSchemaVersionException)
+        {
+            // Even a damaged manifest or an inaccessible saved copy has a working folder.
+            System.Diagnostics.Debug.WriteLine($"Using Studio's working folder for {id}: {ex.Message}");
+        }
+        return store.GetPaths(id).ProjectDirectory;
+    }
+
+    /// <returns>True when this is the first destination recorded for the project.</returns>
+    public static bool Remember(IStudioProjectStore store, string id, string file)
     {
         var path = RecordPath(store, id);
+        var firstSave = !File.Exists(path);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             File.WriteAllText(temporary, JsonSerializer.Serialize(Path.GetFullPath(file)));
             File.Move(temporary, path, overwrite: true);
+            return firstSave;
         }
         finally
         {

@@ -103,7 +103,10 @@ public enum StudioProjectFolderSaveOutcome
 public sealed record StudioProjectFolderSaveResult(
     StudioProjectFolderSaveOutcome Outcome,
     string? ProjectFilePath = null,
-    Exception? Failure = null);
+    Exception? Failure = null)
+{
+    public bool IsFirstSave { get; init; }
+}
 
 /// <summary>The parts of a <see cref="StudioEditorSession"/> that can change.</summary>
 [Flags]

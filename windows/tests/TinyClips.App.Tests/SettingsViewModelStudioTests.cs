@@ -165,7 +165,11 @@ public sealed class SettingsViewModelStudioTests : IDisposable
     {
         var bound = SettingsMarkup.TwoWayViewModelProperties("StudioSettingsSection.xaml");
         Assert.Equal(
-            [nameof(SettingsViewModel.StudioSourceRetentionDays), nameof(SettingsViewModel.StudioStorageCapGigabytes)],
+            [
+                nameof(SettingsViewModel.StudioRevealAfterFirstSave),
+                nameof(SettingsViewModel.StudioSourceRetentionDays),
+                nameof(SettingsViewModel.StudioStorageCapGigabytes)
+            ],
             bound);
 
         _settings.StudioSourceRetentionDays = 14;
@@ -234,7 +238,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         var chosen = Path.Combine(_directory, "Projects I keep");
         _settings.StudioProjectFolder = chosen;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.Studio);
+        Show(vm, SettingsSectionKind.General);
         Assert.Equal(chosen, vm.StudioProjectFolder);
         Assert.Equal(chosen, vm.StudioProjectFolderDisplay);
         Assert.True(vm.IsStudioProjectFolderCustom);

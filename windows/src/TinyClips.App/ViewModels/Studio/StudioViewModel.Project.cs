@@ -11,9 +11,10 @@ namespace TinyClips.App.ViewModels.Studio;
 public sealed record StudioRecentProject(string Id, string Title);
 
 /// <summary>The <c>.tinyclips</c> file of a folder a project was just saved to.</summary>
-public sealed class StudioProjectSavedEventArgs(string projectFilePath) : EventArgs
+public sealed class StudioProjectSavedEventArgs(string projectFilePath, bool isFirstSave) : EventArgs
 {
     public string ProjectFilePath { get; } = projectFilePath;
+    public bool IsFirstSave { get; } = isFirstSave;
 }
 
 // The project as a whole: saving it as a folder, opening another, and deleting it. What each
@@ -232,7 +233,7 @@ public sealed partial class StudioViewModel
         {
             case StudioProjectFolderSaveOutcome.Saved when result.ProjectFilePath is { } projectFile:
                 Announce(StudioProjectFolderText.GetSavedMessage(projectFile), ProjectSaveActivityId, StudioAnnouncementKind.Completed);
-                ProjectSaved?.Invoke(this, new StudioProjectSavedEventArgs(projectFile));
+                ProjectSaved?.Invoke(this, new StudioProjectSavedEventArgs(projectFile, result.IsFirstSave));
                 break;
             case StudioProjectFolderSaveOutcome.Cancelled:
                 Announce(StudioProjectFolderText.SaveCancelledMessage, ProjectSaveActivityId, StudioAnnouncementKind.Stopped);

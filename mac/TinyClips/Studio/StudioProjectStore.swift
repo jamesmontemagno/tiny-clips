@@ -400,6 +400,47 @@ final class StudioProjectStore {
         }
     }
 
+    func deleteLibraryProject(id: String) throws {
+        try withLock {
+            let paths = try pathsUnlocked(forID: id)
+            guard !idsInUse.contains(id) else { throw StudioLibraryActionError.inUse }
+            // A recording that has not finished has a directory, but is not a library project.
+            guard fileManager.fileExists(atPath: paths.projectJSONURL.path) else { throw CocoaError(.fileNoSuchFile) }
+            try deleteUnlocked(id: id)
+        }
+    }
+
+    /// Keep the saved folder's security scope alive until Finder has received the request.
+    func withLibraryFolder<T>(id: String, perform: (URL) throws -> T) throws -> T {
+        let paths = try paths(forID: id)
+        guard fileManager.fileExists(atPath: paths.projectJSONURL.path) else { throw CocoaError(.fileNoSuchFile) }
+        // A missing or unreadable destination record must not prevent opening the working folder.
+        if let destination = try? savedDestination(id: id) {
+            #if APPSTORE
+            var stale = false
+            if let bookmark = destination.bookmark,
+               let folder = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope, .withoutUI],
+                                     relativeTo: nil, bookmarkDataIsStale: &stale),
+               folder.startAccessingSecurityScopedResource() {
+                defer { folder.stopAccessingSecurityScopedResource() }
+                if isAvailableFolder(folder) {
+                    return try perform(folder)
+                }
+            }
+            #else
+            let folder = destination.file.deletingLastPathComponent()
+            if isAvailableFolder(folder) { return try perform(folder) }
+            #endif
+        }
+        return try perform(paths.projectDirectory)
+    }
+
+    private func isAvailableFolder(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            && isDirectory.boolValue && fileManager.isReadableFile(atPath: url.path)
+    }
+
     @discardableResult
     func markOpened(id: String) throws -> StudioProject {
         try withLock {
@@ -927,12 +968,16 @@ final class StudioProjectStore {
         return destination
     }
 
-    func rememberDestination(id: String, file: URL, bookmark: Data? = nil) throws {
+    /// Returns whether this is the project's first saved destination, including a first Save As.
+    @discardableResult
+    func rememberDestination(id: String, file: URL, bookmark: Data? = nil) throws -> Bool {
         guard file.isFileURL, file.pathExtension.lowercased() == Self.projectFileExtension else {
             throw CocoaError(.fileWriteInvalidFileName)
         }
         let record = try destinationRecordURL(id: id)
+        let firstSave = !fileManager.fileExists(atPath: record.path)
         try JSONEncoder().encode(SavedDestination(file: file, bookmark: bookmark)).write(to: record, options: .atomic)
+        return firstSave
     }
 
     private func destinationRecordURL(id: String) throws -> URL {

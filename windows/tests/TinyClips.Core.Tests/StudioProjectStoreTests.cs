@@ -1,3 +1,4 @@
+using TinyClips.Core.Automation;
 using TinyClips.Core.Studio;
 
 namespace TinyClips.Core.Tests;
@@ -391,11 +392,11 @@ public sealed class StudioProjectStoreTests : IDisposable
         using var secondUse = store.AcquireProjectUse(project.Id);
 
         Assert.Empty(store.Cleanup(new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0)).ProjectIdsDeleted);
-        Assert.Throws<IOException>(() => store.Delete(project.Id));
+        Assert.Throws<StudioProjectInUseException>(() => store.Delete(project.Id));
 
         firstUse.Dispose();
         Assert.Empty(store.Cleanup(new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0)).ProjectIdsDeleted);
-        Assert.Throws<IOException>(() => store.Delete(project.Id));
+        Assert.Throws<StudioProjectInUseException>(() => store.Delete(project.Id));
 
         secondUse.Dispose();
         store.Delete(project.Id);
@@ -870,13 +871,20 @@ public sealed class StudioProjectStoreTests : IDisposable
         Assert.Equal(new DateTimeOffset(newerCreated), unreadable[1].CreatedAt);
         Assert.Equal(1001, unreadable[0].SizeBytes);
 
+        var agentProjects = StudioProjectAutomationListing.Create(listing, 100)["projects"]!.AsArray();
+        var agentDamagedProject = Assert.Single(agentProjects, project => project!["projectId"]!.GetValue<string>() == damaged.Id);
+        Assert.False(agentDamagedProject!["isReadable"]!.GetValue<bool>());
+        Assert.Equal("Unreadable project", agentDamagedProject["name"]!.GetValue<string>());
+        var agentReadableProject = Assert.Single(agentProjects, project => project!["projectId"]!.GetValue<string>() == readable.Id);
+        Assert.True(agentReadableProject!["isReadable"]!.GetValue<bool>());
+
         // Cleanup still leaves them alone, whatever the rules.
         Assert.Empty(store.Cleanup(new StudioCleanupOptions(RetentionDays: 1, SizeCapBytes: 1)).ProjectIdsDeleted);
         Assert.Equal(2, store.ListUnreadableProjects().Count);
 
         // The way out and the way to be rid of it.
         Assert.Equal(store.GetPaths(damaged.Id).ScreenPath, store.FindScreenRecording(damaged.Id));
-        store.Delete(damaged.Id);
+        store.Delete(agentDamagedProject["projectId"]!.GetValue<string>());
         Assert.Equal([newer.Id], store.ListUnreadableProjects().Select(project => project.Id));
         File.WriteAllText(store.GetPaths(readable.Id).ProjectJsonPath, "{");
         var changed = store.ListLibraryProjects();
