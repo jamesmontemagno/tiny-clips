@@ -220,7 +220,7 @@ public partial class App : IAutomationAppActions
         return new("idle", busy, null);
     }
 
-    void IAutomationAppActions.OpenAutomationWindow(string window)
+    string? IAutomationAppActions.OpenAutomationWindow(string window, string? guideTopic)
     {
         switch (window)
         {
@@ -232,10 +232,17 @@ public partial class App : IAutomationAppActions
                 break;
             case "guide":
                 OpenGuideWindow();
-                break;
+                var guide = _guideWindow
+                    ?? throw new AutomationException(AutomationErrorCodes.Busy, "The Guide could not be opened.");
+                if (guideTopic is not null)
+                {
+                    guide.SelectTopic(guideTopic);
+                }
+                return guide.SelectedTopic;
             default:
                 throw new AutomationException(AutomationErrorCodes.InvalidParams, $"Unknown window {window}.");
         }
+        return null;
     }
 
     MonitorInfo? IAutomationAppActions.GetPreferredAutomationMonitor()

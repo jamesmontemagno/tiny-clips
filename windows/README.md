@@ -52,9 +52,17 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   video and GIF without changing their saved durations, and shows Custom if they differ.
   Windows notification availability is separate from the save-notification preference.
   The final page illustrates where to find Tiny Clips in the taskbar's system tray.
-  The in-app Guide splits help into **Capture**, **Shortcuts**, **Edit & record**,
-  **Library**, and **Agents** tabs, with capture help selected first. Each page scrolls
-  independently while the tabs stay visible; keyboard navigation uses the native tab control.
+  The offline, read-only Guide has seven fixed native tabs: **Capture**, **Editor**, **Recording**,
+  **Studio**, **Library**, **Agents**, and **Help**, with Capture selected first. Every page
+  includes an original theme-aware overview drawing, a readable accessible description, and
+  practical numbered steps matching Windows capabilities. Pages scroll independently while the
+  title and tabs stay visible; native tab overflow keeps every topic reachable at minimum width.
+  **Help** shows the live saved global shortcuts (refreshed on activation), settings, permissions,
+  and install-channel update guidance. **Agents** retains selectable plugin/pair/status setup and
+  the full documentation link. The handbook does not start captures or change preferences.
+  `GuideWindow.SelectTopic(string topic)` selects a topic on an existing or newly created window;
+  `SelectedTopic` reports its lower-case ID: `capture`, `editor`, `recording`, `studio`, `library`,
+  `agents`, or `help`. Call on the UI thread; unknown IDs throw without changing selection.
 - **Clips Library** — browse every saved capture from the tray. Collapsible sidebar with
   **Smart Collections** (All, Recent, This Week, This Month, Large Files, Favorites, Screenshots,
   Videos, GIFs), your **Collections**, and **Tags**; search across names, tags and notes; a

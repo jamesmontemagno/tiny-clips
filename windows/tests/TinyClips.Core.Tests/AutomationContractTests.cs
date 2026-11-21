@@ -5,6 +5,41 @@ namespace TinyClips.Core.Tests;
 
 public sealed class AutomationContractTests
 {
+    [Theory]
+    [InlineData("capture")]
+    [InlineData("editor")]
+    [InlineData("recording")]
+    [InlineData("studio")]
+    [InlineData("library")]
+    [InlineData("agents")]
+    [InlineData("help")]
+    public void GuideTopicsAreOptionalAndValidatedBeforeOpening(string topic)
+    {
+        Assert.True(AutomationContract.Default.TryGetCommand("app.open", out var command));
+        Assert.Equal("read", command.Scope);
+        var supplied = new System.Text.Json.Nodes.JsonObject { ["window"] = "guide", ["guideTopic"] = topic };
+        Assert.True(AutomationHost.TryValidateParams(command, supplied, out var validated, out _));
+        Assert.Equal(topic, validated["guideTopic"]!.GetValue<string>());
+        supplied.Remove("guideTopic");
+        Assert.True(AutomationHost.TryValidateParams(command, supplied, out var omitted, out _));
+        Assert.False(omitted.ContainsKey("guideTopic"));
+    }
+
+    [Theory]
+    [InlineData("""{"window":"settings","guideTopic":"studio"}""")]
+    [InlineData("""{"window":"library","guideTopic":"studio"}""")]
+    [InlineData("""{"window":"guide","guideTopic":"unknown"}""")]
+    [InlineData("""{"window":"guide","guideTopic":"Studio"}""")]
+    [InlineData("""{"window":"guide","guideTopic":1}""")]
+    [InlineData("""{"window":"guide","guideTopic":null}""")]
+    public void GuideTopicsRejectInvalidValuesAndOtherWindows(string json)
+    {
+        Assert.True(AutomationContract.Default.TryGetCommand("app.open", out var command));
+        Assert.False(AutomationHost.TryValidateParams(command,
+            System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject(), out _, out var error));
+        Assert.Contains("guideTopic", error);
+    }
+
     [Fact]
     public void EmbeddedContract_Loads()
     {

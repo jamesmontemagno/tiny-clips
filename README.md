@@ -25,7 +25,7 @@ video (MP4), and animated GIFs of a selected screen region — on **macOS** and 
 - **Region Selection** — Drag to select any portion of any screen
 - **Global Hotkeys** — Quick capture from anywhere
 - **Configurable** — Save location, clipboard, reveal-in-Finder/Explorer, GIF quality, trimmer toggles, and more
-- **Tabbed Guide** — Open Guide from the menu bar or tray for focused help topics, current keyboard shortcuts, and agent setup. Each topic scrolls separately so the tabs stay within reach; resize the window for more reading room.
+- **Illustrated Guide** — Open Guide from the menu bar or tray for offline feature overviews and practical steps in **Capture**, **Editor**, **Recording**, **Studio**, **Library**, **Agents**, and **Help** tabs. Theme-aware drawings explain the workflows; Help shows your current shortcuts. Each topic scrolls separately, with links to the full website documentation.
 
 > macOS uses Sparkle for auto-updates. On Windows, installs made through the `.appinstaller` update automatically with MSIX App Installer, **winget** installs update with `winget upgrade`, and Microsoft Store installs update through the Store.
 
@@ -174,7 +174,7 @@ Onboarding offers only Screenshot, Record Video, and Record GIF.
 4. For region recordings, confirm audio/mic options in the floating **Record** panel
 5. Click the floating **Stop** button when done (or use a stop shortcut you have configured)
 
-To edit an existing MP4 or MOV in Studio, right-click it in Finder or File Explorer and choose **Open With → Tiny Clips**. On Windows, choose **Just once** if prompted. Tiny Clips opens the video in Studio without changing your default player. Studio must be enabled in Settings.
+To edit an existing MP4 or MOV in Studio, right-click it in Finder or File Explorer and choose **Open With → Tiny Clips**. On Windows, choose **Just once** if prompted. Tiny Clips opens the video in Studio without changing your default player.
 
 On macOS, opening the same unchanged video from Finder, the trimmer or Clips Library returns to the same draft. The Mac App Store build keeps its own copy so it can reopen the draft after access to the original ends.
 

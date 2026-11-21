@@ -11,6 +11,14 @@ UI-only and are not exposed through `settings.get`, `settings.set`, CLI, or MCP.
 capture and recording commands directly without reserving or changing the user's keyboard
 bindings. An unassigned Stop Recording shortcut does not disable `recording.stop`.
 
+`app.open window=guide` opens the offline illustrated Guide on either platform. Optional
+`guideTopic` selects `capture`, `editor`, `recording`, `studio`, `library`, `agents`, or `help`,
+including in an already-open Guide. It is valid only with `window=guide`; invalid topics,
+null, and use with another window return `invalid_params` before a window changes.
+Omission preserves the current selection, or defaults to Capture for a new window.
+Guide results retain `opened: "guide"` and add `guideTopic` with the selected topic.
+This read-scoped navigation does not start captures or change settings.
+
 Autonomous capture commands use ephemeral target IDs from `capture.targets`; refresh them after app restarts. Region rectangles are display-local physical pixels with a top-left origin. Annotation bounds and point lists are source-image pixels from the top left. `editor.annotate`, `editor.trim`, and `editor.saveFrame` always save a new library item and must not overwrite or delete their source. Media times are seconds from the start; GIF frame indexes are zero-based. Optimistic Studio edits that lose a race return `conflict`, not `busy`.
 
 `recording.startVideo` and `recording.startGif` use the same screen/region/window target parameters, saved recording settings, and bypass interactive pickers and setup UI. Agent-started recordings save without opening a trimmer. Scrolling capture is a start/status/stop/cancel lifecycle; the agent performs the scrolling with its own UI tools, and Tiny Clips only captures and stitches frames.

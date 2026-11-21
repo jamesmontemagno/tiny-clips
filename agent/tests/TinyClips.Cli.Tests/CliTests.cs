@@ -10,6 +10,25 @@ public class CliTests
 {
     private static JsonNode Json(StringWriter writer) => JsonNode.Parse(writer.ToString())!;
 
+    [Theory]
+    [InlineData("capture")]
+    [InlineData("editor")]
+    [InlineData("recording")]
+    [InlineData("studio")]
+    [InlineData("library")]
+    [InlineData("agents")]
+    [InlineData("help")]
+    public async Task GuideTopicReachesTheAppWithReadScope(string topic)
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["read"];
+        Assert.Equal(0, await Cli.RunAsync(["app.open", "window=guide", $"guideTopic={topic}"],
+            app.Environment(new StringWriter(), new StringWriter(), token: "t"),
+            TestContext.Current.CancellationToken));
+        Assert.Equal("guide", app.Received[^1]["params"]!["window"]!.GetValue<string>());
+        Assert.Equal(topic, app.Received[^1]["params"]!["guideTopic"]!.GetValue<string>());
+    }
+
     [Fact]
     public void KeyValueParamsAreTypedByTheContract()
     {

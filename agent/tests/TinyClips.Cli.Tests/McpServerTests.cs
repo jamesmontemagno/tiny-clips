@@ -13,6 +13,31 @@ public class McpServerTests
         JsonNode.Parse(Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text)!;
 
     [Fact]
+    public async Task GuideToolSelectsATopicWithReadScopeAndRejectsInvalidRequests()
+    {
+        await using var app = new FakeApp();
+        app.Clients["t"] = ["read"];
+        await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>
+        {
+            var result = await client.CallToolAsync("tinyclips_app_open",
+                new Dictionary<string, object?> { ["window"] = "guide", ["guideTopic"] = "studio" },
+                cancellationToken: token);
+            Assert.False(result.IsError);
+            Assert.Equal("studio", app.Received[^1]["params"]!["guideTopic"]!.GetValue<string>());
+            var count = app.Received.Count;
+            foreach (var window in new[] { "settings", "library" })
+            {
+                var invalid = await client.CallToolAsync("tinyclips_app_open",
+                    new Dictionary<string, object?> { ["window"] = window, ["guideTopic"] = "studio" },
+                    cancellationToken: token);
+                Assert.True(invalid.IsError);
+                Assert.Equal("invalid_params", (string?)Body(invalid)["error"]!["code"]);
+            }
+            Assert.Equal(count, app.Received.Count);
+        });
+    }
+
+    [Fact]
     public void OneToolPerCommandPlusStatus()
     {
         var tools = McpServer.ListTools();
