@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v2.3.0-mac - 2026-11-21
+
 - Studio project saves use the default folder while default save folders are enabled; disabling them restores the previous custom folder.
 
 ### Added
