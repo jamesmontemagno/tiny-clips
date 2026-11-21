@@ -72,6 +72,21 @@ public sealed class StudioProjectSaveLocationTests : IDisposable
     }
 
     [Fact]
+    public void ChosenFolderWithTrailingUnicodeWhitespace_IsPreservedForSavingAndAgents()
+    {
+        var videos = Path.Combine(_root, "Videos");
+        Directory.CreateDirectory(Path.Combine(_root, "Projects"));
+        var chosen = Directory.CreateDirectory(Path.Combine(_root, "Projects\u00A0")).FullName;
+        var settings = new CaptureSettings(new MemorySettings()) { StudioProjectFolder = chosen };
+        var catalog = new AutomationSettingsCatalog(settings, _ => videos);
+
+        Assert.Equal(chosen, settings.StudioProjectFolder);
+        Assert.Equal(chosen, StudioProjectSaveLocation.Resolve(chosen, videos));
+        Assert.Equal(chosen, StudioProjectSaveLocation.Prepare(chosen, videos));
+        Assert.Equal(chosen, (string?)catalog.Get("studioProjectFolder")["value"]);
+    }
+
+    [Fact]
     public void Prepare_FallsBackToTheVideosFolder_WhenStudioCannotBeCreated()
     {
         var videos = Directory.CreateDirectory(Path.Combine(_root, "Videos")).FullName;

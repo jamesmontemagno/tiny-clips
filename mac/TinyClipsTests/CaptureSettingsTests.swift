@@ -445,12 +445,14 @@ final class CaptureSettingsTests: XCTestCase {
     func testStudioProjectFolderDefaultsToStudioInsideTheVideoFolder() {
         let videos = URL(fileURLWithPath: "/Users/someone/Movies/TinyClips", isDirectory: true)
 
-        for configured in ["", "   ", "relative/folder"] {
+        for configured in ["", "   ", "relative/folder", " /Volumes/Work/Projects"] {
             XCTAssertFalse(StudioProjectSaveLocation.isCustom(configured))
             XCTAssertEqual(StudioProjectSaveLocation.resolve(configured: configured, videoFolder: videos).path, "/Users/someone/Movies/TinyClips/Studio")
         }
-        XCTAssertTrue(StudioProjectSaveLocation.isCustom(" /Volumes/Work/Projects "))
-        XCTAssertEqual(StudioProjectSaveLocation.resolve(configured: " /Volumes/Work/Projects ", videoFolder: videos).path, "/Volumes/Work/Projects")
+        for configured in ["/Volumes/Work/Projects ", "/Volumes/Work/Projects\u{00A0}"] {
+            XCTAssertTrue(StudioProjectSaveLocation.isCustom(configured))
+            XCTAssertEqual(StudioProjectSaveLocation.resolve(configured: configured, videoFolder: videos).path, configured)
+        }
     }
 
     func testStudioProjectFolderPrepareCreatesTheDefaultAndFallsBack() throws {
@@ -470,6 +472,10 @@ final class CaptureSettingsTests: XCTestCase {
 
         try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
         XCTAssertEqual(StudioProjectSaveLocation.prepare(configured: chosen.path, videoFolder: videos).path, chosen.path)
+
+        let chosenWithSpace = root.appendingPathComponent("Projects ", isDirectory: true)
+        try FileManager.default.createDirectory(at: chosenWithSpace, withIntermediateDirectories: true)
+        XCTAssertEqual(StudioProjectSaveLocation.prepare(configured: chosenWithSpace.path, videoFolder: videos).path, chosenWithSpace.path)
 
         // When Studio cannot be created, the video folder is used.
         let blocked = root.appendingPathComponent("Blocked", isDirectory: true)

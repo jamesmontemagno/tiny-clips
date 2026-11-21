@@ -24,7 +24,7 @@ public static class StudioProjectSaveLocation
     /// Does not touch the disk.
     /// </summary>
     public static string Resolve(string? configured, string videoFolder) =>
-        IsCustom(configured) ? configured!.Trim() : GetDefaultFolder(videoFolder);
+        IsCustom(configured) ? configured! : GetDefaultFolder(videoFolder);
 
     /// <summary>
     /// The folder Save project starts in, made ready to open: a chosen folder that is gone falls
@@ -33,9 +33,9 @@ public static class StudioProjectSaveLocation
     /// </summary>
     public static string Prepare(string? configured, string videoFolder)
     {
-        if (IsCustom(configured) && Directory.Exists(configured!.Trim()))
+        if (IsCustom(configured) && Directory.Exists(configured))
         {
-            return configured.Trim();
+            return configured!;
         }
 
         var studio = GetDefaultFolder(videoFolder);
