@@ -575,6 +575,16 @@ final class StudioProjectFolderTests: XCTestCase {
         XCTAssertFalse(try String(contentsOf: copy.appendingPathComponent("Copy.tinyclips"), encoding: .utf8).contains(outsideURL.path))
     }
 
+    func testOnlyTheFirstSuccessfulDestinationIsAFirstSave() throws {
+        let id = try makeProject(camera: false)
+        let file = outsideURL.appendingPathComponent("Demo.tinyclips")
+        XCTAssertThrowsError(try store.rememberDestination(id: id, file: outsideURL))
+        XCTAssertTrue(try store.rememberDestination(id: id, file: file))
+        let reopened = StudioProjectStore(rootURL: storeURL)
+        XCTAssertFalse(try reopened.rememberDestination(id: id, file: file))
+        XCTAssertFalse(try reopened.rememberDestination(id: id, file: outsideURL.appendingPathComponent("Copy.tinyclips")))
+    }
+
     func testLinkedSavePreservesExportedVideosAndOtherContent() throws {
         let id = try makeProject(camera: true)
         let folder = outsideURL.appendingPathComponent("Saved")

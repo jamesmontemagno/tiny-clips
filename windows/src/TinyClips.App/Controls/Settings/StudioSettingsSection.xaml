@@ -105,6 +105,15 @@
                     </StackPanel>
                 </controls:SettingsCard>
 
+                <controls:SettingsCard
+                    Header="Show project in File Explorer after first save"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE838;}">
+                    <ToggleSwitch
+                        AutomationProperties.AutomationId="StudioRevealAfterFirstSaveToggle"
+                        AutomationProperties.Name="Show project in File Explorer after first save"
+                        IsOn="{x:Bind ViewModel.StudioRevealAfterFirstSave, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
                 <TextBlock
                     Margin="4,16,0,0"
                     AutomationProperties.HeadingLevel="Level2"

@@ -304,7 +304,7 @@ public sealed partial class StudioWindow
     private void OnProjectSaved(object? sender, StudioProjectSavedEventArgs e)
     {
         // Saved on the way out, the folder is not shown: the window is about to close.
-        if (!_isClosed && !_isSavingToClose)
+        if (!_isClosed && !_isSavingToClose && e.IsFirstSave && _settings.StudioRevealAfterFirstSave)
         {
             _projects.Reveal(e.ProjectFilePath);
         }

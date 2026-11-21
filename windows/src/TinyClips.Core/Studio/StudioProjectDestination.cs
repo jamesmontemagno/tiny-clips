@@ -29,14 +29,17 @@ public static class StudioProjectDestination
         return file;
     }
 
-    public static void Remember(IStudioProjectStore store, string id, string file)
+    /// <returns>True when this is the first destination recorded for the project.</returns>
+    public static bool Remember(IStudioProjectStore store, string id, string file)
     {
         var path = RecordPath(store, id);
+        var firstSave = !File.Exists(path);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             File.WriteAllText(temporary, JsonSerializer.Serialize(Path.GetFullPath(file)));
             File.Move(temporary, path, overwrite: true);
+            return firstSave;
         }
         finally
         {

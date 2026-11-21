@@ -436,6 +436,29 @@ public sealed class SettingsViewModelTests
     }
 
     [Fact]
+    public void ResetRestoresCaptureAndStudioLocationsInTheWindowAndStore()
+    {
+        var fixture = new Fixture();
+        var vm = fixture.CreateViewModel();
+        Realize(vm, SettingsSectionKind.General);
+        Realize(vm, SettingsSectionKind.Studio);
+        Assert.False(vm.StudioRevealAfterFirstSave);
+        vm.UseDefaultSaveDirectories = false;
+        vm.VideoSaveDirectory = @"C:\Custom\Captures";
+        vm.StudioProjectFolder = @"C:\Custom\Projects";
+        vm.StudioRevealAfterFirstSave = true;
+        Assert.True(fixture.Settings.StudioRevealAfterFirstSave);
+
+        vm.ResetAllSettings();
+
+        Assert.True(vm.UseDefaultSaveDirectories);
+        Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Video), vm.VideoSaveDirectory);
+        Assert.False(vm.IsStudioProjectFolderCustom);
+        Assert.False(vm.StudioRevealAfterFirstSave);
+        Assert.False(new CaptureSettings(fixture.Store).StudioRevealAfterFirstSave);
+    }
+
+    [Fact]
     public void Reopening_ReadsCurrentSettingsAndExternalState()
     {
         var fixture = new Fixture();

@@ -174,6 +174,11 @@ struct StudioSettingsSection: View {
                 .help("Choose where Save Project and Save Project As start.")
                 .accessibilityLabel("Choose Save Project folder")
             }
+
+            SettingsToggleRow(
+                title: "Show project in Finder after first save",
+                isOn: $settings.studioRevealAfterFirstSave
+            )
         }
 
         SettingsFormSection(

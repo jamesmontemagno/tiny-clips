@@ -2529,8 +2529,8 @@ final class StudioViewModel: ObservableObject {
         let saving = editor?.editableState
         busyMessage = "Saving project…"
         Task { [weak self] in
-            let failure: String? = await Task.detached(priority: .userInitiated) {
-                do {
+            let result: Result<URL?, Error> = await Task.detached(priority: .userInitiated) {
+                Result {
                     // The panel has asked before it hands back a name that is taken.
                     if let linkedFile {
                         try store.updateSavedProject(id: id, projectFile: linkedFile)
@@ -2541,30 +2541,28 @@ final class StudioViewModel: ObservableObject {
                         .appendingPathExtension(StudioProjectStore.projectFileExtension)
                     #if APPSTORE
                     let bookmark = try folder.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
-                    try store.rememberDestination(id: id, file: file, bookmark: bookmark)
+                    let firstSave = try store.rememberDestination(id: id, file: file, bookmark: bookmark)
                     #else
-                    try store.rememberDestination(id: id, file: file)
+                    let firstSave = try store.rememberDestination(id: id, file: file)
                     #endif
-                    return nil
-                } catch {
-                    return error.localizedDescription
+                    return firstSave ? file : nil
                 }
             }.value
             guard let self else { return }
             self.busyMessage = nil
-            if let failure {
-                SaveService.shared.showError("Studio could not save this project: \(failure)")
-            } else {
+            switch result {
+            case .failure(let error):
+                SaveService.shared.showError("Studio could not save this project: \(error.localizedDescription)")
+            case .success(let firstSavedFile):
                 self.projectSaveBaseline = saving
                 SaveService.shared.showNotice("Project saved to the folder \(folder.lastPathComponent).")
                 if closingAfterward {
                     self.requestClose?()
                     return
                 }
-                let projectFile = linkedFile ?? folder
-                    .appendingPathComponent(folder.lastPathComponent)
-                    .appendingPathExtension(StudioProjectStore.projectFileExtension)
-                NSWorkspace.shared.activateFileViewerSelecting([projectFile])
+                if let firstSavedFile, CaptureSettings.shared.studioRevealAfterFirstSave {
+                    NSWorkspace.shared.activateFileViewerSelecting([firstSavedFile])
+                }
             }
         }
     }

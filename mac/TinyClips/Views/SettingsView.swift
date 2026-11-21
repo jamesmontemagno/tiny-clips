@@ -243,6 +243,7 @@ struct SettingsView: View {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             let hotKeyResetError = captureManager.resetCaptureHotKeysToDefaults()
             settings.resetToDefaults(preservingHotKeys: true)
+            if launchAtLogin.isEnabled { launchAtLogin.setEnabled(false) }
             sparkleController.resetPreferencesToDefaults()
             applyDockVisibility(settings.showInDock)
 

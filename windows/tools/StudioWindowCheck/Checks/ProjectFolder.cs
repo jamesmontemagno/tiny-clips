@@ -120,7 +120,9 @@ internal sealed partial class WindowChecks
         var saveRoot = Path.Combine(Path.GetTempPath(), $"TinyClipsStudioWindowCheck-saved-{Environment.ProcessId}");
         Directory.CreateDirectory(saveRoot);
         var placeBefore = _services.Settings.StudioProjectFolder;
+        var revealBefore = _services.Settings.StudioRevealAfterFirstSave;
         _services.Settings.StudioProjectFolder = saveRoot;
+        _services.Settings.StudioRevealAfterFirstSave = true;
         try
         {
             ProjectCommands(saveRoot);
@@ -130,6 +132,7 @@ internal sealed partial class WindowChecks
         {
             _services.Store.HoldProjectSaves(null);
             _services.Settings.StudioProjectFolder = placeBefore;
+            _services.Settings.StudioRevealAfterFirstSave = revealBefore;
             try
             {
                 Directory.Delete(saveRoot, recursive: true);

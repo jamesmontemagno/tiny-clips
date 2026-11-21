@@ -44,6 +44,7 @@ public sealed class AutomationSettingsCatalog
             Bool("copyVideoToClipboard", () => s.CopyVideoToClipboard, v => s.CopyVideoToClipboard = v),
             Bool("copyGifToClipboard", () => s.CopyGifToClipboard, v => s.CopyGifToClipboard = v),
             Bool("showInExplorer", () => s.ShowInExplorer, v => s.ShowInExplorer = v),
+            Bool("studioRevealAfterFirstSave", () => s.StudioRevealAfterFirstSave, v => s.StudioRevealAfterFirstSave = v),
             Bool("showSaveNotifications", () => s.ShowSaveNotifications, v => s.ShowSaveNotifications = v),
             Bool("showScreenshotEditor", () => s.ShowScreenshotEditor, v => s.ShowScreenshotEditor = v),
             Bool("showTrimmer", () => s.ShowTrimmer, v => s.ShowTrimmer = v),

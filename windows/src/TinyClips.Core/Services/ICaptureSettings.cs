@@ -98,6 +98,7 @@ public interface ICaptureSettings
     /// <see cref="StudioProjectSaveLocation"/>.
     /// </summary>
     string StudioProjectFolder { get; set; }
+    bool StudioRevealAfterFirstSave { get; set; }
 
     bool RecordAudio { get; set; }
     bool RecordMicrophone { get; set; }

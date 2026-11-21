@@ -492,6 +492,34 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: StudioProjectSaveLocation.settingsKey))
     }
 
+    func testResetRestoresTheLiveSettingsAndSurvivesRelaunch() {
+        let settings = CaptureSettings(defaults: defaults)
+        XCTAssertFalse(settings.studioRevealAfterFirstSave)
+        settings.useDefaultSaveDirectories = false
+        settings.screenshotSaveDirectory = "/Work/Pictures"
+        settings.videoSaveDirectory = "/Work/Movies"
+        settings.gifSaveDirectory = "/Work/GIFs"
+        settings.studioProjectFolder = "/Work/Projects"
+        settings.studioRevealAfterFirstSave = true
+        settings.videoCodec = .hevc
+        settings.preventDisplaySleepWhileRecording = false
+        XCTAssertTrue(CaptureSettings(defaults: defaults).studioRevealAfterFirstSave)
+        XCTAssertEqual(defaults.string(forKey: CaptureSettings.videoCodecKey), VideoCodec.hevc.rawValue)
+
+        settings.resetPreferences()
+
+        for model in [settings, CaptureSettings(defaults: defaults)] {
+            XCTAssertTrue(model.useDefaultSaveDirectories)
+            for type in [CaptureType.screenshot, .video, .gif] {
+                XCTAssertEqual(model.saveDirectoryPath(for: type), CaptureSettings.defaultSaveDirectoryURL(for: type).path)
+            }
+            XCTAssertEqual(model.studioProjectFolder, "")
+            XCTAssertFalse(model.studioRevealAfterFirstSave)
+            XCTAssertEqual(model.videoCodec, .h264)
+            XCTAssertTrue(model.preventDisplaySleepWhileRecording)
+        }
+    }
+
     private func storeDefaultSaveDirectories() {
         for type in [CaptureType.screenshot, .video, .gif] {
             defaults.set(CaptureSettings.defaultSaveDirectoryURL(for: type).path, forKey: "\(type.rawValue)SaveDirectory")

@@ -927,12 +927,16 @@ final class StudioProjectStore {
         return destination
     }
 
-    func rememberDestination(id: String, file: URL, bookmark: Data? = nil) throws {
+    /// Returns whether this is the project's first saved destination, including a first Save As.
+    @discardableResult
+    func rememberDestination(id: String, file: URL, bookmark: Data? = nil) throws -> Bool {
         guard file.isFileURL, file.pathExtension.lowercased() == Self.projectFileExtension else {
             throw CocoaError(.fileWriteInvalidFileName)
         }
         let record = try destinationRecordURL(id: id)
+        let firstSave = !fileManager.fileExists(atPath: record.path)
         try JSONEncoder().encode(SavedDestination(file: file, bookmark: bookmark)).write(to: record, options: .atomic)
+        return firstSave
     }
 
     private func destinationRecordURL(id: String) throws -> URL {

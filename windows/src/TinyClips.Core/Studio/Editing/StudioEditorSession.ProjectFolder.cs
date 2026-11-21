@@ -77,6 +77,7 @@ public sealed partial class StudioEditorSession
 
             Exception? failure = null;
             var isCancelled = false;
+            var firstSave = false;
             try
             {
                 var progress = new ProjectFolderProgressRelay(this, cancellation);
@@ -94,7 +95,7 @@ public sealed partial class StudioEditorSession
                         }
 
                         var savedFile = projectFile ?? Path.Combine(folder, Path.GetFileName(folder) + StudioProjectFolder.ProjectFileExtension);
-                        StudioProjectDestination.Remember(_store, ProjectId, savedFile);
+                        firstSave = StudioProjectDestination.Remember(_store, ProjectId, savedFile);
                     },
                     CancellationToken.None).ConfigureAwait(false);
             }
@@ -117,8 +118,8 @@ public sealed partial class StudioEditorSession
                     _projectSaveBaseline = saving;
                 }
             }).ConfigureAwait(false);
-            return result.Outcome == StudioProjectFolderSaveOutcome.Saved && projectFile is not null
-                ? result with { ProjectFilePath = projectFile }
+            return result.Outcome == StudioProjectFolderSaveOutcome.Saved
+                ? result with { ProjectFilePath = projectFile ?? result.ProjectFilePath, IsFirstSave = firstSave }
                 : result;
         }
         finally
