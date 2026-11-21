@@ -86,7 +86,7 @@ public sealed class GuideNavigationTests
         var shortcuts = Assert.Single(Tabs, element => element.Attr("Header") == "Help");
         Assert.Equal(
             ["ScreenshotShortcut", "ScreenshotRegionShortcut", "ScreenshotWindowShortcut", "ScreenshotScreenShortcut",
-                "VideoShortcut", "GifShortcut", "OcrShortcut", "StopRecordingShortcut"],
+                "VideoShortcut", "StudioRecordingShortcut", "GifShortcut", "OcrShortcut", "StopRecordingShortcut"],
             shortcuts.Descendants().Select(element => element.Attr("Name")).OfType<string>());
         Assert.All(shortcuts.Descendants().Where(element => element.Attr("Name") is not null), field =>
         {

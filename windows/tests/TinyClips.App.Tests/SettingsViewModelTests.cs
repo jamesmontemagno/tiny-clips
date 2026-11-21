@@ -18,7 +18,9 @@ public sealed class SettingsViewModelTests
         var notifications = new List<string?>();
         vm.PropertyChanged += (_, args) => notifications.Add(args.PropertyName);
         var screenshotBinding = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Alt, 0x41);
+        var studioBinding = new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x38);
         hotKeys.SetBinding(HotKeyAction.Screenshot, screenshotBinding);
+        hotKeys.SetBinding(HotKeyAction.StudioRecording, studioBinding);
         hotKeys.SetBinding(HotKeyAction.RecordVideo, new HotKeyDefinition(HotKeyModifiers.None, 0));
         hotKeys.SetBinding(HotKeyAction.RecordGif, hotKeys.DefaultFor(HotKeyAction.RecordGif));
         var writesBefore = fixture.Store.Writes;
@@ -27,9 +29,10 @@ public sealed class SettingsViewModelTests
 
         Assert.Equal(screenshotBinding.DisplayString, vm.ScreenshotHotKeyDisplay);
         Assert.Equal(hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString, vm.VideoHotKeyDisplay);
+        Assert.Equal(studioBinding.DisplayString, vm.StudioRecordingHotKeyDisplay);
         Assert.Equal(hotKeys.DefaultFor(HotKeyAction.RecordGif).DisplayString, vm.GifHotKeyDisplay);
         Assert.Equal(
-            ["ScreenshotHotKeyDisplay", "VideoHotKeyDisplay", "GifHotKeyDisplay", "OcrHotKeyDisplay",
+            ["ScreenshotHotKeyDisplay", "VideoHotKeyDisplay", "StudioRecordingHotKeyDisplay", "GifHotKeyDisplay", "OcrHotKeyDisplay",
                 "ScreenshotRegionHotKeyDisplay", "ScreenshotWindowHotKeyDisplay", "ScreenshotScreenHotKeyDisplay",
                 "StopRecordingHotKeyDisplay"],
             notifications);
