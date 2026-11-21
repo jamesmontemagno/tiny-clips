@@ -16,6 +16,7 @@ using TinyClips.Core.Models.ClipsLibrary;
 using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.Views.ClipsLibrary;
 
@@ -445,7 +446,35 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
         }
     }
 
-    // ------------------------------------------------------------------ toolbar
+    private async void OnOpenStudioFolder(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string id }) return;
+        try
+        {
+            await App.Services.GetRequiredService<StudioWindowService>().OpenLibraryFolderAsync(id);
+        }
+        catch (Exception ex)
+        {
+            if (!_closed) StudioStatus.Text = $"Couldn't open the project folder: {ex.Message}";
+        }
+    }
+
+    private async void OnDeleteStudioProject(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: StudioLibraryRow row }) return;
+        try
+        {
+            if (!await ConfirmAsync(StudioProjectFolderText.GetDeleteTitle(row.Name), StudioProjectFolderText.DeleteMessage,
+                    "Delete", destructive: true) || _closed) return;
+
+            if (!await App.Services.GetRequiredService<StudioWindowService>().TryDeleteLibraryProjectAsync(row.ProjectId) && !_closed)
+                StudioStatus.Text = "This project is in use. Finish recording or close its Studio editor before deleting it.";
+        }
+        catch (Exception ex)
+        {
+            if (!_closed) StudioStatus.Text = $"Couldn't delete the project: {ex.Message}";
+        }
+    }
 
     private void SyncViewModeBar()
     {
@@ -656,6 +685,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
 
     private void OnDeleteAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
+        if (_showStudio) return;
         ViewModel.DeleteCommand.Execute(null);
         args.Handled = true;
     }

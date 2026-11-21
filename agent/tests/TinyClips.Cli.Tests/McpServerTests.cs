@@ -46,6 +46,7 @@ public class McpServerTests
         var delete = tools.Single(t => t.Name == "tinyclips_library_delete");
         Assert.True(delete.Annotations!.DestructiveHint);
         Assert.Contains("approve", delete.Description);
+        Assert.True(tools.Single(t => t.Name == "tinyclips_studio_project_delete").Annotations!.DestructiveHint);
         foreach (var command in commands)
         {
             var tool = tools.Single(t => t.Name == Contract.ToolName(command.Name));
@@ -243,6 +244,10 @@ public class McpServerTests
                 new Dictionary<string, object?> { ["path"] = "/tmp/smoke.png" }, cancellationToken: token);
             Assert.True(result.IsError);
             Assert.Equal(expected, (string?)Body(result)["error"]!["code"]);
+            var project = await client.CallToolAsync("tinyclips_studio_project_delete",
+                new Dictionary<string, object?> { ["projectId"] = "project" }, cancellationToken: token);
+            Assert.True(project.IsError);
+            Assert.Equal(expected, (string?)Body(project)["error"]!["code"]);
         });
     }
 

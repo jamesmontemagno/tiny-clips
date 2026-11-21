@@ -28,6 +28,45 @@ final class StudioProjectFolderTests: XCTestCase {
 
     // MARK: - Saving a Folder
 
+    func testLibraryFolderFollowsSavedDestinationAndFallsBackToDraft() throws {
+        let id = try makeProject(camera: false)
+        let paths = try store.paths(forID: id)
+        func libraryFolder() throws -> String { try store.withLibraryFolder(id: id) { $0.path } }
+        XCTAssertEqual(try libraryFolder(), paths.projectDirectory.path)
+        let folder = outsideURL.appendingPathComponent("Demo")
+        try store.exportProjectFolder(id: id, to: folder)
+        try store.rememberDestination(id: id, file: folder.appendingPathComponent("Demo.tinyclips"))
+        XCTAssertEqual(try libraryFolder(), folder.path)
+        try fileManager.removeItem(at: folder)
+        XCTAssertEqual(try libraryFolder(), paths.projectDirectory.path)
+        try Data("{".utf8).write(to: paths.projectJSONURL)
+        XCTAssertEqual(try libraryFolder(), paths.projectDirectory.path)
+    }
+
+    func testLibraryDeleteRefusesInUseProjectAndPreservesSavedCopyAndExport() throws {
+        let id = try makeProject(camera: false)
+        let folder = outsideURL.appendingPathComponent("Saved")
+        let manifest = folder.appendingPathComponent("Saved.tinyclips")
+        let export = outsideURL.appendingPathComponent("Export.mp4")
+        try Data("export".utf8).write(to: export)
+        _ = try store.recordExport(id: id, path: export.path)
+        try store.exportProjectFolder(id: id, to: folder)
+        try store.rememberDestination(id: id, file: manifest)
+        store.beginUse(id: id)
+        XCTAssertThrowsError(try store.deleteLibraryProject(id: id)) {
+            XCTAssertEqual($0 as? StudioLibraryActionError, .inUse)
+        }
+        XCTAssertTrue(store.exists(id: id))
+        store.endUse(id: id)
+        // Even an unreadable Library copy can be removed.
+        try Data("{".utf8).write(to: store.paths(forID: id).projectJSONURL)
+        try store.deleteLibraryProject(id: id)
+        XCTAssertFalse(store.exists(id: id))
+        XCTAssertTrue(fileManager.fileExists(atPath: manifest.path))
+        XCTAssertEqual(try Data(contentsOf: export), Data("export".utf8))
+        XCTAssertThrowsError(try store.deleteLibraryProject(id: id))
+    }
+
     func testAFolderHasTheRecordingsAndAProjectFileNamedAfterIt() throws {
         let id = try makeProject(camera: true, events: true, poster: true)
         let folder = outsideURL.appendingPathComponent("My Demo")

@@ -40,10 +40,12 @@ internal sealed class AutomationApprovalPrompt : IAutomationApprovalPrompt
 
     public async Task<bool> RequestCommandApprovalAsync(AutomationCommandContext context, CancellationToken cancellationToken)
     {
-        var path = context.GetString("path");
+        var deletingProject = context.Command.Name == "studio.project.delete";
+        var target = context.GetString(deletingProject ? "projectId" : "path");
         var action = context.Command.Name switch
         {
             "library.delete" => ("Delete a capture?", "move this capture to the Recycle Bin", "Delete"),
+            "studio.project.delete" => ("Delete a Studio project?", "permanently delete this Library copy, including its recordings and edits. Separately saved projects and exports are kept", "Delete Project"),
             "library.upload" => ("Upload a capture?", "upload this capture to Uploadcare and get a public link", "Upload"),
             "recording.discard" => ("Discard the recording?", "stop and throw away the recording in progress", "Discard"),
             "recording.restart" => ("Restart the recording?", "throw away the current take and start recording again", "Restart"),
@@ -52,8 +54,8 @@ internal sealed class AutomationApprovalPrompt : IAutomationApprovalPrompt
         var content = new AutomationApprovalContent(
             Title: action.Item1,
             Message: $"“{context.Client.Name}” wants to {action.Item2}.",
-            ListHeader: path is null ? null : "File:",
-            Items: path is null ? [] : [path],
+            ListHeader: target is null ? null : deletingProject ? "Studio project ID:" : "File:",
+            Items: target is null ? [] : [target],
             Footnote: $"Command: {context.Command.Name}",
             AllowText: action.Item3);
         return await ShowAsync(content, cancellationToken) is not null;

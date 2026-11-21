@@ -1,6 +1,17 @@
-import Foundation
+import AppKit
 
 // MARK: - Studio Maintenance
+
+enum StudioLibraryActionError: LocalizedError {
+    case inUse, cannotOpenFolder
+
+    var errorDescription: String? {
+        switch self {
+        case .inUse: return "This project is in use. Finish recording or close its Studio editor before deleting it."
+        case .cannotOpenFolder: return "Finder could not open the project folder."
+        }
+    }
+}
 
 /// Housekeeping for Tiny Clips Studio projects: removing old sources by the storage settings.
 @MainActor
@@ -16,6 +27,22 @@ enum StudioMaintenance {
 
     static func recordingDidEnd(projectID: String) {
         recordingProjectIDs.remove(projectID)
+    }
+
+    static func deleteLibraryProject(id: String) throws {
+        guard !recordingProjectIDs.contains(id), !StudioWindowRegistry.shared.openProjectIDs.contains(id) else {
+            throw StudioLibraryActionError.inUse
+        }
+        try StudioProjectStore.shared.deleteLibraryProject(id: id)
+        NotificationCenter.default.post(name: .studioProjectsDidChange, object: nil)
+    }
+
+    static func openLibraryFolder(id: String) throws {
+        try StudioProjectStore.shared.withLibraryFolder(id: id) { folder in
+            guard NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: folder.path) else {
+                throw StudioLibraryActionError.cannotOpenFolder
+            }
+        }
     }
 
     /// Removes old project sources on a background task, following the storage settings. Projects

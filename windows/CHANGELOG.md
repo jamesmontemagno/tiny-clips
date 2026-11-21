@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- Each Studio project in the Clips Library has buttons to open its folder in File Explorer or delete the Library copy without removing separately saved projects or exported videos.
 - Studio can show a project in File Explorer after its first save. The switch is off by default; later saves do not open File Explorer.
 - Studio recording has its own configurable global shortcut, unassigned by default, in Keyboard shortcuts settings and onboarding. Record video remains an ordinary recording.
 - Open MP4 and MOV files directly in Studio from File Explorer with **Open with → Tiny Clips**, without changing the default player.

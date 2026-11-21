@@ -125,6 +125,20 @@
       "decision": "missing_scope"
     },
     {
+      "name": "deleting a Studio project needs approval",
+      "enabled": true,
+      "scopes": ["delete"],
+      "command": "studio.project.delete",
+      "decision": "approve"
+    },
+    {
+      "name": "opening the Studio folder does not grant delete",
+      "enabled": true,
+      "scopes": ["read"],
+      "command": "studio.project.delete",
+      "decision": "missing_scope"
+    },
+    {
       "name": "upload needs approval",
       "enabled": true,
       "scopes": [

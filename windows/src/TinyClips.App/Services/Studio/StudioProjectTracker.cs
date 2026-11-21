@@ -16,6 +16,8 @@ public sealed class StudioProjectTracker
     /// </summary>
     public event EventHandler? Changed;
 
+    internal void NotifyProjectDeleted() => Changed?.Invoke(this, EventArgs.Empty);
+
     /// <summary>
     /// Says that an open project is no longer as the lists of projects have it: its editor has
     /// read it, so it is the one opened last.

@@ -72,6 +72,8 @@ final class AutomationPolicyTests: XCTestCase {
         let expected = [
             "studio.projects.list": "read",
             "studio.project.open": "edit",
+            "studio.project.openFolder": "read",
+            "studio.project.delete": "delete",
             "studio.project.get": "read",
             "studio.project.saveCopy": "export",
             "studio.project.edit": "edit",

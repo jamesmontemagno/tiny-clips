@@ -6,6 +6,40 @@ namespace TinyClips.Core.Tests;
 public sealed class StudioProjectDestinationTests : StudioProjectFolderTestBase
 {
     [Fact]
+    public void LibraryOpensTheSavedFolderOrFallsBackToTheRecordingFolder()
+    {
+        var id = MakeProject(camera: false);
+        var paths = Store.GetPaths(id);
+        Assert.Equal(paths.ProjectDirectory, StudioProjectDestination.LibraryFolder(Store, id));
+        var saved = Path.Combine(Outside, "Demo");
+        Save(id, saved);
+        StudioProjectDestination.Remember(Store, id, Path.Combine(saved, "Demo.tinyclips"));
+        Assert.Equal(saved, StudioProjectDestination.LibraryFolder(Store, id));
+        Directory.Move(saved, Path.Combine(Outside, "Moved"));
+        Assert.Equal(paths.ProjectDirectory, StudioProjectDestination.LibraryFolder(Store, id));
+        File.WriteAllText(paths.ProjectJsonPath, "{");
+        Assert.Equal(paths.ProjectDirectory, StudioProjectDestination.LibraryFolder(Store, id));
+    }
+
+    [Fact]
+    public void LibraryRemovalLeavesTheSavedFolderAndItsExportAlone()
+    {
+        var (folder, file) = SaveNewProject("Saved");
+        var id = Open(file).Id;
+        var export = Path.Combine(folder, "Export.mp4");
+        File.WriteAllText(export, "export");
+        using (Store.AcquireProjectUse(id))
+            Assert.Throws<IOException>(() => Store.Delete(id));
+        Assert.True(Store.Exists(id));
+        File.WriteAllText(Store.GetPaths(id).ProjectJsonPath, "{");
+        Store.Delete(id);
+        Assert.False(Store.Exists(id));
+        Assert.True(File.Exists(file));
+        Assert.Equal("export", File.ReadAllText(export));
+        Assert.Throws<DirectoryNotFoundException>(() => StudioProjectDestination.LibraryFolder(Store, id));
+    }
+
+    [Fact]
     public void ImportedDestinationSurvivesRestartAndNeverTravelsWithSnapshot()
     {
         var (folder, file) = SaveNewProject("Original");

@@ -2,10 +2,12 @@ using TinyClips.Core.Studio;
 
 namespace TinyClips.App.Views.ClipsLibrary;
 
-public sealed record StudioLibraryRow(string Name, string Detail, string? OpenProjectId, string OpenAutomationName)
+public sealed record StudioLibraryRow(string Name, string Detail, string ProjectId, string DatedName, bool CanOpen)
 {
-    public bool CanOpen => OpenProjectId is not null;
-    public string OpenAutomationId => $"OpenStudioProject-{OpenProjectId}";
+    public string OpenAutomationName => $"Open {DatedName} in Studio";
+    public string FolderAutomationName => $"Open folder for {DatedName}";
+    public string DeleteAutomationName => $"Delete {DatedName} from Studio";
+    public string OpenAutomationId => $"OpenStudioProject-{ProjectId}";
     public string AutomationName => $"{Name}. {Detail}";
 
     internal static StudioLibraryRow[] FromListing(StudioProjectListing listing)
@@ -16,12 +18,12 @@ public sealed record StudioLibraryRow(string Name, string Detail, string? OpenPr
             var date = project.LastUsedAt.LocalDateTime.ToString("g");
             var kind = project.ExportMissing ? "Export missing" : project.IsDraft ? "Draft" : "Project";
             var missing = project.SourceExists ? "" : " · Recording is missing";
-            return new StudioLibraryRow(name, $"{kind} · {date}{missing}", project.Id, $"Open {name}, {date}, in Studio");
+            return new StudioLibraryRow(name, $"{kind} · {date}{missing}", project.Id, $"{name}, {date}", true);
         });
         var unreadable = listing.Unreadable.OrderByDescending(project => project.CreatedAt).Select(project =>
             new StudioLibraryRow("Unreadable Project",
                 $"Studio cannot read this project from {project.CreatedAt.LocalDateTime:g}. It may be damaged or made by a newer version.",
-                null, ""));
+                project.Id, $"Unreadable Project, {project.CreatedAt.LocalDateTime:g}", false));
         return [.. readable, .. unreadable];
     }
 

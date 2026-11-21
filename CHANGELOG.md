@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- Each Studio project in the Clips Library has buttons to open its folder in Finder or delete the Library copy without removing separately saved projects or exported videos.
 - Studio can show a project in Finder after its first save. The switch is off by default; later saves do not open Finder.
 - Studio Recording has its own configurable global shortcut, unassigned by default, in Settings and onboarding on macOS and Windows. Record Video remains an ordinary recording.
 - Open MP4 and MOV files directly in Studio from Finder with **Open With → Tiny Clips**, without changing the default player.

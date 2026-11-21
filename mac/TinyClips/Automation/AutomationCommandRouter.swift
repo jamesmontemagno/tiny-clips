@@ -16,6 +16,7 @@ final class AutomationCommandRouter {
         "recording.restart", "recording.discard",
         "editor.open", "editor.list", "editor.closeAll", "editor.annotate", "editor.trim", "editor.saveFrame", "library.reveal", "library.copy", "settings.set",
         "library.delete", "library.upload", "studio.projects.list", "studio.project.open", "studio.project.get", "studio.project.saveCopy",
+        "studio.project.openFolder", "studio.project.delete",
         "studio.project.edit", "studio.zoom.suggest", "studio.export.options", "studio.export",
         "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
     ]).union(StudioAppleSpeech.isAvailable ? ["studio.captions.models", "studio.captions.generate"] : [])
@@ -80,6 +81,23 @@ final class AutomationCommandRouter {
             return ["closed": result.closed, "remaining": registry.listEditors()]
         case "studio.projects.list": return try listStudioProjects(params)
         case "studio.project.open": return try openStudioProject(params)
+        case "studio.project.openFolder", "studio.project.delete":
+            let id = try Self.requiredString(params, "projectId")
+            try validateAccess()
+            do {
+                if command == "studio.project.openFolder" {
+                    try StudioMaintenance.openLibraryFolder(id: id)
+                    return ["projectId": id, "opened": true]
+                }
+                try StudioMaintenance.deleteLibraryProject(id: id)
+                return ["projectId": id, "deleted": true]
+            } catch StudioLibraryActionError.inUse {
+                throw AutomationError(.busy, StudioLibraryActionError.inUse.localizedDescription)
+            } catch CocoaError.fileNoSuchFile {
+                throw AutomationError(.notFound, "No Studio project with ID \(id).")
+            } catch StudioProjectError.invalidProject(let message) {
+                throw AutomationError(.invalidParams, message)
+            }
         case "studio.project.get": return try getStudioProject(params)
         case "studio.project.edit": return try editStudioProject(params)
         case "studio.project.saveCopy":

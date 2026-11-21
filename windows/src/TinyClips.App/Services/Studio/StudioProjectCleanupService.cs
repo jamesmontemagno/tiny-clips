@@ -67,7 +67,7 @@ public sealed class StudioProjectCleanupService
     /// before the cleanup started: a project that was opened since is not in that list. Called
     /// on the cleanup's thread, with the store locked. Both answers are safe to read there.
     /// </summary>
-    private bool IsInUse(string projectId) =>
+    internal bool IsInUse(string projectId) =>
         _tracker.IsOpen(projectId)
         || string.Equals(_recorder.ActiveStudioProjectId, projectId, StringComparison.Ordinal);
 }

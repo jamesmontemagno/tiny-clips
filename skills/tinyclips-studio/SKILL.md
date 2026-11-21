@@ -9,6 +9,7 @@ Needs `read` to inspect, `edit` to change a project, and `export` to render a vi
 
 1. Discover projects with `tinyclips studio.projects.list`; use the returned `projectId`, never a guessed ID or project-file path.
    To show a project in its Studio editor, use `tinyclips studio.project.open projectId=<id>` with `edit` scope.
+   To open its folder in Finder or File Explorer, use `studio.project.openFolder` with `read` scope. Use `studio.project.delete` only when asked to permanently remove the Library copy; it requires `delete` scope and in-app approval. Both take `projectId`.
 2. Read the current project with `tinyclips studio.project.get projectId=<id>`. Keep both its `project.modifiedAt` and the opaque `revision` value for the next edit.
 3. Apply only the fields needed with `studio.project.edit`, passing a partial `patch` and the fetched `expectedModifiedAt`. For example:
 
