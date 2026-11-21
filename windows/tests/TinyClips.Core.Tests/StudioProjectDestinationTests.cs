@@ -29,7 +29,7 @@ public sealed class StudioProjectDestinationTests : StudioProjectFolderTestBase
         var export = Path.Combine(folder, "Export.mp4");
         File.WriteAllText(export, "export");
         using (Store.AcquireProjectUse(id))
-            Assert.Throws<IOException>(() => Store.Delete(id));
+            Assert.Throws<StudioProjectInUseException>(() => Store.Delete(id));
         Assert.True(Store.Exists(id));
         File.WriteAllText(Store.GetPaths(id).ProjectJsonPath, "{");
         Store.Delete(id);
