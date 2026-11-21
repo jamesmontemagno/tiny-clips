@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Studio project saves use the default folder while default save folders are enabled; disabling them restores the previous custom folder.
+
 ### Added
 - Each Studio project in the Clips Library has buttons to open its folder in Finder or delete the Library copy without removing separately saved projects or exported videos.
 - Studio can show a project in Finder after its first save. The switch is off by default; later saves do not open Finder.

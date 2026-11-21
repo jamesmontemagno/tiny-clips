@@ -23,17 +23,17 @@ public static class StudioProjectSaveLocation
     /// The folder Save project starts in: the chosen one, or the default when none was chosen.
     /// Does not touch the disk.
     /// </summary>
-    public static string Resolve(string? configured, string videoFolder) =>
-        IsCustom(configured) ? configured! : GetDefaultFolder(videoFolder);
+    public static string Resolve(string? configured, string videoFolder, bool useDefaults = false) =>
+        !useDefaults && IsCustom(configured) ? configured! : GetDefaultFolder(videoFolder);
 
     /// <summary>
     /// The folder Save project starts in, made ready to open: a chosen folder that is gone falls
     /// back to the default, the default is created when missing, and when it cannot be the
     /// videos folder and then Documents are used instead.
     /// </summary>
-    public static string Prepare(string? configured, string videoFolder)
+    public static string Prepare(string? configured, string videoFolder, bool useDefaults = false)
     {
-        if (IsCustom(configured) && Directory.Exists(configured))
+        if (!useDefaults && IsCustom(configured) && Directory.Exists(configured))
         {
             return configured!;
         }

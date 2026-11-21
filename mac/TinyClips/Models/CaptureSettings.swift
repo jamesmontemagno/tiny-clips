@@ -1273,8 +1273,8 @@ enum StudioProjectSaveLocation {
     }
 
     /// The folder Save Project starts in. Does not touch the disk.
-    static func resolve(configured: String, videoFolder: URL) -> URL {
-        isCustom(configured)
+    static func resolve(configured: String, videoFolder: URL, useDefaults: Bool = false) -> URL {
+        !useDefaults && isCustom(configured)
             ? URL(fileURLWithPath: configured, isDirectory: true)
             : defaultFolder(in: videoFolder)
     }
@@ -1286,10 +1286,11 @@ enum StudioProjectSaveLocation {
     static func prepare(
         configured: String,
         videoFolder: URL,
+        useDefaults: Bool = false,
         trustChosenFolder: Bool = false,
         fileManager: FileManager = .default
     ) -> URL {
-        if isCustom(configured) {
+        if !useDefaults && isCustom(configured) {
             let chosen = resolve(configured: configured, videoFolder: videoFolder)
             var isDirectory: ObjCBool = false
             if trustChosenFolder || (fileManager.fileExists(atPath: chosen.path, isDirectory: &isDirectory) && isDirectory.boolValue) {

@@ -2482,6 +2482,7 @@ final class StudioViewModel: ObservableObject {
         return StudioProjectSaveLocation.prepare(
             configured: CaptureSettings.shared.studioProjectFolder,
             videoFolder: SaveService.shared.outputDirectoryURL(for: .video),
+            useDefaults: CaptureSettings.shared.useDefaultSaveDirectories,
             trustChosenFolder: trustChosenFolder
         )
     }

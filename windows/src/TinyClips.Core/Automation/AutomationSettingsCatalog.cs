@@ -25,7 +25,7 @@ public sealed class AutomationSettingsCatalog
             entries.Add(ReadOnly("screenshotFolder", () => outputDirectory(CaptureType.Screenshot)));
             entries.Add(ReadOnly("videoFolder", () => outputDirectory(CaptureType.Video)));
             entries.Add(ReadOnly("gifFolder", () => outputDirectory(CaptureType.Gif)));
-            entries.Add(ReadOnly("studioProjectFolder", () => StudioProjectSaveLocation.Resolve(s.StudioProjectFolder, outputDirectory(CaptureType.Video))));
+            entries.Add(ReadOnly("studioProjectFolder", () => StudioProjectSaveLocation.Resolve(s.StudioProjectFolder, outputDirectory(CaptureType.Video), s.UseDefaultSaveDirectories)));
         }
 
         entries.AddRange(

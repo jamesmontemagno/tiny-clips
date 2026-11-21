@@ -101,7 +101,8 @@ struct AutomationSetting {
         .readOnly(StudioProjectSaveLocation.settingsKey) {
             StudioProjectSaveLocation.resolve(
                 configured: CaptureSettings.shared.studioProjectFolder,
-                videoFolder: SaveService.shared.outputDirectoryURL(for: .video)
+                videoFolder: SaveService.shared.outputDirectoryURL(for: .video),
+                useDefaults: CaptureSettings.shared.useDefaultSaveDirectories
             ).path
         },
         .string("fileNameTemplate", \.fileNameTemplate),

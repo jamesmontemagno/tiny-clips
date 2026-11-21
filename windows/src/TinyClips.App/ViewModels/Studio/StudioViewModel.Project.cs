@@ -98,7 +98,7 @@ public sealed partial class StudioViewModel
     /// project already saved to a folder keeps saving there without asking.
     /// </summary>
     public string ProjectSaveFolder =>
-        StudioProjectSaveLocation.Prepare(_settings.StudioProjectFolder, _storage.OutputDirectory(CaptureType.Video));
+        StudioProjectSaveLocation.Prepare(_settings.StudioProjectFolder, _storage.OutputDirectory(CaptureType.Video), _settings.UseDefaultSaveDirectories);
 
     /// <summary>The question Delete project asks, with the project's name.</summary>
     public string DeleteProjectTitle => StudioProjectFolderText.GetDeleteTitle(Project?.Name);

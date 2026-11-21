@@ -87,6 +87,7 @@ public sealed partial class SettingsStudioPageTests
         var general = SettingsMarkup.Elements(GeneralPage);
         var folderCard = Assert.Single(general, element => element.Attr(Id) == "StudioProjectFolderCard");
         Assert.Equal("SettingsExpander.Items", folderCard.Parent?.Name.LocalName);
+        Assert.Equal("{x:Bind ViewModel.CustomSaveLocationsVisibility, Mode=OneWay}", folderCard.Attr("Visibility"));
         Assert.Equal(
             ["StudioProjectFolderCard", "StudioProjectFolderText", "StudioProjectFolderDefaultButton", "StudioProjectFolderChooseButton"],
             SettingsMarkup.AutomationIds(GeneralPage).Where(id => id.StartsWith("Studio", StringComparison.Ordinal)));

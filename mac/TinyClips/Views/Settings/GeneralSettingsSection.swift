@@ -19,18 +19,17 @@ struct GeneralSettingsSection: View {
         SettingsFormSection("Save Location", icon: "folder") {
             SettingsToggleRow(
                 title: "Use default folders",
-                description: "Screenshots go to Pictures/TinyClips. Videos and GIFs go to Movies/TinyClips.",
+                description: "Screenshots go to Pictures/TinyClips. Videos and GIFs go to Movies/TinyClips; Studio projects start in its Studio folder.",
                 isOn: $settings.useDefaultSaveDirectories,
-                accessibilityHint: "Use the default capture folders for screenshots, videos, and GIFs."
+                accessibilityHint: "Use the default folders for captures and Studio projects."
             )
 
             if !settings.useDefaultSaveDirectories {
                 saveDirectoryRow(title: "Screenshots folder", type: .screenshot)
                 saveDirectoryRow(title: "Videos folder", type: .video)
                 saveDirectoryRow(title: "GIFs folder", type: .gif)
+                studioProjectFolderRow
             }
-
-            studioProjectFolderRow
 
             SettingsToggleRow(
                 title: "Show in Finder after save",

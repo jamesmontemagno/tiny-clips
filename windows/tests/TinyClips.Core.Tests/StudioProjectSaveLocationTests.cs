@@ -77,7 +77,7 @@ public sealed class StudioProjectSaveLocationTests : IDisposable
         var videos = Path.Combine(_root, "Videos");
         Directory.CreateDirectory(Path.Combine(_root, "Projects"));
         var chosen = Directory.CreateDirectory(Path.Combine(_root, "Projects\u00A0")).FullName;
-        var settings = new CaptureSettings(new MemorySettings()) { StudioProjectFolder = chosen };
+        var settings = new CaptureSettings(new MemorySettings()) { StudioProjectFolder = chosen, UseDefaultSaveDirectories = false };
         var catalog = new AutomationSettingsCatalog(settings, _ => videos);
 
         Assert.Equal(chosen, settings.StudioProjectFolder);
@@ -108,12 +108,31 @@ public sealed class StudioProjectSaveLocationTests : IDisposable
 
         var chosen = Path.Combine(_root, "Projects");
         settings.StudioProjectFolder = chosen;
+        Assert.Equal(Path.Combine(videos, "Studio"), (string?)catalog.Get("studioProjectFolder")["value"]);
+        settings.UseDefaultSaveDirectories = false;
         Assert.Equal(chosen, (string?)catalog.Get("studioProjectFolder")["value"]);
+        settings.UseDefaultSaveDirectories = true;
+        Assert.Equal(Path.Combine(videos, "Studio"), (string?)catalog.Get("studioProjectFolder")["value"]);
+        Assert.Equal(chosen, settings.StudioProjectFolder);
+        settings.UseDefaultSaveDirectories = false;
 
         var error = Assert.Throws<AutomationException>(() => catalog.Set("studioProjectFolder", System.Text.Json.Nodes.JsonValue.Create(_root)));
         Assert.Equal(AutomationErrorCodes.InvalidParams, error.Code);
         Assert.Equal(chosen, settings.StudioProjectFolder);
         Assert.False(Directory.Exists(Path.Combine(videos, "Studio")));
+    }
+
+    [Fact]
+    public void DefaultsTemporarilyOverrideTheChosenFolderForSaving()
+    {
+        var chosen = Directory.CreateDirectory(Path.Combine(_root, "Projects")).FullName;
+        var videos = Path.Combine(_root, "Videos");
+        var expected = Path.Combine(videos, "Studio");
+
+        Assert.Equal(expected, StudioProjectSaveLocation.Resolve(chosen, videos, useDefaults: true));
+        Assert.Equal(expected, StudioProjectSaveLocation.Prepare(chosen, videos, useDefaults: true));
+        Assert.Equal(chosen, StudioProjectSaveLocation.Resolve(chosen, videos, useDefaults: false));
+        Assert.Equal(chosen, StudioProjectSaveLocation.Prepare(chosen, videos, useDefaults: false));
     }
 
     private sealed class MemorySettings : ISettingsService
