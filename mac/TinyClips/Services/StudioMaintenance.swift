@@ -29,11 +29,13 @@ enum StudioMaintenance {
         recordingProjectIDs.remove(projectID)
     }
 
-    static func deleteLibraryProject(id: String) throws {
+    static func deleteLibraryProject(id: String) async throws {
         guard !recordingProjectIDs.contains(id), !StudioWindowRegistry.shared.openProjectIDs.contains(id) else {
             throw StudioLibraryActionError.inUse
         }
-        try StudioProjectStore.shared.deleteLibraryProject(id: id)
+        try await Task.detached(priority: .userInitiated) {
+            try StudioProjectStore.shared.deleteLibraryProject(id: id)
+        }.value
         NotificationCenter.default.post(name: .studioProjectsDidChange, object: nil)
     }
 

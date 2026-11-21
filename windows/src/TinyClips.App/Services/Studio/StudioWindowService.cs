@@ -300,6 +300,10 @@ public sealed class StudioWindowService : IStudioProjectHost
             _tracker.NotifyProjectDeleted();
             return true;
         }
+        catch (StudioProjectInUseException)
+        {
+            return false;
+        }
         finally
         {
             _deletingProjectIds.Remove(projectId);

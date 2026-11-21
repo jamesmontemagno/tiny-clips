@@ -96,6 +96,9 @@ final class AutomationPolicyTests: XCTestCase {
                 XCTAssertTrue(AutomationCommandRouter.supportedCommands.contains(name))
             }
         }
+        let projectList = try XCTUnwrap(contract.commands.first(where: { $0.name == "studio.projects.list" }))
+        XCTAssertTrue(projectList.description.contains("projectId and isReadable"))
+        XCTAssertTrue(projectList.description.contains("studio.project.delete"))
     }
 
     @MainActor

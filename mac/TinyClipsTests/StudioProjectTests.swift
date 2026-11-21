@@ -1451,7 +1451,8 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertNil(store.screenRecordingURL(id: flat.id))
     }
 
-    func testProjectsThatCannotBeReadAreListedApartFromTheRest() throws {
+    @MainActor
+    func testProjectsThatCannotBeReadAreDiscoverableAndDeletableThroughAutomationListing() throws {
         let damagedID = validID
         let newerID = otherID
         let folderDates = [
@@ -1485,13 +1486,21 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertEqual(unreadable.map(\.createdAt), [Date(timeIntervalSince1970: 100), Date(timeIntervalSince1970: 200)])
         XCTAssertGreaterThanOrEqual(unreadable[0].sizeOnDisk, 1_000)
 
+        let automationResult = AutomationCommandRouter.studioProjectListResult(from: listing, limit: 100)
+        let automationProjects = try XCTUnwrap(automationResult["projects"] as? [[String: Any]])
+        let discoveredDamaged = try XCTUnwrap(automationProjects.first { $0["projectId"] as? String == damagedID })
+        XCTAssertEqual(discoveredDamaged["isReadable"] as? Bool, false)
+        XCTAssertEqual(discoveredDamaged["name"] as? String, "Unreadable project")
+        let discoveredReadable = try XCTUnwrap(automationProjects.first { $0["projectId"] as? String == readable.id })
+        XCTAssertEqual(discoveredReadable["isReadable"] as? Bool, true)
+
         // Cleanup still leaves them alone, whatever the rules.
         XCTAssertEqual(try store.cleanup(options: StudioCleanupOptions(retentionDays: 1, sizeCapBytes: 1)), [])
         XCTAssertEqual(try store.listUnreadableProjects().count, 2)
 
         // The way out, and the way to be rid of it.
         XCTAssertEqual(store.screenRecordingURL(id: damagedID)?.lastPathComponent, "screen.mp4")
-        try store.delete(id: damagedID)
+        try store.delete(id: try XCTUnwrap(discoveredDamaged["projectId"] as? String))
         XCTAssertEqual(try store.listUnreadableProjects().map(\.id), [newerID])
         try Data("{".utf8).write(to: readable.projectJSONURL)
         let changed = try store.listLibraryProjects()

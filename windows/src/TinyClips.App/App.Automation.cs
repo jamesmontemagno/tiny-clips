@@ -483,23 +483,7 @@ public partial class App : IAutomationAppActions
                     throw new AutomationException(AutomationErrorCodes.InvalidParams, "limit must be from 1 to 100.");
                 }
 
-                var projects = new JsonArray();
-                foreach (var summary in store.ListSummaries().OrderByDescending(static item => item.LastUsedAt).Take(limit))
-                {
-                    projects.Add(new JsonObject
-                    {
-                        ["projectId"] = summary.Id,
-                        ["name"] = summary.Name,
-                        ["createdAt"] = FormatStudioTimestamp(summary.CreatedAt),
-                        ["lastOpenedAt"] = FormatStudioTimestamp(summary.LastOpenedAt),
-                        ["isDraft"] = summary.IsDraft,
-                        ["isFlat"] = summary.IsFlat,
-                        ["keepSources"] = summary.KeepSources,
-                        ["sourceExists"] = summary.SourceExists,
-                    });
-                }
-
-                return new JsonObject { ["projects"] = projects };
+                return StudioProjectAutomationListing.Create(store.ListLibraryProjects(), limit);
             }
             case "studio.project.get":
             {

@@ -1492,8 +1492,10 @@ private struct ClipsManagerContentView: View {
             alert.layout()
             alert.window.initialFirstResponder = cancel
             guard alert.runModal() == .alertSecondButtonReturn else { return }
-            do { try StudioMaintenance.deleteLibraryProject(id: id) }
-            catch { SaveService.shared.showError(error.localizedDescription) }
+            Task {
+                do { try await StudioMaintenance.deleteLibraryProject(id: id) }
+                catch { SaveService.shared.showError(error.localizedDescription) }
+            }
         } label: { Image(systemName: "trash") }
         .help("Delete project from Studio")
         .accessibilityLabel("Delete \(label) from Studio")

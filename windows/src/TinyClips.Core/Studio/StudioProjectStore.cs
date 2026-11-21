@@ -4,6 +4,10 @@ using TinyClips.Core.Services.ClipsLibrary;
 
 namespace TinyClips.Core.Studio;
 
+public sealed class StudioProjectInUseException(string message) : IOException(message)
+{
+}
+
 public interface IStudioProjectStore
 {
     string RootDirectory { get; }
@@ -271,7 +275,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
         {
             if (_projectUseCounts.ContainsKey(projectId))
             {
-                throw new IOException("The project is being used by another operation.");
+                throw new StudioProjectInUseException("The project is being used by another operation.");
             }
 
             var directory = ProjectDirectory(projectId);
