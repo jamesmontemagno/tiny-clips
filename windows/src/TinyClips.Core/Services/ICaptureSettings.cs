@@ -182,6 +182,8 @@ public interface ICaptureSettings
     int ScreenshotHotKeyModifiers { get; set; }
     int VideoHotKeyCode { get; set; }
     int VideoHotKeyModifiers { get; set; }
+    int StudioRecordingHotKeyCode { get; set; }
+    int StudioRecordingHotKeyModifiers { get; set; }
     int GifHotKeyCode { get; set; }
     int GifHotKeyModifiers { get; set; }
     int OcrHotKeyCode { get; set; }

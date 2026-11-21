@@ -10,6 +10,8 @@ Keyboard shortcut configuration is an agreed exception on both platforms: bindin
 UI-only and are not exposed through `settings.get`, `settings.set`, CLI, or MCP. Agents use
 capture and recording commands directly without reserving or changing the user's keyboard
 bindings. An unassigned Stop Recording shortcut does not disable `recording.stop`.
+Studio Recording has a separate optional UI shortcut, unassigned by default. Agents continue
+to start editable recordings with `recording.startVideo studio=true`; no shortcut is required.
 
 `app.open window=guide` opens the offline illustrated Guide on either platform. Optional
 `guideTopic` selects `capture`, `editor`, `recording`, `studio`, `library`, `agents`, or `help`,

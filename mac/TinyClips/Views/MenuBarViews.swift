@@ -66,6 +66,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Studio Recording...", systemImage: "square.stack.3d.up")
             }
+            .keyboardShortcut(settings.hotKeyBinding(for: .studioRecording).swiftUIShortcut)
             .accessibilityHint("Starts a video recording that opens in Tiny Clips Studio, with the screen and camera kept as separate layers.")
             .disabled(captureManager.isCaptureActionInProgress)
 

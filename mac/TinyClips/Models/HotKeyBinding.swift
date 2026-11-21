@@ -11,6 +11,7 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
     case screenshotWindow = 6
     case screenshotScreen = 7
     case stopRecording = 8
+    case studioRecording = 9
 
     var displayName: String {
         switch self {
@@ -18,6 +19,8 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
             return "Screenshot"
         case .recordVideo:
             return "Record Video"
+        case .studioRecording:
+            return "Studio Recording"
         case .recordGif:
             return "Record GIF"
         case .copyTextFromRegion:
@@ -39,6 +42,8 @@ enum HotKeyAction: UInt32, CaseIterable, Hashable {
             return "camera"
         case .recordVideo:
             return "video"
+        case .studioRecording:
+            return "square.stack.3d.up"
         case .recordGif:
             return "photo.on.rectangle.angled"
         case .copyTextFromRegion:
@@ -87,7 +92,7 @@ struct HotKeyBinding: Hashable {
         switch action {
         case .screenshot:
             return HotKeyBinding(keyCode: 23, carbonModifiers: defaultCaptureModifiers) // ⌃⌥⌘5
-        case .recordVideo, .recordGif, .copyTextFromRegion,
+        case .recordVideo, .studioRecording, .recordGif, .copyTextFromRegion,
              .screenshotRegion, .screenshotWindow, .screenshotScreen, .stopRecording:
             return .unbound
         }

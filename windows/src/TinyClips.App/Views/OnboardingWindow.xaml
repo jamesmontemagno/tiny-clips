@@ -194,7 +194,7 @@
                 Visibility="Collapsed">
                 <StackPanel MaxWidth="560" Spacing="12" Padding="0,8">
                     <TextBlock Text="Your capture shortcuts" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" />
-                    <TextBlock Text="Only Screenshot has a shortcut by default. Add optional Video and GIF shortcuts here. These work system-wide; Record video makes an ordinary recording, not Studio." TextWrapping="Wrap" />
+                    <TextBlock Text="Only Screenshot has a shortcut by default. Add optional Video, Studio, and GIF shortcuts here. These work system-wide; Record video makes an ordinary recording, while Studio recording keeps editable layers and opens Studio." TextWrapping="Wrap" />
                     <StackPanel x:Name="ShortcutRows" Spacing="8" />
                     <InfoBar x:Name="ShortcutStatus" IsOpen="False" AutomationProperties.LiveSetting="Polite" />
                     <TextBlock Text="Stop with the floating Stop button. More shortcuts, including an optional Stop recording shortcut, are in Settings → Keyboard shortcuts. Changes already made remain if you skip setup." TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
@@ -280,6 +280,17 @@
                             <TextBlock VerticalAlignment="Center" Text="Record video" />
                             <TextBlock
                                 x:Name="VideoShortcut"
+                                Grid.Column="1"
+                                FontFamily="Consolas" />
+                        </Grid>
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock VerticalAlignment="Center" Text="Studio recording" />
+                            <TextBlock
+                                x:Name="StudioRecordingShortcut"
                                 Grid.Column="1"
                                 FontFamily="Consolas" />
                         </Grid>

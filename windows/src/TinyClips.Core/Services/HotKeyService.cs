@@ -41,6 +41,10 @@ public sealed class HotKeyService : IHotKeyService
                 _settings.GifHotKeyModifiers = (int)binding.Modifiers;
                 _settings.GifHotKeyCode = (int)binding.VirtualKey;
                 break;
+            case HotKeyAction.StudioRecording:
+                _settings.StudioRecordingHotKeyModifiers = (int)binding.Modifiers;
+                _settings.StudioRecordingHotKeyCode = (int)binding.VirtualKey;
+                break;
             case HotKeyAction.RecognizeText:
                 _settings.OcrHotKeyModifiers = (int)binding.Modifiers;
                 _settings.OcrHotKeyCode = (int)binding.VirtualKey;
@@ -74,6 +78,7 @@ public sealed class HotKeyService : IHotKeyService
     {
         HotKeyAction.Screenshot => new HotKeyDefinition(HotKeyModifiers.Control | HotKeyModifiers.Shift, 0x35),
         HotKeyAction.RecordVideo => new HotKeyDefinition(HotKeyModifiers.None, 0),
+        HotKeyAction.StudioRecording => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.RecordGif => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.RecognizeText => new HotKeyDefinition(HotKeyModifiers.None, 0),
         HotKeyAction.ScreenshotRegion => new HotKeyDefinition(HotKeyModifiers.None, 0),
@@ -99,6 +104,7 @@ public sealed class HotKeyService : IHotKeyService
     {
         HotKeyAction.Screenshot => _settings.ScreenshotHotKeyModifiers,
         HotKeyAction.RecordVideo => _settings.VideoHotKeyModifiers,
+        HotKeyAction.StudioRecording => _settings.StudioRecordingHotKeyModifiers,
         HotKeyAction.RecordGif => _settings.GifHotKeyModifiers,
         HotKeyAction.RecognizeText => _settings.OcrHotKeyModifiers,
         HotKeyAction.ScreenshotRegion => _settings.ScreenshotRegionHotKeyModifiers,
@@ -112,6 +118,7 @@ public sealed class HotKeyService : IHotKeyService
     {
         HotKeyAction.Screenshot => (uint)_settings.ScreenshotHotKeyCode,
         HotKeyAction.RecordVideo => (uint)_settings.VideoHotKeyCode,
+        HotKeyAction.StudioRecording => (uint)_settings.StudioRecordingHotKeyCode,
         HotKeyAction.RecordGif => (uint)_settings.GifHotKeyCode,
         HotKeyAction.RecognizeText => (uint)_settings.OcrHotKeyCode,
         HotKeyAction.ScreenshotRegion => (uint)_settings.ScreenshotRegionHotKeyCode,

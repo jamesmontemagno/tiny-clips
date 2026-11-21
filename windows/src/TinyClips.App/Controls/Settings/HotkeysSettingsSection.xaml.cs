@@ -33,6 +33,7 @@ public sealed partial class HotkeysSettingsSection : UserControl
     {
         "Screenshot" => HotKeyAction.Screenshot,
         "Video" => HotKeyAction.RecordVideo,
+        "StudioRecording" => HotKeyAction.StudioRecording,
         "Gif" => HotKeyAction.RecordGif,
         "RecognizeText" => HotKeyAction.RecognizeText,
         "ScreenshotRegion" => HotKeyAction.ScreenshotRegion,

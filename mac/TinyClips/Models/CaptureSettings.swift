@@ -560,6 +560,8 @@ class CaptureSettings: ObservableObject {
     @AppStorage("screenshotHotKeyModifiers") var screenshotHotKeyModifiers: Int = 6400
     @AppStorage("videoHotKeyCode") var videoHotKeyCode: Int = -1
     @AppStorage("videoHotKeyModifiers") var videoHotKeyModifiers: Int = 0
+    @AppStorage("studioRecordingHotKeyCode") var studioRecordingHotKeyCode: Int = -1
+    @AppStorage("studioRecordingHotKeyModifiers") var studioRecordingHotKeyModifiers: Int = 0
     @AppStorage("gifHotKeyCode") var gifHotKeyCode: Int = -1
     @AppStorage("gifHotKeyModifiers") var gifHotKeyModifiers: Int = 0
     @AppStorage("stopRecordingHotKeyCode") var stopRecordingHotKeyCode: Int = -1
@@ -696,6 +698,8 @@ class CaptureSettings: ObservableObject {
             return ("screenshotHotKeyCode", "screenshotHotKeyModifiers")
         case .recordVideo:
             return ("videoHotKeyCode", "videoHotKeyModifiers")
+        case .studioRecording:
+            return ("studioRecordingHotKeyCode", "studioRecordingHotKeyModifiers")
         case .recordGif:
             return ("gifHotKeyCode", "gifHotKeyModifiers")
         case .copyTextFromRegion:
@@ -899,6 +903,7 @@ class CaptureSettings: ObservableObject {
     static let resetHotKeyDefaultsKeys = [
         "screenshotHotKeyCode", "screenshotHotKeyModifiers",
         "videoHotKeyCode", "videoHotKeyModifiers",
+        "studioRecordingHotKeyCode", "studioRecordingHotKeyModifiers",
         "gifHotKeyCode", "gifHotKeyModifiers",
         "stopRecordingHotKeyCode", "stopRecordingHotKeyModifiers",
         "copyTextFromRegionHotKeyCode", "copyTextFromRegionHotKeyModifiers",

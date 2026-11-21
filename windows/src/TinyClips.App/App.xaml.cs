@@ -894,11 +894,11 @@ public partial class App : Application
             Dismiss);
 
         // Retained even while switched off; RefreshTrayTiles controls visibility and columns.
-        // Video is always ordinary recording, and only this tile starts Studio recording.
+        // Video is always ordinary recording; Studio has its own tile and optional shortcut.
         _studioTile = CreateCaptureTile(
             "Studio",
             GlyphStudio,
-            accelerator: null,
+            hotKeys.GetBinding(HotKeyAction.StudioRecording).DisplayString,
             new AsyncRelayCommand(StartStudioRecordingAsync),
             Dismiss);
 
@@ -2308,7 +2308,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Studio recording, from the tray menu: sets up a video recording that keeps the screen and
+    /// Studio recording, from the tray menu or its global hotkey: sets up a video recording that keeps the screen and
     /// the camera as separate layers and opens in Tiny Clips Studio. It only starts one: a
     /// recording that is running is stopped with the Video or GIF command, or its hotkey.
     /// </summary>
@@ -3417,6 +3417,10 @@ public partial class App : Application
         if (_studioTile is not null)
         {
             _studioTile.Button.IsEnabled = !video.IsRecording && !gif.IsRecording;
+            var binding = hotKeys.GetBinding(HotKeyAction.StudioRecording);
+            ToolTipService.SetToolTip(_studioTile.Button, binding.IsUnbound
+                ? "Record a video that opens in Tiny Clips Studio"
+                : $"Record a video that opens in Tiny Clips Studio ({binding.DisplayString})");
         }
     }
 
@@ -3855,6 +3859,7 @@ public partial class App : Application
                     HotKeyAction.ScreenshotWindow => () => _ = CaptureScreenshotWindowAsync(),
                     HotKeyAction.ScreenshotScreen => () => _ = CaptureScreenshotScreenAsync(),
                     HotKeyAction.RecordVideo => () => _ = ToggleVideoAsync(VideoRecordingCommand.RecordVideoHotKey),
+                    HotKeyAction.StudioRecording => () => _ = StartStudioRecordingAsync(),
                     HotKeyAction.RecordGif => () => _ = ToggleGifAsync(),
                     HotKeyAction.RecognizeText => () => _ = RecognizeTextAsync(),
                     HotKeyAction.StopRecording => () =>

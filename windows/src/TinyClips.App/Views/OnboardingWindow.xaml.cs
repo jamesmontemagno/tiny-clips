@@ -60,6 +60,7 @@ public sealed partial class OnboardingWindow : Window
 
         AddShortcutRow(HotKeyAction.Screenshot);
         AddShortcutRow(HotKeyAction.RecordVideo);
+        AddShortcutRow(HotKeyAction.StudioRecording);
         AddShortcutRow(HotKeyAction.RecordGif);
         RefreshShortcuts();
 
@@ -196,6 +197,7 @@ public sealed partial class OnboardingWindow : Window
         }
         ScreenshotShortcut.Text = _hotKeys.GetBinding(HotKeyAction.Screenshot).DisplayString;
         VideoShortcut.Text = _hotKeys.GetBinding(HotKeyAction.RecordVideo).DisplayString;
+        StudioRecordingShortcut.Text = _hotKeys.GetBinding(HotKeyAction.StudioRecording).DisplayString;
         GifShortcut.Text = _hotKeys.GetBinding(HotKeyAction.RecordGif).DisplayString;
     }
 

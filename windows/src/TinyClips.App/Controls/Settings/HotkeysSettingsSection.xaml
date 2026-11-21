@@ -229,6 +229,43 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
+                    Header="Studio recording"
+                    Description="Optional, not set by default. Keeps editable screen and camera layers and opens Studio."
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8D4;}">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border
+                            MinWidth="120"
+                            Padding="10,4"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource ControlFillColorDefaultBrush}"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                FontFamily="Consolas"
+                                Text="{x:Bind ViewModel.StudioRecordingHotKeyDisplay, Mode=OneWay}" />
+                        </Border>
+                        <Button
+                            AutomationProperties.AutomationId="EditStudioRecordingHotKeyButton"
+                            AutomationProperties.Name="Edit Studio recording shortcut"
+                            Click="OnEditHotKey"
+                            Content="Edit"
+                            Tag="StudioRecording" />
+                        <Button
+                            AutomationProperties.AutomationId="ResetStudioRecordingHotKeyButton"
+                            AutomationProperties.Name="Reset Studio recording shortcut"
+                            Click="OnResetHotKey"
+                            Content="Reset"
+                            Tag="StudioRecording" />
+                        <Button
+                            AutomationProperties.AutomationId="DeleteStudioRecordingHotKeyButton"
+                            AutomationProperties.Name="Delete Studio recording shortcut"
+                            Click="OnDeleteHotKey"
+                            Content="Delete"
+                            Tag="StudioRecording" />
+                    </StackPanel>
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
                     Description="Optional, not set by default."
                     Header="Record GIF"
                     HeaderIcon="{ui:FontIcon Glyph=&#xF4A9;}">

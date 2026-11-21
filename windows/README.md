@@ -46,7 +46,7 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard with five quick preferences: launch at
   login, copy screenshots to clipboard, open the screenshot editor, video/GIF countdown, and
-  save notifications. Customize Screenshot, Record Video, and Record GIF shortcuts with the
+  save notifications. Customize Screenshot, Record Video, Studio recording, and Record GIF shortcuts with the
   same validated recorder used in Settings. Explicit changes apply immediately and remain if
   you skip setup; opening setup never resets saved choices. The countdown choice updates both
   video and GIF without changing their saved durations, and shows Custom if they differ.
@@ -75,15 +75,16 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   Preferences live in **Settings → Clips Library** (defaults, density, quick actions, confirm delete,
   auto-refresh, archive-old-clips). Metadata is stored in `clip-metadata.json` in the app's local
   data folder; the files themselves are never modified.
-- **Global hotkeys** — only Screenshot (`Ctrl+Shift+5`) is assigned by default. Record video,
+- **Global hotkeys** — only Screenshot (`Ctrl+Shift+5`) is assigned by default. Record video, Studio recording,
   Record GIF, Stop recording, Recognize Text (OCR), and direct Screenshot region, screen, and
   window shortcuts start unassigned. All can be edited, cleared, or reset in
   **Settings → Keyboard shortcuts**, grouped into Screenshots, Recording, and Text recognition.
   Existing saved choices are preserved. An assigned Stop recording shortcut is registered only
   during recording and released afterward; it never reserves a key while idle. The floating
   Stop button and tray remain available without a shortcut. Record video always makes an ordinary
-  recording; Studio recording has no hotkey. Onboarding offers only Screenshot, Record video,
-  and Record GIF. Separate expandable references list the fixed, window-only screenshot editor,
+  recording; Studio recording has a separate optional shortcut that starts an editable recording.
+  Onboarding offers Screenshot, Record video, Studio recording, and Record GIF.
+  Separate expandable references list the fixed, window-only screenshot editor,
   Studio, Clips Library, and navigation shortcuts; they are not global bindings or remappable.
 - **Launch at login** — optionally start TinyClips when you sign in to Windows, from the welcome
   wizard or Settings.
@@ -267,8 +268,10 @@ not the package version, when replacing the highlights.
   when it ends. While a recording runs it is greyed, and the Video button, which says Stop
   then, stops a Studio recording as it stops any video. The recording setup panel says
   **Studio** for such a recording, and nothing for any other. **Record video**, from the tray
-  menu or with its hotkey, is always an ordinary recording, and Studio recording has no hotkey
-  yet. A capture picker that comes back after a Studio recording is for another one, until a
+  menu or with its hotkey, is always an ordinary recording. Studio recording has its own
+  optional global shortcut, configurable in Settings or onboarding and unassigned by default;
+  it only starts a recording and does nothing while one is active.
+  A capture picker that comes back after a Studio recording is for another one, until a
   recording is asked for again. A Studio recording that cannot be saved as a project is kept
   as an ordinary video, which then opens the trimmer or is saved, as the trimmer switch says.
 - **Captions** can be generated from a recording's sound with **Generate** in the Captions

@@ -403,6 +403,8 @@ class CaptureManager: ObservableObject {
                         self.takeScreenshot()
                     case .recordVideo:
                         self.startVideoRecording()
+                    case .studioRecording:
+                        self.startVideoRecording(forStudio: true)
                     case .recordGif:
                         self.startGifRecording()
                     case .copyTextFromRegion:
@@ -1289,7 +1291,7 @@ class CaptureManager: ObservableObject {
                     self.startMouseClickMonitoringIfNeeded(for: .video, region: target.region)
                     studioCoordinator?.startCursorSampling(
                         timeProvider: { recorder.currentTimelineTimeIfStarted() },
-                        isPaused: { [weak self] in self?.isRecordingPaused ?? true }
+                        isPaused: { [weak self = self] in self?.isRecordingPaused ?? true }
                     )
                     self.recordingMicrophoneEnabled = false
                     self.recordingSystemAudioEnabled = false

@@ -181,7 +181,7 @@ TinyClips requires **Screen Recording** permission at runtime. On first launch, 
 
 The macOS welcome wizard offers launch at login followed by separate Screenshots, Videos,
 and GIFs cards for editor/trimmer, save-immediately, and clipboard preferences, plus editable
-Screenshot/Record Video/Record GIF shortcuts. Explicit changes apply immediately and remain
+Screenshot/Record Video/Studio Recording/Record GIF shortcuts. Explicit changes apply immediately and remain
 if setup is skipped; only Screenshot is assigned by default, and opening or revisiting setup
 preserves saved choices. Optional Stop Recording and other global shortcuts belong in Settings,
 not onboarding. Turning off an
