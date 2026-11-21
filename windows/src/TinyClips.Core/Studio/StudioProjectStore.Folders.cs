@@ -207,14 +207,9 @@ public sealed partial class StudioProjectStore
 
         // The new folder has no project.json until the files are in it. Cleanup takes such a
         // folder for a recording that is still being made, and leaves it alone for a day.
-        string projectId;
-        string directory;
-        lock (_sync)
-        {
-            projectId = Guid.NewGuid().ToString("D");
-            directory = ProjectDirectory(projectId);
-            Directory.CreateDirectory(directory);
-        }
+        var paths = BeginRecording();
+        var projectId = paths.ProjectId;
+        var directory = paths.ProjectDirectory;
 
         try
         {

@@ -20,6 +20,107 @@ final class StudioProjectTests: XCTestCase {
         directoryURL = nil
     }
 
+    func testRecordingUsesConfiguredRootAndKeepsExistingProjectsDiscoverable() throws {
+        let legacyRoot = directoryURL.appendingPathComponent("Projects", isDirectory: true)
+        let recordingRoot = directoryURL.appendingPathComponent("Videos/TinyClips/Studio", isDirectory: true)
+        let legacyStore = StudioProjectStore(rootURL: legacyRoot, now: { self.fixedDate })
+        let legacyPaths = try legacyStore.beginRecording()
+        _ = try legacyStore.completeRecording(id: legacyPaths.id, request: creationRequest())
+
+        let store = StudioProjectStore(
+            rootURL: legacyRoot,
+            now: { self.fixedDate },
+            recordingRootURLProvider: { recordingRoot }
+        )
+        let newPaths = try store.beginRecording()
+
+        XCTAssertEqual(newPaths.projectDirectory.deletingLastPathComponent(), recordingRoot)
+        XCTAssertTrue(store.exists(id: legacyPaths.id))
+        XCTAssertEqual(try store.load(id: legacyPaths.id).id, legacyPaths.id)
+        XCTAssertEqual(Set(try store.listSummaries().map(\.id)), [legacyPaths.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyPaths.projectJSONURL.path))
+    }
+
+    func testCleanupStillAppliesToProjectsInTheLegacyRoot() throws {
+        let legacyStore = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let paths = try legacyStore.beginRecording()
+        var project = try legacyStore.completeRecording(id: paths.id, request: creationRequest())
+        try Data([1, 2, 3]).write(to: paths.screenURL)
+        let exportedVideo = directoryURL.appendingPathComponent("export.mp4")
+        try Data([4, 5, 6]).write(to: exportedVideo)
+        _ = try legacyStore.recordExport(id: paths.id, path: exportedVideo.path)
+        project = try legacyStore.load(id: paths.id)
+        project.lastOpenedAt = fixedDate.addingTimeInterval(-90 * 24 * 60 * 60)
+        _ = try legacyStore.save(project)
+
+        let store = StudioProjectStore(
+            rootURL: directoryURL,
+            now: { self.fixedDate },
+            recordingRootURLProvider: {
+                self.directoryURL.appendingPathComponent("Videos/TinyClips/Studio", isDirectory: true)
+            }
+        )
+
+        XCTAssertEqual(
+            try store.cleanup(options: StudioCleanupOptions(retentionDays: 30, sizeCapBytes: 0)),
+            [paths.id]
+        )
+        XCTAssertFalse(store.exists(id: paths.id))
+    }
+
+    func testChangingRecordingRootKeepsPreviousProjectsAndFinishesAnActiveRecordingInPlace() throws {
+        let legacyRoot = directoryURL.appendingPathComponent("Projects", isDirectory: true)
+        let firstRoot = directoryURL.appendingPathComponent("First", isDirectory: true)
+        let secondRoot = directoryURL.appendingPathComponent("Second", isDirectory: true)
+        var recordingRoot = firstRoot
+        let store = StudioProjectStore(
+            rootURL: legacyRoot,
+            now: { self.fixedDate },
+            recordingRootURLProvider: { recordingRoot }
+        )
+        let first = try store.beginRecording()
+        _ = try store.completeRecording(id: first.id, request: creationRequest())
+        let active = try store.beginRecording()
+        try Data([1, 2, 3]).write(to: active.screenURL)
+
+        recordingRoot = secondRoot
+        _ = try store.completeRecording(id: active.id, request: creationRequest())
+        let second = try store.beginRecording()
+        _ = try store.completeRecording(id: second.id, request: creationRequest())
+        let reopened = StudioProjectStore(
+            rootURL: legacyRoot,
+            now: { self.fixedDate },
+            recordingRootURLProvider: { recordingRoot }
+        )
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: active.projectJSONURL.path))
+        let reopenedPaths = try reopened.paths(forID: active.id)
+        XCTAssertEqual(reopenedPaths.projectDirectory, active.projectDirectory)
+        XCTAssertEqual(try Data(contentsOf: reopenedPaths.screenURL), Data([1, 2, 3]))
+        XCTAssertEqual(Set(try reopened.listSummaries().map(\.id)), [first.id, active.id, second.id])
+    }
+
+    func testCleanupDoesNotDeleteUnrelatedFoldersInTheRecordingRoot() throws {
+        let recordingRoot = directoryURL.appendingPathComponent("Recordings", isDirectory: true)
+        let unrelated = recordingRoot.appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
+        try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+        let important = unrelated.appendingPathComponent("important.txt")
+        try Data("keep".utf8).write(to: important)
+        let store = StudioProjectStore(
+            rootURL: directoryURL.appendingPathComponent("Projects", isDirectory: true),
+            now: { self.fixedDate },
+            recordingRootURLProvider: { recordingRoot },
+            folderDateProvider: { _ in self.fixedDate.addingTimeInterval(-25 * 60 * 60) }
+        )
+        let unfinished = try store.beginRecording()
+
+        XCTAssertEqual(
+            try store.cleanup(options: StudioCleanupOptions(retentionDays: 30, sizeCapBytes: 0)),
+            [unfinished.id]
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: important.path))
+    }
+
     func testJSONRoundTripPreservesUnknownPropertiesAtAllLevels() throws {
         let json = """
         {

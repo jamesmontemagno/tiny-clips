@@ -304,9 +304,12 @@ struct StudioProjectListing: Equatable, Sendable {
 
 final class StudioProjectStore {
     /// The store the app uses. One shared instance means its lock covers every caller.
-    static let shared = StudioProjectStore()
+    static let shared = StudioProjectStore(
+        recordingRootURLProvider: { SaveService.shared.studioRecordingDirectoryURL() }
+    )
 
     let rootURL: URL
+    private let recordingRootURLProvider: (() -> URL)?
     private let now: () -> Date
     private let fileManager: FileManager
     private let folderDateProvider: ((URL) -> Date?)?
@@ -318,9 +321,11 @@ final class StudioProjectStore {
     init(
         rootURL: URL? = nil,
         now: @escaping () -> Date = Date.init,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        recordingRootURLProvider: (() -> URL)? = nil
     ) {
         self.rootURL = rootURL ?? Self.defaultRootURL(fileManager: fileManager)
+        self.recordingRootURLProvider = recordingRootURLProvider
         self.now = now
         self.fileManager = fileManager
         self.folderDateProvider = nil
@@ -330,9 +335,11 @@ final class StudioProjectStore {
         rootURL: URL? = nil,
         now: @escaping () -> Date = Date.init,
         fileManager: FileManager = .default,
+        recordingRootURLProvider: (() -> URL)? = nil,
         folderDateProvider: @escaping (URL) -> Date?
     ) {
         self.rootURL = rootURL ?? Self.defaultRootURL(fileManager: fileManager)
+        self.recordingRootURLProvider = recordingRootURLProvider
         self.now = now
         self.fileManager = fileManager
         self.folderDateProvider = folderDateProvider
@@ -349,7 +356,8 @@ final class StudioProjectStore {
     func beginRecording() throws -> StudioProjectPaths {
         try withLock {
             let id = UUID().uuidString.lowercased()
-            let paths = try pathsUnlocked(forID: id)
+            let directory = currentRecordingRootURL.appendingPathComponent(id, isDirectory: true)
+            let paths = paths(for: id, projectDirectory: directory)
             try fileManager.createDirectory(at: paths.projectDirectory, withIntermediateDirectories: true)
             return paths
         }
@@ -791,51 +799,52 @@ final class StudioProjectStore {
 
     private func flatProjectUnlocked(request: StudioFlatProjectRequest, source: StudioVideoSourceIdentity?,
                                      preferredID: String?) throws -> StudioProject? {
-        guard fileManager.fileExists(atPath: rootURL.path) else { return nil }
         let needle = normalizedPath(request.videoURL.path)
         var best: StudioProject?
         var bestRank = -1
         // Matching never needs a recursive size calculation or export checks. In particular,
         // the final authorization/identity check runs on the editor's actor.
-        let directories = try fileManager.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: [.isSymbolicLinkKey],
-                                                              options: [.skipsHiddenFiles])
-        for directory in directories.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            let id = directory.lastPathComponent
-            guard Self.isValidProjectID(id), (try? directory.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == false,
-                  let project = try? loadUnlocked(id: id) else { continue }
-            let screen = project.sources.screen
-            guard !ownedFiles(project).contains(where: { $0.caseInsensitiveCompare(Self.sourceRecord) == .orderedSame })
-            else { continue }
-            if !screen.external {
-                // A portable copy imported as its own project has no local import receipt.
-                guard let source, screen.file == Self.copiedScreenFileName(for: request.videoURL),
-                      sourceIdentity(for: project)?.matches(source) == true,
-                      (try? isPlainFile(directory.appendingPathComponent(screen.file))) == true else { continue }
-            } else if normalizedPath(screen.file) == needle {
-                if let source {
-                    if let recorded = sourceIdentity(for: project) {
-                        guard recorded.matches(source) else { continue }
-                    } else {
-                        // Pre-identity references: never attach obviously different footage or
-                        // reinterpret a damaged receipt as permission to match by path alone.
-                        let record = projectDirectoryUnchecked(for: project.id).appendingPathComponent(Self.sourceRecord)
-                        guard !fileManager.fileExists(atPath: record.path),
-                              screen.width == request.width, screen.height == request.height,
-                              abs(screen.duration - request.duration) < 0.001,
-                              source.modifiedAt < project.createdAt.addingTimeInterval(1) else { continue }
+        for root in projectRootURLs where fileManager.fileExists(atPath: root.path) {
+            let directories = try fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey],
+                                                                  options: [.skipsHiddenFiles])
+            for directory in directories.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                let id = directory.lastPathComponent
+                guard Self.isValidProjectID(id), (try? directory.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == false,
+                      let project = try? loadUnlocked(id: id) else { continue }
+                let screen = project.sources.screen
+                guard !ownedFiles(project).contains(where: { $0.caseInsensitiveCompare(Self.sourceRecord) == .orderedSame })
+                else { continue }
+                if !screen.external {
+                    // A portable copy imported as its own project has no local import receipt.
+                    guard let source, screen.file == Self.copiedScreenFileName(for: request.videoURL),
+                          sourceIdentity(for: project)?.matches(source) == true,
+                          (try? isPlainFile(directory.appendingPathComponent(screen.file))) == true else { continue }
+                } else if normalizedPath(screen.file) == needle {
+                    if let source {
+                        if let recorded = sourceIdentity(for: project) {
+                            guard recorded.matches(source) else { continue }
+                        } else {
+                            // Pre-identity references: never attach obviously different footage or
+                            // reinterpret a damaged receipt as permission to match by path alone.
+                            let record = projectDirectoryUnchecked(for: project.id).appendingPathComponent(Self.sourceRecord)
+                            guard !fileManager.fileExists(atPath: record.path),
+                                  screen.width == request.width, screen.height == request.height,
+                                  abs(screen.duration - request.duration) < 0.001,
+                                  source.modifiedAt < project.createdAt.addingTimeInterval(1) else { continue }
+                        }
                     }
+                } else {
+                    continue
                 }
-            } else {
-                continue
-            }
-            // Legacy installations can have two separately edited drafts. Never merge them.
-            // Keep the frontmost matching session, then any open match; otherwise prefer a
-            // verified copy over a reference. Sorted IDs break ties deterministically.
-            let rank = (project.id == preferredID ? 4 : 0) + (idsInUse.contains(project.id) ? 2 : 0)
-                + (screen.external ? 0 : 1)
-            if rank > bestRank {
-                best = project
-                bestRank = rank
+                // Legacy installations can have two separately edited drafts. Never merge them.
+                // Keep the frontmost matching session, then any open match; otherwise prefer a
+                // verified copy over a reference. Sorted IDs break ties deterministically.
+                let rank = (project.id == preferredID ? 4 : 0) + (idsInUse.contains(project.id) ? 2 : 0)
+                    + (screen.external ? 0 : 1)
+                if rank > bestRank {
+                    best = project
+                    bestRank = rank
+                }
             }
         }
         return best
@@ -1364,6 +1373,10 @@ final class StudioProjectStore {
     private func pathsUnlocked(forID id: String) throws -> StudioProjectPaths {
         try Self.validateProjectID(id)
         let directory = projectDirectoryUnchecked(for: id)
+        return paths(for: id, projectDirectory: directory)
+    }
+
+    private func paths(for id: String, projectDirectory directory: URL) -> StudioProjectPaths {
         return StudioProjectPaths(
             id: id,
             projectDirectory: directory,
@@ -1427,31 +1440,33 @@ final class StudioProjectStore {
 
     private func listProjectsUnlocked(includingSummaries: Bool, includingUnreadable: Bool) throws -> StudioProjectListing {
         var listing = StudioProjectListing()
-        guard fileManager.fileExists(atPath: rootURL.path) else { return listing }
         let keys: Set<URLResourceKey> = includingUnreadable ? [.isDirectoryKey, .creationDateKey] : [.isDirectoryKey]
-        let contents = try fileManager.contentsOfDirectory(
-            at: rootURL,
-            includingPropertiesForKeys: Array(keys),
-            options: [.skipsHiddenFiles]
-        )
-        for directory in contents {
-            let values = try directory.resourceValues(forKeys: keys)
-            let id = directory.lastPathComponent
-            guard values.isDirectory == true, Self.isValidProjectID(id) else { continue }
-            // A recording that hasn't finished has no manifest and belongs in neither list.
-            let projectURL = directory.appendingPathComponent("project.json")
-            guard fileManager.fileExists(atPath: projectURL.path) else { continue }
-            if let project = try? loadUnlocked(id: id) {
-                if includingSummaries {
-                    listing.summaries.append(summary(for: project, directory: directory))
+        var seenIDs: Set<String> = []
+        for root in projectRootURLs where fileManager.fileExists(atPath: root.path) {
+            let contents = try fileManager.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: Array(keys),
+                options: [.skipsHiddenFiles]
+            )
+            for directory in contents {
+                let values = try directory.resourceValues(forKeys: keys)
+                let id = directory.lastPathComponent
+                guard values.isDirectory == true, Self.isValidProjectID(id), seenIDs.insert(id).inserted else { continue }
+                // A recording that hasn't finished has no manifest and belongs in neither list.
+                let projectURL = directory.appendingPathComponent("project.json")
+                guard fileManager.fileExists(atPath: projectURL.path) else { continue }
+                if let project = try? loadUnlocked(id: id) {
+                    if includingSummaries {
+                        listing.summaries.append(summary(for: project, directory: directory))
+                    }
+                } else if includingUnreadable {
+                    listing.unreadable.append(StudioUnreadableProject(
+                        id: id,
+                        createdAt: folderDateProvider?(directory) ?? values.creationDate ?? Date(timeIntervalSince1970: 0),
+                        sizeOnDisk: sizeOnDisk(at: directory),
+                        hasScreenRecording: recoveryRecording(in: directory, project: nil) != nil
+                    ))
                 }
-            } else if includingUnreadable {
-                listing.unreadable.append(StudioUnreadableProject(
-                    id: id,
-                    createdAt: folderDateProvider?(directory) ?? values.creationDate ?? Date(timeIntervalSince1970: 0),
-                    sizeOnDisk: sizeOnDisk(at: directory),
-                    hasScreenRecording: recoveryRecording(in: directory, project: nil) != nil
-                ))
             }
         }
         listing.summaries.sort { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
@@ -1468,37 +1483,55 @@ final class StudioProjectStore {
     }
 
     private func unfinishedRecordingIDsUnlocked(inUseProjectIDs: Set<String>) throws -> [String] {
-        guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
-        let contents = try fileManager.contentsOfDirectory(
-            at: rootURL,
-            includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
         let cutoff = now().addingTimeInterval(-24 * 60 * 60)
         var ids: [String] = []
-        for directory in contents {
-            let id = directory.lastPathComponent
-            let values = try directory.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey, .isDirectoryKey])
-            guard values.isDirectory == true,
-                  Self.isValidProjectID(id),
-                  !inUseProjectIDs.contains(id) else {
-                continue
-            }
-            let projectJSONURL = directory.appendingPathComponent("project.json")
-            guard !fileManager.fileExists(atPath: projectJSONURL.path) else { continue }
-            let folderDate = folderDateProvider?(directory)
-                ?? values.creationDate
-                ?? values.contentModificationDate
-                ?? Date(timeIntervalSince1970: 0)
-            if folderDate < cutoff {
-                ids.append(id)
+        for root in projectRootURLs where fileManager.fileExists(atPath: root.path) {
+            let contents = try fileManager.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey, .isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+            for directory in contents {
+                let id = directory.lastPathComponent
+                let values = try directory.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey, .isDirectoryKey])
+                guard values.isDirectory == true,
+                      Self.isValidProjectID(id),
+                      !inUseProjectIDs.contains(id) else {
+                    continue
+                }
+                let projectJSONURL = directory.appendingPathComponent("project.json")
+                guard !fileManager.fileExists(atPath: projectJSONURL.path) else { continue }
+                let folderDate = folderDateProvider?(directory)
+                    ?? values.creationDate
+                    ?? values.contentModificationDate
+                    ?? Date(timeIntervalSince1970: 0)
+                if folderDate < cutoff {
+                    ids.append(id)
+                }
             }
         }
         return ids.sorted()
     }
 
     private func projectDirectoryUnchecked(for id: String) -> URL {
-        rootURL.appendingPathComponent(id, isDirectory: true)
+        for root in projectRootURLs {
+            let directory = root.appendingPathComponent(id, isDirectory: true)
+            if fileManager.fileExists(atPath: directory.path) {
+                return directory
+            }
+        }
+        return currentRecordingRootURL.appendingPathComponent(id, isDirectory: true)
+    }
+
+    private var currentRecordingRootURL: URL {
+        recordingRootURLProvider?() ?? rootURL
+    }
+
+    private var projectRootURLs: [URL] {
+        var roots = [currentRecordingRootURL, rootURL]
+        var seen: Set<String> = []
+        roots = roots.filter { seen.insert($0.standardizedFileURL.path).inserted }
+        return roots
     }
 
     private func summary(for project: StudioProject, directory: URL) -> StudioProjectSummary {

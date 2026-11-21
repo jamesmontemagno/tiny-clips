@@ -346,6 +346,7 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     private let screenshotSaveDirectoryBookmarkKey = "screenshotSaveDirectoryBookmark"
     private let videoSaveDirectoryBookmarkKey = "videoSaveDirectoryBookmark"
     private let gifSaveDirectoryBookmarkKey = "gifSaveDirectoryBookmark"
+    private let studioRecordingSaveDirectoryBookmarkKey = "studioRecordingSaveDirectoryBookmark"
     private var activeSecurityScopedDirectoryURLs: [String: URL] = [:]
     private let bookmarkQueue = DispatchQueue(label: "com.tinyclips.save-service.bookmark")
 
@@ -370,13 +371,17 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
             saveDirectoryBookmarkKey,
             screenshotSaveDirectoryBookmarkKey,
             videoSaveDirectoryBookmarkKey,
-            gifSaveDirectoryBookmarkKey
+            gifSaveDirectoryBookmarkKey,
+            studioRecordingSaveDirectoryBookmarkKey
         ])
     }
 
     private func invalidateSaveDirectoryBookmarks(for keys: [String]) {
         bookmarkQueue.sync {
-            for key in keys {
+            let matchingKeys = activeSecurityScopedDirectoryURLs.keys.filter { activeKey in
+                keys.contains(activeKey) || activeKey.hasPrefix(studioRecordingSaveDirectoryBookmarkKey + ":")
+            }
+            for key in matchingKeys {
                 activeSecurityScopedDirectoryURLs.removeValue(forKey: key)?
                     .stopAccessingSecurityScopedResource()
             }
@@ -424,6 +429,22 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
             ? defaultDirectoryURL(for: type)
             : URL(fileURLWithPath: directory, isDirectory: true)
 #endif
+    }
+
+    func studioRecordingDirectoryURL() -> URL {
+        let settings = CaptureSettings.shared
+        guard !settings.studioRecordingSaveDirectory.isEmpty else {
+            return CaptureSettings.defaultStudioRecordingDirectoryURL(
+                videoDirectory: outputDirectoryURL(for: .video)
+            )
+        }
+
+#if APPSTORE
+        if let directory = customStudioRecordingDirectoryURLFromBookmark() {
+            return directory
+        }
+#endif
+        return URL(fileURLWithPath: settings.studioRecordingSaveDirectory, isDirectory: true)
     }
 
     func generatedFileName(for type: CaptureType, fileExtension: String, date: Date = Date()) -> String {
@@ -520,6 +541,37 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     }
 
 #if APPSTORE
+    private func customStudioRecordingDirectoryURLFromBookmark() -> URL? {
+        let bookmarkData = CaptureSettings.shared.studioRecordingSaveDirectoryBookmark
+        guard !bookmarkData.isEmpty else { return nil }
+        let cacheKey = "\(studioRecordingSaveDirectoryBookmarkKey):\(bookmarkData.base64EncodedString())"
+
+        return bookmarkQueue.sync {
+            if let activeURL = activeSecurityScopedDirectoryURLs[cacheKey] {
+                return activeURL
+            }
+
+            do {
+                var isStale = false
+                let url = try URL(
+                    resolvingBookmarkData: bookmarkData,
+                    options: [.withSecurityScope],
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &isStale
+                )
+                if isStale,
+                   let refreshedBookmark = try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) {
+                    CaptureSettings.shared.studioRecordingSaveDirectoryBookmark = refreshedBookmark
+                }
+                guard url.startAccessingSecurityScopedResource() else { return nil }
+                activeSecurityScopedDirectoryURLs[cacheKey] = url
+                return url
+            } catch {
+                return nil
+            }
+        }
+    }
+
     private func customDirectoryURLFromBookmark(for type: CaptureType) -> URL? {
         bookmarkQueue.sync {
             for key in bookmarkKeys(for: type) {

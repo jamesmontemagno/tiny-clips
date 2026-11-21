@@ -366,6 +366,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("videoSaveDirectory") var videoSaveDirectory: String = defaultSaveDirectoryURL(for: .video).path
     @AppStorage("gifSaveDirectory") var gifSaveDirectory: String = defaultSaveDirectoryURL(for: .gif).path
     @AppStorage("videoGifSaveDirectory") var videoGifSaveDirectory: String = ""
+    @AppStorage("studioRecordingSaveDirectory") var studioRecordingSaveDirectory: String = ""
     @AppStorage("useDefaultSaveDirectories") var useDefaultSaveDirectories: Bool = true
 #if APPSTORE
     @AppStorage("saveDirectoryBookmark") var saveDirectoryBookmark: Data = Data()
@@ -376,6 +377,7 @@ class CaptureSettings: ObservableObject {
     @AppStorage("videoSaveDirectoryDisplayPath") var videoSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .video).path
     @AppStorage("gifSaveDirectoryBookmark") var gifSaveDirectoryBookmark: Data = Data()
     @AppStorage("gifSaveDirectoryDisplayPath") var gifSaveDirectoryDisplayPath: String = defaultSaveDirectoryURL(for: .gif).path
+    @AppStorage("studioRecordingSaveDirectoryBookmark") var studioRecordingSaveDirectoryBookmark: Data = Data()
     @AppStorage("videoGifSaveDirectoryBookmark") var videoGifSaveDirectoryBookmark: Data = Data()
     @AppStorage("videoGifSaveDirectoryDisplayPath") var videoGifSaveDirectoryDisplayPath: String = ""
 #endif
@@ -590,6 +592,10 @@ class CaptureSettings: ObservableObject {
         case .gif:
             return gifSaveDirectory
         }
+    }
+
+    static func defaultStudioRecordingDirectoryURL(videoDirectory: URL) -> URL {
+        videoDirectory.appendingPathComponent("Studio", isDirectory: true)
     }
 
 #if APPSTORE
@@ -832,10 +838,12 @@ class CaptureSettings: ObservableObject {
         screenshotSaveDirectory = Self.defaultSaveDirectoryURL(for: .screenshot).path
         videoSaveDirectory = Self.defaultSaveDirectoryURL(for: .video).path
         gifSaveDirectory = Self.defaultSaveDirectoryURL(for: .gif).path
+        studioRecordingSaveDirectory = ""
 #if APPSTORE
         screenshotSaveDirectoryDisplayPath = Self.defaultSaveDirectoryURL(for: .screenshot).path
         videoSaveDirectoryDisplayPath = Self.defaultSaveDirectoryURL(for: .video).path
         gifSaveDirectoryDisplayPath = Self.defaultSaveDirectoryURL(for: .gif).path
+        studioRecordingSaveDirectoryBookmark = Data()
 #endif
 #if APPSTORE
         SaveService.shared.invalidateAllSaveDirectoryBookmarks()
@@ -856,6 +864,7 @@ class CaptureSettings: ObservableObject {
     static let resettableDefaultsKeys: [String] = [
         "saveDirectory", "screenshotSaveDirectory", "videoSaveDirectory", "gifSaveDirectory",
         "videoGifSaveDirectory", "useDefaultSaveDirectories",
+        "studioRecordingSaveDirectory",
         "copyToClipboard", "copyScreenshotToClipboard", "copyVideoToClipboard", "copyGifToClipboard",
         "showInFinder", "showSaveNotifications", "showInDock",
         "autoUpdateEnabled",
@@ -911,6 +920,7 @@ class CaptureSettings: ObservableObject {
         "screenshotSaveDirectoryBookmark", "screenshotSaveDirectoryDisplayPath",
         "videoSaveDirectoryBookmark", "videoSaveDirectoryDisplayPath",
         "gifSaveDirectoryBookmark", "gifSaveDirectoryDisplayPath",
+        "studioRecordingSaveDirectoryBookmark",
         "videoGifSaveDirectoryBookmark", "videoGifSaveDirectoryDisplayPath"
     ]
 #else

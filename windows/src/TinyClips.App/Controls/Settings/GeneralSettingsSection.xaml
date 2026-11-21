@@ -86,6 +86,15 @@
                                 Click="OnBrowseGifSaveDirectory"
                                 Content="Choose&#x2026;" />
                         </controls:SettingsCard>
+                        <controls:SettingsCard
+                            Description="{x:Bind ViewModel.StudioRecordingSaveLocationDisplay, Mode=OneWay}"
+                            Header="Studio recordings">
+                            <Button
+                                AutomationProperties.AutomationId="BrowseStudioRecordingSaveDirectoryButton"
+                                AutomationProperties.Name="Choose Studio recordings folder"
+                                Click="OnBrowseStudioRecordingSaveDirectory"
+                                Content="Choose&#x2026;" />
+                        </controls:SettingsCard>
                     </controls:SettingsExpander.Items>
                 </controls:SettingsExpander>
 

@@ -340,6 +340,22 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string GifSaveLocationDisplay => ResolveSaveLocation(CaptureType.Gif);
 
+    public string StudioRecordingSaveLocationDisplay
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(StudioRecordingSaveDirectory))
+            {
+                return StudioRecordingSaveDirectory;
+            }
+
+            var videoFolder = UseDefaultSaveDirectories
+                ? _storage.OutputDirectory(CaptureType.Video)
+                : string.IsNullOrWhiteSpace(VideoSaveDirectory) ? _storage.OutputDirectory(CaptureType.Video) : VideoSaveDirectory.Trim();
+            return System.IO.Path.Combine(videoFolder, "Studio") + " (default)";
+        }
+    }
+
     public string SaveLocationModeDisplay => UseDefaultSaveDirectories
         ? "Screenshots save to Pictures/TinyClips; videos and GIFs save to Videos/TinyClips."
         : "Choose a folder for each capture type.";
@@ -454,6 +470,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ScreenshotSaveLocationDisplay))]
     [NotifyPropertyChangedFor(nameof(VideoSaveLocationDisplay))]
     [NotifyPropertyChangedFor(nameof(GifSaveLocationDisplay))]
+    [NotifyPropertyChangedFor(nameof(StudioRecordingSaveLocationDisplay))]
     [NotifyPropertyChangedFor(nameof(SaveLocationModeDisplay))]
     [NotifyPropertyChangedFor(nameof(CustomSaveLocationsVisibility))]
     private bool _useDefaultSaveDirectories;
@@ -464,11 +481,16 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(VideoSaveLocationDisplay))]
+    [NotifyPropertyChangedFor(nameof(StudioRecordingSaveLocationDisplay))]
     private string _videoSaveDirectory = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(GifSaveLocationDisplay))]
     private string _gifSaveDirectory = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StudioRecordingSaveLocationDisplay))]
+    private string _studioRecordingSaveDirectory = string.Empty;
 
     [ObservableProperty]
     private string _fileNameTemplate = string.Empty;
@@ -1368,6 +1390,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 ScreenshotSaveDirectory = _settings.ScreenshotSaveDirectory;
                 VideoSaveDirectory = _settings.VideoSaveDirectory;
                 GifSaveDirectory = _settings.GifSaveDirectory;
+                StudioRecordingSaveDirectory = _settings.StudioRecordingSaveDirectory;
                 FileNameTemplate = string.IsNullOrWhiteSpace(_settings.FileNameTemplate)
                     ? "TinyClips {date} at {time}"
                     : _settings.FileNameTemplate;
@@ -1737,6 +1760,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnVideoSaveDirectoryChanged(string value) =>
         Persist(SettingsSectionKind.General, () => _settings.VideoSaveDirectory = value);
+
+    partial void OnStudioRecordingSaveDirectoryChanged(string value) =>
+        Persist(SettingsSectionKind.General, () => _settings.StudioRecordingSaveDirectory = value);
 
     partial void OnGifSaveDirectoryChanged(string value) =>
         Persist(SettingsSectionKind.General, () => _settings.GifSaveDirectory = value);

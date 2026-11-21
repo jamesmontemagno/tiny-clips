@@ -82,6 +82,81 @@ public sealed class StudioProjectStoreTests : IDisposable
     }
 
     [Fact]
+    public void ConfiguredRecordingRootIsUsedForNewProjectsAndLegacyProjectsStayDiscoverable()
+    {
+        var legacyStore = CreateStore();
+        var legacy = CreateCompletedProject(legacyStore);
+        var recordingRoot = Path.Combine(_directory, "Videos", "TinyClips", "Studio");
+        var store = new StudioProjectStore(_directory, _time, () => recordingRoot);
+
+        var paths = store.BeginRecording();
+
+        Assert.Equal(Path.Combine(recordingRoot, paths.ProjectId), paths.ProjectDirectory);
+        Assert.True(store.Exists(legacy.Id));
+        Assert.Equal(legacy.Id, store.Load(legacy.Id).Id);
+        Assert.Contains(store.ListSummaries(), summary => summary.Id == legacy.Id);
+        Assert.True(File.Exists(Path.Combine(_directory, legacy.Id, StudioProjectStore.ProjectFileName)));
+    }
+
+    [Fact]
+    public void CleanupStillAppliesToProjectsInTheLegacyRoot()
+    {
+        var legacyStore = CreateStore();
+        var legacy = CreateOldExportedProject(legacyStore, "legacy");
+        var store = new StudioProjectStore(
+            _directory,
+            _time,
+            () => Path.Combine(_directory, "Videos", "TinyClips", "Studio"));
+
+        var result = store.Cleanup(new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0));
+
+        Assert.Equal([legacy.Id], result.ProjectIdsDeleted);
+        Assert.False(store.Exists(legacy.Id));
+    }
+
+    [Fact]
+    public void ChangingRecordingRootKeepsPreviousProjectsAndFinishesAnActiveRecordingInPlace()
+    {
+        var legacyRoot = Path.Combine(_directory, "Projects");
+        var firstRoot = Path.Combine(_directory, "First");
+        var secondRoot = Path.Combine(_directory, "Second");
+        var recordingRoot = firstRoot;
+        var store = new StudioProjectStore(legacyRoot, _time, () => recordingRoot);
+        var first = CreateCompletedProject(store);
+        var active = store.BeginRecording();
+        File.WriteAllBytes(active.ScreenPath, [1, 2, 3]);
+
+        recordingRoot = secondRoot;
+        store.CompleteRecording(active.ProjectId, CreateRequest());
+        var second = CreateCompletedProject(store);
+        var reopened = new StudioProjectStore(legacyRoot, _time, () => recordingRoot);
+
+        Assert.True(File.Exists(active.ProjectJsonPath));
+        Assert.Equal(active.ProjectDirectory, reopened.GetPaths(active.ProjectId).ProjectDirectory);
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(reopened.GetPaths(active.ProjectId).ScreenPath));
+        Assert.Equal(
+            new[] { first.Id, active.ProjectId, second.Id }.OrderBy(id => id),
+            reopened.ListSummaries().Select(summary => summary.Id).OrderBy(id => id));
+    }
+
+    [Fact]
+    public void CleanupDoesNotDeleteUnrelatedFoldersInTheRecordingRoot()
+    {
+        var recordingRoot = Path.Combine(_directory, "Recordings");
+        var unrelatedFolder = Path.Combine(recordingRoot, Guid.NewGuid().ToString("D"));
+        Directory.CreateDirectory(unrelatedFolder);
+        File.WriteAllText(Path.Combine(unrelatedFolder, "important.txt"), "keep");
+        var time = new ManualTimeProvider(DateTimeOffset.UtcNow.AddDays(2));
+        var store = new StudioProjectStore(Path.Combine(_directory, "Projects"), time, () => recordingRoot);
+        var unfinished = store.BeginRecording();
+
+        var result = store.Cleanup(new StudioCleanupOptions(RetentionDays: 30, SizeCapBytes: 0));
+
+        Assert.Equal([unfinished.ProjectId], result.ProjectIdsDeleted);
+        Assert.True(File.Exists(Path.Combine(unrelatedFolder, "important.txt")));
+    }
+
+    [Fact]
     public void LoadAndList_UseFolderNameAsIdAndIgnoreNonIdFolders()
     {
         var store = CreateStore();

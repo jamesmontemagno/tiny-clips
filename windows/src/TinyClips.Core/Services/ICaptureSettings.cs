@@ -11,6 +11,7 @@ public interface ICaptureSettings
     string ScreenshotSaveDirectory { get; set; }
     string VideoSaveDirectory { get; set; }
     string GifSaveDirectory { get; set; }
+    string StudioRecordingSaveDirectory { get; set; }
     AppTheme Theme { get; set; }
     bool CopyScreenshotToClipboard { get; set; }
     bool CopyVideoToClipboard { get; set; }

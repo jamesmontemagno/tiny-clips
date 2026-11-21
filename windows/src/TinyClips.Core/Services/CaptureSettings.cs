@@ -56,6 +56,12 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("gifSaveDirectory", value);
     }
 
+    public string StudioRecordingSaveDirectory
+    {
+        get => _settings.Get("studioRecordingSaveDirectory", string.Empty);
+        set => _settings.Set("studioRecordingSaveDirectory", value ?? string.Empty);
+    }
+
     public static string DefaultSaveDirectory(CaptureType type)
     {
         var folder = type == CaptureType.Screenshot
@@ -84,6 +90,9 @@ public sealed class CaptureSettings : ICaptureSettings
 
         return Path.Combine(folder, "TinyClips");
     }
+
+    public static string DefaultStudioRecordingSaveDirectory(string videoDirectory) =>
+        Path.Combine(videoDirectory, "Studio");
 
     public AppTheme Theme
     {
@@ -928,6 +937,7 @@ public sealed class CaptureSettings : ICaptureSettings
         ScreenshotSaveDirectory = DefaultSaveDirectory(CaptureType.Screenshot);
         VideoSaveDirectory = DefaultSaveDirectory(CaptureType.Video);
         GifSaveDirectory = DefaultSaveDirectory(CaptureType.Gif);
+        StudioRecordingSaveDirectory = string.Empty;
         Theme = AppTheme.Default;
         CopyScreenshotToClipboard = true;
         CopyVideoToClipboard = false;

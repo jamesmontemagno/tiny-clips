@@ -42,7 +42,9 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   a rounded screen card, camera shape and four layouts, a draggable camera bubble, scenes that
   change the layout partway through, zooms (added by hand or suggested from your clicks), crops
   for the screen and the camera, cuts, speed changes, trim, and MP4 export.
-  The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio).
+  The project stays editable afterward. New Studio recordings default to the configurable
+  `Videos/TinyClips/Studio` folder; existing projects remain where they are. See
+  [Tiny Clips Studio](#tiny-clips-studio).
 - **Region outline** — a red outline frames the selected region during the countdown.
 - **Onboarding & Guide** — a first-run welcome wizard with five quick preferences: launch at
   login, copy screenshots to clipboard, open the screenshot editor, video/GIF countdown, and

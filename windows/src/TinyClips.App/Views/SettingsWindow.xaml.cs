@@ -259,6 +259,7 @@ public sealed partial class SettingsWindow : Window
     {
         var section = new GeneralSettingsSection(ViewModel);
         section.BrowseSaveDirectoryRequested += OnBrowseSaveDirectoryRequested;
+        section.BrowseStudioRecordingSaveDirectoryRequested += OnBrowseStudioRecordingSaveDirectoryRequested;
         return section;
     }
 
@@ -300,6 +301,24 @@ public sealed partial class SettingsWindow : Window
                     ViewModel.GifSaveDirectory = folder.Path;
                     break;
             }
+        }
+    }
+
+    private async void OnBrowseStudioRecordingSaveDirectoryRequested()
+    {
+        var picker = new FolderPicker
+        {
+            SuggestedStartLocation = PickerLocationId.VideosLibrary,
+        };
+        picker.FileTypeFilter.Add("*");
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        StorageFolder? folder = await picker.PickSingleFolderAsync();
+        if (!_closed && folder is not null)
+        {
+            ViewModel.StudioRecordingSaveDirectory = folder.Path;
         }
     }
 

@@ -23,6 +23,7 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
     /// rather than showing a picker itself.
     /// </summary>
     public event Action<CaptureType>? BrowseSaveDirectoryRequested;
+    public event Action? BrowseStudioRecordingSaveDirectoryRequested;
 
     public GeneralSettingsSection(SettingsViewModel viewModel)
     {
@@ -61,6 +62,9 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
 
     private void OnBrowseGifSaveDirectory(object sender, RoutedEventArgs e) =>
         BrowseSaveDirectoryRequested?.Invoke(CaptureType.Gif);
+
+    private void OnBrowseStudioRecordingSaveDirectory(object sender, RoutedEventArgs e) =>
+        BrowseStudioRecordingSaveDirectoryRequested?.Invoke();
 
     private void OnOpenTempFolder(object sender, RoutedEventArgs e) => ViewModel.OpenTempFolder();
 

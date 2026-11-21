@@ -9,6 +9,7 @@ using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
+using TinyClips.Core.Studio;
 
 namespace TinyClips.App;
 
@@ -169,7 +170,11 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
     private static AutomationSettingsCatalog SettingsCatalog()
     {
         var storage = App.Services.GetRequiredService<IClipStorageService>();
-        return new AutomationSettingsCatalog(App.Services.GetRequiredService<ICaptureSettings>(), storage.OutputDirectory);
+        var projects = App.Services.GetRequiredService<IStudioProjectStore>();
+        return new AutomationSettingsCatalog(
+            App.Services.GetRequiredService<ICaptureSettings>(),
+            storage.OutputDirectory,
+            () => projects.RootDirectory);
     }
 
     private static JsonNode GetSettings(AutomationCommandContext context)

@@ -45,6 +45,10 @@ public sealed class CaptureSettingsTests
         Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Screenshot), settings.ScreenshotSaveDirectory);
         Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Video), settings.VideoSaveDirectory);
         Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Gif), settings.GifSaveDirectory);
+        Assert.Equal(string.Empty, settings.StudioRecordingSaveDirectory);
+        Assert.Equal(
+            Path.Combine(CaptureSettings.DefaultSaveDirectory(CaptureType.Video), "Studio"),
+            CaptureSettings.DefaultStudioRecordingSaveDirectory(CaptureSettings.DefaultSaveDirectory(CaptureType.Video)));
         Assert.Equal(
             CaptureSettings.DefaultSaveDirectory(CaptureType.Screenshot),
             settingsService.Get("screenshotSaveDirectory", string.Empty));
@@ -78,6 +82,19 @@ public sealed class CaptureSettingsTests
         Assert.False(settings.UploadcareAutoUpload);
         Assert.False(settings.UploadcareCopyUrl);
         Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+    }
+
+    [Fact]
+    public void StudioRecordingSaveDirectory_PersistsCustomFolderAndResetsToDefault()
+    {
+        var store = new TestSettingsService();
+        var settings = new CaptureSettings(store);
+
+        settings.StudioRecordingSaveDirectory = @"D:\Captures\Studio";
+        Assert.Equal(@"D:\Captures\Studio", new CaptureSettings(store).StudioRecordingSaveDirectory);
+
+        settings.ResetToDefaults();
+        Assert.Equal(string.Empty, settings.StudioRecordingSaveDirectory);
     }
 
     [Fact]

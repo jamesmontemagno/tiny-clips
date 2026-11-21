@@ -1,7 +1,7 @@
 import Foundation
 
-/// The settings agents may read and change through `settings.get` / `settings.set`. Anything not
-/// listed here (save folders, agent control itself, credentials) is not reachable.
+/// The settings agents may read and change through `settings.get` / `settings.set`. Save folders
+/// are read-only; agent control and credentials are not reachable.
 struct AutomationSetting {
     let key: String
     let writable: Bool
@@ -98,6 +98,7 @@ struct AutomationSetting {
         .readOnly("screenshotFolder") { SaveService.shared.outputDirectoryURL(for: .screenshot).path },
         .readOnly("videoFolder") { SaveService.shared.outputDirectoryURL(for: .video).path },
         .readOnly("gifFolder") { SaveService.shared.outputDirectoryURL(for: .gif).path },
+        .readOnly("studioRecordingFolder") { SaveService.shared.studioRecordingDirectoryURL().path },
         .string("fileNameTemplate", \.fileNameTemplate),
         .string("studioExportResolution", \.studioExportResolution, allowed: StudioExportResolution.allCases.map(\.rawValue)),
         .string("studioExportQuality", \.studioExportQuality, allowed: StudioExportQuality.allCases.map(\.rawValue)),

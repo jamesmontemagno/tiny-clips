@@ -93,10 +93,9 @@
                                 <TextBlock
                                     Text="The sources of exported projects are deleted by the two rules below. Drafts that were never exported are never deleted automatically, and neither is a project whose exported video is gone or one you chose to keep. Exported videos are never touched."
                                     TextWrapping="Wrap" />
-                                <!--  The projects are in the package's own folder, which goes with the package.  -->
                                 <TextBlock
                                     AutomationProperties.AutomationId="StudioUninstallNoteText"
-                                    Text="Projects are stored with the app. Uninstalling Tiny Clips, or resetting it in Windows Settings, deletes all of them, drafts included. To keep one past that, save it as a folder with Save project in the editor."
+                                    Text="New recordings are stored in the Studio recordings folder in General settings. Existing projects stay where they are. Uninstalling Tiny Clips or resetting it in Windows Settings removes projects kept in app storage, but not projects in another folder. To keep a portable copy, save it as a folder with Save project in the editor."
                                     TextWrapping="Wrap" />
                                 <TextBlock
                                     x:Name="StudioCleanupStatusText"

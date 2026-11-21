@@ -8,14 +8,17 @@ namespace TinyClips.Core.Automation;
 
 /// <summary>
 /// The settings agents may read and change through <c>settings.get</c> / <c>settings.set</c>.
-/// Anything not listed here (save folders, agent control itself, credentials, hotkeys) is not reachable.
+/// Save folders are read-only; agent control, credentials, and hotkeys are not reachable.
 /// Keys match the macOS app where both apps have the setting.
 /// </summary>
 public sealed class AutomationSettingsCatalog
 {
     private readonly IReadOnlyList<Entry> _entries;
 
-    public AutomationSettingsCatalog(ICaptureSettings settings, Func<CaptureType, string>? outputDirectory = null)
+    public AutomationSettingsCatalog(
+        ICaptureSettings settings,
+        Func<CaptureType, string>? outputDirectory = null,
+        Func<string>? studioRecordingDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         var s = settings;
@@ -25,6 +28,10 @@ public sealed class AutomationSettingsCatalog
             entries.Add(ReadOnly("screenshotFolder", () => outputDirectory(CaptureType.Screenshot)));
             entries.Add(ReadOnly("videoFolder", () => outputDirectory(CaptureType.Video)));
             entries.Add(ReadOnly("gifFolder", () => outputDirectory(CaptureType.Gif)));
+        }
+        if (studioRecordingDirectory is not null)
+        {
+            entries.Add(ReadOnly("studioRecordingFolder", studioRecordingDirectory));
         }
 
         entries.AddRange(

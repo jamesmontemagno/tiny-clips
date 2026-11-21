@@ -171,25 +171,35 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
     public const string ScreenFileName = "screen.mp4";
     public const string CameraFileName = "camera.mp4";
     public const string PosterFileName = "poster.jpg";
+    private const string RecordingRootsFileName = ".studio-recording-roots.json";
+    private const string RecordingMarkerFileName = ".tinyclips-recording";
 
     private static readonly Regex ProjectIdRegex = new(
         "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private readonly string _rootDirectory;
+    private readonly Func<string>? _recordingRootDirectory;
     private readonly TimeProvider _timeProvider;
     private readonly object _sync = new();
     private readonly Dictionary<string, string> _exportIndex = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _projectUseCounts = new(StringComparer.Ordinal);
+    private string[] _knownRecordingRoots;
+    private string[] _indexedRoots = [];
     private bool _exportIndexLoaded;
 
-    public StudioProjectStore(string? rootDirectory = null, TimeProvider? timeProvider = null)
+    public StudioProjectStore(
+        string? rootDirectory = null,
+        TimeProvider? timeProvider = null,
+        Func<string>? recordingRootDirectory = null)
     {
-        _rootDirectory = rootDirectory ?? DefaultRootDirectory();
+        _rootDirectory = Path.GetFullPath(rootDirectory ?? DefaultRootDirectory());
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _recordingRootDirectory = recordingRootDirectory;
+        _knownRecordingRoots = LoadRecordingRoots(_rootDirectory);
     }
 
-    public string RootDirectory => _rootDirectory;
+    public string RootDirectory => CurrentRecordingRootDirectory;
 
     public static string DefaultRootDirectory() =>
         Path.Combine(ClipsLibraryPaths.LocalDataDirectory(), "TinyClips", "Projects");
@@ -198,9 +208,18 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
     {
         lock (_sync)
         {
-            var projectId = Guid.NewGuid().ToString("D");
+            var root = CurrentRecordingRootDirectory;
+            string projectId;
+            string directory;
+            do
+            {
+                projectId = Guid.NewGuid().ToString("D");
+                directory = Path.Combine(root, projectId);
+            }
+            while (Directory.Exists(directory));
+
+            EnsureProjectDirectory(directory);
             var paths = BuildPaths(projectId, null);
-            Directory.CreateDirectory(paths.ProjectDirectory);
             return paths;
         }
     }
@@ -277,6 +296,11 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
             var directory = ProjectDirectory(projectId);
             if (Directory.Exists(directory))
             {
+                if (!IsManagedProjectFolder(directory))
+                {
+                    throw new StudioProjectInvalidException("The folder is not a Tiny Clips Studio project.");
+                }
+
                 Directory.Delete(directory, recursive: true);
                 _exportIndexLoaded = false;
             }
@@ -587,7 +611,8 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
             }
 
             var now = _timeProvider.GetUtcNow().ToUniversalTime();
-            var projectId = Guid.NewGuid().ToString("D");
+            var paths = BeginRecording();
+            var projectId = paths.ProjectId;
             var project = new StudioProject
             {
                 Id = projectId,
@@ -613,7 +638,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
                 Scenes = [new StudioScene { Layout = StudioLayout.Screen }],
             };
 
-            SaveProjectFile(ProjectDirectory(projectId), project);
+            SaveProjectFile(paths.ProjectDirectory, project);
             return project;
         }
     }
@@ -636,7 +661,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
         lock (_sync)
         {
             var directory = ProjectDirectory(projectId);
-            Directory.CreateDirectory(directory);
+            EnsureProjectDirectory(directory);
             AtomicWrite(Path.Combine(directory, EventsFileName), StudioProjectJson.WriteEvents(events));
         }
     }
@@ -665,6 +690,11 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
 
             foreach (var folder in EnumerateProjectFolders())
             {
+                if (!IsManagedProjectFolder(folder.Directory))
+                {
+                    continue;
+                }
+
                 if (!File.Exists(Path.Combine(folder.Directory, ProjectFileName)))
                 {
                     if ((options.RetentionDays > 0 || options.SizeCapBytes > 0)
@@ -804,7 +834,8 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
 
     private void EnsureExportIndex(bool force = false)
     {
-        if (_exportIndexLoaded && !force)
+        var roots = ProjectRootDirectories;
+        if (_exportIndexLoaded && !force && _indexedRoots.SequenceEqual(roots, StringComparer.OrdinalIgnoreCase))
         {
             return;
         }
@@ -825,6 +856,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
             }
         }
 
+        _indexedRoots = roots.ToArray();
         _exportIndexLoaded = true;
     }
 
@@ -891,15 +923,26 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
 
     private IEnumerable<ProjectFolder> EnumerateProjectFolders()
     {
-        if (!Directory.Exists(_rootDirectory))
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var folders = new List<ProjectFolder>();
+        foreach (var root in ProjectRootDirectories)
         {
-            return [];
+            if (!Directory.Exists(root))
+            {
+                continue;
+            }
+
+            foreach (var directory in Directory.EnumerateDirectories(root))
+            {
+                var id = Path.GetFileName(directory);
+                if (IsValidProjectId(id) && IsManagedProjectFolder(directory) && seen.Add(id))
+                {
+                    folders.Add(new ProjectFolder(id, directory));
+                }
+            }
         }
 
-        return Directory.EnumerateDirectories(_rootDirectory)
-            .Select(directory => new ProjectFolder(Path.GetFileName(directory), directory))
-            .Where(folder => IsValidProjectId(folder.Id))
-            .ToArray();
+        return folders;
     }
 
     private StudioProject LoadProjectFile(string projectDirectory, string projectId)
@@ -911,8 +954,74 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
     private void SaveProjectFile(string projectDirectory, StudioProject project)
     {
         ValidateProjectId(project.Id);
-        Directory.CreateDirectory(projectDirectory);
+        EnsureProjectDirectory(projectDirectory);
         AtomicWrite(Path.Combine(projectDirectory, ProjectFileName), StudioProjectJson.WriteProject(project));
+    }
+
+    private void EnsureProjectDirectory(string directory)
+    {
+        if (Directory.Exists(directory))
+        {
+            if (!IsManagedProjectFolder(directory))
+            {
+                throw new StudioProjectInvalidException("The folder is not a Tiny Clips Studio project.");
+            }
+
+            return;
+        }
+
+        var root = Path.GetDirectoryName(directory)
+            ?? throw new IOException("The Studio project folder has no parent directory.");
+        RememberRecordingRoot(root);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, RecordingMarkerFileName), string.Empty);
+    }
+
+    private bool IsManagedProjectFolder(string directory) =>
+        string.Equals(Path.GetDirectoryName(directory), _rootDirectory, StringComparison.OrdinalIgnoreCase)
+        || File.Exists(Path.Combine(directory, RecordingMarkerFileName));
+
+    private static string[] LoadRecordingRoots(string rootDirectory)
+    {
+        string json;
+        try
+        {
+            json = File.ReadAllText(Path.Combine(rootDirectory, RecordingRootsFileName));
+        }
+        catch (FileNotFoundException)
+        {
+            return [];
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return [];
+        }
+
+        var roots = JsonSerializer.Deserialize(json, StudioJsonContext.Default.StringArray)
+            ?? throw new InvalidDataException("The Studio recording locations file is empty.");
+        if (roots.Any(root => string.IsNullOrWhiteSpace(root) || !Path.IsPathFullyQualified(root)))
+        {
+            throw new InvalidDataException("The Studio recording locations file contains an invalid path.");
+        }
+
+        return roots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private void RememberRecordingRoot(string root)
+    {
+        root = Path.GetFullPath(root);
+        if (string.Equals(root, _rootDirectory, StringComparison.OrdinalIgnoreCase)
+            || _knownRecordingRoots.Contains(root, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var roots = _knownRecordingRoots.Append(root).ToArray();
+        Directory.CreateDirectory(_rootDirectory);
+        AtomicWrite(Path.Combine(_rootDirectory, RecordingRootsFileName),
+            JsonSerializer.Serialize(roots, StudioJsonContext.Default.StringArray));
+        _knownRecordingRoots = roots;
+        _exportIndexLoaded = false;
     }
 
     private static void AtomicWrite(string path, string contents)
@@ -938,7 +1047,31 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
     private string ProjectDirectory(string projectId)
     {
         ValidateProjectId(projectId);
-        return Path.Combine(_rootDirectory, projectId);
+        foreach (var root in ProjectRootDirectories)
+        {
+            var directory = Path.Combine(root, projectId);
+            if (Directory.Exists(directory) && IsManagedProjectFolder(directory))
+            {
+                return directory;
+            }
+        }
+
+        return Path.Combine(CurrentRecordingRootDirectory, projectId);
+    }
+
+    private string CurrentRecordingRootDirectory =>
+        Path.GetFullPath(_recordingRootDirectory?.Invoke() ?? _rootDirectory);
+
+    private IReadOnlyList<string> ProjectRootDirectories
+    {
+        get
+        {
+            return new[] { CurrentRecordingRootDirectory }
+                .Concat(_knownRecordingRoots)
+                .Append(_rootDirectory)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
     }
 
     private static bool IsOlderThanUnfinishedRecordingLimit(string directory, DateTimeOffset now)

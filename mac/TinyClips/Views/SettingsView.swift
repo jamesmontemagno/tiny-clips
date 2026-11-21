@@ -81,6 +81,7 @@ struct SettingsView: View {
                         settings: settings,
                         launchAtLogin: launchAtLogin,
                         chooseSaveDirectory: chooseSaveDirectory,
+                        chooseStudioRecordingDirectory: chooseStudioRecordingDirectory,
                         resetAllSettings: resetAllSettings,
                         showInDockBinding: showInDockBinding
                     )
@@ -227,6 +228,31 @@ struct SettingsView: View {
             case .gif:
                 settings.gifSaveDirectory = url.path
             }
+#endif
+        }
+    }
+
+    private func chooseStudioRecordingDirectory() {
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = true
+#if APPSTORE
+            panel.directoryURL = CaptureSettings.defaultSaveDirectoryURL(for: .video)
+#endif
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+#if APPSTORE
+            do {
+                let bookmark = try url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+                settings.studioRecordingSaveDirectoryBookmark = bookmark
+                settings.studioRecordingSaveDirectory = url.path
+            } catch {
+                SaveService.shared.showError("Could not save folder permission: \(error.localizedDescription)")
+            }
+#else
+            settings.studioRecordingSaveDirectory = url.path
 #endif
         }
     }

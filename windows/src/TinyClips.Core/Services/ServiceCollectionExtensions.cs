@@ -26,7 +26,19 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IClipLibraryWatcher>(_ => new ClipLibraryWatcher());
         services.AddSingleton<IClipMetadataStore>(_ => new JsonClipMetadataStore(
             JsonClipMetadataStore.DefaultFilePath(ClipsLibraryPaths.LocalDataDirectory())));
-        services.AddSingleton<IStudioProjectStore>(_ => new StudioProjectStore());
+        services.AddSingleton<IStudioProjectStore>(provider => new StudioProjectStore(
+            recordingRootDirectory: () =>
+            {
+                var settings = provider.GetRequiredService<ICaptureSettings>();
+                if (!string.IsNullOrWhiteSpace(settings.StudioRecordingSaveDirectory))
+                {
+                    return settings.StudioRecordingSaveDirectory.Trim();
+                }
+
+                var videoDirectory = provider.GetRequiredService<IClipStorageService>()
+                    .OutputDirectory(TinyClips.Core.Models.CaptureType.Video);
+                return CaptureSettings.DefaultStudioRecordingSaveDirectory(videoDirectory);
+            }));
         services.AddSingleton(provider => new StudioCaptionModelStore(provider.GetRequiredService<HttpClient>()));
         services.AddSingleton<IStudioCaptionGenerator>(provider => new StudioCaptionGenerator(provider.GetRequiredService<StudioCaptionModelStore>()));
         services.AddSingleton<IUploadcareUploadService, UploadcareUploadService>();

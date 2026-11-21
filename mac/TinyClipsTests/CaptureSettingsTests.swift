@@ -61,6 +61,24 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(video.captureType, .video)
     }
 
+    func testStudioRecordingFolderDefaultsUnderVideosAndPersistsACustomFolder() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        let videos = URL(fileURLWithPath: "/tmp/TinyClips", isDirectory: true)
+        XCTAssertEqual(
+            CaptureSettings.defaultStudioRecordingDirectoryURL(videoDirectory: videos).path,
+            "/tmp/TinyClips/Studio"
+        )
+
+        settings.studioRecordingSaveDirectory = "/Volumes/Captures/Studio"
+        XCTAssertEqual(
+            CaptureSettings(defaults: defaults, performMigrations: false).studioRecordingSaveDirectory,
+            "/Volumes/Captures/Studio"
+        )
+
+        CaptureSettings.resetStoredDefaults(defaults)
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).studioRecordingSaveDirectory, "")
+    }
+
     func testOtherPickerModesCannotInheritStudioIntent() {
         for type in [CaptureType.screenshot, .gif] {
             let intent = CapturePickerIntent(captureType: type, forStudio: true)

@@ -10,11 +10,15 @@ public sealed class AutomationSettingsCatalogTests
     [Fact]
     public void GetAll_ListsValuesAndWritableKeys()
     {
-        var catalog = new AutomationSettingsCatalog(new CaptureSettings(new MemorySettings()), type => $"C:/out/{type}");
+        var catalog = new AutomationSettingsCatalog(
+            new CaptureSettings(new MemorySettings()),
+            type => $"C:/out/{type}",
+            () => "C:/out/Studio");
 
         var all = catalog.GetAll();
 
         Assert.Equal("C:/out/Screenshot", all["settings"]!["screenshotFolder"]!.GetValue<string>());
+        Assert.Equal("C:/out/Studio", all["settings"]!["studioRecordingFolder"]!.GetValue<string>());
         Assert.Equal("jpg", all["settings"]!["screenshotFormat"]!.GetValue<string>());
         var writable = all["writable"]!.AsArray().Select(n => n!.GetValue<string>()).ToArray();
         Assert.Contains("videoFrameRate", writable);
@@ -52,10 +56,15 @@ public sealed class AutomationSettingsCatalogTests
     [Fact]
     public void ReadOnlySettings_CannotBeChanged()
     {
-        var catalog = new AutomationSettingsCatalog(new CaptureSettings(new MemorySettings()), _ => "C:/out");
+        var catalog = new AutomationSettingsCatalog(
+            new CaptureSettings(new MemorySettings()),
+            _ => "C:/out",
+            () => "C:/out/Studio");
 
         AssertInvalid(() => catalog.Set("gifFolder", JsonValue.Create("C:/elsewhere")));
         Assert.False(catalog.Get("gifFolder")["writable"]!.GetValue<bool>());
+        AssertInvalid(() => catalog.Set("studioRecordingFolder", JsonValue.Create("C:/elsewhere")));
+        Assert.False(catalog.Get("studioRecordingFolder")["writable"]!.GetValue<bool>());
         AssertInvalid(() => catalog.Get("automationEnabled"));
     }
 
