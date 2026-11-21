@@ -85,6 +85,9 @@ public abstract class StudioViewModelTestBase : IDisposable
     /// <summary>The settings of the view models a test opens.</summary>
     protected CaptureSettings Settings { get; } = new(new StudioTestSettings());
 
+    /// <summary>The videos folder the editors are given.</summary>
+    protected string VideosFolder => Path.Combine(_directory, "Videos");
+
     /// <summary>What a view model a test opens generates captions with. Without it, it cannot.</summary>
     protected TinyClips.Core.Studio.Transcription.IStudioCaptionGenerator? CaptionGenerator { get; set; }
 
@@ -101,7 +104,7 @@ public abstract class StudioViewModelTestBase : IDisposable
             _previews,
             new StudioTestExporter(),
             settings ?? Settings,
-            new StudioTestVideoNames(Path.Combine(_directory, "Videos")),
+            new StudioTestVideoNames(VideosFolder),
             Post,
             canFindPeople: true,
             _time,
