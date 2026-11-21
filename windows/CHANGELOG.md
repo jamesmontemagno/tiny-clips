@@ -12,6 +12,7 @@ own `CHANGELOG.md` at the repository root.
 - Settings → Studio has a **Save project folder** for Studio's **Save project** and **Save project as**, defaulting to a `Studio` folder inside the videos save folder; it replaces starting where the last project was saved. Projects already saved to a folder keep saving there, and drafts and recordings stay in Studio's own storage. Agents can read it as the read-only `studioProjectFolder` setting.
 
 ### Fixed
+- Studio's Save project folder preserves whitespace in chosen folder names.
 - MOV files appear in Clips Library and `library.list`. For a cross-platform `editor.open` result with an absolute path, pass `resultFormat=standard`.
 - Studio Projects combines overlapping refreshes and displays search results in a virtualized list. Linked Studio saves reuse unchanged media instead of staging a new copy for every edit.
 - Agents can disable microphone and camera source capture for an individual video or Studio recording with `microphone=false camera=false`, using recording scope without changing saved settings. Enabling requires both the user's saved device opt-in and existing Windows permission; no permission prompt is shown. Consent is rechecked during preparation and restart, start/status report live device capture, and overrides survive countdown, Studio fallback, and restart.

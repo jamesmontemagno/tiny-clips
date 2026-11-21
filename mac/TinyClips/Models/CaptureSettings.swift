@@ -1154,13 +1154,13 @@ enum StudioProjectSaveLocation {
 
     /// Whether the setting names a folder of the user's own choosing.
     static func isCustom(_ configured: String) -> Bool {
-        configured.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/")
+        configured.hasPrefix("/")
     }
 
     /// The folder Save Project starts in. Does not touch the disk.
     static func resolve(configured: String, videoFolder: URL) -> URL {
         isCustom(configured)
-            ? URL(fileURLWithPath: configured.trimmingCharacters(in: .whitespacesAndNewlines), isDirectory: true)
+            ? URL(fileURLWithPath: configured, isDirectory: true)
             : defaultFolder(in: videoFolder)
     }
 

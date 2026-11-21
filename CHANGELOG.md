@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 - Agents on macOS and Windows can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 
 ### Fixed
+- Studio's Save Project folder setting refreshes immediately and preserves spaces in chosen folder names.
 - Pausing an agent-controlled video and withdrawing device consent keeps the take paused on resume. Restart checks consent before discarding the take, including from the floating control.
 - Finder and Clips Library reuse the same Studio edits for an unchanged imported video. Recovering a copied MOV preserves its format.
 - Studio Projects refreshes no longer read every project twice. `editor.open` supports a standard result with a separate file path on both platforms (`resultFormat=standard`).

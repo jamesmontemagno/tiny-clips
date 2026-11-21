@@ -355,10 +355,11 @@ public sealed class CaptureSettingsStudioTests
         var settings = Create(out var service);
         Assert.Equal(string.Empty, settings.StudioProjectFolder);
 
-        settings.StudioProjectFolder = @" D:\Projects ";
+        var chosen = @"D:\Projects" + "\u00A0";
+        settings.StudioProjectFolder = chosen;
 
-        Assert.Equal(@"D:\Projects", settings.StudioProjectFolder);
-        Assert.Equal(@"D:\Projects", service.Get("studioProjectFolder", "unset"));
+        Assert.Equal(chosen, settings.StudioProjectFolder);
+        Assert.Equal(chosen, service.Get("studioProjectFolder", "unset"));
 
         settings.StudioProjectFolder = null!;
         Assert.Equal(string.Empty, settings.StudioProjectFolder);

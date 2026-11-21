@@ -372,7 +372,7 @@ public sealed class CaptureSettings : ICaptureSettings
     public string StudioProjectFolder
     {
         get => _settings.Get("studioProjectFolder", string.Empty);
-        set => _settings.Set("studioProjectFolder", value?.Trim() ?? string.Empty);
+        set => _settings.Set("studioProjectFolder", value ?? string.Empty);
     }
 
     public bool RecordAudio
