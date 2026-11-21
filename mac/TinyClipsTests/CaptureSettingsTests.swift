@@ -491,4 +491,81 @@ final class CaptureSettingsTests: XCTestCase {
 
         XCTAssertNil(defaults.object(forKey: StudioProjectSaveLocation.settingsKey))
     }
+
+    private func storeDefaultSaveDirectories() {
+        for type in [CaptureType.screenshot, .video, .gif] {
+            defaults.set(CaptureSettings.defaultSaveDirectoryURL(for: type).path, forKey: "\(type.rawValue)SaveDirectory")
+        }
+    }
+
+    func testDefaultFoldersStayOnAfterTheirPathsAreSaved() {
+        CaptureSettings.migrateSaveDirectorySettings(in: defaults)
+        XCTAssertTrue(defaults.bool(forKey: CaptureSettings.useDefaultSaveDirectoriesKey))
+
+        // A fresh install, or a reset, saves the default paths before the next launch reads them.
+        defaults.removeObject(forKey: CaptureSettings.useDefaultSaveDirectoriesKey)
+        storeDefaultSaveDirectories()
+        CaptureSettings.migrateSaveDirectorySettings(in: defaults)
+        CaptureSettings.migrateSaveDirectorySettings(in: defaults)
+
+        XCTAssertTrue(defaults.bool(forKey: CaptureSettings.useDefaultSaveDirectoriesKey))
+        XCTAssertFalse(CaptureSettings.hasCustomSaveDirectory(in: defaults))
+    }
+
+    func testDefaultFoldersTurnedOffByOlderBuildsAreTurnedBackOnOnce() {
+        storeDefaultSaveDirectories()
+        defaults.set(false, forKey: CaptureSettings.useDefaultSaveDirectoriesKey)
+
+        CaptureSettings.migrateSaveDirectorySettings(in: defaults)
+        XCTAssertTrue(defaults.bool(forKey: CaptureSettings.useDefaultSaveDirectoriesKey))
+
+        // Turning it off afterwards is kept, even before a folder is chosen.
+        defaults.set(false, forKey: CaptureSettings.useDefaultSaveDirectoriesKey)
+        CaptureSettings.migrateSaveDirectorySettings(in: defaults)
+        XCTAssertFalse(defaults.bool(forKey: CaptureSettings.useDefaultSaveDirectoriesKey))
+    }
+
+    func testChosenFoldersKeepDefaultFoldersOff() {
+        storeDefaultSaveDirectories()
+        defaults.set("/Volumes/Work/Clips", forKey: "videoSaveDirectory")
+        defaults.set(false, forKey: CaptureSettings.useDefaultSaveDirectoriesKey)
+
+        CaptureSettings.migrateSaveDirectorySettings(in: defaults)
+
+        XCTAssertFalse(defaults.bool(forKey: CaptureSettings.useDefaultSaveDirectoriesKey))
+        XCTAssertEqual(defaults.string(forKey: "videoSaveDirectory"), "/Volumes/Work/Clips")
+    }
+
+    func testLegacySaveFolderTurnsDefaultFoldersOffAndIsCopied() {
+        defaults.set("/Users/someone/Desktop", forKey: "saveDirectory")
+        defaults.set("/Users/someone/Recordings", forKey: "videoGifSaveDirectory")
+
+        CaptureSettings.migrateSaveDirectorySettings(in: defaults)
+
+        XCTAssertFalse(defaults.bool(forKey: CaptureSettings.useDefaultSaveDirectoriesKey))
+        XCTAssertEqual(defaults.string(forKey: "screenshotSaveDirectory"), "/Users/someone/Desktop")
+        XCTAssertEqual(defaults.string(forKey: "videoSaveDirectory"), "/Users/someone/Recordings")
+        XCTAssertEqual(defaults.string(forKey: "gifSaveDirectory"), "/Users/someone/Recordings")
+    }
+
+    func testSaveFolderPathsResolveLinksInTheFoldersThatExist() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("TinyClipsSaveLinks-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pictures = root.appendingPathComponent("Pictures", isDirectory: true)
+        let containerData = root.appendingPathComponent("Containers/Data", isDirectory: true)
+        try FileManager.default.createDirectory(at: pictures, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: containerData, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            atPath: containerData.appendingPathComponent("Pictures").path,
+            withDestinationPath: "../../Pictures"
+        )
+
+        // Like the App Store sandbox's Pictures, a link to the real folder that TinyClips is not yet in.
+        let linked = containerData.appendingPathComponent("Pictures/TinyClips/Studio", isDirectory: true)
+        let real = pictures.resolvingSymlinksInPath().appendingPathComponent("TinyClips/Studio")
+
+        XCTAssertEqual(CaptureSettings.resolvingSymlinksInExistingPath(linked).path, real.path)
+        XCTAssertTrue(CaptureSettings.isSameDirectory(linked.path + "/", as: real))
+        XCTAssertFalse(CaptureSettings.isSameDirectory(pictures.path, as: real))
+    }
 }

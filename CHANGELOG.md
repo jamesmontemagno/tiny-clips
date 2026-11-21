@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 - Agents on macOS and Windows can save a portable Studio project copy through `studio.project.saveCopy` without overwriting existing files.
 
 ### Fixed
+- **Use default folders** on macOS no longer turns itself off on the launch after installing or resetting settings, and is turned back on once for anyone it was turned off for without choosing a folder. The App Store build shows your Pictures/TinyClips and Movies/TinyClips folders in Settings instead of its sandbox container path.
 - Studio's Save Project folder setting refreshes immediately and preserves spaces in chosen folder names.
 - Pausing an agent-controlled video and withdrawing device consent keeps the take paused on resume. Restart checks consent before discarding the take, including from the floating control.
 - Finder and Clips Library reuse the same Studio edits for an unchanged imported video. Recovering a copied MOV preserves its format.

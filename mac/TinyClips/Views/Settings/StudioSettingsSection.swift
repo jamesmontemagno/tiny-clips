@@ -102,7 +102,7 @@ struct StudioSettingsSection: View {
             videoFolder: SaveService.shared.outputDirectoryURL(for: .video)
         )
         let suffix = StudioProjectSaveLocation.isCustom(studioProjectFolder) ? "" : " (default)"
-        return "\(folder.path)\(suffix)\nWhere Save Project and Save Project As start. A project already saved to a folder keeps saving there. Drafts and recordings stay in Studio's own storage."
+        return "\(CaptureSettings.displayPath(for: folder))\(suffix)\nWhere Save Project and Save Project As start. A project already saved to a folder keeps saving there. Drafts and recordings stay in Studio's own storage."
     }
 
     private func chooseProjectFolder() {

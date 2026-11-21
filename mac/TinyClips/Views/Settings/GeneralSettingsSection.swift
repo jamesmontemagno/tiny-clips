@@ -219,7 +219,7 @@ struct GeneralSettingsSection: View {
     private func saveDirectoryPath(for type: CaptureType) -> String {
 #if APPSTORE
         let path = settings.saveDirectoryDisplayPath(for: type)
-        return path.isEmpty ? "No folder selected" : path
+        return path.isEmpty ? "No folder selected" : CaptureSettings.displayPath(for: URL(fileURLWithPath: path, isDirectory: true))
 #else
         let path = settings.saveDirectoryPath(for: type)
         return path.isEmpty ? "No folder selected" : path

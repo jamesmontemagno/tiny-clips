@@ -585,6 +585,34 @@ class CaptureSettings: ObservableObject {
         return baseURL.appendingPathComponent("TinyClips", isDirectory: true)
     }
 
+    /// The path to show people for a folder. In the App Store sandbox, Pictures and Movies are
+    /// links from the app's container to the person's own folders, so show where they lead.
+    static func displayPath(for url: URL) -> String {
+#if APPSTORE
+        return resolvingSymlinksInExistingPath(url).path
+#else
+        return url.path
+#endif
+    }
+
+    /// Resolves links in the part of the path that exists, keeping folders not yet created.
+    static func resolvingSymlinksInExistingPath(_ url: URL) -> URL {
+        var existing = url.standardizedFileURL
+        var missingComponents: [String] = []
+        while existing.path != "/", !FileManager.default.fileExists(atPath: existing.path) {
+            missingComponents.insert(existing.lastPathComponent, at: 0)
+            existing.deleteLastPathComponent()
+        }
+        return missingComponents.reduce(existing.resolvingSymlinksInPath()) {
+            $0.appendingPathComponent($1, isDirectory: true)
+        }
+    }
+
+    static func isSameDirectory(_ path: String, as url: URL) -> Bool {
+        resolvingSymlinksInExistingPath(URL(fileURLWithPath: path, isDirectory: true)).path ==
+            resolvingSymlinksInExistingPath(url).path
+    }
+
     func saveDirectoryPath(for captureType: CaptureType) -> String {
         switch captureType {
         case .screenshot:
@@ -835,6 +863,7 @@ class CaptureSettings: ObservableObject {
 
     func resetToDefaults(preservingHotKeys: Bool = false) {
         Self.resetStoredDefaults(.standard, preservingHotKeys: preservingHotKeys)
+        useDefaultSaveDirectories = true
         screenshotSaveDirectory = Self.defaultSaveDirectoryURL(for: .screenshot).path
         videoSaveDirectory = Self.defaultSaveDirectoryURL(for: .video).path
         gifSaveDirectory = Self.defaultSaveDirectoryURL(for: .gif).path
@@ -942,7 +971,7 @@ class CaptureSettings: ObservableObject {
             defaults.removeObject(forKey: "studioPreviewEnabled")
         }
 
-        migrateSaveDirectorySettings(defaults)
+        Self.migrateSaveDirectorySettings(in: defaults)
         ensureSaveDirectoryDefaults(defaults)
 
         guard defaults.object(forKey: "multiMonitorCaptureMode") == nil else { return }
@@ -953,46 +982,91 @@ class CaptureSettings: ObservableObject {
         defaults.removeObject(forKey: "alwaysCaptureMainDisplay")
     }
 
-    private func migrateSaveDirectorySettings(_ defaults: UserDefaults) {
-        guard defaults.object(forKey: "useDefaultSaveDirectories") == nil else { return }
+    static let useDefaultSaveDirectoriesKey = "useDefaultSaveDirectories"
+    /// Marks the one-time repair of "Use default folders" turned off by older builds. Not reset.
+    static let restoredDefaultSaveDirectoriesKey = "restoredDefaultSaveDirectories"
 
-        let legacySharedDirectory = defaults.string(forKey: "saveDirectory") ?? ""
-        let legacyVideoGifDirectory = defaults.string(forKey: "videoGifSaveDirectory") ?? ""
-        let legacyScreenshotDirectory = defaults.string(forKey: "screenshotSaveDirectory") ?? ""
-        let hasCustomDirectory = !legacySharedDirectory.isEmpty ||
-            !legacyScreenshotDirectory.isEmpty ||
-            !legacyVideoGifDirectory.isEmpty
+    static func migrateSaveDirectorySettings(in defaults: UserDefaults) {
+        let hasCustomFolder = hasCustomSaveDirectory(in: defaults)
+        let needsRepair = defaults.object(forKey: restoredDefaultSaveDirectoriesKey) == nil
+        defaults.set(true, forKey: restoredDefaultSaveDirectoriesKey)
+
+        if defaults.object(forKey: useDefaultSaveDirectoriesKey) != nil {
+            // Older builds saved the default folders, then read them back on the next launch as
+            // chosen folders and turned this off. No folder was chosen, so turn it back on.
+            if needsRepair, !hasCustomFolder, !defaults.bool(forKey: useDefaultSaveDirectoriesKey) {
+                defaults.set(true, forKey: useDefaultSaveDirectoriesKey)
+            }
+            return
+        }
+
+        guard hasCustomFolder else {
+            defaults.set(true, forKey: useDefaultSaveDirectoriesKey)
+            return
+        }
+
+        let string = { defaults.string(forKey: $0) ?? "" }
+        let legacySharedDirectory = string("saveDirectory")
+        let legacyVideoGifDirectory = string("videoGifSaveDirectory")
+        let legacyScreenshotDirectory = string("screenshotSaveDirectory")
+        let videoGifDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
+        let screenshotDirectory = legacyScreenshotDirectory.isEmpty ? legacySharedDirectory : legacyScreenshotDirectory
+
+        defaults.set(false, forKey: useDefaultSaveDirectoriesKey)
+        for (key, path) in [
+            ("screenshotSaveDirectory", screenshotDirectory),
+            ("videoSaveDirectory", videoGifDirectory),
+            ("gifSaveDirectory", videoGifDirectory)
+        ] where !path.isEmpty {
+            defaults.set(path, forKey: key)
+        }
+
 #if APPSTORE
-        let hasCustomBookmark = !saveDirectoryBookmark.isEmpty ||
-            !screenshotSaveDirectoryBookmark.isEmpty ||
-            !videoGifSaveDirectoryBookmark.isEmpty
+        let data = { defaults.data(forKey: $0) ?? Data() }
+        let sharedBookmark = data("saveDirectoryBookmark")
+        let sharedDisplayPath = string("saveDirectoryDisplayPath")
+        if data("screenshotSaveDirectoryBookmark").isEmpty, !sharedBookmark.isEmpty {
+            defaults.set(sharedBookmark, forKey: "screenshotSaveDirectoryBookmark")
+            defaults.set(sharedDisplayPath, forKey: "screenshotSaveDirectoryDisplayPath")
+        }
+        let legacyVideoGifBookmark = data("videoGifSaveDirectoryBookmark")
+        let legacyVideoGifDisplayPath = string("videoGifSaveDirectoryDisplayPath")
+        let videoGifBookmark = legacyVideoGifBookmark.isEmpty ? sharedBookmark : legacyVideoGifBookmark
+        let videoGifDisplayPath = legacyVideoGifDisplayPath.isEmpty ? sharedDisplayPath : legacyVideoGifDisplayPath
+        if !videoGifBookmark.isEmpty {
+            defaults.set(videoGifBookmark, forKey: "videoSaveDirectoryBookmark")
+            defaults.set(videoGifDisplayPath, forKey: "videoSaveDirectoryDisplayPath")
+            defaults.set(videoGifBookmark, forKey: "gifSaveDirectoryBookmark")
+            defaults.set(videoGifDisplayPath, forKey: "gifSaveDirectoryDisplayPath")
+        }
+#endif
+    }
+
+    /// Whether someone chose a save folder, as opposed to the default folders saved for them.
+    static func hasCustomSaveDirectory(in defaults: UserDefaults) -> Bool {
+        let string = { defaults.string(forKey: $0) ?? "" }
+        if !string("saveDirectory").isEmpty || !string("videoGifSaveDirectory").isEmpty {
+            return true
+        }
+        let typedDirectories: [(String, CaptureType)] = [
+            ("screenshotSaveDirectory", .screenshot),
+            ("videoSaveDirectory", .video),
+            ("gifSaveDirectory", .gif)
+        ]
+        let hasCustomPath = typedDirectories.contains { key, type in
+            let path = string(key)
+            return !path.isEmpty && !isSameDirectory(path, as: defaultSaveDirectoryURL(for: type))
+        }
+#if APPSTORE
+        let bookmarkKeys = [
+            "saveDirectoryBookmark", "screenshotSaveDirectoryBookmark", "videoSaveDirectoryBookmark",
+            "gifSaveDirectoryBookmark", "videoGifSaveDirectoryBookmark"
+        ]
+        let hasBookmark = bookmarkKeys.contains { !(defaults.data(forKey: $0) ?? Data()).isEmpty }
 #else
-        let hasCustomBookmark = false
+        let hasBookmark = false
 #endif
-
-        guard hasCustomDirectory || hasCustomBookmark else { return }
-
-        useDefaultSaveDirectories = false
-        if legacyScreenshotDirectory.isEmpty {
-            screenshotSaveDirectory = legacySharedDirectory
-        } else {
-            screenshotSaveDirectory = legacyScreenshotDirectory
-        }
-        videoSaveDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
-        gifSaveDirectory = legacyVideoGifDirectory.isEmpty ? legacySharedDirectory : legacyVideoGifDirectory
-
-#if APPSTORE
-        if screenshotSaveDirectoryBookmark.isEmpty, !saveDirectoryBookmark.isEmpty {
-            screenshotSaveDirectoryBookmark = saveDirectoryBookmark
-            screenshotSaveDirectoryDisplayPath = saveDirectoryDisplayPath
-        }
-        let videoGifBookmark = videoGifSaveDirectoryBookmark.isEmpty ? saveDirectoryBookmark : videoGifSaveDirectoryBookmark
-        let videoGifDisplayPath = videoGifSaveDirectoryDisplayPath.isEmpty ? saveDirectoryDisplayPath : videoGifSaveDirectoryDisplayPath
-        videoSaveDirectoryBookmark = videoGifBookmark
-        videoSaveDirectoryDisplayPath = videoGifDisplayPath
-        gifSaveDirectoryBookmark = videoGifBookmark
-        gifSaveDirectoryDisplayPath = videoGifDisplayPath
-#endif
+        return hasCustomPath || hasBookmark
     }
 
     private func ensureSaveDirectoryDefaults(_ defaults: UserDefaults) {
