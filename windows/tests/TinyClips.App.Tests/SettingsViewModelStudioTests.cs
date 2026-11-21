@@ -166,9 +166,9 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         var bound = SettingsMarkup.TwoWayViewModelProperties("StudioSettingsSection.xaml");
         Assert.Equal(
             [
+                nameof(SettingsViewModel.StudioRevealAfterFirstSave),
                 nameof(SettingsViewModel.StudioSourceRetentionDays),
-                nameof(SettingsViewModel.StudioStorageCapGigabytes),
-                nameof(SettingsViewModel.StudioRevealAfterFirstSave)
+                nameof(SettingsViewModel.StudioStorageCapGigabytes)
             ],
             bound);
 
