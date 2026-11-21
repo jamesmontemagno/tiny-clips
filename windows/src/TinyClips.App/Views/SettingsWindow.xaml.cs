@@ -238,7 +238,7 @@ public sealed partial class SettingsWindow : Window
                 WinRT.Interop.WindowNative.GetWindowHandle(this)),
             SettingsSectionKind.Screenshot => new ScreenshotSettingsSection(ViewModel),
             SettingsSectionKind.Video => new VideoSettingsSection(ViewModel),
-            SettingsSectionKind.Studio => CreateStudioSection(),
+            SettingsSectionKind.Studio => new StudioSettingsSection(ViewModel),
             SettingsSectionKind.Gif => new GifSettingsSection(ViewModel),
             SettingsSectionKind.MouseClicks => new MouseClicksSettingsSection(ViewModel),
             SettingsSectionKind.Teleprompter => CreateTeleprompterSection(),
@@ -259,12 +259,6 @@ public sealed partial class SettingsWindow : Window
     {
         var section = new GeneralSettingsSection(ViewModel);
         section.BrowseSaveDirectoryRequested += OnBrowseSaveDirectoryRequested;
-        return section;
-    }
-
-    private StudioSettingsSection CreateStudioSection()
-    {
-        var section = new StudioSettingsSection(ViewModel);
         section.ChooseStudioProjectFolderRequested += OnChooseStudioProjectFolderRequested;
         return section;
     }

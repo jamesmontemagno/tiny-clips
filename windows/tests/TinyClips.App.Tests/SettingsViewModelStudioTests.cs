@@ -234,7 +234,7 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         var chosen = Path.Combine(_directory, "Projects I keep");
         _settings.StudioProjectFolder = chosen;
         var vm = CreateViewModel();
-        Show(vm, SettingsSectionKind.Studio);
+        Show(vm, SettingsSectionKind.General);
         Assert.Equal(chosen, vm.StudioProjectFolder);
         Assert.Equal(chosen, vm.StudioProjectFolderDisplay);
         Assert.True(vm.IsStudioProjectFolderCustom);

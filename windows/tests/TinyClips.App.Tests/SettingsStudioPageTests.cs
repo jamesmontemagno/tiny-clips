@@ -60,7 +60,7 @@ public sealed partial class SettingsStudioPageTests
         Assert.All(
             Enum.GetNames<SettingsSectionKind>(),
             kind => Assert.Contains($"SettingsSectionKind.{kind} => ", code, StringComparison.Ordinal));
-        Assert.Contains("SettingsSectionKind.Studio => CreateStudioSection()", code, StringComparison.Ordinal);
+        Assert.Contains("SettingsSectionKind.Studio => new StudioSettingsSection(ViewModel)", code, StringComparison.Ordinal);
         Assert.Contains("section.ChooseStudioProjectFolderRequested += OnChooseStudioProjectFolderRequested;", code, StringComparison.Ordinal);
     }
 
@@ -82,8 +82,16 @@ public sealed partial class SettingsStudioPageTests
             Assert.All(MovedIds, id => Assert.DoesNotContain(id, markup, StringComparison.Ordinal));
         }
 
-        Assert.DoesNotContain("Studio", SettingsMarkup.Read(GeneralPage), StringComparison.Ordinal);
-        Assert.DoesNotContain("Studio", SettingsMarkup.Read(GeneralPage + ".cs"), StringComparison.Ordinal);
+        // General holds only the Studio projects folder, with the other save folders; it reads
+        // nothing of Studio's projects, because it is made whenever Settings opens.
+        var general = SettingsMarkup.Elements(GeneralPage);
+        var folderCard = Assert.Single(general, element => element.Attr(Id) == "StudioProjectFolderCard");
+        Assert.Equal("SettingsExpander.Items", folderCard.Parent?.Name.LocalName);
+        Assert.Equal(
+            ["StudioProjectFolderCard", "StudioProjectFolderText", "StudioProjectFolderDefaultButton", "StudioProjectFolderChooseButton"],
+            SettingsMarkup.AutomationIds(GeneralPage).Where(id => id.StartsWith("Studio", StringComparison.Ordinal)));
+        Assert.DoesNotContain("StudioProjectFolder", SettingsMarkup.Read(StudioPage), StringComparison.Ordinal);
+        Assert.DoesNotContain("EnsureStudioStorageInitializedAsync", SettingsMarkup.Read(GeneralPage + ".cs"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -92,9 +100,12 @@ public sealed partial class SettingsStudioPageTests
         var column = SettingsMarkup.Elements(StudioPage).First(element => element.Name.LocalName == "StackPanel");
         var parts = column.Elements().ToList();
 
-        // The page's name, its first heading and introduction, then its settings.
+        // The page's name, its first heading and introduction, then its settings. Its one switch
+        // is Show project in File Explorer after first save, not a preview switch.
         Assert.Equal(["TextBlock", "TextBlock", "SettingsCard", "StackPanel"], parts.Select(part => part.Name.LocalName));
-        Assert.DoesNotContain(Controls(column), control => control.Name.LocalName == "ToggleSwitch");
+        Assert.Equal(
+            ["StudioRevealAfterFirstSaveToggle"],
+            Controls(column).Where(control => control.Name.LocalName == "ToggleSwitch").Select(control => control.Attr(Id)));
         Assert.DoesNotContain("StudioPreviewVisibility", SettingsMarkup.Read(StudioPage), StringComparison.Ordinal);
         Assert.Contains("Studio recording", parts[2].Attr("Description"), StringComparison.Ordinal);
         Assert.Contains(Controls(parts[3]), control => control.Attr(Id) == "StudioOpenProjectButton");
@@ -147,12 +158,12 @@ public sealed partial class SettingsStudioPageTests
         var elements = SettingsMarkup.Elements(StudioPage);
         var projects = elements.Single(element => element.Attr("Text") == "Projects");
 
-        // Under the heading, up to the next one: Open a saved project, then the Save project folder.
+        // Under the heading, up to the next one: Open a saved project, then Show project after first save.
         var under = projects.ElementsAfterSelf()
             .TakeWhile(element => element.Attr("AutomationProperties.HeadingLevel") is null)
             .ToList();
         Assert.Equal(["SettingsCard", "SettingsCard"], under.Select(element => element.Name.LocalName));
-        Assert.Equal("StudioProjectFolderCard", under[1].Attr(Id));
+        Assert.Contains(under[1].Descendants(), element => element.Attr(Id) == "StudioRevealAfterFirstSaveToggle");
         var card = under[0];
         Assert.Equal("SettingsCard", card.Name.LocalName);
         Assert.Equal("Open a saved project", card.Attr("Header"));

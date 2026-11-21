@@ -2052,7 +2052,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnStudioProjectFolderChanged(string value) =>
-        Persist(SettingsSectionKind.Studio, () => _settings.StudioProjectFolder = value);
+        Persist(SettingsSectionKind.General, () => _settings.StudioProjectFolder = value);
 
     partial void OnStudioRevealAfterFirstSaveChanged(bool value) =>
         Persist(SettingsSectionKind.Studio, () => _settings.StudioRevealAfterFirstSave = value);

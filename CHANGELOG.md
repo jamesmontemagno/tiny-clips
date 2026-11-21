@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 - Studio Recording has its own configurable global shortcut, unassigned by default, in Settings and onboarding on macOS and Windows. Record Video remains an ordinary recording.
 - Open MP4 and MOV files directly in Studio from Finder with **Open With → Tiny Clips**, without changing the default player.
 - The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
-- Settings → Studio has a **Save Project folder** for Studio's **Save Project** and **Save Project As**, defaulting to a `Studio` folder inside the video save folder. Projects already saved to a folder keep saving there, and drafts and recordings stay in Studio's own storage. Agents can read it as the read-only `studioProjectFolder` setting.
+- Settings → General → Save Location has a **Studio projects folder** for Studio's **Save Project** and **Save Project As**, defaulting to a `Studio` folder inside the video save folder. Projects already saved to a folder keep saving there, and drafts and recordings stay in Studio's own storage. Agents can read it as the read-only `studioProjectFolder` setting.
 
 ### Changed
 - The macOS Guide is now a feature-first handbook with Capture, Editor, Recording, Studio, Library, Agents, and Help tabs, offline overview drawings, practical walkthroughs, and website documentation links. Help retains your live shortcut reference.

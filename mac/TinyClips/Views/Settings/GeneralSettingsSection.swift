@@ -12,6 +12,8 @@ struct GeneralSettingsSection: View {
     @State private var isLoadingTemporaryFiles = true
     @State private var notificationPermission: NotificationPermissionState?
     @State private var isRequestingNotifications = false
+    // Read here, not through `settings`, so the row follows every writer of the key.
+    @AppStorage(StudioProjectSaveLocation.settingsKey) private var studioProjectFolder = ""
 
     var body: some View {
         SettingsFormSection("Save Location", icon: "folder") {
@@ -27,6 +29,8 @@ struct GeneralSettingsSection: View {
                 saveDirectoryRow(title: "Videos folder", type: .video)
                 saveDirectoryRow(title: "GIFs folder", type: .gif)
             }
+
+            studioProjectFolderRow
 
             SettingsToggleRow(
                 title: "Show in Finder after save",
@@ -224,6 +228,54 @@ struct GeneralSettingsSection: View {
         let path = settings.saveDirectoryPath(for: type)
         return path.isEmpty ? "No folder selected" : path
 #endif
+    }
+
+    /// Its own setting, shown whether or not the default folders are used: its default follows
+    /// the videos folder.
+    private var studioProjectFolderRow: some View {
+        SettingsActionRow(
+            title: "Studio projects folder",
+            description: studioProjectFolderDescription
+        ) {
+            if StudioProjectSaveLocation.isCustom(studioProjectFolder) {
+                Button("Use Default") {
+                    studioProjectFolder = ""
+                }
+                .help("Start Save Project in the Studio folder inside your video folder.")
+                .accessibilityLabel("Use the default Studio projects folder")
+            }
+            Button("Choose…") {
+                chooseStudioProjectFolder()
+            }
+            .help("Choose where Studio's Save Project and Save Project As start.")
+            .accessibilityLabel("Choose Studio projects folder")
+        }
+    }
+
+    private var studioProjectFolderDescription: String {
+        let folder = StudioProjectSaveLocation.resolve(
+            configured: studioProjectFolder,
+            videoFolder: SaveService.shared.outputDirectoryURL(for: .video)
+        )
+        let suffix = StudioProjectSaveLocation.isCustom(studioProjectFolder) ? "" : " (default)"
+        return "\(CaptureSettings.displayPath(for: folder))\(suffix)\nWhere Save Project and Save Project As start. A project already saved to a folder keeps saving there."
+    }
+
+    private func chooseStudioProjectFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Studio Projects Folder"
+        panel.message = "Save Project and Save Project As will start in this folder."
+        panel.prompt = "Choose"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = StudioProjectSaveLocation.resolve(
+            configured: studioProjectFolder,
+            videoFolder: SaveService.shared.outputDirectoryURL(for: .video)
+        )
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        studioProjectFolder = url.path
     }
 
     private var temporaryFilesSummaryText: String {

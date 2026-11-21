@@ -62,6 +62,17 @@ public sealed partial class GeneralSettingsSection : UserControl, ISettingsSecti
     private void OnBrowseGifSaveDirectory(object sender, RoutedEventArgs e) =>
         BrowseSaveDirectoryRequested?.Invoke(CaptureType.Gif);
 
+    /// <summary>
+    /// Asks the window to show a folder picker for Save project, which needs the window's handle.
+    /// </summary>
+    public event EventHandler? ChooseStudioProjectFolderRequested;
+
+    private void OnChooseStudioProjectFolder(object sender, RoutedEventArgs e) =>
+        ChooseStudioProjectFolderRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnUseDefaultStudioProjectFolder(object sender, RoutedEventArgs e) =>
+        ViewModel.UseDefaultStudioProjectFolder();
+
     private void OnOpenTempFolder(object sender, RoutedEventArgs e) => ViewModel.OpenTempFolder();
 
     /// <summary>
