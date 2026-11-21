@@ -436,6 +436,8 @@ class CaptureSettings: ObservableObject {
     /// The most disk space the Studio projects that cleanup may remove can use before the ones
     /// opened longest ago are removed. Drafts and kept projects are not counted. Zero is no limit.
     @AppStorage("studioStorageCapGigabytes") var studioStorageCapGigabytes: Int = 10
+    /// Where Save Project and Save Project As start, or empty for Studio inside the video folder.
+    @AppStorage(StudioProjectSaveLocation.settingsKey) var studioProjectFolder: String = ""
     @AppStorage(CaptureSettingsDefaultsKey.studioExportResolution) var studioExportResolution: String = StudioExportChoice.default.resolution.rawValue
     @AppStorage(CaptureSettingsDefaultsKey.studioExportQuality) var studioExportQuality: String = StudioExportChoice.default.quality.rawValue
 
@@ -873,7 +875,7 @@ class CaptureSettings: ObservableObject {
         "videoMouseClickColorHex", "videoMouseClickSize", "videoMouseClickStrokeWidth", "videoMouseClickOpacity", "videoMouseClickDuration",
         "gifMouseClickColorHex", "gifMouseClickSize", "gifMouseClickStrokeWidth", "gifMouseClickOpacity", "gifMouseClickDuration",
         "showTrimmer", "studioPreviewEnabled", "videoAfterRecording", "studioDefaultLook",
-        "studioSourceRetentionDays", "studioStorageCapGigabytes", studioCaptionLanguageKey,
+        "studioSourceRetentionDays", "studioStorageCapGigabytes", StudioProjectSaveLocation.settingsKey, studioCaptionLanguageKey,
         studioExportResolutionKey, CaptureSettingsDefaultsKey.studioExportQuality,
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
@@ -1131,5 +1133,55 @@ final class UploadcareCredentialsStore {
             kSecAttrAccount as String: account
         ]
         SecItemDelete(query as CFDictionary)
+    }
+}
+
+/// Where Studio's Save Project and Save Project As start: the folder chosen in Settings, or a
+/// Studio folder inside the video folder. A project already saved to a folder keeps saving there,
+/// and drafts and recordings stay in Studio's own storage.
+enum StudioProjectSaveLocation {
+    static let settingsKey = "studioProjectFolder"
+    static let defaultFolderName = "Studio"
+
+    static func defaultFolder(in videoFolder: URL) -> URL {
+        videoFolder.appendingPathComponent(defaultFolderName, isDirectory: true)
+    }
+
+    /// Whether the setting names a folder of the user's own choosing.
+    static func isCustom(_ configured: String) -> Bool {
+        configured.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/")
+    }
+
+    /// The folder Save Project starts in. Does not touch the disk.
+    static func resolve(configured: String, videoFolder: URL) -> URL {
+        isCustom(configured)
+            ? URL(fileURLWithPath: configured.trimmingCharacters(in: .whitespacesAndNewlines), isDirectory: true)
+            : defaultFolder(in: videoFolder)
+    }
+
+    /// The folder Save Project starts in, made ready to open. A chosen folder that is gone falls
+    /// back to the default, which is created when missing; the video folder is used when it cannot
+    /// be. `folderExists` is false-negative on the App Store build for folders outside the
+    /// sandbox, so that build trusts a chosen folder and lets the save panel find it.
+    static func prepare(
+        configured: String,
+        videoFolder: URL,
+        trustChosenFolder: Bool = false,
+        fileManager: FileManager = .default
+    ) -> URL {
+        if isCustom(configured) {
+            let chosen = resolve(configured: configured, videoFolder: videoFolder)
+            var isDirectory: ObjCBool = false
+            if trustChosenFolder || (fileManager.fileExists(atPath: chosen.path, isDirectory: &isDirectory) && isDirectory.boolValue) {
+                return chosen
+            }
+        }
+        let studio = defaultFolder(in: videoFolder)
+        do {
+            try fileManager.createDirectory(at: studio, withIntermediateDirectories: true)
+            return studio
+        } catch {
+            return videoFolder
+        }
     }
 }

@@ -437,4 +437,48 @@ final class CaptureSettingsTests: XCTestCase {
             XCTAssertTrue(settings.hotKeyBinding(for: action).isUnbound)
         }
     }
+
+    func testStudioProjectFolderDefaultsToStudioInsideTheVideoFolder() {
+        let videos = URL(fileURLWithPath: "/Users/someone/Movies/TinyClips", isDirectory: true)
+
+        for configured in ["", "   ", "relative/folder"] {
+            XCTAssertFalse(StudioProjectSaveLocation.isCustom(configured))
+            XCTAssertEqual(StudioProjectSaveLocation.resolve(configured: configured, videoFolder: videos).path, "/Users/someone/Movies/TinyClips/Studio")
+        }
+        XCTAssertTrue(StudioProjectSaveLocation.isCustom(" /Volumes/Work/Projects "))
+        XCTAssertEqual(StudioProjectSaveLocation.resolve(configured: " /Volumes/Work/Projects ", videoFolder: videos).path, "/Volumes/Work/Projects")
+    }
+
+    func testStudioProjectFolderPrepareCreatesTheDefaultAndFallsBack() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("TinyClipsSaveLocation-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let videos = root.appendingPathComponent("Videos", isDirectory: true)
+        let chosen = root.appendingPathComponent("Projects", isDirectory: true)
+
+        // A chosen folder that is gone falls back to the default, which is created.
+        let prepared = StudioProjectSaveLocation.prepare(configured: chosen.path, videoFolder: videos)
+        XCTAssertEqual(prepared.standardizedFileURL.path, videos.appendingPathComponent("Studio").standardizedFileURL.path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: prepared.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: chosen.path))
+
+        // The App Store build cannot see outside its sandbox, so it trusts the chosen folder.
+        XCTAssertEqual(StudioProjectSaveLocation.prepare(configured: chosen.path, videoFolder: videos, trustChosenFolder: true).path, chosen.path)
+
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        XCTAssertEqual(StudioProjectSaveLocation.prepare(configured: chosen.path, videoFolder: videos).path, chosen.path)
+
+        // When Studio cannot be created, the video folder is used.
+        let blocked = root.appendingPathComponent("Blocked", isDirectory: true)
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+        try Data("a file".utf8).write(to: blocked.appendingPathComponent("Studio"))
+        XCTAssertEqual(StudioProjectSaveLocation.prepare(configured: "", videoFolder: blocked).path, blocked.path)
+    }
+
+    func testResetClearsTheStudioProjectFolder() {
+        defaults.set("/Volumes/Work/Projects", forKey: StudioProjectSaveLocation.settingsKey)
+
+        CaptureSettings.resetStoredDefaults(defaults)
+
+        XCTAssertNil(defaults.object(forKey: StudioProjectSaveLocation.settingsKey))
+    }
 }

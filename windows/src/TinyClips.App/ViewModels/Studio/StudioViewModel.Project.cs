@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using TinyClips.Core.Models;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 
@@ -91,19 +92,12 @@ public sealed partial class StudioViewModel
     public string SuggestedProjectFolderName => StudioProjectFolder.FolderName(ClipName);
 
     /// <summary>
-    /// Where Save project starts: the folder a project was last saved in, while it is still
-    /// there, and otherwise Documents.
+    /// Where Save project and Save project as start: the Studio projects folder chosen in
+    /// Settings, or a Studio folder inside the videos folder, created when it is missing. A
+    /// project already saved to a folder keeps saving there without asking.
     /// </summary>
-    public string ProjectSaveFolder
-    {
-        get
-        {
-            var last = _settings.StudioProjectSaveFolder;
-            return !string.IsNullOrWhiteSpace(last) && Directory.Exists(last)
-                ? last
-                : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        }
-    }
+    public string ProjectSaveFolder =>
+        StudioProjectSaveLocation.Prepare(_settings.StudioProjectFolder, _storage.OutputDirectory(CaptureType.Video));
 
     /// <summary>The question Delete project asks, with the project's name.</summary>
     public string DeleteProjectTitle => StudioProjectFolderText.GetDeleteTitle(Project?.Name);
@@ -237,8 +231,6 @@ public sealed partial class StudioViewModel
         switch (result.Outcome)
         {
             case StudioProjectFolderSaveOutcome.Saved when result.ProjectFilePath is { } projectFile:
-                // The next save starts where this one went.
-                _settings.StudioProjectSaveFolder = Path.GetDirectoryName(target.Folder) ?? string.Empty;
                 Announce(StudioProjectFolderText.GetSavedMessage(projectFile), ProjectSaveActivityId, StudioAnnouncementKind.Completed);
                 ProjectSaved?.Invoke(this, new StudioProjectSavedEventArgs(projectFile));
                 break;

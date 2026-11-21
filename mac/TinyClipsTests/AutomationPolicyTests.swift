@@ -101,6 +101,12 @@ final class AutomationPolicyTests: XCTestCase {
         XCTAssertNil(AutomationSetting.named("studioPreviewEnabled"))
     }
 
+    @MainActor
+    func testStudioProjectFolderIsReadOnlyForAgents() throws {
+        let setting = try XCTUnwrap(AutomationSetting.named("studioProjectFolder"))
+        XCTAssertFalse(setting.writable)
+    }
+
     func testErrorCodesMatchContract() throws {
         let contract = try loadContract()
         XCTAssertEqual(Set(AutomationErrorCode.allCases.map(\.rawValue)), Set(contract.errors.keys))

@@ -369,10 +369,10 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set(StudioDefaultLookKey, value is null ? string.Empty : StudioLookText.Write(value));
     }
 
-    public string StudioProjectSaveFolder
+    public string StudioProjectFolder
     {
-        get => _settings.Get("studioProjectSaveFolder", string.Empty);
-        set => _settings.Set("studioProjectSaveFolder", value ?? string.Empty);
+        get => _settings.Get("studioProjectFolder", string.Empty);
+        set => _settings.Set("studioProjectFolder", value?.Trim() ?? string.Empty);
     }
 
     public bool RecordAudio
@@ -964,7 +964,7 @@ public sealed class CaptureSettings : ICaptureSettings
         StudioCaptionModelId = TinyClips.Core.Studio.Transcription.StudioCaptionModels.Default.Id;
         StudioStorageCapGigabytes = DefaultStudioStorageCapGigabytes;
         StudioDefaultLook = null;
-        StudioProjectSaveFolder = string.Empty;
+        StudioProjectFolder = string.Empty;
         RecordAudio = false;
         RecordMicrophone = false;
         SelectedMicrophoneId = string.Empty;

@@ -8,6 +8,7 @@ own `CHANGELOG.md` at the repository root.
 ### Added
 - Open MP4 and MOV files directly in Studio from File Explorer with **Open with → Tiny Clips**, without changing the default player.
 - The Clips Library has a Studio Projects section for finding and reopening projects and drafts. Agents can open stored projects by ID with `studio.project.open`.
+- Settings → Studio has a **Save project folder** for Studio's **Save project** and **Save project as**, defaulting to a `Studio` folder inside the videos save folder; it replaces starting where the last project was saved. Projects already saved to a folder keep saving there, and drafts and recordings stay in Studio's own storage. Agents can read it as the read-only `studioProjectFolder` setting.
 
 ### Fixed
 - MOV files appear in Clips Library and `library.list`. For a cross-platform `editor.open` result with an absolute path, pass `resultFormat=standard`.

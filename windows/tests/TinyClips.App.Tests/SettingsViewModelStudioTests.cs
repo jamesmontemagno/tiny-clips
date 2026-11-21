@@ -226,6 +226,29 @@ public sealed class SettingsViewModelStudioTests : IDisposable
         Assert.Equal(!showTrimmer, _settings.ShowTrimmer);
     }
 
+    // ---- The Save project folder
+
+    [Fact]
+    public void TheSaveProjectFolder_ShowsTheDefault_SavesAChosenFolder_AndUseDefaultPutsItBack()
+    {
+        var chosen = Path.Combine(_directory, "Projects I keep");
+        _settings.StudioProjectFolder = chosen;
+        var vm = CreateViewModel();
+        Show(vm, SettingsSectionKind.Studio);
+        Assert.Equal(chosen, vm.StudioProjectFolder);
+        Assert.Equal(chosen, vm.StudioProjectFolderDisplay);
+        Assert.True(vm.IsStudioProjectFolderCustom);
+
+        vm.UseDefaultStudioProjectFolder();
+
+        Assert.Equal(string.Empty, _settings.StudioProjectFolder);
+        Assert.False(vm.IsStudioProjectFolderCustom);
+        Assert.Equal($"{Path.Combine(VideosFolder, "Studio")} (default)", vm.StudioProjectFolderDisplay);
+
+        // Showing where it would be does not make the folder.
+        Assert.False(Directory.Exists(Path.Combine(VideosFolder, "Studio")));
+    }
+
     // ---- The storage rules
 
     [Fact]

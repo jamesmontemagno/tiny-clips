@@ -238,7 +238,7 @@ public sealed partial class SettingsWindow : Window
                 WinRT.Interop.WindowNative.GetWindowHandle(this)),
             SettingsSectionKind.Screenshot => new ScreenshotSettingsSection(ViewModel),
             SettingsSectionKind.Video => new VideoSettingsSection(ViewModel),
-            SettingsSectionKind.Studio => new StudioSettingsSection(ViewModel),
+            SettingsSectionKind.Studio => CreateStudioSection(),
             SettingsSectionKind.Gif => new GifSettingsSection(ViewModel),
             SettingsSectionKind.MouseClicks => new MouseClicksSettingsSection(ViewModel),
             SettingsSectionKind.Teleprompter => CreateTeleprompterSection(),
@@ -260,6 +260,26 @@ public sealed partial class SettingsWindow : Window
         var section = new GeneralSettingsSection(ViewModel);
         section.BrowseSaveDirectoryRequested += OnBrowseSaveDirectoryRequested;
         return section;
+    }
+
+    private StudioSettingsSection CreateStudioSection()
+    {
+        var section = new StudioSettingsSection(ViewModel);
+        section.ChooseStudioProjectFolderRequested += OnChooseStudioProjectFolderRequested;
+        return section;
+    }
+
+    private async void OnChooseStudioProjectFolderRequested(object? sender, EventArgs e)
+    {
+        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.VideosLibrary };
+        picker.FileTypeFilter.Add("*");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+
+        StorageFolder? folder = await picker.PickSingleFolderAsync();
+        if (!_closed && folder is not null)
+        {
+            ViewModel.StudioProjectFolder = folder.Path;
+        }
     }
 
     private TeleprompterSettingsSection CreateTeleprompterSection()

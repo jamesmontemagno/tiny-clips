@@ -456,6 +456,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(GifSaveLocationDisplay))]
     [NotifyPropertyChangedFor(nameof(SaveLocationModeDisplay))]
     [NotifyPropertyChangedFor(nameof(CustomSaveLocationsVisibility))]
+    [NotifyPropertyChangedFor(nameof(StudioProjectFolderDisplay))]
     private bool _useDefaultSaveDirectories;
 
     [ObservableProperty]
@@ -464,6 +465,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(VideoSaveLocationDisplay))]
+    [NotifyPropertyChangedFor(nameof(StudioProjectFolderDisplay))]
     private string _videoSaveDirectory = string.Empty;
 
     [ObservableProperty]
@@ -703,6 +705,23 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private double _studioStorageCapGigabytes = CaptureSettings.DefaultStudioStorageCapGigabytes;
+
+    /// <summary>The folder Save project starts in, as chosen here; empty for the default.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StudioProjectFolderDisplay))]
+    [NotifyPropertyChangedFor(nameof(IsStudioProjectFolderCustom))]
+    private string _studioProjectFolder = string.Empty;
+
+    /// <summary>Where Save project starts, with "(default)" after the default folder.</summary>
+    public string StudioProjectFolderDisplay => StudioProjectSaveLocation.IsCustom(StudioProjectFolder)
+        ? StudioProjectFolder
+        : $"{StudioProjectSaveLocation.GetDefaultFolder(_storage.OutputDirectory(CaptureType.Video))} (default)";
+
+    /// <summary>Whether a folder other than the default was chosen, which Use default puts back.</summary>
+    public bool IsStudioProjectFolderCustom => StudioProjectSaveLocation.IsCustom(StudioProjectFolder);
+
+    /// <summary>Goes back to the default folder for Save project: Studio inside the videos folder.</summary>
+    public void UseDefaultStudioProjectFolder() => StudioProjectFolder = string.Empty;
 
     /// <summary>What the speech models for captions take up, such as "1 model downloaded, using 141 MB."</summary>
     [ObservableProperty]
@@ -1389,6 +1408,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             {
                 StudioSourceRetentionDays = _settings.StudioSourceRetentionDays;
                 StudioStorageCapGigabytes = _settings.StudioStorageCapGigabytes;
+                StudioProjectFolder = _settings.StudioProjectFolder;
             }
 
             if (kind is null or SettingsSectionKind.Uploadcare)
@@ -2023,6 +2043,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         Persist(SettingsSectionKind.Studio, () => _settings.StudioSourceRetentionDays = (int)Math.Round(value));
     }
+
+    partial void OnStudioProjectFolderChanged(string value) =>
+        Persist(SettingsSectionKind.Studio, () => _settings.StudioProjectFolder = value);
 
     partial void OnStudioStorageCapGigabytesChanged(double value)
     {

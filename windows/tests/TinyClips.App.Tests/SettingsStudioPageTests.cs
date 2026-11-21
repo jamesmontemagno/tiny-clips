@@ -60,7 +60,8 @@ public sealed partial class SettingsStudioPageTests
         Assert.All(
             Enum.GetNames<SettingsSectionKind>(),
             kind => Assert.Contains($"SettingsSectionKind.{kind} => ", code, StringComparison.Ordinal));
-        Assert.Contains("SettingsSectionKind.Studio => new StudioSettingsSection(ViewModel)", code, StringComparison.Ordinal);
+        Assert.Contains("SettingsSectionKind.Studio => CreateStudioSection()", code, StringComparison.Ordinal);
+        Assert.Contains("section.ChooseStudioProjectFolderRequested += OnChooseStudioProjectFolderRequested;", code, StringComparison.Ordinal);
     }
 
     // ---- What is on it
@@ -146,11 +147,13 @@ public sealed partial class SettingsStudioPageTests
         var elements = SettingsMarkup.Elements(StudioPage);
         var projects = elements.Single(element => element.Attr("Text") == "Projects");
 
-        // Under the heading, up to the next one: one card with one button.
+        // Under the heading, up to the next one: Open a saved project, then the Save project folder.
         var under = projects.ElementsAfterSelf()
             .TakeWhile(element => element.Attr("AutomationProperties.HeadingLevel") is null)
             .ToList();
-        var card = Assert.Single(under);
+        Assert.Equal(["SettingsCard", "SettingsCard"], under.Select(element => element.Name.LocalName));
+        Assert.Equal("StudioProjectFolderCard", under[1].Attr(Id));
+        var card = under[0];
         Assert.Equal("SettingsCard", card.Name.LocalName);
         Assert.Equal("Open a saved project", card.Attr("Header"));
         Assert.Contains("The project is copied into Studio as a new draft, and the folder is only read.", card.Attr("Description"));

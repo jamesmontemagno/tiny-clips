@@ -218,7 +218,10 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
         var saved = new List<string>();
         viewModel.ProjectSaved += (_, e) => saved.Add(e.ProjectFilePath);
         Assert.Equal("My- Demo", viewModel.SuggestedProjectFolderName);
-        Assert.Equal(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), viewModel.ProjectSaveFolder);
+        // Save starts in Studio inside the videos folder, which is made for it.
+        var studioFolder = Path.Combine(VideosFolder, "Studio");
+        Assert.Equal(studioFolder, viewModel.ProjectSaveFolder);
+        Assert.True(Directory.Exists(studioFolder));
         viewModel.CanvasPadding = 0.12;
         var target = viewModel.CheckSaveTarget(_outside, viewModel.SuggestedProjectFolderName);
         Assert.Equal(StudioSaveTargetKind.Free, target.Kind);
@@ -250,8 +253,14 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
         Assert.Equal(["Saving project\u2026", "Project saved to the folder My- Demo."], Announcements);
         Assert.False(viewModel.HasError);
 
-        // The folder has the edit the editor held, and the next save starts where this one went.
+        // The folder has the edit the editor held, and the next save still starts in the Save
+        // project folder: a save does not change it.
         Assert.Equal(0.12, Projects.OpenProjectFolder(file, cancellationToken: TestContext.Current.CancellationToken).Canvas.Padding, Precision);
+        Assert.Equal(studioFolder, viewModel.ProjectSaveFolder);
+        Assert.Equal(string.Empty, Settings.StudioProjectFolder);
+
+        // A folder chosen in Settings is where it starts instead.
+        Settings.StudioProjectFolder = _outside;
         Assert.Equal(_outside, viewModel.ProjectSaveFolder);
     }
 
@@ -275,7 +284,7 @@ public sealed class StudioViewModelProjectTests : StudioViewModelTestBase, IDisp
         Assert.Empty(saved);
         Assert.Equal(["holiday.jpg"], Directory.GetFileSystemEntries(target.Folder).Select(Path.GetFileName));
         Assert.True(viewModel.IsEditable);
-        Assert.Equal(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), viewModel.ProjectSaveFolder);
+        Assert.Equal(Path.Combine(VideosFolder, "Studio"), viewModel.ProjectSaveFolder);
     }
 
     [Fact]
