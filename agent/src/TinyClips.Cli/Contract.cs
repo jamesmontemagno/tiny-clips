@@ -101,6 +101,13 @@ internal sealed class Contract
 
     public static string? Validate(CommandSpec command, JsonObject parameters)
     {
+        if (command.Name == "app.open" && parameters.ContainsKey("guideTopic"))
+        {
+            if (parameters["guideTopic"] is null) return "\"guideTopic\" must be string.";
+            if (parameters["window"] is not JsonValue window ||
+                !window.TryGetValue<string>(out var windowName) || windowName != "guide")
+                return "\"guideTopic\" is valid only when window is guide.";
+        }
         foreach (var (key, spec) in command.Params)
         {
             if (!parameters.TryGetPropertyValue(key, out var value) || value is null)

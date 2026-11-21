@@ -5,7 +5,7 @@ description: Inspect, edit, suggest zooms for, and export Tiny Clips Studio proj
 
 # Edit a Tiny Clips Studio project
 
-Needs `read` to inspect, `edit` to change a project, and `export` to render a video. If Studio is disabled, tell the user to enable it in Tiny Clips Settings. If access is missing, use the tinyclips-setup skill.
+Needs `read` to inspect, `edit` to change a project, and `export` to render a video. If access is missing, use the tinyclips-setup skill.
 
 1. Discover projects with `tinyclips studio.projects.list`; use the returned `projectId`, never a guessed ID or project-file path.
    To show a project in its Studio editor, use `tinyclips studio.project.open projectId=<id>` with `edit` scope.

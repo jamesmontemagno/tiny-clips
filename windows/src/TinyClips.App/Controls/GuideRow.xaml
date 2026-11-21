@@ -19,13 +19,14 @@
             Background="{ThemeResource AccentFillColorDefaultBrush}"
             CornerRadius="{ThemeResource ControlCornerRadius}">
             <FontIcon
+                AutomationProperties.AccessibilityView="Raw"
                 FontFamily="Segoe Fluent Icons"
                 FontSize="18"
                 Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                 Glyph="{x:Bind Glyph, Mode=OneWay}" />
         </Border>
         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind Title, Mode=OneWay}" />
+            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind Title, Mode=OneWay}" TextWrapping="Wrap" />
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"

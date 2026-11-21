@@ -13,6 +13,14 @@ description: Connect an agent to the Tiny Clips screen capture app on macOS or W
    Add `delete`, `upload`, or `discard` only when the task needs them; those commands still ask the user every time.
 3. Confirm: `tinyclips app.status`.
 
+To show the user the illustrated setup walkthrough, use
+`tinyclips app.open window=guide guideTopic=agents` with `read` scope.
+Other topics are `capture`, `editor`, `recording`, `studio`, `library`, and `help`;
+Help shows current shortcuts. The result reports the selected `guideTopic`.
+This also selects a topic in an already-open Guide. Omit the topic to keep its
+selection; never supply `guideTopic` for Settings or Library. Guide navigation is
+read-only and cannot enable Agent Control or approve pairing.
+
 On macOS, check system notification permission with `tinyclips notifications.status`; it is separate from the `showSaveNotifications` preference. If `canRequest` is true and the agent has the `settings` scope, use `tinyclips notifications.requestPermission` and let the user answer macOS. For denied permission or disabled alerts, use `tinyclips notifications.openSettings` so the user can change TinyClips notification settings. Never claim to grant permission or bypass quiet delivery/Focus. These commands are not supported on Windows.
 
 `unauthorized` after pairing means the client was revoked; pair again. `missing_scope` means the user hasn't granted that scope: tell the user why it's needed and ask them to enable it under Settings → Agent Control → Paired Agents → Permissions (or re-pair with the extra scope).

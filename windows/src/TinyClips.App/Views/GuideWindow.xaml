@@ -3,23 +3,61 @@
     x:Class="TinyClips.App.GuideWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:TinyClips.App"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    Title="Tiny Clips — Guide"
-    mc:Ignorable="d">
+    Title="Tiny Clips — Guide">
     <Window.SystemBackdrop>
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
     <Grid x:Name="RootGrid">
+        <Grid.Resources>
+            <Style x:Key="GuideHeadingStyle" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}">
+                <Setter Property="AutomationProperties.HeadingLevel" Value="Level2" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Margin" Value="4,16,0,4" />
+            </Style>
+            <Style x:Key="GuideBodyStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <!-- Original schematics, not interactive UI or screenshots. A readable caption
+                 exposes each summary via a TextBlock peer; decorative shapes/labels are raw.
+                 Viewbox only scales down. Full-sized text instructions follow every drawing. -->
+            <Style x:Key="GuideDrawingLabelStyle" TargetType="TextBlock">
+                <Setter Property="AutomationProperties.AccessibilityView" Value="Raw" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="GuideDrawingCardStyle" TargetType="Border">
+                <Setter Property="AutomationProperties.AccessibilityView" Value="Raw" />
+                <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="12" />
+            </Style>
+            <Style x:Key="GuideDrawingIconStyle" TargetType="FontIcon">
+                <Setter Property="AutomationProperties.AccessibilityView" Value="Raw" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="FontSize" Value="24" />
+            </Style>
+            <Style x:Key="GuideDiagramStyle" TargetType="Border" BasedOn="{StaticResource SettingCardStyle}">
+                <Setter Property="AutomationProperties.AccessibilityView" Value="Raw" />
+                <Setter Property="IsHitTestVisible" Value="False" />
+            </Style>
+            <Style x:Key="GuideDrawingSummaryStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="AutomationProperties.AccessibilityView" Value="Content" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+        </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!--  Native WinUI TitleBar: icon, drag region, and DWM chrome.  -->
         <TitleBar
             x:Name="AppTitleBar"
             Grid.Row="0"
@@ -30,459 +68,486 @@
                 <ImageIconSource ImageSource="/Assets/AppIcon.ico" />
             </TitleBar.IconSource>
         </TitleBar>
-
-        <StackPanel
-            Grid.Row="1"
-            MaxWidth="720"
-            Margin="24,8,24,16"
-            Spacing="8">
-            <TextBlock
-                AutomationProperties.HeadingLevel="Level1"
-                Style="{StaticResource TitleTextBlockStyle}"
-                Text="Getting started with Tiny Clips"
-                TextWrapping="Wrap" />
-            <TextBlock
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Style="{StaticResource BodyTextBlockStyle}"
-                Text="Tiny Clips lives in your system tray. Click the tray icon any time to capture a screenshot, video, GIF, or text from your screen."
-                TextWrapping="Wrap" />
+        <StackPanel Grid.Row="1" Margin="24,8,24,16" Spacing="4">
+            <TextBlock AutomationProperties.HeadingLevel="Level1"
+                       Style="{StaticResource TitleTextBlockStyle}" Text="Tiny Clips handbook" TextWrapping="Wrap" />
+            <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Style="{StaticResource GuideBodyStyle}" Text="Capture, polish, organize, and share. These pages work offline." />
         </StackPanel>
 
-        <TabView
-            x:Name="GuideTabs"
-            Grid.Row="2"
-            Margin="24,0,24,0"
-            AutomationProperties.AutomationId="GuideTabs"
-            AutomationProperties.Name="Guide topics"
-            CanDragTabs="False"
-            CanReorderTabs="False"
-            IsAddTabButtonVisible="False"
-            SelectedIndex="0"
-            TabWidthMode="SizeToContent">
-            <TabViewItem
-                AutomationProperties.AutomationId="GuideCaptureTab"
-                AutomationProperties.Name="Capture"
-                Header="Capture"
-                IsClosable="False">
-                <ScrollViewer
-                    AutomationProperties.Name="Capture guide"
-                    HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
-                    <StackPanel MaxWidth="720" Margin="0,8,8,24" Spacing="8">
-                        <!--  Capture modes  -->
-                        <TextBlock
-                            Margin="4,16,0,4"
-                            AutomationProperties.HeadingLevel="Level2"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="Capture modes" />
-
+        <!-- Native TabView provides keyboard navigation and overflow scroll buttons at narrow
+             widths. Only page content scrolls; the title and topic navigation stay visible. -->
+        <TabView x:Name="GuideTabs" Grid.Row="2" Margin="24,0,24,0"
+                 AutomationProperties.AutomationId="GuideTabs" AutomationProperties.Name="Guide topics"
+                 CanDragTabs="False" CanReorderTabs="False" IsAddTabButtonVisible="False"
+                 SelectedIndex="0" TabWidthMode="SizeToContent">
+            <TabViewItem Header="Capture" Tag="capture" IsClosable="False"
+                         AutomationProperties.AutomationId="GuideCaptureTab" AutomationProperties.Name="Capture">
+                <ScrollViewer AutomationProperties.Name="Capture guide"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Stretch" Margin="0,8,8,24" Spacing="12">
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Capture overview" />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Tiny Clips lives in the system tray. Take a still image, record an MP4 or GIF, stitch a long page, or copy text from the screen." />
+                        <Border Style="{StaticResource GuideDiagramStyle}" AutomationProperties.AutomationId="GuideCaptureDrawing"
+                                AutomationProperties.Name="Capture illustration: the tray opens a picker; select a region, screen, or window, then produce an image. Scrolling joins overlapping views; OCR produces text instead.">
+                            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" AutomationProperties.AccessibilityView="Raw">
+                                <Grid Width="560" Height="180" ColumnSpacing="12" RowSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100" /><ColumnDefinition Width="32" />
+                                        <ColumnDefinition Width="240" /><ColumnDefinition Width="32" /><ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource GuideDrawingCardStyle}" VerticalAlignment="Center">
+                                        <StackPanel Spacing="12">
+                                            <FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE7AA;" />
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Tray" TextAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
+                                    <FontIcon Grid.Column="1" Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE72A;" />
+                                    <Border Grid.Column="2" Style="{StaticResource GuideDrawingCardStyle}">
+                                        <Grid RowSpacing="12">
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Region • Screen • Window" />
+                                            <Rectangle Grid.Row="1" Margin="12,0" Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="3"
+                                                       Fill="{ThemeResource SubtleFillColorSecondaryBrush}" AutomationProperties.AccessibilityView="Raw" />
+                                            <TextBlock Grid.Row="1" Style="{StaticResource GuideDrawingLabelStyle}" Text="Selected area" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                    <FontIcon Grid.Column="3" Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE72A;" />
+                                    <Border Grid.Column="4" Style="{StaticResource GuideDrawingCardStyle}" VerticalAlignment="Center">
+                                        <StackPanel Spacing="12">
+                                            <FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE91B;" />
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Image" TextAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Viewbox>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideDrawingSummaryStyle}" AutomationProperties.AutomationId="GuideCaptureDrawingSummary"
+                                   Text="Illustration: Tray → picker → selected area → image. Scrolling joins overlapping views; OCR produces text instead." />
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Choose the output and target" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow
-                                    Glyph="&#xE722;"
-                                    Subtitle="Save a region, window, or full screen as PNG or JPEG, then annotate or crop in the built-in editor."
-                                    Title="Screenshot" />
-                                <local:GuideRow
-                                    Glyph="&#xE714;"
-                                    Subtitle="Record your screen to MP4 with optional microphone audio and a webcam overlay."
-                                    Title="Video" />
-                                <local:GuideRow
-                                    Glyph="&#xE786;"
-                                    Subtitle="Record a short animated GIF with a configurable frame rate, maximum width, and click highlights."
-                                    Title="GIF" />
-                                <local:GuideRow
-                                    Glyph="&#xE8D2;"
-                                    Subtitle="Select a screen region; Windows OCR extracts the text and copies it straight to the clipboard."
-                                    Title="Recognize Text" />
+                                <local:GuideRow Glyph="&#xE722;" Title="Screenshot, Video, or GIF" Subtitle="Use the tray tiles or a saved shortcut. Screenshots support PNG, JPEG, and WebP. Ordinary video saves H.264 MP4; GIF is a silent animation. Studio is a separate recording entry point." />
+                                <local:GuideRow Glyph="&#xE7A8;" Title="Region, Screen, or Window" Subtitle="In the picker, R selects a rectangle, S selects a monitor, and W selects an application window. Direct screenshot shortcuts skip the picker. Cancel with Esc." />
+                                <local:GuideRow Glyph="&#xE8D2;" Title="Recognize Text" Subtitle="Use Capture Text in the tray or your saved OCR shortcut, then select a region. Windows OCR copies recognized text to the clipboard instead of saving an image. Check the result; accuracy depends on text size, contrast, and installed OCR language support." />
                             </StackPanel>
                         </Border>
-
-                        <!--  Picker  -->
-                        <TextBlock
-                            Margin="4,16,0,4"
-                            AutomationProperties.HeadingLevel="Level2"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="Choosing what to capture" />
-
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Take a screenshot — step by step" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow
-                                    Glyph="&#xE7A8;"
-                                    Subtitle="Press R to draw a rectangle around any area of the screen."
-                                    Title="Region" />
-                                <local:GuideRow
-                                    Glyph="&#xE7F4;"
-                                    Subtitle="Press S to capture an entire monitor."
-                                    Title="Screen" />
-                                <local:GuideRow
-                                    Glyph="&#xE737;"
-                                    Subtitle="Press W to capture a specific application window."
-                                    Title="Window" />
-                                <local:GuideRow
-                                    Glyph="&#xE8A1;"
-                                    Subtitle="Press P (screenshots only) to select a region, scroll the page, then press Done to stitch the frames into one tall image."
-                                    Title="Scroll" />
-                                <local:GuideRow
-                                    Glyph="&#xE8D2;"
-                                    Subtitle="Press T to select a region and copy its recognized text to the clipboard."
-                                    Title="Recognize Text" />
+                                <local:GuideRow Glyph="&#xE734;" Title="1. Open the tray and choose Screenshot" Subtitle="Pick Region, Screen, or Window, then select what belongs in the image. Keep unrelated personal information out of the selection." />
+                                <local:GuideRow Glyph="&#xE70F;" Title="2. Review the result" Subtitle="The editor opens if Open editor after capture is enabled in Settings → Screenshot. Add annotations or redactions before sharing." />
+                                <local:GuideRow Glyph="&#xE74E;" Title="3. Find or copy your capture" Subtitle="Settings → Screenshot controls the save folder, format, scale, clipboard copy, and editor behavior. Recent captures and the tray's capture folders help you find saved files; the Library holds the longer history." />
                             </StackPanel>
                         </Border>
-
-                        <!--  Tray quick access  -->
-                        <TextBlock
-                            Margin="4,16,0,4"
-                            AutomationProperties.HeadingLevel="Level2"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="Tray quick access" />
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Capture a scrolling page — step by step" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow
-                                    Glyph="&#xE7AA;"
-                                    Subtitle="Left- or right-click the tray icon to open the quick access popup. Screenshot, Video, and GIF tiles each show the current shortcut. Use Capture Text for instant OCR."
-                                    Title="Quick access popup" />
-                                <local:GuideRow
-                                    Glyph="&#xE81C;"
-                                    Subtitle="Open your most recent captures or browse save folders by capture type directly from the popup, without opening the full library."
-                                    Title="Recent captures and folders" />
+                                <local:GuideRow Glyph="&#xE8A1;" Title="1. Choose Scroll (P) in the Screenshot picker" Subtitle="Select the content region, avoiding unnecessary sidebars or fixed controls. Scrolling capture is for screenshots, not video or GIF." />
+                                <local:GuideRow Glyph="&#xE70E;" Title="2. Scroll gradually with overlap" Subtitle="Keep clear shared content between views. Tiny Clips captures and stitches; it does not scroll for you. Large jumps without enough overlap are skipped. The lower overlap is retained until the final frame to avoid repeating bottom-floating controls." />
+                                <local:GuideRow Glyph="&#xE73E;" Title="3. Choose Done and review the tall image" Subtitle="Done stitches the frames; Cancel discards them. Enter and Esc work when the floating panel has focus; after clicking the page, use its buttons. Capture stops and saves automatically at its memory limit. Check joins and missing content before sharing." />
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabViewItem>
 
-            <TabViewItem
-                AutomationProperties.AutomationId="GuideShortcutsTab"
-                AutomationProperties.Name="Shortcuts"
-                Header="Shortcuts"
-                IsClosable="False">
-                <ScrollViewer
-                    AutomationProperties.Name="Keyboard shortcuts guide"
-                    HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
-                    <StackPanel MaxWidth="720" Margin="0,8,8,24" Spacing="8">
-                        <!--  Shortcuts  -->
-                        <TextBlock
-                            Margin="4,16,0,4"
-                            AutomationProperties.HeadingLevel="Level2"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="Keyboard shortcuts" />
-
-                        <TextBlock
-                            Text="Only Screenshot is assigned by default. Change or clear global bindings in Settings → Keyboard shortcuts. Stop recording is optional and active only during recording; the floating Stop button is always available."
-                            TextWrapping="Wrap" />
-
+            <TabViewItem Header="Editor" Tag="editor" IsClosable="False"
+                         AutomationProperties.AutomationId="GuideEditorTab" AutomationProperties.Name="Editor">
+                <ScrollViewer AutomationProperties.Name="Screenshot editor guide"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Stretch" Margin="0,8,8,24" Spacing="12">
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Editor overview" />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Turn a screenshot into an explanation. Annotate, crop, cover private details, and compose an export frame before copying or saving." />
+                        <Border Style="{StaticResource GuideDiagramStyle}" AutomationProperties.AutomationId="GuideEditorDrawing"
+                                AutomationProperties.Name="Editor illustration: a screenshot sits inside a padded export frame, with an arrow and label pointing to a feature and a solid cover hiding private text.">
+                            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" AutomationProperties.AccessibilityView="Raw">
+                                <Grid Width="560" Height="200">
+                                    <Border Style="{StaticResource GuideDrawingCardStyle}" Padding="24" Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                        <Grid RowSpacing="12">
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Export frame • padding • background" />
+                                            <Border Grid.Row="1" Style="{StaticResource GuideDrawingCardStyle}" Padding="12">
+                                                <Grid ColumnSpacing="16">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                    <StackPanel Spacing="10">
+                                                        <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Screenshot canvas" />
+                                                        <Border Background="{ThemeResource TextFillColorPrimaryBrush}" Height="30" CornerRadius="4" AutomationProperties.AccessibilityView="Raw" />
+                                                        <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Solid redaction" />
+                                                    </StackPanel>
+                                                    <Line Grid.Column="1" X1="8" Y1="72" X2="80" Y2="24" StrokeThickness="3" Stroke="{ThemeResource AccentFillColorDefaultBrush}" AutomationProperties.AccessibilityView="Raw" />
+                                                    <Polyline Grid.Column="1" Points="55,24 80,24 80,49" StrokeThickness="3" Stroke="{ThemeResource AccentFillColorDefaultBrush}" AutomationProperties.AccessibilityView="Raw" />
+                                                    <TextBlock Grid.Column="1" Style="{StaticResource GuideDrawingLabelStyle}" Text="Look here" Margin="88,0,0,0" />
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Viewbox>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideDrawingSummaryStyle}" AutomationProperties.AutomationId="GuideEditorDrawingSummary"
+                                   Text="Illustration: The screenshot sits inside a padded export frame. An arrow and label explain a feature; a solid cover hides private text." />
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Tools and finishing touches" />
                         <Border Style="{StaticResource SettingCardStyle}">
-                            <StackPanel Spacing="8">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Screenshot"
-                                        TextWrapping="Wrap" />
-                                    <Border
-                                        Grid.Column="1"
-                                        Padding="10,4"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                        <TextBlock
-                                            x:Name="ScreenshotShortcut"
-                                            FontFamily="Consolas" />
-                                    </Border>
-                                </Grid>
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Screenshot region (skips picker)"
-                                        TextWrapping="Wrap" />
-                                    <Border
-                                        Grid.Column="1"
-                                        Padding="10,4"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                        <TextBlock
-                                            x:Name="ScreenshotRegionShortcut"
-                                            FontFamily="Consolas" />
-                                    </Border>
-                                </Grid>
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Screenshot window (skips picker)"
-                                        TextWrapping="Wrap" />
-                                    <Border
-                                        Grid.Column="1"
-                                        Padding="10,4"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                        <TextBlock
-                                            x:Name="ScreenshotWindowShortcut"
-                                            FontFamily="Consolas" />
-                                    </Border>
-                                </Grid>
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Screenshot screen (skips picker)"
-                                        TextWrapping="Wrap" />
-                                    <Border
-                                        Grid.Column="1"
-                                        Padding="10,4"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                        <TextBlock
-                                            x:Name="ScreenshotScreenShortcut"
-                                            FontFamily="Consolas" />
-                                    </Border>
-                                </Grid>
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Record video"
-                                        TextWrapping="Wrap" />
-                                    <Border
-                                        Grid.Column="1"
-                                        Padding="10,4"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                        <TextBlock
-                                            x:Name="VideoShortcut"
-                                            FontFamily="Consolas" />
-                                    </Border>
-                                </Grid>
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Record GIF"
-                                        TextWrapping="Wrap" />
-                                    <Border
-                                        Grid.Column="1"
-                                        Padding="10,4"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                        <TextBlock
-                                            x:Name="GifShortcut"
-                                            FontFamily="Consolas" />
-                                    </Border>
-                                </Grid>
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Recognize text"
-                                        TextWrapping="Wrap" />
-                                    <Border
-                                        Grid.Column="1"
-                                        Padding="10,4"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                        <TextBlock
-                                            x:Name="OcrShortcut"
-                                            FontFamily="Consolas" />
-                                    </Border>
-                                </Grid>
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Stop recording"
-                                        TextWrapping="Wrap" />
-                                    <Border
-                                        Grid.Column="1"
-                                        Padding="10,4"
-                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                        CornerRadius="{ThemeResource ControlCornerRadius}">
-                                        <TextBlock
-                                            x:Name="StopRecordingShortcut"
-                                            FontFamily="Consolas" />
-                                    </Border>
-                                </Grid>
+                            <StackPanel Spacing="12">
+                                <local:GuideRow Glyph="&#xE70F;" Title="Annotations and adjustments" Subtitle="Use rectangles, ellipses, straight or curved arrows, lines, freehand drawing, text, numbered badges, and emoji. Select an annotation to move or resize it; adjust its color, stroke, fill, or text in the tool panel." />
+                                <local:GuideRow Glyph="&#xE7A8;" Title="Crop, undo, and zoom" Subtitle="Select Crop, draw the area, and apply it. Undo and redo let you revise edits. Zoom to inspect small details and pan around the image; zoom is not the export scale." />
+                                <local:GuideRow Glyph="&#xE790;" Title="Background and frame" Subtitle="Choose a background and adjust padding, rounded corners, and shadow. Windows also accepts a local PNG, JPEG, or WebP background with Fill or Fit; it stays only in the current editor. Choose Original, 1:1, 4:3, 16:9, 3:4, or 9:16, then align the image within the frame." />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Polish and save — step by step" />
+                        <Border Style="{StaticResource SettingCardStyle}">
+                            <StackPanel Spacing="12">
+                                <local:GuideRow Glyph="&#xE8A5;" Title="1. Open and explain the image" Subtitle="Open automatically after capture, reopen from Recent captures or Library, or open a PNG, JPEG, or WebP file with Tiny Clips. Crop first, then add a short label or arrow to the important part." />
+                                <local:GuideRow Glyph="&#xED1A;" Title="2. Cover secrets with solid redaction" Subtitle="Redact offers Blur, Pixelate, and Solid. Use Solid for passwords, keys, and other secrets: blur and pixelation can leave recognizable information. Redactions stay editable in the editor until copy/save renders them into the output." />
+                                <local:GuideRow Glyph="&#xE8D2;" Title="3. Review sensitive-text suggestions" Subtitle="Find sensitive text in the Redact panel uses local OCR to suggest email addresses, phone numbers, and IP addresses. Scanning changes nothing: review and approve or dismiss suggestions, then apply approved ones as opaque covers. It can miss secrets; inspect the entire image." />
+                                <local:GuideRow Glyph="&#xE74E;" Title="4. Compose, copy, or save" Subtitle="Set the background, frame, alignment, and export scale. Copy renders the current result to the clipboard. Save updates the file; Save a copy preserves the original. Review the exported image before sending it." />
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabViewItem>
 
-            <TabViewItem
-                AutomationProperties.AutomationId="GuideEditingTab"
-                AutomationProperties.Name="Edit and record"
-                Header="Edit &amp; record"
-                IsClosable="False">
-                <ScrollViewer
-                    AutomationProperties.Name="Editing and recording guide"
-                    HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
-                    <StackPanel MaxWidth="720" Margin="0,8,8,24" Spacing="8">
-                        <!--  Screenshot editor  -->
-                        <TextBlock
-                            Margin="4,16,0,4"
-                            AutomationProperties.HeadingLevel="Level2"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="Screenshot editor" />
-
+            <TabViewItem Header="Recording" Tag="recording" IsClosable="False"
+                         AutomationProperties.AutomationId="GuideRecordingTab" AutomationProperties.Name="Recording">
+                <ScrollViewer AutomationProperties.Name="Video and GIF recording guide"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Stretch" Margin="0,8,8,24" Spacing="12">
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Recording overview" />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Record Video makes an ordinary MP4; Record GIF makes a silent animation. Choose Studio instead when you want separate screen and camera layers to edit later." />
+                        <Border Style="{StaticResource GuideDiagramStyle}" AutomationProperties.AutomationId="GuideRecordingDrawing"
+                                AutomationProperties.Name="Recording illustration: screen content and a camera bubble are recorded, with optional system and microphone audio. The teleprompter is outside the capture. Trim handles select the final range.">
+                            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" AutomationProperties.AccessibilityView="Raw">
+                                <Grid Width="560" Height="220" ColumnSpacing="12" RowSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="360" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="44" /></Grid.RowDefinitions>
+                                    <Border Style="{StaticResource GuideDrawingCardStyle}">
+                                        <Grid>
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Screen recording" />
+                                            <Ellipse Width="64" Height="64" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                     Fill="{ThemeResource AccentFillColorDefaultBrush}" AutomationProperties.AccessibilityView="Raw" />
+                                            <FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE714;" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,20"
+                                                      Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Audio: system + mic" VerticalAlignment="Bottom" />
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Column="1" Style="{StaticResource GuideDrawingCardStyle}">
+                                        <StackPanel Spacing="12">
+                                            <FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE8A5;" />
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Teleprompter&#x0a;Excluded from capture" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource GuideDrawingCardStyle}" Padding="12,4">
+                                        <Grid>
+                                            <Rectangle Margin="64,4" Fill="{ThemeResource AccentFillColorDefaultBrush}" Opacity="0.3" AutomationProperties.AccessibilityView="Raw" />
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="In  │──────── keep this range ────────│  Out" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Viewbox>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideDrawingSummaryStyle}" AutomationProperties.AutomationId="GuideRecordingDrawingSummary"
+                                   Text="Illustration: Record the screen, optional camera bubble, and audio. The teleprompter stays outside the capture. In and Out handles select the useful range." />
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Before and during a take" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow
-                                    Glyph="&#xE70F;"
-                                    Subtitle="Add rectangles, ellipses, arrows, lines, free-hand drawing, text labels, and numbered badges. Drag handles to reposition or resize any annotation after it is placed."
-                                    Title="Annotations" />
-                                <local:GuideRow
-                                    Glyph="&#xED1A;"
-                                    Subtitle="Permanently obscure sensitive content with the Redact tool, or trim the canvas to any size with Crop. Undo steps back through every change."
-                                    Title="Redact and crop" />
+                                <local:GuideRow Glyph="&#xE720;" Title="Audio and camera" Subtitle="Video can record system audio, microphone audio, or both. Select the microphone and optional webcam overlay; configure its shape, corner, and size in Settings → Video. GIF captures neither microphone nor camera." />
+                                <local:GuideRow Glyph="&#xE916;" Title="Output, clicks, and limits" Subtitle="Review frame rate, audio, click highlights, and time limit in recording setup. Settings → Video and GIF hold countdown and output defaults; GIF also has a maximum width. A time limit stops the take automatically." />
+                                <local:GuideRow Glyph="&#xE8A5;" Title="Teleprompter" Subtitle="Set your transcript and scroll speed in Settings → Teleprompter. Read it while recording without putting it in the output: the teleprompter and live webcam preview remain excluded even when Include Tiny Clips in captures is on." />
+                                <local:GuideRow Glyph="&#xE769;" Title="Recording controls" Subtitle="The floating indicator shows time, pause/resume, restart, discard, and Stop. Restart begins the take again; discard throws it away. Stop is also available in the tray. Help shows your current optional Stop shortcut, which is active only during recording." />
                             </StackPanel>
                         </Border>
-
-                        <!--  Recording extras  -->
-                        <TextBlock
-                            Margin="4,16,0,4"
-                            AutomationProperties.HeadingLevel="Level2"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="Recording extras" />
-
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Record and trim — step by step" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow
-                                    Glyph="&#xE8B8;"
-                                    Subtitle="Overlay a live webcam feed during video recording. Configure shape, corner placement, and size in Settings → Video."
-                                    Title="Webcam overlay" />
-                                <local:GuideRow
-                                    Glyph="&#xE720;"
-                                    Subtitle="Record system audio, microphone audio, or both. Choose your microphone in Settings → Video."
-                                    Title="System and microphone audio" />
-                                <local:GuideRow
-                                    Glyph="&#xE916;"
-                                    Subtitle="Add a countdown before recording starts, cap the recording length, and keep the display awake for the full session — all in Settings → Video."
-                                    Title="Countdown and time limit" />
-                                <local:GuideRow
-                                    Glyph="&#xE8A5;"
-                                    Subtitle="Enable a scrolling text overlay to read from a script while recording. Configure transcript and speed in Settings → Teleprompter."
-                                    Title="Teleprompter" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabViewItem>
-
-            <TabViewItem
-                AutomationProperties.AutomationId="GuideLibraryTab"
-                AutomationProperties.Name="Library"
-                Header="Library"
-                IsClosable="False">
-                <ScrollViewer
-                    AutomationProperties.Name="Clips Library guide"
-                    HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
-                    <StackPanel MaxWidth="720" Margin="0,8,8,24" Spacing="8">
-                        <!--  Clips Library  -->
-                        <TextBlock
-                            Margin="4,16,0,4"
-                            AutomationProperties.HeadingLevel="Level2"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="Clips Library" />
-
-                        <Border Style="{StaticResource SettingCardStyle}">
-                            <StackPanel Spacing="12">
-                                <local:GuideRow
-                                    Glyph="&#xEB9F;"
-                                    Subtitle="Browse all your screenshots, videos, and GIFs in a responsive grid. Open, copy, reveal in Explorer, or delete any capture from the library."
-                                    Title="Browse and manage captures" />
-                                <local:GuideRow
-                                    Glyph="&#xE71C;"
-                                    Subtitle="Filter by capture type and date range (Today, This week, This month) using the Sort &amp; filter flyout in the library toolbar."
-                                    Title="Sort and filter" />
+                                <local:GuideRow Glyph="&#xE714;" Title="1. Choose Video or GIF and a target" Subtitle="Select Region, Screen, or Window. In setup, confirm options and choose Record. If countdown is enabled, use the delay to prepare the screen." />
+                                <local:GuideRow Glyph="&#xE71A;" Title="2. Perform the demonstration, then Stop" Subtitle="Use pause/resume for interruptions. Check that the right microphone and camera are active before a long take. Stop keeps the recording; discard does not." />
+                                <local:GuideRow Glyph="&#xE8A1;" Title="3. Choose the useful range" Subtitle="Enable the post-recording trimmer in Video or GIF settings, or reopen the file from Library. Preview, set the start and end handles, and save the trimmed result. Video can remove audio; GIF lets you inspect individual frames." />
+                                <local:GuideRow Glyph="&#xE91B;" Title="4. Save a still or the recording" Subtitle="In the video trimmer, Copy frame copies the selected frame at source resolution without saving a file; Export frame saves a PNG. Review your saved video or GIF in Library before sharing." />
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabViewItem>
 
-            <TabViewItem
-                AutomationProperties.AutomationId="GuideAgentsTab"
-                AutomationProperties.Name="Agents"
-                Header="Agents"
-                IsClosable="False">
-                <ScrollViewer
-                    AutomationProperties.Name="Agent control guide"
-                    HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
-                    <StackPanel MaxWidth="720" Margin="0,8,8,24" Spacing="8">
-                        <TextBlock
-                            Margin="4,16,0,4"
-                            AutomationProperties.HeadingLevel="Level2"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="Agent control" />
+            <TabViewItem Header="Studio" Tag="studio" IsClosable="False"
+                         AutomationProperties.AutomationId="GuideStudioTab" AutomationProperties.Name="Studio">
+                <ScrollViewer AutomationProperties.Name="Studio guide"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Stretch" Margin="0,8,8,24" Spacing="12">
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Studio overview" />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Studio lets you record once, then change the composition and refine your video with editable layers and a timeline." />
+                        <Border Style="{StaticResource GuideDiagramStyle}" AutomationProperties.AutomationId="GuideStudioDrawing"
+                                AutomationProperties.Name="Studio illustration: separate screen and camera layers feed a composited preview. Scene, zoom, cut, and speed lanes organize edits below the preview; captions sit over the finished frame.">
+                            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" AutomationProperties.AccessibilityView="Raw">
+                                <Grid Width="560" Height="260" ColumnSpacing="16" RowSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition Height="150" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                    <StackPanel Spacing="12">
+                                        <Border Style="{StaticResource GuideDrawingCardStyle}"><TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Screen layer" /></Border>
+                                        <Border Style="{StaticResource GuideDrawingCardStyle}"><TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Camera layer" /></Border>
+                                    </StackPanel>
+                                    <FontIcon Grid.Column="1" Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE72A;" />
+                                    <Border Grid.Column="2" Style="{StaticResource GuideDrawingCardStyle}" Padding="16">
+                                        <Grid>
+                                            <Rectangle Fill="{ThemeResource SubtleFillColorSecondaryBrush}" Stroke="{ThemeResource ControlStrokeColorDefaultBrush}" Margin="0,0,56,24" AutomationProperties.AccessibilityView="Raw" />
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Composited preview" Margin="8,8,0,0" />
+                                            <Ellipse Width="54" Height="54" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,24"
+                                                     Fill="{ThemeResource AccentFillColorDefaultBrush}" AutomationProperties.AccessibilityView="Raw" />
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Captions over the frame" VerticalAlignment="Bottom" HorizontalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                    <Grid Grid.Row="1" Grid.ColumnSpan="3" RowSpacing="4">
+                                        <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="100" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                        <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Scene" />
+                                        <TextBlock Grid.Row="1" Style="{StaticResource GuideDrawingLabelStyle}" Text="Zoom" />
+                                        <TextBlock Grid.Row="2" Style="{StaticResource GuideDrawingLabelStyle}" Text="Cut" />
+                                        <TextBlock Grid.Row="3" Style="{StaticResource GuideDrawingLabelStyle}" Text="Speed" />
+                                        <Rectangle Grid.Column="1" Fill="{ThemeResource AccentFillColorDefaultBrush}" Opacity="0.35" AutomationProperties.AccessibilityView="Raw" />
+                                        <Rectangle Grid.Row="1" Grid.Column="1" Margin="100,0,150,0" Fill="{ThemeResource AccentFillColorDefaultBrush}" Opacity="0.6" AutomationProperties.AccessibilityView="Raw" />
+                                        <Rectangle Grid.Row="2" Grid.Column="1" Margin="220,0,170,0" Stroke="{ThemeResource TextFillColorPrimaryBrush}" StrokeThickness="2" AutomationProperties.AccessibilityView="Raw" />
+                                        <Rectangle Grid.Row="3" Grid.Column="1" Margin="280,0,0,0" Fill="{ThemeResource AccentFillColorDefaultBrush}" Opacity="0.8" AutomationProperties.AccessibilityView="Raw" />
+                                    </Grid>
+                                </Grid>
+                            </Viewbox>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideDrawingSummaryStyle}" AutomationProperties.AutomationId="GuideStudioDrawingSummary"
+                                   Text="Illustration: Separate screen and camera layers feed the preview. Scene, zoom, cut, and speed lanes organize edits; captions overlay the finished frame." />
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Composition and timeline" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow
-                                    Glyph="&#xE99A;"
-                                    Title="Connect your AI agent"
-                                    Subtitle="In Settings → Agent control, follow the recommended Agent Plugin setup. Install the .NET 10 SDK. In VS Code, run Chat: Install Plugin from Source and enter the repository URL below. The plugin includes the MCP server and workflow Skills; no manual clone or separate MCP configuration is needed." />
-                                <TextBlock
-                                    AutomationProperties.Name="Plugin repository URL"
-                                    FontFamily="Consolas"
-                                    IsTextSelectionEnabled="True"
-                                    Text="https://github.com/jamesmontemagno/tiny-clips.git"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="Enable Agent Control and keep Tiny Clips running. Run these commands in a terminal and approve the pairing request, then start a fresh agent session."
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    FontFamily="Consolas"
-                                    IsTextSelectionEnabled="True"
-                                    Text="dnx TinyClips --yes -- pair --name &quot;My agent&quot;&#x0a;dnx TinyClips --yes -- status"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Text="Try asking: Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy."
-                                    IsTextSelectionEnabled="True"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="Agents can capture, annotate, record, and edit/export Studio projects through the plugin, CLI, or MCP server. For agents without plugin support, use the manual MCP setup in Settings. Deleting, uploading, and discarding always need approval. Revoke agents or turn off access in Settings; the audit log records requests. Agents need their own tools to scroll or interact with other apps."
-                                    TextWrapping="Wrap" />
-                                <HyperlinkButton
-                                    HorizontalAlignment="Left"
-                                    Content="Setup, MCP configuration, Skills, and prompts"
-                                    NavigateUri="https://github.com/jamesmontemagno/tiny-clips/blob/main/docs/agent-integration.md" />
+                                <local:GuideRow Glyph="&#xE8A9;" Title="Preview, layers, and layouts" Subtitle="Choose screen only, camera bubble, side by side, or camera only. Adjust background, padding, screen corners, camera shape/position, and screen/camera crops. Camera background can be kept, blurred, or removed locally. Camera and scene options need a camera track." />
+                                <local:GuideRow Glyph="&#xE916;" Title="Scenes, zooms, cuts, speed, and trim" Subtitle="Scrub the preview, add an edit at the playhead, then drag its range in its lane or adjust it in the inspector. Split scenes to change layouts; add zooms or suggest them from clicks, remove sections with cuts, change speed from 0.25× to 8×, and trim the ends. Changed-speed ranges play without sound." />
+                                <local:GuideRow Glyph="&#xE70F;" Title="Annotations and audio" Subtitle="Add arrows, callouts, text, rectangles, ellipses, redaction, or emoji. Move, resize, rotate, and time them; attach to the screen to follow zooms or to the frame to stay put. Use solid covers for secrets. Audio offers whole-video mute and volume." />
+                                <local:GuideRow Glyph="&#xE8D2;" Title="Captions on Windows" Subtitle="Generate captions locally from recorded speech using a speech model downloaded on first use; an initial internet connection and disk space are needed. Manage models in Settings → Studio. Import/export SRT or WebVTT, correct/split/merge cues, and review readability checks or Auto fix. Draw captions on the video is optional and off by default." />
                             </StackPanel>
                         </Border>
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Create an editable video — step by step" />
+                        <Border Style="{StaticResource SettingCardStyle}">
+                            <StackPanel Spacing="12">
+                                <local:GuideRow Glyph="&#xE714;" Title="1. Start with the Studio tray tile" Subtitle="Confirm the Studio label in recording setup, record, and Stop to open the editor. Record Video and its shortcut always make an ordinary recording; Studio has no global start shortcut. A failed project save falls back to an ordinary video." />
+                                <local:GuideRow Glyph="&#xE7F4;" Title="2. Set the look and refine the story" Subtitle="Choose layout, background, and crops. Add scenes, zooms, cuts, speed changes, and annotations while reviewing the preview. Generate or import captions, correct them, and enable Draw captions on the video if you want them burned in." />
+                                <local:GuideRow Glyph="&#xE74E;" Title="3. Save the project, not just the video" Subtitle="Save project chooses a portable folder containing recordings and a .tinyclips file; subsequent saves update that folder. Save project as chooses a new destination. Reopen with Open project, File Explorer, Library → Studio Projects, Recent captures, or Settings → Studio → Drafts. Ordinary videos can also become projects without changing the original." />
+                                <local:GuideRow Glyph="&#xE768;" Title="4. Export MP4 and keep what you need" Subtitle="Export offers Source through 480p resolutions and quality choices, with pixel/file-size estimates; it never upscales and remembers your choice. Export does not replace the editable project. Unsaved recordings can be kept as drafts when closing. Settings → Studio manages cleanup; Keep this project protects a draft from cleanup." />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="Speech processing stays on this PC; model download is separate. Burned-in captions cannot be switched off by viewers, so export SRT/WebVTT too when needed. Review the full exported video, including sensitive content, cuts, and audio." />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabViewItem>
+
+            <TabViewItem Header="Library" Tag="library" IsClosable="False"
+                         AutomationProperties.AutomationId="GuideLibraryTab" AutomationProperties.Name="Library">
+                <ScrollViewer AutomationProperties.Name="Clips Library guide"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Stretch" Margin="0,8,8,24" Spacing="12">
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Library overview" />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Clips Library is your local capture workspace. Find files, organize their metadata, reopen editors and Studio projects, and choose explicitly how to share." />
+                        <Border Style="{StaticResource GuideDiagramStyle}" AutomationProperties.AutomationId="GuideLibraryDrawing"
+                                AutomationProperties.Name="Library illustration: sidebar collections filter a capture grid; the detail pane holds names, tags, and notes. A chosen clip can be shared with another app or explicitly uploaded for a link.">
+                            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" AutomationProperties.AccessibilityView="Raw">
+                                <Grid Width="560" Height="220" ColumnSpacing="12" RowSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="128" /><ColumnDefinition Width="240" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                    <Border Style="{StaticResource GuideDrawingCardStyle}">
+                                        <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Collections&#x0a;&#x0a;Favorites&#x0a;Tags&#x0a;Projects" />
+                                    </Border>
+                                    <Grid Grid.Column="1" ColumnSpacing="8" RowSpacing="8">
+                                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                        <Border Style="{StaticResource GuideDrawingCardStyle}"><FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE91B;" /></Border>
+                                        <Border Grid.Column="1" Style="{StaticResource GuideDrawingCardStyle}"><FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE714;" /></Border>
+                                        <Border Grid.Row="1" Style="{StaticResource GuideDrawingCardStyle}"><FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE786;" /></Border>
+                                        <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource GuideDrawingCardStyle}"><FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE8A9;" /></Border>
+                                    </Grid>
+                                    <Border Grid.Column="2" Style="{StaticResource GuideDrawingCardStyle}">
+                                        <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Details&#x0a;&#x0a;Name&#x0a;Tags&#x0a;Notes" />
+                                    </Border>
+                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Style="{StaticResource GuideDrawingLabelStyle}"
+                                               Text="Selected clip  →  Share / drag to app  ·  Upload → link" HorizontalAlignment="Center" />
+                                </Grid>
+                            </Viewbox>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideDrawingSummaryStyle}" AutomationProperties.AutomationId="GuideLibraryDrawingSummary"
+                                   Text="Illustration: Collections filter a capture grid. Details hold names, tags, and notes. Share or drag a selected clip to an app, or explicitly upload it for a link." />
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Find and organize" />
+                        <Border Style="{StaticResource SettingCardStyle}">
+                            <StackPanel Spacing="12">
+                                <local:GuideRow Glyph="&#xE721;" Title="Search and views" Subtitle="Open Clips Library from the tray; Recent captures is the quick route to recent files. Search names, tags, and notes. Use Smart Collections, type/date filters, and Sort &amp; Filter. Switch between grid and list, and show the details pane for previews and metadata." />
+                                <local:GuideRow Glyph="&#xE734;" Title="Favorites, tags, collections, and batch actions" Subtitle="Favorite useful clips, add tags/notes, rename, or assign a collection in Details. Selection mode offers batch favorite, tag, copy, share, and delete. Metadata is local and separate from the media; rename and file-management commands can change the files themselves." />
+                                <local:GuideRow Glyph="&#xE8A5;" Title="Reopen and manage files" Subtitle="Open screenshots in the editor and video/GIF in trimmers. Studio Projects lists saved projects and drafts; Open in Studio is available for supported videos. Reveal in Explorer locates a file. Archive moves clips into Archive; Delete removes files, not just a list entry. Review confirmation and auto-archive preferences in Settings → Clips Library." />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Organize and share — step by step" />
+                        <Border Style="{StaticResource SettingCardStyle}">
+                            <StackPanel Spacing="12">
+                                <local:GuideRow Glyph="&#xE721;" Title="1. Find and inspect the clip" Subtitle="Search or filter, open Details, and preview the image, video, or GIF. Reopen its editor if it needs trimming or redaction. Do not assume a thumbnail proves the full file is safe." />
+                                <local:GuideRow Glyph="&#xE8EC;" Title="2. Give it useful context" Subtitle="Add a descriptive name, tags, notes, a collection, or a favorite. Use multi-selection for shared tags and batch actions; check the selected count before deleting or sharing." />
+                                <local:GuideRow Glyph="&#xE72D;" Title="3. Choose a sharing route" Subtitle="Copy, drag files to another app, use Windows Share, or reveal them in Explorer. These routes hand content to the chosen destination; that app's own privacy and upload behavior applies." />
+                                <local:GuideRow Glyph="&#xE898;" Title="4. Upload only when you intend to" Subtitle="Uploadcare is optional: enable it and configure your project credentials in Settings → Uploadcare. Use the Library upload action, then copy its saved delivery link. Upload sends the file to Uploadcare; treat the link as shareable access. Protect credentials and never include them in screenshots or agent prompts." />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="Captures stay local unless you choose a sharing route or enable automatic Uploadcare upload. Review Upload automatically in Settings → Uploadcare: it applies after saving screenshots, videos, and GIFs. Local archive/delete is not remote deletion: manage uploaded files and link access in your Uploadcare project too." />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabViewItem>
+
+            <TabViewItem Header="Agents" Tag="agents" IsClosable="False"
+                         AutomationProperties.AutomationId="GuideAgentsTab" AutomationProperties.Name="Agents">
+                <ScrollViewer AutomationProperties.Name="Agent control guide"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Stretch" Margin="0,8,8,24" Spacing="12">
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Agents overview" />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Bring your own AI agent to capture, annotate, record, and edit or export Studio projects. Agent Control is off until you opt in; Tiny Clips provides local tools, not an AI model." />
+                        <Border Style="{StaticResource GuideDiagramStyle}" AutomationProperties.AutomationId="GuideAgentsDrawing"
+                                AutomationProperties.Name="Agents illustration: your agent uses a local CLI or MCP connection, passes pairing and permission checks, and reaches Tiny Clips. Sensitive actions require a separate human approval.">
+                            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" AutomationProperties.AccessibilityView="Raw">
+                                <Grid Width="560" Height="180" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="108" /><ColumnDefinition Width="32" /><ColumnDefinition Width="120" /><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource GuideDrawingCardStyle}" VerticalAlignment="Center">
+                                        <StackPanel Spacing="12"><FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE99A;" /><TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Your agent" TextAlignment="Center" /></StackPanel>
+                                    </Border>
+                                    <FontIcon Grid.Column="1" Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE72A;" />
+                                    <Border Grid.Column="2" Style="{StaticResource GuideDrawingCardStyle}" VerticalAlignment="Center"><TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Local&#x0a;CLI / MCP" TextAlignment="Center" /></Border>
+                                    <FontIcon Grid.Column="3" Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE72A;" />
+                                    <Border Grid.Column="4" Style="{StaticResource GuideDrawingCardStyle}">
+                                        <StackPanel Spacing="12">
+                                            <FontIcon Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE72E;" />
+                                            <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Pair + scopes&#x0a;Sensitive approval&#x0a;↓ Tiny Clips" TextAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Viewbox>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideDrawingSummaryStyle}" AutomationProperties.AutomationId="GuideAgentsDrawingSummary"
+                                   Text="Illustration: Your agent → local CLI/MCP → pairing and scopes → Tiny Clips. Sensitive actions also pass a human approval gate." />
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Connect an agent — step by step" />
+                        <Border Style="{StaticResource SettingCardStyle}">
+                            <StackPanel Spacing="12">
+                                <local:GuideRow Glyph="&#xE99A;" Title="1. Install the recommended Agent Plugin" Subtitle="In Settings → Agent control, follow Agent Plugin setup. Install the .NET 10 SDK. In VS Code, run Chat: Install Plugin from Source and enter the repository URL below. The plugin includes MCP and workflow Skills; no manual clone or separate MCP configuration is needed." />
+                                <TextBlock AutomationProperties.Name="Plugin repository URL" FontFamily="Consolas" IsTextSelectionEnabled="True"
+                                           Style="{StaticResource GuideBodyStyle}" Text="https://github.com/jamesmontemagno/tiny-clips.git" />
+                                <local:GuideRow Glyph="&#xE72E;" Title="2. Enable, pair, and check status" Subtitle="Enable Agent Control and keep Tiny Clips running on the same PC as the agent, under the same OS account. Run the commands below in that environment, approve pairing in Tiny Clips, then start a fresh agent session. Remote/container agents do not automatically reach your desktop." />
+                                <TextBlock AutomationProperties.Name="Agent pairing and status commands" FontFamily="Consolas" IsTextSelectionEnabled="True"
+                                           Style="{StaticResource GuideBodyStyle}"
+                                           Text="dnx TinyClips --yes -- pair --name &quot;My agent&quot;&#x0a;dnx TinyClips --yes -- status" />
+                                <local:GuideRow Glyph="&#xE8A5;" Title="3. Try a focused request" Subtitle="Start with a safe screenshot and a new output copy. Your agent needs image-inspection support to examine the result and its own browser/desktop tools to click, type, or scroll in other apps." />
+                                <TextBlock Style="{StaticResource GuideBodyStyle}" IsTextSelectionEnabled="True"
+                                           Text="Try asking: Use Tiny Clips to capture the Copilot window, inspect the image, add an arrow toward Create PR and an eyes emoji, and save a new copy." />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Permissions and safe use" />
+                        <Border Style="{StaticResource SettingCardStyle}">
+                            <StackPanel Spacing="12">
+                                <local:GuideRow Glyph="&#xE73E;" Title="Scopes and approvals" Subtitle="Choose the scopes granted during pairing; adjust them in Paired Agents → Permissions. Delete, upload, and discard always require an in-app approval even with the scope. OS permissions and saved device opt-ins still apply." />
+                                <local:GuideRow Glyph="&#xE7BA;" Title="Revoke, audit, and protect tokens" Subtitle="Revoke an agent or turn access off in Settings → Agent control. The audit log records requests. Keep pairing tokens private. Local transport does not mean your agent's AI service is offline: review what it sends to its provider." />
+                                <local:GuideRow Glyph="&#xE943;" Title="Other clients" Subtitle="Agents without plugin support can use the manual MCP setup in Settings or the standalone CLI. Pair and launch MCP under the same account/environment; restarting or reloading the agent session can resolve a stale connection." />
+                                <HyperlinkButton AutomationProperties.AutomationId="GuideAgentDocumentationLink"
+                                                 AutomationProperties.Name="Full Agent Control documentation"
+                                                 HorizontalAlignment="Left" NavigateUri="https://github.com/jamesmontemagno/tiny-clips/blob/main/docs/agent-integration.md">
+                                    <TextBlock Text="Setup, MCP configuration, Skills, and prompts" TextWrapping="Wrap" />
+                                </HyperlinkButton>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabViewItem>
+
+            <TabViewItem Header="Help" Tag="help" IsClosable="False"
+                         AutomationProperties.AutomationId="GuideHelpTab" AutomationProperties.Name="Help">
+                <ScrollViewer AutomationProperties.Name="Help and shortcuts guide"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel MaxWidth="720" HorizontalAlignment="Stretch" Margin="0,8,8,24" Spacing="12">
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Help overview" />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="The everyday loop is capture → edit or trim → save → Library. Use Settings for your preferences and this page for current shortcuts, permissions, and recovery." />
+                        <Border Style="{StaticResource GuideDiagramStyle}" AutomationProperties.AutomationId="GuideHelpDrawing"
+                                AutomationProperties.Name="Help illustration: Capture leads to Edit and Save, then Library. Settings controls shortcuts, folders, permissions, and preferences around that workflow.">
+                            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" AutomationProperties.AccessibilityView="Raw">
+                                <Grid Width="560" Height="160" ColumnSpacing="12" RowSpacing="16">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="32" /><ColumnDefinition /><ColumnDefinition Width="32" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition Height="90" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                    <Border Style="{StaticResource GuideDrawingCardStyle}"><TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Capture" VerticalAlignment="Center" HorizontalAlignment="Center" /></Border>
+                                    <FontIcon Grid.Column="1" Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE72A;" />
+                                    <Border Grid.Column="2" Style="{StaticResource GuideDrawingCardStyle}"><TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Edit / Save" VerticalAlignment="Center" HorizontalAlignment="Center" /></Border>
+                                    <FontIcon Grid.Column="3" Style="{StaticResource GuideDrawingIconStyle}" Glyph="&#xE72A;" />
+                                    <Border Grid.Column="4" Style="{StaticResource GuideDrawingCardStyle}"><TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Library" VerticalAlignment="Center" HorizontalAlignment="Center" /></Border>
+                                    <Border Grid.Row="1" Grid.ColumnSpan="5" Style="{StaticResource GuideDrawingCardStyle}" Padding="12,4">
+                                        <TextBlock Style="{StaticResource GuideDrawingLabelStyle}" Text="Settings: shortcuts • folders • permissions • preferences" HorizontalAlignment="Center" />
+                                    </Border>
+                                </Grid>
+                            </Viewbox>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideDrawingSummaryStyle}" AutomationProperties.AutomationId="GuideHelpDrawingSummary"
+                                   Text="Illustration: Capture → edit/save → Library. Settings controls shortcuts, folders, permissions, and preferences around that loop." />
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Live global shortcuts" />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="These are your saved bindings, refreshed when you return to the Guide. Only Screenshot is assigned by default. Change, clear, or reset them in Settings → Keyboard shortcuts. Stop recording is optional and registered only during recording; the floating Stop button and tray are always available." />
+                        <Border Style="{StaticResource SettingCardStyle}">
+                            <!-- Wrap each action above its live binding rather than forcing a
+                                 long custom chord beside a label at minimum width/large text. -->
+                            <StackPanel Spacing="12">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Screenshot" />
+                                    <TextBlock x:Name="ScreenshotShortcut" FontFamily="Consolas" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Screenshot region (skip picker)" />
+                                    <TextBlock x:Name="ScreenshotRegionShortcut" FontFamily="Consolas" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Screenshot window (skip picker)" />
+                                    <TextBlock x:Name="ScreenshotWindowShortcut" FontFamily="Consolas" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Screenshot screen (skip picker)" />
+                                    <TextBlock x:Name="ScreenshotScreenShortcut" FontFamily="Consolas" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Record video (ordinary recording, not Studio)" />
+                                    <TextBlock x:Name="VideoShortcut" FontFamily="Consolas" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Record GIF" />
+                                    <TextBlock x:Name="GifShortcut" FontFamily="Consolas" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Recognize Text" />
+                                    <TextBlock x:Name="OcrShortcut" FontFamily="Consolas" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Stop recording" />
+                                    <TextBlock x:Name="StopRecordingShortcut" FontFamily="Consolas" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Fixed keys inside windows" />
+                        <Border Style="{StaticResource SettingCardStyle}">
+                            <StackPanel Spacing="12">
+                                <local:GuideRow Glyph="&#xE765;" Title="Not global or remappable" Subtitle="Settings → Keyboard shortcuts has separate references for the screenshot editor, Studio, Clips Library, and navigation. Examples: Ctrl+Z undoes in editors; Space plays/pauses Studio; Ctrl+F searches Library. These keys act only in their window and may differ when a text field or timeline lane has focus." />
+                                <local:GuideRow Glyph="&#xE8A1;" Title="Guide navigation" Subtitle="Use the native tabs to choose a topic. At narrow widths, use the tab strip's overflow scroll buttons to reach hidden tabs. Each page scrolls separately; the heading and tabs remain in place." />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Settings and recovery — step by step" />
+                        <Border Style="{StaticResource SettingCardStyle}">
+                            <StackPanel Spacing="12">
+                                <local:GuideRow Glyph="&#xE713;" Title="1. Check the relevant preference" Subtitle="Open Settings from the tray. General holds theme, launch-at-login, notifications, capture visibility, and Esc confirmation. Screenshot, Video, and GIF hold their own save folders and post-capture choices. Studio, Teleprompter, Clips Library, Uploadcare, and Agent control have dedicated sections." />
+                                <local:GuideRow Glyph="&#xE720;" Title="2. Check Windows permissions and devices" Subtitle="For missing microphone or camera, check Windows Settings → Privacy &amp; security → Microphone or Camera, including desktop-app access; also select and enable the device in Tiny Clips. Close another app that may hold the camera. Notification permission, Focus/Do not disturb, and the save-notification preference are separate." />
+                                <local:GuideRow Glyph="&#xE7BA;" Title="3. Recover a capture or shortcut" Subtitle="For blank content, try Region or Screen instead of a protected/minimized window; protected content may not be capturable. Check save-folder access and disk space. For a shortcut conflict, review Settings → Keyboard shortcuts and choose a free binding; use the tray meanwhile. OCR needs readable text and a supported Windows language." />
+                                <local:GuideRow Glyph="&#xE895;" Title="4. Update through your install channel" Subtitle="Microsoft Store installs receive Store-managed updates. Direct .appinstaller installs check for signed updates on launch and in the background. For winget, use winget upgrade Refractored.TinyClips. Restart Tiny Clips after updating and check Settings → About if a problem remains." />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="More documentation" />
+                        <TextBlock Style="{StaticResource GuideBodyStyle}" Text="The handbook above works offline. These optional links open your browser and need an internet connection." />
+                        <HyperlinkButton AutomationProperties.AutomationId="GuideFeatureDocumentationLink" AutomationProperties.Name="Tiny Clips feature documentation"
+                                         HorizontalAlignment="Left" NavigateUri="https://tinyclips.app/docs.html">
+                            <TextBlock Text="Feature documentation and walkthroughs" TextWrapping="Wrap" />
+                        </HyperlinkButton>
+                        <HyperlinkButton AutomationProperties.AutomationId="GuideTroubleshootingLink" AutomationProperties.Name="Permissions and troubleshooting documentation"
+                                         HorizontalAlignment="Left" NavigateUri="https://tinyclips.app/docs-help.html">
+                            <TextBlock Text="Permissions and troubleshooting" TextWrapping="Wrap" />
+                        </HyperlinkButton>
                     </StackPanel>
                 </ScrollViewer>
             </TabViewItem>

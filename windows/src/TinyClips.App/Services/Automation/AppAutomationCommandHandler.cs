@@ -143,8 +143,14 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
     private JsonNode OpenWindow(AutomationCommandContext context)
     {
         var window = context.GetString("window") ?? string.Empty;
-        _app.OpenAutomationWindow(window);
-        return new JsonObject { ["opened"] = window };
+        var topic = context.GetString("guideTopic");
+        var selectedTopic = _app.OpenAutomationWindow(window, topic);
+        var result = new JsonObject { ["opened"] = window };
+        if (selectedTopic is not null)
+        {
+            result["guideTopic"] = selectedTopic;
+        }
+        return result;
     }
 
     private JsonNode RecordingStatus()

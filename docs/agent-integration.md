@@ -111,7 +111,7 @@ Give these to an agent with Tiny Clips CLI or MCP access. Tell it which app or p
 **Find recent clips**
 > List my ten most recent Tiny Clips screenshots and reveal the one I choose. Do not delete or upload anything.
 
-An agent needs its own browser/desktop tools to click, type, or scroll in other apps; Tiny Clips does not provide those actions. Studio must be enabled for Studio commands. On macOS, Agent Control does not require a supporter tip. OS permissions still apply, and sensitive commands still ask for approval.
+An agent needs its own browser/desktop tools to click, type, or scroll in other apps; Tiny Clips does not provide those actions. On macOS, Agent Control does not require a supporter tip. OS permissions still apply, and sensitive commands still ask for approval.
 
 For scrolling screenshots on both platforms, scroll gradually with overlapping content. Stitching
 keeps the lower viewport overlap until the final frame so bottom-floating controls are not repeated;
@@ -136,11 +136,29 @@ change the availability or permissions of `recording.stop`.
 | `unauthorized` or revoked access | Run `tinyclips pair` again as the same OS account/environment used by the agent and approve it in Tiny Clips. |
 | `missing_scope` | Grant the scope to that agent in **Settings → Agent Control → Paired Agents → Permissions** (it applies immediately), or pair again requesting it with `--scopes`. |
 | `permission_required` | Ask the user to grant the relevant OS screen/audio/camera permission. Recording also requires the user's saved Tiny Clips opt-in for each enabled device. On macOS, follow System Settings → Privacy & Security and restart Tiny Clips if required. |
-| `not_supported` | Check your app's version and feature settings; enable Studio for Studio commands. |
+| `not_supported` | Check your app's version and feature availability. |
 | MCP connects but calls fail | Verify the server runs locally under the same account, can find the CLI/SDK, and shares the pairing configuration. Restart or reload the MCP connection. |
 | Studio edit returns `conflict` | Read the project again and reconcile changes with its latest `modifiedAt` and `revision`; do not blindly resend the old patch. |
 
 Change what an individual agent may do with **Permissions**, or revoke it, in **Settings → Agent Control → Paired Agents**. Turn Agent Control off to stop all connections. **Activity → Open Audit Log** shows local request history.
+
+### Open a feature's Guide
+
+The in-app Guide is an offline, illustrated handbook on both platforms. With the `read`
+scope, open it directly to a topic for the user:
+
+```sh
+dnx TinyClips --yes -- app.open window=guide guideTopic=studio
+```
+
+Topics are `capture`, `editor`, `recording`, `studio`, `library`, `agents`, and `help`.
+Help includes the user's current shortcut reference. The MCP equivalent is
+`tinyclips_app_open` with `{"window":"guide","guideTopic":"studio"}`.
+This selects the topic even if the Guide is already open and returns
+`{"opened":"guide","guideTopic":"studio"}`. Omit `guideTopic` to keep the current
+selection (Capture in a newly opened Guide). Invalid values or a topic supplied for
+another window return `invalid_params`. The Guide is read-only: opening a topic
+does not start that feature or change its settings.
 
 ## Security model
 
@@ -203,7 +221,7 @@ The corresponding MCP tools are `tinyclips_notifications_status`, `tinyclips_not
 
 Use headless capture and annotation commands for autonomous work. `editor.open` explicitly brings up UI for a person; reopening the same screenshot reuses its existing editor without losing edits. Different screenshots keep separate windows in the same application.
 
-To open an MP4 or MOV from the Clips Library directly in Studio, use `tinyclips editor.open path="<file>" studio=true`. This needs `edit` and Studio must be enabled. For videos outside the library, use **Open With → Tiny Clips** in Finder or File Explorer.
+To open an MP4 or MOV from the Clips Library directly in Studio, use `tinyclips editor.open path="<file>" studio=true`. This needs `edit`. For videos outside the library, use **Open With → Tiny Clips** in Finder or File Explorer.
 
 For scripts and MCP calls, pass `resultFormat=standard` to get `{"opened":true,"path":"<absolute path>","editor":"studio"}` on either OS. Omit it for compatibility with older apps and clients: the legacy `opened` field is a path on macOS and a boolean on Windows.
 
@@ -234,7 +252,7 @@ For long pages, call `capture.scrolling.start` with a target, scroll the page wi
 
 ### Studio projects
 
-Studio commands work on both platforms when Studio is enabled. `studio.projects.list` discovers stored projects, including drafts made from existing videos (`isDraft: true`, `isFlat: true`) that also appear in Library → Studio → Projects and Settings → Studio → Drafts; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths. With `edit` scope, `studio.project.open` opens a stored project by ID or brings its existing Studio editor forward.
+Studio commands work on both platforms. `studio.projects.list` discovers stored projects, including drafts made from existing videos (`isDraft: true`, `isFlat: true`) that also appear in Library → Studio → Projects and Settings → Studio → Drafts; `studio.project.get` returns the project JSON, including `modifiedAt`, its timeline, look, and audio settings. Project IDs come from that list and are not filesystem paths. With `edit` scope, `studio.project.open` opens a stored project by ID or brings its existing Studio editor forward.
 
 On macOS and Windows, `studio.project.saveCopy` needs `export` and writes a portable snapshot, including source recordings, into a new `folderName` directly in the configured video folder. Imported videos are copied into the snapshot without moving or changing the originals. It returns `folderPath` and `projectFile`, never replaces an existing destination, and does not link the copy for subsequent saves. An open editor must be ready and its pending changes are saved first.
 

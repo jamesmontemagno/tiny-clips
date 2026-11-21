@@ -420,6 +420,20 @@ public sealed class AutomationHost
     {
         parameters = new JsonObject();
         error = string.Empty;
+        if (definition.Name == "app.open" && supplied?.ContainsKey("guideTopic") == true)
+        {
+            if (supplied["guideTopic"] is null)
+            {
+                error = "guideTopic must be a string.";
+                return false;
+            }
+            if (supplied["window"] is not JsonValue window ||
+                !window.TryGetValue<string>(out var windowName) || windowName != "guide")
+            {
+                error = "guideTopic is valid only when window is guide.";
+                return false;
+            }
+        }
         foreach (var (name, spec) in definition.Parameters)
         {
             var value = supplied?[name];

@@ -27,6 +27,34 @@ final class AutomationCaptureTargetsTests: XCTestCase {
     // MARK: - Contract
 
     @MainActor
+    func testGuideTopicsSelectExistingNavigationAndPreserveOmission() throws {
+        let contract = try AutomationContract.load(from: Self.repoRoot.appendingPathComponent("shared/automation/commands.json"))
+        let command = try XCTUnwrap(contract.command(named: "app.open"))
+        XCTAssertEqual(command.scope, "read")
+        let topics = try XCTUnwrap(command.params["guideTopic"]?.enum)
+        XCTAssertEqual(topics, GuideSection.allCases.map(\.rawValue))
+        XCTAssertNotEqual(command.params["guideTopic"]?.required, true)
+        let navigation = GuideNavigation()
+        XCTAssertEqual(navigation.selection, .capture)
+        for topic in topics {
+            navigation.select(try AutomationCommandRouter.guideTopic(window: "guide", value: topic))
+            XCTAssertEqual(navigation.selection.rawValue, topic)
+        }
+        navigation.select(try AutomationCommandRouter.guideTopic(window: "guide", value: nil))
+        XCTAssertEqual(navigation.selection, .help)
+        navigation.select(.studio)
+        XCTAssertEqual(navigation.selection, .studio)
+        let invalidValues: [Any] = ["unknown", "Studio", "", 1, NSNull()]
+        for value in invalidValues {
+            assertInvalid { _ = try AutomationCommandRouter.guideTopic(window: "guide", value: value) }
+        }
+        for window in ["settings", "library"] {
+            assertInvalid { _ = try AutomationCommandRouter.guideTopic(window: window, value: "studio") }
+            XCTAssertNil(try AutomationCommandRouter.guideTopic(window: window, value: nil))
+        }
+    }
+
+    @MainActor
     func testStandardEditorOpenResultDoesNotChangeLegacyPath() throws {
         let url = URL(fileURLWithPath: "/Library/Clips/clip.mov")
         let standard = AutomationCommandRouter.editorOpenResult(url, editor: "studio",

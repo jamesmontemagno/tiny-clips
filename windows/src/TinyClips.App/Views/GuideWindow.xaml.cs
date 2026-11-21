@@ -1,13 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
-using Windows.Graphics;
 
 namespace TinyClips.App;
 
 /// <summary>
-/// Read-only overview of capture modes, shortcuts, editing, recording, and library features.
+/// Offline, read-only handbook with stable feature-topic identifiers.
 /// </summary>
 public sealed partial class GuideWindow : Window
 {
@@ -17,6 +17,30 @@ public sealed partial class GuideWindow : Window
     private const int MinimumHeightDip = 400;
 
     private readonly WindowChromeController _chromeController;
+
+    /// <summary>The lower-case identifier of the currently selected topic.</summary>
+    public string SelectedTopic => GuideTabs.SelectedItem is TabViewItem { Tag: string topic }
+        ? topic
+        : throw new InvalidOperationException("Guide topic invariant violated: the selected tab must have a string topic ID.");
+
+    /// <summary>
+    /// Selects a handbook topic on this window without reopening it or changing its page content.
+    /// Call on the UI thread. Identifiers are exact and lower-case; invalid input leaves selection unchanged.
+    /// </summary>
+    /// <exception cref="ArgumentException">The identifier is not a Guide topic.</exception>
+    public void SelectTopic(string topic)
+    {
+        foreach (var tab in GuideTabs.TabItems.OfType<TabViewItem>())
+        {
+            if (string.Equals(tab.Tag as string, topic, StringComparison.Ordinal))
+            {
+                GuideTabs.SelectedItem = tab;
+                return;
+            }
+        }
+
+        throw new ArgumentException("Unknown Guide topic.", nameof(topic));
+    }
 
     public GuideWindow()
     {
