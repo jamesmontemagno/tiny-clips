@@ -228,17 +228,31 @@ struct StudioSceneInspectorSection: View {
         deleteButton
     }
 
+    private static let layouts: [StudioLayout] = [.screen, .bubble, .sideBySide, .camera]
+
     private var layoutPicker: some View {
-        Picker("Layout", selection: layoutBinding) {
-            Text("Screen").tag(StudioLayout.screen)
-            Text("Bubble").tag(StudioLayout.bubble)
-            Text("Side by Side").tag(StudioLayout.sideBySide)
-            Text("Camera").tag(StudioLayout.camera)
+        StudioChoiceGrid(
+            title: "Layout",
+            choices: Self.layouts,
+            selection: viewModel.editor?.effectiveLayout ?? .screen,
+            name: Self.layoutTitle,
+            help: { layout in
+                let number = (Self.layouts.firstIndex(of: layout) ?? 0) + 1
+                return "\(StudioEditorModel.layoutName(layout)) (\(number))"
+            },
+            onSelect: { viewModel.setLayout($0) }
+        ) { layout, isSelected in
+            StudioLayoutGlyph(layout: layout, isSelected: isSelected)
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .accessibilityLabel("Layout")
-        .help("Screen only, screen with a camera bubble, side by side, or camera only (1 to 4)")
+    }
+
+    private static func layoutTitle(_ layout: StudioLayout) -> String {
+        switch layout {
+        case .screen: return "Screen"
+        case .bubble: return "Bubble"
+        case .sideBySide: return "Side by Side"
+        case .camera: return "Camera"
+        }
     }
 
     private var navigationRow: some View {
@@ -422,13 +436,6 @@ struct StudioSceneInspectorSection: View {
         return viewModel.scenes[index]
     }
 
-    private var layoutBinding: Binding<StudioLayout> {
-        Binding(
-            get: { viewModel.editor?.effectiveLayout ?? .screen },
-            set: { viewModel.setLayout($0) }
-        )
-    }
-
     private func transitionKindBinding(scene: StudioScene) -> Binding<StudioTransitionKind> {
         Binding(
             get: { scene.transition.kind },
@@ -443,5 +450,62 @@ struct StudioSceneInspectorSection: View {
         } else {
             viewModel.endGesture()
         }
+    }
+}
+
+/// A small picture of a layout: the video's frame, with the screen and the camera where the
+/// layout puts them.
+private struct StudioLayoutGlyph: View {
+    let layout: StudioLayout
+    let isSelected: Bool
+
+    private static let size = CGSize(width: 40, height: 24)
+    private static let inset: CGFloat = 3
+
+    private var cameraColor: Color { isSelected ? .accentColor : .secondary }
+    private var screenColor: Color { Color.secondary.opacity(0.35) }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1)
+            .overlay { content.padding(Self.inset) }
+            .frame(width: Self.size.width, height: Self.size.height)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch layout {
+        case .screen:
+            screen
+        case .bubble:
+            screen.overlay(alignment: .bottomTrailing) {
+                Circle()
+                    .fill(cameraColor)
+                    .frame(width: 9, height: 9)
+                    .padding(2)
+            }
+        case .sideBySide:
+            HStack(spacing: 2) {
+                screen
+                camera.frame(width: 12)
+            }
+        case .camera:
+            camera
+        }
+    }
+
+    private var screen: some View {
+        RoundedRectangle(cornerRadius: 1.5).fill(screenColor)
+    }
+
+    private var camera: some View {
+        RoundedRectangle(cornerRadius: 1.5)
+            .fill(cameraColor)
+            .overlay {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.background)
+            }
     }
 }
