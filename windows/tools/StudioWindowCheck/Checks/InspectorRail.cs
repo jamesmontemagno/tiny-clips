@@ -115,7 +115,7 @@ internal sealed partial class WindowChecks
             string[] ids = ["StudioLayoutScreen", "StudioLayoutBubble", "StudioLayoutSideBySide", "StudioLayoutCamera"];
             return ids.Select(id =>
             {
-                var item = Descendant<CommunityToolkit.WinUI.Controls.SegmentedItem>(editor.Window.Content, id);
+                var item = Descendant<GridViewItem>(editor.Window.Content, id);
                 var text = item is null ? null : First<TextBlock>(item);
                 if (item is null || text is null)
                 {
@@ -134,6 +134,36 @@ internal sealed partial class WindowChecks
             "all four Scene layout labels fit without clipping at the smallest window size",
             layoutLabels.All(label => label.Fits),
             string.Join("; ", layoutLabels.Select(label => label.Detail)));
+
+        foreach (var id in new[] { "StudioLayoutChoice", "StudioCameraShapeComboBox" })
+        {
+            var tiles = OnUi(() =>
+            {
+                ShowWhatHolds(editor.Window.Content, id, layoutNow: true);
+                if (Descendant<GridView>(editor.Window.Content, id) is not { } grid)
+                {
+                    return (Fits: false, Detail: "grid not found");
+                }
+
+                var items = grid.Items.OfType<GridViewItem>().ToArray();
+                if (items.Length != 4)
+                {
+                    return (Fits: false, Detail: $"{items.Length} choices");
+                }
+
+                var bounds = items.Select(item => item.TransformToVisual(grid).TransformBounds(
+                    new Windows.Foundation.Rect(0, 0, item.ActualWidth, item.ActualHeight))).ToArray();
+                var fits = bounds.All(rect => rect.Width > 0 && rect.Height > 0 && rect.Left >= -1 && rect.Right <= grid.ActualWidth + 1)
+                    && Math.Abs(bounds[0].Top - bounds[1].Top) < 1
+                    && Math.Abs(bounds[2].Top - bounds[3].Top) < 1
+                    && bounds[2].Top > bounds[0].Top
+                    && bounds[1].Left > bounds[0].Left && bounds[3].Left > bounds[2].Left;
+                return (Fits: fits, Detail: $"grid width {grid.ActualWidth:0.#}; {string.Join("; ", bounds.Select(rect => $"{rect.Left:0.#},{rect.Top:0.#} {rect.Width:0.#}x{rect.Height:0.#}"))}");
+            });
+            _report.Check($"{id} has four tiles in two rows within the available width", tiles.Fits, tiles.Detail);
+        }
+
+        OnUi(() => ShowWhatHolds(editor.Window.Content, "StudioLayoutChoice", layoutNow: true));
         Resize(editor, DefaultWindowWidth, DefaultWindowHeight);
 
         // What the list's own keys rest on.

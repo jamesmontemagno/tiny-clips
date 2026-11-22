@@ -179,6 +179,11 @@
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
         </Style>
+        <Style x:Key="StudioChoiceGlyphStyle" TargetType="Shape">
+            <Setter Property="Fill" Value="{ThemeResource ControlFillColorSecondaryBrush}" />
+            <Setter Property="Stroke" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+        </Style>
     </UserControl.Resources>
 
     <Grid>
@@ -293,6 +298,7 @@
             <ScrollViewer
                 x:Name="PanelScroll"
                 Grid.Row="1"
+                HorizontalScrollBarVisibility="Disabled"
                 HorizontalScrollMode="Disabled"
                 IsTabStop="False"
                 VerticalScrollBarVisibility="Auto">
@@ -348,31 +354,16 @@
                         <!--  The layout belongs to the scene. The heading says what the choice is of, so it has a name and no header of its own.  -->
                         <StackPanel Spacing="8">
                             <TextBlock Style="{StaticResource StudioSectionHeadingStyle}" Text="Layout" />
-                            <local:StudioSegmented
+                            <GridView
                                 x:Name="LayoutChoice"
                                 HorizontalAlignment="Stretch"
-                                local:StudioSegmentedChoice.KeepsLatestChoice="True"
                                 AutomationProperties.AutomationId="StudioLayoutChoice"
                                 AutomationProperties.Name="Layout"
                                 SelectedIndex="{x:Bind ViewModel.LayoutIndex, Mode=TwoWay}"
-                                ToolTipService.ToolTip="Screen only, screen with a camera bubble, side by side, or camera only (1 to 4)">
-                                <controls:SegmentedItem
-                                    x:Name="LayoutScreenChoice"
-                                    AutomationProperties.AutomationId="StudioLayoutScreen"
-                                    Content="Screen" />
-                                <controls:SegmentedItem
-                                    x:Name="LayoutBubbleChoice"
-                                    AutomationProperties.AutomationId="StudioLayoutBubble"
-                                    Content="Bubble" />
-                                <controls:SegmentedItem
-                                    x:Name="LayoutSideBySideChoice"
-                                    AutomationProperties.AutomationId="StudioLayoutSideBySide"
-                                    Content="Side by side" />
-                                <controls:SegmentedItem
-                                    x:Name="LayoutCameraChoice"
-                                    AutomationProperties.AutomationId="StudioLayoutCamera"
-                                    Content="Camera" />
-                            </local:StudioSegmented>
+                                SingleSelectionFollowsFocus="True"
+                                Style="{StaticResource StudioSwatchGridStyle}"
+                                TabNavigation="Once"
+                                ToolTipService.ToolTip="Screen only, screen with a camera bubble, side by side, or camera only (1 to 4)" />
                         </StackPanel>
 
                         <StackPanel Spacing="8">
@@ -804,13 +795,15 @@
                             <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.AreBubbleControlsVisible, Mode=OneWay}">
                                 <StackPanel Spacing="4">
                                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Shape" />
-                                    <local:StudioSegmented
+                                    <GridView
                                         x:Name="ShapeChoice"
                                         HorizontalAlignment="Stretch"
-                                        local:StudioSegmentedChoice.KeepsLatestChoice="True"
                                         AutomationProperties.AutomationId="StudioCameraShapeComboBox"
                                         AutomationProperties.Name="Shape"
-                                        SelectedIndex="{x:Bind ViewModel.CameraShapeIndex, Mode=TwoWay}" />
+                                        SelectedIndex="{x:Bind ViewModel.CameraShapeIndex, Mode=TwoWay}"
+                                        SingleSelectionFollowsFocus="True"
+                                        Style="{StaticResource StudioSwatchGridStyle}"
+                                        TabNavigation="Once" />
                                 </StackPanel>
                                 <local:StudioSliderRow
                                     Title="Corner radius"

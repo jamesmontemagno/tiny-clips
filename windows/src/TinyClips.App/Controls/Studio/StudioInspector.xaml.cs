@@ -54,18 +54,26 @@ public sealed partial class StudioInspector : UserControl
         InitializeComponent();
         StudioGlyphRow.Attach(ZoomAddRow);
 
-        // The names come from the editor model, so the lists and what screen readers hear agree.
-        // A rounded rectangle shows a shorter word, to fit next to the others, and keeps its name.
+        foreach (var layout in Enum.GetValues<StudioLayout>())
+        {
+            var label = layout switch
+            {
+                StudioLayout.Screen => "Screen",
+                StudioLayout.Bubble => "Bubble",
+                StudioLayout.SideBySide => "Side by side",
+                _ => "Camera",
+            };
+            AddPictureChoice(LayoutChoice, label, $"StudioLayout{layout}", LayoutGlyph(layout));
+        }
+
         foreach (var shape in Enum.GetValues<StudioCameraShape>())
         {
             var name = StudioEditorModel.GetShapeName(shape);
-            var choice = CreateChoice(
-                shape == StudioCameraShape.RoundedRectangle ? "Rounded" : name,
-                $"StudioCameraShape_{shape}");
-            AutomationProperties.SetName(choice, name);
-            ToolTipService.SetToolTip(choice, name);
-            ShapeChoice.Items.Add(choice);
+            AddPictureChoice(ShapeChoice, name, $"StudioCameraShape_{shape}", ShapeGlyph(shape));
         }
+
+        LayoutChoice.SizeChanged += (_, e) => FitPictureChoices(LayoutChoice, e.NewSize.Width);
+        ShapeChoice.SizeChanged += (_, e) => FitPictureChoices(ShapeChoice, e.NewSize.Width);
 
         foreach (var anchor in Enum.GetValues<StudioAnchor>())
         {
@@ -1271,13 +1279,102 @@ public sealed partial class StudioInspector : UserControl
     }
 
     /// <summary>The one of the four layout choices that is chosen, which is where the Tab key stops among them.</summary>
-    private SegmentedItem SelectedLayoutChoice => ViewModel.LayoutIndex switch
+    private GridViewItem SelectedLayoutChoice => (GridViewItem)LayoutChoice.Items[
+        Math.Clamp(ViewModel.LayoutIndex, 0, LayoutChoice.Items.Count - 1)];
+
+    private void AddPictureChoice(GridView grid, string name, string automationId, Canvas glyph)
     {
-        (int)StudioLayout.Screen => LayoutScreenChoice,
-        (int)StudioLayout.SideBySide => LayoutSideBySideChoice,
-        (int)StudioLayout.Camera => LayoutCameraChoice,
-        _ => LayoutBubbleChoice,
+        var content = new StackPanel { Spacing = 5, HorizontalAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetAccessibilityView(content, AccessibilityView.Raw);
+        content.Children.Add(glyph);
+        content.Children.Add(new TextBlock
+        {
+            Text = name,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+        });
+        var item = new GridViewItem
+        {
+            Style = (Style)Resources["StudioCaptionLookItemStyle"],
+            Content = content,
+        };
+        AutomationProperties.SetName(item, name);
+        AutomationProperties.SetAutomationId(item, automationId);
+        ToolTipService.SetToolTip(item, name);
+        grid.Items.Add(item);
+    }
+
+    private static void FitPictureChoices(GridView grid, double width)
+    {
+        var itemWidth = Math.Floor((width / 2) - 4);
+        if (itemWidth <= 0)
+        {
+            return;
+        }
+
+        foreach (var item in grid.Items.OfType<GridViewItem>())
+        {
+            item.Width = itemWidth;
+        }
+    }
+
+    private Canvas LayoutGlyph(StudioLayout layout)
+    {
+        var canvas = NewChoiceGlyph();
+        if (layout == StudioLayout.SideBySide)
+        {
+            AddGlyphShape(canvas, new Rectangle { RadiusX = 2, RadiusY = 2 }, 0, 3, 21, 18);
+            AddGlyphShape(canvas, new Rectangle { RadiusX = 2, RadiusY = 2 }, 23, 3, 13, 18);
+        }
+        else
+        {
+            AddGlyphShape(canvas, new Rectangle { RadiusX = 2, RadiusY = 2 }, 0, 3, 36, 18);
+            if (layout == StudioLayout.Bubble)
+            {
+                AddGlyphShape(canvas, new Ellipse(), 24, 12, 12, 12);
+            }
+            else if (layout == StudioLayout.Camera)
+            {
+                AddGlyphShape(canvas, new Ellipse(), 13, 6, 10, 10);
+            }
+        }
+
+        return canvas;
+    }
+
+    private Canvas ShapeGlyph(StudioCameraShape shape)
+    {
+        var canvas = NewChoiceGlyph();
+        Shape outline = shape == StudioCameraShape.Circle
+            ? new Ellipse()
+            : new Rectangle
+            {
+                RadiusX = shape == StudioCameraShape.RoundedRectangle ? 5 : shape == StudioCameraShape.Squircle ? 8 : 0,
+                RadiusY = shape == StudioCameraShape.RoundedRectangle ? 5 : shape == StudioCameraShape.Squircle ? 8 : 0,
+            };
+        AddGlyphShape(canvas, outline, 7, 1, 22, 22);
+        return canvas;
+    }
+
+    private static Canvas NewChoiceGlyph() => new()
+    {
+        Width = 36,
+        Height = 24,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        IsHitTestVisible = false,
     };
+
+    private void AddGlyphShape(Canvas canvas, Shape shape, double x, double y, double width, double height)
+    {
+        shape.Style = (Style)Resources["StudioChoiceGlyphStyle"];
+        shape.Width = width;
+        shape.Height = height;
+        Canvas.SetLeft(shape, x);
+        Canvas.SetTop(shape, y);
+        canvas.Children.Add(shape);
+    }
 
     /// <summary>One choice of a segmented control that is filled in code.</summary>
     private static SegmentedItem CreateChoice(string text, string automationId)

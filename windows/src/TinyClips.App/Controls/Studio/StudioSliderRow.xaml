@@ -43,6 +43,7 @@
             GestureCompleted="OnSliderGestureCompleted"
             GestureStarted="OnSliderGestureStarted"
             IsThumbToolTipEnabled="False"
+            TickPlacement="None"
             ValueChanged="OnSliderValueChanged" />
     </StackPanel>
 </UserControl>

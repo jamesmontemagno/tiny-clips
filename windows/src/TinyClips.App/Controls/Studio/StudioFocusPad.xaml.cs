@@ -106,7 +106,7 @@ public sealed partial class StudioFocusPad : UserControl
         // Worked out here because the inspector scrolls, and where there is no limit on the
         // height a shape that only fits its width would grow as high as that width allows.
         var ratio = GetAspectRatio(_pad);
-        var room = double.IsFinite(availableSize.Width) && availableSize.Width > 0 ? availableSize.Width : MaximumHeight * ratio;
+        var room = double.IsFinite(availableSize.Width) ? Math.Max(0, availableSize.Width) : MaximumHeight * ratio;
         var height = Math.Min(MaximumHeight, room / ratio);
         var size = new Size(height * ratio, height);
         base.MeasureOverride(size);
