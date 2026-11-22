@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v2.3.0.1-mac - 2026-11-22
+
 ### Fixed
 - The macOS Studio inspector no longer jumps, widens, or runs under the panel rail in any panel, including while a project plays, a slider moves, or a scroll bar is shown. Scene Layout and camera Shape are now grids of labelled tiles that fit the panel, the Zoom focus pad shrinks to fit, and sliders no longer draw a tick mark for every step.
 
