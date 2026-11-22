@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+- The Release Hub can prepare an Agent version-bump pull request before publishing its tag.
+
 ## v2.3.0.1-mac - 2026-11-22
 
 ### Fixed

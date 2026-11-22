@@ -436,6 +436,9 @@ export function renderHtml({ instanceId, token }) {
       if (action === "create_release_pr") {
         return ["Creating release PR", "Pushing the release branch and opening a pull request."];
       }
+      if (action === "create_agent_release_pr") {
+        return ["Creating Agent release PR", "Bumping package metadata on an isolated release branch and opening a pull request."];
+      }
       if (action === "merge_release_pr") {
         return ["Merging release PR", "Merging the pull request, then publishing the release tag."];
       }
@@ -801,29 +804,44 @@ export function renderHtml({ instanceId, token }) {
       });
       document.getElementById("version")?.addEventListener("input", (event) => {
         releaseTags[platform] = event.target.value;
+        if (platform === "agent") {
+          const position = event.target.selectionStart;
+          renderDashboard();
+          const input = document.getElementById("version");
+          input.focus();
+          input.setSelectionRange(position, position);
+        }
       });
     }
 
     function renderAgentDashboard() {
       const data = snapshot.platforms.agent;
-      const version = releaseTags.agent || data.suggestedTag;
+      const version = releaseTags.agent ?? data.suggestedTag;
       releaseTags.agent = version;
       const demoMode = snapshot.settings?.demoMode === true;
       const demo = demoMode ? demoProgress.agent : null;
       const actualTagPushed = data.remoteTags?.includes(version);
       const tagPushed = actualTagPushed || (demo?.tag === version && demo.pushed);
       const published = data.latestRelease?.tagName === version || (demo?.tag === version && demo.published);
-      const metadataConsistent = data.packageVersionsConsistent === true;
-      const ready = demoMode || (snapshot.git.canPrepareRelease && metadataConsistent && !tagPushed);
+      const validTag = /^agent-v(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/.test(version);
+      const metadataConsistent = data.packageVersionsConsistent === true && version === "agent-v" + data.packageVersion;
+      const prLookup = data.agentReleasePullRequests;
+      const releasePr = prLookup?.pullRequests?.find((pr) => pr.headRefName === "release/" + version);
+      const demoPr = demo?.tag === version && demo.prCreated;
+      const cleanMain = snapshot.git.canPrepareRelease && snapshot.git.branch === "main";
+      const canPrepare = demoMode || (cleanMain && prLookup?.available);
+      const ready = validTag && (demoMode || (cleanMain && metadataConsistent && !tagPushed));
       const readinessBadge = tagPushed
         ? '<span class="badge good">' + (published ? "Published" : "Tag pushed") + '</span>'
         : (ready
           ? '<span class="badge good">Ready to publish</span>'
-          : (!snapshot.git.atMainTip
+          : (!validTag
+            ? '<span class="badge bad">Invalid tag</span>'
+            : (!snapshot.git.atMainTip
             ? '<span class="badge warn">Latest main required</span>'
             : (!metadataConsistent
-              ? '<span class="badge bad">Version mismatch</span>'
-              : '<span class="badge warn">Commit changes first</span>')));
+              ? '<span class="badge warn">Version bump required</span>'
+              : '<span class="badge warn">Clean main required</span>'))));
       const metadataRows = Object.entries(data.packageVersions || {}).map(([source, value]) =>
         '<div class="workflow-row"><span>' + escapeHtml(source) + '</span><strong>' +
         escapeHtml(value || "Missing") + '</strong></div>'
@@ -837,14 +855,21 @@ export function renderHtml({ instanceId, token }) {
         escapeHtml(version) + '" spellcheck="false" /><button class="action" data-action="generate_notes" type="button">Generate notes</button>' +
         (actualTagPushed ? '<a class="action" href="' + escapeHtml(repositoryUrl("/tree/" + encodeURIComponent(version))) +
           '" target="_blank" rel="noreferrer">Open tag</a>' : '') +
+        (releasePr?.url ? '<a class="action" href="' + escapeHtml(releasePr.url) +
+          '" target="_blank" rel="noreferrer">Open PR</a>' : '') +
         (data.latestRelease?.tagName === version ? '<a class="action" href="' +
           escapeHtml(repositoryUrl("/releases/tag/" + encodeURIComponent(version))) +
           '" target="_blank" rel="noreferrer">Open release</a>' : '') + '</div>' +
         '<div class="steps">' +
-        step(1, "Verify committed versions", metadataConsistent
-          ? "The CLI, plugin, MCP registry, and NuGet package metadata all match " + escapeHtml(data.packageVersion) + "."
-          : "The committed agent version files do not match. Update all four values before publishing.",
-          null, metadataConsistent ? "Matched" : "Fix versions", !metadataConsistent) +
+        step(1, "Prepare version bump PR", metadataConsistent
+          ? "The CLI, plugin, MCP registry, and NuGet package metadata match the selected tag."
+          : (releasePr
+            ? "Release PR #" + releasePr.number + " is " + releasePr.state.toLowerCase() + ". Merge it and update your main checkout before publishing."
+            : (!prLookup?.available && !demoMode
+              ? "Could not check existing release PRs: " + (prLookup?.error || "GitHub unavailable") + "."
+              : "Runs the version-bump script on an isolated branch and opens a PR into main; no tag is published.")),
+          "create_agent_release_pr", metadataConsistent ? "Matched" : (releasePr || demoPr ? "PR created" : "Create PR"),
+          !validTag || !canPrepare || metadataConsistent || Boolean(releasePr) || demoPr || tagPushed) +
         step(2, "Configure NuGet Trusted Publishing",
           "NuGet.org policy: owner jamesmontemagno, repository tiny-clips, workflow agent-release.yml, blank environment, package TinyClips.",
           null, "Configured externally", true) +
@@ -853,7 +878,7 @@ export function renderHtml({ instanceId, token }) {
             ? "The tag is on origin and the agent release workflow runs automatically."
             : (ready
               ? "Creates an annotated tag on the latest clean main commit and pushes it to origin."
-              : "Use a clean checkout at the latest origin/main with matching package metadata."),
+              : "Merge the version bump PR, then use a clean checkout at the latest main with metadata matching the selected tag."),
           "publish_agent_release", tagPushed ? "Published" : "Publish tag", !ready || tagPushed,
           "primary") +
         '</div><div class="workflow"><div class="workflow-head"><h2>Package metadata</h2></div>' +
@@ -1159,6 +1184,9 @@ export function renderHtml({ instanceId, token }) {
       if (result.action === "create_release_pr") {
         return "Created release PR #" + result.pullRequest.number + ". Merge it to publish the release tag.";
       }
+      if (result.action === "create_agent_release_pr") {
+        return "Created Agent release PR #" + result.pullRequest.number + ". Merge it before publishing the tag.";
+      }
       if (result.action === "merge_release_pr") {
         return "Merged the release PR and pushed " + result.tag + ". The release workflow should start automatically.";
       }
@@ -1194,6 +1222,7 @@ export function renderHtml({ instanceId, token }) {
         const progress = demoProgress[targetPlatform] || { tag: result.tag, prepared: true };
         progress.tag = result.tag;
         if (result.action === "create_release_pr") progress.prCreated = true;
+        if (result.action === "create_agent_release_pr") progress.prCreated = true;
         if (result.action === "merge_release_pr") progress.pushed = true;
         if (result.action === "publish_agent_release") {
           progress.pushed = true;
@@ -1249,6 +1278,9 @@ export function renderHtml({ instanceId, token }) {
       } else if (action === "create_release_pr") {
         openConfirmation(action, { tag }, "CREATE PR " + tag,
           "This pushes only a release branch and opens a pull request into main.");
+      } else if (action === "create_agent_release_pr") {
+        openConfirmation(action, { tag }, "CREATE PR " + tag,
+          "This runs the version-bump script on an isolated branch, pushes that branch, and opens a pull request into main. It does not publish a tag.");
       } else if (action === "merge_release_pr") {
         openConfirmation(action, { tag }, "MERGE " + tag,
           "This merges the release PR, retags its merge commit, and pushes the release tag.");
