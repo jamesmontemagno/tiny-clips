@@ -419,7 +419,17 @@ private struct StudioInspectorView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         panelContent
                     }
-                    .padding(.horizontal, 16)
+                    // Never wider than the panel, even when the scroll view asks for the
+                    // content's ideal width: a control that wants more cannot widen every
+                    // slider and row with it. No minimum either, so a row that cannot shrink
+                    // when a scroll bar takes room cannot push the panel over the rail.
+                    .frame(
+                        minWidth: 0,
+                        idealWidth: StudioInspectorMetrics.contentWidth,
+                        maxWidth: StudioInspectorMetrics.contentWidth,
+                        alignment: .leading
+                    )
+                    .padding(.horizontal, StudioInspectorMetrics.contentInset)
                     .padding(.bottom, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -639,18 +649,20 @@ private struct StudioInspectorView: View {
 
     @ViewBuilder
     private var bubbleShapeControls: some View {
-        // Above its choices, not beside them: four segments need the whole width.
         VStack(alignment: .leading, spacing: 6) {
             Text("Shape")
                 .foregroundStyle(.secondary)
-            Picker("Shape", selection: shapeBinding) {
-                ForEach(Self.shapes, id: \.self) { shape in
-                    Text(shape == .roundedRectangle ? "Rounded" : StudioEditorModel.shapeName(shape)).tag(shape)
-                }
+                .accessibilityHidden(true)
+            StudioChoiceGrid(
+                title: "Shape",
+                choices: Self.shapes,
+                selection: camera.shape,
+                name: { StudioEditorModel.shapeName($0) },
+                help: { "Give the camera the \(StudioEditorModel.shapeName($0).lowercased()) shape" },
+                onSelect: { viewModel.setCameraShape($0) }
+            ) { shape, isSelected in
+                StudioCameraShapeGlyph(shape: shape, isSelected: isSelected)
             }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .help("The camera's shape: circle, rounded rectangle, squircle, or rectangle")
         }
         if camera.shape == .roundedRectangle {
             StudioSliderRow(
@@ -696,19 +708,20 @@ private struct StudioInspectorView: View {
     private var cameraStyleControls: some View {
         Toggle("Mirror", isOn: mirrorBinding)
             .toggleStyle(.checkbox)
-        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
-            GridRow {
-                Text("Background")
-                    .foregroundStyle(.secondary)
-                Picker("Camera background", selection: cutoutBinding) {
-                    ForEach(Self.cutouts, id: \.self) { cutout in
-                        Text(StudioEditorModel.cutoutName(cutout)).tag(cutout)
-                    }
+        // Above its choices, not beside them: beside its label the picker has less room than
+        // it asks for.
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Background")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Picker("Camera background", selection: cutoutBinding) {
+                ForEach(Self.cutouts, id: \.self) { cutout in
+                    Text(StudioEditorModel.cutoutName(cutout)).tag(cutout)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .help("Keeps, blurs, or removes what is behind you in the camera picture")
             }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .help("Keeps, blurs, or removes what is behind you in the camera picture")
         }
         if camera.cutout == .remove {
             Text("With the background removed, the camera has no border and no shadow.")
@@ -1031,13 +1044,6 @@ private struct StudioInspectorView: View {
         )
     }
 
-    private var shapeBinding: Binding<StudioCameraShape> {
-        Binding(
-            get: { camera.shape },
-            set: { viewModel.setCameraShape($0) }
-        )
-    }
-
     private var anchorBinding: Binding<StudioAnchor> {
         Binding(
             get: { scene.bubble.anchor },
@@ -1133,7 +1139,9 @@ struct StudioSliderRow: View {
                     .foregroundStyle(.secondary)
             }
             .accessibilityHidden(true)
-            Slider(value: binding, in: range, step: step, onEditingChanged: onEditingChanged)
+            // No `step:` here: AppKit would draw a tick mark for every step, hundreds on the
+            // finer sliders. The binding snaps instead.
+            Slider(value: binding, in: range, onEditingChanged: onEditingChanged)
                 .controlSize(.small)
                 .accessibilityLabel(accessibilityTitle ?? title)
                 .accessibilityValue(valueText)
@@ -1151,11 +1159,136 @@ struct StudioSliderRow: View {
     }
 }
 
+/// Choices shown as tiles, two to a row, each a small picture over its name. Used where a
+/// segmented picker would need more width than the inspector has: a segmented picker given less
+/// than it asks for is laid out at one width and then the other, and the panel jumps with it.
+struct StudioChoiceGrid<Value: Hashable, Glyph: View>: View {
+    let title: String
+    let choices: [Value]
+    let selection: Value
+    let name: (Value) -> String
+    let help: (Value) -> String
+    let onSelect: (Value) -> Void
+    @ViewBuilder let glyph: (Value, Bool) -> Glyph
+
+    var body: some View {
+        LazyVGrid(columns: StudioChoiceTileMetrics.columns, spacing: StudioChoiceTileMetrics.spacing) {
+            ForEach(choices, id: \.self) { choice in
+                let isSelected = choice == selection
+                StudioChoiceTile(name: name(choice), isSelected: isSelected, action: { onSelect(choice) }) {
+                    glyph(choice, isSelected)
+                }
+                .help(help(choice))
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+    }
+}
+
+private enum StudioChoiceTileMetrics {
+    static let spacing: CGFloat = 8
+    static let columns = [GridItem(.flexible(), spacing: spacing), GridItem(.flexible(), spacing: spacing)]
+    static let glyphHeight: CGFloat = 24
+    static let cornerRadius: CGFloat = 9
+}
+
+private struct StudioChoiceTile<Glyph: View>: View {
+    let name: String
+    let isSelected: Bool
+    let action: () -> Void
+    @ViewBuilder let glyph: () -> Glyph
+
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    private var tileShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: StudioChoiceTileMetrics.cornerRadius, style: .continuous)
+    }
+
+    private var fill: Color {
+        if isSelected { return Color.accentColor.opacity(0.16) }
+        return Color.primary.opacity(isHovered && isEnabled ? 0.09 : 0.05)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                glyph()
+                    .frame(height: StudioChoiceTileMetrics.glyphHeight)
+                Text(name)
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 5)
+            .background(tileShape.fill(fill))
+            .overlay(tileShape.strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2))
+            .contentShape(tileShape)
+            .opacity(isEnabled ? 1 : 0.5)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel(name)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// The camera's shape, drawn as the video draws it.
+struct StudioCameraShapeGlyph: View {
+    let shape: StudioCameraShape
+    let isSelected: Bool
+
+    private var color: Color { isSelected ? .accentColor : .secondary }
+
+    var body: some View {
+        outline
+            .frame(width: 22, height: 22)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var outline: some View {
+        switch shape {
+        case .circle:
+            Circle().fill(color.opacity(0.25)).overlay(Circle().strokeBorder(color, lineWidth: 1.5))
+        case .roundedRectangle:
+            let rounded = RoundedRectangle(cornerRadius: 6)
+            rounded.fill(color.opacity(0.25)).overlay(rounded.strokeBorder(color, lineWidth: 1.5))
+        case .squircle:
+            StudioSquircle().fill(color.opacity(0.25)).overlay(StudioSquircle().stroke(color, lineWidth: 1.5).padding(0.75))
+        case .rectangle:
+            Rectangle().fill(color.opacity(0.25)).overlay(Rectangle().strokeBorder(color, lineWidth: 1.5))
+        }
+    }
+}
+
+/// A squircle with the curve the video's camera has.
+private struct StudioSquircle: Shape {
+    func path(in rect: CGRect) -> Path {
+        let points = StudioRenderGeometry.squirclePoints(
+            in: StudioRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height)
+        )
+        var path = Path()
+        path.addLines(points)
+        path.closeSubpath()
+        return path
+    }
+}
+
 // MARK: - Inspector Rail
 
 enum StudioInspectorMetrics {
-    /// Wide enough for the four-part Layout picker between the panel's margins.
+    /// Wide enough for two choice tiles side by side, or a three-part segmented picker beside
+    /// its label, between the panel's margins. A segmented picker must fit at its ideal width:
+    /// given less, it is laid out at one width and then the other, and the panel jumps.
     static let panelWidth: CGFloat = 328
+    static let contentInset: CGFloat = 16
+    static let contentWidth: CGFloat = panelWidth - 2 * contentInset
     /// Wide enough for the longest panel name, Background, under its symbol.
     static let railWidth: CGFloat = 72
 }

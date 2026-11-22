@@ -533,38 +533,39 @@ struct StudioFocusPad: View {
 
     @State private var isDragging = false
 
-    /// The room the inspector has for content: its 320 points less 16 of padding on each side.
-    private static let availableWidth: CGFloat = 288
+    private static let maximumWidth: CGFloat = 288
     private static let maximumHeight: CGFloat = 160
 
     var body: some View {
-        let size = padSize
-
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.primary.opacity(0.08))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(Color.primary.opacity(0.25), lineWidth: 1)
-                }
-            windowRect(size: size)
-            focusDot(size: size)
-        }
-        .frame(width: size.width, height: size.height, alignment: .topLeading)
-        .contentShape(Rectangle())
-        .gesture(dragGesture(size: size))
-        .frame(maxWidth: .infinity)
-        .help("Drag to choose where this zoom looks")
-        .accessibilityHidden(true)
-    }
-
-    /// As wide as the inspector allows and at most `maximumHeight` high, in the pad's shape. The
-    /// size is worked out here because the inspector scrolls, and in a scroll view a shape that
-    /// only fits its width has no limit on its height.
-    private var padSize: CGSize {
         let ratio = CGFloat(safeAspectRatio)
-        let height = min(Self.maximumHeight, Self.availableWidth / ratio)
-        return CGSize(width: height * ratio, height: height)
+
+        // As wide as the room it is given, never wider than `maximumWidth` nor higher than
+        // `maximumHeight`, in the pad's shape. The room shrinks when the inspector shows a
+        // scroll bar, so a fixed width would push the whole inspector wider.
+        Color.clear
+            .aspectRatio(ratio, contentMode: .fit)
+            .frame(maxWidth: min(Self.maximumWidth, Self.maximumHeight * ratio))
+            .overlay {
+                GeometryReader { proxy in
+                    let size = proxy.size
+                    ZStack(alignment: .topLeading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.primary.opacity(0.08))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .strokeBorder(Color.primary.opacity(0.25), lineWidth: 1)
+                            }
+                        windowRect(size: size)
+                        focusDot(size: size)
+                    }
+                    .frame(width: size.width, height: size.height, alignment: .topLeading)
+                    .contentShape(Rectangle())
+                    .gesture(dragGesture(size: size))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .help("Drag to choose where this zoom looks")
+            .accessibilityHidden(true)
     }
 
     private func windowRect(size: CGSize) -> some View {
