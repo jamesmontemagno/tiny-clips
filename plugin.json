@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "tinyclips",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Let AI agents capture screenshots, record demos, annotate, edit Studio projects, and manage clips in the Tiny Clips app on macOS and Windows.",
   "author": {
     "name": "James Montemagno",
