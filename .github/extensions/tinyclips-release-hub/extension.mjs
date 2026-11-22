@@ -299,6 +299,20 @@ await joinSession({
                     handler: async (ctx) => executeReleaseAction("run_release_workflow", ctx.input),
                 },
                 {
+                    name: "create_agent_release_pr",
+                    description: "Create an Agent version-bump branch and PR without publishing a tag, after exact typed confirmation.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            tag: { type: "string", minLength: 1 },
+                            confirmation: { type: "string", minLength: 1 },
+                        },
+                        required: ["tag", "confirmation"],
+                        additionalProperties: false,
+                    },
+                    handler: async (ctx) => executeReleaseAction("create_agent_release_pr", ctx.input),
+                },
+                {
                     name: "publish_agent_release",
                     description: "Create and publish the version-matched agent release tag after exact typed confirmation.",
                     inputSchema: {

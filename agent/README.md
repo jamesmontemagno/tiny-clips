@@ -87,6 +87,8 @@ They inspect the actual `.nupkg`, install it into an isolated tool directory, an
 
 [`agent-release.yml`](../.github/workflows/agent-release.yml) publishes only on **`agent-v<version>` tags**, independently of the macOS and Windows app tags. Before tagging, update `PackageVersion` in the CLI project, `version` in the root [`plugin.json`](../plugin.json), and both versions in `agent/src/TinyClips.Cli/.mcp/server.json` to the same value. The tag must match those committed versions. The release reuses the full CI matrix, publishes the tested Linux `.nupkg`, and attaches that package and a portable plugin ZIP to a separate GitHub release. Prerelease tags such as `agent-v0.2.0-preview.1` create prereleases. Merging a PR alone does not publish.
 
+The Release Hub's Agent tab can run `node agent/scripts/bump-version.mjs <version>` on an isolated release branch and open a version-bump PR. After merging it, update your local `main` and use the separately confirmed **Publish tag** action. The script can also be run manually from the repository root.
+
 Configure [NuGet.org Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) with:
 
 | Setting | Value |
