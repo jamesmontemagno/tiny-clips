@@ -117,7 +117,7 @@ internal sealed class RecentCapturesFlyout : Flyout
     }
 }
 
-internal sealed class RecentCaptureCard : Border
+internal sealed class RecentCaptureCard : UserControl
 {
     private const string ScreenshotGlyph = "\uE722";
     private const string VideoGlyph = "\uE714";
@@ -169,11 +169,6 @@ internal sealed class RecentCaptureCard : Border
         _action = action;
 
         Width = 176;
-        Padding = new Thickness(9);
-        CornerRadius = new CornerRadius(10);
-        BorderThickness = new Thickness(1);
-        BorderBrush = Application.Current.Resources["CardStrokeColorDefaultBrush"] as Brush;
-        Background = Application.Current.Resources["CardBackgroundFillColorDefaultBrush"] as Brush;
 
         _mainButton.Padding = new Thickness(0);
         _mainButton.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -221,7 +216,15 @@ internal sealed class RecentCaptureCard : Border
         var layout = new Grid();
         layout.Children.Add(_mainButton);
         layout.Children.Add(_actions);
-        Child = layout;
+        Content = new Border
+        {
+            Padding = new Thickness(9),
+            CornerRadius = new CornerRadius(10),
+            BorderThickness = new Thickness(1),
+            BorderBrush = Application.Current.Resources["CardStrokeColorDefaultBrush"] as Brush,
+            Background = Application.Current.Resources["CardBackgroundFillColorDefaultBrush"] as Brush,
+            Child = layout,
+        };
         _actions.Children.Add(_copyButton);
         _actions.Children.Add(_editButton);
         _actions.Children.Add(_revealButton);
