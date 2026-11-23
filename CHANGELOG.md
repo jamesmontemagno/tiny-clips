@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## v2.3.0.2-mac - 2026-11-23
+
 ### Fixed
 - Cropping a screenshot on macOS now keeps the selected area instead of vertically mirroring the crop in the source image.
 
