@@ -211,7 +211,6 @@ internal sealed class RecentCaptureCard : UserControl
         _editButton = CreateActionButton("\uE70F", "Edit", RecentCaptureCardAction.Edit);
         _revealButton = CreateActionButton("\uE8B7", "Show in File Explorer", RecentCaptureCardAction.Reveal);
         _deleteButton = CreateActionButton("\uE74D", "Delete", RecentCaptureCardAction.Delete);
-        _deleteButton.Foreground = new SolidColorBrush(Colors.Red);
 
         var layout = new Grid();
         layout.Children.Add(_mainButton);
@@ -346,17 +345,15 @@ internal sealed class RecentCaptureCard : UserControl
 
     private Button CreateActionButton(string glyph, string label, RecentCaptureCardAction action)
     {
-        var icon = new FontIcon { Glyph = glyph, FontFamily = FluentIconFont, FontSize = 13 };
-        var button = new Button
-        {
-            Content = icon,
-            Width = 30,
-            Height = 26,
-            Padding = new Thickness(0),
-            Background = new SolidColorBrush(ColorHelper.FromArgb(232, 32, 32, 32)),
-            BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(14),
-        };
+        var icon = (FontIcon)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            $"<FontIcon xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Glyph=\"{glyph}\" FontSize=\"13\" Foreground=\"{{ThemeResource TextOnAccentFillColorPrimaryBrush}}\"/>");
+        icon.FontFamily = FluentIconFont;
+        var circle = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Width=\"30\" Height=\"26\" CornerRadius=\"14\" Background=\"{ThemeResource AccentFillColorDefaultBrush}\"/>");
+        circle.Child = icon;
+        var button = (Button)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            "<Button xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Width=\"30\" Height=\"26\" Padding=\"0\" BorderThickness=\"0\" CornerRadius=\"14\" Background=\"Transparent\"/>");
+        button.Content = circle;
         AutomationProperties.SetAutomationId(button, $"{AutomationId(_entry)}{action}");
         AutomationProperties.SetName(button, label);
         ToolTipService.SetToolTip(button, label);

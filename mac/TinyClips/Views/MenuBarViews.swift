@@ -226,7 +226,7 @@ struct MenuBarContentView: View {
         }
         .onChange(of: settings.recentCapturesLimit) {
             recentCaptures.refreshForDisplayLimit()
-            studioDrafts.reload()
+            studioDrafts.refreshForDisplayLimit()
         }
     }
 
@@ -375,8 +375,6 @@ private final class RecentCapturesPopoverController: NSObject, NSWindowDelegate 
             )
         )
 
-        RecentCaptureStore.shared.refreshForDisplayLimit()
-        StudioRecentDrafts.shared.reload()
         position(panel, near: NSEvent.mouseLocation)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
@@ -531,13 +529,9 @@ private struct RecentCapturesPopoverView: View {
         } message: {
             Text(deleteMessage)
         }
-        .onAppear {
-            recentCaptures.refreshForDisplayLimit()
-            studioDrafts.reload()
-        }
         .onChange(of: settings.recentCapturesLimit) {
             recentCaptures.refreshForDisplayLimit()
-            studioDrafts.reload()
+            studioDrafts.refreshForDisplayLimit()
         }
     }
 
@@ -545,30 +539,55 @@ private struct RecentCapturesPopoverView: View {
     private func recentCard(_ entry: RecentMenuEntry) -> some View {
         let presentation = RecentCapturePresentation(entry)
         VStack(spacing: 7) {
-            Button {
-                dismiss()
-                open(entry)
-            } label: {
-                VStack(alignment: .leading, spacing: 5) {
-                    thumbnail(entry, symbol: presentation.symbol)
-                    Text(presentation.title)
+            ZStack(alignment: .top) {
+                Button {
+                    dismiss()
+                    open(entry)
+                } label: {
+                    VStack(alignment: .leading, spacing: 5) {
+                        thumbnail(entry, symbol: presentation.symbol)
+                        Text(presentation.title)
+                            .lineLimit(1)
+                            .font(.subheadline.weight(.medium))
+                            .truncationMode(.middle)
+                        HStack(spacing: 5) {
+                            Text(presentation.date)
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .font(.subheadline.weight(.medium))
-                        .truncationMode(.middle)
-                    HStack(spacing: 5) {
-                        Text(presentation.date)
                     }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .frame(width: 160, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .frame(width: 160, alignment: .leading)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .focused($focusedEntryID, equals: entry.id)
+                .help(presentation.accessibilityText)
+                .accessibilityLabel(presentation.accessibilityText)
+                .accessibilityHint(openHint(entry))
+
+                HStack(spacing: 6) {
+                    thumbnailActions(entry)
+                }
+                .padding(.top, 32)
+                .frame(width: 160, alignment: .center)
+                .opacity(hoveredEntryID == entry.id || focusedEntryID == entry.id ? 1 : 0)
+                .allowsHitTesting(hoveredEntryID == entry.id || focusedEntryID == entry.id)
+                .accessibilityHidden(hoveredEntryID != entry.id && focusedEntryID != entry.id)
+                .animation(.easeOut(duration: 0.12), value: hoveredEntryID)
+                .animation(.easeOut(duration: 0.12), value: focusedEntryID)
             }
-            .buttonStyle(.plain)
-            .help(presentation.accessibilityText)
-            .accessibilityLabel(presentation.accessibilityText)
-            .accessibilityHint(openHint(entry))
+            .onHover { hovering in
+                hoveredEntryID = hovering ? entry.id : nil
+            }
+            .onAppear {
+                switch entry {
+                case .capture(let item):
+                    recentCaptures.requestThumbnail(for: item)
+                case .studioDraft(let project):
+                    studioDrafts.requestThumbnail(for: project.id)
+                }
+            }
         }
         .padding(9)
         .frame(width: 176)
@@ -605,19 +624,9 @@ private struct RecentCapturesPopoverView: View {
                 .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 5))
                 .padding(6)
 
-            HStack(spacing: 6) {
-                thumbnailActions(entry)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .opacity(hoveredEntryID == entry.id || focusedEntryID == entry.id ? 1 : 0)
-            .animation(.easeOut(duration: 0.12), value: hoveredEntryID)
-            .animation(.easeOut(duration: 0.12), value: focusedEntryID)
         }
         .frame(width: 160, height: 90)
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .onHover { hovering in
-            hoveredEntryID = hovering ? entry.id : nil
-        }
     }
 
     @ViewBuilder

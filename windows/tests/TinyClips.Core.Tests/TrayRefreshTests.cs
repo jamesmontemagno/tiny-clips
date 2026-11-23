@@ -55,6 +55,20 @@ public sealed class TrayRefreshTests
         Assert.Contains("RecentCaptureCardAction.Reveal", source);
         Assert.Contains("RecentCaptureCardAction.Delete", source);
         Assert.Contains("_copyButton.Visibility = entry.Capture is null ? Visibility.Collapsed : Visibility.Visible;", source);
+        Assert.Contains("TextOnAccentFillColorPrimaryBrush", source);
+        Assert.Contains("AccentFillColorDefaultBrush", source);
+        Assert.DoesNotContain("ColorHelper.FromArgb(232", source);
+    }
+
+    [Fact]
+    public void RecentStudioDeleteUsesTheProtectedWindowServicePath()
+    {
+        using var stream = typeof(TrayRefreshTests).Assembly.GetManifestResourceStream("Tray.App.cs")!;
+        using var reader = new StreamReader(stream);
+        var source = reader.ReadToEnd();
+
+        Assert.Contains("StudioWindows().TryDeleteLibraryProjectAsync(entry.StudioDraft!.Id)", source);
+        Assert.DoesNotContain("GetRequiredService<IStudioProjectStore>().Delete(entry.StudioDraft!.Id)", source);
     }
 
     [Fact]

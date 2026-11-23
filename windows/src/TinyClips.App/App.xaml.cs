@@ -1200,8 +1200,11 @@ public partial class App : Application
         }
         else
         {
-            Services.GetRequiredService<IStudioProjectStore>().Delete(entry.StudioDraft!.Id);
-            await _trayDrafts!.ReloadAsync();
+            if (!await StudioWindows().TryDeleteLibraryProjectAsync(entry.StudioDraft!.Id))
+            {
+                ShowMessageNotification("This project is in use. Finish recording or close its Studio editor before deleting it.");
+                return;
+            }
         }
 
         ShowMessageNotification(isStudio ? "Studio project deleted" : "Capture moved to the Recycle Bin");
