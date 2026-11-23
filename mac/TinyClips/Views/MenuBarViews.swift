@@ -100,45 +100,14 @@ struct MenuBarContentView: View {
             limit: RecentCaptureStore.menuDisplayLimit
         )
         if !recentEntries.isEmpty {
-            Menu {
-                ForEach(recentEntries) { entry in
-                    switch entry {
-                    case .capture(let item):
-                        Button {
-                            captureManager.openRecentCapture(item)
-                        } label: {
-                            if let thumbnail = recentCaptures.thumbnails[item.id] {
-                                Label {
-                                    Text(recentCaptureTitle(item))
-                                } icon: {
-                                    Image(nsImage: thumbnail)
-                                }
-                            } else {
-                                Label(recentCaptureTitle(item), systemImage: recentCaptureIcon(item.type))
-                            }
-                        }
-                        .accessibilityHint("Opens this \(item.type.label.lowercased()) in its editor.")
-                    case .studioDraft(let project):
-                        // A recording that is still a Studio project and has no saved file yet.
-                        Button {
-                            StudioWindowRegistry.shared.open(projectID: project.id)
-                        } label: {
-                            if let thumbnail = studioDrafts.thumbnails[project.id] {
-                                Label {
-                                    Text(studioDraftTitle(project))
-                                } icon: {
-                                    Image(nsImage: thumbnail)
-                                }
-                            } else {
-                                Label(studioDraftTitle(project), systemImage: "square.stack.3d.up")
-                            }
-                        }
-                        .accessibilityHint("Opens this project in Tiny Clips Studio.")
-                    }
+            Button {
+                DispatchQueue.main.async {
+                    RecentCapturesPopoverController.shared.show(captureManager: captureManager)
                 }
             } label: {
                 Label("Recent Captures", systemImage: "clock.arrow.circlepath")
             }
+            .accessibilityHint("Opens recent captures as a horizontally scrolling thumbnail popover.")
         }
 
         Divider()
@@ -255,6 +224,10 @@ struct MenuBarContentView: View {
             recentCaptures.pruneMissing()
             studioDrafts.reload()
         }
+        .onChange(of: settings.recentCapturesLimit) {
+            recentCaptures.refreshForDisplayLimit()
+            studioDrafts.refreshForDisplayLimit()
+        }
     }
 
     @ViewBuilder
@@ -285,24 +258,6 @@ struct MenuBarContentView: View {
     private func openDirectory(_ directory: URL) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         NSWorkspace.shared.open(directory)
-    }
-
-    private func recentCaptureTitle(_ item: RecentCaptureItem) -> String {
-        "\(item.url.lastPathComponent) — \(item.type.label), \(item.capturedAt.formatted(date: .abbreviated, time: .shortened))"
-    }
-
-    private func studioDraftTitle(_ project: StudioProjectSummary) -> String {
-        let name = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let shown = name.isEmpty ? "Untitled Recording" : name
-        return "\(shown) — Studio project, \(project.lastUsedAt.formatted(date: .abbreviated, time: .shortened))"
-    }
-
-    private func recentCaptureIcon(_ type: CaptureType) -> String {
-        switch type {
-        case .screenshot: "photo"
-        case .video: "video"
-        case .gif: "photo.stack"
-        }
     }
 
     private func checkForUpdatesAfterSettingsWindowAppears() {
@@ -359,6 +314,510 @@ struct MenuBarContentView: View {
         }
     }
 
+}
+
+// MARK: - Recent Captures Popover
+
+struct RecentCapturePresentation: Equatable {
+    let id: String
+    let title: String
+    let kind: String
+    let date: String
+    let symbol: String
+    let accessibilityText: String
+
+    init(_ entry: RecentMenuEntry) {
+        let shownDate = entry.date.formatted(date: .abbreviated, time: .shortened)
+        id = entry.id
+        date = shownDate
+        switch entry {
+        case .capture(let item):
+            title = item.url.lastPathComponent
+            kind = item.type.label
+            symbol = switch item.type {
+            case .screenshot: "photo"
+            case .video: "video"
+            case .gif: "photo.stack"
+            }
+        case .studioDraft(let project):
+            let projectName = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            title = projectName.isEmpty ? "Untitled Recording" : projectName
+            kind = "Studio project"
+            symbol = "square.stack.3d.up"
+        }
+        accessibilityText = "\(title), \(kind), \(shownDate)"
+    }
+}
+
+@MainActor
+private final class RecentCapturesPopoverController: NSObject, NSWindowDelegate {
+    static let shared = RecentCapturesPopoverController()
+
+    private var panel: RecentCapturesPopoverPanel?
+    private var globalMouseMonitor: Any?
+    private var localKeyboardMonitor: Any?
+
+    private override init() {
+        super.init()
+    }
+
+    func show(captureManager: CaptureManager) {
+        let panel = panel ?? {
+            let created = RecentCapturesPopoverPanel()
+            created.delegate = self
+            self.panel = created
+            return created
+        }()
+        panel.setContent(
+            RecentCapturesPopoverView(
+                captureManager: captureManager,
+                dismiss: { [weak self] in self?.dismiss() }
+            )
+        )
+
+        position(panel, near: NSEvent.mouseLocation)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+        installDismissMonitors()
+    }
+
+    func dismiss() {
+        if let globalMouseMonitor {
+            NSEvent.removeMonitor(globalMouseMonitor)
+            self.globalMouseMonitor = nil
+        }
+        if let localKeyboardMonitor {
+            NSEvent.removeMonitor(localKeyboardMonitor)
+            self.localKeyboardMonitor = nil
+        }
+        panel?.orderOut(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        dismiss()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        guard NSApp.modalWindow == nil else { return }
+        dismiss()
+    }
+
+    private func installDismissMonitors() {
+        if globalMouseMonitor == nil {
+            globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                Task { @MainActor in self?.dismiss() }
+            }
+        }
+        if localKeyboardMonitor == nil {
+            localKeyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if event.keyCode == 53 {
+                    self?.dismiss()
+                    return nil
+                }
+                return event
+            }
+        }
+    }
+
+    private func position(_ panel: NSPanel, near point: NSPoint) {
+        let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main
+        guard let screen else { return }
+        let bounds = screen.visibleFrame
+        let margin: CGFloat = 12
+        let size = panel.frame.size
+        let x = min(max(point.x - size.width / 2, bounds.minX + margin), bounds.maxX - size.width - margin)
+        let y = min(bounds.maxY - size.height - margin, max(bounds.minY + margin, point.y - size.height - 18))
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+}
+
+@MainActor
+private final class RecentCapturesPopoverPanel: NSPanel {
+    private let width: CGFloat = 568
+    private let height: CGFloat = 218
+
+    override var canBecomeKey: Bool { true }
+
+    init() {
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        isReleasedWhenClosed = false
+        level = .popUpMenu
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+    }
+
+    func setContent<Content: View>(_ content: Content) {
+        let hostingView = NSHostingView(rootView: content.frame(width: width, height: height))
+        hostingView.wantsLayer = true
+        contentView = hostingView
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        RecentCapturesPopoverController.shared.dismiss()
+    }
+}
+
+@MainActor
+private struct RecentCapturesPopoverView: View {
+    @ObservedObject private var recentCaptures = RecentCaptureStore.shared
+    @ObservedObject private var studioDrafts = StudioRecentDrafts.shared
+    @ObservedObject private var settings = CaptureSettings.shared
+    let captureManager: CaptureManager
+    let dismiss: () -> Void
+
+    @State private var copiedEntryID: String?
+    @State private var pendingDeleteEntry: RecentMenuEntry?
+    @State private var hoveredEntryID: String?
+    @FocusState private var focusedEntryID: String?
+
+    private var entries: [RecentMenuEntry] {
+        RecentMenuEntry.merged(
+            captures: recentCaptures.items,
+            drafts: studioDrafts.drafts,
+            limit: settings.recentCapturesLimit
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Recent Captures", systemImage: "clock.arrow.circlepath")
+                    .font(.headline)
+                Spacer()
+                Text("\(entries.count)")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("\(entries.count) recent items")
+                Button(action: dismiss) {
+                    Label("Close recent captures", systemImage: "xmark")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help("Close recent captures (Esc)")
+            }
+            .padding(.horizontal, 2)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
+                    ForEach(entries) { entry in
+                        recentCard(entry)
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 1)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.white.opacity(0.16))
+        }
+        .alert(deleteTitle, isPresented: deleteAlertBinding) {
+            Button("Cancel", role: .cancel) {
+                pendingDeleteEntry = nil
+            }
+            Button(deleteActionTitle, role: .destructive) {
+                if let pendingDeleteEntry {
+                    performDelete(pendingDeleteEntry)
+                }
+                pendingDeleteEntry = nil
+            }
+        } message: {
+            Text(deleteMessage)
+        }
+        .onChange(of: settings.recentCapturesLimit) {
+            recentCaptures.refreshForDisplayLimit()
+            studioDrafts.refreshForDisplayLimit()
+        }
+    }
+
+    @ViewBuilder
+    private func recentCard(_ entry: RecentMenuEntry) -> some View {
+        let presentation = RecentCapturePresentation(entry)
+        VStack(spacing: 7) {
+            ZStack(alignment: .top) {
+                Button {
+                    dismiss()
+                    open(entry)
+                } label: {
+                    VStack(alignment: .leading, spacing: 5) {
+                        thumbnail(entry, symbol: presentation.symbol)
+                        Text(presentation.title)
+                            .lineLimit(1)
+                            .font(.subheadline.weight(.medium))
+                            .truncationMode(.middle)
+                        HStack(spacing: 5) {
+                            Text(presentation.date)
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
+                    .frame(width: 160, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .focused($focusedEntryID, equals: entry.id)
+                .help(presentation.accessibilityText)
+                .accessibilityLabel(presentation.accessibilityText)
+                .accessibilityHint(openHint(entry))
+
+                HStack(spacing: 6) {
+                    thumbnailActions(entry)
+                }
+                .padding(.top, 32)
+                .frame(width: 160, alignment: .center)
+                .opacity(hoveredEntryID == entry.id || focusedEntryID == entry.id ? 1 : 0)
+                .allowsHitTesting(hoveredEntryID == entry.id || focusedEntryID == entry.id)
+                .accessibilityHidden(hoveredEntryID != entry.id && focusedEntryID != entry.id)
+                .animation(.easeOut(duration: 0.12), value: hoveredEntryID)
+                .animation(.easeOut(duration: 0.12), value: focusedEntryID)
+            }
+            .onHover { hovering in
+                hoveredEntryID = hovering ? entry.id : nil
+            }
+            .onAppear {
+                switch entry {
+                case .capture(let item):
+                    recentCaptures.requestThumbnail(for: item)
+                case .studioDraft(let project):
+                    studioDrafts.requestThumbnail(for: project.id)
+                }
+            }
+        }
+        .padding(9)
+        .frame(width: 176)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.78), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.08))
+        }
+    }
+
+    @ViewBuilder
+    private func thumbnail(_ entry: RecentMenuEntry, symbol: String) -> some View {
+        let image: NSImage? = switch entry {
+        case .capture(let item): recentCaptures.thumbnails[item.id]
+        case .studioDraft(let project): studioDrafts.thumbnails[project.id]
+        }
+        ZStack(alignment: .bottomLeading) {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Color.primary.opacity(0.04)
+                    Image(systemName: symbol)
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .padding(5)
+                .foregroundStyle(.white)
+                .background(.black.opacity(0.58), in: RoundedRectangle(cornerRadius: 5))
+                .padding(6)
+
+        }
+        .frame(width: 160, height: 90)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private func thumbnailActions(_ entry: RecentMenuEntry) -> some View {
+        let presentation = RecentCapturePresentation(entry)
+        switch entry {
+        case .capture(let item):
+            quickAction(copyFeedback(entry) ? "checkmark" : "doc.on.doc", "Copy \(item.url.lastPathComponent)", copyFeedback(entry) ? "Copied" : "Copy", entryID: entry.id) {
+                copy(item, entryID: entry.id)
+            }
+            quickAction("pencil", "Edit \(item.url.lastPathComponent)", "Edit", entryID: entry.id) {
+                dismiss()
+                open(entry)
+            }
+            quickAction("folder", "Show \(item.url.lastPathComponent) in Finder", "Reveal", entryID: entry.id) {
+                dismiss()
+                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            }
+            quickAction("trash", "Delete \(item.url.lastPathComponent)", "Delete", entryID: entry.id) {
+                requestDelete(entry)
+            }
+            .tint(.red)
+        case .studioDraft(let project):
+            quickAction("pencil", "Open \(presentation.title) in Studio", "Edit", entryID: entry.id) {
+                dismiss()
+                open(entry)
+            }
+            quickAction("folder", "Show \(presentation.title) in Finder", "Reveal", entryID: entry.id) {
+                dismiss()
+                reveal(project)
+            }
+            quickAction("trash", "Delete Studio project \(presentation.title)", "Delete", entryID: entry.id) {
+                requestDelete(entry)
+            }
+            .tint(.red)
+        }
+    }
+
+    @ViewBuilder
+    private func quickAction(
+        _ symbol: String,
+        _ accessibilityLabel: String,
+        _ help: String,
+        entryID: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.caption)
+                .frame(width: 26, height: 26)
+                .background(.regularMaterial, in: Circle())
+                .overlay {
+                    Circle().stroke(.white.opacity(0.18))
+                }
+        }
+        .buttonStyle(.plain)
+        .focused($focusedEntryID, equals: entryID)
+        .help(help)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func openHint(_ entry: RecentMenuEntry) -> String {
+        switch entry {
+        case .capture(let item): "Opens this \(item.type.label.lowercased()) in its editor."
+        case .studioDraft: "Opens this project in Tiny Clips Studio."
+        }
+    }
+
+    private func open(_ entry: RecentMenuEntry) {
+        switch entry {
+        case .capture(let item):
+            captureManager.openRecentCapture(item)
+        case .studioDraft(let project):
+            StudioWindowRegistry.shared.open(projectID: project.id)
+        }
+    }
+
+    private func copy(_ item: RecentCaptureItem, entryID: String) {
+        let copied: Bool
+        switch item.type {
+        case .screenshot:
+            guard let image = ImagePixelDensity.loadImage(contentsOf: item.url) else {
+                SaveService.shared.showError("Could not prepare the screenshot for the clipboard.")
+                return
+            }
+            copied = SaveService.shared.copyImageToClipboard(image)
+        case .video, .gif:
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            copied = pasteboard.writeObjects([item.url as NSURL])
+        }
+        guard copied else {
+            SaveService.shared.showError("Could not copy the capture to the clipboard.")
+            return
+        }
+        copiedEntryID = entryID
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [entryID] in
+            if copiedEntryID == entryID {
+                copiedEntryID = nil
+            }
+        }
+        AccessibilityAnnouncementService.shared.announce("\(item.url.lastPathComponent) copied.", priority: .medium)
+    }
+
+    private func copyFeedback(_ entry: RecentMenuEntry) -> Bool {
+        copiedEntryID == entry.id
+    }
+
+    private func reveal(_ project: StudioProjectSummary) {
+        do {
+            let directory = try StudioProjectStore.shared.paths(forID: project.id).projectDirectory
+            NSWorkspace.shared.activateFileViewerSelecting([directory])
+        } catch {
+            SaveService.shared.showError("Could not show the Studio project: \(error.localizedDescription)")
+        }
+    }
+
+    private func requestDelete(_ entry: RecentMenuEntry) {
+        if CaptureSettings.shared.clipsManagerConfirmDelete {
+            pendingDeleteEntry = entry
+        } else {
+            performDelete(entry)
+        }
+    }
+
+    private func performDelete(_ entry: RecentMenuEntry) {
+        switch entry {
+        case .capture(let item):
+            do {
+                var trashedURL: NSURL?
+                try FileManager.default.trashItem(at: item.url, resultingItemURL: &trashedURL)
+                recentCaptures.remove(item)
+            } catch {
+                SaveService.shared.showError("Could not move the capture to Trash: \(error.localizedDescription)")
+                return
+            }
+        case .studioDraft(let project):
+            if StudioWindowRegistry.shared.openProjectIDs.contains(project.id) {
+                SaveService.shared.showError("\"\(RecentCapturePresentation(entry).title)\" is open in Studio. Close it before deleting the project.")
+                return
+            }
+            do {
+                try StudioProjectStore.shared.delete(id: project.id)
+                studioDrafts.reload()
+            } catch {
+                SaveService.shared.showError("Could not delete the Studio project: \(error.localizedDescription)")
+                return
+            }
+        }
+        dismiss()
+    }
+
+    private var deleteAlertBinding: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteEntry != nil },
+            set: { if !$0 { pendingDeleteEntry = nil } }
+        )
+    }
+
+    private var deleteTitle: String {
+        guard let pendingDeleteEntry else { return "Delete item?" }
+        return switch pendingDeleteEntry {
+        case .capture: "Move capture to Trash?"
+        case .studioDraft: "Delete Studio project?"
+        }
+    }
+
+    private var deleteActionTitle: String {
+        guard let pendingDeleteEntry else { return "Delete" }
+        return switch pendingDeleteEntry {
+        case .capture: "Move to Trash"
+        case .studioDraft: "Delete Project"
+        }
+    }
+
+    private var deleteMessage: String {
+        guard let pendingDeleteEntry else { return "" }
+        let title = RecentCapturePresentation(pendingDeleteEntry).title
+        return switch pendingDeleteEntry {
+        case .capture: "\"\(title)\" will be moved to Trash."
+        case .studioDraft: "\"\(title)\" and its managed recordings and edits will be removed. Exported videos and external originals are kept."
+        }
+    }
 }
 
 // MARK: - Menu Bar Label

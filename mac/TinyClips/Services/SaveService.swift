@@ -47,21 +47,23 @@ struct RecentCaptureItem: Identifiable, Codable {
 final class RecentCaptureStore: ObservableObject {
     static let shared = RecentCaptureStore()
 
-    /// Only the newest captures get a thumbnail generated; the menu itself also only shows this many.
-    static let menuDisplayLimit = 10
+    /// Retained history supports the maximum configurable display size.
+    private static let maximumStoredCount = 30
+    /// The popover displays this many mixed captures and Studio drafts.
+    static var menuDisplayLimit: Int { CaptureSettings.shared.recentCapturesLimit }
 
     @Published private(set) var items: [RecentCaptureItem] = []
     @Published private(set) var thumbnails: [String: NSImage] = [:]
 
     private let defaultsKey = "recentCapturesV1"
+    private var pendingThumbnailIDs: Set<String> = []
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: defaultsKey),
            let decoded = try? JSONDecoder().decode([RecentCaptureItem].self, from: data) {
-            items = Array(decoded.prefix(10))
+            items = Array(decoded.prefix(Self.maximumStoredCount))
         }
         pruneMissing()
-        loadThumbnails()
     }
 
     func record(url: URL, type: CaptureType) {
@@ -71,23 +73,23 @@ final class RecentCaptureStore: ObservableObject {
         let path = url.standardizedFileURL.path
         items.removeAll { $0.path == path }
         items.insert(RecentCaptureItem(path: path, type: type), at: 0)
-        items = Array(items.filter { FileManager.default.fileExists(atPath: $0.path) }.prefix(10))
+        items = Array(items.filter { FileManager.default.fileExists(atPath: $0.path) }.prefix(Self.maximumStoredCount))
         thumbnails.removeValue(forKey: path)
+        pendingThumbnailIDs.remove(path)
         pruneThumbnails()
         persist()
-        loadThumbnails()
     }
 
     func remove(_ item: RecentCaptureItem) {
         items.removeAll { $0.path == item.path }
         pruneThumbnails()
         persist()
-        loadThumbnails()
     }
 
     func remove(url: URL) {
         let path = url.standardizedFileURL.path
         items.removeAll { URL(fileURLWithPath: $0.path).standardizedFileURL.path == path }
+        pruneThumbnails()
         persist()
     }
 
@@ -105,38 +107,40 @@ final class RecentCaptureStore: ObservableObject {
         }
     }
 
+    func refreshForDisplayLimit() {
+        pruneThumbnails()
+    }
+
     // MARK: - Thumbnails
 
-    /// Generates small poster thumbnails for the items shown in the tray's Recent Captures menu
-    /// (only the newest `menuDisplayLimit`), skipping any already cached.
-    private func loadThumbnails() {
-        let visible = Array(items.prefix(Self.menuDisplayLimit))
-        for item in visible where thumbnails[item.id] == nil {
-            let url = item.url
-            let type = item.type
-            let itemID = item.id
-            let capturedAt = item.capturedAt
-            Task.detached(priority: .utility) { [weak self] in
-                let image = await Self.generateThumbnail(url: url, type: type)
-                guard let image else { return }
-                await MainActor.run { [weak self] in
-                    guard let self,
-                          self.items.prefix(Self.menuDisplayLimit).contains(where: {
-                              $0.id == itemID && $0.type == type && $0.capturedAt == capturedAt
-                          }) else {
-                        return
-                    }
-                    self.thumbnails[itemID] = image
+    /// Requests a thumbnail when a card becomes visible. Repeated appearances share one decode.
+    func requestThumbnail(for item: RecentCaptureItem) {
+        guard thumbnails[item.id] == nil, pendingThumbnailIDs.insert(item.id).inserted else { return }
+        let url = item.url
+        let type = item.type
+        let itemID = item.id
+        let capturedAt = item.capturedAt
+        Task.detached(priority: .utility) { [weak self] in
+            let image = await Self.generateThumbnail(url: url, type: type)
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.pendingThumbnailIDs.remove(itemID)
+                guard let image,
+                      self.items.prefix(Self.menuDisplayLimit).contains(where: {
+                          $0.id == itemID && $0.type == type && $0.capturedAt == capturedAt
+                      }) else {
+                    return
                 }
+                self.thumbnails[itemID] = image
             }
         }
     }
 
-    /// Drops cached thumbnails for items that are no longer tracked at all, so the dictionary
-    /// doesn't grow unbounded as captures age out of `items`.
+    /// Keeps thumbnails only for entries the popover can currently display.
     private func pruneThumbnails() {
-        let liveIDs = Set(items.map(\.id))
-        thumbnails = thumbnails.filter { liveIDs.contains($0.key) }
+        let visibleIDs = Set(items.prefix(Self.menuDisplayLimit).map(\.id))
+        thumbnails = thumbnails.filter { visibleIDs.contains($0.key) }
+        pendingThumbnailIDs = pendingThumbnailIDs.intersection(visibleIDs)
     }
 
     nonisolated private static func generateThumbnail(url: URL, type: CaptureType) async -> NSImage? {
@@ -215,6 +219,7 @@ final class StudioRecentDrafts: ObservableObject {
     private var changes: AnyCancellable?
     private var isLoading = false
     private var needsReload = false
+    private var pendingThumbnailIDs: Set<String> = []
 
     private init() {
         changes = NotificationCenter.default.publisher(for: .studioProjectsDidChange)
@@ -237,28 +242,46 @@ final class StudioRecentDrafts: ObservableObject {
             return
         }
         isLoading = true
-        let pictureLimit = RecentCaptureStore.menuDisplayLimit
         Task { [weak self] in
-            let loaded: ([StudioProjectSummary], [String: NSImage]) = await Task.detached(priority: .utility) {
+            let loaded = await Task.detached(priority: .utility) {
                 let store = StudioProjectStore.shared
                 let drafts = StudioProjectSummary.menuDrafts(from: (try? store.listSummaries()) ?? [])
                     .sorted { $0.lastUsedAt > $1.lastUsedAt }
-                var pictures: [String: NSImage] = [:]
-                for draft in drafts.prefix(pictureLimit) {
-                    if let poster = try? store.paths(forID: draft.id).posterURL,
-                       let image = NSImage(contentsOf: poster) {
-                        pictures[draft.id] = image
-                    }
-                }
-                return (drafts, pictures)
+                return drafts
             }.value
             guard let self else { return }
-            self.drafts = loaded.0
-            self.thumbnails = loaded.1
+            self.drafts = loaded
+            self.refreshForDisplayLimit()
             self.isLoading = false
             if self.needsReload {
                 self.needsReload = false
                 self.reload()
+            }
+        }
+    }
+
+    func refreshForDisplayLimit() {
+        let visibleIDs = Set(drafts.prefix(RecentCaptureStore.menuDisplayLimit).map(\.id))
+        thumbnails = thumbnails.filter { visibleIDs.contains($0.key) }
+        pendingThumbnailIDs = pendingThumbnailIDs.intersection(visibleIDs)
+    }
+
+    /// Requests a project poster only when its Recent card is visible.
+    func requestThumbnail(for projectID: String) {
+        guard thumbnails[projectID] == nil, pendingThumbnailIDs.insert(projectID).inserted else { return }
+        Task.detached(priority: .utility) { [weak self] in
+            let poster = try? StudioProjectStore.shared.paths(forID: projectID).posterURL
+            let image = poster.flatMap(NSImage.init(contentsOf:))
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.pendingThumbnailIDs.remove(projectID)
+                guard let image,
+                      self.drafts.prefix(RecentCaptureStore.menuDisplayLimit).contains(where: {
+                          $0.id == projectID
+                      }) else {
+                    return
+                }
+                self.thumbnails[projectID] = image
             }
         }
     }

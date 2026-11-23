@@ -34,10 +34,39 @@ public sealed class TrayRefreshTests
         Assert.Equal(2, Regex.Matches(source, @"\bBuildTrayPopupContent\(").Count);
         Assert.Contains("|| flyout.IsOpen", source);
         Assert.Contains("flyout.Closed += OnTrayRecentClosed", source);
-        // The Recent menu shows type icons only: the tray never reads or decodes thumbnails.
+        // Refreshing the tray never reads thumbnails; the flyout loads them on demand.
         Assert.DoesNotContain("GetThumbnailPathAsync", source);
         Assert.DoesNotContain("ImageIcon", source);
         Assert.DoesNotContain("PosterOf", source);
+    }
+
+    [Fact]
+    public void RecentFlyoutLoadsThumbnailsLazilyAndKeepsProjectActionsContextual()
+    {
+        using var stream = typeof(TrayRefreshTests).Assembly.GetManifestResourceStream("Tray.RecentCapturesFlyout.cs")!;
+        using var reader = new StreamReader(stream);
+        var source = reader.ReadToEnd();
+
+        Assert.Contains("Opening += (_, _) => RequestThumbnailsNear(_scroller.HorizontalOffset)", source);
+        Assert.Contains("RequestThumbnailsNear(args.FinalView.HorizontalOffset)", source);
+        Assert.Contains("GetThumbnailPathAsync", source);
+        Assert.Contains("RecentCaptureCardAction.Copy", source);
+        Assert.Contains("RecentCaptureCardAction.Edit", source);
+        Assert.Contains("RecentCaptureCardAction.Reveal", source);
+        Assert.Contains("RecentCaptureCardAction.Delete", source);
+        Assert.Contains("_copyButton.Visibility = entry.Capture is null ? Visibility.Collapsed : Visibility.Visible;", source);
+        Assert.Contains("AccentButtonStyle", source);
+    }
+
+    [Fact]
+    public void RecentStudioDeleteUsesTheProtectedWindowServicePath()
+    {
+        using var stream = typeof(TrayRefreshTests).Assembly.GetManifestResourceStream("Tray.App.cs")!;
+        using var reader = new StreamReader(stream);
+        var source = reader.ReadToEnd();
+
+        Assert.Contains("StudioWindows().TryDeleteLibraryProjectAsync(entry.StudioDraft!.Id)", source);
+        Assert.DoesNotContain("GetRequiredService<IStudioProjectStore>().Delete(entry.StudioDraft!.Id)", source);
     }
 
     [Fact]

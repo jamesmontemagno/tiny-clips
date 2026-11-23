@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - Cropping a screenshot on macOS now keeps the selected area instead of vertically mirroring the crop in the source image.
 
 ### Changed
+- Recent Captures now opens as a compact scrolling thumbnail popover on macOS, with Copy, Edit, Reveal, and Delete quick actions. Choose 5–30 items in Settings → General → Recent captures to show (default 10). Use the keyboard-accessible X in the header or press Escape to close the popover.
 - The Release Hub can prepare an Agent version-bump pull request before publishing its tag.
 - Added a dedicated Agent CLI changelog and clarified that contributor instructions should evaluate Agent API coverage case by case instead of automatically exposing every app capability.
 

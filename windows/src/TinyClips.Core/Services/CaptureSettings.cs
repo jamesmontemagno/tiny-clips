@@ -163,6 +163,23 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Set("fileNameTemplate", value);
     }
 
+    public int RecentCapturesLimit
+    {
+        get => Math.Clamp(_settings.Get("recentCapturesLimit", 10), 5, 30);
+        set
+        {
+            var next = Math.Clamp(value, 5, 30);
+            var changed = RecentCapturesLimit != next;
+            _settings.Set("recentCapturesLimit", next);
+            if (changed)
+            {
+                RecentCapturesLimitChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public event EventHandler? RecentCapturesLimitChanged;
+
     public double GifFrameRate
     {
         get => _settings.Get("gifFrameRate", 10.0);
@@ -955,6 +972,7 @@ public sealed class CaptureSettings : ICaptureSettings
         LaunchAtLogin = false;
         ReopenPickerAfterCapture = false;
         FileNameTemplate = "TinyClips {date} at {time}";
+        RecentCapturesLimit = 10;
         GifFrameRate = 10.0;
         GifMaxWidth = 640;
         VideoFrameRate = 30;

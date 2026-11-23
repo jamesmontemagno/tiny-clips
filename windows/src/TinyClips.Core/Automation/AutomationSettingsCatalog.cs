@@ -31,6 +31,7 @@ public sealed class AutomationSettingsCatalog
         entries.AddRange(
         [
             Text("fileNameTemplate", () => s.FileNameTemplate, v => s.FileNameTemplate = v),
+            Int("recentCapturesLimit", () => s.RecentCapturesLimit, v => s.RecentCapturesLimit = v, 5, 30),
             Text("studioExportResolution", () => StudioExportPresets.Id(s.StudioExportResolution),
                 v => s.StudioExportResolution = StudioExportPresets.TryParseResolution(v, out var resolution) ? resolution : s.StudioExportResolution,
                 allowed: [.. StudioExportPresets.ResolutionIds]),

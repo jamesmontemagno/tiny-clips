@@ -6,14 +6,14 @@ namespace TinyClips.Core.Tests;
 public sealed class RecentCaptureServiceTests
 {
     [Fact]
-    public void Record_PersistsNewestTenAcrossCaptureTypes()
+    public void Record_PersistsNewestThirtyAcrossCaptureTypes()
     {
         var settings = new TestSettingsService();
         var files = new FakeFileSystem();
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 7, 26, 12, 0, 0, TimeSpan.Zero));
         var service = new RecentCaptureService(settings, files, time);
 
-        for (var index = 0; index < 12; index++)
+        for (var index = 0; index < 35; index++)
         {
             var path = $@"C:\Captures\capture-{index}.png";
             files.ExistingPaths.Add(path);
@@ -23,11 +23,11 @@ public sealed class RecentCaptureServiceTests
 
         var reloaded = new RecentCaptureService(settings, files, time).GetRecentCaptures();
 
-        Assert.Equal(10, reloaded.Count);
-        Assert.Equal(@"C:\Captures\capture-11.png", reloaded[0].Path);
-        Assert.Equal(CaptureType.Gif, reloaded[0].Type);
+        Assert.Equal(30, reloaded.Count);
+        Assert.Equal(@"C:\Captures\capture-34.png", reloaded[0].Path);
+        Assert.Equal(CaptureType.Video, reloaded[0].Type);
         Assert.DoesNotContain(reloaded, capture => capture.Path.EndsWith("capture-0.png", StringComparison.Ordinal));
-        Assert.DoesNotContain(reloaded, capture => capture.Path.EndsWith("capture-1.png", StringComparison.Ordinal));
+        Assert.DoesNotContain(reloaded, capture => capture.Path.EndsWith("capture-4.png", StringComparison.Ordinal));
     }
 
     [Fact]

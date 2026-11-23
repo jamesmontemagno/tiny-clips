@@ -484,6 +484,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _confirmEditorEscape;
 
+    [ObservableProperty]
+    private double _recentCapturesLimit;
+
     // Uploadcare
     [ObservableProperty]
     private bool _uploadcareEnabled;
@@ -1399,6 +1402,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 ShowInExplorer = _settings.ShowInExplorer;
                 ShowSaveNotifications = _settings.ShowSaveNotifications;
                 ConfirmEditorEscape = _settings.ConfirmEditorEscape;
+                RecentCapturesLimit = _settings.RecentCapturesLimit;
                 LaunchAtLogin = _settings.LaunchAtLogin;
                 ShowBrandingOverlay = _settings.ShowBrandingOverlay;
                 IncludeTinyClipsInCapture = _settings.IncludeTinyClipsInCapture;
@@ -1775,6 +1779,25 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnShowSaveNotificationsChanged(bool value) => Persist(SettingsSectionKind.General, () => _settings.ShowSaveNotifications = value);
 
     partial void OnConfirmEditorEscapeChanged(bool value) => Persist(SettingsSectionKind.General, () => _settings.ConfirmEditorEscape = value);
+
+    partial void OnRecentCapturesLimitChanged(double value)
+    {
+        if (IsPersistenceSuppressed(SettingsSectionKind.General))
+        {
+            return;
+        }
+
+        var saved = _settings.RecentCapturesLimit;
+        var normalized = double.IsNaN(value) ? saved : (int)Math.Clamp(Math.Round(value), 5, 30);
+        if (value != normalized)
+        {
+            RecentCapturesLimit = normalized;
+        }
+        else if (normalized != saved)
+        {
+            _settings.RecentCapturesLimit = normalized;
+        }
+    }
 
     partial void OnUploadcareEnabledChanged(bool value) => Persist(SettingsSectionKind.Uploadcare, () => _settings.UploadcareEnabled = value);
 

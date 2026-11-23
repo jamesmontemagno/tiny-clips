@@ -76,6 +76,29 @@ public sealed class SettingsCaptureGroupingTests
         });
     }
 
+    [Fact]
+    public void OnlyGeneralSettingsOffersTheRecentCaptureLimit()
+    {
+        var elements = SettingsMarkup.Elements("GeneralSettingsSection.xaml");
+        var control = Assert.Single(elements
+            .Where(element => element.Attr(Id) == "LibraryRecentCapturesLimitBox"));
+
+        Assert.Equal("5", control.Attr("Minimum"));
+        Assert.Equal("30", control.Attr("Maximum"));
+        Assert.Equal("{x:Bind ViewModel.RecentCapturesLimit, Mode=TwoWay}", control.Attr("Value"));
+        Assert.Equal("Recent captures to show", control.Attr("AutomationProperties.Name"));
+        var page = elements
+            .First(element => element.Name.LocalName == "StackPanel");
+        var children = page.Elements().ToList();
+        var appearanceIndex = children.FindIndex(element => element.Attr("Text") == "Appearance");
+        var filesIndex = children.FindIndex(element => element.Attr("Text") == "Files & saving");
+        var cardIndex = children.IndexOf(control.Parent!);
+        Assert.Equal(appearanceIndex + 2, cardIndex);
+        Assert.True(cardIndex < filesIndex);
+        Assert.DoesNotContain(SettingsMarkup.Elements("ClipsLibrarySettingsSection.xaml"),
+            element => element.Attr("Value") == control.Attr("Value"));
+    }
+
     private static Dictionary<string, string[]> Groups(string page, string title)
     {
         var column = SettingsMarkup.Elements(page).First(element => element.Name.LocalName == "StackPanel");

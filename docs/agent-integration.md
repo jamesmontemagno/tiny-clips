@@ -142,6 +142,15 @@ change the availability or permissions of `recording.stop`.
 
 Change what an individual agent may do with **Permissions**, or revoke it, in **Settings → Agent Control → Paired Agents**. Turn Agent Control off to stop all connections. **Activity → Open Audit Log** shows local request history.
 
+`recentCapturesLimit` is available through `settings.get` and `settings.set` on both platforms
+with the `read` and `settings` scopes, respectively. It controls the configured number of saved
+captures and Studio drafts shown in the macOS menu-bar or Windows tray Recent popover. In either app,
+use **Settings → General → Recent captures to show**. The value defaults to 10 and accepts whole
+numbers from 5 through 30. `library.copy`, `editor.open`,
+`library.reveal`, `library.delete`, and the Studio open/reveal/delete commands continue to use
+their existing scopes; changing the visual quick-action layout does not grant an agent any
+additional permissions.
+
 ### Open a feature's Guide
 
 The in-app Guide is an offline, illustrated handbook on both platforms. With the `read`

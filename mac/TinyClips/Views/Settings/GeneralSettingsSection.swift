@@ -148,6 +148,12 @@ struct GeneralSettingsSection: View {
                 isOn: showInDockBinding,
                 help: "When enabled, TinyClips appears in Command-Tab and can participate in normal app/window switching."
             )
+            Stepper(value: $settings.recentCapturesLimit, in: 5...30) {
+                Text("Recent captures to show (\(settings.recentCapturesLimit))")
+            }
+            .accessibilityLabel("Recent captures to show")
+            .accessibilityValue("\(settings.recentCapturesLimit)")
+            .help("Choose how many saved captures and Studio drafts appear in the menu bar’s Recent Captures popover.")
             SettingsToggleRow(
                 title: "Confirm before closing editors with Esc",
                 description: "Ask before Esc closes an editor with unsaved work.",

@@ -20,6 +20,10 @@ public interface ICaptureSettings
     bool LaunchAtLogin { get; set; }
     bool ReopenPickerAfterCapture { get; set; }
     string FileNameTemplate { get; set; }
+    /// <summary>Number of newest capture/Studio entries shown in the tray Recent flyout, clamped to 5 through 30.</summary>
+    int RecentCapturesLimit { get; set; }
+    /// <summary>Raised when <see cref="RecentCapturesLimit"/> changes.</summary>
+    event EventHandler? RecentCapturesLimitChanged;
     double GifFrameRate { get; set; }
     int GifMaxWidth { get; set; }
     int VideoFrameRate { get; set; }

@@ -29,6 +29,7 @@ own `CHANGELOG.md` at the repository root.
 - Studio drafts made from existing videos now appear in Settings → Studio → Drafts instead of being counted in storage but hidden from the list.
 
 ### Changed
+- Recent Captures is now a horizontally scrolling flyout. Its header stays in place as you scroll, with an X to return to the tray. Hover over a thumbnail or tab to it for circular Copy, Edit, Reveal, and Delete buttons, each with its own highlight. It fits up to three cards at once and shares thumbnails with the Clips Library. Choose 5–30 items in Settings → General → Recent captures to show (default 10).
 - Tiny Clips Studio is generally available. What's New no longer presents it as a preview; it introduces Agent Control. Users who previously disabled Studio keep existing projects because upgrade migration disables automatic cleanup until they choose new limits.
 - Agent Control now supports `studio.project.saveCopy` with export scope, creating an unlinked portable snapshot in a new folder directly inside the configured video folder.
 - Only Screenshot has a global shortcut by default. Video, GIF, OCR, direct screenshots, and Stop recording start unassigned; saved bindings are preserved, and all global shortcuts can be edited, deleted, or reset.

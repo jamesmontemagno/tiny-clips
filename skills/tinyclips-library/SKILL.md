@@ -13,4 +13,4 @@ description: Find, open, copy, delete, or upload Tiny Clips captures. Use when t
 - Delete: `tinyclips library.delete path="<file>"` (needs `delete`; moves to Trash/Recycle Bin after the user approves).
 - Upload: `tinyclips library.upload path="<file>"` (needs `upload`; uses the upload service configured in the app, after the user approves). Returns the URL.
 
-Only delete or upload files the user explicitly asked about. Settings: `tinyclips settings.get` lists the settings agents can read and change; change them with `tinyclips settings.set key=<key> value=<value>` (needs `settings`).
+Only delete or upload files the user explicitly asked about. Settings: `tinyclips settings.get` lists the settings agents can read and change; change them with `tinyclips settings.set key=<key> value=<value>` (needs `settings`). `recentCapturesLimit` is an integer from 5 through 30 and controls the menu/tray Recent popover count without discarding retained history.

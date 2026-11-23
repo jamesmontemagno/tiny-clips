@@ -16,7 +16,9 @@ public sealed class AutomationSettingsCatalogTests
 
         Assert.Equal("C:/out/Screenshot", all["settings"]!["screenshotFolder"]!.GetValue<string>());
         Assert.Equal("jpg", all["settings"]!["screenshotFormat"]!.GetValue<string>());
+        Assert.Equal(10, all["settings"]!["recentCapturesLimit"]!.GetValue<int>());
         var writable = all["writable"]!.AsArray().Select(n => n!.GetValue<string>()).ToArray();
+        Assert.Contains("recentCapturesLimit", writable);
         Assert.Contains("videoFrameRate", writable);
         Assert.DoesNotContain("screenshotFolder", writable);
     }
@@ -34,6 +36,10 @@ public sealed class AutomationSettingsCatalogTests
         catalog.Set("copyScreenshotToClipboard", JsonValue.Create(false));
         Assert.False(settings.CopyScreenshotToClipboard);
 
+        var recentLimit = catalog.Set("recentCapturesLimit", JsonValue.Create(30));
+        Assert.Equal(30, recentLimit["value"]!.GetValue<int>());
+        Assert.Equal(30, settings.RecentCapturesLimit);
+
         catalog.Set("screenshotFormat", JsonValue.Create("png"));
         Assert.Equal("png", settings.ScreenshotFormat);
 
@@ -45,6 +51,9 @@ public sealed class AutomationSettingsCatalogTests
         AssertInvalid(() => catalog.Set("videoFrameRate", JsonValue.Create("30")));
         AssertInvalid(() => catalog.Set("copyScreenshotToClipboard", JsonNode.Parse("1")));
         AssertInvalid(() => catalog.Set("screenshotFormat", JsonValue.Create("bmp")));
+        AssertInvalid(() => catalog.Set("recentCapturesLimit", JsonValue.Create(4)));
+        AssertInvalid(() => catalog.Set("recentCapturesLimit", JsonValue.Create(31)));
+        AssertInvalid(() => catalog.Set("recentCapturesLimit", JsonValue.Create(10.5)));
         AssertInvalid(() => catalog.Set("uploadcarePublicKey", JsonValue.Create("x")));
         AssertInvalid(() => catalog.Set("videoFrameRate", null));
     }
@@ -81,6 +90,21 @@ public sealed class AutomationSettingsCatalogTests
         Assert.DoesNotContain("studioPreviewEnabled", catalog.Keys);
         AssertInvalid(() => catalog.Get("studioPreviewEnabled"));
         AssertInvalid(() => catalog.Set("studioPreviewEnabled", JsonValue.Create(false)));
+    }
+
+    [Fact]
+    public void RecentLimitChangesNotifyOnlyWhenTheEffectiveValueChanges()
+    {
+        var settings = new CaptureSettings(new MemorySettings());
+        var changes = 0;
+        settings.RecentCapturesLimitChanged += (_, _) => changes++;
+
+        settings.RecentCapturesLimit = 12;
+        settings.RecentCapturesLimit = 12;
+        settings.RecentCapturesLimit = 2;
+
+        Assert.Equal(5, settings.RecentCapturesLimit);
+        Assert.Equal(2, changes);
     }
 
     private static void AssertInvalid(Action action)

@@ -184,4 +184,24 @@ final class SaveServiceTests: XCTestCase {
 
         XCTAssertFalse(RecentCaptureStore.shared.items.contains { $0.url == captureURL })
     }
+
+    func testRecentCapturesLimitPersistsAndClampsToSupportedRange() throws {
+        let suiteName = "SaveServiceTests.RecentCapturesLimit.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+
+        XCTAssertEqual(settings.recentCapturesLimit, 10)
+        settings.recentCapturesLimit = 30
+        XCTAssertEqual(settings.recentCapturesLimit, 30)
+        XCTAssertEqual(defaults.integer(forKey: "recentCapturesLimit"), 30)
+        settings.recentCapturesLimit = 2
+        XCTAssertEqual(settings.recentCapturesLimit, 5)
+        settings.recentCapturesLimit = 100
+        XCTAssertEqual(settings.recentCapturesLimit, 30)
+        CaptureSettings.resetStoredDefaults(defaults)
+        XCTAssertEqual(settings.recentCapturesLimit, 10)
+    }
 }
