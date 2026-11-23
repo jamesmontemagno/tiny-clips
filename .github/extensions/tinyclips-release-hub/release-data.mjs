@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -9,7 +10,7 @@ const execFileAsync = promisify(execFile);
 const TAG_PATTERNS = {
     mac: /^v\d+\.\d+\.\d+(?:\.\d+)?-mac$/,
     windows: /^v\d+\.\d+\.\d+(?:\.\d+)?-windows$/,
-    agent: /^agent-v\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/,
+    agent: /^agent-v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/,
 };
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -95,7 +96,8 @@ function compareTags(left, right) {
 
 export function nextPatchTag(platform, latestTag, appVersion) {
     if (platform === "agent") {
-        return appVersion ? `agent-v${appVersion}` : "agent-v0.1.0";
+        const [major, minor, patch] = parseReleaseTagVersion(latestTag ?? "");
+        return latestTag ? `agent-v${major}.${minor}.${patch + 1}` : "agent-v0.1.0";
     }
     if (platform === "mac" && appVersion) {
         const prefix = `v${appVersion}.`;
@@ -226,6 +228,21 @@ async function getReleasePullRequest(tag) {
         return { available: false, pullRequest: null, error: result.error };
     }
     return { available: true, pullRequest: JSON.parse(result.output || "[]")[0] ?? null };
+}
+
+async function getAgentReleasePullRequests() {
+    const result = await tryRun("gh", [
+        "pr", "list", "--base", "main", "--state", "all",
+        "--json", "number,url,state,isDraft,headRefName", "--limit", "100",
+    ]);
+    if (!result.ok) {
+        return { available: false, pullRequests: [], error: result.error };
+    }
+    return {
+        available: true,
+        pullRequests: JSON.parse(result.output || "[]").filter((pr) =>
+            pr.headRefName?.startsWith("release/agent-v")),
+    };
 }
 
 async function getReleaseMetadataPullRequest(tag) {
@@ -466,6 +483,15 @@ export async function dispatchWorkflow(input) {
 }
 
 function simulateReleaseAction(action, input) {
+    if (action === "create_agent_release_pr") {
+        assertTag("agent", input.tag);
+        assertConfirmation(input.confirmation, `CREATE PR ${input.tag}`);
+        return {
+            action, tag: input.tag, demo: true,
+            pullRequest: { number: 1, url: "https://github.com/example/tiny-clips/pull/1" },
+            output: `Simulated agent version bump PR for ${input.tag}.`,
+        };
+    }
     if (action === "prepare_release") {
         assertTag(input.platform, input.version);
         assertConfirmation(input.confirmation, `PREPARE ${input.version}`);
@@ -692,7 +718,7 @@ export async function generateReleaseNotes(platform, version) {
 
 export async function getReleaseSnapshot() {
     const root = await getRepoRoot();
-    const [branch, status, head, originMain, originUrl, aheadOfMain, behindMain, macTags, windowsTags, agentTags, remoteMacTags, remoteWindowsTags, remoteAgentTags, macVersion, agentVersions, releases, macWorkflow, windowsWorkflow, agentWorkflow, wingetWorkflow, wingetPublished, actions, settings] =
+    const [branch, status, head, originMain, originUrl, aheadOfMain, behindMain, macTags, windowsTags, agentTags, remoteMacTags, remoteWindowsTags, remoteAgentTags, macVersion, agentVersions, agentReleasePullRequests, releases, macWorkflow, windowsWorkflow, agentWorkflow, wingetWorkflow, wingetPublished, actions, settings] =
         await Promise.all([
             run("git", ["branch", "--show-current"]),
             run("git", ["status", "--porcelain"]),
@@ -709,6 +735,7 @@ export async function getReleaseSnapshot() {
             getRemoteTags("agent"),
             readMacVersion(root),
             readAgentVersions(root),
+            getAgentReleasePullRequests(),
             getReleases(),
             getWorkflow("release.yml"),
             getWorkflow("windows-release.yml"),
@@ -769,12 +796,15 @@ export async function getReleaseSnapshot() {
             releaseMetadataPullRequest,
             latestRelease,
             suggestedTag: platform === "agent"
-                ? `agent-v${agentVersions.version ?? "0.1.0"}`
+                ? (remoteTagSet.has(`agent-v${agentVersions.version}`)
+                    ? nextPatchTag("agent", latestRemoteTag ?? latestTag)
+                    : `agent-v${agentVersions.version ?? "0.1.0"}`)
                 : suggestedTag,
             appVersion: platform === "mac" ? macVersion : null,
             packageVersion: platform === "agent" ? agentVersions.version : null,
             packageVersions: platform === "agent" ? agentVersions.versions : null,
             packageVersionsConsistent: platform === "agent" ? agentVersions.consistent : null,
+            agentReleasePullRequests: platform === "agent" ? agentReleasePullRequests : null,
             changelog: config.changelog,
             unreleasedNotes: extractSection(markdown, config.unreleasedHeading),
             unreleasedCount: countNotes(extractSection(markdown, config.unreleasedHeading)),
@@ -826,6 +856,72 @@ function assertConfirmation(actual, expected) {
 }
 
 export async function performReleaseAction(action, input) {
+    if (action === "create_agent_release_pr") {
+        assertTag("agent", input.tag);
+        assertConfirmation(input.confirmation, `CREATE PR ${input.tag}`);
+        await run("git", ["fetch", "--quiet", "origin", "main"]);
+        const [head, originMain, status, branch, remoteTag, remoteBranch, existing, versions] = await Promise.all([
+            run("git", ["rev-parse", "HEAD"]),
+            run("git", ["rev-parse", "origin/main"]),
+            run("git", ["status", "--porcelain"]),
+            run("git", ["branch", "--show-current"]),
+            run("git", ["ls-remote", "--tags", "origin", `refs/tags/${input.tag}`]),
+            run("git", ["ls-remote", "--heads", "origin", `refs/heads/${releaseBranch(input.tag)}`]),
+            getReleasePullRequest(input.tag),
+            readAgentVersions(await getRepoRoot()),
+        ]);
+        if (branch !== "main" || status || head !== originMain) {
+            throw new Error("Creating an agent release PR requires a clean checkout on the latest origin/main.");
+        }
+        if (!existing.available) {
+            throw new Error(`Could not inspect release PRs: ${existing.error}`);
+        }
+        if (existing.pullRequest) {
+            if (existing.pullRequest.state === "OPEN") {
+                return { action, tag: input.tag, pullRequest: existing.pullRequest, output: `Release PR already exists: ${existing.pullRequest.url}.` };
+            }
+            throw new Error(`Release PR #${existing.pullRequest.number} already exists and is ${existing.pullRequest.state.toLowerCase()}.`);
+        }
+        if (remoteTag) {
+            throw new Error(`Tag ${input.tag} already exists on origin.`);
+        }
+        if (versions.consistent && versions.version === input.tag.slice("agent-v".length)) {
+            throw new Error(`Agent versions already match ${input.tag}; publish the tag instead.`);
+        }
+        if (remoteBranch) {
+            throw new Error(`Branch ${releaseBranch(input.tag)} already exists on origin without an open PR. Inspect it before retrying.`);
+        }
+        const root = await getRepoRoot();
+        const [remoteUrl, authorName, authorEmail] = await Promise.all([
+            run("git", ["remote", "get-url", "origin"]),
+            run("git", ["config", "--get", "user.name"]),
+            run("git", ["config", "--get", "user.email"]),
+        ]);
+        const temporaryDirectory = await mkdtemp(resolve(tmpdir(), "tinyclips-agent-release-"));
+        try {
+            const checkout = resolve(temporaryDirectory, "checkout");
+            await run("git", ["clone", "--quiet", "--no-hardlinks", "--no-checkout", "--", root, checkout]);
+            await run("git", ["switch", "--quiet", "-c", releaseBranch(input.tag), head], { cwd: checkout });
+            await run("git", ["remote", "set-url", "origin", remoteUrl], { cwd: checkout });
+            await run("node", ["agent/scripts/bump-version.mjs", input.tag.slice("agent-v".length)], { cwd: checkout });
+            await run("git", ["add", "agent/src/TinyClips.Cli/TinyClips.Cli.csproj", "plugin.json", "agent/src/TinyClips.Cli/.mcp/server.json"], { cwd: checkout });
+            await run("git", ["-c", `user.name=${authorName}`, "-c", `user.email=${authorEmail}`, "commit", "-m", `Bump agent version for ${input.tag}\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>`], { cwd: checkout });
+            await run("git", ["push", `--force-with-lease=refs/heads/${releaseBranch(input.tag)}:`, "origin", `HEAD:refs/heads/${releaseBranch(input.tag)}`], { cwd: checkout });
+            await run("gh", [
+                "pr", "create", "--base", "main", "--head", releaseBranch(input.tag),
+                "--title", `Release ${input.tag}`,
+                "--body", `Updates the CLI, plugin, and MCP metadata to ${input.tag.slice("agent-v".length)}. After this PR merges, publish ${input.tag} from the Release Hub.`,
+            ], { cwd: checkout });
+        } finally {
+            await rm(temporaryDirectory, { recursive: true, force: true });
+        }
+        const result = await getReleasePullRequest(input.tag);
+        if (!result.available || !result.pullRequest) {
+            throw new Error(`Release branch was pushed but its PR could not be retrieved: ${result.error ?? "not found"}.`);
+        }
+        return { action, tag: input.tag, pullRequest: result.pullRequest, output: `Created ${result.pullRequest.url}.` };
+    }
+
     if (action === "publish_agent_release") {
         assertTag("agent", input.tag);
         assertConfirmation(input.confirmation, `PUBLISH ${input.tag}`);

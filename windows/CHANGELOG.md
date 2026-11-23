@@ -16,6 +16,7 @@ own `CHANGELOG.md` at the repository root.
 
 ### Fixed
 - Studio's Scene layout and camera shape choices now use two-column picture tiles, keeping their labels within the inspector as its available width changes.
+- The Clips Library **Confirm delete** preference now applies consistently to saved captures and Studio projects, avoiding confirmation dialogs when disabled.
 - Studio project saves use the default folder while default save locations are enabled; disabling them restores the previous custom folder.
 - Studio's Save project folder preserves whitespace in chosen folder names.
 - MOV files appear in Clips Library and `library.list`. For a cross-platform `editor.open` result with an absolute path, pass `resultFormat=standard`.

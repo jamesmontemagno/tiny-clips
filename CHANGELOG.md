@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Fixed
+- Cropping a screenshot on macOS now keeps the selected area instead of vertically mirroring the crop in the source image.
+
+### Changed
+- The Release Hub can prepare an Agent version-bump pull request before publishing its tag.
+
+## v2.3.0.1-mac - 2026-11-22
+
+### Fixed
 - The macOS Studio inspector no longer jumps, widens, or runs under the panel rail in any panel, including while a project plays, a slider moves, or a scroll bar is shown. Scene Layout and camera Shape are now grids of labelled tiles that fit the panel, the Zoom focus pad shrinks to fit, and sliders no longer draw a tick mark for every step.
 
 ## v2.3.0-mac - 2026-11-21

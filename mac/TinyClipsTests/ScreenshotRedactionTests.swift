@@ -124,6 +124,45 @@ final class ScreenshotRedactionTests: XCTestCase {
     // MARK: - Editor and export
 
     @MainActor
+    func testApplyCropKeepsBottomRightImageRegion() throws {
+        let (editor, cleanup) = try makeEditor(source: makeColorQuadrants(width: 20, height: 12))
+        defer { cleanup() }
+
+        let source = try XCTUnwrap(
+            editor.originalImage?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        )
+        let bottomRight = CGRect(x: 10, y: 6, width: 10, height: 6)
+        let expected = try XCTUnwrap(source.cropping(to: bottomRight))
+
+        editor.selectedTool = .crop
+        editor.handleDrag(
+            start: CGPoint(x: 0.5, y: 0.5),
+            current: CGPoint(x: 1, y: 1),
+            displaySize: CGSize(width: 20, height: 12)
+        )
+        editor.handleDragEnd(
+            start: CGPoint(x: 0.5, y: 0.5),
+            end: CGPoint(x: 1, y: 1),
+            displaySize: CGSize(width: 20, height: 12)
+        )
+
+        XCTAssertTrue(editor.applyCrop())
+        let actual = try XCTUnwrap(
+            editor.originalImage?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        )
+        XCTAssertEqual(actual.width, expected.width)
+        XCTAssertEqual(actual.height, expected.height)
+
+        let expectedBitmap = NSBitmapImageRep(cgImage: expected)
+        let actualBitmap = NSBitmapImageRep(cgImage: actual)
+        let expectedColor = try XCTUnwrap(expectedBitmap.colorAt(x: 5, y: 3)?.usingColorSpace(.sRGB))
+        let actualColor = try XCTUnwrap(actualBitmap.colorAt(x: 5, y: 3)?.usingColorSpace(.sRGB))
+        XCTAssertEqual(actualColor.redComponent, expectedColor.redComponent, accuracy: 0.05)
+        XCTAssertEqual(actualColor.greenComponent, expectedColor.greenComponent, accuracy: 0.05)
+        XCTAssertEqual(actualColor.blueComponent, expectedColor.blueComponent, accuracy: 0.05)
+    }
+
+    @MainActor
     func testExportBlursOnlyTheRedactedAreaAndMatchesThePreviewPixels() throws {
         let (editor, cleanup) = try makeEditor()
         defer { cleanup() }
@@ -610,6 +649,40 @@ final class ScreenshotRedactionTests: XCTestCase {
             context.fill(CGRect(x: x, y: 0, width: 1, height: height))
         }
         return try XCTUnwrap(context.makeImage())
+    }
+
+    private func makeColorQuadrants(width: Int, height: Int) throws -> CGImage {
+        let midpointX = width / 2
+        let midpointY = height / 2
+        var pixels: [UInt8] = []
+        pixels.reserveCapacity(width * height * 4)
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let color: [UInt8]
+                switch (x < midpointX, y < midpointY) {
+                case (true, true): color = [255, 0, 0, 255]
+                case (false, true): color = [0, 255, 0, 255]
+                case (true, false): color = [0, 0, 255, 255]
+                case (false, false): color = [255, 255, 0, 255]
+                }
+                pixels.append(contentsOf: color)
+            }
+        }
+
+        return try XCTUnwrap(CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+            provider: XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData)),
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        ))
     }
 
     private func luminance(_ bitmap: NSBitmapImageRep, x: Int, y: Int) throws -> CGFloat {
