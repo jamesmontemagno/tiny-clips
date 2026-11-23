@@ -191,6 +191,30 @@ public sealed class ClipsLibraryServicesTests
     }
 
     [Fact]
+    public async Task ClipDeleteConfirmation_UsesPreferenceBeforePrompting()
+    {
+        var prompts = 0;
+
+        var allowedWithoutPrompt = await ClipDeleteConfirmation.ApproveAsync(false, () =>
+        {
+            prompts++;
+            return Task.FromResult(false);
+        });
+
+        Assert.True(allowedWithoutPrompt);
+        Assert.Equal(0, prompts);
+
+        var deniedWithPrompt = await ClipDeleteConfirmation.ApproveAsync(true, () =>
+        {
+            prompts++;
+            return Task.FromResult(false);
+        });
+
+        Assert.False(deniedWithPrompt);
+        Assert.Equal(1, prompts);
+    }
+
+    [Fact]
     public void ClipsLibrarySettings_MigratesLegacyKeysOnce()
     {
         var backing = new TestSettingsService();
