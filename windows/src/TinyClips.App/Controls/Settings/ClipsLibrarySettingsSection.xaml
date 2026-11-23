@@ -84,21 +84,6 @@
                 Text="Display" />
             <StackPanel Spacing="2">
                 <controls:SettingsCard
-                    Description="Choose how many saved captures and Studio drafts appear in the tray's Recent flyout."
-                    Header="Recent captures to show"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE823;}">
-                    <NumberBox
-                        MinWidth="120"
-                        AutomationProperties.AutomationId="LibraryRecentCapturesLimitBox"
-                        AutomationProperties.Name="Recent captures to show"
-                        LargeChange="5"
-                        Maximum="30"
-                        Minimum="5"
-                        SmallChange="1"
-                        SpinButtonPlacementMode="Compact"
-                        Value="{x:Bind ViewModel.RecentCapturesLimit, Mode=TwoWay}" />
-                </controls:SettingsCard>
-                <controls:SettingsCard
                     Description="Show the first line of a clip's notes on cards and rows."
                     Header="Notes preview"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE70B;}">

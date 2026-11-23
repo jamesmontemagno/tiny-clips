@@ -3,7 +3,9 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using TinyClips.App.Services.ClipsLibrary;
@@ -23,7 +25,9 @@ internal enum RecentCaptureCardAction
 
 internal sealed class RecentCapturesFlyout : Flyout
 {
-    private const double CardWidth = 176;
+    internal const double CardWidth = 176;
+    private const double CardSpacing = 10;
+    private const double ContentPadding = 14;
     private readonly StackPanel _cards;
     private readonly ScrollViewer _scroller;
     private readonly TrayRecentItems<RecentCaptureCard> _retained = new();
@@ -31,6 +35,7 @@ internal sealed class RecentCapturesFlyout : Flyout
     private readonly IStudioProjectStore _projects;
     private readonly DispatcherQueue _dispatcher;
     private readonly Func<RecentMenuEntry, RecentCaptureCardAction, Task> _action;
+    private RecentCaptureCard? _activeCard;
 
     public RecentCapturesFlyout(
         IThumbnailCache thumbnails,
@@ -43,11 +48,27 @@ internal sealed class RecentCapturesFlyout : Flyout
         _dispatcher = dispatcher;
         _action = action;
         Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom;
+        ShouldConstrainToRootBounds = false;
+        FlyoutPresenterStyle = new Style(typeof(FlyoutPresenter))
+        {
+            Setters =
+            {
+                new Setter(FrameworkElement.MaxWidthProperty, 3 * CardWidth + 2 * CardSpacing + 2 * ContentPadding + 2),
+                new Setter(Control.PaddingProperty, new Thickness(ContentPadding)),
+                // On opening, give focus to the flyout rather than lighting up the first card.
+                new Setter(Control.IsTabStopProperty, true),
+                // Only the card scroller should take horizontal input and request thumbnails.
+                new Setter(ScrollViewer.HorizontalScrollModeProperty, ScrollMode.Disabled),
+                new Setter(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled),
+            },
+        };
 
         _cards = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 10,
+            Spacing = CardSpacing,
+            // WinUI overlays the horizontal scrollbar on its content.
+            Margin = new Thickness(0, 0, 0, (double)Application.Current.Resources["ScrollBarSize"] + CardSpacing),
         };
         _scroller = new ScrollViewer
         {
@@ -56,22 +77,93 @@ internal sealed class RecentCapturesFlyout : Flyout
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollMode = ScrollMode.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Padding = new Thickness(0, 0, 0, 6),
         };
         _scroller.ViewChanging += (_, args) =>
             RequestThumbnailsNear(args.FinalView.HorizontalOffset);
-
-        Content = new Grid
+        _scroller.PointerEntered += (_, args) => ShowActionsFor(args.OriginalSource);
+        _scroller.AddHandler(UIElement.PointerMovedEvent,
+            new PointerEventHandler((_, args) => ShowActionsFor(args.OriginalSource)), true);
+        _scroller.PointerExited += (_, _) => ShowActionsFor(null);
+        _scroller.GotFocus += (_, args) =>
         {
-            Width = 566,
-            MinHeight = 190,
-            Padding = new Thickness(14),
-            Children = { _scroller },
+            if (args.OriginalSource is Control { FocusState: FocusState.Keyboard } focused)
+            {
+                ShowActionsFor(focused);
+            }
         };
+        _scroller.LosingFocus += (_, args) =>
+        {
+            if (args.FocusState != FocusState.Pointer)
+            {
+                ShowActionsFor(null);
+            }
+        };
+
+        Content = new StackPanel { Spacing = 8, Children = { CreateHeader(), _scroller } };
         Opening += (_, _) => RequestThumbnailsNear(_scroller.HorizontalOffset);
+        Closed += (_, _) => ShowActionsFor(null);
     }
 
     public int Count => _retained.Items.Count;
+
+    private Grid CreateHeader()
+    {
+        var history = new FontIcon { Glyph = "\uE81C", FontSize = 16 };
+        AutomationProperties.SetAccessibilityView(history, AccessibilityView.Raw);
+        var title = new TextBlock
+        {
+            Text = "Recent captures",
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        AutomationProperties.SetHeadingLevel(title, AutomationHeadingLevel.Level1);
+
+        const string closeLabel = "Close recent captures";
+        var close = new Button
+        {
+            Content = new FontIcon { Glyph = "\uE711", FontSize = 12 },
+            Style = (Style)Application.Current.Resources["SubtleButtonStyle"],
+            Width = 32,
+            Height = 32,
+            Padding = new Thickness(0),
+        };
+        AutomationProperties.SetAutomationId(close, "TrayRecentCapturesCloseButton");
+        AutomationProperties.SetName(close, closeLabel);
+        ToolTipService.SetToolTip(close, closeLabel);
+        close.Click += (_, _) => Hide();
+
+        Grid.SetColumn(title, 1);
+        Grid.SetColumn(close, 2);
+        return new Grid
+        {
+            ColumnSpacing = 8,
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition(),
+                new ColumnDefinition { Width = GridLength.Auto },
+            },
+            Children = { history, title, close },
+        };
+    }
+
+    private void ShowActionsFor(object? source)
+    {
+        var element = source as DependencyObject;
+        while (element is not null && element != _scroller && element is not RecentCaptureCard)
+        {
+            element = VisualTreeHelper.GetParent(element);
+        }
+
+        var card = element as RecentCaptureCard;
+        if (card != _activeCard)
+        {
+            _activeCard?.ShowActions(false);
+            _activeCard = card;
+            card?.ShowActions(true);
+        }
+    }
 
     public void Update(IReadOnlyList<RecentMenuEntry> entries)
     {
@@ -108,7 +200,7 @@ internal sealed class RecentCapturesFlyout : Flyout
 
     private void RequestThumbnailsNear(double horizontalOffset)
     {
-        var start = Math.Max(0, (int)Math.Floor(horizontalOffset / (CardWidth + 10)) - 1);
+        var start = Math.Max(0, (int)Math.Floor(horizontalOffset / (CardWidth + CardSpacing)) - 1);
         var count = Math.Min(_retained.Items.Count - start, 5);
         for (var index = 0; index < count; index++)
         {
@@ -123,6 +215,8 @@ internal sealed class RecentCaptureCard : UserControl
     private const string VideoGlyph = "\uE714";
     private const string GifGlyph = "\uF4A9";
     private const string StudioGlyph = "\uE81E";
+    private const double ActionDiameter = 32;
+    private const double ThumbnailHeight = 88;
     private static readonly FontFamily FluentIconFont = new("Segoe Fluent Icons");
 
     private readonly IThumbnailCache _thumbnails;
@@ -142,18 +236,16 @@ internal sealed class RecentCaptureCard : UserControl
     private readonly StackPanel _actions = new()
     {
         Orientation = Orientation.Horizontal,
-        Spacing = 4,
+        Spacing = 6,
         Opacity = 0,
         IsHitTestVisible = false,
         HorizontalAlignment = HorizontalAlignment.Center,
         VerticalAlignment = VerticalAlignment.Top,
-        Margin = new Thickness(0, 31, 0, 0),
+        Margin = new Thickness(0, (ThumbnailHeight - ActionDiameter) / 2, 0, 0),
     };
     private RecentMenuEntry _entry;
     private CancellationTokenSource? _thumbnailCancellation;
     private bool _thumbnailRequested;
-    private bool _isPointerOver;
-    private bool _hasFocusWithin;
 
     public RecentCaptureCard(
         RecentMenuEntry entry,
@@ -168,7 +260,7 @@ internal sealed class RecentCaptureCard : UserControl
         _dispatcher = dispatcher;
         _action = action;
 
-        Width = 176;
+        Width = RecentCapturesFlyout.CardWidth;
 
         _mainButton.Padding = new Thickness(0);
         _mainButton.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -179,7 +271,7 @@ internal sealed class RecentCaptureCard : UserControl
         var thumbnail = new Grid
         {
             Width = 156,
-            Height = 88,
+            Height = ThumbnailHeight,
             Background = Application.Current.Resources["ControlFillColorSecondaryBrush"] as Brush,
         };
         thumbnail.Children.Add(_preview);
@@ -228,16 +320,6 @@ internal sealed class RecentCaptureCard : UserControl
         _actions.Children.Add(_editButton);
         _actions.Children.Add(_revealButton);
         _actions.Children.Add(_deleteButton);
-        PointerEntered += (_, _) => SetPointerOver(true);
-        PointerExited += (_, _) => SetPointerOver(false);
-        _mainButton.GotFocus += (_, _) => SetFocusWithin(true);
-        _mainButton.LostFocus += (_, _) => SetFocusWithin(false);
-        foreach (var actionButton in _actions.Children.OfType<Button>())
-        {
-            actionButton.GotFocus += (_, _) => SetFocusWithin(true);
-            actionButton.LostFocus += (_, _) => SetFocusWithin(false);
-        }
-
         Update(entry);
     }
 
@@ -298,10 +380,12 @@ internal sealed class RecentCaptureCard : UserControl
             string? path;
             if (entry.Capture is { } capture)
             {
-                var size = await Task.Run(() => new FileInfo(capture.Path).Length, cancellationToken);
-                path = await _thumbnails.GetThumbnailPathAsync(
-                    new ClipEntry(capture.Path, capture.Type, Path.GetFileName(capture.Path), capture.CapturedAt, size),
-                    cancellationToken);
+                var clip = await Task.Run(() =>
+                {
+                    var file = new FileInfo(capture.Path);
+                    return new ClipEntry(capture.Path, capture.Type, file.Name, file.LastWriteTimeUtc, file.Length);
+                }, cancellationToken).ConfigureAwait(false);
+                path = await _thumbnails.GetThumbnailPathAsync(clip, cancellationToken).ConfigureAwait(false);
             }
             else
             {
@@ -345,54 +429,44 @@ internal sealed class RecentCaptureCard : UserControl
 
     private Button CreateActionButton(string glyph, string label, RecentCaptureCardAction action)
     {
-        var icon = (FontIcon)Microsoft.UI.Xaml.Markup.XamlReader.Load(
-            $"<FontIcon xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Glyph=\"{glyph}\" FontSize=\"13\" Foreground=\"{{ThemeResource TextOnAccentFillColorPrimaryBrush}}\"/>");
-        icon.FontFamily = FluentIconFont;
-        var circle = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
-            "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Width=\"30\" Height=\"26\" CornerRadius=\"14\" Background=\"{ThemeResource AccentFillColorDefaultBrush}\"/>");
-        circle.Child = icon;
-        var button = (Button)Microsoft.UI.Xaml.Markup.XamlReader.Load(
-            "<Button xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" Width=\"30\" Height=\"26\" Padding=\"0\" BorderThickness=\"0\" CornerRadius=\"14\" Background=\"Transparent\"/>");
-        button.Content = circle;
+        var icon = new FontIcon { FontFamily = FluentIconFont, FontSize = 14, Glyph = glyph };
+        var button = new Button
+        {
+            Style = (Style)Application.Current.Resources["AccentButtonStyle"],
+            Width = ActionDiameter,
+            Height = ActionDiameter,
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(ActionDiameter / 2),
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Content = icon,
+        };
+        button.RegisterPropertyChangedCallback(Button.IsPointerOverProperty,
+            (_, _) => icon.FontSize = button.IsPointerOver ? 17 : 14);
         AutomationProperties.SetAutomationId(button, $"{AutomationId(_entry)}{action}");
         AutomationProperties.SetName(button, label);
         ToolTipService.SetToolTip(button, label);
+        var feedbackVersion = 0;
         button.Click += async (_, _) =>
         {
             if (await Invoke(action) && action == RecentCaptureCardAction.Copy)
             {
+                var version = ++feedbackVersion;
                 icon.Glyph = "\uE73E";
                 ToolTipService.SetToolTip(button, "Copied");
-                _ = Task.Delay(TimeSpan.FromSeconds(1.2)).ContinueWith(
-                    _ => _dispatcher.TryEnqueue(() => icon.Glyph = glyph),
-                    TaskScheduler.Default);
+                await Task.Delay(TimeSpan.FromSeconds(1.2));
+                if (version == feedbackVersion)
+                {
+                    icon.Glyph = glyph;
+                    ToolTipService.SetToolTip(button, label);
+                }
             }
         };
         return button;
     }
 
-    private void SetPointerOver(bool value)
+    public void ShowActions(bool visible)
     {
-        _isPointerOver = value;
-        UpdateActionVisibility();
-    }
-
-    private void SetFocusWithin(bool value)
-    {
-        _hasFocusWithin = value;
-        if (value)
-        {
-            UpdateActionVisibility();
-        }
-        else
-        {
-            _dispatcher.TryEnqueue(UpdateActionVisibility);
-        }
-    }
-
-    private void UpdateActionVisibility()
-    {
-        var visible = _isPointerOver || _hasFocusWithin;
         _actions.Opacity = visible ? 1 : 0;
         _actions.IsHitTestVisible = visible;
     }

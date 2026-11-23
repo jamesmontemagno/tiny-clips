@@ -496,6 +496,14 @@ private struct RecentCapturesPopoverView: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("\(entries.count) recent items")
+                Button(action: dismiss) {
+                    Label("Close recent captures", systemImage: "xmark")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help("Close recent captures (Esc)")
             }
             .padding(.horizontal, 2)
 

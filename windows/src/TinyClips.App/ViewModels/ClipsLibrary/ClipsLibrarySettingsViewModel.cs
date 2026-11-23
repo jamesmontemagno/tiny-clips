@@ -1,7 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TinyClips.Core.Models.ClipsLibrary;
-using TinyClips.Core.Services;
 using TinyClips.Core.Services.ClipsLibrary;
 
 namespace TinyClips.App.ViewModels.ClipsLibrary;
@@ -13,17 +12,12 @@ namespace TinyClips.App.ViewModels.ClipsLibrary;
 public sealed partial class ClipsLibrarySettingsViewModel : ObservableObject
 {
     private readonly IClipsLibrarySettings _settings;
-    private readonly ICaptureSettings _captureSettings;
     private readonly Action _changed;
     private bool _suppressPersist = true;
 
-    public ClipsLibrarySettingsViewModel(
-        IClipsLibrarySettings settings,
-        ICaptureSettings captureSettings,
-        Action changed)
+    public ClipsLibrarySettingsViewModel(IClipsLibrarySettings settings, Action changed)
     {
         _settings = settings;
-        _captureSettings = captureSettings;
         _changed = changed;
         Load();
     }
@@ -53,9 +47,6 @@ public sealed partial class ClipsLibrarySettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _rememberLastState;
-
-    [ObservableProperty]
-    private double _recentCapturesLimit;
 
     [ObservableProperty]
     private bool _showNotesPreview;
@@ -94,23 +85,6 @@ public sealed partial class ClipsLibrarySettingsViewModel : ObservableObject
 
     partial void OnRememberLastStateChanged(bool value) => Persist(() => _settings.RememberLastState = value);
 
-    partial void OnRecentCapturesLimitChanged(double value)
-    {
-        if (double.IsNaN(value))
-        {
-            return;
-        }
-
-        var normalized = Math.Clamp((int)Math.Round(value), 5, 30);
-        if (Math.Abs(value - normalized) > double.Epsilon)
-        {
-            RecentCapturesLimit = normalized;
-            return;
-        }
-
-        Persist(() => _captureSettings.RecentCapturesLimit = normalized);
-    }
-
     partial void OnShowNotesPreviewChanged(bool value) => Persist(() => _settings.ShowNotesPreview = value);
 
     partial void OnShowQuickActionsChanged(bool value) => Persist(() => _settings.ShowQuickActions = value);
@@ -133,7 +107,6 @@ public sealed partial class ClipsLibrarySettingsViewModel : ObservableObject
     private void ResetToDefaults()
     {
         _settings.ResetToDefaults();
-        _captureSettings.RecentCapturesLimit = 10;
         Load();
         _changed();
     }
@@ -160,7 +133,6 @@ public sealed partial class ClipsLibrarySettingsViewModel : ObservableObject
             DefaultTypeFilterIndex = (int)_settings.DefaultTypeFilter;
             DefaultDateFilterIndex = (int)_settings.DefaultDateFilter;
             RememberLastState = _settings.RememberLastState;
-            RecentCapturesLimit = _captureSettings.RecentCapturesLimit;
             ShowNotesPreview = _settings.ShowNotesPreview;
             ShowQuickActions = _settings.ShowQuickActions;
             ShowUploadStatus = _settings.ShowUploadStatus;

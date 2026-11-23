@@ -1189,9 +1189,9 @@ public partial class App : Application
 
         if (entry.Capture is { } saved)
         {
-            if (File.Exists(saved.Path) && !ShellRecycleBin.MoveFile(saved.Path))
+            if (!File.Exists(saved.Path) || !ShellRecycleBin.MoveFile(saved.Path))
             {
-                ShowMessageNotification("The capture couldn't be moved to the Recycle Bin. It may be open in another app.");
+                ShowMessageNotification("The capture couldn't be moved to the Recycle Bin. It may have moved or be open in another app.");
                 return;
             }
 

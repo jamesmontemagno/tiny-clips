@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Changed
-- Recent Captures now opens as a compact scrolling thumbnail popover on macOS, with configurable 5–30 item history and Copy, Edit, Reveal, and Delete quick actions.
+- Recent Captures now opens as a compact scrolling thumbnail popover on macOS, with Copy, Edit, Reveal, and Delete quick actions. Choose 5–30 items in Settings → General → Recent captures to show (default 10). Use the keyboard-accessible X in the header or press Escape to close the popover.
 - The Release Hub can prepare an Agent version-bump pull request before publishing its tag.
 
 ## v2.3.0.1-mac - 2026-11-22

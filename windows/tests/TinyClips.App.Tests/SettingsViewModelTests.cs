@@ -10,6 +10,27 @@ namespace TinyClips.App.Tests;
 public sealed class SettingsViewModelTests
 {
     [Fact]
+    public void GeneralSettingsEditsTheExistingRecentLimitAndClearingRestoresIt()
+    {
+        var fixture = new Fixture();
+        fixture.Settings.RecentCapturesLimit = 23;
+        var vm = fixture.CreateViewModel();
+        var general = vm.BeginSectionRealization(SettingsSectionKind.General);
+        vm.RecentCapturesLimit = 5;
+        vm.CompleteSectionRealization(general);
+        Assert.Equal(23, vm.RecentCapturesLimit);
+
+        vm.RecentCapturesLimit = 12.7;
+        Assert.Equal(13, fixture.Settings.RecentCapturesLimit);
+        var writes = fixture.Store.Writes;
+
+        vm.RecentCapturesLimit = double.NaN;
+
+        Assert.Equal(13, vm.RecentCapturesLimit);
+        Assert.Equal(writes, fixture.Store.Writes);
+    }
+
+    [Fact]
     public void RefreshHotKeyDisplays_ReportsExternalEditsClearAndResetWithoutWritingSettings()
     {
         var fixture = new Fixture();

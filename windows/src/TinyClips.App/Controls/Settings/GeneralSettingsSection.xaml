@@ -38,6 +38,22 @@
                 </ComboBox>
             </controls:SettingsCard>
 
+            <controls:SettingsCard
+                Description="Choose how many saved captures and Studio drafts appear in the tray's Recent captures flyout."
+                Header="Recent captures to show"
+                HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
+                <NumberBox
+                    MinWidth="120"
+                    AutomationProperties.AutomationId="LibraryRecentCapturesLimitBox"
+                    AutomationProperties.Name="Recent captures to show"
+                    LargeChange="5"
+                    Maximum="30"
+                    Minimum="5"
+                    SmallChange="1"
+                    SpinButtonPlacementMode="Compact"
+                    Value="{x:Bind ViewModel.RecentCapturesLimit, Mode=TwoWay}" />
+            </controls:SettingsCard>
+
             <TextBlock
                 Margin="4,16,0,0"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
@@ -180,7 +196,6 @@
                 Text="Capture behavior" />
 
             <StackPanel Spacing="2">
-
                 <controls:SettingsCard
                     Description="For demos, let Tiny Clips windows and controls appear in screenshots and recordings. Applies to the next capture after any active recording ends. The teleprompter and live webcam preview stay hidden; the recorded camera is unchanged."
                     Header="Include Tiny Clips in captures"

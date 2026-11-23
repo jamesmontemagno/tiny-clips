@@ -34,7 +34,7 @@ public sealed class TrayRefreshTests
         Assert.Equal(2, Regex.Matches(source, @"\bBuildTrayPopupContent\(").Count);
         Assert.Contains("|| flyout.IsOpen", source);
         Assert.Contains("flyout.Closed += OnTrayRecentClosed", source);
-        // The Recent menu shows type icons only: the tray never reads or decodes thumbnails.
+        // Refreshing the tray never reads thumbnails; the flyout loads them on demand.
         Assert.DoesNotContain("GetThumbnailPathAsync", source);
         Assert.DoesNotContain("ImageIcon", source);
         Assert.DoesNotContain("PosterOf", source);
@@ -55,9 +55,7 @@ public sealed class TrayRefreshTests
         Assert.Contains("RecentCaptureCardAction.Reveal", source);
         Assert.Contains("RecentCaptureCardAction.Delete", source);
         Assert.Contains("_copyButton.Visibility = entry.Capture is null ? Visibility.Collapsed : Visibility.Visible;", source);
-        Assert.Contains("TextOnAccentFillColorPrimaryBrush", source);
-        Assert.Contains("AccentFillColorDefaultBrush", source);
-        Assert.DoesNotContain("ColorHelper.FromArgb(232", source);
+        Assert.Contains("AccentButtonStyle", source);
     }
 
     [Fact]
