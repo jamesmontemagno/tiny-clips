@@ -233,10 +233,10 @@ internal sealed class RecentCaptureCard : UserControl
         PointerExited += (_, _) => SetPointerOver(false);
         _mainButton.GotFocus += (_, _) => SetFocusWithin(true);
         _mainButton.LostFocus += (_, _) => SetFocusWithin(false);
-        foreach (var action in _actions.Children.OfType<Button>())
+        foreach (var actionButton in _actions.Children.OfType<Button>())
         {
-            action.GotFocus += (_, _) => SetFocusWithin(true);
-            action.LostFocus += (_, _) => SetFocusWithin(false);
+            actionButton.GotFocus += (_, _) => SetFocusWithin(true);
+            actionButton.LostFocus += (_, _) => SetFocusWithin(false);
         }
 
         Update(entry);
