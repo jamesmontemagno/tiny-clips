@@ -162,6 +162,8 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
 
         public bool CanMuteMicrophone => false;
 
+        public bool IsMicrophoneCapturing => false;
+
         public bool IsSystemAudioMuted => false;
 
         public bool IsMicrophoneMuted => false;
@@ -317,6 +319,8 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
 
             return _inner.Save(project);
         }
+
+        public IDisposable AcquireProjectUse(string projectId) => _inner.AcquireProjectUse(projectId);
 
         public void Delete(string projectId)
         {

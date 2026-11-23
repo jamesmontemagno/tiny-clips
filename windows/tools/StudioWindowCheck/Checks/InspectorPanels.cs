@@ -369,10 +369,10 @@ internal sealed partial class WindowChecks
     /// focus is put back afterwards. UI thread.
     /// </summary>
     /// <remarks>
-    /// A stop is listed by its automation id. A group of radio buttons is listed by the group's
-    /// id, the rail by its own and not by the item the focus is on, and the header of a crop
-    /// group by the group's: the header is a part of the framework's template, with the same id
-    /// in every group.
+    /// A stop is listed by its automation id. A group of radio buttons or choice tiles is listed
+    /// by the group's id, the rail by its own and not by the item the focus is on, and the header
+    /// of a crop group by the group's: the header is a part of the framework's template, with the
+    /// same id in every group.
     /// </remarks>
     private static List<string> StopsAsItIs(FrameworkElement content, XamlRoot root, bool putBack = true)
     {
@@ -410,12 +410,15 @@ internal sealed partial class WindowChecks
     {
         var named = focused;
         var isCropHeader = focused is ToggleButton { Name: "ExpanderHeader" };
-        if (focused is ListViewItem || isCropHeader)
+        var isChoiceTile = focused is GridViewItem;
+        if (focused is ListViewItem || isChoiceTile || isCropHeader)
         {
             for (var parent = VisualTreeHelper.GetParent(focused); parent is not null; parent = VisualTreeHelper.GetParent(parent))
             {
                 if ((focused is SegmentedItem && parent is Segmented)
                     || (focused is ListViewItem && parent is ListView && AutomationProperties.GetAutomationId(parent) == InspectorRailId)
+                    || (isChoiceTile && parent is GridView
+                        && (AutomationProperties.GetAutomationId(parent) is "StudioLayoutChoice" or "StudioCameraShapeComboBox"))
                     || (isCropHeader && parent is Expander))
                 {
                     named = parent;
