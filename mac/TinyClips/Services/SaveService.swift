@@ -47,8 +47,10 @@ struct RecentCaptureItem: Identifiable, Codable {
 final class RecentCaptureStore: ObservableObject {
     static let shared = RecentCaptureStore()
 
-    /// Only the newest captures get a thumbnail generated; the menu itself also only shows this many.
-    static let menuDisplayLimit = 10
+    /// Retained history supports the maximum configurable display size.
+    private static let maximumStoredCount = 30
+    /// The popover displays this many mixed captures and Studio drafts.
+    static var menuDisplayLimit: Int { CaptureSettings.shared.recentCapturesLimit }
 
     @Published private(set) var items: [RecentCaptureItem] = []
     @Published private(set) var thumbnails: [String: NSImage] = [:]
@@ -58,7 +60,7 @@ final class RecentCaptureStore: ObservableObject {
     private init() {
         if let data = UserDefaults.standard.data(forKey: defaultsKey),
            let decoded = try? JSONDecoder().decode([RecentCaptureItem].self, from: data) {
-            items = Array(decoded.prefix(10))
+            items = Array(decoded.prefix(Self.maximumStoredCount))
         }
         pruneMissing()
         loadThumbnails()
@@ -71,7 +73,7 @@ final class RecentCaptureStore: ObservableObject {
         let path = url.standardizedFileURL.path
         items.removeAll { $0.path == path }
         items.insert(RecentCaptureItem(path: path, type: type), at: 0)
-        items = Array(items.filter { FileManager.default.fileExists(atPath: $0.path) }.prefix(10))
+        items = Array(items.filter { FileManager.default.fileExists(atPath: $0.path) }.prefix(Self.maximumStoredCount))
         thumbnails.removeValue(forKey: path)
         pruneThumbnails()
         persist()
@@ -88,7 +90,9 @@ final class RecentCaptureStore: ObservableObject {
     func remove(url: URL) {
         let path = url.standardizedFileURL.path
         items.removeAll { URL(fileURLWithPath: $0.path).standardizedFileURL.path == path }
+        pruneThumbnails()
         persist()
+        loadThumbnails()
     }
 
     func pruneMissing() {
@@ -103,6 +107,11 @@ final class RecentCaptureStore: ObservableObject {
         if let data = try? JSONEncoder().encode(items) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
+    }
+
+    func refreshForDisplayLimit() {
+        pruneThumbnails()
+        loadThumbnails()
     }
 
     // MARK: - Thumbnails
@@ -132,11 +141,10 @@ final class RecentCaptureStore: ObservableObject {
         }
     }
 
-    /// Drops cached thumbnails for items that are no longer tracked at all, so the dictionary
-    /// doesn't grow unbounded as captures age out of `items`.
+    /// Keeps thumbnails only for entries the popover can currently display.
     private func pruneThumbnails() {
-        let liveIDs = Set(items.map(\.id))
-        thumbnails = thumbnails.filter { liveIDs.contains($0.key) }
+        let visibleIDs = Set(items.prefix(Self.menuDisplayLimit).map(\.id))
+        thumbnails = thumbnails.filter { visibleIDs.contains($0.key) }
     }
 
     nonisolated private static func generateThumbnail(url: URL, type: CaptureType) async -> NSImage? {

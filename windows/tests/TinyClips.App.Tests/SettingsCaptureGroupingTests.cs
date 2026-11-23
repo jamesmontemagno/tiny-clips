@@ -76,6 +76,19 @@ public sealed class SettingsCaptureGroupingTests
         });
     }
 
+    [Fact]
+    public void ClipsLibrary_BindsTheRecentCaptureLimitToAFiveThroughThirtyNumberBox()
+    {
+        var control = Assert.Single(
+            SettingsMarkup.Elements("ClipsLibrarySettingsSection.xaml")
+                .Where(element => element.Attr(Id) == "LibraryRecentCapturesLimitBox"));
+
+        Assert.Equal("5", control.Attr("Minimum"));
+        Assert.Equal("30", control.Attr("Maximum"));
+        Assert.Equal("{x:Bind ViewModel.RecentCapturesLimit, Mode=TwoWay}", control.Attr("Value"));
+        Assert.Equal("Recent captures to show", control.Attr("AutomationProperties.Name"));
+    }
+
     private static Dictionary<string, string[]> Groups(string page, string title)
     {
         var column = SettingsMarkup.Elements(page).First(element => element.Name.LocalName == "StackPanel");

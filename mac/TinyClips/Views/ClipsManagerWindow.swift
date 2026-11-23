@@ -3094,6 +3094,9 @@ private struct ClipManagerUploadcareSettingsView: View {
                 }
 
                 Section("Display") {
+                    Stepper(value: $settings.recentCapturesLimit, in: 5...30) {
+                        Text("Recent captures to show (\(settings.recentCapturesLimit))")
+                    }
                     Toggle("Show auto-tags in clips", isOn: $settings.clipsManagerShowAutoTags)
                     Toggle("Show notes preview in clips", isOn: $settings.clipsManagerShowNotesPreview)
                     Toggle("Show quick action buttons in list view", isOn: $settings.clipsManagerShowQuickActions)

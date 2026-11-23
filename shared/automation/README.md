@@ -13,6 +13,11 @@ bindings. An unassigned Stop Recording shortcut does not disable `recording.stop
 Studio Recording has a separate optional UI shortcut, unassigned by default. Agents continue
 to start editable recordings with `recording.startVideo studio=true`; no shortcut is required.
 
+The `recentCapturesLimit` automation setting controls how many saved captures and Studio drafts
+the macOS menu bar and Windows tray Recent popover displays. It is readable and writable on both
+platforms, defaults to 10, and accepts whole numbers from 5 through 30. The apps retain up to 30
+captures so lowering the setting does not discard hidden recent history.
+
 `app.open window=guide` opens the offline illustrated Guide on either platform. Optional
 `guideTopic` selects `capture`, `editor`, `recording`, `studio`, `library`, `agents`, or `help`,
 including in an already-open Guide. It is valid only with `window=guide`; invalid topics,

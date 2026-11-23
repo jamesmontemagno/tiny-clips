@@ -17,7 +17,7 @@ public interface IRecentCaptureService
 public sealed partial class RecentCaptureService : IRecentCaptureService
 {
     private const string SettingsKey = "recentCapturesV1";
-    private const int MaximumCount = 10;
+    private const int MaximumCount = 30;
 
     private readonly ISettingsService _settings;
     private readonly IFileSystem _fileSystem;

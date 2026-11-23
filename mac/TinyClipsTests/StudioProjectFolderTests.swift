@@ -583,6 +583,38 @@ final class StudioProjectFolderTests: XCTestCase {
         XCTAssertTrue(RecentMenuEntry.merged(captures: captures, drafts: drafts, limit: 0).isEmpty)
     }
 
+    func testRecentCapturePresentationKeepsFullNameKindAndDate() {
+        let capture = RecentCaptureItem(
+            path: "/tmp/TinyClips Long Capture.png",
+            type: .screenshot,
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let presentation = RecentCapturePresentation(.capture(capture))
+
+        XCTAssertEqual(presentation.id, "capture:/tmp/TinyClips Long Capture.png")
+        XCTAssertEqual(presentation.title, "TinyClips Long Capture.png")
+        XCTAssertEqual(presentation.kind, "Screenshot")
+        XCTAssertEqual(presentation.symbol, "photo")
+        XCTAssertTrue(presentation.accessibilityText.contains(presentation.title))
+        XCTAssertTrue(presentation.accessibilityText.contains(presentation.date))
+    }
+
+    func testRecentCapturesSupportEveryConfiguredDisplayLimit() {
+        let captures = (0..<40).map {
+            RecentCaptureItem(
+                path: "/tmp/capture-\($0).png",
+                type: .screenshot,
+                capturedAt: Date(timeIntervalSince1970: TimeInterval($0))
+            )
+        }
+
+        for limit in [5, 10, 30] {
+            let displayed = RecentMenuEntry.merged(captures: captures, drafts: [], limit: limit)
+            XCTAssertEqual(displayed.count, limit)
+            XCTAssertEqual(displayed.first?.date, captures.last?.capturedAt)
+        }
+    }
+
     func testCaseVariantsOfTheDestinationRecordCannotReplaceOrExposeAnAsset() throws {
         for name in ["saved-project.json", "Saved-Project.json", "SAVED-PROJECT.JSON"] {
             let id = try makeProject(camera: false)

@@ -244,7 +244,10 @@ public sealed partial class SettingsWindow : Window
             SettingsSectionKind.Teleprompter => CreateTeleprompterSection(),
             SettingsSectionKind.Hotkeys => new HotkeysSettingsSection(ViewModel),
             SettingsSectionKind.ClipsLibrary => new ClipsLibrarySettingsSection(
-                new ClipsLibrarySettingsViewModel(App.Services.GetRequiredService<IClipsLibrarySettings>(), ViewModel.NotifyClipsLibrarySettingsChanged)),
+                new ClipsLibrarySettingsViewModel(
+                    App.Services.GetRequiredService<IClipsLibrarySettings>(),
+                    App.Services.GetRequiredService<ICaptureSettings>(),
+                    ViewModel.NotifyClipsLibrarySettingsChanged)),
             SettingsSectionKind.Support => new SupportSettingsSection(
                 new SupportSettingsViewModel(new MicrosoftStoreSupporterStore(WinRT.Interop.WindowNative.GetWindowHandle(this)))),
             SettingsSectionKind.About => new AboutSettingsSection(ViewModel),

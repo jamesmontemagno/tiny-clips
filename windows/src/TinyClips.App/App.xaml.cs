@@ -15,8 +15,10 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
+using TinyClips.App.Controls;
 using TinyClips.App.Models.Studio;
 using TinyClips.App.Services.ClipsLibrary;
+using TinyClips.App.Services.Files;
 using TinyClips.App.Services.Studio;
 using TinyClips.App.Settings;
 using TinyClips.App.Views.ClipsLibrary;
@@ -126,6 +128,7 @@ public partial class App : Application
     private CoalescedRefresh<IReadOnlyList<RecentCapture>>? _trayRecentRefresh;
     private IReadOnlyList<RecentCapture> _trayCaptures = [];
     private IRecentCaptureService? _trayRecentService;
+    private ICaptureSettings? _trayCaptureSettings;
     private StudioRecentDrafts? _trayDrafts;
     private StudioProjectTracker? _trayProjectTracker;
     private AutomationNotificationAnnouncer? _automationNotificationAnnouncer;
@@ -237,6 +240,8 @@ public partial class App : Application
         _trayProjectTracker.Changed += OnTrayProjectTrackerChanged;
         _trayRecentService = Services.GetRequiredService<IRecentCaptureService>();
         _trayRecentService.Changed += OnRecentCapturesChanged;
+        _trayCaptureSettings = Services.GetRequiredService<ICaptureSettings>();
+        _trayCaptureSettings.RecentCapturesLimitChanged += OnRecentCapturesLimitChanged;
         _trayRecentRefresh = new CoalescedRefresh<IReadOnlyList<RecentCapture>>(
             () => _trayRecentService!.GetRecentCaptures(),
             captures =>
@@ -311,6 +316,9 @@ public partial class App : Application
 
     private void OnRecentCapturesChanged(object? sender, EventArgs args) =>
         _dispatcher?.TryEnqueue(() => _trayRecentRefresh?.Request());
+
+    private void OnRecentCapturesLimitChanged(object? sender, EventArgs args) =>
+        _dispatcher?.TryEnqueue(RefreshRecentCapturesButton);
 
     private void OnIncludeTinyClipsInCaptureChanged(object? sender, EventArgs args) =>
         _dispatcher?.TryEnqueue(() =>
@@ -1059,14 +1067,15 @@ public partial class App : Application
         return button;
     }
 
-    private const int RecentCapturesDisplayCount = 10;
-
     private DropDownButton? _recentCapturesButton;
-    private readonly TrayRecentItems<MenuFlyoutItem> _recentTrayItems = new();
 
     private DropDownButton CreateRecentCapturesButton()
     {
-        var flyout = new MenuFlyout();
+        var flyout = new RecentCapturesFlyout(
+            Services.GetRequiredService<IThumbnailCache>(),
+            Services.GetRequiredService<IStudioProjectStore>(),
+            _dispatcher!,
+            HandleRecentCaptureCardActionAsync);
         var button = new DropDownButton
         {
             Content = QuickAccessContent(GlyphHistory, "No captures"),
@@ -1100,90 +1109,131 @@ public partial class App : Application
         RefreshRecentCapturesButton();
     }
 
-    private MenuFlyoutItem CreateRecentTrayItem(RecentMenuEntry entry)
+    private async Task HandleRecentCaptureCardActionAsync(
+        RecentMenuEntry entry,
+        RecentCaptureCardAction action)
     {
-        void Dismiss() => _trayPopup?.Hide();
-
-        if (entry.StudioDraft is { } draft)
+        try
         {
-            // A recording that is still a Studio project and has no saved file yet.
-            var title = StudioProjectFolderText.GetTrayDraftTitle(draft);
-            var draftItem = new MenuFlyoutItem
+            if (action == RecentCaptureCardAction.Copy && entry.Capture is { } copy)
             {
-                Text = title,
-                Icon = new FontIcon { Glyph = GlyphStudio, FontFamily = FluentIconFont, FontSize = 14 },
-            };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(draftItem, $"TrayRecentStudio{draft.Id}");
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(draftItem, title);
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(draftItem, "Opens this project in Tiny Clips Studio.");
-            draftItem.Click += (_, _) =>
+                await ClipboardService.CopySavedClipAsync(copy.Path, copy.Type);
+                return;
+            }
+
+            if (action == RecentCaptureCardAction.Edit)
             {
-                Dismiss();
-                OpenStudioWindow(draft.Id);
-            };
-            return draftItem;
+                _trayPopup?.Hide();
+                if (entry.Capture is { } capture)
+                {
+                    OpenRecentCapture(capture);
+                }
+                else
+                {
+                    OpenStudioWindow(entry.StudioDraft!.Id);
+                }
+                return;
+            }
+
+            if (action == RecentCaptureCardAction.Reveal)
+            {
+                _trayPopup?.Hide();
+                if (entry.Capture is { } capture)
+                {
+                    RevealInExplorer(capture.Path);
+                }
+                else
+                {
+                    OpenFolder(Services.GetRequiredService<IStudioProjectStore>().GetPaths(entry.StudioDraft!.Id).ProjectDirectory);
+                }
+                return;
+            }
+
+            if (action == RecentCaptureCardAction.Delete)
+            {
+                await DeleteRecentEntryAsync(entry);
+            }
         }
-
-        var capturedItem = entry.Capture!;
-        var name = $"{Path.GetFileName(capturedItem.Path)} — {CaptureTypeLabel(capturedItem.Type)}, {capturedItem.CapturedAt:g}";
-        var item = new MenuFlyoutItem
+        catch (Exception ex)
         {
-            Text = name,
-            Icon = new FontIcon { Glyph = CaptureTypeGlyph(capturedItem.Type), FontFamily = FluentIconFont, FontSize = 14 },
-        };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, $"TrayRecentCapture{entry.Id}");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, name);
-        item.Click += (_, _) =>
-        {
-            Dismiss();
-            OpenRecentCapture(capturedItem);
-        };
-        return item;
+            Debug.WriteLine($"Recent capture action failed: {ex}");
+            ShowMessageNotification("The recent-capture action couldn't be completed.");
+            throw;
+        }
     }
 
-    private static void UpdateRecentTrayItemText(MenuFlyoutItem item, RecentMenuEntry entry)
+    private async Task DeleteRecentEntryAsync(RecentMenuEntry entry)
     {
-        var capture = entry.Capture!;
-        var title = entry.StudioDraft is { } draft
-            ? StudioProjectFolderText.GetTrayDraftTitle(draft)
-            : $"{Path.GetFileName(capture.Path)} — {CaptureTypeLabel(capture.Type)}, {capture.CapturedAt:g}";
-        item.Text = title;
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(item, title);
+        var title = entry.Capture is { } capture
+            ? Path.GetFileName(capture.Path)
+            : entry.StudioDraft!.LibraryName;
+        var isStudio = entry.StudioDraft is not null;
+        if (Services.GetRequiredService<IClipsLibrarySettings>().ConfirmDelete)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = isStudio ? "Delete Studio project?" : "Move capture to Recycle Bin?",
+                Content = isStudio
+                    ? $"\"{title}\" and its managed recordings and edits will be removed. Exported videos and external originals are kept."
+                    : $"\"{title}\" will be moved to the Recycle Bin.",
+                PrimaryButtonText = isStudio ? "Delete project" : "Move to Recycle Bin",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = _trayLayout?.XamlRoot,
+            };
+            if (dialog.XamlRoot is null || await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+        }
+
+        if (entry.Capture is { } saved)
+        {
+            if (File.Exists(saved.Path) && !ShellRecycleBin.MoveFile(saved.Path))
+            {
+                ShowMessageNotification("The capture couldn't be moved to the Recycle Bin. It may be open in another app.");
+                return;
+            }
+
+            Services.GetRequiredService<IClipMetadataStore>().Remove(saved.Path);
+            Services.GetRequiredService<IRecentCaptureService>().Remove(saved.Path);
+        }
+        else
+        {
+            Services.GetRequiredService<IStudioProjectStore>().Delete(entry.StudioDraft!.Id);
+            await _trayDrafts!.ReloadAsync();
+        }
+
+        ShowMessageNotification(isStudio ? "Studio project deleted" : "Capture moved to the Recycle Bin");
+        RefreshRecentCapturesButton();
     }
 
     /// <summary>
-    /// Diff the cached entries, retaining the button and unchanged menu items. Items show a
-        /// type icon only: no thumbnail is read or decoded for the tray.
-        /// Called only by refresh/event completion, never by opening the popup or its flyout.
+    /// Diffs the cached entries without rebuilding an open flyout underneath keyboard focus.
+    /// Thumbnail loading is delegated to realized cards and never happens during a tray refresh.
     /// </summary>
     private void RefreshRecentCapturesButton()
     {
         if (_isExiting
-            || _recentCapturesButton is not { Flyout: MenuFlyout flyout } button
+            || _recentCapturesButton is not { Flyout: RecentCapturesFlyout flyout } button
             || flyout.IsOpen)
         {
             return;
         }
 
-        var entries = Services.GetRequiredService<StudioRecentDrafts>().EntriesFor(_trayCaptures, RecentCapturesDisplayCount);
-        _recentTrayItems.Update(entries, CreateRecentTrayItem, UpdateRecentTrayItemText);
-        var items = _recentTrayItems.Items;
-        if (!flyout.Items.SequenceEqual(items))
+        var settings = Services.GetRequiredService<ICaptureSettings>();
+        var entries = Services.GetRequiredService<StudioRecentDrafts>().EntriesFor(
+            _trayCaptures,
+            settings.RecentCapturesLimit);
+        flyout.Update(entries);
+        var count = flyout.Count;
+        button.Content = QuickAccessContent(GlyphHistory, count == 0 ? "No captures" : $"Recent ({count})");
+        if (count == 0 && button.FocusState != FocusState.Unfocused)
         {
-            flyout.Items.Clear();
-            foreach (var item in items)
-            {
-                flyout.Items.Add(item);
-            }
-
-            button.Content = QuickAccessContent(GlyphHistory, items.Count == 0 ? "No captures" : $"Recent ({items.Count})");
-            if (items.Count == 0 && button.FocusState != FocusState.Unfocused)
-            {
-                _screenshotTile?.Button.Focus(FocusState.Programmatic);
-            }
-
-            button.IsEnabled = items.Count > 0;
+            _screenshotTile?.Button.Focus(FocusState.Programmatic);
         }
+
+        button.IsEnabled = count > 0;
     }
 
     private static StackPanel QuickAccessContent(string glyph, string text)
@@ -1200,14 +1250,6 @@ public partial class App : Application
         CaptureType.Video => "Video",
         CaptureType.Gif => "GIF",
         _ => type.ToString(),
-    };
-
-    private static string CaptureTypeGlyph(CaptureType type) => type switch
-    {
-        CaptureType.Screenshot => GlyphScreenshot,
-        CaptureType.Video => GlyphVideo,
-        CaptureType.Gif => GlyphGif,
-        _ => GlyphHistory,
     };
 
     private sealed class CaptureTile
@@ -4212,6 +4254,11 @@ public partial class App : Application
         if (_trayRecentService is { } recentService)
         {
             recentService.Changed -= OnRecentCapturesChanged;
+        }
+
+        if (_trayCaptureSettings is { } captureSettings)
+        {
+            captureSettings.RecentCapturesLimitChanged -= OnRecentCapturesLimitChanged;
         }
 
         if (_trayDrafts is { } drafts)

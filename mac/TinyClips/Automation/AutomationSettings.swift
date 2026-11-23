@@ -106,6 +106,7 @@ struct AutomationSetting {
             ).path
         },
         .string("fileNameTemplate", \.fileNameTemplate),
+        .int("recentCapturesLimit", \.recentCapturesLimit, 5...30),
         .string("studioExportResolution", \.studioExportResolution, allowed: StudioExportResolution.allCases.map(\.rawValue)),
         .string("studioExportQuality", \.studioExportQuality, allowed: StudioExportQuality.allCases.map(\.rawValue)),
         .string("screenshotFormat", \.screenshotFormat, allowed: ImageFormat.allCases.map(\.rawValue)),

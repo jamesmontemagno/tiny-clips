@@ -650,6 +650,26 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
         Assert.Empty(RecentMenuEntry.Merged(captures, drafts, limit: 0));
     }
 
+    [Theory]
+    [InlineData(5)]
+    [InlineData(10)]
+    [InlineData(30)]
+    public void RecentCapturesSupportEveryConfiguredDisplayLimit(int limit)
+    {
+        var captures = Enumerable.Range(0, 40)
+            .Select(index => new RecentCapture(
+                $@"C:\Captures\capture-{index}.png",
+                CaptureType.Screenshot,
+                DateTimeOffset.UnixEpoch.AddMinutes(index)))
+            .Reverse()
+            .ToArray();
+
+        var displayed = RecentMenuEntry.Merged(captures, [], limit);
+
+        Assert.Equal(limit, displayed.Count);
+        Assert.Equal(captures[0], displayed[0].Capture);
+    }
+
     private static StudioProjectSummary MenuSummary(
         string id,
         long created = 0,

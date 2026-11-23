@@ -41,6 +41,23 @@ public sealed class TrayRefreshTests
     }
 
     [Fact]
+    public void RecentFlyoutLoadsThumbnailsLazilyAndKeepsProjectActionsContextual()
+    {
+        using var stream = typeof(TrayRefreshTests).Assembly.GetManifestResourceStream("Tray.RecentCapturesFlyout.cs")!;
+        using var reader = new StreamReader(stream);
+        var source = reader.ReadToEnd();
+
+        Assert.Contains("Opening += (_, _) => RequestThumbnailsNear(_scroller.HorizontalOffset)", source);
+        Assert.Contains("RequestThumbnailsNear(args.FinalView.HorizontalOffset)", source);
+        Assert.Contains("GetThumbnailPathAsync", source);
+        Assert.Contains("RecentCaptureCardAction.Copy", source);
+        Assert.Contains("RecentCaptureCardAction.Edit", source);
+        Assert.Contains("RecentCaptureCardAction.Reveal", source);
+        Assert.Contains("RecentCaptureCardAction.Delete", source);
+        Assert.Contains("_copyButton.Visibility = entry.Capture is null ? Visibility.Collapsed : Visibility.Visible;", source);
+    }
+
+    [Fact]
     public void BurstIsSingleFlightAndPublishesOnlyLatestResultOnOwnerThread()
     {
         using var context = new OwnerContext();

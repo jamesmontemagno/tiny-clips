@@ -454,6 +454,11 @@ class CaptureSettings: ObservableObject {
     @CapturePreference("clipsManagerAutoUploadAfterSave") var clipsManagerAutoUploadAfterSave: Bool = false
     @CapturePreference("clipsManagerAutoCopyUploadLink") var clipsManagerAutoCopyUploadLink: Bool = false
     @CapturePreference("clipsManagerShowInspector") var clipsManagerShowInspector: Bool = true
+    @CapturePreference("recentCapturesLimit") private var storedRecentCapturesLimit: Int = 10
+    var recentCapturesLimit: Int {
+        get { min(max(storedRecentCapturesLimit, 5), 30) }
+        set { storedRecentCapturesLimit = min(max(newValue, 5), 30) }
+    }
     @CapturePreference("gifFrameRate") var gifFrameRate: Double = 10
     @CapturePreference("gifMaxWidth") var gifMaxWidth: Int = 640
     @CapturePreference("videoFrameRate") var videoFrameRate: Int = 30
@@ -946,6 +951,7 @@ class CaptureSettings: ObservableObject {
         "clipsManagerDefaultViewMode", "clipsManagerDefaultSortOption", "clipsManagerDefaultFilterType", "clipsManagerDefaultDateFilter",
         "clipsManagerAutoRefreshSeconds", "clipsManagerArchiveOldClips", "clipsManagerArchiveAfterDays",
         "clipsManagerAutoUploadAfterSave", "clipsManagerAutoCopyUploadLink", "clipsManagerShowInspector",
+        "recentCapturesLimit",
         "clipsManagerLastViewMode", "clipsManagerLastSortOption", "clipsManagerLastFilterType", "clipsManagerLastDateFilter",
         "clipsManagerLastSmartCollection", "clipsManagerLastSearchText", "clipsManagerLastSelectedTag", "clipsManagerLastSelectedCollection",
         "gifFrameRate", "gifMaxWidth", "videoFrameRate", videoCodecKey, "showMouseClickVisualsInVideo", "showMouseClickVisualsInGif",
