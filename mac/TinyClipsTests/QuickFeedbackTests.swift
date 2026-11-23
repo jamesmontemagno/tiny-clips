@@ -66,39 +66,40 @@ final class QuickFeedbackTests: XCTestCase {
 }
 
 final class QuickFeedbackKeyboardShortcutTests: XCTestCase {
-    func testEditorPasteboardShortcutsDoNotCaptureFeedbackFieldShortcuts() {
+    func testFeedbackFieldsUseResponderChainForAllPasteboardCommands() {
         for action in [
             ScreenshotEditorPasteboardShortcutPolicy.Action.cut,
             .copy,
             .paste
         ] {
-            XCTAssertFalse(
-                ScreenshotEditorPasteboardShortcutPolicy.shouldInstall(
+            XCTAssertEqual(
+                ScreenshotEditorPasteboardShortcutPolicy.route(
                     action,
                     hasActiveEditor: false,
                     isEditingText: false
-                )
+                ),
+                .responderChain
             )
         }
     }
 
-    func testOnlyCopyShortcutIsRegisteredOutsideTextEditing() {
-        XCTAssertFalse(shouldInstall(.cut, isEditingText: false))
-        XCTAssertTrue(shouldInstall(.copy, isEditingText: false))
-        XCTAssertFalse(shouldInstall(.paste, isEditingText: false))
+    func testScreenshotEditorCopiesImageOutsideTextEditing() {
+        XCTAssertEqual(route(.cut, isEditingText: false), .unavailable)
+        XCTAssertEqual(route(.copy, isEditingText: false), .screenshot)
+        XCTAssertEqual(route(.paste, isEditingText: false), .unavailable)
     }
 
-    func testAllPasteboardShortcutsAreRegisteredWhileEditingEditorText() {
-        XCTAssertTrue(shouldInstall(.cut, isEditingText: true))
-        XCTAssertTrue(shouldInstall(.copy, isEditingText: true))
-        XCTAssertTrue(shouldInstall(.paste, isEditingText: true))
+    func testScreenshotTextEditingUsesResponderChain() {
+        XCTAssertEqual(route(.cut, isEditingText: true), .responderChain)
+        XCTAssertEqual(route(.copy, isEditingText: true), .responderChain)
+        XCTAssertEqual(route(.paste, isEditingText: true), .responderChain)
     }
 
-    private func shouldInstall(
+    private func route(
         _ action: ScreenshotEditorPasteboardShortcutPolicy.Action,
         isEditingText: Bool
-    ) -> Bool {
-        ScreenshotEditorPasteboardShortcutPolicy.shouldInstall(
+    ) -> ScreenshotEditorPasteboardShortcutPolicy.Route {
+        ScreenshotEditorPasteboardShortcutPolicy.route(
             action,
             hasActiveEditor: true,
             isEditingText: isEditingText

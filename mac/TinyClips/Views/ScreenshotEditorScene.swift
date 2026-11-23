@@ -35,19 +35,26 @@ private struct ScreenshotEditorCommandActionsKey: FocusedValueKey {
 }
 
 enum ScreenshotEditorPasteboardShortcutPolicy {
-    enum Action {
+    enum Action: Equatable {
         case cut
         case copy
         case paste
     }
 
-    static func shouldInstall(
+    enum Route: Equatable {
+        case responderChain
+        case screenshot
+        case unavailable
+    }
+
+    static func route(
         _ action: Action,
         hasActiveEditor: Bool,
         isEditingText: Bool
-    ) -> Bool {
-        guard hasActiveEditor else { return false }
-        return action == .copy || isEditingText
+    ) -> Route {
+        guard hasActiveEditor else { return .responderChain }
+        guard !isEditingText else { return .responderChain }
+        return action == .copy ? .screenshot : .unavailable
     }
 }
 
@@ -147,36 +154,9 @@ private struct ScreenshotEditorMenuCommands: Commands {
         }
 
         CommandGroup(replacing: .pasteboard) {
-            pasteboardButton(
-                "Cut",
-                action: .cut,
-                shortcut: "x",
-                disabled: editor?.isEditingText != true
-            ) {
-                performTextAction("cut:")
-            }
-
-            pasteboardButton(
-                "Copy",
-                action: .copy,
-                shortcut: "c",
-                disabled: editor == nil
-            ) {
-                if editor?.isEditingText == true {
-                    performTextAction("copy:")
-                } else {
-                    editor?.copy()
-                }
-            }
-
-            pasteboardButton(
-                "Paste",
-                action: .paste,
-                shortcut: "v",
-                disabled: editor?.isEditingText != true
-            ) {
-                performTextAction("paste:")
-            }
+            pasteboardButton("Cut", action: .cut, shortcut: "x")
+            pasteboardButton("Copy", action: .copy, shortcut: "c")
+            pasteboardButton("Paste", action: .paste, shortcut: "v")
 
             Divider()
 
@@ -232,21 +212,33 @@ private struct ScreenshotEditorMenuCommands: Commands {
     private func pasteboardButton(
         _ title: String,
         action: ScreenshotEditorPasteboardShortcutPolicy.Action,
-        shortcut: KeyEquivalent,
-        disabled: Bool,
-        perform: @escaping () -> Void
+        shortcut: KeyEquivalent
     ) -> some View {
-        if ScreenshotEditorPasteboardShortcutPolicy.shouldInstall(
+        let route = ScreenshotEditorPasteboardShortcutPolicy.route(
             action,
             hasActiveEditor: editor != nil,
             isEditingText: editor?.isEditingText == true
-        ) {
-            Button(title, action: perform)
-                .disabled(disabled)
-                .keyboardShortcut(shortcut, modifiers: .command)
-        } else {
-            Button(title, action: perform)
-                .disabled(disabled)
+        )
+
+        Button(title) {
+            switch route {
+            case .responderChain:
+                performTextAction(selectorName(for: action))
+            case .screenshot:
+                editor?.copy()
+            case .unavailable:
+                break
+            }
+        }
+        .disabled(route == .unavailable)
+        .keyboardShortcut(shortcut, modifiers: .command)
+    }
+
+    private func selectorName(for action: ScreenshotEditorPasteboardShortcutPolicy.Action) -> String {
+        switch action {
+        case .cut: "cut:"
+        case .copy: "copy:"
+        case .paste: "paste:"
         }
     }
 
