@@ -14,6 +14,7 @@ using TinyClips.Core.Capture;
 using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
+using TinyClips.Core.Services.ClipsLibrary;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -730,7 +731,8 @@ public sealed partial class ScreenshotEditorWindow : Window
             return;
         }
 
-        if (!await ShowDeleteScreenshotDialogAsync())
+        if (App.Services.GetRequiredService<IClipsLibrarySettings>().ConfirmDelete &&
+            !await ShowDeleteScreenshotDialogAsync())
         {
             return;
         }

@@ -15,6 +15,7 @@ own `CHANGELOG.md` at the repository root.
 - Settings → General → Save locations has a **Studio projects** folder for Studio's **Save project** and **Save project as**, defaulting to a `Studio` folder inside the videos save folder; it replaces starting where the last project was saved. Projects already saved to a folder keep saving there, and drafts and recordings stay in Studio's own storage. Agents can read it as the read-only `studioProjectFolder` setting.
 
 ### Fixed
+- Deleting a screenshot from its editor now honors the Clips Library **Confirm delete** preference instead of always prompting.
 - Studio project saves use the default folder while default save locations are enabled; disabling them restores the previous custom folder.
 - Studio's Save project folder preserves whitespace in chosen folder names.
 - MOV files appear in Clips Library and `library.list`. For a cross-platform `editor.open` result with an absolute path, pass `resultFormat=standard`.
