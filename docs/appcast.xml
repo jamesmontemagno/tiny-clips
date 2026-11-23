@@ -11,24 +11,24 @@
         <item>
             
             
-            <title>2.3.0.1</title>
+            <title>2.3.0.2</title>
             
             
-            <pubDate>Sun, 22 Nov 2026 19:03:06 +0000</pubDate>
+            <pubDate>Mon, 23 Nov 2026 16:26:33 +0000</pubDate>
             
             
-            <sparkle:version>73</sparkle:version>
+            <sparkle:version>74</sparkle:version>
             
             
-            <sparkle:shortVersionString>2.3.0.1</sparkle:shortVersionString>
+            <sparkle:shortVersionString>2.3.0.2</sparkle:shortVersionString>
             
             
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             
             
-            <description><![CDATA[<h3>Fixed</h3><ul><li>The macOS Studio inspector no longer jumps, widens, or runs under the panel rail in any panel, including while a project plays, a slider moves, or a scroll bar is shown. Scene Layout and camera Shape are now grids of labelled tiles that fit the panel, the Zoom focus pad shrinks to fit, and sliders no longer draw a tick mark for every step.</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v2.3.0-mac...v2.3.0.1-mac">Full Changelog</a></p>]]></description>
-            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v2.3.0.1-mac</sparkle:releaseNotesLink>
-            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v2.3.0.1-mac/TinyClips-v2.3.0.1-mac.zip" length="8280601" type="application/octet-stream" sparkle:edSignature="P50zyw/tA4b614RjMQeV3aJHHjuEJBUUWxUtGrZThXFwxAfGjgUkUfLxFIfIlZx1adXDeaBWtBbKdiST2lmlDg=="/>
+            <description><![CDATA[<h3>Fixed</h3><ul><li>Cropping a screenshot on macOS now keeps the selected area instead of vertically mirroring the crop in the source image.</li></ul><h3>Changed</h3><ul><li>The Release Hub can prepare an Agent version-bump pull request before publishing its tag.</li></ul><p><a href="https://github.com/jamesmontemagno/tiny-clips/compare/v2.3.0.1-mac...v2.3.0.2-mac">Full Changelog</a></p>]]></description>
+            <sparkle:releaseNotesLink>https://github.com/jamesmontemagno/tiny-clips/releases/tag/v2.3.0.2-mac</sparkle:releaseNotesLink>
+            <enclosure url="https://github.com/jamesmontemagno/tiny-clips/releases/download/v2.3.0.2-mac/TinyClips-v2.3.0.2-mac.zip" length="8280669" type="application/octet-stream" sparkle:edSignature="iOVsSYjMbnhh5xRY8pq3g1SAWw9MU42lX1U7P6YPohkdoBwVE+pU8upiW7BndIqeNc7+zr4fsWFQ0VOglyBVDA=="/>
             
         
         </item>
