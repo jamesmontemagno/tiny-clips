@@ -1175,12 +1175,18 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        if (_settings.ConfirmDelete && _interaction is not null)
+        if (_interaction is not null)
         {
             var message = targets.Count == 1
                 ? $"\"{targets[0].DisplayName}\" will be permanently deleted from disk."
                 : $"{targets.Count} clips will be permanently deleted from disk.";
-            if (!await _interaction.ConfirmAsync(targets.Count == 1 ? "Delete clip?" : $"Delete {targets.Count} clips?", message, "Delete", destructive: true))
+            if (!await ClipDeleteConfirmation.ApproveAsync(
+                    _settings.ConfirmDelete,
+                    () => _interaction.ConfirmAsync(
+                        targets.Count == 1 ? "Delete clip?" : $"Delete {targets.Count} clips?",
+                        message,
+                        "Delete",
+                        destructive: true)))
             {
                 return;
             }

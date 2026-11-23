@@ -464,8 +464,18 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
         if (sender is not Button { DataContext: StudioLibraryRow row }) return;
         try
         {
-            if (!await ConfirmAsync(StudioProjectFolderText.GetDeleteTitle(row.Name), StudioProjectFolderText.DeleteMessage,
-                    "Delete", destructive: true) || _closed) return;
+            var settings = App.Services.GetRequiredService<IClipsLibrarySettings>();
+            if (!await ClipDeleteConfirmation.ApproveAsync(
+                    settings.ConfirmDelete,
+                    () => ConfirmAsync(
+                        StudioProjectFolderText.GetDeleteTitle(row.Name),
+                        StudioProjectFolderText.DeleteMessage,
+                        "Delete",
+                        destructive: true)) ||
+                _closed)
+            {
+                return;
+            }
 
             if (!await App.Services.GetRequiredService<StudioWindowService>().TryDeleteLibraryProjectAsync(row.ProjectId) && !_closed)
                 StudioStatus.Text = "This project is in use. Finish recording or close its Studio editor before deleting it.";
