@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("mac", "windows")]
+    [ValidateSet("mac", "windows", "agent")]
     [string]$Platform,
 
     [Parameter(Mandatory = $false)]
@@ -64,6 +64,10 @@ function Get-ReleaseHeading {
 
     if ($PlatformName -eq "mac") {
         return "## $TagVersion - $DateString"
+    }
+    if ($PlatformName -eq "agent") {
+        $packageVersion = $TagVersion -replace '^agent-v', ''
+        return "## $packageVersion - $DateString"
     }
 
     return "## [$TagVersion] - $DateString"
@@ -181,7 +185,7 @@ if ($Platform -eq "mac") {
             throw "mac tag version ($Version) does not align with Info.plist version ($appVersion)."
         }
     }
-} else {
+} elseif ($Platform -eq "windows") {
     $changelogPath = Join-Path $repoRoot "windows\CHANGELOG.md"
     $unreleasedLine = "## [Unreleased]"
 
@@ -198,6 +202,24 @@ if ($Platform -eq "mac") {
 
     if ($Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+-windows$') {
         throw "Invalid windows version format: $Version (expected vX.Y.Z-windows)"
+    }
+} else {
+    $changelogPath = Join-Path $repoRoot "agent\CHANGELOG.md"
+    $unreleasedLine = "## Unreleased"
+
+    if (-not $Version) {
+        $latestAgentTag = (git tag --list 'agent-v*' --sort=-creatordate | Select-Object -First 1)
+        if (-not $latestAgentTag) {
+            $Version = "agent-v0.1.0"
+        } elseif ($latestAgentTag -match '^agent-v([0-9]+)\.([0-9]+)\.([0-9]+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
+            $Version = "agent-v$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
+        } else {
+            throw "Latest Agent tag does not match expected pattern: $latestAgentTag"
+        }
+    }
+
+    if ($Version -notmatch '^agent-v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
+        throw "Invalid Agent version format: $Version (expected agent-vX.Y.Z or agent-vX.Y.Z-preview.1)"
     }
 }
 
@@ -250,13 +272,13 @@ if ($hasReleaseNotes) {
     git commit -m @"
 Mark $Version release
 
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+    Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
 "@
 } else {
     git commit --allow-empty -m @"
 Mark $Version release
 
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+    Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
 "@
 }
 

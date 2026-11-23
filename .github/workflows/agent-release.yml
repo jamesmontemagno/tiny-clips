@@ -60,11 +60,67 @@ jobs:
       contents: write
       id-token: write
     steps:
+      - uses: actions/checkout@v7
       - name: Download tested Linux package and plugin
         uses: actions/download-artifact@v8
         with:
           name: tinyclips-agent-package
           path: artifacts
+      - name: Build release notes from Agent changelog
+        env:
+          PACKAGE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["PACKAGE_VERSION"]
+          changelog = pathlib.Path("agent/CHANGELOG.md")
+          lines = changelog.read_text(encoding="utf-8").splitlines()
+          heading_pattern = re.compile(rf"^##\s+{re.escape(version)}(?:\s+-\s+\d{{4}}-\d{{2}}-\d{{2}})?\s*$")
+
+          start = next((i for i, line in enumerate(lines) if heading_pattern.match(line.strip())),
+                       next((i for i, line in enumerate(lines) if line.strip() == "## Unreleased"), None))
+          body = []
+          if start is not None:
+              for line in lines[start + 1:]:
+                  if line.startswith("## "):
+                      break
+                  body.append(line.rstrip())
+
+          body_text = "\n".join(body).strip()
+          has_notes = any(re.match(r"^-\s+", line) for line in body_text.splitlines())
+          if not has_notes:
+              body_text = "- Maintenance release."
+
+          release_notes = "\n".join([
+              body_text,
+              "",
+              "## Install",
+              "",
+              "Run without installing globally:",
+              "",
+              "```text",
+              "dnx TinyClips status",
+              "```",
+              "",
+              "Or install the .NET tool:",
+              "",
+              "```text",
+              "dotnet tool install -g TinyClips",
+              "```",
+              "",
+              "## Release validation",
+              "",
+              "- The agent CLI, plugin, and MCP metadata versions match the release tag.",
+              "- The candidate package is tested on Linux, Windows, macOS Apple silicon, and macOS Intel.",
+              "- NuGet Trusted Publishing exchanges the GitHub OIDC token for a short-lived API key.",
+          ])
+
+          notes_path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "agent-release-notes.md"
+          notes_path.write_text(release_notes.rstrip() + "\n", encoding="utf-8")
+          PY
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
@@ -87,9 +143,9 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           name: Tiny Clips Agent ${{ needs.version.outputs.version }}
+          body_path: ${{ runner.temp }}/agent-release-notes.md
           files: |
             artifacts/*.nupkg
             artifacts/*.zip
           fail_on_unmatched_files: true
-          generate_release_notes: true
           prerelease: ${{ contains(needs.version.outputs.version, '-') }}

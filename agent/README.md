@@ -102,3 +102,7 @@ Configure [NuGet.org Trusted Publishing](https://learn.microsoft.com/nuget/nuget
 | Allowed publishing scopes | New packages and new versions (the first release creates the package) |
 
 The workflow uses `NuGet/login@v1` to obtain a short-lived key immediately before pushing; no stored NuGet API key is needed. Protect agent release tags and require reviewed workflow changes. After the workflow is merged and the NuGet policy is configured, push a tag such as `agent-v0.1.0` on the reviewed commit to publish. This documentation does not itself create or push a release tag.
+
+## Changelog
+
+Record user-visible Agent CLI, MCP, plugin, and shared automation contract changes under `## Unreleased` in [`CHANGELOG.md`](CHANGELOG.md). Use the release workflow to turn those notes into an `agent-v<version>` release; do not mix Agent-only notes into the macOS or Windows app changelogs.

@@ -35,12 +35,13 @@ test("generates macOS notes from the requested released section", async () => {
     assert.ok(result.itemCount > 0);
 });
 
-test("generates agent release notes from the shared changelog", async () => {
+test("generates agent release notes from the Agent CLI changelog", async () => {
     const result = await generateReleaseNotes("agent", "0.1.0");
 
-    assert.equal(result.source, "CHANGELOG.md");
+    assert.equal(result.source, "agent/CHANGELOG.md");
     assert.match(result.notes, /dnx TinyClips status/);
     assert.match(result.notes, /NuGet Trusted Publishing/);
+    assert.match(result.notes, /cross-platform \.NET 10 Agent CLI/i);
 });
 
 test("renders the Agent tab and guarded publish action", () => {
@@ -153,7 +154,7 @@ test("creates an Agent bump PR on an isolated branch without publishing a tag", 
     git("config", "user.email", "release-tests@example.invalid");
     git("config", "commit.gpgsign", "false");
     git("add", "agent", "plugin.json", ".github");
-    git("commit", "--quiet", "-m", "Initial fixture");
+    git("commit", "--quiet", "-m", "Initial fixture\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>");
     git("init", "--bare", "--quiet", remote);
     git("remote", "add", "origin", remote);
     git("push", "--quiet", "-u", "origin", "main");
@@ -180,7 +181,7 @@ if (args[0] === "pr" && args[1] === "list") {
         else process.env.RELEASE_TEST_PR = oldState;
     });
     const { performReleaseAction } = await import(pathToFileURL(join(root, ".github/extensions/tinyclips-release-hub/release-data.mjs")).href);
-    const input = { tag: "agent-v0.3.0", confirmation: "CREATE PR agent-v0.3.0" };
+    const input = { tag: "agent-v0.4.0", confirmation: "CREATE PR agent-v0.4.0" };
     await assert.rejects(performReleaseAction("create_agent_release_pr", { ...input, confirmation: "wrong" }), /Confirmation/);
     const result = await performReleaseAction("create_agent_release_pr", input);
     assert.equal(result.pullRequest.number, 42);
@@ -188,11 +189,11 @@ if (args[0] === "pr" && args[1] === "list") {
     assert.equal(git("rev-parse", "HEAD"), head);
     assert.equal(git("status", "--porcelain"), "");
     assert.equal(git("--git-dir", remote, "tag", "--list"), "");
-    const branch = "refs/heads/release/agent-v0.3.0";
-    assert.match(git("--git-dir", remote, "show", `${branch}:agent/src/TinyClips.Cli/TinyClips.Cli.csproj`), /<PackageVersion>0\.3\.0<\/PackageVersion>/);
+    const branch = "refs/heads/release/agent-v0.4.0";
+    assert.match(git("--git-dir", remote, "show", `${branch}:agent/src/TinyClips.Cli/TinyClips.Cli.csproj`), /<PackageVersion>0\.4\.0<\/PackageVersion>/);
     const registry = JSON.parse(git("--git-dir", remote, "show", `${branch}:agent/src/TinyClips.Cli/.mcp/server.json`));
     const plugin = JSON.parse(git("--git-dir", remote, "show", `${branch}:plugin.json`));
-    assert.equal(plugin.version, "0.3.0");
+    assert.equal(plugin.version, "0.4.0");
     assert.equal(registry.version, plugin.version);
     assert.equal(registry.packages[0].version, plugin.version);
     assert.equal((await performReleaseAction("create_agent_release_pr", input)).pullRequest.number, 42);
@@ -201,6 +202,14 @@ const runners = [
     { name: "Bash", command: "bash", extension: "sh" },
     { name: "PowerShell", command: process.platform === "win32" ? "powershell" : "pwsh", extension: "ps1" },
 ];
+let powerShellAvailable = true;
+if (process.platform !== "win32") {
+    try {
+        execFileSync("pwsh", ["-NoProfile", "-Command", "exit 0"], { stdio: "ignore" });
+    } catch {
+        powerShellAvailable = false;
+    }
+}
 
 function createReleaseFixture(t, platform, notes, runner) {
     const root = mkdtempSync(join(tmpdir(), "tinyclips-release-test-"));
@@ -212,8 +221,12 @@ function createReleaseFixture(t, platform, notes, runner) {
     mkdirSync(join(root, "mac", "TinyClips"), { recursive: true });
     writeFileSync(join(root, "mac", "TinyClips", "Info.plist"), '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>2.1.0</string></dict></plist>');
     mkdirSync(join(root, "windows"));
-    const heading = platform === "mac" ? "## Unreleased" : "## [Unreleased]";
-    const changelog = join(root, platform === "mac" ? "CHANGELOG.md" : "windows/CHANGELOG.md");
+    mkdirSync(join(root, "agent"));
+    const heading = platform === "windows" ? "## [Unreleased]" : "## Unreleased";
+    const changelog = join(root,
+        platform === "mac" ? "CHANGELOG.md"
+            : platform === "windows" ? "windows/CHANGELOG.md"
+                : "agent/CHANGELOG.md");
     const original = `# Changelog\n\n${heading}\n\n${notes}\n\n## Previous release\n\n### Fixed\n- Previously released fix.\n`;
     writeFileSync(changelog, original);
     const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", env: { ...process.env, GIT_PAGER: "cat" } }).trim();
@@ -223,9 +236,11 @@ function createReleaseFixture(t, platform, notes, runner) {
     git("config", "commit.gpgsign", "false");
     git("config", "tag.gpgsign", "false");
     git("add", ".");
-    git("commit", "--quiet", "-m", "Initial fixture");
+    git("commit", "--quiet", "-m", "Initial fixture\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>");
     const head = git("rev-parse", "HEAD");
-    const tag = platform === "mac" ? "v2.1.0.1-mac" : "v2.1.1-windows";
+    const tag = platform === "mac" ? "v2.1.0.1-mac"
+        : platform === "windows" ? "v2.1.1-windows"
+            : "agent-v0.3.0";
     const args = runner.extension === "sh"
         ? [script, "--platform", platform, "--version", tag]
         : ["-NoProfile", "-File", script, "-Platform", platform, "-Version", tag];
@@ -237,7 +252,7 @@ function createReleaseFixture(t, platform, notes, runner) {
     return { root, git, run, changelog, original, head, tag };
 }
 
-for (const platform of ["mac", "windows"]) {
+for (const platform of ["mac", "windows", "agent"]) {
     test(`generates maintenance release notes for ${platform} when Unreleased has no bullets`, async (t) => {
         const fixture = createReleaseFixture(t, platform, "### Fixed\n", runners[0]);
         const moduleDir = join(fixture.root, ".github", "extensions", "tinyclips-release-hub");
@@ -254,10 +269,12 @@ for (const platform of ["mac", "windows"]) {
 }
 
 for (const runner of runners) {
-    for (const platform of ["mac", "windows"]) {
+    for (const platform of ["mac", "windows", "agent"]) {
         const skip = runner.extension === "sh" && platform === "mac" && process.platform !== "darwin"
             ? "The macOS Bash script requires PlistBuddy."
-            : false;
+            : runner.extension === "ps1" && !powerShellAvailable
+                ? "PowerShell is not installed."
+                : false;
         for (const notes of ["", "### Fixed\n"]) {
             test(`${runner.name} ${platform} rejects ${notes ? "heading-only" : "empty"} notes without changing Git or the changelog`, { skip }, (t) => {
                 const fixture = createReleaseFixture(t, platform, notes, runner);
@@ -312,7 +329,7 @@ for (const runner of runners) {
             assert.equal(fixture.git("rev-list", "-n", "1", fixture.tag), fixture.git("rev-parse", "HEAD"));
             assert.match(fixture.git("for-each-ref", "--format=%(contents)", `refs/tags/${fixture.tag}`), /Fixed:\s+- New release fix\./);
             assert.doesNotMatch(fixture.git("for-each-ref", "--format=%(contents)", `refs/tags/${fixture.tag}`), /Previously released fix/);
-            assert.match(readFileSync(fixture.changelog, "utf8"), /## (?:v2\.1\.0\.1-mac|\[v2\.1\.1-windows\]) - \d{4}-\d{2}-\d{2}/);
+            assert.match(readFileSync(fixture.changelog, "utf8"), /## (?:(?:v2\.1\.0\.1-mac)|(?:\[v2\.1\.1-windows\])|(?:0\.3\.0)) - \d{4}-\d{2}-\d{2}/);
             assert.match(readFileSync(fixture.changelog, "utf8"), /Previously released fix/);
             assert.equal(fixture.git("status", "--porcelain"), "");
         });

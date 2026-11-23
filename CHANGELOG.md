@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - The Release Hub can prepare an Agent version-bump pull request before publishing its tag.
+- Added a dedicated Agent CLI changelog and clarified that contributor instructions should evaluate Agent API coverage case by case instead of automatically exposing every app capability.
 
 ## v2.3.0.1-mac - 2026-11-22
 

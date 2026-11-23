@@ -32,11 +32,13 @@ Do not mix platform-specific implementation patterns:
 
 ## Agent API Coverage
 
-- Treat agent access as part of every new or changed user-facing capability on both platforms. In the same change, expose its meaningful actions and state through Agent Control so agents can use it autonomously without relying on UI interaction.
-- Add or update commands and schemas in `shared/automation/commands.json`, then implement and advertise them in the macOS and Windows automation handlers wherever the feature exists. Do not invent cross-platform feature parity: an unsupported platform must return `not_supported` and must not advertise the command.
-- Ensure the shared CLI and MCP server expose the capability with the correct schema. Update relevant Skills, `docs/agent-integration.md`, and examples when workflows change; test the contract, platform behavior, errors, and CLI/MCP exposure as appropriate.
+- Do not assume that every new or changed app capability belongs in Agent Control or the Agent CLI. First evaluate whether agent access is safe, meaningful, and likely to help an autonomous agent; consider security, least-privilege scopes, approvals, OS permissions, platform support, and whether UI-only configuration is intentional.
+- If the value or safety is ambiguous, ask the user whether to add Agent API coverage instead of silently exposing or omitting it. This is especially important for destructive, purchase, account, or permission-sensitive actions.
+- When Agent API coverage is explicitly requested or clearly warranted, add or update commands and schemas in `shared/automation/commands.json`, then implement and advertise them in the macOS and Windows automation handlers wherever the feature exists. Do not invent cross-platform feature parity: an unsupported platform must return `not_supported` and must not advertise the command.
+- Ensure the shared CLI and MCP server expose the capability with the correct schema only when it belongs in the Agent API. Update relevant Skills, `docs/agent-integration.md`, and examples when workflows change; test the contract, platform behavior, errors, and CLI/MCP exposure as appropriate.
 - Preserve opt-in Agent Control, pairing, least-privilege scopes, sensitive-action approvals, audit logging, path restrictions, OS permissions, and Pro/Store requirements. Never bypass these protections to make a feature autonomous.
-- If a capability cannot be safely or meaningfully exposed, explain the limitation and get user direction rather than silently omitting agent support.
+- If a capability cannot be safely or meaningfully exposed, explain the limitation and get user direction rather than silently omitting or bypassing agent support.
+- If the Agent CLI, MCP server, plugin, or shared automation contract changes, update `agent/CHANGELOG.md` under `## Unreleased` with the user-visible CLI/plugin/MCP/contract change.
 
 ## Build and Validate
 
@@ -96,7 +98,8 @@ dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c De
 - Update changelog for the affected platform:
   - root [CHANGELOG.md](../CHANGELOG.md) for mac/shared changes
   - [windows/CHANGELOG.md](../windows/CHANGELOG.md) for Windows app changes
+  - [agent/CHANGELOG.md](../agent/CHANGELOG.md) for Agent CLI, MCP, plugin, or shared automation contract changes
 - Preserve accessibility quality gates:
   - mac: VoiceOver + keyboard for affected flows
   - windows: keyboard navigation and accessible names for new/changed controls
-- Confirm new and changed capabilities have agent API coverage, tests, and relevant documentation on each supported platform.
+- For any new or changed capability, decide whether Agent API coverage is warranted. Confirm it when added, ask the user when ambiguous, and document intentional UI-only or unsupported behavior.

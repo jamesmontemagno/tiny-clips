@@ -57,7 +57,7 @@ function platformConfig(platform) {
     }
     if (platform === "agent") {
         return {
-            changelog: "CHANGELOG.md",
+            changelog: "agent/CHANGELOG.md",
             unreleasedHeading: "## Unreleased",
             workflow: "agent-release.yml",
         };
@@ -127,8 +127,11 @@ function extractSection(markdown, heading) {
 }
 
 function releaseHeadingMatches(line, platform, version) {
-    if (platform === "mac") {
-        return line === `## ${version}` || line.startsWith(`## ${version} -`);
+    if (platform === "mac" || platform === "agent") {
+        const headingVersion = platform === "agent" && version.startsWith("agent-v")
+            ? version.slice("agent-v".length)
+            : version;
+        return line === `## ${headingVersion}` || line.startsWith(`## ${headingVersion} -`);
     }
     return line === `## [${version}]` || line.startsWith(`## [${version}] -`);
 }
@@ -905,7 +908,7 @@ export async function performReleaseAction(action, input) {
             await run("git", ["remote", "set-url", "origin", remoteUrl], { cwd: checkout });
             await run("node", ["agent/scripts/bump-version.mjs", input.tag.slice("agent-v".length)], { cwd: checkout });
             await run("git", ["add", "agent/src/TinyClips.Cli/TinyClips.Cli.csproj", "plugin.json", "agent/src/TinyClips.Cli/.mcp/server.json"], { cwd: checkout });
-            await run("git", ["-c", `user.name=${authorName}`, "-c", `user.email=${authorEmail}`, "commit", "-m", `Bump agent version for ${input.tag}\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>`], { cwd: checkout });
+            await run("git", ["-c", `user.name=${authorName}`, "-c", `user.email=${authorEmail}`, "commit", "-m", `Bump agent version for ${input.tag}\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>`], { cwd: checkout });
             await run("git", ["push", `--force-with-lease=refs/heads/${releaseBranch(input.tag)}:`, "origin", `HEAD:refs/heads/${releaseBranch(input.tag)}`], { cwd: checkout });
             await run("gh", [
                 "pr", "create", "--base", "main", "--head", releaseBranch(input.tag),

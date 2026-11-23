@@ -5,11 +5,12 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  ./tag-new-release.sh --platform <mac|windows> [--version <tag>] [--allow-empty] [--dry-run]
+  ./tag-new-release.sh --platform <mac|windows|agent> [--version <tag>] [--allow-empty] [--dry-run]
 
 Examples:
   ./tag-new-release.sh --platform mac --version v1.5.0-mac
   ./tag-new-release.sh --platform windows --version v1.0.9-windows
+  ./tag-new-release.sh --platform agent --version agent-v0.4.0
   ./tag-new-release.sh --platform mac
 
 Notes:
@@ -62,8 +63,8 @@ if [[ -z "$PLATFORM" ]]; then
     exit 1
 fi
 
-if [[ "$PLATFORM" != "mac" && "$PLATFORM" != "windows" ]]; then
-    echo "❌ --platform must be one of: mac, windows." >&2
+if [[ "$PLATFORM" != "mac" && "$PLATFORM" != "windows" && "$PLATFORM" != "agent" ]]; then
+    echo "❌ --platform must be one of: mac, windows, agent." >&2
     exit 1
 fi
 
@@ -82,9 +83,13 @@ if [[ "$PLATFORM" == "mac" ]]; then
     CHANGELOG_FILE="$REPO_ROOT/CHANGELOG.md"
     UNRELEASED_PATTERN='^## Unreleased$'
     APP_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$REPO_ROOT/mac/TinyClips/Info.plist")"
-else
+elif [[ "$PLATFORM" == "windows" ]]; then
     CHANGELOG_FILE="$REPO_ROOT/windows/CHANGELOG.md"
     UNRELEASED_PATTERN='^## \[Unreleased\]$'
+    APP_VERSION=""
+else
+    CHANGELOG_FILE="$REPO_ROOT/agent/CHANGELOG.md"
+    UNRELEASED_PATTERN='^## Unreleased$'
     APP_VERSION=""
 fi
 
@@ -111,17 +116,30 @@ else
             exit 1
         fi
     else
-        LATEST_WINDOWS_TAG="$(git tag --list 'v*-windows' --sort=-creatordate | head -n 1)"
-        if [[ -z "$LATEST_WINDOWS_TAG" ]]; then
-            echo "❌ Could not infer a windows version. Provide --version." >&2
-            exit 1
-        fi
-        if [[ "$LATEST_WINDOWS_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-windows$ ]]; then
-            PATCH=$((BASH_REMATCH[3] + 1))
-            VERSION="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${PATCH}-windows"
+        if [[ "$PLATFORM" == "agent" ]]; then
+            LATEST_AGENT_TAG="$(git tag --list 'agent-v*' --sort=-creatordate | head -n 1)"
+            if [[ -z "$LATEST_AGENT_TAG" ]]; then
+                VERSION="agent-v0.1.0"
+            elif [[ "$LATEST_AGENT_TAG" =~ ^agent-v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+                PATCH=$((BASH_REMATCH[3] + 1))
+                VERSION="agent-v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${PATCH}"
+            else
+                echo "❌ Latest Agent tag does not match expected pattern: $LATEST_AGENT_TAG" >&2
+                exit 1
+            fi
         else
-            echo "❌ Latest windows tag does not match expected pattern: $LATEST_WINDOWS_TAG" >&2
-            exit 1
+            LATEST_WINDOWS_TAG="$(git tag --list 'v*-windows' --sort=-creatordate | head -n 1)"
+            if [[ -z "$LATEST_WINDOWS_TAG" ]]; then
+                echo "❌ Could not infer a windows version. Provide --version." >&2
+                exit 1
+            fi
+            if [[ "$LATEST_WINDOWS_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-windows$ ]]; then
+                PATCH=$((BASH_REMATCH[3] + 1))
+                VERSION="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${PATCH}-windows"
+            else
+                echo "❌ Latest windows tag does not match expected pattern: $LATEST_WINDOWS_TAG" >&2
+                exit 1
+            fi
         fi
     fi
 fi
@@ -151,13 +169,22 @@ if [[ "$PLATFORM" == "mac" ]]; then
     fi
     RELEASE_HEADING="## ${VERSION} - ${TODAY}"
     SECTION_HEADER_PREFIX="### "
-else
+elif [[ "$PLATFORM" == "windows" ]]; then
     if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-windows$ ]]; then
         echo "❌ Invalid windows version format: $VERSION" >&2
         echo "Expected: vX.Y.Z-windows" >&2
         exit 1
     fi
     RELEASE_HEADING="## [${VERSION}] - ${TODAY}"
+    SECTION_HEADER_PREFIX="### "
+else
+    if [[ ! "$VERSION" =~ ^agent-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+        echo "❌ Invalid Agent version format: $VERSION" >&2
+        echo "Expected: agent-vX.Y.Z or agent-vX.Y.Z-preview.1" >&2
+        exit 1
+    fi
+    AGENT_VERSION="${VERSION#agent-v}"
+    RELEASE_HEADING="## ${AGENT_VERSION} - ${TODAY}"
     SECTION_HEADER_PREFIX="### "
 fi
 
@@ -253,11 +280,11 @@ if [[ "$HAS_RELEASE_NOTES" == "true" ]]; then
     git add "$CHANGELOG_FILE"
     git commit -m "Mark ${VERSION} release
 
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>"
 else
     git commit --allow-empty -m "Mark ${VERSION} release
 
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>"
 fi
 git tag -a "$VERSION" -F "$TMP_TAG_MSG"
 
