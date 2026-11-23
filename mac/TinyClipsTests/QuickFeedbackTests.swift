@@ -64,3 +64,44 @@ final class QuickFeedbackTests: XCTestCase {
         XCTAssertEqual(values["os"], context.osVersion, file: file, line: line)
     }
 }
+
+final class QuickFeedbackKeyboardShortcutTests: XCTestCase {
+    func testEditorPasteboardShortcutsDoNotCaptureFeedbackFieldShortcuts() {
+        for action in [
+            ScreenshotEditorPasteboardShortcutPolicy.Action.cut,
+            .copy,
+            .paste
+        ] {
+            XCTAssertFalse(
+                ScreenshotEditorPasteboardShortcutPolicy.shouldInstall(
+                    action,
+                    hasActiveEditor: false,
+                    isEditingText: false
+                )
+            )
+        }
+    }
+
+    func testOnlyCopyShortcutIsRegisteredOutsideTextEditing() {
+        XCTAssertFalse(shouldInstall(.cut, isEditingText: false))
+        XCTAssertTrue(shouldInstall(.copy, isEditingText: false))
+        XCTAssertFalse(shouldInstall(.paste, isEditingText: false))
+    }
+
+    func testAllPasteboardShortcutsAreRegisteredWhileEditingEditorText() {
+        XCTAssertTrue(shouldInstall(.cut, isEditingText: true))
+        XCTAssertTrue(shouldInstall(.copy, isEditingText: true))
+        XCTAssertTrue(shouldInstall(.paste, isEditingText: true))
+    }
+
+    private func shouldInstall(
+        _ action: ScreenshotEditorPasteboardShortcutPolicy.Action,
+        isEditingText: Bool
+    ) -> Bool {
+        ScreenshotEditorPasteboardShortcutPolicy.shouldInstall(
+            action,
+            hasActiveEditor: true,
+            isEditingText: isEditingText
+        )
+    }
+}

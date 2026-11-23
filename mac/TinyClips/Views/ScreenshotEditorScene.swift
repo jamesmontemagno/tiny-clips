@@ -34,6 +34,23 @@ private struct ScreenshotEditorCommandActionsKey: FocusedValueKey {
     typealias Value = ScreenshotEditorCommandActions
 }
 
+enum ScreenshotEditorPasteboardShortcutPolicy {
+    enum Action {
+        case cut
+        case copy
+        case paste
+    }
+
+    static func shouldInstall(
+        _ action: Action,
+        hasActiveEditor: Bool,
+        isEditingText: Bool
+    ) -> Bool {
+        guard hasActiveEditor else { return false }
+        return action == .copy || isEditingText
+    }
+}
+
 extension FocusedValues {
     var screenshotEditorCommandActions: ScreenshotEditorCommandActions? {
         get { self[ScreenshotEditorCommandActionsKey.self] }
@@ -130,27 +147,36 @@ private struct ScreenshotEditorMenuCommands: Commands {
         }
 
         CommandGroup(replacing: .pasteboard) {
-            Button("Cut") {
+            pasteboardButton(
+                "Cut",
+                action: .cut,
+                shortcut: "x",
+                disabled: editor?.isEditingText != true
+            ) {
                 performTextAction("cut:")
             }
-            .disabled(editor?.isEditingText != true)
-            .keyboardShortcut("x", modifiers: .command)
 
-            Button("Copy") {
+            pasteboardButton(
+                "Copy",
+                action: .copy,
+                shortcut: "c",
+                disabled: editor == nil
+            ) {
                 if editor?.isEditingText == true {
                     performTextAction("copy:")
                 } else {
                     editor?.copy()
                 }
             }
-            .disabled(editor == nil)
-            .keyboardShortcut("c", modifiers: .command)
 
-            Button("Paste") {
+            pasteboardButton(
+                "Paste",
+                action: .paste,
+                shortcut: "v",
+                disabled: editor?.isEditingText != true
+            ) {
                 performTextAction("paste:")
             }
-            .disabled(editor?.isEditingText != true)
-            .keyboardShortcut("v", modifiers: .command)
 
             Divider()
 
@@ -199,6 +225,28 @@ private struct ScreenshotEditorMenuCommands: Commands {
                 editor?.nativeSizeZoom()
             }
             .disabled(editor == nil)
+        }
+    }
+
+    @ViewBuilder
+    private func pasteboardButton(
+        _ title: String,
+        action: ScreenshotEditorPasteboardShortcutPolicy.Action,
+        shortcut: KeyEquivalent,
+        disabled: Bool,
+        perform: @escaping () -> Void
+    ) -> some View {
+        if ScreenshotEditorPasteboardShortcutPolicy.shouldInstall(
+            action,
+            hasActiveEditor: editor != nil,
+            isEditingText: editor?.isEditingText == true
+        ) {
+            Button(title, action: perform)
+                .disabled(disabled)
+                .keyboardShortcut(shortcut, modifiers: .command)
+        } else {
+            Button(title, action: perform)
+                .disabled(disabled)
         }
     }
 
