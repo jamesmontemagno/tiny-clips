@@ -29,10 +29,10 @@ namespace TinyClips.App;
 /// </summary>
 public sealed partial class ScreenshotEditorWindow : Window
 {
-    // Minimum dimensions chosen to keep the tool rail + inspector + a usable canvas visible.
-    // Width 760 DIP: tool rail (~52) + inspector (~200) + canvas floor (~300) + margins (~208).
-    // The CommandBar will gracefully overflow AppBarButtons into its "More" menu below this width.
-    // Height 520 DIP: TitleBar (~48) + CommandBar row (~60) + canvas floor (~300) + padding (~112).
+    // The initial size keeps the full tool rail, inspector, and a useful canvas visible. Smaller
+    // displays clamp to their work area; the minimum still permits a compact usable editor.
+    private const int DefaultWidthDip = 1280;
+    private const int DefaultHeightDip = 900;
     private const int MinimumWidthDip  = 760;
     private const int MinimumHeightDip = 520;
 
@@ -103,6 +103,7 @@ public sealed partial class ScreenshotEditorWindow : Window
             _controller = new EditorController(DispatcherQueue, settings.ScreenshotEditorDefaultTool);
             Toolbar.Attach(_controller);
             Inspector.Attach(_controller);
+            Inspector.ApplyCropRequested += OnApplyCrop;
             Inspector.BackgroundImageRequested += OnChooseBackgroundImage;
             Inspector.SensitiveTextRequested += (_, anchor) => SensitiveTextFlyout.ShowAt(anchor);
             Canvas.Attach(_controller, settings);
@@ -114,7 +115,7 @@ public sealed partial class ScreenshotEditorWindow : Window
             _controller.BackgroundChanged += OnControllerImageChanged;
             Canvas.CropSelectionAvailabilityChanged += (_, available) =>
             {
-                ApplyCropButton.IsEnabled = available;
+                Inspector.SetCropSelectionAvailable(available);
                 _hasPendingCropSelection = available;
             };
         }
@@ -123,7 +124,9 @@ public sealed partial class ScreenshotEditorWindow : Window
         {
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(AppTitleBar);
-            AppWindowPlacement.CenterInCurrentWorkAreaAtHalfSize(AppWindow);
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(
+                AppWindow, hwnd, DefaultWidthDip, DefaultHeightDip);
 
             // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
             // scale tracking, and cleanup of all three on Closed. The Closed subscription here is
@@ -589,7 +592,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     // -- Crop -------------------------------------------------------------------------------
 
-    private async void OnApplyCrop(object sender, RoutedEventArgs e)
+    private async void OnApplyCrop(object? sender, EventArgs e)
     {
         var bounds = Canvas.GetCropSelectionPixelBounds();
         if (bounds is not { } rect || rect.Width < 1 || rect.Height < 1)

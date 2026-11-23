@@ -22,7 +22,8 @@ All notable changes to this project will be documented in this file.
 - Rectangles and circles in the macOS screenshot editor have a **Stroke position** option to draw the border inside, centered on, or outside the shape's edge. Centered is the default, as before.
 - Translucent arrows and lines in the macOS screenshot editor no longer draw darker where the shaft meets the head or a cap.
 - macOS screenshot arrows and lines now share their geometry with Windows, so the editor preview and saved image draw the same shape.
-- The macOS screenshot editor has a **Background** tool after **Move** for padding, a background, and a frame, which used to sit in a collapsible sidebar section. The tool buttons are larger. New installs open the editor on **Background** and upgrades keep **Move**; choose another with **Default editor tool** in Screenshot settings, or with the `screenshotEditorDefaultTool` Agent Control setting.
+- The macOS screenshot editor has a **Background** tool after **Move** for padding, a background, and a frame, which used to sit in a collapsible sidebar section. The tool buttons are larger. **Background** is now the default, including the one-time migration from the legacy Move default; choose another with **Default editor tool** in Screenshot settings, or with the `screenshotEditorDefaultTool` Agent Control setting.
+- **Apply Crop** now lives in the macOS screenshot editor's Crop tool section instead of the main toolbar, keeping that global action row focused on save, copy, undo, and delete actions.
 - Short choices in the macOS screenshot editor (**Arrow**, **Stroke position**, **Start**, **End**, **Corners**, and the export **Format**) are now segmented controls instead of pop-up menus.
 
 ## v2.3.0.3-mac - 2026-11-23

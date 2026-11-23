@@ -8,6 +8,7 @@ public sealed class CaptureSettings : ICaptureSettings
 {
     private const string StudioDefaultLookKey = "studioDefaultLook";
     private const string ScreenshotEditorDefaultToolKey = "screenshotEditorDefaultTool";
+    private const string ScreenshotEditorDefaultToolMigrationKey = "screenshotEditorDefaultToolBackgroundMigration";
 
     private readonly ISettingsService _settings;
     private readonly IClipAnalyticsService? _analytics;
@@ -1079,16 +1080,23 @@ public sealed class CaptureSettings : ICaptureSettings
         _analytics?.Clear();
     }
 
-    // The editor used to open with Select. Keep that for people upgrading and start new installs on
-    // Background. The choice is always stored, so finishing onboarding later doesn't change it.
+    // Select was the legacy pre-Background default. Migrate that one-time fallback while
+    // preserving a different explicit choice made before this migration runs.
     private void MigrateScreenshotEditorDefaultTool()
     {
-        if (!string.IsNullOrEmpty(_settings.Get(ScreenshotEditorDefaultToolKey, string.Empty)))
+        if (_settings.Get(ScreenshotEditorDefaultToolMigrationKey, false))
         {
             return;
         }
 
-        ScreenshotEditorDefaultTool = HasCompletedOnboarding ? EditTool.Select : EditTool.Background;
+        var persisted = _settings.Get(ScreenshotEditorDefaultToolKey, string.Empty);
+        if (!Enum.TryParse<EditTool>(persisted, ignoreCase: true, out var tool)
+            || !Enum.IsDefined(tool)
+            || tool == EditTool.Select)
+        {
+            ScreenshotEditorDefaultTool = EditTool.Background;
+        }
+        _settings.Set(ScreenshotEditorDefaultToolMigrationKey, true);
     }
 
     private void MigrateLegacySaveDirectory()

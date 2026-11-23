@@ -94,7 +94,7 @@ public sealed partial class EditorCanvas : UserControl
     }
 
     /// <summary>Raised when the crop-selection rectangle becomes big enough (or too small) to
-    /// apply — the window uses this to enable/disable its "Apply crop" command.</summary>
+    /// apply — the inspector uses this to enable/disable its "Apply crop" command.</summary>
     public event EventHandler<bool>? CropSelectionAvailabilityChanged;
 
     public void ZoomIn()

@@ -240,7 +240,7 @@ For scripts and MCP calls, pass `resultFormat=standard` to get `{"opened":true,"
 
 These commands cover screenshot editors only, not Studio or video/GIF trimmers. They are advertised only on macOS; Windows returns `not_supported`. The macOS **Close All Screenshot Editors** menu action additionally offers normal unsaved-work confirmations, one window at a time, and Cancel stops the operation.
 
-The `screenshotEditorDefaultTool` setting picks the tool selected when the interactive screenshot editor opens: `move`, `background`, `crop`, `rectangle`, `ellipse`, `arrow`, `line`, `pen`, `text`, `number`, `emoji`, or `redact`. New installs start on `background`; installs from before the Background tool keep `move`. It has no effect on `editor.annotate`.
+The `screenshotEditorDefaultTool` setting picks the tool selected when the interactive screenshot editor opens: `move`, `background`, `crop`, `rectangle`, `ellipse`, `arrow`, `line`, `pen`, `text`, `number`, `emoji`, or `redact`. Its built-in default is `background` on macOS and Windows; a different choice remains saved. It has no effect on `editor.annotate`.
 
 ### Trimming and frames
 

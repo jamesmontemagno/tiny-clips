@@ -187,18 +187,23 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: CaptureSettings.screenshotEditorNativeSizeKey))
     }
 
-    func testScreenshotEditorDefaultToolKeepsMoveForUpgradesAndStartsNewInstallsOnBackground() {
-        CaptureSettings.migrateScreenshotEditorDefaultTool(in: defaults)
-        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .background)
-
-        // Finishing onboarding afterwards must not make a new install look like an upgrade.
+    func testScreenshotEditorDefaultToolMigratesLegacyMoveToBackground() throws {
         defaults.set(true, forKey: "hasCompletedOnboarding")
+        defaults.set(EditTool.move.settingID, forKey: CaptureSettings.screenshotEditorDefaultToolKey)
+
         CaptureSettings.migrateScreenshotEditorDefaultTool(in: defaults)
         XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .background)
 
-        defaults.removeObject(forKey: CaptureSettings.screenshotEditorDefaultToolKey)
+        defaults.set(EditTool.arrow.settingID, forKey: CaptureSettings.screenshotEditorDefaultToolKey)
         CaptureSettings.migrateScreenshotEditorDefaultTool(in: defaults)
-        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .move)
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .arrow)
+
+        let newInstallSuite = "TinyClipsTests.NewDefault.\(UUID().uuidString)"
+        let newInstall = try XCTUnwrap(UserDefaults(suiteName: newInstallSuite))
+        defer { newInstall.removePersistentDomain(forName: newInstallSuite) }
+        newInstall.removePersistentDomain(forName: newInstallSuite)
+        CaptureSettings.migrateScreenshotEditorDefaultTool(in: newInstall)
+        XCTAssertEqual(CaptureSettings(defaults: newInstall, performMigrations: false).screenshotEditorDefaultEditTool, .background)
     }
 
     func testScreenshotEditorDefaultToolStoresSharedNamesAndFallsBackToBackground() {

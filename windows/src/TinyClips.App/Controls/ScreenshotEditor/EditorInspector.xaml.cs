@@ -37,12 +37,19 @@ public sealed partial class EditorInspector : UserControl
     }
 
     internal event EventHandler? BackgroundImageRequested;
+    internal event EventHandler? ApplyCropRequested;
 
     /// <summary>Raised with the button to anchor the sensitive-text review flyout to.</summary>
     internal event EventHandler<FrameworkElement>? SensitiveTextRequested;
 
     private void OnFindSensitiveTextClick(object sender, RoutedEventArgs e) =>
         SensitiveTextRequested?.Invoke(this, FindSensitiveTextButton);
+
+    internal void SetCropSelectionAvailable(bool available) =>
+        ApplyCropButton.IsEnabled = available;
+
+    private void OnApplyCropClick(object sender, RoutedEventArgs e) =>
+        ApplyCropRequested?.Invoke(this, EventArgs.Empty);
 
     internal void SetBackgroundSelectionBusy(bool busy)
     {
@@ -119,6 +126,17 @@ public sealed partial class EditorInspector : UserControl
             if (ann is not null)
             {
                 ShowForSelection(ann);
+            }
+            else
+            {
+                ShowForTool(_controller.Tool);
+            }
+        };
+        controller.AnnotationsStructureChanged += (_, _) =>
+        {
+            if (_controller.SelectedAnnotation is { } selected)
+            {
+                ShowForSelection(selected);
             }
             else
             {
@@ -247,6 +265,9 @@ public sealed partial class EditorInspector : UserControl
     private void ShowForTool(EditTool tool)
     {
         _inspectorInitializing = true;
+        Visibility = tool == EditTool.Select && _controller.SelectedAnnotation is null
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         var showsStroke = tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Arrow
             or EditTool.Line or EditTool.Pen;
@@ -259,7 +280,9 @@ public sealed partial class EditorInspector : UserControl
         var showsArrowStyle = tool is EditTool.Arrow;
         var showsEmoji = tool is EditTool.Emoji;
         var showsBackground = tool is EditTool.Background;
+        var showsCrop = tool is EditTool.Crop;
 
+        CropSection.Visibility = showsCrop ? Visibility.Visible : Visibility.Collapsed;
         ColorSection.Visibility = showsColor ? Visibility.Visible : Visibility.Collapsed;
         ShowColorLabel(tool);
         ShowOutline(tool, _controller.OutlineColorDefault, _controller.OutlineWidthDefault);
@@ -362,6 +385,7 @@ public sealed partial class EditorInspector : UserControl
     private void ShowForSelection(Annotation ann)
     {
         _inspectorInitializing = true;
+        Visibility = Visibility.Visible;
 
         var isShape = ann.Tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Arrow
             or EditTool.Line or EditTool.Pen;
@@ -373,6 +397,7 @@ public sealed partial class EditorInspector : UserControl
         var isEmoji = ann.Tool is EditTool.Emoji;
         var hasColor = isShape || isText || isCounter;
 
+        CropSection.Visibility = Visibility.Collapsed;
         ColorSection.Visibility = hasColor ? Visibility.Visible : Visibility.Collapsed;
         ShowColorLabel(ann.Tool);
         ShowOutline(ann.Tool, ann.OutlineColor, ann.OutlineWidth);

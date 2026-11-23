@@ -45,6 +45,32 @@
                     Style="{StaticResource BodyStrongTextBlockStyle}"
                     Text="Tool" />
 
+                <!--  Crop actions belong with the active Crop tool, not the global command bar.  -->
+                <StackPanel
+                    x:Name="CropSection"
+                    Spacing="8"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Drag on the image to select the area to keep."
+                        TextWrapping="Wrap" />
+                    <Button
+                        x:Name="ApplyCropButton"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorApplyCropButton"
+                        AutomationProperties.Name="Apply crop"
+                        Click="OnApplyCropClick"
+                        IsEnabled="False"
+                        Style="{StaticResource AccentButtonStyle}"
+                        ToolTipService.ToolTip="Apply the selected crop">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon FontSize="16" Glyph="&#xE7A8;" />
+                            <TextBlock Text="Apply crop" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
                 <!--  Arrow shape (item order matches ArrowPreset)  -->
                 <StackPanel x:Name="ArrowStyleSection" Spacing="4">
                     <TextBlock Text="Arrow" />

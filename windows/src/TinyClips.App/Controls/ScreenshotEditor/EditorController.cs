@@ -90,10 +90,10 @@ internal sealed class EditorController : IDisposable
         new("prism", "Prism", ExportBackgroundStyle.Gradient, Color.FromArgb(255, 250, 41, 97), Color.FromArgb(255, 46, 219, 237)),
     };
 
-    public EditorController(DispatcherQueue dispatcherQueue, EditTool initialTool = EditTool.Select)
+    public EditorController(DispatcherQueue dispatcherQueue, EditTool initialTool = EditTool.Background)
     {
         _dispatcherQueue = dispatcherQueue;
-        Tool = Enum.IsDefined(initialTool) ? initialTool : EditTool.Select;
+        Tool = Enum.IsDefined(initialTool) ? initialTool : EditTool.Background;
     }
 
     // -- State ------------------------------------------------------------------------------

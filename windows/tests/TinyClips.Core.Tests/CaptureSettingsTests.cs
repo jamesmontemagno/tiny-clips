@@ -106,12 +106,13 @@ public sealed class CaptureSettingsTests
     }
 
     [Fact]
-    public void ScreenshotEditorDefaultTool_KeepsSelectForUpgrades_AndStartsNewInstallsOnBackground()
+    public void ScreenshotEditorDefaultTool_MigratesLegacySelectToBackgroundAndPreservesChoices()
     {
         var upgrade = new TestSettingsService();
         upgrade.Set("hasCompletedOnboarding", true);
-        Assert.Equal(EditTool.Select, new CaptureSettings(upgrade).ScreenshotEditorDefaultTool);
-        Assert.Equal("Select", upgrade.Get("screenshotEditorDefaultTool", string.Empty));
+        upgrade.Set("screenshotEditorDefaultTool", "Select");
+        Assert.Equal(EditTool.Background, new CaptureSettings(upgrade).ScreenshotEditorDefaultTool);
+        Assert.Equal("Background", upgrade.Get("screenshotEditorDefaultTool", string.Empty));
 
         var newInstall = new TestSettingsService();
         var settings = new CaptureSettings(newInstall);
@@ -123,6 +124,9 @@ public sealed class CaptureSettingsTests
         chosen.Set("hasCompletedOnboarding", true);
         chosen.Set("screenshotEditorDefaultTool", "Arrow");
         Assert.Equal(EditTool.Arrow, new CaptureSettings(chosen).ScreenshotEditorDefaultTool);
+
+        settings.ScreenshotEditorDefaultTool = EditTool.Select;
+        Assert.Equal(EditTool.Select, new CaptureSettings(newInstall).ScreenshotEditorDefaultTool);
     }
 
     [Fact]

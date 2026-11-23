@@ -1055,14 +1055,6 @@ struct ScreenshotEditorView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button(action: applyCrop) {
-                    Label("Apply Crop", systemImage: "crop")
-                        .labelStyle(.titleAndIcon)
-                }
-                .disabled(!viewModel.canApplyCrop)
-                .accessibilityHint("Crops the image to the selected area and flattens existing annotations.")
-                .help("Crop the image to the selection (Return).")
-
                 Button {
                     viewModel.undo()
                 } label: {

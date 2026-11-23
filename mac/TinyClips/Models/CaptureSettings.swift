@@ -405,6 +405,7 @@ class CaptureSettings: ObservableObject {
     static let screenshotEditorNativeSizeKey = "screenshotEditorNativeSize"
     /// The editor tool a new screenshot editor starts with, as an `EditTool.settingID`.
     static let screenshotEditorDefaultToolKey = "screenshotEditorDefaultTool"
+    static let screenshotEditorDefaultToolMigrationKey = "screenshotEditorDefaultToolBackgroundMigration"
     /// Where the Captions panel keeps the language captions are generated in, as a BCP 47 tag, or
     /// empty for the system's.
     static let studioCaptionLanguageKey = "studioCaptionLanguage"
@@ -1094,12 +1095,16 @@ class CaptureSettings: ObservableObject {
 #endif
     }
 
-    /// The editor used to open with Move. Keep that for people upgrading and start new installs on
-    /// Background. The choice is always stored, so finishing onboarding later doesn't change it.
+    /// Move was the legacy pre-Background default. Migrate that one-time fallback to Background,
+    /// while preserving a different explicit choice made before this migration runs.
     static func migrateScreenshotEditorDefaultTool(in defaults: UserDefaults) {
-        guard defaults.object(forKey: screenshotEditorDefaultToolKey) == nil else { return }
-        let tool: EditTool = defaults.bool(forKey: "hasCompletedOnboarding") ? .move : .background
-        defaults.set(tool.settingID, forKey: screenshotEditorDefaultToolKey)
+        guard !defaults.bool(forKey: screenshotEditorDefaultToolMigrationKey) else { return }
+        let storedTool = defaults.string(forKey: screenshotEditorDefaultToolKey)
+            .flatMap { EditTool(settingID: $0) }
+        if storedTool == nil || storedTool == .move {
+            defaults.set(EditTool.background.settingID, forKey: screenshotEditorDefaultToolKey)
+        }
+        defaults.set(true, forKey: screenshotEditorDefaultToolMigrationKey)
     }
 
     var screenshotEditorDefaultEditTool: EditTool {
