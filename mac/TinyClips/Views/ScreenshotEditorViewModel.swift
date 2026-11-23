@@ -2089,8 +2089,6 @@ class ScreenshotEditorViewModel: ObservableObject {
 
         guard let original = originalImage, imagePixelSize.width > 0 else { return nil }
 
-        let pixelH = imagePixelSize.height
-
         // A pending crop selection never changes the output; only an applied crop does.
         guard let cropPixelRect = explicitCropPixelRect ?? fullImagePixelRect else {
             return nil
@@ -2199,13 +2197,8 @@ class ScreenshotEditorViewModel: ObservableObject {
 
         // Draw the original image (cropped)
         if let cgImage = sourceCGImage {
-            let cropCGRect = CGRect(
-                x: cropPixelRect.origin.x,
-                y: pixelH - cropPixelRect.origin.y - cropPixelRect.height, // flip Y for CG
-                width: cropPixelRect.width,
-                height: cropPixelRect.height
-            )
-            if let croppedCG = cgImage.cropping(to: cropCGRect) {
+            // `CGImage` crop coordinates and the editor selection are both top-left based.
+            if let croppedCG = cgImage.cropping(to: cropPixelRect) {
                 context.draw(croppedCG, in: imageRect)
             }
         }
