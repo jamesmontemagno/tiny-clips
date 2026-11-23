@@ -1,7 +1,7 @@
 ---
 name: tag-new-release
-description: Create a new annotated git tag with release notes extracted from changelog files. Supports both macOS and Windows TinyClips release flows.
-argument-hint: "--platform <mac|windows> [--version <tag>] (e.g., --platform mac --version v1.5.0-mac)"
+description: Create a new annotated git tag with release notes extracted from changelog files. Supports macOS, Windows, and TinyClips Agent release flows.
+argument-hint: "--platform <mac|windows|agent> [--version <tag>] (e.g., --platform mac --version v1.5.0-mac)"
 user-invocable: true
 ---
 
@@ -11,9 +11,9 @@ Create a new annotated git tag for a release based on the project's platform cha
 
 ## When to use
 
-- When preparing a new TinyClips release tag for macOS or Windows.
+- When preparing a new TinyClips release tag for macOS, Windows, or the Agent CLI.
 - When the user asks to tag a release.
-- When the user provides a version to tag, such as `v1.5.0-mac` or `v1.0.9-windows`.
+- When the user provides a version to tag, such as `v1.5.0-mac`, `v1.0.9-windows`, or `agent-v0.4.0`.
 - When the user wants release notes extracted from the relevant changelog and included in the tag message.
 
 ## How to use
@@ -39,6 +39,7 @@ powershell -ExecutionPolicy Bypass -File .github/skills/tag-new-release/tag-new-
 If `--version` is provided, that exact tag value is used for the release. If `--version` is omitted:
 - macOS defaults to `v<Info.plist CFBundleShortVersionString>.0-mac` (for example, `v1.5.0-mac`)
 - Windows defaults to incrementing patch from the latest `v*-windows` tag.
+- Agent defaults to incrementing patch from the latest `agent-v*` tag.
 
 ## Step-by-step procedure
 
@@ -48,9 +49,12 @@ When asked to tag a new release:
 2. **Determine release version**:
    - macOS: If the user provides a tag version, use it as the source of truth; otherwise validate it against `mac/TinyClips/Info.plist` `CFBundleShortVersionString`
    - Windows: Use provided tag or infer by incrementing the latest `-windows` patch tag
+   - Agent: Use provided tag or infer by incrementing the latest `agent-v*` patch tag
+   - Agent: Validate the exact `agent-vX.Y.Z` tag against the CLI, plugin, and both MCP metadata versions before changing the changelog or creating a commit/tag. Leading-zero and case-mismatched tags are rejected.
 3. **Read platform changelog**:
    - macOS: root `CHANGELOG.md`
    - Windows: `windows/CHANGELOG.md`
+   - Agent: `agent/CHANGELOG.md`
 4. **Update changelog** - Insert the release heading with today's date below Unreleased.
    - Unreleased must contain at least one release-note bullet for a normal release. Previously released sections are not reused automatically.
    - The scripts reject missing notes by default. Pass `--allow-empty` (Bash) or `-AllowEmpty` (PowerShell) only for an intentional maintenance release; this creates an empty commit and annotated tag with a `Maintenance release.` message without changing the changelog.
@@ -58,7 +62,7 @@ When asked to tag a new release:
 5. **Verify the working directory** - Ensure there are no uncommitted changes before creating commit/tag.
 6. **Create commit** - Commit the changelog release marker.
 7. **Create an annotated git tag** with:
-   - A tag name matching the platform version (for example `v1.5.0-mac`, `v1.0.9-windows`)
+   - A tag name matching the platform version (for example `v1.5.0-mac`, `v1.0.9-windows`, `agent-v0.4.0`)
    - A tag message containing the version and formatted release notes from the platform changelog
 8. **Confirm the tag** - Show the created tag details to verify the tag name and message.
 9. **Suggest pushing the tag** - Tell the user they can push with:
@@ -92,7 +96,7 @@ The tag message should include cleanly formatted release notes from the selected
 
 ## Files included
 
-- `tag-new-release.sh` - Script that automates changelog release marking, commit creation, and annotated tagging for macOS or Windows.
+- `tag-new-release.sh` - Script that automates changelog release marking, commit creation, and annotated tagging for macOS, Windows, or Agent.
 - `tag-new-release.ps1` - PowerShell equivalent for running the same release-tag workflow natively on Windows.
 
 ## Validation

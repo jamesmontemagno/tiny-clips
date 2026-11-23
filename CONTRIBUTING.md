@@ -305,7 +305,7 @@ Accessibility is treated as a release gate. When adding or changing UI:
 - **Fill in the PR description** — explain *what* changed and *why*. Link the related issue with `Closes #123`.
 - **Both schemes must build** — the CI workflow builds both `TinyClips` and `TinyClipsMAS`; ensure your changes compile under both.
 - **No Sparkle in `TinyClipsMAS`** — guard any Sparkle references with `#if canImport(Sparkle)` or `#if !APPSTORE`.
-- **Update the CHANGELOG** — add an entry under the appropriate section (`Added`, `Improved`, or `Fixed`) in `CHANGELOG.md`.
+- **Update the changelog** — add an entry under the appropriate section (`Added`, `Improved`, `Changed`, or `Fixed`) in `CHANGELOG.md` for mac/shared changes, `windows/CHANGELOG.md` for Windows changes, or `agent/CHANGELOG.md` for Agent CLI, MCP, plugin, or shared automation contract changes.
 - **Accessibility** — if your change affects any UI, verify it works with VoiceOver and keyboard-only navigation.
 - **Small, incremental commits** — prefer clear, atomic commits with descriptive messages.
 

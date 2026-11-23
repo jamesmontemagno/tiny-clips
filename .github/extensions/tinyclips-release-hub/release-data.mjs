@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -57,7 +57,7 @@ function platformConfig(platform) {
     }
     if (platform === "agent") {
         return {
-            changelog: "CHANGELOG.md",
+            changelog: "agent/CHANGELOG.md",
             unreleasedHeading: "## Unreleased",
             workflow: "agent-release.yml",
         };
@@ -127,8 +127,11 @@ function extractSection(markdown, heading) {
 }
 
 function releaseHeadingMatches(line, platform, version) {
-    if (platform === "mac") {
-        return line === `## ${version}` || line.startsWith(`## ${version} -`);
+    if (platform === "mac" || platform === "agent") {
+        const headingVersion = platform === "agent" && version.startsWith("agent-v")
+            ? version.slice("agent-v".length)
+            : version;
+        return line === `## ${headingVersion}` || line.startsWith(`## ${headingVersion} -`);
     }
     return line === `## [${version}]` || line.startsWith(`## [${version}] -`);
 }
@@ -151,6 +154,34 @@ function extractReleaseSection(markdown, platform, version) {
 
 function countNotes(markdown) {
     return markdown.split(/\r?\n/).filter((line) => line.trim().startsWith("- ")).length;
+}
+
+function archiveAgentUnreleasedNotes(markdown, version) {
+    const lines = markdown.split(/\r?\n/);
+    const start = lines.findIndex((line) => line.trim() === "## Unreleased");
+    if (start < 0) {
+        throw new Error("agent/CHANGELOG.md has no ## Unreleased section.");
+    }
+    const end = lines.findIndex((line, index) => index > start && line.startsWith("## "));
+    const sectionEnd = end < 0 ? lines.length : end;
+    const body = lines.slice(start + 1, sectionEnd).join("\n").trim();
+    if (countNotes(body) === 0) {
+        return markdown;
+    }
+    if (lines.some((line) => line.trim() === `## ${version}` || line.trim().startsWith(`## ${version} - `))) {
+        throw new Error(`agent/CHANGELOG.md already contains a ${version} release section.`);
+    }
+    const date = new Date().toISOString().slice(0, 10);
+    const updated = [
+        ...lines.slice(0, start + 1),
+        "",
+        `## ${version} - ${date}`,
+        "",
+        ...body.split(/\r?\n/),
+        "",
+        ...lines.slice(sectionEnd),
+    ];
+    return updated.join("\n");
 }
 
 function repositoryWebUrl(remoteUrl) {
@@ -904,8 +935,23 @@ export async function performReleaseAction(action, input) {
             await run("git", ["switch", "--quiet", "-c", releaseBranch(input.tag), head], { cwd: checkout });
             await run("git", ["remote", "set-url", "origin", remoteUrl], { cwd: checkout });
             await run("node", ["agent/scripts/bump-version.mjs", input.tag.slice("agent-v".length)], { cwd: checkout });
-            await run("git", ["add", "agent/src/TinyClips.Cli/TinyClips.Cli.csproj", "plugin.json", "agent/src/TinyClips.Cli/.mcp/server.json"], { cwd: checkout });
-            await run("git", ["-c", `user.name=${authorName}`, "-c", `user.email=${authorEmail}`, "commit", "-m", `Bump agent version for ${input.tag}\n\nCo-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>`], { cwd: checkout });
+            const changelogPath = resolve(checkout, "agent/CHANGELOG.md");
+            const changelog = await readFile(changelogPath, "utf8");
+            const archivedChangelog = archiveAgentUnreleasedNotes(
+                changelog,
+                input.tag.slice("agent-v".length),
+            );
+            if (archivedChangelog !== changelog) {
+                await writeFile(changelogPath, archivedChangelog);
+            }
+            await run("git", [
+                "add",
+                "agent/CHANGELOG.md",
+                "agent/src/TinyClips.Cli/TinyClips.Cli.csproj",
+                "plugin.json",
+                "agent/src/TinyClips.Cli/.mcp/server.json",
+            ], { cwd: checkout });
+            await run("git", ["-c", `user.name=${authorName}`, "-c", `user.email=${authorEmail}`, "commit", "-m", `Bump agent version for ${input.tag}\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>`], { cwd: checkout });
             await run("git", ["push", `--force-with-lease=refs/heads/${releaseBranch(input.tag)}:`, "origin", `HEAD:refs/heads/${releaseBranch(input.tag)}`], { cwd: checkout });
             await run("gh", [
                 "pr", "create", "--base", "main", "--head", releaseBranch(input.tag),

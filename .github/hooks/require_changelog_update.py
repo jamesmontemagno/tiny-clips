@@ -8,9 +8,19 @@ from pathlib import Path
 
 STATE_DIR_NAME = ".state"
 CHANGELOG_PATH = "CHANGELOG.md"
+AGENT_CHANGELOG_PATH = "agent/CHANGELOG.md"
 SOURCE_PREFIXES = (
     "mac/TinyClips/",
     "mac/TinyClips.xcodeproj/",
+)
+AGENT_SOURCE_PREFIXES = (
+    "agent/",
+    "plugin.json",
+    "mcp.json",
+    "skills/",
+    "shared/automation/",
+    "docs/agent-integration.md",
+    "docs/agent-plugin.md",
 )
 EDIT_TOOL_NAMES = {
     "apply_patch",
@@ -118,6 +128,10 @@ def is_source_path(path):
     return any(path.startswith(prefix) for prefix in SOURCE_PREFIXES)
 
 
+def is_agent_source_path(path):
+    return any(path.startswith(prefix) for prefix in AGENT_SOURCE_PREFIXES)
+
+
 def handle_post_tool_use(payload, repo_root):
     tool_name = payload.get("tool_name")
     if tool_name not in EDIT_TOOL_NAMES:
@@ -145,7 +159,9 @@ def handle_stop(payload, repo_root):
     edited_paths = set(load_state(state_path).get("editedPaths", []))
 
     source_paths = sorted(path for path in edited_paths if is_source_path(path))
+    agent_source_paths = sorted(path for path in edited_paths if is_agent_source_path(path))
     changelog_touched = CHANGELOG_PATH in edited_paths
+    agent_changelog_touched = AGENT_CHANGELOG_PATH in edited_paths
 
     if source_paths and not changelog_touched:
         files_list = "\n".join(f"  - {p}" for p in source_paths[:10])
@@ -154,6 +170,26 @@ def handle_stop(payload, repo_root):
             f"{files_list}\n\n"
             "Please update CHANGELOG.md with an appropriate entry describing what was added or fixed, "
             "then finish."
+        )
+        emit(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "Stop",
+                    "decision": "block",
+                    "reason": reason,
+                }
+            }
+        )
+        return
+
+    if agent_source_paths and not agent_changelog_touched:
+        files_list = "\n".join(f"  - {p}" for p in agent_source_paths[:10])
+        reason = (
+            "The following Agent CLI, plugin, MCP, or automation files were edited this session "
+            "but agent/CHANGELOG.md was not updated:\n"
+            f"{files_list}\n\n"
+            "Please evaluate whether Agent API coverage is warranted, update agent/CHANGELOG.md "
+            "for the user-visible Agent CLI/plugin/MCP/contract change, then finish."
         )
         emit(
             {
