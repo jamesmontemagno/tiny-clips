@@ -1,17 +1,20 @@
 {
+  "version": 1,
   "hooks": {
-    "PostToolUse": [
+    "postToolUse": [
       {
         "type": "command",
-        "command": "/usr/bin/env python3 .github/hooks/require_build_validation.py",
-        "timeout": 10
+        "bash": "/usr/bin/env python3 .github/hooks/require_build_validation.py postToolUse",
+        "powershell": "python .github/hooks/require_build_validation.py postToolUse",
+        "timeoutSec": 10
       }
     ],
-    "Stop": [
+    "agentStop": [
       {
         "type": "command",
-        "command": "/usr/bin/env python3 .github/hooks/require_build_validation.py",
-        "timeout": 10
+        "bash": "/usr/bin/env python3 .github/hooks/require_build_validation.py agentStop",
+        "powershell": "python .github/hooks/require_build_validation.py agentStop",
+        "timeoutSec": 10
       }
     ]
   }

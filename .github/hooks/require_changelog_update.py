@@ -24,9 +24,12 @@ AGENT_SOURCE_PREFIXES = (
 )
 EDIT_TOOL_NAMES = {
     "apply_patch",
+    "create",
     "create_file",
+    "edit",
     "multi_replace_string_in_file",
     "replace_string_in_file",
+    "str_replace_editor",
     "vscode_renameSymbol",
 }
 PATCH_FILE_PATTERN = re.compile(
@@ -37,6 +40,10 @@ PATCH_FILE_PATTERN = re.compile(
 
 def emit(payload):
     sys.stdout.write(json.dumps(payload))
+
+
+def warn(message):
+    sys.stderr.write(f"{message}\n")
 
 
 def normalize_path(value, repo_root):
@@ -78,6 +85,8 @@ def extract_paths_from_patch(patch_text, repo_root):
 
 def extract_paths_from_payload(payload, repo_root):
     paths = set()
+    if isinstance(payload, str):
+        return extract_paths_from_patch(payload, repo_root)
 
     def visit(value, parent_key=None):
         if isinstance(value, dict):
@@ -93,7 +102,7 @@ def extract_paths_from_payload(payload, repo_root):
         if not isinstance(value, str):
             return
 
-        if parent_key == "input":
+        if parent_key in {"input", "patch"}:
             paths.update(extract_paths_from_patch(value, repo_root))
 
         if parent_key in {"filePath", "filePaths", "path", "uri", "oldPath", "newPath", "old_path", "new_path"}:
@@ -133,26 +142,26 @@ def is_agent_source_path(path):
 
 
 def handle_post_tool_use(payload, repo_root):
-    tool_name = payload.get("tool_name")
+    tool_name = payload.get("toolName")
     if tool_name not in EDIT_TOOL_NAMES:
-        emit({"continue": True})
+        emit({})
         return
 
-    edited_paths = sorted(extract_paths_from_payload(payload.get("tool_input", {}), repo_root))
+    edited_paths = sorted(extract_paths_from_payload(payload.get("toolArgs", {}), repo_root))
     if not edited_paths:
-        emit({"continue": True})
+        emit({})
         return
 
     state_path = state_file(repo_root, payload["sessionId"])
     existing = load_state(state_path)
     merged_paths = sorted(set(existing.get("editedPaths", [])) | set(edited_paths))
     save_state(state_path, {"editedPaths": merged_paths})
-    emit({"continue": True})
+    emit({})
 
 
 def handle_stop(payload, repo_root):
     if payload.get("stop_hook_active"):
-        emit({"continue": True})
+        emit({})
         return
 
     state_path = state_file(repo_root, payload["sessionId"])
@@ -171,15 +180,7 @@ def handle_stop(payload, repo_root):
             "Please update CHANGELOG.md with an appropriate entry describing what was added or fixed, "
             "then finish."
         )
-        emit(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "Stop",
-                    "decision": "block",
-                    "reason": reason,
-                }
-            }
-        )
+        emit({"decision": "block", "reason": reason})
         return
 
     if agent_source_paths and not agent_changelog_touched:
@@ -191,49 +192,43 @@ def handle_stop(payload, repo_root):
             "Please evaluate whether Agent API coverage is warranted, update agent/CHANGELOG.md "
             "for the user-visible Agent CLI/plugin/MCP/contract change, then finish."
         )
-        emit(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "Stop",
-                    "decision": "block",
-                    "reason": reason,
-                }
-            }
-        )
+        emit({"decision": "block", "reason": reason})
         return
 
-    emit({"continue": True})
+    emit({})
 
 
 def main():
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
-        emit({"continue": True, "systemMessage": "require_changelog_update hook received invalid JSON input."})
+        warn("require_changelog_update hook received invalid JSON input.")
+        emit({})
         return
 
     cwd = payload.get("cwd")
     session_id = payload.get("sessionId")
-    event_name = payload.get("hookEventName")
+    event_name = sys.argv[1] if len(sys.argv) > 1 else None
     if not cwd or not session_id or not event_name:
-        emit({"continue": True})
+        emit({})
         return
 
     repo_root = Path(cwd).resolve()
 
     try:
-        if event_name == "PostToolUse":
+        if event_name == "postToolUse":
             handle_post_tool_use(payload, repo_root)
             return
 
-        if event_name == "Stop":
+        if event_name == "agentStop":
             handle_stop(payload, repo_root)
             return
     except OSError as error:
-        emit({"continue": True, "systemMessage": f"require_changelog_update hook warning: {error}"})
+        warn(f"require_changelog_update hook warning: {error}")
+        emit({})
         return
 
-    emit({"continue": True})
+    emit({})
 
 
 if __name__ == "__main__":
