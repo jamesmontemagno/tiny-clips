@@ -98,6 +98,18 @@ internal sealed partial class WindowChecks
             $"Mute toggled {toggled}: the slider enabled {offEnabled}, can take the focus {offFocusable}, says \"{offText}\", range {Words(offRange)}, a new value was {(refused ? "refused" : "taken")}; "
                 + $"the file: muted {mutedInFile.Muted}, volume {F(mutedInFile.Volume)}; a stop of the Tab key: {stopsMuted.Contains(VolumeSliderId)}; the row enabled {rowOff.Item1}, showing \"{rowOff.Item2}\", its name and value drawn in {inkOff}, which were {inkOn}; {partsOff}; "
                 + $"Mute toggled back {untoggled}: enabled {on?.IsEnabled}, says \"{on?.ValueText}\", range {Words(on?.Range)}; the file: muted {unmutedInFile.Muted}, volume {F(unmutedInFile.Volume)}");
+
+        var sliderSettings = OnUi(() => Descendant<StudioSlider>(editor.Window.Content, VolumeSliderId) is { } control
+            ? (control.TickPlacement, control.StepFrequency)
+            : default);
+        var setBetweenSteps = Find(editor, VolumeSliderId)?.SetRange(0.62) ?? false;
+        var snapped = Slider(editor, VolumeSliderId, 0.6, "60%");
+        _report.Check(
+            "the volume slider has no tick marks and snaps an automation value between steps",
+            sliderSettings.TickPlacement == Microsoft.UI.Xaml.Controls.Primitives.TickPlacement.None
+                && Same(sliderSettings.StepFrequency, 0.05) && setBetweenSteps && snapped is null,
+            $"tick placement {sliderSettings.TickPlacement}, step {sliderSettings.StepFrequency}; set {setBetweenSteps}, {snapped ?? "60%"}");
+        SetSlider(editor, VolumeSliderId, 0.35);
     }
 
     /// <summary>The row that holds the Volume slider, which is what the tooltip and the two texts are on. UI thread.</summary>

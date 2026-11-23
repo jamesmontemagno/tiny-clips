@@ -802,10 +802,11 @@ public sealed class StudioViewModelBindingTests : StudioViewModelTestBase
     }
 
     [Fact]
-    public async Task AClickedSegmentedChoice_HandsBackNoChoiceAndThenTheChoice_WhichIsOneEdit()
+    public async Task AClickedInspectorChoice_HandsBackNoChoiceAndThenTheChoice_WhichIsOneEdit()
     {
         var viewModel = await OpenAsync(CreateEditedProject(), _controls);
-        var groups = _controls.Bindings.Where(binding => binding.Control == "StudioSegmented").ToArray();
+        var groups = _controls.Bindings.Where(binding => binding.Control == "StudioSegmented"
+            || binding.Property is nameof(StudioViewModel.LayoutIndex) or nameof(StudioViewModel.CameraShapeIndex)).ToArray();
         Assert.Equal(12, groups.Length);
 
         foreach (var group in groups)
