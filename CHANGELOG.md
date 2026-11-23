@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- Cropping a screenshot on macOS now keeps the selected area instead of vertically mirroring the crop in the source image.
+
 ### Changed
 - The Release Hub can prepare an Agent version-bump pull request before publishing its tag.
 
