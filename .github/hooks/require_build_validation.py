@@ -196,7 +196,7 @@ def mark_edits(tool_args, repo_root, state):
 def payload_mentions_scheme(text, scheme):
     return (
         re.search(
-            rf"(?:^|\s)-?scheme\s+{re.escape(scheme)}(?=\s|$)",
+            rf"(?:^|\s)-?scheme\s+{re.escape(scheme)}(?=[\s;&|()<>]|$)",
             text,
             re.IGNORECASE,
         )
