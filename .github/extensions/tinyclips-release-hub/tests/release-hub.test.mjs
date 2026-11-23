@@ -105,6 +105,7 @@ function createAgentFixture(t) {
         "agent/src/TinyClips.Cli/TinyClips.Cli.csproj",
         "agent/src/TinyClips.Cli/.mcp/server.json",
         "plugin.json",
+        "agent/CHANGELOG.md",
         ".github/extensions/tinyclips-release-hub/release-data.mjs",
         ".github/extensions/tinyclips-release-hub/settings.mjs",
     ]) {
@@ -196,6 +197,10 @@ if (args[0] === "pr" && args[1] === "list") {
     assert.equal(plugin.version, "0.4.0");
     assert.equal(registry.version, plugin.version);
     assert.equal(registry.packages[0].version, plugin.version);
+    const changelog = git("--git-dir", remote, "show", `${branch}:agent/CHANGELOG.md`);
+    assert.match(changelog, /## Unreleased\s*\n\s*\n## 0\.4\.0 - \d{4}-\d{2}-\d{2}/);
+    assert.match(changelog, /## 0\.4\.0 - \d{4}-\d{2}-\d{2}[\s\S]*Added a dedicated Agent CLI changelog/);
+    assert.doesNotMatch(changelog.slice(0, changelog.indexOf("## 0.4.0")), /Added a dedicated Agent CLI changelog/);
     assert.equal((await performReleaseAction("create_agent_release_pr", input)).pullRequest.number, 42);
 });
 const runners = [
@@ -222,6 +227,14 @@ function createReleaseFixture(t, platform, notes, runner) {
     writeFileSync(join(root, "mac", "TinyClips", "Info.plist"), '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>2.1.0</string></dict></plist>');
     mkdirSync(join(root, "windows"));
     mkdirSync(join(root, "agent"));
+    if (platform === "agent") {
+        mkdirSync(join(root, "agent/src/TinyClips.Cli/.mcp"), { recursive: true });
+        writeFileSync(join(root, "agent/src/TinyClips.Cli/TinyClips.Cli.csproj"),
+            '<Project><PropertyGroup><PackageVersion>0.3.0</PackageVersion></PropertyGroup></Project>');
+        writeFileSync(join(root, "plugin.json"), '{"name":"tinyclips","version":"0.3.0"}');
+        writeFileSync(join(root, "agent/src/TinyClips.Cli/.mcp/server.json"),
+            '{"version":"0.3.0","packages":[{"identifier":"TinyClips","version":"0.3.0"}]}');
+    }
     const heading = platform === "windows" ? "## [Unreleased]" : "## Unreleased";
     const changelog = join(root,
         platform === "mac" ? "CHANGELOG.md"
@@ -241,16 +254,71 @@ function createReleaseFixture(t, platform, notes, runner) {
     const tag = platform === "mac" ? "v2.1.0.1-mac"
         : platform === "windows" ? "v2.1.1-windows"
             : "agent-v0.3.0";
-    const args = runner.extension === "sh"
-        ? [script, "--platform", platform, "--version", tag]
-        : ["-NoProfile", "-File", script, "-Platform", platform, "-Version", tag];
-    const run = (dryRun = false, allowEmpty = false) => execFileSync(runner.command, [
-        ...args,
+    const run = (dryRun = false, allowEmpty = false, tagOverride = tag) => execFileSync(runner.command, [
+        ...runner.extension === "sh"
+            ? [script, "--platform", platform, "--version", tagOverride]
+            : ["-NoProfile", "-File", script, "-Platform", platform, "-Version", tagOverride],
         ...(allowEmpty ? [runner.extension === "sh" ? "--allow-empty" : "-AllowEmpty"] : []),
         ...(dryRun ? [runner.extension === "sh" ? "--dry-run" : "-DryRun"] : []),
     ], { cwd: root, encoding: "utf8", stdio: "pipe" });
     return { root, git, run, changelog, original, head, tag };
 }
+
+test("Bash Agent release rejects leading zeros before mutating", { skip: process.platform === "win32" }, (t) => {
+    const fixture = createReleaseFixture(t, "agent", "### Added\n- Future Agent release.", runners[0]);
+
+    assert.throws(() => fixture.run(false, false, "agent-v01.2.3"), (error) => {
+        assert.match(error.stderr.toString(), /Invalid Agent version format/);
+        return true;
+    });
+    assert.equal(readFileSync(fixture.changelog, "utf8"), fixture.original);
+    assert.equal(fixture.git("status", "--porcelain"), "");
+    assert.equal(fixture.git("tag", "--list"), "");
+});
+
+test("Bash Agent release rejects metadata mismatches before mutating", { skip: process.platform === "win32" }, (t) => {
+    const fixture = createReleaseFixture(t, "agent", "### Added\n- Future Agent release.", runners[0]);
+    const plugin = join(fixture.root, "plugin.json");
+    writeFileSync(plugin, '{"name":"tinyclips","version":"0.4.0"}');
+    fixture.git("add", "plugin.json");
+    fixture.git("commit", "--quiet", "-m", "Mismatch fixture\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>");
+
+    assert.throws(() => fixture.run(), (error) => {
+        assert.match(error.stderr.toString(), /must match committed Agent metadata/);
+        assert.match(error.stderr.toString(), /bump-version\.mjs/);
+        return true;
+    });
+    assert.equal(readFileSync(fixture.changelog, "utf8"), fixture.original);
+    assert.equal(fixture.git("tag", "--list"), "");
+});
+
+test("PowerShell Agent release rejects leading zeros before mutating", { skip: !powerShellAvailable }, (t) => {
+    const fixture = createReleaseFixture(t, "agent", "### Added\n- Future Agent release.", runners[1]);
+
+    assert.throws(() => fixture.run(false, false, "agent-v01.2.3"), (error) => {
+        assert.match(error.stderr.toString(), /Invalid Agent version format/);
+        return true;
+    });
+    assert.equal(readFileSync(fixture.changelog, "utf8"), fixture.original);
+    assert.equal(fixture.git("status", "--porcelain"), "");
+    assert.equal(fixture.git("tag", "--list"), "");
+});
+
+test("PowerShell Agent release rejects metadata mismatches before mutating", { skip: !powerShellAvailable }, (t) => {
+    const fixture = createReleaseFixture(t, "agent", "### Added\n- Future Agent release.", runners[1]);
+    const plugin = join(fixture.root, "plugin.json");
+    writeFileSync(plugin, '{"name":"tinyclips","version":"0.4.0"}');
+    fixture.git("add", "plugin.json");
+    fixture.git("commit", "--quiet", "-m", "Mismatch fixture\n\nCo-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>");
+
+    assert.throws(() => fixture.run(false, false, "agent-v0.3.0"), (error) => {
+        assert.match(error.stderr.toString(), /must match committed Agent metadata/);
+        assert.match(error.stderr.toString(), /bump-version\.mjs/);
+        return true;
+    });
+    assert.equal(readFileSync(fixture.changelog, "utf8"), fixture.original);
+    assert.equal(fixture.git("tag", "--list"), "");
+});
 
 for (const platform of ["mac", "windows", "agent"]) {
     test(`generates maintenance release notes for ${platform} when Unreleased has no bullets`, async (t) => {

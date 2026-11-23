@@ -50,6 +50,7 @@ When asked to tag a new release:
    - macOS: If the user provides a tag version, use it as the source of truth; otherwise validate it against `mac/TinyClips/Info.plist` `CFBundleShortVersionString`
    - Windows: Use provided tag or infer by incrementing the latest `-windows` patch tag
    - Agent: Use provided tag or infer by incrementing the latest `agent-v*` patch tag
+   - Agent: Validate the exact `agent-vX.Y.Z` tag against the CLI, plugin, and both MCP metadata versions before changing the changelog or creating a commit/tag. Leading-zero and case-mismatched tags are rejected.
 3. **Read platform changelog**:
    - macOS: root `CHANGELOG.md`
    - Windows: `windows/CHANGELOG.md`

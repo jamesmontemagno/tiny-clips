@@ -120,7 +120,7 @@ else
             LATEST_AGENT_TAG="$(git tag --list 'agent-v*' --sort=-creatordate | head -n 1)"
             if [[ -z "$LATEST_AGENT_TAG" ]]; then
                 VERSION="agent-v0.1.0"
-            elif [[ "$LATEST_AGENT_TAG" =~ ^agent-v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            elif [[ "$LATEST_AGENT_TAG" =~ ^agent-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
                 PATCH=$((BASH_REMATCH[3] + 1))
                 VERSION="agent-v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${PATCH}"
             else
@@ -178,12 +178,51 @@ elif [[ "$PLATFORM" == "windows" ]]; then
     RELEASE_HEADING="## [${VERSION}] - ${TODAY}"
     SECTION_HEADER_PREFIX="### "
 else
-    if [[ ! "$VERSION" =~ ^agent-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+    if [[ ! "$VERSION" =~ ^agent-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
         echo "❌ Invalid Agent version format: $VERSION" >&2
         echo "Expected: agent-vX.Y.Z or agent-vX.Y.Z-preview.1" >&2
         exit 1
     fi
     AGENT_VERSION="${VERSION#agent-v}"
+    if ! python3 - "$AGENT_VERSION" "$REPO_ROOT" <<'PY'
+import json
+import re
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+version = sys.argv[1]
+root = Path(sys.argv[2])
+version_pattern = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
+if not re.fullmatch(version_pattern, version):
+    raise SystemExit(f"Invalid Agent version format: agent-v{version}")
+
+project = ET.parse(root / "agent/src/TinyClips.Cli/TinyClips.Cli.csproj")
+package_version = project.findtext(".//PackageVersion")
+plugin = json.loads((root / "plugin.json").read_text(encoding="utf-8"))
+registry = json.loads((root / "agent/src/TinyClips.Cli/.mcp/server.json").read_text(encoding="utf-8"))
+versions = [
+    ("CLI", package_version),
+    ("plugin", plugin.get("version")),
+    ("MCP", registry.get("version")),
+]
+packages = registry.get("packages")
+if isinstance(packages, list) and len(packages) == 1:
+    versions.append(("MCP package", packages[0].get("version")))
+else:
+    versions.append(("MCP package", None))
+
+mismatches = [f"{name}={value or '(missing)'}" for name, value in versions if value != version]
+if mismatches:
+    details = ", ".join(mismatches)
+    raise SystemExit(
+        f"Tag version {version} must match committed Agent metadata ({details}). "
+        "Run `node agent/scripts/bump-version.mjs <version>` and bump the Agent metadata first."
+    )
+PY
+    then
+        exit 1
+    fi
     RELEASE_HEADING="## ${AGENT_VERSION} - ${TODAY}"
     SECTION_HEADER_PREFIX="### "
 fi

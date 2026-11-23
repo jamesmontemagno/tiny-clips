@@ -211,15 +211,33 @@ if ($Platform -eq "mac") {
         $latestAgentTag = (git tag --list 'agent-v*' --sort=-creatordate | Select-Object -First 1)
         if (-not $latestAgentTag) {
             $Version = "agent-v0.1.0"
-        } elseif ($latestAgentTag -match '^agent-v([0-9]+)\.([0-9]+)\.([0-9]+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
+        } elseif ($latestAgentTag -cmatch '^agent-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
             $Version = "agent-v$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
         } else {
             throw "Latest Agent tag does not match expected pattern: $latestAgentTag"
         }
     }
 
-    if ($Version -notmatch '^agent-v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
+    if ($Version -cnotmatch '^agent-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
         throw "Invalid Agent version format: $Version (expected agent-vX.Y.Z or agent-vX.Y.Z-preview.1)"
+    }
+
+    $agentVersion = $Version -replace '^agent-v', ''
+    $projectXml = [xml](Get-Content -Raw (Join-Path $repoRoot "agent\src\TinyClips.Cli\TinyClips.Cli.csproj"))
+    $projectVersion = @($projectXml.Project.PropertyGroup.PackageVersion | ForEach-Object { [string]$_ } | Where-Object { $_ })[0]
+    $plugin = Get-Content -Raw (Join-Path $repoRoot "plugin.json") | ConvertFrom-Json
+    $registry = Get-Content -Raw (Join-Path $repoRoot "agent\src\TinyClips.Cli\.mcp\server.json") | ConvertFrom-Json
+    $registryPackageVersion = if ($registry.packages -and $registry.packages.Count -eq 1) { [string]$registry.packages[0].version } else { $null }
+    $metadata = [ordered]@{
+        CLI = [string]$projectVersion
+        plugin = [string]$plugin.version
+        MCP = [string]$registry.version
+        "MCP package" = $registryPackageVersion
+    }
+    $mismatches = @($metadata.GetEnumerator() | Where-Object { $_.Value -ne $agentVersion } |
+        ForEach-Object { "$($_.Key)=$($_.Value)" })
+    if ($mismatches.Count -gt 0) {
+        throw "Tag version $agentVersion must match committed Agent metadata ($($mismatches -join ', ')). Run `node agent/scripts/bump-version.mjs <version>` and bump the Agent metadata first."
     }
 }
 
