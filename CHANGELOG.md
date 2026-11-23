@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+- The macOS Send Feedback dialog now supports standard copy, paste, and cut shortcuts in its text fields.
+
 ## v2.3.0.2-mac - 2026-11-23
 
 ### Fixed
