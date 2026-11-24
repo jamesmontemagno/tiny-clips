@@ -5,6 +5,7 @@ All notable changes to the Tiny Clips Agent CLI, MCP server, Agent Plugin, and s
 ## Unreleased
 
 ### Added
+- `capture.screenshot`, `recording.startVideo`, and `recording.startGif` support explicit `mode=windowArea` for a fixed, display-clipped screen region matching a window's visible bounds. Results include the resolved display-local rectangle; OCR and scrolling targets remain unchanged.
 - Added a dedicated Agent CLI changelog and release-note workflow.
 
 ### Changed

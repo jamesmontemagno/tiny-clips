@@ -1,5 +1,6 @@
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -33,6 +34,8 @@ public sealed partial class WindowPickerWindow : Window
     private readonly WindowPickerController _controller;
     private readonly nint _hwnd;
     private WindowPickerCandidate? _highlighted;
+    private PixelRect? _highlightBounds;
+    private string? _highlightDetail;
     private bool _showLabel;
     private bool _closedByController;
     private bool _rootLoaded;
@@ -59,6 +62,13 @@ public sealed partial class WindowPickerWindow : Window
         {
             HintText.Text = "No windows to capture · Esc to cancel";
         }
+        else if (controller.SelectArea)
+        {
+            HintText.Text = "Window area: captures anything visible inside the fixed bounds · Tab to cycle · Enter to select · Esc to cancel";
+            AutomationProperties.SetHelpText(
+                FocusSurface,
+                "Choose a window. Tiny Clips captures the visible screen area inside its display-clipped bounds, including unrelated overlays. The area stays fixed and does not follow the window.");
+        }
 
         RootGrid.Loaded += OnRootGridLoaded;
         Activated += OnActivated;
@@ -73,10 +83,12 @@ public sealed partial class WindowPickerWindow : Window
     /// Highlights <paramref name="candidate"/> (clipped to this monitor), or clears the highlight
     /// when null. Only one monitor shows the label so it is not duplicated across displays.
     /// </summary>
-    internal void ShowHighlight(WindowPickerCandidate? candidate, bool showLabel)
+    internal void ShowHighlight(WindowPickerCandidate? candidate, PixelRect? highlightBounds, string? detail, bool showLabel)
     {
         _highlighted = candidate;
         _showLabel = showLabel;
+        _highlightBounds = highlightBounds;
+        _highlightDetail = detail;
         Render();
     }
 
@@ -194,8 +206,8 @@ public sealed partial class WindowPickerWindow : Window
         FullDim.Width = width;
         FullDim.Height = height;
 
-        var local = _highlighted is { } candidate
-            ? WindowPickerGeometry.ToMonitorLocal(candidate.Bounds, _monitorBounds)
+        var local = _highlighted is not null && _highlightBounds is { } bounds
+            ? WindowPickerGeometry.ToMonitorLocal(bounds, _monitorBounds)
             : null;
         if (local is not { } rect)
         {
@@ -230,8 +242,8 @@ public sealed partial class WindowPickerWindow : Window
 
         HoverTitle.Text = _highlighted.Title;
         HoverDetail.Text = string.IsNullOrEmpty(_highlighted.AppName)
-            ? WindowPickerGeometry.FormatSize(_highlighted.Bounds)
-            : $"{_highlighted.AppName} · {WindowPickerGeometry.FormatSize(_highlighted.Bounds)}";
+            ? _highlightDetail ?? WindowPickerGeometry.FormatSize(_highlighted.Bounds)
+            : $"{_highlighted.AppName} · {_highlightDetail ?? WindowPickerGeometry.FormatSize(_highlighted.Bounds)}";
         HoverLabel.Visibility = Visibility.Visible;
         HoverLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var labelSize = HoverLabel.DesiredSize;

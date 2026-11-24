@@ -200,7 +200,9 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
     {
         var studio = context.GetBoolean("studio");
         var settings = App.Services.GetRequiredService<ICaptureSettings>();
-        var (target, region) = ResolveCaptureTarget(AutomationCaptureRequest.Parse(context.Params));
+        var (target, region, windowArea, monitor) = ResolveCaptureTarget(
+            AutomationCaptureRequest.Parse(context.Params),
+            allowWindowArea: true);
         var mediaPermissions = App.Services.GetRequiredService<IMediaDevicePermissionService>();
         var options = AutomationRecordingOptions.Resolve(context.Params, settings,
             mediaPermissions.HasMicrophoneAccess, mediaPermissions.HasCameraAccess);
@@ -208,28 +210,42 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         EnsureIdle();
         await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Video, studio, target, region, options);
         var snapshot = _app.GetRecordingSnapshot();
-        return new JsonObject
+        var result = new JsonObject
         {
             ["started"] = true,
             ["studio"] = studio,
             ["microphone"] = snapshot.Microphone,
             ["camera"] = snapshot.Camera,
         };
+        if (windowArea is { } area && monitor is { } display)
+        {
+            result["windowArea"] = CreateWindowAreaResult(area, display);
+        }
+
+        return result;
     }
 
     private async Task<JsonNode> StartGifAsync(AutomationCommandContext context)
     {
-        var (target, region) = ResolveCaptureTarget(AutomationCaptureRequest.Parse(context.Params));
+        var (target, region, windowArea, monitor) = ResolveCaptureTarget(
+            AutomationCaptureRequest.Parse(context.Params),
+            allowWindowArea: true);
         EnsureIdle();
         await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Gif, false, target, region);
-        return new JsonObject { ["started"] = true };
+        var result = new JsonObject { ["started"] = true };
+        if (windowArea is { } area && monitor is { } display)
+        {
+            result["windowArea"] = CreateWindowAreaResult(area, display);
+        }
+
+        return result;
     }
 
     private async Task StartScrollingCaptureAsync(AutomationCommandContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureIdle();
-        var (target, region) = ResolveCaptureTarget(AutomationCaptureRequest.Parse(context.Params));
+        var (target, region, _, _) = ResolveCaptureTarget(AutomationCaptureRequest.Parse(context.Params));
         await _app.StartAutomationScrollingCaptureAsync(target, region);
     }
 

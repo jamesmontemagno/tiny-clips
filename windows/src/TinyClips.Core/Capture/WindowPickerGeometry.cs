@@ -8,6 +8,20 @@ namespace TinyClips.Core.Capture;
 public readonly record struct WindowPickerTarget(nint Handle, PixelRect Bounds, bool IsSelectable);
 
 /// <summary>
+/// A window's visible bounds clipped to one display. All rectangles are in physical pixels;
+/// <see cref="MonitorLocalBounds"/> has a top-left origin relative to the selected display.
+/// </summary>
+public readonly record struct WindowAreaSelection(
+    int MonitorIndex,
+    PixelRect DisplayBounds,
+    PixelRect RequestedBounds,
+    PixelRect ClippedBounds,
+    PixelRect MonitorLocalBounds)
+{
+    public bool WasClipped => RequestedBounds != ClippedBounds;
+}
+
+/// <summary>
 /// Pure geometry for the hover-to-highlight window picker. Every rectangle here is in
 /// physical pixels; DIP conversion happens in the overlay windows.
 /// </summary>
@@ -59,6 +73,45 @@ public static class WindowPickerGeometry
         Intersect(window, monitor) is { } clipped
             ? clipped with { X = clipped.X - monitor.X, Y = clipped.Y - monitor.Y }
             : null;
+
+    /// <summary>
+    /// Clips a visible window to the display with the largest positive overlap. Ties are resolved
+    /// by monitor enumeration order. The returned local rectangle is suitable for region capture.
+    /// </summary>
+    public static WindowAreaSelection? ResolveWindowArea(PixelRect window, IReadOnlyList<PixelRect> monitors)
+    {
+        var bestIndex = -1;
+        PixelRect bestBounds = default;
+        long bestArea = 0;
+        for (var i = 0; i < monitors.Count; i++)
+        {
+            if (Intersect(window, monitors[i]) is not { } clipped)
+            {
+                continue;
+            }
+
+            var area = (long)clipped.Width * clipped.Height;
+            if (area > bestArea)
+            {
+                bestIndex = i;
+                bestBounds = clipped;
+                bestArea = area;
+            }
+        }
+
+        if (bestIndex < 0)
+        {
+            return null;
+        }
+
+        var display = monitors[bestIndex];
+        return new WindowAreaSelection(
+            bestIndex,
+            display,
+            window,
+            bestBounds,
+            bestBounds with { X = bestBounds.X - display.X, Y = bestBounds.Y - display.Y });
+    }
 
     /// <summary>
     /// Chooses the single monitor that shows a window's label: the monitor containing the

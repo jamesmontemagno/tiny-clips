@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- The capture picker offers **Window area** for screenshots, video, and GIF. It captures the visible screen bounds of a selected window, including overlays, and clips the fixed area to one display when needed.
+
 ## [v2.3.1-windows] - 2026-11-24
 
 ### Added

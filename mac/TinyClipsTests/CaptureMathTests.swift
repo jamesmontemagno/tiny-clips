@@ -344,6 +344,44 @@ final class CaptureMathTests: XCTestCase {
         XCTAssertEqual(scale, 1)
     }
 
+    func testWindowAreaChoosesLargestOverlapAndUsesDisplayLocalTopLeftCoordinates() {
+        let displays = [
+            CGRect(x: 0, y: 0, width: 100, height: 1000),
+            CGRect(x: 100, y: 0, width: 1000, height: 3000),
+        ]
+        let window = CGRect(x: 0, y: -600, width: 150, height: 3000)
+
+        let area = CaptureCoordinateMath.windowAreaGeometry(
+            windowFrame: window,
+            displayFrames: displays
+        )
+
+        XCTAssertEqual(area?.displayIndex, 1)
+        XCTAssertEqual(area?.clippedFrame, CGRect(x: 100, y: 0, width: 50, height: 2400))
+        XCTAssertEqual(area?.displayLocalRect, CGRect(x: 0, y: 600, width: 50, height: 2400))
+        XCTAssertEqual(area?.wasClipped, true)
+    }
+
+    func testWindowAreaUsesDisplayOrderForTiesAndReturnsNilWithoutOverlap() {
+        let displays = [
+            CGRect(x: 0, y: 0, width: 100, height: 100),
+            CGRect(x: 100, y: 0, width: 100, height: 100),
+        ]
+
+        let tied = CaptureCoordinateMath.windowAreaGeometry(
+            windowFrame: CGRect(x: 50, y: 0, width: 100, height: 100),
+            displayFrames: displays
+        )
+
+        XCTAssertEqual(tied?.displayIndex, 0)
+        XCTAssertEqual(tied?.displayLocalRect, CGRect(x: 50, y: 0, width: 50, height: 100))
+        XCTAssertTrue(tied?.wasClipped ?? false)
+        XCTAssertNil(CaptureCoordinateMath.windowAreaGeometry(
+            windowFrame: CGRect(x: -300, y: 0, width: 100, height: 100),
+            displayFrames: displays
+        ))
+    }
+
     func testWindowScaleUsesOverlapAreaForVerticallyStackedDisplays() {
         let displays = [
             CaptureDisplayGeometry(

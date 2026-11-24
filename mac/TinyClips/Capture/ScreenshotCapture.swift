@@ -9,6 +9,15 @@ struct CaptureDisplayGeometry {
     let scaleFactor: CGFloat
 }
 
+struct WindowAreaGeometry: Equatable {
+    let displayIndex: Int
+    let requestedFrame: CGRect
+    let clippedFrame: CGRect
+    let displayLocalRect: CGRect
+
+    var wasClipped: Bool { requestedFrame != clippedFrame }
+}
+
 enum ImagePixelDensity {
     static let pointsPerInch: CGFloat = 72
 
@@ -91,6 +100,42 @@ enum CaptureCoordinateMath {
         )
     }
 
+    /// Clips a visible window frame to the display with the largest overlap. Ties use display
+    /// enumeration order. The returned local rect uses ScreenCaptureKit's top-left origin.
+    static func windowAreaGeometry(
+        windowFrame: CGRect,
+        displayFrames: [CGRect]
+    ) -> WindowAreaGeometry? {
+        var bestIndex: Int?
+        var bestIntersection = CGRect.null
+        var bestArea: CGFloat = 0
+
+        for (index, displayFrame) in displayFrames.enumerated() {
+            let intersection = displayFrame.intersection(windowFrame)
+            guard !intersection.isNull, !intersection.isEmpty else { continue }
+            let area = intersection.width * intersection.height
+            if area > bestArea {
+                bestIndex = index
+                bestIntersection = intersection
+                bestArea = area
+            }
+        }
+
+        guard let bestIndex else { return nil }
+        let displayFrame = displayFrames[bestIndex]
+        return WindowAreaGeometry(
+            displayIndex: bestIndex,
+            requestedFrame: windowFrame,
+            clippedFrame: bestIntersection,
+            displayLocalRect: CGRect(
+                x: bestIntersection.minX - displayFrame.minX,
+                y: displayFrame.maxY - bestIntersection.maxY,
+                width: bestIntersection.width,
+                height: bestIntersection.height
+            )
+        )
+    }
+
     static func scaleFactor(
         forWindowFrame windowFrame: CGRect,
         primaryDisplayHeight: CGFloat,
@@ -167,6 +212,50 @@ enum CaptureCoordinateMath {
             x: (localPoint.x - sourceRect.minX) * scaleFactor,
             y: (localPoint.y - sourceRect.minY) * scaleFactor
         )
+    }
+}
+
+struct WindowAreaCaptureSelection {
+    let region: CaptureRegion
+    let wasClipped: Bool
+
+    var pixelRect: CGRect {
+        CGRect(
+            x: (region.sourceRect.minX * region.scaleFactor).rounded(),
+            y: (region.sourceRect.minY * region.scaleFactor).rounded(),
+            width: region.pixelWidth,
+            height: region.pixelHeight
+        )
+    }
+}
+
+@MainActor
+enum WindowAreaCaptureResolver {
+    static func resolve(window: SCWindow) -> WindowAreaCaptureSelection? {
+        let screens = NSScreen.screens
+        let windowFrame = CaptureCoordinateMath.appKitFrame(
+            for: window.frame,
+            primaryDisplayHeight: CaptureCoordinateMath.primaryDisplayHeight(
+                forDisplayFrames: screens.map(\.frame)
+            )
+        )
+        guard let geometry = CaptureCoordinateMath.windowAreaGeometry(
+            windowFrame: windowFrame,
+            displayFrames: screens.map(\.frame)
+        ), screens.indices.contains(geometry.displayIndex) else {
+            return nil
+        }
+
+        let screen = screens[geometry.displayIndex]
+        guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
+            return nil
+        }
+        let region = CaptureRegion(
+            sourceRect: geometry.displayLocalRect,
+            displayID: displayID,
+            scaleFactor: screen.backingScaleFactor
+        ).pixelAligned()
+        return WindowAreaCaptureSelection(region: region, wasClipped: geometry.wasClipped)
     }
 }
 

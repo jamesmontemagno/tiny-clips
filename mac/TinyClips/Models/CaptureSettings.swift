@@ -88,10 +88,16 @@ struct CaptureRegion: Sendable {
 struct CaptureTarget {
     let region: CaptureRegion
     let studioCaptureKind: StudioCaptureKind
+    let windowAreaSelection: WindowAreaCaptureSelection?
 
-    init(region: CaptureRegion, studioCaptureKind: StudioCaptureKind = .region) {
+    init(
+        region: CaptureRegion,
+        studioCaptureKind: StudioCaptureKind = .region,
+        windowAreaSelection: WindowAreaCaptureSelection? = nil
+    ) {
         self.region = region
         self.studioCaptureKind = studioCaptureKind
+        self.windowAreaSelection = windowAreaSelection
     }
 
     func prepare(alwaysExcluding windows: [SCWindow] = []) async throws -> PreparedCaptureTarget {

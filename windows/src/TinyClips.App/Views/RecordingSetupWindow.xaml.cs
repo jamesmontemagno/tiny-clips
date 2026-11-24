@@ -70,7 +70,8 @@ public sealed partial class RecordingSetupWindow : Window
         IAudioDeviceService audioDevices,
         IWebcamDeviceEnumerator webcamDevices,
         IMediaDevicePermissionService mediaPermissions,
-        bool isStudioRecording)
+        bool isStudioRecording,
+        string? windowAreaSummary)
     {
         InitializeComponent();
         WindowCaptureVisibility.Register(this);
@@ -100,6 +101,11 @@ public sealed partial class RecordingSetupWindow : Window
 
         ConfigurePresenter();
         _dragger = new FloatingWindowDragger(AppWindow);
+        if (windowAreaSummary is not null)
+        {
+            WindowAreaSummary.Visibility = Visibility.Visible;
+            WindowAreaSize.Text = windowAreaSummary;
+        }
         ConfigureForCaptureType();
         UpdateMouseClicksVisual();
         UpdateStartButtonEnabled();
@@ -119,7 +125,8 @@ public sealed partial class RecordingSetupWindow : Window
         IMediaDevicePermissionService mediaPermissions,
         MonitorInfo? monitor,
         PixelRect? regionInVirtualDesktop,
-        bool isStudioRecording = false)
+        bool isStudioRecording = false,
+        string? windowAreaSummary = null)
     {
         var window = new RecordingSetupWindow(
             captureType,
@@ -127,7 +134,8 @@ public sealed partial class RecordingSetupWindow : Window
             audioDevices,
             webcamDevices,
             mediaPermissions,
-            isStudioRecording);
+            isStudioRecording,
+            windowAreaSummary);
         window.ShowNear(monitor, regionInVirtualDesktop);
         CaptureFlowTrace.Mark("setup: panel shown");
         if (captureType == CaptureType.Video)

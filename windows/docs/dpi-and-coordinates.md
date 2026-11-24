@@ -61,6 +61,13 @@ client area or `GetWindowRect`'s invisible resize borders. We do **not** apply a
 window targets — the window item is already scoped to the content. The window's own DPI may
 differ from the monitor it's on; the captured frame reflects the window's pixels.
 
+**Window area** is a separate, opt-in target. It snapshots the selected window's visible-frame
+bounds in physical desktop pixels, chooses the display with the largest overlap, clips the bounds
+to that display, and captures the resulting display-local `PixelRect` from a monitor target. The
+rectangle is fixed when selected: overlays and unrelated content visible inside it may appear, and
+moving the window does not move the recording crop. Ordinary Window-only capture remains the
+isolated `CreateForWindow` path.
+
 Studio samples `DWMWA_EXTENDED_FRAME_BOUNDS` at each cursor observation and mouse-down, in
 physical desktop pixels, matching `GetCursorPos` and the low-level mouse hook under Per-Monitor-V2
 awareness. It maps through the latest WGC content/surface dimensions and the actual encoder

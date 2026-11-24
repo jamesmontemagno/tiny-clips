@@ -7,6 +7,7 @@ enum CapturePickerMode {
     case region
     case screen
     case window
+    case windowArea
     case scrolling
 }
 
@@ -29,7 +30,6 @@ private final class CapturePickerState: ObservableObject {
 @MainActor
 class CapturePickerPanel: NSPanel {
     private var didComplete = false
-    private var localMonitor: Any?
     private var globalMonitor: Any?
     private var onCapture: ((CapturePickerMode, Bool, Int, Int) -> Void)?
     private var onCancel: (() -> Void)?
@@ -114,23 +114,8 @@ class CapturePickerPanel: NSPanel {
         orderOut(nil)
     }
 
-    override func keyDown(with event: NSEvent) {
-        if handleKeyDown(event) {
-            return
-        }
-        super.keyDown(with: event)
-    }
-
     private func installKeyboardMonitors() {
         removeKeyboardMonitors()
-
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
-            if self.handleKeyDown(event) {
-                return nil
-            }
-            return event
-        }
 
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             _ = self?.handleKeyDown(event)
@@ -138,11 +123,6 @@ class CapturePickerPanel: NSPanel {
     }
 
     private func removeKeyboardMonitors() {
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            self.localMonitor = nil
-        }
-
         if let globalMonitor {
             NSEvent.removeMonitor(globalMonitor)
             self.globalMonitor = nil
@@ -180,7 +160,7 @@ class CapturePickerPanel: NSPanel {
             return true
         case "w":
             finishCapture(
-                mode: .window,
+                mode: intent.captureType == .screenshot ? .window : .windowArea,
                 countdownEnabled: state.countdownEnabled,
                 countdownDuration: state.countdownDuration,
                 videoTimeLimitMinutes: state.videoTimeLimitMinutes
@@ -323,23 +303,46 @@ private struct CapturePickerView: View {
             .keyboardShortcut("s", modifiers: [])
             .accessibilityHint("Starts full screen capture.")
 
-            Button { onCapture(.window, state.countdownEnabled, state.countdownDuration, state.videoTimeLimitMinutes) } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "macwindow")
-                        .font(.system(size: 12))
-                    Text("Window")
-                        .font(.system(size: 13, weight: .medium))
+            if intent.captureType == .screenshot {
+                HStack(spacing: 2) {
+                    windowButton(
+                        mode: .window,
+                        title: "Window",
+                        help: "Select a window (W)",
+                        hint: "Captures only the selected window. Separate dialogs or menus may be omitted."
+                    )
+                    Menu {
+                        Button("Window only") {
+                            onCapture(.window, state.countdownEnabled, state.countdownDuration, state.videoTimeLimitMinutes)
+                        }
+                        .accessibilityHint("Captures only the selected window. Separate dialogs and menus may be omitted.")
+
+                        Button("Window area") {
+                            onCapture(.windowArea, state.countdownEnabled, state.countdownDuration, state.videoTimeLimitMinutes)
+                        }
+                        .accessibilityHint("Captures visible content inside the fixed, display-clipped window bounds, including unrelated overlays.")
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 20, height: 30)
+                            .background(.primary.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Choose Window only or Window area")
+                    .accessibilityLabel("Window capture options")
+                    .accessibilityHint("Window area is fixed and includes anything visible inside the selected window bounds.")
                 }
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(.primary.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                windowButton(
+                    mode: .windowArea,
+                    title: "Window area",
+                    help: "Select a fixed window area (W)",
+                    hint: "Captures a fixed display area matching the selected window's visible bounds. Visible overlays are included (W)."
+                )
             }
-            .buttonStyle(.plain)
-            .help("Select a window (W)")
-            .keyboardShortcut("w", modifiers: [])
-            .accessibilityHint("Starts window capture.")
 
             if intent.captureType == .screenshot {
                 Button { onCapture(.scrolling, false, 0, 0) } label: {
@@ -459,5 +462,27 @@ private struct CapturePickerView: View {
                         .strokeBorder(.primary.opacity(0.15), lineWidth: 0.5)
                 }
         }
+    }
+
+    private func windowButton(mode: CapturePickerMode, title: String, help: String, hint: String) -> some View {
+        Button {
+            onCapture(mode, state.countdownEnabled, state.countdownDuration, state.videoTimeLimitMinutes)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "macwindow")
+                    .font(.system(size: 12))
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(.primary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .keyboardShortcut("w", modifiers: [])
+        .accessibilityHint(hint)
     }
 }
