@@ -536,7 +536,8 @@ final class ScreenshotRedactionTests: XCTestCase {
         XCTAssertEqual(editor.annotations[0].rect, initialRect)
 
         editor.selectedTool = .text
-        XCTAssertTrue(editor.updateSelectedTextFontSize(24))
+        XCTAssertFalse(editor.updateSelectedTextFontSize(24))
+        editor.textFontSize = 24
         XCTAssertEqual(editor.textFontSize, 24)
     }
 

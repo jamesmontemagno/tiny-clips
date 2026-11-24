@@ -1043,26 +1043,22 @@ class ScreenshotEditorViewModel: ObservableObject {
     /// handle resize does, so the glyphs keep fitting.
     @discardableResult
     func updateSelectedTextFontSize(_ size: CGFloat) -> Bool {
-        if selectedAnnotationIsText, let index = selectedAnnotationIndex {
-            let oldSize = annotations[index].fontSize
-            guard size != oldSize else { return true }
-            if !isGroupingTextStyleEdit {
-                recordHistory()
-            }
-            let scale = size / max(oldSize, 1)
-            let rect = annotations[index].rect
-            annotations[index].rect = CGRect(
-                x: rect.midX - rect.width * scale / 2,
-                y: rect.midY - rect.height * scale / 2,
-                width: rect.width * scale,
-                height: rect.height * scale
-            )
-            annotations[index].fontSize = size
-            markDirty()
-            return true
+        guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return false }
+        let oldSize = annotations[index].fontSize
+        guard size != oldSize else { return true }
+        if !isGroupingTextStyleEdit {
+            recordHistory()
         }
-        guard selectedTool == .text else { return false }
-        textFontSize = size
+        let scale = size / max(oldSize, 1)
+        let rect = annotations[index].rect
+        annotations[index].rect = CGRect(
+            x: rect.midX - rect.width * scale / 2,
+            y: rect.midY - rect.height * scale / 2,
+            width: rect.width * scale,
+            height: rect.height * scale
+        )
+        annotations[index].fontSize = size
+        markDirty()
         return true
     }
 
