@@ -223,8 +223,8 @@ struct WindowAreaCaptureSelection {
         CGRect(
             x: (region.sourceRect.minX * region.scaleFactor).rounded(),
             y: (region.sourceRect.minY * region.scaleFactor).rounded(),
-            width: region.pixelWidth,
-            height: region.pixelHeight
+            width: CGFloat(region.pixelWidth),
+            height: CGFloat(region.pixelHeight)
         )
     }
 }

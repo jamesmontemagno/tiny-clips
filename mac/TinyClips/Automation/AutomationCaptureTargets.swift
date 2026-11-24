@@ -181,6 +181,22 @@ enum AutomationCaptureTargets {
             "isMain": display.isMain,
         ]
     }
+
+    /// Describes the fixed area in display-local physical pixels.
+    static func windowAreaJSON(_ selection: WindowAreaCaptureSelection) -> [String: Any] {
+        let rect = selection.pixelRect
+        return [
+            "displayId": displayID(for: selection.region.displayID),
+            "region": [
+                "x": Int(rect.minX),
+                "y": Int(rect.minY),
+                "width": Int(rect.width),
+                "height": Int(rect.height),
+            ],
+            "fixed": true,
+            "clipped": selection.wasClipped,
+        ]
+    }
 }
 
 /// Live display and window discovery for agent captures.
@@ -275,22 +291,6 @@ enum AutomationCaptureEnvironment {
         return intersection.isNull ? 0 : intersection.width * intersection.height
     }
 
-    /// Describes the fixed area in display-local physical pixels.
-    static func windowAreaJSON(_ selection: WindowAreaCaptureSelection) -> [String: Any] {
-        let rect = selection.pixelRect
-        return [
-            "displayId": displayID(for: selection.region.displayID),
-            "region": [
-                "x": Int(rect.minX),
-                "y": Int(rect.minY),
-                "width": Int(rect.width),
-                "height": Int(rect.height),
-            ],
-            "fixed": true,
-            "clipped": selection.wasClipped,
-        ]
-    }
-
     /// Captures the target as an image without showing any picker or overlay.
     static func captureImage(_ target: AutomationCaptureTarget) async throws
         -> (image: CGImage, scaleFactor: CGFloat, windowArea: [String: Any]?) {
@@ -318,7 +318,7 @@ enum AutomationCaptureEnvironment {
                 throw AutomationError(.notFound, "That window does not overlap a capturable display.")
             }
             let image = try await ScreenshotCapture.captureImage(region: selection.region)
-            return (image, selection.region.scaleFactor, windowAreaJSON(selection))
+            return (image, selection.region.scaleFactor, AutomationCaptureTargets.windowAreaJSON(selection))
         }
     }
 }
