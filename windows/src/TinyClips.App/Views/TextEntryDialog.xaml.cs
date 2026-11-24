@@ -19,6 +19,7 @@ namespace TinyClips.App;
 public sealed partial class TextEntryDialog : ContentDialog
 {
     private bool _initializing = true;
+    private bool _isEdit;
     private TextBoxStyle _textBoxStyle;
 
     public TextEntryDialog(
@@ -34,6 +35,7 @@ public sealed partial class TextEntryDialog : ContentDialog
         TextBoxStyle textBoxStyle,
         bool isEdit)
     {
+        _isEdit = isEdit;
         InitializeComponent();
 
         Title = isEdit ? "Edit text" : "Add text";
@@ -54,10 +56,11 @@ public sealed partial class TextEntryDialog : ContentDialog
 
         ResultColor = color;
         TextColorPicker.Color = color;
-        ColorSwatch.Background = new SolidColorBrush(color);
         SyncTextBoxControls();
+        BoxExpander.IsExpanded = _textBoxStyle.Preset == TextBoxPreset.Custom;
 
         _initializing = false;
+        IsPrimaryButtonEnabled = _isEdit || !string.IsNullOrWhiteSpace(EntryBox.Text);
         UpdatePreview();
 
         Opened += (_, _) => EntryBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
@@ -102,32 +105,35 @@ public sealed partial class TextEntryDialog : ContentDialog
 
     private void OnSizeChanged(NumberBox sender, NumberBoxValueChangedEventArgs args) => UpdatePreview();
 
-    private void OnTextChanged(object sender, TextChangedEventArgs e) => UpdatePreview();
-
-    private void OnColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    private void OnTextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_initializing || args.NewColor == ResultColor)
+        IsPrimaryButtonEnabled = _isEdit || !string.IsNullOrWhiteSpace(EntryBox.Text);
+        UpdatePreview();
+    }
+
+    private void OnColorChanged(object? sender, Color color)
+    {
+        if (_initializing || color == ResultColor)
         {
             return;
         }
-        ResultColor = args.NewColor;
-        ColorSwatch.Background = new SolidColorBrush(args.NewColor);
+        ResultColor = color;
         if (_textBoxStyle.Preset != TextBoxPreset.Plain)
         {
             _textBoxStyle = _textBoxStyle with { Preset = TextBoxPreset.Custom };
-            SyncPresetButtons();
+            SyncPresetChoice();
         }
         UpdatePreview();
     }
 
-    private void OnPresetClick(object sender, RoutedEventArgs e)
+    private void OnPresetChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_initializing || sender is not ToggleButton { Tag: string tag }
-            || !Enum.TryParse<TextBoxPreset>(tag, out var preset))
+        if (_initializing || TextStyleChoice.IsApplyingTemplate || TextStyleChoice.SelectedIndex < 0)
         {
             return;
         }
 
+        var preset = (TextBoxPreset)TextStyleChoice.SelectedIndex;
         var accent = Application.Current.Resources.TryGetValue("SystemAccentColor", out var resource)
             && resource is Color color
             ? color
@@ -135,33 +141,46 @@ public sealed partial class TextEntryDialog : ContentDialog
         var resolved = TextBoxStyle.Resolve(preset, ResultColor, accent);
         _textBoxStyle = resolved.Style;
         ResultColor = resolved.TextColor;
-        _initializing = true;
-        TextColorPicker.Color = ResultColor;
-        ColorSwatch.Background = new SolidColorBrush(ResultColor);
-        _initializing = false;
+        BoxExpander.IsExpanded = false;
+
         SyncTextBoxControls();
         UpdatePreview();
     }
 
-    private void OnBackgroundColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    private void OnBackgroundColorChanged(object? sender, Color color)
     {
         if (_initializing)
         {
             return;
         }
-        _textBoxStyle = (_textBoxStyle with { BackgroundColor = args.NewColor }).AsCustom();
-        SyncPresetButtons();
+        _textBoxStyle = (_textBoxStyle with { BackgroundColor = color }).AsCustom();
+        SyncTextBoxControls();
         UpdatePreview();
     }
 
-    private void OnBorderColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    private void OnBackgroundOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_initializing)
         {
             return;
         }
-        _textBoxStyle = (_textBoxStyle with { BorderColor = args.NewColor }).AsCustom();
-        SyncPresetButtons();
+        var background = AnnotationColorMath.WithOpacity(
+            _textBoxStyle.BackgroundColor,
+            e.NewValue / 100,
+            Color.FromArgb(255, 245, 245, 248));
+        _textBoxStyle = (_textBoxStyle with { BackgroundColor = background }).AsCustom();
+        SyncTextBoxControls();
+        UpdatePreview();
+    }
+
+    private void OnBorderColorChanged(object? sender, Color color)
+    {
+        if (_initializing)
+        {
+            return;
+        }
+        _textBoxStyle = (_textBoxStyle with { BorderColor = color }).AsCustom();
+        SyncTextBoxControls();
         UpdatePreview();
     }
 
@@ -177,7 +196,7 @@ public sealed partial class TextEntryDialog : ContentDialog
             Padding = PaddingBox.Value,
             CornerRadius = CornerRadiusBox.Value,
         }).AsCustom();
-        SyncPresetButtons();
+        SyncPresetChoice();
         UpdatePreview();
     }
 
@@ -190,16 +209,23 @@ public sealed partial class TextEntryDialog : ContentDialog
         BorderWidthBox.Value = _textBoxStyle.BorderWidth;
         PaddingBox.Value = _textBoxStyle.Padding;
         CornerRadiusBox.Value = _textBoxStyle.CornerRadius;
-        SyncPresetButtons();
+        BackgroundOpacitySlider.Value = _textBoxStyle.BackgroundColor.A / 255.0 * 100;
+        TextColorPicker.Color = ResultColor;
+        SyncPresetChoice();
         _initializing = wasInitializing;
     }
 
-    private void SyncPresetButtons()
+    private void SyncPresetChoice()
     {
-        PlainPreset.IsChecked = _textBoxStyle.Preset == TextBoxPreset.Plain;
-        LightPreset.IsChecked = _textBoxStyle.Preset == TextBoxPreset.Light;
-        DarkPreset.IsChecked = _textBoxStyle.Preset == TextBoxPreset.Dark;
-        AccentPreset.IsChecked = _textBoxStyle.Preset == TextBoxPreset.Accent;
+        var wasInitializing = _initializing;
+        _initializing = true;
+        TextStyleChoice.SelectedIndex = _textBoxStyle.Preset == TextBoxPreset.Custom
+            ? -1
+            : (int)_textBoxStyle.Preset;
+        TextStyleCustomLabel.Visibility = _textBoxStyle.Preset == TextBoxPreset.Custom
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        _initializing = wasInitializing;
     }
 
     private void UpdatePreview()
@@ -212,7 +238,7 @@ public sealed partial class TextEntryDialog : ContentDialog
         var text = EntryBox.Text;
         PreviewText.Text = string.IsNullOrEmpty(text) ? "Preview" : text;
         PreviewText.Foreground = new SolidColorBrush(ResultColor);
-        PreviewText.FontSize = SizeBox.Value > 0 ? SizeBox.Value : 28;
+        PreviewText.FontSize = SizeBox.Value > 0 ? Math.Clamp(SizeBox.Value, 14, 36) : 28;
         PreviewText.FontFamily = new FontFamily(ResultFont);
         PreviewText.FontWeight = ResultBold ? FontWeights.Bold : FontWeights.Normal;
         PreviewText.FontStyle = ResultItalic

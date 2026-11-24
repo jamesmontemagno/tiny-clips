@@ -300,23 +300,32 @@
 
                 <!--  Text  -->
                 <StackPanel x:Name="TextSection" Spacing="10">
-                    <StackPanel Spacing="6">
-                        <TextBlock
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Style" />
-                        <Grid ColumnSpacing="4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <ToggleButton x:Name="PlainTextPreset" Grid.Column="0" MinWidth="0" Padding="4" AutomationProperties.Name="Plain text style" Click="OnTextPresetClick" Content="Plain" Tag="Plain" />
-                            <ToggleButton x:Name="LightTextPreset" Grid.Column="1" MinWidth="0" Padding="4" AutomationProperties.Name="Light text box style" Click="OnTextPresetClick" Content="Light" Tag="Light" />
-                            <ToggleButton x:Name="DarkTextPreset" Grid.Column="2" MinWidth="0" Padding="4" AutomationProperties.Name="Dark text box style" Click="OnTextPresetClick" Content="Dark" Tag="Dark" />
-                            <ToggleButton x:Name="AccentTextPreset" Grid.Column="3" MinWidth="0" Padding="4" AutomationProperties.Name="Accent text box style" Click="OnTextPresetClick" Content="Accent" Tag="Accent" />
+                    <StackPanel Spacing="4">
+                        <Grid>
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="Style" />
+                            <TextBlock
+                                x:Name="TextStyleCustomLabel"
+                                HorizontalAlignment="Right"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="Custom"
+                                Visibility="Collapsed" />
                         </Grid>
+                        <studio:StudioSegmented
+                            x:Name="TextStyleChoice"
+                            HorizontalAlignment="Stretch"
+                            studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                            AutomationProperties.AutomationId="EditorTextStyleChoice"
+                            AutomationProperties.Name="Text style"
+                            SelectionChanged="OnTextPresetChanged">
+                            <controls:SegmentedItem Content="Plain" />
+                            <controls:SegmentedItem Content="Light" />
+                            <controls:SegmentedItem Content="Dark" />
+                            <controls:SegmentedItem Content="Accent" />
+                        </studio:StudioSegmented>
                     </StackPanel>
                     <ComboBox
                         x:Name="FontFamilyCombo"

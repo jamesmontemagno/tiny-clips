@@ -60,6 +60,10 @@ public sealed class AnnotationStrokeTests
             Color.FromArgb(0, 0, 0, 0),
             0.5,
             Color.FromArgb(255, 240, 241, 242));
+        var transparentRed = AnnotationColorMath.WithOpacity(
+            Color.FromArgb(0, 220, 10, 20),
+            0.5,
+            Color.FromArgb(255, 240, 241, 242));
 
         Assert.Equal((byte)64, translucent.A);
         Assert.Equal(color.R, translucent.R);
@@ -69,5 +73,7 @@ public sealed class AnnotationStrokeTests
         Assert.Equal((byte)255, clamped.A);
         Assert.Equal((byte)240, restored.R);
         Assert.Equal((byte)128, restored.A);
+        Assert.Equal((byte)220, transparentRed.R);
+        Assert.Equal((byte)128, transparentRed.A);
     }
 }

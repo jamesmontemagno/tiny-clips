@@ -3,98 +3,61 @@
     x:Class="TinyClips.App.TextEntryDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.WinUI.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:TinyClips.App"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:studio="using:TinyClips.App.Controls.Studio"
     Title="Add text"
     CloseButtonText="Cancel"
     DefaultButton="Primary"
     PrimaryButtonText="OK"
     mc:Ignorable="d">
 
-    <StackPanel MinWidth="380" Spacing="12">
-        <StackPanel Spacing="6">
-            <TextBlock
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Style" />
-            <Grid ColumnSpacing="6">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <ToggleButton x:Name="PlainPreset" Grid.Column="0" AutomationProperties.Name="Plain text style" Click="OnPresetClick" Content="Plain" Tag="Plain" />
-                <ToggleButton x:Name="LightPreset" Grid.Column="1" AutomationProperties.Name="Light text box style" Click="OnPresetClick" Content="Light" Tag="Light" />
-                <ToggleButton x:Name="DarkPreset" Grid.Column="2" AutomationProperties.Name="Dark text box style" Click="OnPresetClick" Content="Dark" Tag="Dark" />
-                <ToggleButton x:Name="AccentPreset" Grid.Column="3" AutomationProperties.Name="Accent text box style" Click="OnPresetClick" Content="Accent" Tag="Accent" />
+    <StackPanel MinWidth="520" Spacing="16">
+        <TextBox
+            x:Name="EntryBox"
+            MinHeight="96"
+            AcceptsReturn="True"
+            AutomationProperties.AutomationId="TextDialogEntry"
+            AutomationProperties.Name="Text"
+            Header="Text"
+            PlaceholderText="Type your text…"
+            TextChanged="OnTextChanged"
+            TextWrapping="Wrap" />
+
+        <StackPanel Spacing="4">
+            <Grid>
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Style" />
+                <TextBlock
+                    x:Name="TextStyleCustomLabel"
+                    HorizontalAlignment="Right"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Custom"
+                    Visibility="Collapsed" />
             </Grid>
+            <studio:StudioSegmented
+                x:Name="TextStyleChoice"
+                HorizontalAlignment="Stretch"
+                studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                AutomationProperties.AutomationId="TextDialogStyleChoice"
+                AutomationProperties.Name="Text style"
+                SelectionChanged="OnPresetChanged">
+                <controls:SegmentedItem Content="Plain" />
+                <controls:SegmentedItem Content="Light" />
+                <controls:SegmentedItem Content="Dark" />
+                <controls:SegmentedItem Content="Accent" />
+            </studio:StudioSegmented>
         </StackPanel>
 
-        <!--  Formatting toolbar  -->
-        <StackPanel Orientation="Horizontal" Spacing="6">
-            <ToggleButton
-                x:Name="BoldToggle"
-                AutomationProperties.AutomationId="TextDialogBold"
-                AutomationProperties.Name="Bold"
-                Click="OnFormattingChanged"
-                ToolTipService.ToolTip="Bold">
-                <FontIcon FontSize="16" Glyph="&#xE8DD;" />
-            </ToggleButton>
-            <ToggleButton
-                x:Name="ItalicToggle"
-                AutomationProperties.AutomationId="TextDialogItalic"
-                AutomationProperties.Name="Italic"
-                Click="OnFormattingChanged"
-                ToolTipService.ToolTip="Italic">
-                <FontIcon FontSize="16" Glyph="&#xE8DB;" />
-            </ToggleButton>
-            <ToggleButton
-                x:Name="UnderlineToggle"
-                AutomationProperties.AutomationId="TextDialogUnderline"
-                AutomationProperties.Name="Underline"
-                Click="OnFormattingChanged"
-                ToolTipService.ToolTip="Underline">
-                <FontIcon FontSize="16" Glyph="&#xE8DC;" />
-            </ToggleButton>
-            <ToggleButton
-                x:Name="StrikeToggle"
-                AutomationProperties.AutomationId="TextDialogStrikethrough"
-                AutomationProperties.Name="Strikethrough"
-                Click="OnFormattingChanged"
-                ToolTipService.ToolTip="Strikethrough">
-                <FontIcon FontSize="16" Glyph="&#xEDE0;" />
-            </ToggleButton>
-
-            <Button
-                x:Name="ColorButton"
-                Width="40"
-                AutomationProperties.AutomationId="TextDialogColor"
-                AutomationProperties.Name="Text color"
-                ToolTipService.ToolTip="Text color">
-                <Border
-                    x:Name="ColorSwatch"
-                    Width="20"
-                    Height="20"
-                    CornerRadius="4" />
-                <Button.Flyout>
-                    <Flyout>
-                        <ColorPicker
-                            x:Name="TextColorPicker"
-                            ColorChanged="OnColorChanged"
-                            IsAlphaEnabled="False"
-                            IsColorSliderVisible="True"
-                            IsHexInputVisible="True" />
-                    </Flyout>
-                </Button.Flyout>
-            </Button>
-        </StackPanel>
-
-        <!--  Font + size  -->
-        <Grid ColumnSpacing="8">
+        <Grid ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="112" />
             </Grid.ColumnDefinitions>
             <ComboBox
                 x:Name="FontCombo"
@@ -107,7 +70,6 @@
             <NumberBox
                 x:Name="SizeBox"
                 Grid.Column="1"
-                Width="120"
                 AutomationProperties.AutomationId="TextDialogSize"
                 AutomationProperties.Name="Font size"
                 Header="Size"
@@ -118,48 +80,146 @@
                 ValueChanged="OnSizeChanged" />
         </Grid>
 
-        <Expander Header="Box">
-            <StackPanel Padding="0,8,0,0" Spacing="10">
-                <Grid ColumnSpacing="8">
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+                <ToggleButton
+                    x:Name="BoldToggle"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    AutomationProperties.AutomationId="TextDialogBold"
+                    AutomationProperties.Name="Bold"
+                    Click="OnFormattingChanged"
+                    ToolTipService.ToolTip="Bold">
+                    <FontIcon FontSize="16" Glyph="&#xE8DD;" />
+                </ToggleButton>
+                <ToggleButton
+                    x:Name="ItalicToggle"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    AutomationProperties.AutomationId="TextDialogItalic"
+                    AutomationProperties.Name="Italic"
+                    Click="OnFormattingChanged"
+                    ToolTipService.ToolTip="Italic">
+                    <FontIcon FontSize="16" Glyph="&#xE8DB;" />
+                </ToggleButton>
+                <ToggleButton
+                    x:Name="UnderlineToggle"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    AutomationProperties.AutomationId="TextDialogUnderline"
+                    AutomationProperties.Name="Underline"
+                    Click="OnFormattingChanged"
+                    ToolTipService.ToolTip="Underline">
+                    <FontIcon FontSize="16" Glyph="&#xE8DC;" />
+                </ToggleButton>
+                <ToggleButton
+                    x:Name="StrikeToggle"
+                    Width="36"
+                    Height="36"
+                    Padding="0"
+                    AutomationProperties.AutomationId="TextDialogStrikethrough"
+                    AutomationProperties.Name="Strikethrough"
+                    Click="OnFormattingChanged"
+                    ToolTipService.ToolTip="Strikethrough">
+                    <FontIcon FontSize="16" Glyph="&#xEDE0;" />
+                </ToggleButton>
+            </StackPanel>
+            <local:SwatchColorPicker
+                x:Name="TextColorPicker"
+                Grid.Column="1"
+                MinWidth="180"
+                AutomationProperties.AutomationId="TextDialogColor"
+                AutomationProperties.Name="Text color"
+                ColorChanged="OnColorChanged"
+                IsAlphaEnabled="False" />
+        </Grid>
+
+        <StackPanel Spacing="6">
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Preview" />
+            <Border
+                MinHeight="88"
+                MaxHeight="140"
+                Padding="14"
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource ControlCornerRadius}">
+                <Border
+                    x:Name="PreviewBox"
+                    MaxWidth="440"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="TextDialogPreview"
+                    AutomationProperties.Name="Text preview">
+                    <TextBlock
+                        x:Name="PreviewText"
+                        HorizontalAlignment="Center"
+                        MaxWidth="400"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                </Border>
+            </Border>
+        </StackPanel>
+
+        <Expander
+            x:Name="BoxExpander"
+            HorizontalAlignment="Stretch"
+            AutomationProperties.AutomationId="TextDialogBoxExpander"
+            Header="Box details">
+            <StackPanel Padding="0,12,0,0" Spacing="12">
+                <Grid ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Button
-                        x:Name="BackgroundColorButton"
-                        Grid.Column="0"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Background color"
-                        Content="Background">
-                        <Button.Flyout>
-                            <Flyout>
-                                <ColorPicker
-                                    x:Name="BackgroundColorPicker"
-                                    ColorChanged="OnBackgroundColorChanged"
-                                    IsAlphaEnabled="True"
-                                    IsAlphaSliderVisible="True"
-                                    IsHexInputVisible="True" />
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
-                    <Button
-                        x:Name="BorderColorButton"
-                        Grid.Column="1"
-                        HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="Border color"
-                        Content="Border">
-                        <Button.Flyout>
-                            <Flyout>
-                                <ColorPicker
-                                    x:Name="BorderColorPicker"
-                                    ColorChanged="OnBorderColorChanged"
-                                    IsAlphaEnabled="True"
-                                    IsAlphaSliderVisible="True"
-                                    IsHexInputVisible="True" />
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
+                    <StackPanel Grid.Column="0" Spacing="6">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Background" />
+                        <local:SwatchColorPicker
+                            x:Name="BackgroundColorPicker"
+                            AutomationProperties.AutomationId="TextDialogBackgroundColor"
+                            AutomationProperties.Name="Text box background color"
+                            AllowTransparent="True"
+                            ColorChanged="OnBackgroundColorChanged"
+                            IsAlphaEnabled="True" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="6">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Border" />
+                        <local:SwatchColorPicker
+                            x:Name="BorderColorPicker"
+                            AutomationProperties.AutomationId="TextDialogBorderColor"
+                            AutomationProperties.Name="Text box border color"
+                            AllowTransparent="True"
+                            ColorChanged="OnBorderColorChanged"
+                            IsAlphaEnabled="True" />
+                    </StackPanel>
                 </Grid>
+
+                <Slider
+                    x:Name="BackgroundOpacitySlider"
+                    AutomationProperties.AutomationId="TextDialogBackgroundOpacity"
+                    AutomationProperties.Name="Text box background opacity"
+                    Header="Background opacity"
+                    Maximum="100"
+                    Minimum="0"
+                    StepFrequency="1"
+                    ValueChanged="OnBackgroundOpacityChanged" />
+
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -196,35 +256,5 @@
                 </Grid>
             </StackPanel>
         </Expander>
-
-        <!--  Text entry  -->
-        <TextBox
-            x:Name="EntryBox"
-            MinHeight="80"
-            AcceptsReturn="True"
-            AutomationProperties.AutomationId="TextDialogEntry"
-            AutomationProperties.Name="Text"
-            Header="Text"
-            PlaceholderText="Type your text…"
-            TextChanged="OnTextChanged"
-            TextWrapping="Wrap" />
-
-        <!--  Live preview  -->
-        <Border
-            MinHeight="64"
-            Padding="12"
-            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            CornerRadius="{StaticResource ControlCornerRadius}">
-            <Border
-                x:Name="PreviewBox"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center">
-                <TextBlock
-                    x:Name="PreviewText"
-                    TextWrapping="Wrap" />
-            </Border>
-        </Border>
     </StackPanel>
 </ContentDialog>

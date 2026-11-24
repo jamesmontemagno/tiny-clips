@@ -8,7 +8,8 @@ public static class AnnotationColorMath
 
     public static Color WithOpacity(Color color, double opacity, Color? fallback = null)
     {
-        if (color.A == 0 && fallback is { } fallbackColor)
+        if (color.A == 0 && color.R == 0 && color.G == 0 && color.B == 0
+            && fallback is { } fallbackColor)
         {
             color = fallbackColor;
         }

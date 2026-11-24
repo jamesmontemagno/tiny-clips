@@ -527,10 +527,10 @@ public sealed partial class EditorInspector : UserControl
     {
         var wasInitializing = _inspectorInitializing;
         _inspectorInitializing = true;
-        PlainTextPreset.IsChecked = style.Preset == TextBoxPreset.Plain;
-        LightTextPreset.IsChecked = style.Preset == TextBoxPreset.Light;
-        DarkTextPreset.IsChecked = style.Preset == TextBoxPreset.Dark;
-        AccentTextPreset.IsChecked = style.Preset == TextBoxPreset.Accent;
+        TextStyleChoice.SelectedIndex = style.Preset == TextBoxPreset.Custom ? -1 : (int)style.Preset;
+        TextStyleCustomLabel.Visibility = style.Preset == TextBoxPreset.Custom
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         TextBackgroundColorPicker.Color = style.BackgroundColor;
         TextBorderColorPicker.Color = style.BorderColor;
         TextBorderWidthSlider.Value = style.BorderWidth;
@@ -813,14 +813,14 @@ public sealed partial class EditorInspector : UserControl
         UpdateInspectorHeaders();
     }
 
-    private void OnTextPresetClick(object sender, RoutedEventArgs e)
+    private void OnTextPresetChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_inspectorInitializing || sender is not ToggleButton { Tag: string tag }
-            || !Enum.TryParse<TextBoxPreset>(tag, out var preset))
+        if (_inspectorInitializing || TextStyleChoice.IsApplyingTemplate || TextStyleChoice.SelectedIndex < 0)
         {
             return;
         }
 
+        var preset = (TextBoxPreset)TextStyleChoice.SelectedIndex;
         var accent = Application.Current.Resources.TryGetValue("SystemAccentColor", out var resource)
             && resource is Color color
             ? color
