@@ -983,6 +983,14 @@ class ScreenshotEditorViewModel: ObservableObject {
         isGroupingTextStyleEdit = false
     }
 
+    func beginSelectedTextFontSizeEdit() {
+        beginSelectedTextStyleEdit()
+    }
+
+    func endSelectedTextFontSizeEdit() {
+        endSelectedTextStyleEdit()
+    }
+
     private func updateTextBoxStyle(_ mutation: (inout TextBoxStyle) -> Void) {
         if selectedAnnotationIsText, let index = selectedAnnotationIndex {
             if !isGroupingTextStyleEdit {
