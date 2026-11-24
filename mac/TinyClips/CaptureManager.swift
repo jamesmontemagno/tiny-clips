@@ -120,6 +120,8 @@ private enum ActiveRecordingRequest {
 
 @MainActor
 class CaptureManager: ObservableObject {
+    static weak var current: CaptureManager?
+
     @Published var isRecording = false {
         didSet {
             configureGlobalHotKeys()
@@ -165,6 +167,9 @@ class CaptureManager: ObservableObject {
 
     /// True while a stopped recording is still being finalized and saved.
     var isFinalizingRecording: Bool { isStoppingRecording }
+    var isAnyCaptureInProgress: Bool {
+        isCaptureActionInProgress || isRecording || isFinalizingRecording
+    }
 
     private(set) var automationRecordingError: AutomationError?
 
@@ -264,6 +269,7 @@ class CaptureManager: ObservableObject {
 
     init() {
         guard !TinyClipsRuntime.isRunningUnitTests else { return }
+        Self.current = self
 
         configureGlobalHotKeys()
 
@@ -854,6 +860,7 @@ class CaptureManager: ObservableObject {
 
         Task {
             var didPresentEditor = false
+            var didCompleteCapture = false
             do {
                 let settings = CaptureSettings.shared
                 let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
@@ -866,6 +873,7 @@ class CaptureManager: ObservableObject {
                     scaleFactor: imageScaleFactor
                 )
                 CaptureAnalyticsStore.shared.recordCapture(.screenshot)
+                didCompleteCapture = true
                 if settings.showScreenshotEditor {
                     if shouldSaveImmediately {
                         SaveService.shared.handleSavedFile(url: url, type: .screenshot)
@@ -888,10 +896,11 @@ class CaptureManager: ObservableObject {
             } catch {
                 SaveService.shared.showError("Scrolling capture failed: \(error.localizedDescription)")
             }
-            if !didPresentEditor,
-               shouldReturnToPicker,
-               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
-                showScreenshotPicker()
+            if didCompleteCapture, !didPresentEditor {
+                if shouldReturnToPicker,
+                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
+                    self.showScreenshotPicker()
+                }
             }
         }
     }
@@ -914,6 +923,7 @@ class CaptureManager: ObservableObject {
             Task {
                 defer { self.isScreenshotCaptureInProgress = false }
                 var didPresentEditor = false
+                var didCompleteCapture = false
                 do {
                     let settings = CaptureSettings.shared
                     let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
@@ -931,6 +941,7 @@ class CaptureManager: ObservableObject {
                     }
 
                     CaptureAnalyticsStore.shared.recordCapture(.screenshot)
+                    didCompleteCapture = true
 
                     if settings.showScreenshotEditor {
                         if shouldSaveImmediately {
@@ -957,10 +968,11 @@ class CaptureManager: ObservableObject {
                 } catch {
                     SaveService.shared.showError("Screenshot failed: \(error.localizedDescription)")
                 }
-                if !didPresentEditor,
-                   shouldReturnToPickerAfterCapture,
-                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
-                    self.showScreenshotPicker()
+                if didCompleteCapture, !didPresentEditor {
+                    if shouldReturnToPickerAfterCapture,
+                       CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
+                        self.showScreenshotPicker()
+                    }
                 }
             }
         }
@@ -2046,6 +2058,7 @@ class CaptureManager: ObservableObject {
         self.webcamPositionEvents = []
 
         var savedGifURL: URL?
+        var completedCaptureWithoutEditor: CaptureType?
         if let writer = gifWriterAtStop {
             let url = SaveService.shared.generateURL(for: .gif)
             do {
@@ -2167,10 +2180,7 @@ class CaptureManager: ObservableObject {
                     CaptureAnalyticsStore.shared.recordCapture(.gif)
                     SaveService.shared.handleSavedFile(url: url, type: .gif)
                     updateProcessingProgress(1.0, status: "Done")
-                    if shouldReturnToPickerAfterRecording,
-                       settings.shouldShowCapturePickerAfterCapture(for: .gif) {
-                        showRecordingPicker(for: .gif)
-                    }
+                    completedCaptureWithoutEditor = .gif
                 }
             } catch {
                 if streamFailureMessage == nil {
@@ -2210,10 +2220,7 @@ class CaptureManager: ObservableObject {
                 )
             } else {
                 SaveService.shared.handleSavedFile(url: savedVideoURL, type: .video)
-                if shouldReturnToPickerAfterRecording,
-                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .video) {
-                    showRecordingPicker(for: .video)
-                }
+                completedCaptureWithoutEditor = .video
             }
         }
 
@@ -2234,6 +2241,13 @@ class CaptureManager: ObservableObject {
             SaveService.shared.showError(
                 "Screen capture stopped unexpectedly. \(partialOutputMessage) Check Screen Recording permission in System Settings, then start a new recording. Details: \(streamFailureMessage)"
             )
+        }
+
+        if let completedCaptureWithoutEditor {
+            if shouldReturnToPickerAfterRecording,
+               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: completedCaptureWithoutEditor) {
+                self.showRecordingPicker(for: completedCaptureWithoutEditor)
+            }
         }
     }
 
@@ -2294,6 +2308,16 @@ class CaptureManager: ObservableObject {
         }
     }
 
+    private func editorWindowClosed(
+        continuingWith continuation: @escaping @MainActor () -> Void = {}
+    ) {
+#if APPSTORE
+        StoreReviewPromptCoordinator.shared.editorWindowClosed(continuingWith: continuation)
+#else
+        continuation()
+#endif
+    }
+
     private func showScreenshotEditor(
         for url: URL,
         initialSaveURL: URL,
@@ -2310,9 +2334,13 @@ class CaptureManager: ObservableObject {
             } else if deleteSourceOnCancel {
                 try? FileManager.default.removeItem(at: url)
             }
-            if reopenPickerAfterClose,
-               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
-                self?.showScreenshotPicker()
+            DispatchQueue.main.async { [weak self] in
+                self?.editorWindowClosed { [weak self] in
+                    if reopenPickerAfterClose,
+                       CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
+                        self?.showScreenshotPicker()
+                    }
+                }
             }
         }
     }
@@ -2374,9 +2402,11 @@ class CaptureManager: ObservableObject {
             // Defer release so the window isn't deallocated mid-callback
             DispatchQueue.main.async {
                 self.trimmerWindow = nil
-                if reopenPickerAfterClose,
-                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .video) {
-                    self.showRecordingPicker(for: .video)
+                self.editorWindowClosed { [weak self] in
+                    if reopenPickerAfterClose,
+                       CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .video) {
+                        self?.showRecordingPicker(for: .video)
+                    }
                 }
             }
         }
@@ -2389,9 +2419,11 @@ class CaptureManager: ObservableObject {
 
     private func openStudio(projectID: String, reopenPickerAfterClose: Bool = false) {
         StudioWindowRegistry.shared.open(projectID: projectID) { [weak self] in
-            if reopenPickerAfterClose,
-               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .video) {
-                self?.showRecordingPicker(for: .video)
+            self?.editorWindowClosed { [weak self] in
+                if reopenPickerAfterClose,
+                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .video) {
+                    self?.showRecordingPicker(for: .video)
+                }
             }
         }
     }
@@ -2413,9 +2445,11 @@ class CaptureManager: ObservableObject {
             }
             DispatchQueue.main.async {
                 self.gifTrimmerWindow = nil
-                if reopenPickerAfterClose,
-                   CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .gif) {
-                    self.showRecordingPicker(for: .gif)
+                self.editorWindowClosed { [weak self] in
+                    if reopenPickerAfterClose,
+                       CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .gif) {
+                        self?.showRecordingPicker(for: .gif)
+                    }
                 }
             }
         }

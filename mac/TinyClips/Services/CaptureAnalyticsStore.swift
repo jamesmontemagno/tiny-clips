@@ -3,7 +3,11 @@ import SwiftUI
 
 @MainActor
 final class CaptureAnalyticsStore: ObservableObject {
+#if APPSTORE
+    static let shared = CaptureAnalyticsStore(reviewPromptState: .shared)
+#else
     static let shared = CaptureAnalyticsStore()
+#endif
 
     struct DailyCounts: Codable {
         var screenshotCount = 0
@@ -75,6 +79,7 @@ final class CaptureAnalyticsStore: ObservableObject {
 
     private let userDefaults: UserDefaults
     private let calendar: Calendar
+    private let reviewPromptState: StoreReviewPromptState?
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
     private lazy var formatter: DateFormatter = {
@@ -88,10 +93,12 @@ final class CaptureAnalyticsStore: ObservableObject {
 
     init(
         userDefaults: UserDefaults = .standard,
-        calendar: Calendar = .autoupdatingCurrent
+        calendar: Calendar = .autoupdatingCurrent,
+        reviewPromptState: StoreReviewPromptState? = nil
     ) {
         self.userDefaults = userDefaults
         self.calendar = calendar
+        self.reviewPromptState = reviewPromptState
 
         if let data = userDefaults.data(forKey: Storage.key),
            let decoded = try? decoder.decode([String: DailyCounts].self, from: data) {
@@ -119,6 +126,7 @@ final class CaptureAnalyticsStore: ObservableObject {
 
     func recordCapture(_ type: CaptureType, on date: Date = Date()) {
         pruneIfNeeded(referenceDate: date)
+        reviewPromptState?.recordCompletedCapture()
 
         let key = dayKey(for: date)
         var counts = history[key] ?? DailyCounts()

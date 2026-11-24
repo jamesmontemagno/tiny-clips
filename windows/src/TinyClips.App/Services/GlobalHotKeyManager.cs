@@ -374,8 +374,9 @@ internal sealed record GlobalHotKeyRegistrationResult(
             .Where(failure => failure.Action is null || failure.Action == action)
             .ToArray();
 
-    public static GlobalHotKeyRegistrationResult Success { get; } = new([]);
+    public static GlobalHotKeyRegistrationResult Success { get; } =
+        new(Array.Empty<GlobalHotKeyRegistrationFailure>());
 
     public static GlobalHotKeyRegistrationResult Failed(GlobalHotKeyRegistrationFailure failure)
-        => new([failure]);
+        => new(new[] { failure });
 }

@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- The Microsoft Store build now asks once, after 30 combined completed screenshots, videos, GIFs, and Studio recordings, whether you would like to review Tiny Clips. Eligibility is checked only when a capture editor closes, never during capture or editing, and remains independent of analytics/settings resets. Captures made without an editor wait for a later editor close, and configured picker reopening stays behind the prompt when one is shown. Direct and winget builds do not count or show it.
+
 ## [v2.3.0-windows] - 2026-11-23
 
 ### Added

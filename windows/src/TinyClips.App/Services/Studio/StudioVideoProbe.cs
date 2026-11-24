@@ -31,7 +31,7 @@ internal static class StudioVideoProbe
         var frameRate = 30.0;
         try
         {
-            var values = await file.Properties.RetrievePropertiesAsync([FrameRateProperty]);
+            var values = await file.Properties.RetrievePropertiesAsync(new[] { FrameRateProperty });
             // Stored in thousandths of a frame per second.
             if (values.TryGetValue(FrameRateProperty, out var raw) && raw is uint thousandths && thousandths > 0)
             {

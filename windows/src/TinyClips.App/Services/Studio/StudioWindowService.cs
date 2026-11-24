@@ -118,6 +118,13 @@ public sealed class StudioWindowService : IStudioProjectHost
     /// <summary>Raised once an export has finished, with the path of the video that was written.</summary>
     public event EventHandler<StudioExportedEventArgs>? Exported;
 
+    /// <summary>Raised after a Studio editor and its asynchronous teardown have finished.</summary>
+    internal event EventHandler? EditorClosed;
+
+    /// <summary>Whether any Studio editor is visible or still completing teardown.</summary>
+    internal bool HasOpenEditors =>
+        _windows.Count > 0 || _teardowns.Any(static task => !task.IsCompleted);
+
     /// <summary>
     /// Raised once the screen recording of a project that could not be shown has been saved as a
     /// video of its own, with the path of that video.
@@ -566,6 +573,8 @@ public sealed class StudioWindowService : IStudioProjectHost
         {
             _tracker.MarkClosed(projectId);
         }
+
+        EditorClosed?.Invoke(this, EventArgs.Empty);
 
         if (!_isExiting)
         {

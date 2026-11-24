@@ -46,4 +46,88 @@ final class CaptureAnalyticsStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.lifetimeTotal(for: .screenshot), 2)
         XCTAssertEqual(reloaded.hourlyBreakdown()[14].count, 3)
     }
+
+    func testReviewStateCountsThirtyCompletedCapturesAndClaimsOnlyOnce() {
+        let reviewState = StoreReviewPromptState(defaults: defaults)
+        let analytics = CaptureAnalyticsStore(
+            userDefaults: defaults,
+            calendar: calendar,
+            reviewPromptState: reviewState
+        )
+
+        for _ in 0..<29 {
+            analytics.recordCapture(.screenshot)
+        }
+
+        XCTAssertEqual(reviewState.completedCaptureCount, 29)
+        XCTAssertFalse(reviewState.claimPromptAfterEditorWindowClosed())
+
+        analytics.recordCapture(.video)
+        XCTAssertEqual(reviewState.completedCaptureCount, StoreReviewPromptState.threshold)
+        XCTAssertFalse(reviewState.claimPromptAfterEditorWindowClosed(isCaptureInProgress: true))
+        XCTAssertFalse(reviewState.hasClaimedPrompt)
+        XCTAssertFalse(reviewState.claimPromptAfterEditorWindowClosed(hasOpenCaptureEditor: true))
+        XCTAssertFalse(reviewState.hasClaimedPrompt)
+        XCTAssertTrue(reviewState.claimPromptAfterEditorWindowClosed())
+        XCTAssertFalse(reviewState.claimPromptAfterEditorWindowClosed())
+
+        CaptureSettings.resetStoredDefaults(defaults)
+        let reloaded = StoreReviewPromptState(defaults: defaults)
+        XCTAssertEqual(reloaded.completedCaptureCount, StoreReviewPromptState.threshold)
+        XCTAssertTrue(reloaded.hasClaimedPrompt)
+    }
+
+    func testCapturesCanAccumulatePastThresholdWithoutClaiming() {
+        let state = StoreReviewPromptState(defaults: defaults)
+        for _ in 0..<35 {
+            state.recordCompletedCapture()
+        }
+
+        XCTAssertEqual(state.completedCaptureCount, 35)
+        XCTAssertTrue(state.isEligible)
+        XCTAssertFalse(state.hasClaimedPrompt)
+    }
+
+    func testReviewStateSurvivesCaptureAnalyticsAndSettingsReset() {
+        let reviewState = StoreReviewPromptState(defaults: defaults)
+        reviewState.recordCompletedCapture()
+        reviewState.recordCompletedCapture()
+
+        let analytics = CaptureAnalyticsStore(
+            userDefaults: defaults,
+            calendar: calendar,
+            reviewPromptState: reviewState
+        )
+        analytics.recordCapture(.gif)
+        analytics.clear()
+        CaptureSettings.resetStoredDefaults(defaults)
+
+        let reloaded = StoreReviewPromptState(defaults: defaults)
+        XCTAssertEqual(reloaded.completedCaptureCount, 3)
+        XCTAssertFalse(reloaded.hasClaimedPrompt)
+    }
+
+    func testReviewStateStartsFreshInsteadOfMigratingLegacyCount() {
+        defaults.set(47, forKey: "appStoreClipCountForReview")
+
+        let state = StoreReviewPromptState(defaults: defaults)
+
+        XCTAssertEqual(state.completedCaptureCount, 0)
+        XCTAssertFalse(state.hasClaimedPrompt)
+        XCTAssertNil(defaults.object(forKey: "appStoreClipCountForReview"))
+    }
+
+    func testReviewStatePreservesLegacyRequestWithoutCountingItsHistory() {
+        defaults.set(47, forKey: "appStoreClipCountForReview")
+        defaults.set(true, forKey: "appStoreReviewRequested")
+
+        let state = StoreReviewPromptState(defaults: defaults)
+        XCTAssertEqual(state.completedCaptureCount, 0)
+        XCTAssertTrue(state.hasClaimedPrompt)
+        XCTAssertFalse(state.claimPromptAfterEditorWindowClosed())
+
+        state.recordCompletedCapture()
+        XCTAssertEqual(state.completedCaptureCount, 0)
+        XCTAssertTrue(defaults.bool(forKey: StoreReviewPromptState.promptClaimedKey))
+    }
 }

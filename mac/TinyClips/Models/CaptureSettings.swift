@@ -977,8 +977,7 @@ class CaptureSettings: ObservableObject {
         "hasCompletedOnboarding", "alwaysCaptureMainDisplay", "multiMonitorCaptureMode", "showRegionIndicator",
         "includeTinyClipsInCapture", "showBrandingOverlay",
         "teleprompterEnabled", "teleprompterTranscript", "teleprompterScrollSpeed", "teleprompterFontSize", "teleprompterPanelHeight",
-        "teleprompterPanelX", "teleprompterPanelY",
-        "appStoreClipCountForReview", "appStoreReviewRequested"
+        "teleprompterPanelX", "teleprompterPanelY"
     ]
 
     static let resetHotKeyDefaultsKeys = [

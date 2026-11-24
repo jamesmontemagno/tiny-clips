@@ -51,6 +51,7 @@
 		D61700000000000000000001 /* GifTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61700000000000000000003 /* GifTiming.swift */; };
 		D61700000000000000000002 /* GifTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61700000000000000000003 /* GifTiming.swift */; };
 		B10000000000000000000009 /* SaveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* SaveService.swift */; };
+		B10000000000000000000045 /* StoreReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000045 /* StoreReviewPrompt.swift */; };
 		B10000000000000000000040 /* WindowPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000040 /* WindowPresenter.swift */; };
 		B1000000000000000000000A /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* PermissionManager.swift */; };
 		B1000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Assets.xcassets */; };
@@ -102,6 +103,7 @@
 		B20000000000000000000007 /* VideoRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* VideoRecorder.swift */; };
 		B20000000000000000000008 /* GifWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008 /* GifWriter.swift */; };
 		B20000000000000000000009 /* SaveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* SaveService.swift */; };
+		B20000000000000000000045 /* StoreReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000045 /* StoreReviewPrompt.swift */; };
 		B20000000000000000000040 /* WindowPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000040 /* WindowPresenter.swift */; };
 		B2000000000000000000000A /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* PermissionManager.swift */; };
 		B2000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Assets.xcassets */; };
@@ -318,6 +320,7 @@
 		A10000000000000000000008 /* GifWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifWriter.swift; sourceTree = "<group>"; };
 		D61700000000000000000003 /* GifTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifTiming.swift; sourceTree = "<group>"; };
 		A10000000000000000000009 /* SaveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveService.swift; sourceTree = "<group>"; };
+		A10000000000000000000045 /* StoreReviewPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreReviewPrompt.swift; sourceTree = "<group>"; };
 		A10000000000000000000040 /* WindowPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowPresenter.swift; sourceTree = "<group>"; };
 		A1000000000000000000000A /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		A1000000000000000000000B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -611,6 +614,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000009 /* SaveService.swift */,
+				A10000000000000000000045 /* StoreReviewPrompt.swift */,
 				A10000000000000000000040 /* WindowPresenter.swift */,
 				A10000000000000000000039 /* IdleSleepAssertion.swift */,
 				A10000000000000000000032 /* CaptureAnalyticsStore.swift */,
@@ -888,6 +892,7 @@
 				B10000000000000000000008 /* GifWriter.swift in Sources */,
 				D61700000000000000000001 /* GifTiming.swift in Sources */,
 				B10000000000000000000009 /* SaveService.swift in Sources */,
+				B10000000000000000000045 /* StoreReviewPrompt.swift in Sources */,
 				B10000000000000000000040 /* WindowPresenter.swift in Sources */,
 				B1000000000000000000000A /* PermissionManager.swift in Sources */,
 				B1000000000000000000000C /* SparkleController.swift in Sources */,
@@ -1010,6 +1015,7 @@
 				B20000000000000000000008 /* GifWriter.swift in Sources */,
 				D61700000000000000000002 /* GifTiming.swift in Sources */,
 				B20000000000000000000009 /* SaveService.swift in Sources */,
+				B20000000000000000000045 /* StoreReviewPrompt.swift in Sources */,
 				B20000000000000000000040 /* WindowPresenter.swift in Sources */,
 				B2000000000000000000000A /* PermissionManager.swift in Sources */,
 				B2000000000000000000000C /* SparkleController.swift in Sources */,

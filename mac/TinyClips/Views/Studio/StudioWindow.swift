@@ -308,6 +308,9 @@ final class StudioWindowRegistry {
                 }
             }
             closeHandler?()
+#if APPSTORE
+            StoreReviewPromptCoordinator.shared.editorWindowClosed()
+#endif
         }
     }
 }
