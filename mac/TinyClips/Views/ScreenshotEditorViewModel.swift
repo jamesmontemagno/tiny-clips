@@ -1031,11 +1031,6 @@ class ScreenshotEditorViewModel: ObservableObject {
         return true
     }
 
-    func selectedTextFontSize() -> CGFloat? {
-        guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return nil }
-        return annotations[index].fontSize
-    }
-
     /// Resizes the selected text. Its box scales with the font around the same center, as a
     /// handle resize does, so the glyphs keep fitting.
     @discardableResult
