@@ -1942,3 +1942,29 @@ enum AnnotationStrokeMath {
         return min(max(scaled, widthRange.lowerBound), widthRange.upperBound)
     }
 }
+
+enum AnnotationColorOpacity {
+    static let percentRange: ClosedRange<CGFloat> = 0...100
+
+    static func percent(for color: Color) -> CGFloat {
+        guard let resolved = NSColor(color).usingColorSpace(.sRGB) else { return 100 }
+        return (resolved.alphaComponent * 100).rounded().clamped(to: percentRange)
+    }
+
+    static func applying(
+        _ percent: CGFloat,
+        to color: Color,
+        fallback: Color? = nil
+    ) -> Color {
+        var resolved = NSColor(color).usingColorSpace(.sRGB) ?? .black
+        if resolved.alphaComponent < 0.001,
+           resolved.redComponent < 0.001,
+           resolved.greenComponent < 0.001,
+           resolved.blueComponent < 0.001,
+           let fallback {
+            resolved = NSColor(fallback).usingColorSpace(.sRGB) ?? resolved
+        }
+        let alpha = percent.clamped(to: percentRange) / 100
+        return Color(nsColor: resolved.withAlphaComponent(alpha))
+    }
+}

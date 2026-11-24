@@ -106,6 +106,53 @@ final class ScreenshotEditorViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testFillOpacitySliderPreservesColorAndRecordsOneUndoStep() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        let original = Color(red: 0.2, green: 0.4, blue: 0.8, opacity: 1)
+        editor.annotations = [
+            ScreenshotAnnotation(
+                tool: .rectangle,
+                rect: CGRect(x: 0.1, y: 0.1, width: 0.4, height: 0.4),
+                color: .red,
+                fillColor: original,
+                lineWidth: 4,
+                text: "",
+                points: []
+            )
+        ]
+        editor.selectedTool = .move
+        editor.selectedAnnotationIndex = 0
+
+        editor.setAdjustingSelectedFillOpacity(true)
+        XCTAssertTrue(editor.updateSelectedShapeFillColor(
+            AnnotationColorOpacity.applying(60, to: original)
+        ))
+        XCTAssertTrue(editor.updateSelectedShapeFillColor(
+            AnnotationColorOpacity.applying(25, to: original)
+        ))
+        editor.setAdjustingSelectedFillOpacity(false)
+
+        XCTAssertEqual(
+            AnnotationColorOpacity.percent(for: editor.annotations[0].fillColor),
+            25
+        )
+        editor.undo()
+        XCTAssertEqual(editor.annotations[0].fillColor, original)
+    }
+
+    func testFillOpacityKeepsRgbWhenChangingAlpha() {
+        let color = Color(red: 0.2, green: 0.4, blue: 0.8)
+        let faded = AnnotationColorOpacity.applying(35, to: color)
+
+        let resolved = NSColor(faded).usingColorSpace(.sRGB)!
+        XCTAssertEqual(resolved.redComponent, 0.2, accuracy: 0.001)
+        XCTAssertEqual(resolved.greenComponent, 0.4, accuracy: 0.001)
+        XCTAssertEqual(resolved.blueComponent, 0.8, accuracy: 0.001)
+        XCTAssertEqual(AnnotationColorOpacity.percent(for: faded), 35)
+    }
+
+    @MainActor
     func testEditorOpensOnTheDefaultToolAndBackgroundDragsDrawNothing() throws {
         let settings = CaptureSettings.shared
         let savedTool = settings.screenshotEditorDefaultTool

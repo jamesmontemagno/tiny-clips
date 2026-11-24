@@ -110,6 +110,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var pencilPoints: [CGPoint] = []
     private var isAdjustingSelectedLineWidth = false
     private var didRecordLineWidthAdjustment = false
+    private var isAdjustingSelectedFillOpacity = false
+    private var didRecordFillOpacityAdjustment = false
     private var isAdjustingSelectedArrowShape = false
     private var didRecordArrowShapeAdjustment = false
     private var imagePixelSize: CGSize = .zero
@@ -839,14 +841,26 @@ class ScreenshotEditorViewModel: ObservableObject {
         return annotations[index].color
     }
 
+    func selectedStrokeColor() -> Color? {
+        selectedShapeColor()
+    }
+
     @discardableResult
     func updateSelectedShapeColor(_ color: Color) -> Bool {
         guard let index = selectedShapeIndex else { return false }
         guard !colorsEqual(annotations[index].color, color) else { return true }
-        recordHistory()
+        if !isAdjustingSelectedFillOpacity || !didRecordFillOpacityAdjustment {
+            recordHistory()
+            didRecordFillOpacityAdjustment = isAdjustingSelectedFillOpacity
+        }
         annotations[index].color = color
         markDirty()
         return true
+    }
+
+    @discardableResult
+    func updateSelectedStrokeColor(_ color: Color) -> Bool {
+        updateSelectedShapeColor(color)
     }
 
     func selectedShapeFillColor() -> Color? {
@@ -858,7 +872,10 @@ class ScreenshotEditorViewModel: ObservableObject {
     func updateSelectedShapeFillColor(_ color: Color) -> Bool {
         guard let index = selectedFillableShapeIndex else { return false }
         guard !colorsEqual(annotations[index].fillColor, color) else { return true }
-        recordHistory()
+        if !isAdjustingSelectedFillOpacity || !didRecordFillOpacityAdjustment {
+            recordHistory()
+            didRecordFillOpacityAdjustment = isAdjustingSelectedFillOpacity
+        }
         annotations[index].fillColor = color
         markDirty()
         return true
@@ -1050,6 +1067,11 @@ class ScreenshotEditorViewModel: ObservableObject {
     func setAdjustingSelectedLineWidth(_ isAdjusting: Bool) {
         isAdjustingSelectedLineWidth = isAdjusting
         didRecordLineWidthAdjustment = false
+    }
+
+    func setAdjustingSelectedFillOpacity(_ isAdjusting: Bool) {
+        isAdjustingSelectedFillOpacity = isAdjusting
+        didRecordFillOpacityAdjustment = false
     }
 
     private func selectedIndex(using uses: (EditTool) -> Bool) -> Int? {
@@ -2208,7 +2230,10 @@ class ScreenshotEditorViewModel: ObservableObject {
             return false
         }
 
-        recordHistory()
+        if !isAdjustingSelectedFillOpacity || !didRecordFillOpacityAdjustment {
+            recordHistory()
+            didRecordFillOpacityAdjustment = isAdjustingSelectedFillOpacity
+        }
         annotations[index].color = color
         markDirty()
         return true

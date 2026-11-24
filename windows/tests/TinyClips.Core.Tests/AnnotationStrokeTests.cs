@@ -1,4 +1,5 @@
 using TinyClips.Core.Editing;
+using Windows.UI;
 
 namespace TinyClips.Core.Tests;
 
@@ -46,5 +47,27 @@ public sealed class AnnotationStrokeTests
         Assert.Equal(StrokeCap.Butt, snapshot.StartCap);
         Assert.Equal(StrokeCap.Square, snapshot.EndCap);
         Assert.Equal(StrokeJoin.Bevel, snapshot.LineJoin);
+    }
+
+    [Fact]
+    public void FillOpacityKeepsRgbAndClampsTheRequestedPercentage()
+    {
+        var color = Color.FromArgb(255, 12, 34, 56);
+
+        var translucent = AnnotationColorMath.WithOpacity(color, 0.25);
+        var clamped = AnnotationColorMath.WithOpacity(color, 2);
+        var restored = AnnotationColorMath.WithOpacity(
+            Color.FromArgb(0, 0, 0, 0),
+            0.5,
+            Color.FromArgb(255, 240, 241, 242));
+
+        Assert.Equal((byte)64, translucent.A);
+        Assert.Equal(color.R, translucent.R);
+        Assert.Equal(color.G, translucent.G);
+        Assert.Equal(color.B, translucent.B);
+        Assert.Equal(0.25, AnnotationColorMath.Opacity(translucent), 2);
+        Assert.Equal((byte)255, clamped.A);
+        Assert.Equal((byte)240, restored.R);
+        Assert.Equal((byte)128, restored.A);
     }
 }

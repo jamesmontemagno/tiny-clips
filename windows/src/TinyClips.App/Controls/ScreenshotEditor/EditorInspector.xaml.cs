@@ -160,11 +160,15 @@ public sealed partial class EditorInspector : UserControl
         FontFamilyCombo.SelectedIndex = 0;
 
         StrokeSlider.Value = _controller.StrokeThickness;
+        PrimaryFillOpacitySlider.Value = AnnotationColorMath.Opacity(_controller.StrokeColor) * 100;
         NumberSizeSlider.Value = _controller.NumberScale;
         FontSizeSlider.Value = _controller.TextFontSize;
         SyncTextBoxStyle(_controller.TextBoxStyleDefault);
         FillCheck.IsChecked = _controller.FillEnabled;
         FillColorPicker.Color = _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
+        FillOpacitySlider.Value = _controller.FillEnabled
+            ? AnnotationColorMath.Opacity(_controller.FillColor) * 100
+            : 0;
         UpdateInspectorHeaders();
 
         _inspectorInitializing = false;
@@ -175,9 +179,48 @@ public sealed partial class EditorInspector : UserControl
         // Read the sliders, which hold the selection's values while one is shown.
         StrokeSlider.Header = $"{_strokeSliderLabel} — {(int)StrokeSlider.Value} px";
         OutlineSlider.Header = OutlineSlider.Value > 0 ? $"Stroke — {(int)OutlineSlider.Value} px" : "Stroke — none";
+        PrimaryFillOpacitySlider.Header = $"Opacity — {Math.Round(PrimaryFillOpacitySlider.Value)}%";
+        FillOpacitySlider.Header = $"Fill opacity — {Math.Round(FillOpacitySlider.Value)}%";
+        TextBackgroundOpacitySlider.Header = $"Background opacity — {Math.Round(TextBackgroundOpacitySlider.Value)}%";
         NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(NumberSizeSlider.Value * 100)}%";
         FontSizeSlider.Header = $"Font size — {(int)FontSizeSlider.Value} px";
         RotationSlider.Header = $"Rotation — {(int)Math.Round(RotationSlider.Value)}°";
+    }
+
+    private void SyncPrimaryFillOpacity(Color color)
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+        AnnotationColorPicker.Color = color;
+        PrimaryFillOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
+        _inspectorInitializing = wasInitializing;
+    }
+
+    private void SyncFillOpacityControls()
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+
+        var primaryColor = _controller.SelectedAnnotation is { } selected
+            ? selected.Color
+            : _controller.StrokeColor;
+        AnnotationColorPicker.Color = primaryColor;
+        PrimaryFillOpacitySlider.Value = AnnotationColorMath.Opacity(primaryColor) * 100;
+
+        var fillColor = _controller.SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } fillable
+            ? fillable.FillColor
+            : _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
+        FillColorPicker.Color = fillColor.A > 0 ? fillColor : Colors.Transparent;
+        FillOpacitySlider.Value = fillColor.A > 0
+            ? AnnotationColorMath.Opacity(fillColor) * 100
+            : 0;
+        FillCheck.IsChecked = fillColor.A > 0;
+
+        var textBackground = CurrentTextBoxStyle().BackgroundColor;
+        TextBackgroundColorPicker.Color = textBackground;
+        TextBackgroundOpacitySlider.Value = AnnotationColorMath.Opacity(textBackground) * 100;
+
+        _inspectorInitializing = wasInitializing;
     }
 
     private void InitializeEmojiControls()
@@ -358,6 +401,7 @@ public sealed partial class EditorInspector : UserControl
             SelectFontInCombo(_controller.TextFontFamily);
             SyncTextBoxStyle(_controller.TextBoxStyleDefault);
         }
+        SyncFillOpacityControls();
 
         InspectorTitle.Text = tool switch
         {
@@ -460,6 +504,7 @@ public sealed partial class EditorInspector : UserControl
             RedactStyleChoice.SelectedIndex = (int)ann.RedactStyle;
         }
 
+        SyncFillOpacityControls();
         UpdateInspectorHeaders();
         _inspectorInitializing = false;
     }
@@ -489,6 +534,7 @@ public sealed partial class EditorInspector : UserControl
         TextBorderWidthSlider.Value = style.BorderWidth;
         TextPaddingSlider.Value = style.Padding;
         TextCornerRadiusSlider.Value = style.CornerRadius;
+        TextBackgroundOpacitySlider.Value = AnnotationColorMath.Opacity(style.BackgroundColor) * 100;
         TextBorderWidthSlider.Header = $"Border width — {(int)style.BorderWidth} px";
         TextPaddingSlider.Header = $"Padding — {(int)style.Padding} px";
         TextCornerRadiusSlider.Header = $"Corner radius — {(int)style.CornerRadius} px";
@@ -502,7 +548,19 @@ public sealed partial class EditorInspector : UserControl
         if (!_inspectorInitializing)
         {
             _controller.SetStrokeColor(color);
+            SyncPrimaryFillOpacity(color);
         }
+    }
+
+    private void OnPrimaryFillOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetStrokeOpacity(e.NewValue / 100);
+        SyncPrimaryFillOpacity(_controller.StrokeColor);
     }
 
     private void OnNumberColorChanged(object? sender, Color color)
@@ -534,8 +592,13 @@ public sealed partial class EditorInspector : UserControl
         var label = tool.UsesOutline() ? "Fill"
             : tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Pen ? "Stroke color"
             : "Color";
+        var showsFillOpacity = tool.UsesOutline() || tool == EditTool.Counter;
         ColorLabel.Text = label;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AnnotationColorPicker, label);
+        PrimaryFillOpacitySlider.Visibility = showsFillOpacity ? Visibility.Visible : Visibility.Collapsed;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            PrimaryFillOpacitySlider,
+            tool == EditTool.Counter ? "Badge opacity" : "Fill opacity");
         _strokeSliderLabel = tool.UsesOutline() ? "Size" : "Stroke";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(StrokeSlider, tool.UsesOutline() ? "Size" : "Stroke width");
     }
@@ -688,7 +751,8 @@ public sealed partial class EditorInspector : UserControl
 
         var enabled = FillCheck.IsChecked == true;
         _controller.SetFillEnabled(enabled);
-        FillColorPicker.Color = enabled ? _controller.FillColor : Colors.Transparent;
+        SyncFillOpacityControls();
+        UpdateInspectorHeaders();
     }
 
     private void OnFillColorChanged(object? sender, Color color)
@@ -707,6 +771,20 @@ public sealed partial class EditorInspector : UserControl
         {
             FillCheck.IsChecked = true;
         }
+        SyncFillOpacityControls();
+        UpdateInspectorHeaders();
+    }
+
+    private void OnFillOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetFillOpacity(e.NewValue / 100);
+        SyncFillOpacityControls();
+        UpdateInspectorHeaders();
     }
 
     private void OnFontFamilyChanged(object sender, SelectionChangedEventArgs e)
@@ -764,6 +842,19 @@ public sealed partial class EditorInspector : UserControl
         }
         _controller.SetTextBoxBackground(color);
         SyncTextBoxStyle(CurrentTextBoxStyle());
+        UpdateInspectorHeaders();
+    }
+
+    private void OnTextBackgroundOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetTextBoxBackgroundOpacity(e.NewValue / 100);
+        SyncTextBoxStyle(CurrentTextBoxStyle());
+        UpdateInspectorHeaders();
     }
 
     private void OnTextBorderColorChanged(object? sender, Color color)

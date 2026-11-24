@@ -492,6 +492,14 @@ internal sealed class EditorController : IDisposable
         }
     }
 
+    public void SetStrokeOpacity(double opacity)
+    {
+        var source = Tool == EditTool.Select && SelectedAnnotation is { } selected
+            ? selected.Color
+            : StrokeColor;
+        SetStrokeColor(AnnotationColorMath.WithOpacity(source, opacity));
+    }
+
     public void SetNumberColor(Color color)
     {
         NumberTextColor = color;
@@ -700,6 +708,40 @@ internal sealed class EditorController : IDisposable
         }
     }
 
+    public void SetFillOpacity(double opacity)
+    {
+        opacity = Math.Clamp(opacity, 0, 1);
+        var selected = SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann
+            ? ann
+            : null;
+        var source = selected is { FillColor.A: > 0 } ? selected.FillColor : FillColor;
+
+        if (opacity <= 0)
+        {
+            FillEnabled = false;
+            // Keep a remembered RGB color and previous nonzero alpha for the next slider move.
+            var rememberedAlpha = FillColor.A > 0 ? FillColor.A : (byte)255;
+            FillColor = Color.FromArgb(rememberedAlpha, source.R, source.G, source.B);
+            if (selected is not null)
+            {
+                selected.FillColor = Colors.Transparent;
+                MarkDirty();
+                AnnotationVisualInvalidated?.Invoke(this, selected);
+            }
+            return;
+        }
+
+        var updated = AnnotationColorMath.WithOpacity(source, opacity);
+        FillColor = updated;
+        FillEnabled = true;
+        if (selected is not null)
+        {
+            selected.FillColor = updated;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, selected);
+        }
+    }
+
     public void SetFontFamily(string font)
     {
         if (SelectedAnnotation is { Tool: EditTool.Text } ann)
@@ -821,6 +863,17 @@ internal sealed class EditorController : IDisposable
 
     public void SetTextBoxBackground(Color color) =>
         UpdateTextBoxStyle(style => style with { BackgroundColor = color });
+
+    public void SetTextBoxBackgroundOpacity(double opacity)
+    {
+        var current = SelectedAnnotation is { Tool: EditTool.Text } selected
+            ? selected.TextBoxStyle.BackgroundColor
+            : TextBoxStyleDefault.BackgroundColor;
+        SetTextBoxBackground(AnnotationColorMath.WithOpacity(
+            current,
+            opacity,
+            Color.FromArgb(255, 245, 245, 248)));
+    }
 
     public void SetTextBoxBorderColor(Color color) =>
         UpdateTextBoxStyle(style => style with { BorderColor = color });

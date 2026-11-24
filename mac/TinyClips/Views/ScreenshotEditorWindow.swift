@@ -589,6 +589,50 @@ struct ScreenshotEditorView: View {
         )
     }
 
+    private var primaryFillOpacityBinding: Binding<CGFloat> {
+        Binding(
+            get: {
+                AnnotationColorOpacity.percent(for: primaryColorBinding.wrappedValue)
+            },
+            set: { newValue in
+                primaryColorBinding.wrappedValue = AnnotationColorOpacity.applying(
+                    newValue,
+                    to: primaryColorBinding.wrappedValue
+                )
+            }
+        )
+    }
+
+    private var shapeFillOpacityBinding: Binding<CGFloat> {
+        Binding(
+            get: {
+                AnnotationColorOpacity.percent(for: fillColorBinding.wrappedValue)
+            },
+            set: { newValue in
+                fillColorBinding.wrappedValue = AnnotationColorOpacity.applying(
+                    newValue,
+                    to: fillColorBinding.wrappedValue,
+                    fallback: Color(nsColor: NSColor(srgbRed: 1, green: 0.835, blue: 0, alpha: 1))
+                )
+            }
+        )
+    }
+
+    private var textBoxBackgroundOpacityBinding: Binding<CGFloat> {
+        Binding(
+            get: {
+                AnnotationColorOpacity.percent(for: textBoxBackgroundBinding.wrappedValue)
+            },
+            set: { newValue in
+                textBoxBackgroundBinding.wrappedValue = AnnotationColorOpacity.applying(
+                    newValue,
+                    to: textBoxBackgroundBinding.wrappedValue,
+                    fallback: Color(nsColor: NSColor(srgbRed: 0.95, green: 0.95, blue: 0.96, alpha: 1))
+                )
+            }
+        )
+    }
+
     private var startCapBinding: Binding<StrokeCap> {
         Binding(
             get: { viewModel.selectedStartCap() ?? viewModel.startCap },
@@ -901,6 +945,28 @@ struct ScreenshotEditorView: View {
         } else {
             viewModel.endSelectedTextStyleEdit()
         }
+    }
+
+    private func opacitySlider(
+        _ title: String,
+        value: Binding<CGFloat>,
+        onEditingChanged: @escaping (Bool) -> Void
+    ) -> some View {
+        LabeledContent(title) {
+            HStack(spacing: 8) {
+                Slider(
+                    value: value,
+                    in: AnnotationColorOpacity.percentRange,
+                    step: 1,
+                    onEditingChanged: onEditingChanged
+                )
+                Text("\(Int(value.wrappedValue))%")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .frame(width: 38, alignment: .trailing)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     var body: some View {
@@ -1423,6 +1489,11 @@ struct ScreenshotEditorView: View {
                     supportsOpacity: true,
                     allowsTransparent: true
                 )
+                opacitySlider(
+                    "Background opacity",
+                    value: textBoxBackgroundOpacityBinding,
+                    onEditingChanged: handleTextSliderEditing
+                )
                 SwatchColorPicker(
                     label: "Border",
                     color: textBoxBorderColorBinding,
@@ -1478,6 +1549,13 @@ struct ScreenshotEditorView: View {
 
             if viewModel.showsLineWidthControl, let primaryColorLabel {
                 SwatchColorPicker(label: primaryColorLabel, color: primaryColorBinding, supportsOpacity: true)
+                if viewModel.showsOutlineControls {
+                    opacitySlider(
+                        "Fill opacity",
+                        value: primaryFillOpacityBinding,
+                        onEditingChanged: viewModel.setAdjustingSelectedFillOpacity
+                    )
+                }
             }
 
             if viewModel.showsLineWidthControl {
@@ -1529,6 +1607,19 @@ struct ScreenshotEditorView: View {
 
             if showsFillColorPicker {
                 SwatchColorPicker(label: "Fill", color: fillColorBinding, supportsOpacity: true, allowsTransparent: true)
+                opacitySlider(
+                    "Fill opacity",
+                    value: shapeFillOpacityBinding,
+                    onEditingChanged: viewModel.setAdjustingSelectedFillOpacity
+                )
+            }
+
+            if inspectorTool == .number {
+                opacitySlider(
+                    "Badge opacity",
+                    value: primaryFillOpacityBinding,
+                    onEditingChanged: viewModel.setAdjustingSelectedFillOpacity
+                )
             }
 
             if viewModel.showsStartCapControl {

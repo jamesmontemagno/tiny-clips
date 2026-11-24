@@ -100,6 +100,16 @@
                         AutomationProperties.Name="Color"
                         ColorChanged="OnColorChanged"
                         IsAlphaEnabled="False" />
+                    <Slider
+                        x:Name="PrimaryFillOpacitySlider"
+                        AutomationProperties.AutomationId="EditorPrimaryFillOpacitySlider"
+                        AutomationProperties.Name="Fill opacity"
+                        Header="Fill opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnPrimaryFillOpacityChanged"
+                        Visibility="Collapsed" />
                 </StackPanel>
 
                 <!--  Stroke width  -->
@@ -266,6 +276,15 @@
                         AllowTransparent="True"
                         ColorChanged="OnFillColorChanged"
                         IsAlphaEnabled="True" />
+                    <Slider
+                        x:Name="FillOpacitySlider"
+                        AutomationProperties.AutomationId="EditorFillOpacitySlider"
+                        AutomationProperties.Name="Fill opacity"
+                        Header="Fill opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnFillOpacityChanged" />
                 </StackPanel>
 
                 <!--  Text  -->
@@ -315,6 +334,18 @@
                         AllowTransparent="True"
                         ColorChanged="OnTextBackgroundColorChanged"
                         IsAlphaEnabled="True" />
+                    <Slider
+                        x:Name="TextBackgroundOpacitySlider"
+                        AutomationProperties.AutomationId="EditorTextBackgroundOpacitySlider"
+                        AutomationProperties.Name="Text box background opacity"
+                        Header="Background opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnTextBackgroundOpacityChanged" />
                     <local:SwatchColorPicker
                         x:Name="TextBorderColorPicker"
                         AutomationProperties.AutomationId="EditorTextBorderColorButton"
