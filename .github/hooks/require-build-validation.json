@@ -1,6 +1,14 @@
 {
   "version": 1,
   "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "/usr/bin/env python3 .github/hooks/require_build_validation.py preToolUse",
+        "powershell": "python .github/hooks/require_build_validation.py preToolUse",
+        "timeoutSec": 10
+      }
+    ],
     "postToolUse": [
       {
         "type": "command",
