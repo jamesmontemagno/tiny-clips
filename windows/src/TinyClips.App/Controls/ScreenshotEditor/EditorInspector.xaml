@@ -45,6 +45,17 @@
                     Style="{StaticResource BodyStrongTextBlockStyle}"
                     Text="Tool" />
 
+                <StackPanel
+                    x:Name="SelectHintSection"
+                    Spacing="6"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Select an annotation on the canvas to adjust its appearance. Drag inside it to move, or use its handles to resize and rotate."
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
                 <!--  Crop actions belong with the active Crop tool, not the global command bar.  -->
                 <StackPanel
                     x:Name="CropSection"

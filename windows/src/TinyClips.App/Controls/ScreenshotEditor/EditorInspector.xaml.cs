@@ -308,9 +308,7 @@ public sealed partial class EditorInspector : UserControl
     private void ShowForTool(EditTool tool)
     {
         _inspectorInitializing = true;
-        Visibility = tool == EditTool.Select && _controller.SelectedAnnotation is null
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        Visibility = Visibility.Visible;
 
         var showsStroke = tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Arrow
             or EditTool.Line or EditTool.Pen;
@@ -325,6 +323,9 @@ public sealed partial class EditorInspector : UserControl
         var showsBackground = tool is EditTool.Background;
         var showsCrop = tool is EditTool.Crop;
 
+        SelectHintSection.Visibility = tool == EditTool.Select
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         CropSection.Visibility = showsCrop ? Visibility.Visible : Visibility.Collapsed;
         ColorSection.Visibility = showsColor ? Visibility.Visible : Visibility.Collapsed;
         ShowColorLabel(tool);
@@ -441,6 +442,7 @@ public sealed partial class EditorInspector : UserControl
         var isEmoji = ann.Tool is EditTool.Emoji;
         var hasColor = isShape || isText || isCounter;
 
+        SelectHintSection.Visibility = Visibility.Collapsed;
         CropSection.Visibility = Visibility.Collapsed;
         ColorSection.Visibility = hasColor ? Visibility.Visible : Visibility.Collapsed;
         ShowColorLabel(ann.Tool);
