@@ -111,16 +111,6 @@
                         AutomationProperties.Name="Color"
                         ColorChanged="OnColorChanged"
                         IsAlphaEnabled="False" />
-                    <Slider
-                        x:Name="PrimaryFillOpacitySlider"
-                        AutomationProperties.AutomationId="EditorPrimaryFillOpacitySlider"
-                        AutomationProperties.Name="Fill opacity"
-                        Header="Fill opacity"
-                        Maximum="100"
-                        Minimum="0"
-                        StepFrequency="1"
-                        ValueChanged="OnPrimaryFillOpacityChanged"
-                        Visibility="Collapsed" />
                 </StackPanel>
 
                 <!--  Stroke width  -->
@@ -134,6 +124,16 @@
                         Minimum="1"
                         StepFrequency="1"
                         ValueChanged="OnStrokeChanged" />
+                    <Slider
+                        x:Name="StrokeOpacitySlider"
+                        AutomationProperties.AutomationId="EditorStrokeOpacitySlider"
+                        AutomationProperties.Name="Stroke opacity"
+                        Header="Stroke opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnStrokeOpacityChanged"
+                        Visibility="Collapsed" />
                 </StackPanel>
 
                 <!--  Outline for arrows and lines (their color and width above are the body)  -->
@@ -157,6 +157,15 @@
                         Minimum="0"
                         StepFrequency="1"
                         ValueChanged="OnOutlineWidthChanged" />
+                    <Slider
+                        x:Name="OutlineOpacitySlider"
+                        AutomationProperties.AutomationId="EditorOutlineOpacitySlider"
+                        AutomationProperties.Name="Stroke opacity"
+                        Header="Stroke opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnOutlineOpacityChanged" />
                 </StackPanel>
 
                 <!--  Stroke position for closed shapes (item order matches StrokeAlignment)  -->
@@ -422,6 +431,15 @@
                         Minimum="0.5"
                         StepFrequency="0.25"
                         ValueChanged="OnNumberSizeChanged" />
+                    <Slider
+                        x:Name="BadgeOpacitySlider"
+                        AutomationProperties.AutomationId="EditorBadgeOpacitySlider"
+                        AutomationProperties.Name="Badge opacity"
+                        Header="Badge opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        StepFrequency="1"
+                        ValueChanged="OnBadgeOpacityChanged" />
                     <StackPanel Spacing="6">
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"

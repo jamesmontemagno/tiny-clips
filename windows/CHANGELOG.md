@@ -6,6 +6,10 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Rectangle, ellipse, arrow, line, and Draw controls in the Windows screenshot editor now expose direct stroke-opacity sliders; fill and badge opacity sliders sit directly below their related size controls.
+- The screenshot editor's Undo and Reset commands stay disabled until there are editable changes, and Delete is enabled only while an annotation is selected.
+- The Windows screenshot editor's Add/Edit text popup no longer clips controls at the right edge and now stretches its optional box controls to the available width.
+- Undo in the screenshot editor now restores the full image and annotations after one or more crop operations, including edits made between crops.
 - After switching tools, the screenshot editor inspector shows the new tool's color, stroke width, fill, and badge settings instead of those of the last selected annotation, and the **Stroke**, **Font size**, and **Badge size** labels show the selected annotation's values.
 - Selecting a redaction in the screenshot editor no longer marks the screenshot as edited or makes its style and strength the defaults for new redactions.
 

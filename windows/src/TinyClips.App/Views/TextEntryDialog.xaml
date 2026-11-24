@@ -14,7 +14,7 @@
     PrimaryButtonText="OK"
     mc:Ignorable="d">
 
-    <StackPanel MinWidth="520" Spacing="16">
+    <StackPanel HorizontalAlignment="Stretch" Spacing="16">
         <TextBox
             x:Name="EntryBox"
             MinHeight="96"
@@ -134,7 +134,7 @@
             <local:SwatchColorPicker
                 x:Name="TextColorPicker"
                 Grid.Column="1"
-                MinWidth="180"
+                MinWidth="0"
                 AutomationProperties.AutomationId="TextDialogColor"
                 AutomationProperties.Name="Text color"
                 ColorChanged="OnColorChanged"
@@ -174,9 +174,13 @@
         <Expander
             x:Name="BoxExpander"
             HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch"
             AutomationProperties.AutomationId="TextDialogBoxExpander"
             Header="Box details">
-            <StackPanel Padding="0,12,0,0" Spacing="12">
+            <StackPanel
+                Padding="0,12,0,0"
+                HorizontalAlignment="Stretch"
+                Spacing="12">
                 <Grid ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />

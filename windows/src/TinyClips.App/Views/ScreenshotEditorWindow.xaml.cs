@@ -110,6 +110,9 @@ public sealed partial class ScreenshotEditorWindow : Window
 
             _controller.ImageChanged += OnControllerImageChanged;
             _controller.DocumentChanged += OnSensitiveTextDocumentChanged;
+            _controller.DocumentChanged += (_, _) => UpdateCommandButtonStates();
+            _controller.SelectionChanged += (_, _) => UpdateCommandButtonStates();
+            _controller.AnnotationsStructureChanged += (_, _) => UpdateCommandButtonStates();
             // Padding, corner radius, shadow and frame presets change the exported frame size without
             // touching the source bitmap, so the advertised output resolution has to follow them too.
             _controller.BackgroundChanged += OnControllerImageChanged;
@@ -118,6 +121,7 @@ public sealed partial class ScreenshotEditorWindow : Window
                 Inspector.SetCropSelectionAvailable(available);
                 _hasPendingCropSelection = available;
             };
+            UpdateCommandButtonStates();
         }
 
         using (_openTrace?.Measure(WindowOpenPhase.ChromeAndPlacement))
@@ -153,7 +157,18 @@ public sealed partial class ScreenshotEditorWindow : Window
         _openTrace?.Mark(WindowOpenMilestone.ConstructorCompleted);
     }
 
-    private void OnControllerImageChanged(object? sender, EventArgs e) => UpdateOutputResolutionText();
+    private void OnControllerImageChanged(object? sender, EventArgs e)
+    {
+        UpdateOutputResolutionText();
+        UpdateCommandButtonStates();
+    }
+
+    private void UpdateCommandButtonStates()
+    {
+        UndoButton.IsEnabled = _controller.CanUndo;
+        ResetButton.IsEnabled = _controller.CanReset;
+        DeleteButton.IsEnabled = _controller.CanDeleteSelected;
+    }
 
     /// <summary>
     /// Uses the renderer's shared frame truncation/scale rounding so the advertised size matches
@@ -570,14 +585,31 @@ public sealed partial class ScreenshotEditorWindow : Window
         }
     }
 
-    private void OnUndo(object sender, RoutedEventArgs e)
+    private async void OnUndo(object sender, RoutedEventArgs e)
     {
+        if (!_controller.CanUndo)
+        {
+            return;
+        }
+
         // Cancel any in-flight drag/move on the canvas before the controller mutates its
         // annotation list — otherwise a redaction mid-move (or mid-draw) can keep tracking the
         // pointer against an annotation Undo just removed, leaving a "ghost" that redraws itself
         // on the next pointer move even though it no longer exists in Annotations.
         Canvas.CancelActiveInteraction();
-        _controller.Undo();
+        UndoButton.IsEnabled = false;
+        try
+        {
+            await _controller.UndoAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Undo failed: {ex}");
+        }
+        finally
+        {
+            UpdateCommandButtonStates();
+        }
     }
 
     private void OnDeleteSelected(object sender, RoutedEventArgs e)
@@ -588,7 +620,13 @@ public sealed partial class ScreenshotEditorWindow : Window
         _controller.DeleteSelected();
     }
 
-    private void OnReset(object sender, RoutedEventArgs e) => _ = LoadAsync();
+    private void OnReset(object sender, RoutedEventArgs e)
+    {
+        if (_controller.CanReset)
+        {
+            _ = LoadAsync();
+        }
+    }
 
     // -- Crop -------------------------------------------------------------------------------
 
@@ -693,7 +731,10 @@ public sealed partial class ScreenshotEditorWindow : Window
                 _activeSavePath = path;
             }
 
-            _controller.MarkSaved(snapshot.Revision);
+            if (_controller.MarkSaved(snapshot.Revision))
+            {
+                UpdateCommandButtonStates();
+            }
             App.ShowSaveNotification(path);
         }
 

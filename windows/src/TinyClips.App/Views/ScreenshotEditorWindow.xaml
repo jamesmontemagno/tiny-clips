@@ -104,6 +104,7 @@
                     x:Name="UndoButton"
                     AutomationProperties.AutomationId="EditorUndoButton"
                     Click="OnUndo"
+                    IsEnabled="False"
                     Label="Undo"
                     ToolTipService.ToolTip="Undo (Ctrl+Z)">
                     <AppBarButton.Icon>
@@ -115,6 +116,7 @@
                     AutomationProperties.AutomationId="EditorDeleteButton"
                     Click="OnDeleteSelected"
                     Icon="Delete"
+                    IsEnabled="False"
                     Label="Delete"
                     ToolTipService.ToolTip="Delete selected (Del)" />
                 <AppBarButton
@@ -122,6 +124,7 @@
                     AutomationProperties.AutomationId="EditorResetButton"
                     Click="OnReset"
                     Icon="Refresh"
+                    IsEnabled="False"
                     Label="Reset"
                     ToolTipService.ToolTip="Reset all edits" />
                 <AppBarButton

@@ -82,6 +82,9 @@
     <EmbeddedResource Include="..\..\src\TinyClips.App\Views\TextEntryDialog.xaml"
                       Link="ScreenshotEditorMarkup\TextEntryDialog.xaml"
                       LogicalName="ScreenshotEditorMarkup.TextEntryDialog.xaml" />
+    <Content Include="..\..\src\TinyClips.App\Views\ScreenshotEditorWindow.xaml"
+             Link="ScreenshotEditorWindow.xaml"
+             CopyToOutputDirectory="PreserveNewest" />
     <!-- A clock a test advances by hand, shared with the Core tests. -->
     <Compile Include="..\TinyClips.Core.Tests\ManualTimeProvider.cs" Link="Support\ManualTimeProvider.cs" />
     <Compile Include="..\..\src\TinyClips.App\Views\CapturePickerKeyboardShortcuts.cs" Link="CapturePickerKeyboardShortcuts.cs" />

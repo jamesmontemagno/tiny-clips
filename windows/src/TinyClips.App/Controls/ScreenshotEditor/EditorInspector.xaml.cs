@@ -26,6 +26,7 @@ public sealed partial class EditorInspector : UserControl
     private EditorController _controller = null!;
     private bool _inspectorInitializing = true;
     private string _strokeSliderLabel = "Stroke";
+    private string _strokeOpacityLabel = "Stroke opacity";
     private bool _bgInitializing;
     private bool _backgroundSelectionBusy;
     private ContentDialog? _backgroundColorDialog;
@@ -160,7 +161,8 @@ public sealed partial class EditorInspector : UserControl
         FontFamilyCombo.SelectedIndex = 0;
 
         StrokeSlider.Value = _controller.StrokeThickness;
-        PrimaryFillOpacitySlider.Value = AnnotationColorMath.Opacity(_controller.StrokeColor) * 100;
+        StrokeOpacitySlider.Value = AnnotationColorMath.Opacity(_controller.StrokeColor) * 100;
+        BadgeOpacitySlider.Value = AnnotationColorMath.Opacity(_controller.StrokeColor) * 100;
         NumberSizeSlider.Value = _controller.NumberScale;
         FontSizeSlider.Value = _controller.TextFontSize;
         SyncTextBoxStyle(_controller.TextBoxStyleDefault);
@@ -179,8 +181,10 @@ public sealed partial class EditorInspector : UserControl
         // Read the sliders, which hold the selection's values while one is shown.
         StrokeSlider.Header = $"{_strokeSliderLabel} — {(int)StrokeSlider.Value} px";
         OutlineSlider.Header = OutlineSlider.Value > 0 ? $"Stroke — {(int)OutlineSlider.Value} px" : "Stroke — none";
-        PrimaryFillOpacitySlider.Header = $"Opacity — {Math.Round(PrimaryFillOpacitySlider.Value)}%";
+        StrokeOpacitySlider.Header = $"{_strokeOpacityLabel} — {Math.Round(StrokeOpacitySlider.Value)}%";
+        BadgeOpacitySlider.Header = $"Badge opacity — {Math.Round(BadgeOpacitySlider.Value)}%";
         FillOpacitySlider.Header = $"Fill opacity — {Math.Round(FillOpacitySlider.Value)}%";
+        OutlineOpacitySlider.Header = $"Stroke opacity — {Math.Round(OutlineOpacitySlider.Value)}%";
         TextBackgroundOpacitySlider.Header = $"Background opacity — {Math.Round(TextBackgroundOpacitySlider.Value)}%";
         NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(NumberSizeSlider.Value * 100)}%";
         FontSizeSlider.Header = $"Font size — {(int)FontSizeSlider.Value} px";
@@ -192,7 +196,8 @@ public sealed partial class EditorInspector : UserControl
         var wasInitializing = _inspectorInitializing;
         _inspectorInitializing = true;
         AnnotationColorPicker.Color = color;
-        PrimaryFillOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
+        BadgeOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
+        StrokeOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
         _inspectorInitializing = wasInitializing;
     }
 
@@ -205,7 +210,8 @@ public sealed partial class EditorInspector : UserControl
             ? selected.Color
             : _controller.StrokeColor;
         AnnotationColorPicker.Color = primaryColor;
-        PrimaryFillOpacitySlider.Value = AnnotationColorMath.Opacity(primaryColor) * 100;
+        BadgeOpacitySlider.Value = AnnotationColorMath.Opacity(primaryColor) * 100;
+        StrokeOpacitySlider.Value = AnnotationColorMath.Opacity(primaryColor) * 100;
 
         var fillColor = _controller.SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } fillable
             ? fillable.FillColor
@@ -554,7 +560,7 @@ public sealed partial class EditorInspector : UserControl
         }
     }
 
-    private void OnPrimaryFillOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    private void OnBadgeOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_inspectorInitializing)
         {
@@ -563,6 +569,19 @@ public sealed partial class EditorInspector : UserControl
 
         _controller.SetStrokeOpacity(e.NewValue / 100);
         SyncPrimaryFillOpacity(_controller.StrokeColor);
+        UpdateInspectorHeaders();
+    }
+
+    private void OnStrokeOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetStrokeOpacity(e.NewValue / 100);
+        SyncPrimaryFillOpacity(_controller.StrokeColor);
+        UpdateInspectorHeaders();
     }
 
     private void OnNumberColorChanged(object? sender, Color color)
@@ -594,13 +613,15 @@ public sealed partial class EditorInspector : UserControl
         var label = tool.UsesOutline() ? "Fill"
             : tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Pen ? "Stroke color"
             : "Color";
-        var showsFillOpacity = tool.UsesOutline() || tool == EditTool.Counter;
+        var usesPrimarySize = tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Arrow
+            or EditTool.Line or EditTool.Pen;
+        _strokeOpacityLabel = tool.UsesOutline() ? "Fill opacity" : "Stroke opacity";
         ColorLabel.Text = label;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AnnotationColorPicker, label);
-        PrimaryFillOpacitySlider.Visibility = showsFillOpacity ? Visibility.Visible : Visibility.Collapsed;
+        StrokeOpacitySlider.Visibility = usesPrimarySize ? Visibility.Visible : Visibility.Collapsed;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-            PrimaryFillOpacitySlider,
-            tool == EditTool.Counter ? "Badge opacity" : "Fill opacity");
+            StrokeOpacitySlider,
+            _strokeOpacityLabel);
         _strokeSliderLabel = tool.UsesOutline() ? "Size" : "Stroke";
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(StrokeSlider, tool.UsesOutline() ? "Size" : "Stroke width");
     }
@@ -611,6 +632,7 @@ public sealed partial class EditorInspector : UserControl
         OutlineSection.Visibility = tool.UsesOutline() ? Visibility.Visible : Visibility.Collapsed;
         OutlineColorPicker.Color = color;
         OutlineSlider.Value = width;
+        OutlineOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
     }
 
     private void OnOutlineColorChanged(object? sender, Color color)
@@ -618,7 +640,32 @@ public sealed partial class EditorInspector : UserControl
         if (!_inspectorInitializing)
         {
             _controller.SetOutlineColor(color);
+            SyncOutlineOpacity(color);
         }
+    }
+
+    private void OnOutlineOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetOutlineOpacity(e.NewValue / 100);
+        var color = _controller.SelectedAnnotation is { } selected && selected.Tool.UsesOutline()
+            ? selected.OutlineColor
+            : _controller.OutlineColorDefault;
+        SyncOutlineOpacity(color);
+        UpdateInspectorHeaders();
+    }
+
+    private void SyncOutlineOpacity(Color color)
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+        OutlineColorPicker.Color = color;
+        OutlineOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
+        _inspectorInitializing = wasInitializing;
     }
 
     private void OnOutlineWidthChanged(object sender, RangeBaseValueChangedEventArgs e)

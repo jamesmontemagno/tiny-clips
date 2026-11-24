@@ -49,14 +49,47 @@ internal sealed class EditorController : IDisposable
     private bool _isDisposed;
 
     private readonly List<Annotation> _annotations = new();
+    private readonly Stack<CropUndoEntry> _cropUndo = new();
     private readonly Stack<TextStyleUndoEntry> _textStyleUndo = new();
     private Annotation? _pendingBendAnnotation;
     private AnnotationSnapshot? _pendingBendUndo;
     private int _counterValue = 1;
+    private bool _isUndoing;
+    private bool _hasResettableExportEdits;
     private bool _textStyleEditGroupActive;
     private bool _textStyleEditGroupRecorded;
 
     private sealed record TextStyleUndoEntry(Annotation Annotation, AnnotationSnapshot Snapshot);
+
+    private sealed class CropUndoEntry(
+        SharedResource<EditorImage> imageOwner,
+        SoftwareBitmap bitmap,
+        Annotation[] annotations,
+        TextStyleUndoEntry[] textStyleUndo,
+        int counterValue) : IDisposable
+    {
+        private SharedResource<EditorImage>? _imageOwner = imageOwner;
+
+        public SoftwareBitmap Bitmap { get; } = bitmap;
+        public Annotation[] Annotations { get; } = annotations;
+        public TextStyleUndoEntry[] TextStyleUndo { get; } = textStyleUndo;
+        public int CounterValue { get; } = counterValue;
+
+        public bool HasImageOwner => _imageOwner is not null;
+
+        public SharedResource<EditorImage> TakeImageOwner()
+        {
+            var owner = _imageOwner;
+            _imageOwner = null;
+            return owner ?? throw new InvalidOperationException("Crop undo image has already been restored.");
+        }
+
+        public void Dispose()
+        {
+            _imageOwner?.Dispose();
+            _imageOwner = null;
+        }
+    }
 
     public static readonly BackgroundPreset[] SolidPresets =
     {
@@ -117,10 +150,24 @@ internal sealed class EditorController : IDisposable
     /// </summary>
     public bool IsDirty => _revision.IsDirty;
 
+    public bool CanUndo => !_isUndoing
+        && CanExport
+        && (_annotations.Count > 0 || _textStyleUndo.Count > 0 || _cropUndo.Count > 0);
+
+    public bool CanReset => CanExport
+        && IsDirty
+        && (_annotations.Count > 0 || _cropUndo.Count > 0 || _hasResettableExportEdits);
+
+    public bool CanDeleteSelected => CanExport && SelectedAnnotation is not null;
+
     public event EventHandler? DocumentChanged;
 
-    private void MarkDirty()
+    private void MarkDirty(bool resettableExportEdit = false)
     {
+        if (resettableExportEdit)
+        {
+            _hasResettableExportEdits = true;
+        }
         _revision.MarkEdited();
         DocumentChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -314,6 +361,7 @@ internal sealed class EditorController : IDisposable
         VerifyAccess();
         CancelDocumentWork();
         _revision.ReplaceDocument();
+        _hasResettableExportEdits = false;
         _isReplacingImage = true;
         DocumentChanged?.Invoke(this, EventArgs.Empty);
         return _revision.Current;
@@ -331,7 +379,11 @@ internal sealed class EditorController : IDisposable
     }
 
     private async Task<bool> SetBitmapAsync(
-        SoftwareBitmap bitmap, DocumentRevision revision, bool resetAnnotations, CancellationToken cancellationToken = default)
+        SoftwareBitmap bitmap,
+        DocumentRevision revision,
+        bool resetAnnotations,
+        CancellationToken cancellationToken = default,
+        Action<SharedResource<EditorImage>>? transferPreviousImage = null)
     {
         var ownsBitmap = true;
         SoftwareBitmapSource? source = null;
@@ -347,15 +399,28 @@ internal sealed class EditorController : IDisposable
             CancelActiveAnnotation();
             CancelDocumentWork();
             if (!resetAnnotations) _revision.ReplaceDocument();
-            _imageOwner?.Dispose();
+            var previousImageOwner = _imageOwner;
             _bitmap = bitmap;
             _imageOwner = new SharedResource<EditorImage>(new EditorImage(bitmap));
             ownsBitmap = false;
             PreviewSource = source;
             source = null;
             _annotations.Clear();
+            ClearTextStyleUndo();
+            if (resetAnnotations) ClearCropUndo();
             _counterValue = 1;
             SelectedAnnotation = null;
+            if (previousImageOwner is not null)
+            {
+                if (transferPreviousImage is null)
+                {
+                    previousImageOwner.Dispose();
+                }
+                else
+                {
+                    transferPreviousImage(previousImageOwner);
+                }
+            }
             if (resetAnnotations)
             {
                 ReleaseBackgroundImage();
@@ -638,6 +703,14 @@ internal sealed class EditorController : IDisposable
         {
             OutlineColorDefault = color;
         }
+    }
+
+    public void SetOutlineOpacity(double opacity)
+    {
+        var source = SelectedAnnotation is { } selected && selected.Tool.UsesOutline()
+            ? selected.OutlineColor
+            : OutlineColorDefault;
+        SetOutlineColor(AnnotationColorMath.WithOpacity(source, opacity));
     }
 
     public void SetOutlineWidth(double width)
@@ -1115,7 +1188,7 @@ internal sealed class EditorController : IDisposable
             preview = null;
             BackgroundFileName = fileName;
             BgStyle = ExportBackgroundStyle.Image;
-            MarkDirty();
+            MarkDirty(resettableExportEdit: true);
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
         finally
@@ -1143,7 +1216,7 @@ internal sealed class EditorController : IDisposable
         if (!HasBackgroundImage && BgStyle == ExportBackgroundStyle.Transparent) return;
         ReleaseBackgroundImage();
         BgStyle = ExportBackgroundStyle.Transparent;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1153,7 +1226,7 @@ internal sealed class EditorController : IDisposable
         if (ImagePlacement == placement) return;
         ImagePlacement = placement;
         if (BgStyle != ExportBackgroundStyle.Image) return;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1164,7 +1237,7 @@ internal sealed class EditorController : IDisposable
         BgStyle = preset.Style;
         BgColor = preset.Primary;
         BgColor2 = preset.Secondary ?? preset.Primary;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1175,7 +1248,7 @@ internal sealed class EditorController : IDisposable
         CancelBackgroundSelection();
         if (BgStyle == style) return;
         BgStyle = style;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1185,7 +1258,7 @@ internal sealed class EditorController : IDisposable
         BgColor = color;
         if (BgStyle is ExportBackgroundStyle.Solid or ExportBackgroundStyle.Gradient)
         {
-            MarkDirty();
+            MarkDirty(resettableExportEdit: true);
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -1196,7 +1269,7 @@ internal sealed class EditorController : IDisposable
         BgColor2 = color;
         if (BgStyle == ExportBackgroundStyle.Gradient)
         {
-            MarkDirty();
+            MarkDirty(resettableExportEdit: true);
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -1210,7 +1283,7 @@ internal sealed class EditorController : IDisposable
         if (GradientDirectionDegrees == degrees) return;
 
         GradientDirectionDegrees = degrees;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1220,7 +1293,7 @@ internal sealed class EditorController : IDisposable
         if (BgStyle == ExportBackgroundStyle.Solid && BgColor == color) return;
         BgStyle = ExportBackgroundStyle.Solid;
         BgColor = color;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1815,7 +1888,35 @@ internal sealed class EditorController : IDisposable
         return true;
     }
 
-    public void Undo()
+    public void Undo() => _ = UndoAsync();
+
+    public async Task UndoAsync()
+    {
+        if (_isUndoing)
+        {
+            return;
+        }
+
+        _isUndoing = true;
+        try
+        {
+            if (TryUndoAnnotationEdit())
+            {
+                return;
+            }
+
+            if (_cropUndo.Count > 0)
+            {
+                await RestorePreviousImageAsync();
+            }
+        }
+        finally
+        {
+            _isUndoing = false;
+        }
+    }
+
+    private bool TryUndoAnnotationEdit()
     {
         while (_textStyleUndo.Count > 0)
         {
@@ -1830,12 +1931,12 @@ internal sealed class EditorController : IDisposable
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, entry.Annotation);
             SelectionChanged?.Invoke(this, SelectedAnnotation);
-            return;
+            return true;
         }
 
         if (_annotations.Count == 0)
         {
-            return;
+            return false;
         }
 
         var last = _annotations[^1];
@@ -1848,6 +1949,7 @@ internal sealed class EditorController : IDisposable
         SelectedAnnotation = null;
         MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     public void DeleteSelected()
@@ -1930,12 +2032,16 @@ internal sealed class EditorController : IDisposable
 
     public async Task ApplyCropAsync(BitmapBounds bounds)
     {
-        if (!CanExport || bounds.Width < 1 || bounds.Height < 1)
+        if (!CanExport || _isUndoing || bounds.Width < 1 || bounds.Height < 1)
         {
             return;
         }
 
         using var snapshot = CaptureRenderSnapshot(includeBackground: false);
+        var previousBitmap = _bitmap!;
+        var previousAnnotations = _annotations.ToArray();
+        var previousTextStyleUndo = _textStyleUndo.Reverse().ToArray();
+        var previousCounterValue = _counterValue;
         _cropCancellation?.Cancel();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(snapshot.DocumentCancellation);
         _cropCancellation = cancellation;
@@ -1949,7 +2055,18 @@ internal sealed class EditorController : IDisposable
                 cropped.Dispose();
                 cancellation.Token.ThrowIfCancellationRequested();
             }
-            await SetBitmapAsync(cropped, snapshot.Revision, resetAnnotations: false, cancellationToken: cancellation.Token);
+            await SetBitmapAsync(
+                cropped,
+                snapshot.Revision,
+                resetAnnotations: false,
+                cancellationToken: cancellation.Token,
+                transferPreviousImage: previousImageOwner =>
+                    _cropUndo.Push(new CropUndoEntry(
+                        previousImageOwner,
+                        previousBitmap,
+                        previousAnnotations,
+                        previousTextStyleUndo,
+                        previousCounterValue)));
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -1958,6 +2075,82 @@ internal sealed class EditorController : IDisposable
         finally
         {
             if (ReferenceEquals(_cropCancellation, cancellation)) _cropCancellation = null;
+        }
+    }
+
+    private async Task RestorePreviousImageAsync()
+    {
+        var entry = _cropUndo.Pop();
+        var revision = _revision.Current;
+        SoftwareBitmapSource? source = null;
+        try
+        {
+            _cropCancellation?.Cancel();
+            source = new SoftwareBitmapSource();
+            await source.SetBitmapAsync(entry.Bitmap);
+            if (_isDisposed || !IsCurrent(revision))
+            {
+                PutBackCropUndo(entry, revision);
+                return;
+            }
+
+            CancelActiveAnnotation();
+            CancelDocumentWork();
+
+            var currentImageOwner = _imageOwner;
+            var previousImageOwner = entry.TakeImageOwner();
+            _revision.ReplaceDocument();
+            _imageOwner = previousImageOwner;
+            _bitmap = entry.Bitmap;
+            PreviewSource = source;
+            source = null;
+            _annotations.Clear();
+            _annotations.AddRange(entry.Annotations);
+            ClearTextStyleUndo();
+            foreach (var textStyleEntry in entry.TextStyleUndo)
+            {
+                _textStyleUndo.Push(textStyleEntry);
+            }
+            _counterValue = entry.CounterValue;
+            SelectedAnnotation = null;
+            currentImageOwner?.Dispose();
+
+            MarkDirty();
+            ImageChanged?.Invoke(this, EventArgs.Empty);
+            AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+            SelectionChanged?.Invoke(this, null);
+        }
+        catch
+        {
+            if (entry.HasImageOwner)
+            {
+                PutBackCropUndo(entry, revision);
+            }
+            throw;
+        }
+        finally
+        {
+            source?.Dispose();
+        }
+    }
+
+    private void PutBackCropUndo(CropUndoEntry entry, DocumentRevision revision)
+    {
+        if (!_isDisposed && IsSameDocument(revision))
+        {
+            _cropUndo.Push(entry);
+        }
+        else
+        {
+            entry.Dispose();
+        }
+    }
+
+    private void ClearCropUndo()
+    {
+        while (_cropUndo.Count > 0)
+        {
+            _cropUndo.Pop().Dispose();
         }
     }
 
@@ -2938,6 +3131,7 @@ internal sealed class EditorController : IDisposable
         _revision.Close();
         CancelDocumentWork();
         _documentCancellation.Dispose();
+        ClearCropUndo();
         _imageOwner?.Dispose();
         _imageOwner = null;
         _bitmap = null;
