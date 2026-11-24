@@ -6,7 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
-- The capture picker offers **Window area** for screenshots, video, and GIF. It captures the visible screen bounds of a selected window, including overlays, and clips the fixed area to one display when needed.
+- The capture picker offers **Window area** for screenshots, video, and GIF. It captures the visible screen bounds of a selected window, including overlays, and clips the fixed area to one display when needed. If that display changes before capture starts, Tiny Clips cancels the capture, releases the prepared recorder, and asks you to select the area again.
 
 ## [v2.3.1-windows] - 2026-11-24
 

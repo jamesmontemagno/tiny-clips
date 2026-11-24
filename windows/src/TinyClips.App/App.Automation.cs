@@ -299,12 +299,18 @@ public partial class App : IAutomationAppActions
         bool studio,
         CaptureTarget target,
         PixelRect? region,
-        VideoRecordingOptions? options)
+        VideoRecordingOptions? options,
+        WindowAreaSelection? windowArea,
+        MonitorInfo? monitor)
     {
         VideoRecordingCommand? videoCommand = type == CaptureType.Video
             ? studio ? VideoRecordingCommand.StudioRecording : VideoRecordingCommand.RecordVideo
             : null;
-        var selection = new TargetSelection(target, region, ResolveMonitorForTarget(target));
+        // A window area keeps the display snapshot it was resolved against, so a display
+        // change before the start is rejected instead of recording a shifted region.
+        var selection = windowArea is not null && monitor is not null
+            ? new TargetSelection(target, region, monitor, WindowArea: windowArea)
+            : new TargetSelection(target, region, ResolveMonitorForTarget(target));
         await BeginCaptureAsync(
             type,
             abortIfRecording: true,

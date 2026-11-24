@@ -208,7 +208,7 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             mediaPermissions.HasMicrophoneAccess, mediaPermissions.HasCameraAccess);
 
         EnsureIdle();
-        await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Video, studio, target, region, options);
+        await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Video, studio, target, region, options, windowArea, monitor);
         var snapshot = _app.GetRecordingSnapshot();
         var result = new JsonObject
         {
@@ -231,7 +231,7 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             AutomationCaptureRequest.Parse(context.Params),
             allowWindowArea: true);
         EnsureIdle();
-        await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Gif, false, target, region);
+        await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Gif, false, target, region, null, windowArea, monitor);
         var result = new JsonObject { ["started"] = true };
         if (windowArea is { } area && monitor is { } display)
         {

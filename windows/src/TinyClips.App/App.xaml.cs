@@ -1386,6 +1386,7 @@ public partial class App : Application
         var captureFlowCts = new CancellationTokenSource();
         _captureFlowCts = captureFlowCts;
         Task? recorderPrepare = null;
+        var windowAreaDisplayChanged = false;
         try
         {
             CaptureFlowTrace.Begin(type.ToString().ToLowerInvariant() + (forcedMode is null ? string.Empty : $"/{forcedMode}"));
@@ -1505,7 +1506,11 @@ public partial class App : Application
 
             if (!EnsureWindowAreaDisplayAvailable(selection))
             {
-                return;
+                // Cancel rather than return so the handler below discards the pre-warmed
+                // recorder and closes the countdown indicators.
+                windowAreaDisplayChanged = true;
+                captureFlowCts.Cancel();
+                captureFlowCts.Token.ThrowIfCancellationRequested();
             }
 
             switch (type)
@@ -1622,6 +1627,11 @@ public partial class App : Application
             UpdateRecordingState();
             if (automationSelection is not null)
             {
+                if (windowAreaDisplayChanged)
+                {
+                    throw new AutomationException(AutomationErrorCodes.Conflict,
+                        "The selected display changed. Call capture.targets and start again.");
+                }
                 throw;
             }
         }
