@@ -5,6 +5,8 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+## [v2.3.1-windows] - 2026-11-24
+
 ### Added
 - The Microsoft Store build now shows a one-time **Enjoying Tiny Clips?** prompt after 30 combined completed screenshots, videos, GIFs, and Studio recordings and an editor closes. It offers **Leave a review**, **Send feedback** through the existing feedback form, or **Not now**; picker reopening waits until the chosen follow-up closes. Eligibility is never checked during capture or editing, and state remains independent of analytics/settings resets. Direct and winget builds do not count or show it.
 
