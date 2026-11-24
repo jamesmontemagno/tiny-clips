@@ -543,6 +543,11 @@ final class ScreenshotEditorRegistry: ObservableObject {
         session.lifecycle.finish()
         session.onComplete(result)
         applyActivationPolicy()
+#if APPSTORE
+        DispatchQueue.main.async {
+            StoreReviewPromptCoordinator.shared.editorWindowClosed()
+        }
+#endif
     }
 
     func listEditors() -> [[String: Any]] {

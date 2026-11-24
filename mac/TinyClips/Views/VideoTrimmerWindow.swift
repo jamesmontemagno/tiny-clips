@@ -242,6 +242,11 @@ class VideoTrimmerWindow: NSWindow, NSWindowDelegate {
         TinyClipsActivationPolicy.endPresentation(of: self)
         callback(url)
         orderOut(nil)
+#if APPSTORE
+        DispatchQueue.main.async {
+            StoreReviewPromptCoordinator.shared.editorWindowClosed()
+        }
+#endif
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {

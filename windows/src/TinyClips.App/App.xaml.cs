@@ -71,6 +71,7 @@ public partial class App : Application
     private OnboardingWindow? _onboardingWindow;
     private readonly HashSet<ScreenshotEditorWindow> _editorWindows = new(ReferenceEqualityComparer.Instance);
     private Window? _trimmerWindow;
+    private readonly HashSet<Window> _replacedTrimmerWindows = new(ReferenceEqualityComparer.Instance);
     private StudioWindowService? _studioWindows;
     private string? _lastTrimmerSourcePath;
     private RecordingIndicatorWindow? _recordingIndicator;
@@ -163,8 +164,12 @@ public partial class App : Application
     {
         InitializeComponent();
         RegisterGlobalExceptionHandlers();
-        Services = new ServiceCollection()
-            .AddTinyClipsCore()
+        var services = new ServiceCollection().AddTinyClipsCore();
+#if TINYCLIPS_STORE_BUILD
+        services.AddSingleton<StoreReviewPromptState>();
+#endif
+
+        Services = services
             .AddSingleton<IUploadcareCredentialStore, WindowsCredentialStore>()
             .AddSingleton<IThumbnailCache, ThumbnailCacheService>()
             .AddSingleton<IMediaDevicePermissionService, MediaDevicePermissionService>()
@@ -810,7 +815,7 @@ public partial class App : Application
         }
 
         _isTrayTilesRefreshPending = false;
-        _captureTiles = [_screenshotTile, _videoTile, _studioTile, _gifTile];
+        _captureTiles = new CaptureTile[] { _screenshotTile, _videoTile, _studioTile, _gifTile };
         _studioTile.Button.Visibility = Visibility.Visible;
         _trayTiles.ColumnDefinitions.Clear();
         for (var column = 0; column < _captureTiles.Count; column++)
@@ -927,7 +932,7 @@ public partial class App : Application
 
         // Screenshot, Video, Studio, GIF: three columns, or four with Studio, each as wide as
         // the others.
-        _captureTiles = [_screenshotTile, _videoTile, _studioTile, _gifTile];
+        _captureTiles = new CaptureTile[] { _screenshotTile, _videoTile, _studioTile, _gifTile };
         var tiles = new Grid { ColumnSpacing = TrayPopupLayout.TileSpacing };
         _trayTiles = tiles;
         for (var column = 0; column < _captureTiles.Count; column++)
@@ -2625,15 +2630,29 @@ public partial class App : Application
     /// </summary>
     private void OpenStudioProject(string projectId, bool pickerInitiated)
     {
-        if (OpenStudioWindow(projectId) is { } window && pickerInitiated)
+        if (OpenStudioWindow(projectId) is { } window)
         {
             void OnEditorClosed(object sender, WindowEventArgs args)
             {
                 window.Closed -= OnEditorClosed;
-                ReopenPickerAfterCaptureIfNeeded(CaptureType.Video, pickerInitiated: true);
+                EditorWindowClosed(() =>
+                {
+                    if (pickerInitiated)
+                    {
+                        ReopenPickerAfterCaptureIfNeeded(
+                            CaptureType.Video,
+                            pickerInitiated: true);
+                    }
+                });
             }
 
             window.Closed += OnEditorClosed;
+            return;
+        }
+
+        if (pickerInitiated)
+        {
+            ReopenPickerAfterCaptureIfNeeded(CaptureType.Video, pickerInitiated: true);
         }
     }
 
@@ -2684,6 +2703,9 @@ public partial class App : Application
             _studioWindows.ScreenRecordingSaved += OnStudioExported;
             _studioWindows.ErrorReported += (_, e) => ShowMessageNotification(e.Message);
             _studioWindows.CaptionNotificationRequested += (_, e) => ShowStudioProjectNotification(e);
+#if TINYCLIPS_STORE_BUILD
+            _studioWindows.EditorClosed += OnStudioEditorClosed;
+#endif
         }
 
         return _studioWindows;
@@ -3319,25 +3341,64 @@ public partial class App : Application
         bool isRecentCapture = false,
         bool pickerInitiated = false)
     {
-        _trimmerWindow?.Close();
+        if (_trimmerWindow is { } previous)
+        {
+            _replacedTrimmerWindows.Add(previous);
+            previous.Close();
+        }
         _lastTrimmerSourcePath = path;
+        var finalizationTask = Task.CompletedTask;
 
         if (type == CaptureType.Gif)
         {
             var gifTrimmer = new GifTrimmerWindow(path);
-            gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
-            gifTrimmer.Discarded += (_, _) => OnTrimmerDiscarded(CaptureType.Gif, isRecentCapture, pickerInitiated);
+            gifTrimmer.Completed += (sender, result) =>
+                finalizationTask = OnTrimmerCompleted(sender, result, isRecentCapture);
+            gifTrimmer.Discarded += (_, _) => OnTrimmerDiscarded();
             _trimmerWindow = gifTrimmer;
         }
         else
         {
             var videoTrimmer = new VideoTrimmerWindow(path);
-            videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture, pickerInitiated);
-            videoTrimmer.Discarded += (_, _) => OnTrimmerDiscarded(CaptureType.Video, isRecentCapture, pickerInitiated);
+            videoTrimmer.Completed += (sender, result) =>
+                finalizationTask = OnTrimmerCompleted(sender, result, isRecentCapture);
+            videoTrimmer.Discarded += (_, _) => OnTrimmerDiscarded();
             _trimmerWindow = videoTrimmer;
         }
 
-        _trimmerWindow.Closed += (_, _) => _trimmerWindow = null;
+        var openedWindow = _trimmerWindow;
+        openedWindow.Closed += async (_, _) =>
+        {
+            var wasReplaced = _replacedTrimmerWindows.Remove(openedWindow);
+            if (ReferenceEquals(_trimmerWindow, openedWindow))
+            {
+                _trimmerWindow = null;
+            }
+
+            if (!wasReplaced)
+            {
+                try
+                {
+                    await finalizationTask;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Trimmer finalization failed: {ex}");
+                    CrashDiagnostics.Log("TrimmerFinalization", ex, handled: true);
+                    ShowMessageNotification(
+                        "The editor closed, but Tiny Clips could not finish its save and follow-up actions. " +
+                        "Open the clip from Recent captures to try again.");
+                }
+
+                EditorWindowClosed(() =>
+                {
+                    if (!isRecentCapture)
+                    {
+                        ReopenPickerAfterCaptureIfNeeded(type, pickerInitiated);
+                    }
+                });
+            }
+        };
         ActivateWindowToForeground(_trimmerWindow);
     }
 
@@ -3345,62 +3406,48 @@ public partial class App : Application
     /// The user deleted the clip from the trimmer, so there is nothing to finalize. Only the
     /// post-capture picker is restored, matching the behavior after a normal trimmer close.
     /// </summary>
-    private void OnTrimmerDiscarded(CaptureType type, bool isRecentCapture, bool pickerInitiated)
+    private void OnTrimmerDiscarded()
     {
-        if (isRecentCapture)
-        {
-            return;
-        }
-
         _lastTrimmerSourcePath = null;
-        _dispatcher?.TryEnqueue(() =>
-        {
-            if (_isExiting)
-            {
-                return;
-            }
-
-            ReopenPickerAfterCaptureIfNeeded(type, pickerInitiated);
-        });
     }
 
-    private void OnTrimmerCompleted(
+    private Task OnTrimmerCompleted(
         object? sender,
         string? trimmedPath,
-        bool isRecentCapture,
-        bool pickerInitiated)
+        bool isRecentCapture)
     {
-        _dispatcher?.TryEnqueue(async () =>
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_dispatcher?.TryEnqueue(async () =>
         {
-            if (_isExiting)
+            try
             {
-                return;
+                var path = trimmedPath ?? _lastTrimmerSourcePath;
+                if (!_isExiting &&
+                    !(isRecentCapture && string.IsNullOrEmpty(trimmedPath)) &&
+                    !string.IsNullOrEmpty(path))
+                {
+                    var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
+                        ? CaptureType.Gif
+                        : CaptureType.Video;
+                    await FinalizeClipAsync(path, type);
+                    if (!string.IsNullOrEmpty(trimmedPath))
+                    {
+                        Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
+                    }
+                }
+                completion.TrySetResult();
             }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        }) != true)
+        {
+            completion.TrySetResult();
+        }
 
-            if (isRecentCapture && string.IsNullOrEmpty(trimmedPath))
-            {
-                return;
-            }
-
-            var path = trimmedPath ?? _lastTrimmerSourcePath;
-            if (string.IsNullOrEmpty(path))
-            {
-                return;
-            }
-
-            var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
-                ? CaptureType.Gif
-                : CaptureType.Video;
-            await FinalizeClipAsync(path, type);
-            if (!string.IsNullOrEmpty(trimmedPath))
-            {
-                Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
-            }
-            if (!isRecentCapture)
-            {
-                ReopenPickerAfterCaptureIfNeeded(type, pickerInitiated);
-            }
-        });
+        return completion.Task;
     }
 
     private void UpdateRecordingState()
@@ -4134,6 +4181,9 @@ public partial class App : Application
     }
 
     internal void OpenQuickBugReportWindow()
+        => OpenQuickBugReportWindow(null);
+
+    private void OpenQuickBugReportWindow(Action? onClosed)
     {
         if (_quickBugReportWindow is null)
         {
@@ -4144,11 +4194,30 @@ public partial class App : Application
             _quickBugReportWindow.Closed += (_, _) => _quickBugReportWindow = null;
         }
 
+        if (onClosed is not null)
+        {
+            var window = _quickBugReportWindow;
+            void OnClosed(object sender, WindowEventArgs args)
+            {
+                window.Closed -= OnClosed;
+                onClosed();
+            }
+            window.Closed += OnClosed;
+        }
+
         ActivateWindowToForeground(_quickBugReportWindow);
     }
 
     private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false)
-        => OpenScreenshotEditorCore(() => new ScreenshotEditorWindow(path), path, reopenPickerAfterClose);
+    {
+        if (!OpenScreenshotEditorCore(
+                () => new ScreenshotEditorWindow(path),
+                path,
+                reopenPickerAfterClose))
+        {
+            ContinueAfterScreenshotEditorFailure(reopenPickerAfterClose);
+        }
+    }
 
     /// <summary>
     /// Opens the editor directly from the captured pixels while <paramref name="saveTask"/>
@@ -4156,9 +4225,25 @@ public partial class App : Application
     /// the save completes so Save/Save-a-copy work exactly as before.
     /// </summary>
     private void OpenScreenshotEditor(CapturedFrame frame, Task<string> saveTask, bool reopenPickerAfterClose)
-        => OpenScreenshotEditorCore(() => new ScreenshotEditorWindow(frame, saveTask), null, reopenPickerAfterClose);
+    {
+        if (!OpenScreenshotEditorCore(
+                () => new ScreenshotEditorWindow(frame, saveTask),
+                fallbackPath: null,
+                reopenPickerAfterClose,
+                saveTask))
+        {
+            _ = FinishScreenshotCaptureFlowAsync(
+                saveTask,
+                reopenPickerAfterClose,
+                editorWindowClosed: false);
+        }
+    }
 
-    private void OpenScreenshotEditorCore(Func<ScreenshotEditorWindow> create, string? fallbackPath, bool reopenPickerAfterClose)
+    private bool OpenScreenshotEditorCore(
+        Func<ScreenshotEditorWindow> create,
+        string? fallbackPath,
+        bool reopenPickerAfterClose,
+        Task<string>? pendingCaptureSave = null)
     {
         ScreenshotEditorWindow? createdWindow = null;
         try
@@ -4167,13 +4252,24 @@ public partial class App : Application
             createdWindow = window;
             window.Closed += (_, _) =>
             {
-                if (_editorWindows.Remove(window) && reopenPickerAfterClose)
+                if (_editorWindows.Remove(window))
                 {
-                    ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
+                    if (pendingCaptureSave is null)
+                    {
+                        FinishScreenshotCaptureFlow(reopenPickerAfterClose);
+                    }
+                    else
+                    {
+                        _ = FinishScreenshotCaptureFlowAsync(
+                            pendingCaptureSave,
+                            reopenPickerAfterClose,
+                            editorWindowClosed: true);
+                    }
                 }
             };
             _editorWindows.Add(window);
             ActivateWindowToForeground(window);
+            return true;
         }
         catch (Exception ex)
         {
@@ -4193,10 +4289,54 @@ public partial class App : Application
                 }
                 ShowSaveToast(fallbackPath);
             }
+            return false;
+        }
+    }
+
+    private async Task FinishScreenshotCaptureFlowAsync(
+        Task<string> pendingCaptureSave,
+        bool reopenPickerAfterClose,
+        bool editorWindowClosed)
+    {
+        try
+        {
+            await pendingCaptureSave;
+        }
+        catch (Exception ex)
+        {
+            // The editor or caller reports the save failure. Waiting still makes picker sequencing
+            // deterministic and prevents a late 30th analytics event from stranding the prompt.
+            Debug.WriteLine($"Waiting for screenshot save before review sequencing failed: {ex}");
+        }
+
+        if (editorWindowClosed)
+        {
+            FinishScreenshotCaptureFlow(reopenPickerAfterClose);
+        }
+        else
+        {
+            ContinueAfterScreenshotEditorFailure(reopenPickerAfterClose);
+        }
+    }
+
+    private void FinishScreenshotCaptureFlow(bool reopenPickerAfterClose) =>
+        EditorWindowClosed(() =>
+        {
             if (reopenPickerAfterClose)
             {
-                ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, pickerInitiated: true);
+                ReopenPickerAfterCaptureIfNeeded(
+                    CaptureType.Screenshot,
+                    pickerInitiated: true);
             }
+        });
+
+    private void ContinueAfterScreenshotEditorFailure(bool reopenPickerAfterClose)
+    {
+        if (reopenPickerAfterClose)
+        {
+            ReopenPickerAfterCaptureIfNeeded(
+                CaptureType.Screenshot,
+                pickerInitiated: true);
         }
     }
 

@@ -55,7 +55,7 @@ internal sealed class AutomationApprovalPrompt : IAutomationApprovalPrompt
             Title: action.Item1,
             Message: $"“{context.Client.Name}” wants to {action.Item2}.",
             ListHeader: target is null ? null : deletingProject ? "Studio project ID:" : "File:",
-            Items: target is null ? [] : [target],
+            Items: target is null ? Array.Empty<string>() : new[] { target },
             Footnote: $"Command: {context.Command.Name}",
             AllowText: action.Item3);
         return await ShowAsync(content, cancellationToken) is not null;

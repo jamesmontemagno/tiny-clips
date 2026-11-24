@@ -1,9 +1,6 @@
 import SwiftUI
 import os
 import AppKit
-#if APPSTORE
-import StoreKit
-#endif
 
 // MARK: - Settings Window Manager
 
@@ -26,11 +23,6 @@ struct MenuBarContentView: View {
     @ObservedObject private var automation = AutomationController.shared
     @ObservedObject private var screenshotEditors = ScreenshotEditorRegistry.shared
     @Environment(\.openWindow) private var openWindow
-#if APPSTORE
-    @Environment(\.requestReview) private var requestReview
-    @AppStorage("appStoreClipCountForReview") private var appStoreClipCountForReview = 0
-    @AppStorage("appStoreReviewRequested") private var appStoreReviewRequested = false
-#endif
 
     var body: some View {
         if !captureManager.isRecording {
@@ -138,17 +130,6 @@ struct MenuBarContentView: View {
         }
         .disabled(!screenshotEditors.hasOpenSessions || screenshotEditors.isClosingAll)
         .accessibilityHint("Closes screenshot editors, asking before discarding unsaved work. Cancel stops closing the remaining editors.")
-
-#if APPSTORE
-        if appStoreClipCountForReview >= 25 && !appStoreReviewRequested {
-            Button {
-                appStoreReviewRequested = true
-                requestReview()
-            } label: {
-                Label("Rate TinyClips…", systemImage: "star.bubble")
-            }
-        }
-#endif
 
         Button {
             captureManager.showGuide()

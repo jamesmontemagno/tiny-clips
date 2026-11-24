@@ -14,15 +14,20 @@ public sealed partial class ClipAnalyticsService : IClipAnalyticsService
 
     private readonly ISettingsService _settings;
     private readonly TimeProvider _timeProvider;
+    private readonly StoreReviewPromptState? _storeReviewPromptState;
     private readonly object _gate = new();
     private Dictionary<string, DailyCountsState> _history;
     private LifetimeCountsState _lifetime;
     private Dictionary<int, int> _hourly;
 
-    public ClipAnalyticsService(ISettingsService settings, TimeProvider? timeProvider = null)
+    public ClipAnalyticsService(
+        ISettingsService settings,
+        TimeProvider? timeProvider = null,
+        StoreReviewPromptState? storeReviewPromptState = null)
     {
         _settings = settings;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _storeReviewPromptState = storeReviewPromptState;
         _history = Load();
         _lifetime = LoadLifetime();
         _hourly = LoadHourly();
@@ -57,12 +62,16 @@ public sealed partial class ClipAnalyticsService : IClipAnalyticsService
                     counts.GifCount++;
                     _lifetime.GifCount++;
                     break;
+                default:
+                    return;
             }
 
             _history[key] = counts;
 
             var hour = now.Hour;
             _hourly[hour] = _hourly.GetValueOrDefault(hour) + 1;
+
+            _storeReviewPromptState?.RecordCompletedCapture();
 
             PersistInternal();
         }

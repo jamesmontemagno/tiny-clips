@@ -16,8 +16,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileSystem, FileSystem>();
         services.AddSingleton<IFileNameService, FileNameService>();
         services.AddSingleton<IClipStorageService, ClipStorageService>();
-        services.AddSingleton<IClipAnalyticsService, ClipAnalyticsService>();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IClipAnalyticsService>(provider => new ClipAnalyticsService(
+            provider.GetRequiredService<ISettingsService>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetService<StoreReviewPromptState>()));
         services.AddSingleton<IRecentCaptureService, RecentCaptureService>();
         services.AddSingleton<IClipFileOperations, ClipFileOperations>();
         services.AddSingleton<IClipLibraryService, ClipLibraryService>();

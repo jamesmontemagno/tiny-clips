@@ -618,13 +618,6 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
         let settings = CaptureSettings.shared
         RecentCaptureStore.shared.record(url: url, type: type)
 
-#if APPSTORE
-        UserDefaults.standard.set(
-            UserDefaults.standard.integer(forKey: "appStoreClipCountForReview") + 1,
-            forKey: "appStoreClipCountForReview"
-        )
-#endif
-
         copyToClipboardIfEnabled(url: url, type: type)
 
         AccessibilityAnnouncementService.shared.announceSaveSuccess(for: type, url: url)

@@ -51,6 +51,7 @@
 		D61700000000000000000001 /* GifTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61700000000000000000003 /* GifTiming.swift */; };
 		D61700000000000000000002 /* GifTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61700000000000000000003 /* GifTiming.swift */; };
 		B10000000000000000000009 /* SaveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* SaveService.swift */; };
+		B10000000000000000000045 /* StoreReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000045 /* StoreReviewPrompt.swift */; };
 		B10000000000000000000040 /* WindowPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000040 /* WindowPresenter.swift */; };
 		B1000000000000000000000A /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* PermissionManager.swift */; };
 		B1000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Assets.xcassets */; };
@@ -63,6 +64,7 @@
 		B10000000000000000000012 /* OnboardingWizardWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* OnboardingWizardWindow.swift */; };
 		B10000000000000000000013 /* GuideWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* GuideWindow.swift */; };
 		F47E9201113B4A0693F54DD1 /* WhatsNewWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47E9201113B4A0693F54DD0 /* WhatsNewWindow.swift */; };
+		B10000000000000000000046 /* StoreReviewPromptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000046 /* StoreReviewPromptWindow.swift */; };
 		B10000000000000000000014 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* HotKeyManager.swift */; };
 		B10000000000000000000015 /* ScreenPickerWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* ScreenPickerWindow.swift */; };
 		B10000000000000000000016 /* RegionIndicatorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* RegionIndicatorPanel.swift */; };
@@ -102,6 +104,7 @@
 		B20000000000000000000007 /* VideoRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* VideoRecorder.swift */; };
 		B20000000000000000000008 /* GifWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008 /* GifWriter.swift */; };
 		B20000000000000000000009 /* SaveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* SaveService.swift */; };
+		B20000000000000000000045 /* StoreReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000045 /* StoreReviewPrompt.swift */; };
 		B20000000000000000000040 /* WindowPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000040 /* WindowPresenter.swift */; };
 		B2000000000000000000000A /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* PermissionManager.swift */; };
 		B2000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Assets.xcassets */; };
@@ -114,6 +117,7 @@
 		B20000000000000000000012 /* OnboardingWizardWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* OnboardingWizardWindow.swift */; };
 		B20000000000000000000013 /* GuideWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* GuideWindow.swift */; };
 		F47E9201113B4A0693F54DD2 /* WhatsNewWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47E9201113B4A0693F54DD0 /* WhatsNewWindow.swift */; };
+		B20000000000000000000046 /* StoreReviewPromptWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000046 /* StoreReviewPromptWindow.swift */; };
 		B20000000000000000000014 /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* HotKeyManager.swift */; };
 		B20000000000000000000015 /* ScreenPickerWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* ScreenPickerWindow.swift */; };
 		B20000000000000000000016 /* RegionIndicatorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* RegionIndicatorPanel.swift */; };
@@ -318,6 +322,7 @@
 		A10000000000000000000008 /* GifWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifWriter.swift; sourceTree = "<group>"; };
 		D61700000000000000000003 /* GifTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GifTiming.swift; sourceTree = "<group>"; };
 		A10000000000000000000009 /* SaveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveService.swift; sourceTree = "<group>"; };
+		A10000000000000000000045 /* StoreReviewPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreReviewPrompt.swift; sourceTree = "<group>"; };
 		A10000000000000000000040 /* WindowPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowPresenter.swift; sourceTree = "<group>"; };
 		A1000000000000000000000A /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		A1000000000000000000000B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -338,6 +343,7 @@
 		A10000000000000000000015 /* OnboardingWizardWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWizardWindow.swift; sourceTree = "<group>"; };
 		A10000000000000000000016 /* GuideWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideWindow.swift; sourceTree = "<group>"; };
 		F47E9201113B4A0693F54DD0 /* WhatsNewWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNewWindow.swift; sourceTree = "<group>"; };
+		A10000000000000000000046 /* StoreReviewPromptWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreReviewPromptWindow.swift; sourceTree = "<group>"; };
 		A10000000000000000000017 /* HotKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
 		A10000000000000000000018 /* ScreenPickerWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenPickerWindow.swift; sourceTree = "<group>"; };
 		A10000000000000000000019 /* RegionIndicatorPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegionIndicatorPanel.swift; sourceTree = "<group>"; };
@@ -553,6 +559,7 @@
 				A10000000000000000000015 /* OnboardingWizardWindow.swift */,
 				A10000000000000000000016 /* GuideWindow.swift */,
 				F47E9201113B4A0693F54DD0 /* WhatsNewWindow.swift */,
+				A10000000000000000000046 /* StoreReviewPromptWindow.swift */,
 				A10000000000000000000018 /* ScreenPickerWindow.swift */,
 				A10000000000000000000019 /* RegionIndicatorPanel.swift */,
 				A1000000000000000000003C /* TeleprompterPanel.swift */,
@@ -611,6 +618,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000009 /* SaveService.swift */,
+				A10000000000000000000045 /* StoreReviewPrompt.swift */,
 				A10000000000000000000040 /* WindowPresenter.swift */,
 				A10000000000000000000039 /* IdleSleepAssertion.swift */,
 				A10000000000000000000032 /* CaptureAnalyticsStore.swift */,
@@ -888,6 +896,7 @@
 				B10000000000000000000008 /* GifWriter.swift in Sources */,
 				D61700000000000000000001 /* GifTiming.swift in Sources */,
 				B10000000000000000000009 /* SaveService.swift in Sources */,
+				B10000000000000000000045 /* StoreReviewPrompt.swift in Sources */,
 				B10000000000000000000040 /* WindowPresenter.swift in Sources */,
 				B1000000000000000000000A /* PermissionManager.swift in Sources */,
 				B1000000000000000000000C /* SparkleController.swift in Sources */,
@@ -909,6 +918,7 @@
 				B10000000000000000000012 /* OnboardingWizardWindow.swift in Sources */,
 				B10000000000000000000013 /* GuideWindow.swift in Sources */,
 				F47E9201113B4A0693F54DD1 /* WhatsNewWindow.swift in Sources */,
+				B10000000000000000000046 /* StoreReviewPromptWindow.swift in Sources */,
 				B10000000000000000000014 /* HotKeyManager.swift in Sources */,
 				B10000000000000000000015 /* ScreenPickerWindow.swift in Sources */,
 				B10000000000000000000016 /* RegionIndicatorPanel.swift in Sources */,
@@ -1010,6 +1020,7 @@
 				B20000000000000000000008 /* GifWriter.swift in Sources */,
 				D61700000000000000000002 /* GifTiming.swift in Sources */,
 				B20000000000000000000009 /* SaveService.swift in Sources */,
+				B20000000000000000000045 /* StoreReviewPrompt.swift in Sources */,
 				B20000000000000000000040 /* WindowPresenter.swift in Sources */,
 				B2000000000000000000000A /* PermissionManager.swift in Sources */,
 				B2000000000000000000000C /* SparkleController.swift in Sources */,
@@ -1031,6 +1042,7 @@
 				B20000000000000000000012 /* OnboardingWizardWindow.swift in Sources */,
 				B20000000000000000000013 /* GuideWindow.swift in Sources */,
 				F47E9201113B4A0693F54DD2 /* WhatsNewWindow.swift in Sources */,
+				B20000000000000000000046 /* StoreReviewPromptWindow.swift in Sources */,
 				B20000000000000000000014 /* HotKeyManager.swift in Sources */,
 				B20000000000000000000015 /* ScreenPickerWindow.swift in Sources */,
 				B20000000000000000000016 /* RegionIndicatorPanel.swift in Sources */,

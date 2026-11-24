@@ -926,7 +926,9 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
     {
         if (explicitItem is not null)
         {
-            return _selection.Count > 1 && _selection.Contains(explicitItem) ? _selection.ToList() : [explicitItem];
+            return _selection.Count > 1 && _selection.Contains(explicitItem)
+                ? _selection.ToList()
+                : new[] { explicitItem };
         }
 
         if (_selection.Count > 0)
@@ -934,7 +936,7 @@ public sealed partial class ClipsLibraryViewModel : ObservableObject, IDisposabl
             return _selection.ToList();
         }
 
-        return SelectedClip is null ? [] : [SelectedClip];
+        return SelectedClip is null ? Array.Empty<ClipItemViewModel>() : new[] { SelectedClip };
     }
 
     // ------------------------------------------------------------------ clip actions
