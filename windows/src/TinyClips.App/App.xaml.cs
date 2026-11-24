@@ -3347,24 +3347,27 @@ public partial class App : Application
             previous.Close();
         }
         _lastTrimmerSourcePath = path;
+        var finalizationTask = Task.CompletedTask;
 
         if (type == CaptureType.Gif)
         {
             var gifTrimmer = new GifTrimmerWindow(path);
-            gifTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture);
+            gifTrimmer.Completed += (sender, result) =>
+                finalizationTask = OnTrimmerCompleted(sender, result, isRecentCapture);
             gifTrimmer.Discarded += (_, _) => OnTrimmerDiscarded();
             _trimmerWindow = gifTrimmer;
         }
         else
         {
             var videoTrimmer = new VideoTrimmerWindow(path);
-            videoTrimmer.Completed += (sender, result) => OnTrimmerCompleted(sender, result, isRecentCapture);
+            videoTrimmer.Completed += (sender, result) =>
+                finalizationTask = OnTrimmerCompleted(sender, result, isRecentCapture);
             videoTrimmer.Discarded += (_, _) => OnTrimmerDiscarded();
             _trimmerWindow = videoTrimmer;
         }
 
         var openedWindow = _trimmerWindow;
-        openedWindow.Closed += (_, _) =>
+        openedWindow.Closed += async (_, _) =>
         {
             var wasReplaced = _replacedTrimmerWindows.Remove(openedWindow);
             if (ReferenceEquals(_trimmerWindow, openedWindow))
@@ -3374,6 +3377,19 @@ public partial class App : Application
 
             if (!wasReplaced)
             {
+                try
+                {
+                    await finalizationTask;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Trimmer finalization failed: {ex}");
+                    CrashDiagnostics.Log("TrimmerFinalization", ex, handled: true);
+                    ShowMessageNotification(
+                        "The editor closed, but Tiny Clips could not finish its save and follow-up actions. " +
+                        "Open the clip from Recent captures to try again.");
+                }
+
                 EditorWindowClosed(() =>
                 {
                     if (!isRecentCapture)
@@ -3395,38 +3411,43 @@ public partial class App : Application
         _lastTrimmerSourcePath = null;
     }
 
-    private void OnTrimmerCompleted(
+    private Task OnTrimmerCompleted(
         object? sender,
         string? trimmedPath,
         bool isRecentCapture)
     {
-        _dispatcher?.TryEnqueue(async () =>
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_dispatcher?.TryEnqueue(async () =>
         {
-            if (_isExiting)
+            try
             {
-                return;
+                var path = trimmedPath ?? _lastTrimmerSourcePath;
+                if (!_isExiting &&
+                    !(isRecentCapture && string.IsNullOrEmpty(trimmedPath)) &&
+                    !string.IsNullOrEmpty(path))
+                {
+                    var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
+                        ? CaptureType.Gif
+                        : CaptureType.Video;
+                    await FinalizeClipAsync(path, type);
+                    if (!string.IsNullOrEmpty(trimmedPath))
+                    {
+                        Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
+                    }
+                }
+                completion.TrySetResult();
             }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        }) != true)
+        {
+            completion.TrySetResult();
+        }
 
-            if (isRecentCapture && string.IsNullOrEmpty(trimmedPath))
-            {
-                return;
-            }
-
-            var path = trimmedPath ?? _lastTrimmerSourcePath;
-            if (string.IsNullOrEmpty(path))
-            {
-                return;
-            }
-
-            var type = Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase)
-                ? CaptureType.Gif
-                : CaptureType.Video;
-            await FinalizeClipAsync(path, type);
-            if (!string.IsNullOrEmpty(trimmedPath))
-            {
-                Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
-            }
-        });
+        return completion.Task;
     }
 
     private void UpdateRecordingState()

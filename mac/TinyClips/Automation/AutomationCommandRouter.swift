@@ -334,6 +334,8 @@ final class AutomationCommandRouter {
     }
 
     private func screenshot(_ params: [String: Any]) async throws -> [String: Any] {
+        let manager = try captureManager()
+        defer { manager.notifyStoreReviewCaptureWorkBecameIdle() }
         let captured = try await captureTargetImage(params)
         let url: URL
         do {

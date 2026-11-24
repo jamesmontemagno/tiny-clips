@@ -103,7 +103,30 @@ public sealed partial class StoreReviewPromptWindow : Window
         }
     }
 
-    private async void OnReviewClicked(object sender, RoutedEventArgs e)
+    private void OnReviewClicked(object sender, RoutedEventArgs e)
+#if TINYCLIPS_STORE_BUILD
+        => _ = RequestReviewAsync();
+#else
+    {
+        if (_reviewAttempted || _reviewInProgress || _isClosed)
+        {
+            return;
+        }
+
+        _reviewAttempted = true;
+        _reviewInProgress = true;
+        ReviewButton.IsEnabled = false;
+        NotNowButton.IsEnabled = false;
+        ReviewBusyPanel.Visibility = Visibility.Visible;
+        ReviewStatusBar.IsOpen = false;
+
+        ReportReviewFailure(
+            "This review flow is available only in the Microsoft Store build. Tiny Clips won't ask again.");
+    }
+#endif
+
+#if TINYCLIPS_STORE_BUILD
+    private async Task RequestReviewAsync()
     {
         if (_reviewAttempted || _reviewInProgress || _isClosed)
         {
@@ -119,7 +142,6 @@ public sealed partial class StoreReviewPromptWindow : Window
 
         try
         {
-#if TINYCLIPS_STORE_BUILD
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             if (hwnd == 0 || _isClosed)
             {
@@ -155,10 +177,6 @@ public sealed partial class StoreReviewPromptWindow : Window
                         "The Microsoft Store did not complete the review request. Tiny Clips won't ask again.");
                     return;
             }
-#else
-            ReportReviewFailure(
-                "This review flow is available only in the Microsoft Store build. Tiny Clips won't ask again.");
-#endif
         }
         catch (Exception ex)
         {
@@ -168,7 +186,6 @@ public sealed partial class StoreReviewPromptWindow : Window
         }
     }
 
-#if TINYCLIPS_STORE_BUILD
     private static string GetReviewFailureMessage(StoreRateAndReviewStatus status) =>
         status == StoreRateAndReviewStatus.NetworkError
             ? "The Microsoft Store could not be reached. Tiny Clips won't ask again."

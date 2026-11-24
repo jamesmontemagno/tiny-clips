@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
-- The Mac App Store build now asks once, after 30 combined completed captures, whether you would like to review Tiny Clips. Eligibility is checked only when a screenshot/video/GIF/Studio editor closes, never during capture or editing, and is not reset by changing settings. Captures made with editors disabled wait for a later editor close before any prompt can appear.
+- The Mac App Store build now requests Apple's native rating prompt once after 30 combined completed captures when a screenshot/video/GIF/Studio editor closes. Review eligibility is never evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
 
 ## v2.3.0.3-mac - 2026-11-23
 

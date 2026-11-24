@@ -2,7 +2,6 @@ import Foundation
 #if APPSTORE
 import AppKit
 import StoreKit
-import SwiftUI
 #endif
 
 @MainActor
@@ -65,7 +64,6 @@ final class StoreReviewPromptCoordinator {
     static let shared = StoreReviewPromptCoordinator()
 
     private let state: StoreReviewPromptState
-    private var window: StoreReviewPromptWindow?
     private var continuations: [@MainActor () -> Void] = []
 
     init(state: StoreReviewPromptState = .shared) {
@@ -73,42 +71,31 @@ final class StoreReviewPromptCoordinator {
     }
 
     func editorWindowClosed(continuingWith continuation: @escaping @MainActor () -> Void = {}) {
-        if window != nil {
-            continuations.append(continuation)
-            return
-        }
-
-        if isCaptureInProgress {
-            continuation()
-            return
-        }
-
-        guard state.isEligible else {
-            continuation()
-            return
-        }
-
-        if hasOpenCaptureEditor {
-            continuations.append(continuation)
-            return
-        }
-
-        guard state.claimPromptAfterEditorWindowClosed(
-            isCaptureInProgress: isCaptureInProgress,
-            hasOpenCaptureEditor: hasOpenCaptureEditor
-        ) else {
-            continuation()
-            return
-        }
         continuations.append(continuation)
 
-        let reviewWindow = StoreReviewPromptWindow { [weak self] in
-            guard let self else { return }
-            self.window = nil
-            self.flushContinuations()
+        if isCaptureInProgress || hasOpenCaptureEditor {
+            return
         }
-        window = reviewWindow
-        WindowPresenter.shared.present(reviewWindow)
+
+        if state.isEligible,
+           state.claimPromptAfterEditorWindowClosed(
+                isCaptureInProgress: false,
+                hasOpenCaptureEditor: false
+           ) {
+            SKStoreReviewController.requestReview()
+        }
+
+        flushContinuations()
+    }
+
+    /// Resumes picker work that was deferred during another capture without evaluating review
+    /// eligibility or attempting to show the system prompt.
+    func captureWorkBecameIdle() {
+        guard !hasActiveCaptureWork, !hasOpenCaptureEditor else {
+            return
+        }
+
+        flushContinuations()
     }
 
     private func flushContinuations() {
@@ -131,96 +118,9 @@ final class StoreReviewPromptCoordinator {
     private var isCaptureInProgress: Bool {
         CaptureManager.current?.isAnyCaptureInProgress == true
     }
-}
 
-@MainActor
-private final class StoreReviewPromptWindow: NSWindow, NSWindowDelegate {
-    private var onDismiss: (() -> Void)?
-    private var didDismiss = false
-
-    convenience init(onDismiss: @escaping () -> Void) {
-        self.init(
-            contentRect: NSRect(x: 0, y: 0, width: 470, height: 280),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        self.onDismiss = onDismiss
-        self.delegate = self
-        self.title = "Enjoying Tiny Clips?"
-        self.isReleasedWhenClosed = false
-        self.contentMinSize = NSSize(width: 470, height: 280)
-        self.center()
-
-        self.contentView = NSHostingView(rootView: StoreReviewPromptView(
-            onDismiss: { [weak self] in self?.close() },
-            onReview: { [weak self] in
-                DispatchQueue.main.async {
-                    self?.close()
-                }
-            }
-        ))
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        finish()
-    }
-
-    override func cancelOperation(_ sender: Any?) {
-        close()
-    }
-
-    private func finish() {
-        guard !didDismiss else { return }
-        didDismiss = true
-        let callback = onDismiss
-        onDismiss = nil
-        callback?()
-    }
-}
-
-private struct StoreReviewPromptView: View {
-    let onDismiss: () -> Void
-    let onReview: () -> Void
-
-    @Environment(\.requestReview) private var requestReview
-
-    var body: some View {
-        VStack(spacing: 18) {
-            Image(nsImage: NSApplication.shared.applicationIconImage)
-                .resizable()
-                .frame(width: 64, height: 64)
-                .accessibilityHidden(true)
-
-            VStack(spacing: 7) {
-                Text("Enjoying Tiny Clips?")
-                    .font(.title2.bold())
-                    .accessibilityAddTraits(.isHeader)
-                Text("A quick App Store review helps other people discover Tiny Clips.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 360)
-            }
-
-            HStack(spacing: 10) {
-                Button("Not now", action: onDismiss)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityIdentifier("StoreReviewNotNowButton")
-
-                Button("Review Tiny Clips") {
-                    requestReview()
-                    onReview()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .accessibilityIdentifier("StoreReviewConfirmButton")
-            }
-            .padding(.top, 2)
-        }
-        .padding(28)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.background)
+    private var hasActiveCaptureWork: Bool {
+        CaptureManager.current?.isCaptureWorkActive == true
     }
 }
 #endif

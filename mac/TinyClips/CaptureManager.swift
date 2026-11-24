@@ -170,6 +170,20 @@ class CaptureManager: ObservableObject {
     var isAnyCaptureInProgress: Bool {
         isCaptureActionInProgress || isRecording || isFinalizingRecording
     }
+    var isCaptureWorkActive: Bool {
+        isOCRInFlight
+            || isCapturePreparationInProgress
+            || isScreenshotCaptureInProgress
+            || isRecordingSetupInProgress
+            || isRecording
+            || isFinalizingRecording
+            || RegionSelector.isSelecting
+            || WindowSelector.isSelecting
+            || scrollingCaptureSession != nil
+            || videoRecorder != nil
+            || webcamRecorder != nil
+            || gifWriter != nil
+    }
 
     private(set) var automationRecordingError: AutomationError?
 
@@ -769,9 +783,13 @@ class CaptureManager: ObservableObject {
             let url = try ScreenshotCapture.saveImage(image, to: outputURL, scaleFactor: scaleFactor)
             CaptureAnalyticsStore.shared.recordCapture(.screenshot)
             SaveService.shared.handleSavedFile(url: url, type: .screenshot)
+            isScreenshotCaptureInProgress = false
+            notifyStoreReviewCaptureWorkBecameIdle()
             return url
         } catch {
             finishScrollingCapture(session: session, with: error, shouldReturnToPicker: false)
+            isScreenshotCaptureInProgress = false
+            notifyStoreReviewCaptureWorkBecameIdle()
             throw AutomationError(.internal, "Scrolling capture failed: \(error.localizedDescription)")
         }
     }
@@ -786,6 +804,8 @@ class CaptureManager: ObservableObject {
             with: PanoramaCaptureError.cancelled,
             shouldReturnToPicker: false
         )
+        isScreenshotCaptureInProgress = false
+        notifyStoreReviewCaptureWorkBecameIdle()
     }
 
     @MainActor
@@ -822,6 +842,7 @@ class CaptureManager: ObservableObject {
         shouldReturnToPicker: Bool
     ) {
         guard scrollingCaptureSession === session else { return }
+        let wasAutomation = scrollingCaptureIsAutomation
         let imageScaleFactor = scrollingCaptureScaleFactor
         if let panel = scrollingCapturePanel {
             scrollingCapturePanelPosition = panel.frame.origin
@@ -834,7 +855,10 @@ class CaptureManager: ObservableObject {
         scrollingCaptureFrameCount = 0
         scrollingCaptureIsAutomation = false
         isStoppingScrollingCapture = false
-        isScreenshotCaptureInProgress = false
+        if !wasAutomation, image == nil {
+            isScreenshotCaptureInProgress = false
+            notifyStoreReviewCaptureWorkBecameIdle()
+        }
 
         if let error {
             let wasCancelled: Bool
@@ -859,8 +883,11 @@ class CaptureManager: ObservableObject {
         guard let image else { return }
 
         Task {
+            defer {
+                self.isScreenshotCaptureInProgress = false
+                self.notifyStoreReviewCaptureWorkBecameIdle()
+            }
             var didPresentEditor = false
-            var didCompleteCapture = false
             do {
                 let settings = CaptureSettings.shared
                 let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
@@ -873,7 +900,6 @@ class CaptureManager: ObservableObject {
                     scaleFactor: imageScaleFactor
                 )
                 CaptureAnalyticsStore.shared.recordCapture(.screenshot)
-                didCompleteCapture = true
                 if settings.showScreenshotEditor {
                     if shouldSaveImmediately {
                         SaveService.shared.handleSavedFile(url: url, type: .screenshot)
@@ -896,7 +922,7 @@ class CaptureManager: ObservableObject {
             } catch {
                 SaveService.shared.showError("Scrolling capture failed: \(error.localizedDescription)")
             }
-            if didCompleteCapture, !didPresentEditor {
+            if !didPresentEditor {
                 if shouldReturnToPicker,
                    CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
                     self.showScreenshotPicker()
@@ -921,9 +947,11 @@ class CaptureManager: ObservableObject {
                 countdownCompleted: countdownEnabled
             )
             Task {
-                defer { self.isScreenshotCaptureInProgress = false }
+                defer {
+                    self.isScreenshotCaptureInProgress = false
+                    self.notifyStoreReviewCaptureWorkBecameIdle()
+                }
                 var didPresentEditor = false
-                var didCompleteCapture = false
                 do {
                     let settings = CaptureSettings.shared
                     let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
@@ -941,7 +969,6 @@ class CaptureManager: ObservableObject {
                     }
 
                     CaptureAnalyticsStore.shared.recordCapture(.screenshot)
-                    didCompleteCapture = true
 
                     if settings.showScreenshotEditor {
                         if shouldSaveImmediately {
@@ -968,7 +995,7 @@ class CaptureManager: ObservableObject {
                 } catch {
                     SaveService.shared.showError("Screenshot failed: \(error.localizedDescription)")
                 }
-                if didCompleteCapture, !didPresentEditor {
+                if !didPresentEditor {
                     if shouldReturnToPickerAfterCapture,
                        CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
                         self.showScreenshotPicker()
@@ -1679,6 +1706,7 @@ class CaptureManager: ObservableObject {
     }
 
     private func discardRecording(clearActiveRequest: Bool) async {
+        defer { notifyStoreReviewCaptureWorkBecameIdle() }
         dismissWebcamPreview()
         dismissRegionIndicator()
         endIdleSleepAssertion()
@@ -1724,6 +1752,7 @@ class CaptureManager: ObservableObject {
             }
             stopRecordingTask = nil
             debugRecordingLifecycle("Finished finalizing session \(stoppingSessionID.map(String.init) ?? "unknown")")
+            notifyStoreReviewCaptureWorkBecameIdle()
         }
         defer { activeMouseClickCaptureEnabledOverride = nil }
 
@@ -2315,6 +2344,12 @@ class CaptureManager: ObservableObject {
         StoreReviewPromptCoordinator.shared.editorWindowClosed(continuingWith: continuation)
 #else
         continuation()
+#endif
+    }
+
+    func notifyStoreReviewCaptureWorkBecameIdle() {
+#if APPSTORE
+        StoreReviewPromptCoordinator.shared.captureWorkBecameIdle()
 #endif
     }
 
