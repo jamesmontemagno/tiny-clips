@@ -1,7 +1,6 @@
 import Foundation
 #if APPSTORE
 import AppKit
-import StoreKit
 #endif
 
 @MainActor
@@ -58,43 +57,100 @@ final class StoreReviewPromptState {
     }
 }
 
-#if APPSTORE
 @MainActor
 final class StoreReviewPromptCoordinator {
-    static let shared = StoreReviewPromptCoordinator()
+    typealias ReviewAction = @MainActor (@MainActor () -> Void) -> Bool
+    typealias PromptPresenter = @MainActor (
+        @escaping ReviewAction,
+        @escaping @MainActor () -> Void
+    ) -> Void
+
+#if APPSTORE
+    static let shared = StoreReviewPromptCoordinator(
+        state: .shared,
+        isCaptureInProgress: { CaptureManager.current?.isAnyCaptureInProgress == true },
+        hasActiveCaptureWork: { CaptureManager.current?.isCaptureWorkActive == true },
+        hasOpenCaptureEditor: {
+            if ScreenshotEditorRegistry.shared.hasOpenSessions
+                || StudioWindowRegistry.shared.hasOpenWindows {
+                return true
+            }
+            return NSApp.windows.contains { window in
+                window.isVisible && (window is VideoTrimmerWindow || window is GifTrimmerWindow)
+            }
+        },
+        presentPrompt: { requestReview, completion in
+            StoreReviewPromptWindow.present(requestReview: requestReview, onComplete: completion)
+        }
+    )
+#endif
 
     private let state: StoreReviewPromptState
+    private let isCaptureInProgress: @MainActor () -> Bool
+    private let hasActiveCaptureWork: @MainActor () -> Bool
+    private let hasOpenCaptureEditor: @MainActor () -> Bool
+    private let presentPrompt: PromptPresenter
     private var continuations: [@MainActor () -> Void] = []
+    private var isPromptOpen = false
+    private var didRequestReview = false
 
-    init(state: StoreReviewPromptState = .shared) {
+    init(
+        state: StoreReviewPromptState,
+        isCaptureInProgress: @escaping @MainActor () -> Bool,
+        hasActiveCaptureWork: @escaping @MainActor () -> Bool,
+        hasOpenCaptureEditor: @escaping @MainActor () -> Bool,
+        presentPrompt: @escaping PromptPresenter
+    ) {
         self.state = state
+        self.isCaptureInProgress = isCaptureInProgress
+        self.hasActiveCaptureWork = hasActiveCaptureWork
+        self.hasOpenCaptureEditor = hasOpenCaptureEditor
+        self.presentPrompt = presentPrompt
     }
 
     func editorWindowClosed(continuingWith continuation: @escaping @MainActor () -> Void = {}) {
         continuations.append(continuation)
 
-        if isCaptureInProgress || hasOpenCaptureEditor {
+        guard !isPromptOpen,
+              !isCaptureInProgress(),
+              !hasActiveCaptureWork(),
+              !hasOpenCaptureEditor() else { return }
+
+        if state.claimPromptAfterEditorWindowClosed() {
+            isPromptOpen = true
+            presentPrompt(
+                { [weak self] requestReview in
+                    guard let self, self.isPromptOpen, !self.didRequestReview,
+                          !self.isCaptureInProgress(),
+                          !self.hasActiveCaptureWork(),
+                          !self.hasOpenCaptureEditor() else { return false }
+                    self.didRequestReview = true
+                    requestReview()
+                    return true
+                },
+                { [weak self] in
+                    self?.promptClosed()
+                }
+            )
             return
         }
 
-        if state.isEligible,
-           state.claimPromptAfterEditorWindowClosed(
-                isCaptureInProgress: false,
-                hasOpenCaptureEditor: false
-           ) {
-            SKStoreReviewController.requestReview()
-        }
-
-        flushContinuations()
+        resumePendingActionsWhenIdle()
     }
 
-    /// Resumes picker work that was deferred during another capture without evaluating review
-    /// eligibility or attempting to show the system prompt.
     func captureWorkBecameIdle() {
-        guard !hasActiveCaptureWork, !hasOpenCaptureEditor else {
-            return
-        }
+        resumePendingActionsWhenIdle()
+    }
 
+    private func promptClosed() {
+        guard isPromptOpen else { return }
+        isPromptOpen = false
+        resumePendingActionsWhenIdle()
+    }
+
+    private func resumePendingActionsWhenIdle() {
+        guard !isPromptOpen, !isCaptureInProgress(),
+              !hasActiveCaptureWork(), !hasOpenCaptureEditor() else { return }
         flushContinuations()
     }
 
@@ -103,24 +159,4 @@ final class StoreReviewPromptCoordinator {
         continuations.removeAll()
         pending.forEach { $0() }
     }
-
-    private var hasOpenCaptureEditor: Bool {
-        if ScreenshotEditorRegistry.shared.hasOpenSessions
-            || StudioWindowRegistry.shared.hasOpenWindows {
-            return true
-        }
-
-        return NSApp.windows.contains { window in
-            window.isVisible && (window is VideoTrimmerWindow || window is GifTrimmerWindow)
-        }
-    }
-
-    private var isCaptureInProgress: Bool {
-        CaptureManager.current?.isAnyCaptureInProgress == true
-    }
-
-    private var hasActiveCaptureWork: Bool {
-        CaptureManager.current?.isCaptureWorkActive == true
-    }
 }
-#endif

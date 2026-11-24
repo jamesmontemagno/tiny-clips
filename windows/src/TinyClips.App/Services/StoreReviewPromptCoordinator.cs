@@ -6,8 +6,8 @@ using TinyClips.Core.Services;
 namespace TinyClips.App;
 
 /// <summary>
-/// Shows the one-time Store review prompt only after every capture editor has finished. It also
-/// holds picker continuations so neither a custom prompt nor the native Store surface is covered.
+/// Shows the one-time review/feedback prompt only after every capture editor has finished. It also
+/// holds picker continuations until the Store flow or feedback window has closed.
 /// </summary>
 internal sealed class StoreReviewPromptCoordinator
 {
@@ -16,6 +16,7 @@ internal sealed class StoreReviewPromptCoordinator
     private readonly Func<bool> _isCaptureInProgress;
     private readonly Func<bool> _isExiting;
     private readonly Action<Window> _activateWindow;
+    private readonly Action<Action> _openFeedback;
     private readonly Action<string> _reportFailure;
     private readonly List<Action> _pendingContinuations = [];
     private StoreReviewPromptWindow? _window;
@@ -26,6 +27,7 @@ internal sealed class StoreReviewPromptCoordinator
         Func<bool> isCaptureInProgress,
         Func<bool> isExiting,
         Action<Window> activateWindow,
+        Action<Action> openFeedback,
         Action<string> reportFailure)
     {
         _state = state;
@@ -33,6 +35,7 @@ internal sealed class StoreReviewPromptCoordinator
         _isCaptureInProgress = isCaptureInProgress;
         _isExiting = isExiting;
         _activateWindow = activateWindow;
+        _openFeedback = openFeedback;
         _reportFailure = reportFailure;
     }
 
@@ -105,9 +108,24 @@ internal sealed class StoreReviewPromptCoordinator
         }
     }
 
-    private void OnPromptClosed()
+    private void OnPromptClosed(bool feedbackRequested)
     {
         _window = null;
+        if (feedbackRequested)
+        {
+            try
+            {
+                _openFeedback(FlushContinuations);
+                return;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Store review feedback window could not be shown: {ex}");
+                _reportFailure(
+                    "Tiny Clips couldn't open the feedback form. It won't ask to review again.");
+            }
+        }
+
         FlushContinuations();
     }
 

@@ -136,10 +136,28 @@ class CaptureManager: ObservableObject {
     @Published var activeWebcamName: String?
     @Published var microphoneLevel: Double = 0
     @Published var microphoneWarningMessage: String?
-    @Published private(set) var isOCRInFlight = false
-    @Published private(set) var isCapturePreparationInProgress = false
+    @Published private(set) var isOCRInFlight = false {
+        didSet {
+            if oldValue && !isOCRInFlight {
+                scheduleStoreReviewWhenCaptureIsIdle()
+            }
+        }
+    }
+    @Published private(set) var isCapturePreparationInProgress = false {
+        didSet {
+            if oldValue && !isCapturePreparationInProgress {
+                scheduleStoreReviewWhenCaptureIsIdle()
+            }
+        }
+    }
     @Published private(set) var isScreenshotCaptureInProgress = false
-    @Published private(set) var isRecordingSetupInProgress = false
+    @Published private(set) var isRecordingSetupInProgress = false {
+        didSet {
+            if !isRecordingSetupInProgress {
+                scheduleStoreReviewWhenCaptureIsIdle()
+            }
+        }
+    }
     @Published private(set) var captureHotKeyRegistrationError: String?
 
     var hotKeyRegistrationError: String? {
@@ -550,6 +568,7 @@ class CaptureManager: ObservableObject {
             },
             onCancel: { [weak self] in
                 self?.dismissScreenshotPicker()
+                self?.scheduleStoreReviewWhenCaptureIsIdle()
             }
         )
         panel.show(at: screenshotPickerPosition)
@@ -2353,6 +2372,15 @@ class CaptureManager: ObservableObject {
 #endif
     }
 
+    private func scheduleStoreReviewWhenCaptureIsIdle() {
+#if APPSTORE
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.isAnyCaptureInProgress, !self.isCaptureWorkActive else { return }
+            self.notifyStoreReviewCaptureWorkBecameIdle()
+        }
+#endif
+    }
+
     private func showScreenshotEditor(
         for url: URL,
         initialSaveURL: URL,
@@ -2544,6 +2572,7 @@ class CaptureManager: ObservableObject {
                 self?.pendingVideoTimeLimitMinutes = CaptureSettings.shared.videoRecordingTimeLimitMinutes
                 self?.dismissStartPanel()
                 self?.dismissRegionIndicator()
+                self?.scheduleStoreReviewWhenCaptureIsIdle()
             }
         )
         panel.show()
@@ -2917,6 +2946,7 @@ class CaptureManager: ObservableObject {
             },
             onCancel: { [weak self] in
                 self?.dismissRecordingPicker()
+                self?.scheduleStoreReviewWhenCaptureIsIdle()
             }
         )
         panel.show(at: recordingPickerPosition)
@@ -3049,6 +3079,7 @@ class CaptureManager: ObservableObject {
         }
         DispatchQueue.main.async {
             self.screenPickerWindow = nil
+            self.scheduleStoreReviewWhenCaptureIsIdle()
         }
         return screen
     }

@@ -56,7 +56,7 @@
                         HorizontalAlignment="Center"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Style="{StaticResource BodyTextBlockStyle}"
-                        Text="A quick Microsoft Store review helps other people discover Tiny Clips."
+                        Text="A Microsoft Store review helps other people discover Tiny Clips. If something could be better, tell us directly."
                         TextAlignment="Center"
                         TextWrapping="Wrap" />
                 </StackPanel>
@@ -102,17 +102,24 @@
                 <Button
                     x:Name="NotNowButton"
                     AutomationProperties.AutomationId="StoreReviewNotNowButton"
-                    AutomationProperties.HelpText="Close this prompt without opening the Microsoft Store."
+                    AutomationProperties.HelpText="Close this prompt without opening the Microsoft Store or feedback."
                     AutomationProperties.Name="Not now"
                     Click="OnNotNowClicked"
                     Content="Not now" />
                 <Button
+                    x:Name="FeedbackButton"
+                    AutomationProperties.AutomationId="StoreReviewFeedbackButton"
+                    AutomationProperties.HelpText="Open Tiny Clips feedback form instead of the Microsoft Store."
+                    AutomationProperties.Name="Send feedback"
+                    Click="OnFeedbackClicked"
+                    Content="Send feedback" />
+                <Button
                     x:Name="ReviewButton"
                     AutomationProperties.AutomationId="StoreReviewConfirmButton"
                     AutomationProperties.HelpText="Open the Microsoft Store rate and review flow for Tiny Clips."
-                    AutomationProperties.Name="Review Tiny Clips"
+                    AutomationProperties.Name="Leave a review"
                     Click="OnReviewClicked"
-                    Content="Review Tiny Clips"
+                    Content="Leave a review"
                     Style="{StaticResource AccentButtonStyle}" />
             </StackPanel>
         </Border>

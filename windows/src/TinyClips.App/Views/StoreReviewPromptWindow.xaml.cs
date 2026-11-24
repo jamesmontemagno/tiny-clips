@@ -13,7 +13,7 @@ using WinRT.Interop;
 
 namespace TinyClips.App;
 
-/// <summary>One-time, Store-only review prompt with a stable owner HWND for the native Store flow.</summary>
+/// <summary>One-time Store review and feedback prompt with a stable HWND for the native Store flow.</summary>
 public sealed partial class StoreReviewPromptWindow : Window
 {
     private const int MinimumWidthDip = 440;
@@ -21,13 +21,14 @@ public sealed partial class StoreReviewPromptWindow : Window
     private const int WindowWidthDip = 500;
     private const int WindowHeightDip = 370;
 
-    private readonly Action _onClosed;
+    private readonly Action<bool> _onClosed;
     private readonly WindowChromeController _chromeController;
     private bool _reviewAttempted;
     private bool _reviewInProgress;
     private bool _isClosed;
+    private bool _feedbackRequested;
 
-    public StoreReviewPromptWindow(Action onClosed)
+    public StoreReviewPromptWindow(Action<bool> onClosed)
     {
         _onClosed = onClosed;
         InitializeComponent();
@@ -103,6 +104,17 @@ public sealed partial class StoreReviewPromptWindow : Window
         }
     }
 
+    private void OnFeedbackClicked(object sender, RoutedEventArgs e)
+    {
+        if (_reviewInProgress || _isClosed)
+        {
+            return;
+        }
+
+        _feedbackRequested = true;
+        Close();
+    }
+
     private void OnReviewClicked(object sender, RoutedEventArgs e)
 #if TINYCLIPS_STORE_BUILD
         => _ = RequestReviewAsync();
@@ -116,6 +128,7 @@ public sealed partial class StoreReviewPromptWindow : Window
         _reviewAttempted = true;
         _reviewInProgress = true;
         ReviewButton.IsEnabled = false;
+        FeedbackButton.IsEnabled = false;
         NotNowButton.IsEnabled = false;
         ReviewBusyPanel.Visibility = Visibility.Visible;
         ReviewStatusBar.IsOpen = false;
@@ -136,6 +149,7 @@ public sealed partial class StoreReviewPromptWindow : Window
         _reviewAttempted = true;
         _reviewInProgress = true;
         ReviewButton.IsEnabled = false;
+        FeedbackButton.IsEnabled = false;
         NotNowButton.IsEnabled = false;
         ReviewBusyPanel.Visibility = Visibility.Visible;
         ReviewStatusBar.IsOpen = false;
@@ -199,6 +213,7 @@ public sealed partial class StoreReviewPromptWindow : Window
         ReviewStatusBar.Message = message;
         ReviewStatusBar.IsOpen = true;
         ReviewButton.IsEnabled = false;
+        FeedbackButton.IsEnabled = true;
         NotNowButton.IsEnabled = true;
         NotNowButton.Content = "Close";
         AutomationProperties.SetName(NotNowButton, "Close review prompt");
@@ -219,6 +234,6 @@ public sealed partial class StoreReviewPromptWindow : Window
         RootGrid.Loaded -= OnRootLoaded;
         AppWindow.Closing -= OnAppWindowClosing;
         Closed -= OnWindowClosed;
-        _onClosed();
+        _onClosed(_feedbackRequested);
     }
 }

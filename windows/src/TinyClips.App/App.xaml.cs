@@ -4181,6 +4181,9 @@ public partial class App : Application
     }
 
     internal void OpenQuickBugReportWindow()
+        => OpenQuickBugReportWindow(null);
+
+    private void OpenQuickBugReportWindow(Action? onClosed)
     {
         if (_quickBugReportWindow is null)
         {
@@ -4189,6 +4192,17 @@ public partial class App : Application
                 QuickBugReport.GetAppBuild(),
                 QuickBugReport.GetDistributionChannel());
             _quickBugReportWindow.Closed += (_, _) => _quickBugReportWindow = null;
+        }
+
+        if (onClosed is not null)
+        {
+            var window = _quickBugReportWindow;
+            void OnClosed(object sender, WindowEventArgs args)
+            {
+                window.Closed -= OnClosed;
+                onClosed();
+            }
+            window.Closed += OnClosed;
         }
 
         ActivateWindowToForeground(_quickBugReportWindow);

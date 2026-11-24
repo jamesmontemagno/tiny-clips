@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
-- The Mac App Store build now requests Apple's native rating prompt once after 30 combined completed captures when a screenshot/video/GIF/Studio editor closes. Review eligibility is never evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
+- After 30 combined captures, the Mac App Store build asks once, after a safe editor close, whether to leave a review, send feedback, or dismiss. Apple controls whether its review request appears; feedback opens a prefilled GitHub issue for the user to submit. These choices remain UI-only. Eligibility is not evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
 
 ## v2.3.0.3-mac - 2026-11-23
 

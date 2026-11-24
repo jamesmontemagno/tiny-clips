@@ -312,13 +312,7 @@ struct SettingsView: View {
     }
 
     private var quickBugReportContext: QuickBugReportContext {
-        QuickBugReportContext(
-            platform: "macOS",
-            version: appVersion,
-            build: appBuild,
-            distribution: distributionChannel,
-            osVersion: ProcessInfo.processInfo.operatingSystemVersionString
-        )
+        .current
     }
 
     private func refreshCaptureDevices() {

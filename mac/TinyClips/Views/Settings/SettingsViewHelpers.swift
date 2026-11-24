@@ -213,6 +213,21 @@ struct QuickBugReportContext {
     let build: String
     let distribution: String
     let osVersion: String
+
+    static var current: QuickBugReportContext {
+#if APPSTORE
+        let distribution = "Mac App Store"
+#else
+        let distribution = "Direct Download"
+#endif
+        return QuickBugReportContext(
+            platform: "macOS",
+            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown",
+            build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown",
+            distribution: distribution,
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString
+        )
+    }
 }
 
 enum QuickFeedbackType: String, CaseIterable {

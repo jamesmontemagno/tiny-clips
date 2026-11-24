@@ -358,6 +358,8 @@ final class AutomationCommandRouter {
     }
 
     private func ocr(_ params: [String: Any]) async throws -> [String: Any] {
+        let manager = try captureManager()
+        defer { manager.notifyStoreReviewCaptureWorkBecameIdle() }
         let captured = try await captureTargetImage(params)
         do {
             switch try await TextRecognitionService.recognizeText(in: captured.image) {

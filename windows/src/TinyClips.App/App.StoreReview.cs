@@ -25,6 +25,7 @@ public partial class App
                 HasActiveCaptureWork,
                 () => _isExiting,
                 ActivateWindowToForeground,
+                OpenQuickBugReportWindow,
                 ShowMessageNotification);
             _storeReviewPromptCoordinator.EditorWindowClosed(continuation);
             return;
