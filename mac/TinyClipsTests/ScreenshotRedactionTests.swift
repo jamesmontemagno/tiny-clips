@@ -380,6 +380,7 @@ final class ScreenshotRedactionTests: XCTestCase {
                 color: .black, lineWidth: 0, text: "Selected", points: []
             )
         ]
+        editor.selectedTool = .move
         editor.selectedAnnotationIndex = 0
 
         editor.selectedTool = .text
@@ -400,6 +401,7 @@ final class ScreenshotRedactionTests: XCTestCase {
                 color: .black, lineWidth: 0, text: "1", points: []
             )
         ]
+        editor.selectedTool = .move
         editor.selectedAnnotationIndex = 0
         editor.selectedTool = .pencil
 
@@ -519,6 +521,7 @@ final class ScreenshotRedactionTests: XCTestCase {
                 color: .black, lineWidth: 0, text: "Selected", points: []
             )
         ]
+        editor.selectedTool = .move
         editor.selectedAnnotationIndex = 0
 
         let initialRect = editor.annotations[0].rect
@@ -549,6 +552,7 @@ final class ScreenshotRedactionTests: XCTestCase {
                 color: .black, lineWidth: 0, text: "Selected", points: []
             )
         ]
+        editor.selectedTool = .move
         editor.selectedAnnotationIndex = 0
 
         editor.beginSelectedTextFontSizeEdit()
