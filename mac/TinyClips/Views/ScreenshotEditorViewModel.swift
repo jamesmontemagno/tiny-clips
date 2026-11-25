@@ -30,17 +30,19 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
     @Published var selectedTool: EditTool = .move {
         didSet {
-            if selectedTool != .move {
-                selectedAnnotationIndex = nil
-            }
-            // The crop selection belongs to the Crop tool; it never lingers hidden behind another tool.
-            if oldValue == .crop, selectedTool != .crop {
+            guard oldValue != selectedTool else { return }
+            // Only Move shows a selection, so it never lingers hidden behind another tool, where
+            // style edits meant for the new tool would quietly change the old element instead.
+            selectedAnnotationIndex = nil
+            // The crop selection belongs to the Crop tool for the same reason.
+            if oldValue == .crop {
                 clearCropSelection()
             }
         }
     }
     @Published var selectedColor: Color = .red
     @Published var selectedFillColor: Color = .clear
+    /// New-annotation stroke width, in source-image pixels.
     @Published var lineWidth: CGFloat = 4
     @Published var annotations: [ScreenshotAnnotation] = [] {
         didSet { invalidateSensitiveText() }
@@ -63,6 +65,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var isEditingText = false
     @Published var textEditPosition: CGPoint? // normalized click position
     @Published var textEditValue: String = ""
+    /// Text sizes offered while typing and in the inspector, in editor reference units.
+    static let textFontSizeRange: ClosedRange<CGFloat> = 10...72
     @Published var textFontSize: CGFloat = 16
     @Published var textFontFamily: String = textSystemFontFamily
     @Published var textIsBold = false
@@ -78,7 +82,16 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var numberSizeMultiplier: CGFloat = 1.0
     @Published var numberTextColor: Color = .white
     @Published var redactionStrength: RedactionStrength = .medium
-    @Published var selectedArrowStylePreset: ArrowStyle = .straight
+    @Published var arrowShape: ArrowShapeOptions = .classic
+    @Published var startCap: StrokeCap = .round
+    @Published var endCap: StrokeCap = .round
+    @Published var lineJoin: StrokeJoin = .round
+    @Published var strokeAlignment: StrokeAlignment = .center
+    /// New arrows and lines start without an outline.
+    @Published var outlineColor: Color = .black
+    @Published var outlineWidth: CGFloat = 0
+    /// Arrow and line outlines start outside the body, so they frame it rather than cover it.
+    @Published var outlineAlignment: StrokeAlignment = .outside
     @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
     @Published var recentEmoji: [String] = []
     @Published var backgroundStyle: ExportBackgroundStyle = .transparent
@@ -95,6 +108,12 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var verticalExportAlignment: ExportVerticalAlignment = .center
 
     private var pencilPoints: [CGPoint] = []
+    private var isAdjustingSelectedLineWidth = false
+    private var didRecordLineWidthAdjustment = false
+    private var isAdjustingSelectedFillOpacity = false
+    private var didRecordFillOpacityAdjustment = false
+    private var isAdjustingSelectedArrowShape = false
+    private var didRecordArrowShapeAdjustment = false
     private var imagePixelSize: CGSize = .zero
     private var sourcePixelScale: CGFloat = 1
     private var redactionSourceImage: CGImage?
@@ -110,6 +129,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var isRotatingAnnotation = false
     private var isDraggingEndpoint = false // true = dragging arrowhead/line end
     private var isDraggingStartpoint = false // true = dragging arrow tail/line start
+    private var isDraggingBend = false // true = dragging an arrow's bend handle
     private var activeResizeHandle: AnnotationResizeHandle?
     private var cropDragMode: CropDragMode?
     private var cropDragOriginalRect: CGRect = .zero
@@ -117,8 +137,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var redoStack: [EditorCanvasState] = []
     private var pendingDragHistoryState: EditorCanvasState?
     private var didChangePendingDrag = false
-    private var isGroupingTextBoxStyleEdit = false
-    private var isGroupingSelectedTextFontSizeEdit = false
+    private var isGroupingTextStyleEdit = false
 
     private var initialBackgroundStyle: ExportBackgroundStyle
     private var initialBackgroundColor: Color
@@ -145,6 +164,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             self.sourcePixelScale = ImagePixelDensity.scaleFactor(for: image)
             if let rep = image.representations.first {
                 self.imagePixelSize = CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+                self.lineWidth = AnnotationStrokeMath.defaultWidth(forImagePixelWidth: CGFloat(rep.pixelsWide))
             }
         }
 
@@ -164,6 +184,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         if let lastUsed = recentEmoji.first {
             self.selectedEmoji = lastUsed
         }
+        self.selectedTool = settings.screenshotEditorDefaultEditTool
     }
 
     private static let recentEmojiDefaultsKey = "screenshotEditor.recentEmoji"
@@ -393,9 +414,23 @@ class ScreenshotEditorViewModel: ObservableObject {
                 }
             } else {
                 let hitRect: CGRect
-                if ann.tool == .arrow || ann.tool == .line {
+                if ann.tool == .arrow {
+                        // Curves are measured in pixels, where the bend is defined.
+                        let size = hitTestImageSize
                         let line = linePoints(for: ann)
-                        if distanceFromPoint(point, toLineSegmentStart: line.start, end: line.end) <= 0.02 {
+                        let distance = ArrowGeometry.distance(
+                            from: CGPoint(x: point.x * size.width, y: point.y * size.height),
+                            start: CGPoint(x: line.start.x * size.width, y: line.start.y * size.height),
+                            end: CGPoint(x: line.end.x * size.width, y: line.end.y * size.height),
+                            bend: ann.arrow.bend
+                        )
+                        if distance <= 0.02 * size.width || drawnOutlineContains(ann, point: point) {
+                            return i
+                        }
+                        continue
+                } else if ann.tool == .line {
+                        let line = linePoints(for: ann)
+                        if distanceToSegment(from: point, start: line.start, end: line.end) <= 0.02 || drawnOutlineContains(ann, point: point) {
                             return i
                         }
                         continue
@@ -429,6 +464,33 @@ class ScreenshotEditorViewModel: ObservableObject {
             }
         }
         return nil
+    }
+
+    /// Whether a normalized `point` lands on an arrow's or line's drawn shape (a thick shaft, a
+    /// wide head) or its outline, measured in image pixels.
+    private func drawnOutlineContains(_ ann: ScreenshotAnnotation, point: CGPoint) -> Bool {
+        let size = hitTestImageSize
+        let line = linePoints(for: ann)
+        let start = CGPoint(x: line.start.x * size.width, y: line.start.y * size.height)
+        let end = CGPoint(x: line.end.x * size.width, y: line.end.y * size.height)
+        let outline: [CGPoint]
+        if ann.tool == .arrow {
+            outline = ArrowGeometry.build(
+                start: start, end: end, width: ann.lineWidth, options: ann.arrow,
+                startCap: ann.startCap, join: ann.lineJoin
+            ).points
+        } else {
+            outline = LineGeometry.outline(
+                start: start, end: end, width: ann.lineWidth, startCap: ann.startCap, endCap: ann.endCap
+            )
+        }
+        // An outside or centered outline reaches past the body by up to its width.
+        let reach = ann.strokeAlignment == .inside ? 0 : ann.outlineWidth
+        return ArrowGeometry.outlineContains(
+            outline,
+            point: CGPoint(x: point.x * size.width, y: point.y * size.height),
+            tolerance: reach + max(4, size.width * 0.005)
+        )
     }
 
     func pencilBounds(for annotation: ScreenshotAnnotation) -> CGRect? {
@@ -474,6 +536,14 @@ class ScreenshotEditorViewModel: ObservableObject {
     var showsArrowStyleControl: Bool {
         inspectorTool == .arrow
     }
+
+    var showsStartCapControl: Bool { inspectorTool.usesStartCap }
+
+    var showsEndCapControl: Bool { inspectorTool.usesEndCap }
+
+    var showsLineJoinControl: Bool { inspectorTool.usesJoin }
+
+    var showsStrokeAlignmentControl: Bool { inspectorTool.usesAlignment }
 
     var showsEmojiPicker: Bool {
         inspectorTool == .emoji
@@ -727,7 +797,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         switch inspectorTool {
         case .rectangle, .circle, .arrow, .line, .pencil, .text, .number:
             return true
-        case .move, .crop, .blur, .emoji:
+        case .move, .background, .crop, .blur, .emoji:
             return false
         }
     }
@@ -771,14 +841,26 @@ class ScreenshotEditorViewModel: ObservableObject {
         return annotations[index].color
     }
 
+    func selectedStrokeColor() -> Color? {
+        selectedShapeColor()
+    }
+
     @discardableResult
     func updateSelectedShapeColor(_ color: Color) -> Bool {
         guard let index = selectedShapeIndex else { return false }
         guard !colorsEqual(annotations[index].color, color) else { return true }
-        recordHistory()
+        if !isAdjustingSelectedFillOpacity || !didRecordFillOpacityAdjustment {
+            recordHistory()
+            didRecordFillOpacityAdjustment = isAdjustingSelectedFillOpacity
+        }
         annotations[index].color = color
         markDirty()
         return true
+    }
+
+    @discardableResult
+    func updateSelectedStrokeColor(_ color: Color) -> Bool {
+        updateSelectedShapeColor(color)
     }
 
     func selectedShapeFillColor() -> Color? {
@@ -790,7 +872,10 @@ class ScreenshotEditorViewModel: ObservableObject {
     func updateSelectedShapeFillColor(_ color: Color) -> Bool {
         guard let index = selectedFillableShapeIndex else { return false }
         guard !colorsEqual(annotations[index].fillColor, color) else { return true }
-        recordHistory()
+        if !isAdjustingSelectedFillOpacity || !didRecordFillOpacityAdjustment {
+            recordHistory()
+            didRecordFillOpacityAdjustment = isAdjustingSelectedFillOpacity
+        }
         annotations[index].fillColor = color
         markDirty()
         return true
@@ -805,7 +890,10 @@ class ScreenshotEditorViewModel: ObservableObject {
     func updateSelectedShapeLineWidth(_ lineWidth: CGFloat) -> Bool {
         guard let index = selectedShapeIndex else { return false }
         guard annotations[index].lineWidth != lineWidth else { return true }
-        recordHistory()
+        if !isAdjustingSelectedLineWidth || !didRecordLineWidthAdjustment {
+            recordHistory()
+            didRecordLineWidthAdjustment = isAdjustingSelectedLineWidth
+        }
         annotations[index].lineWidth = lineWidth
         markDirty()
         return true
@@ -885,29 +973,27 @@ class ScreenshotEditorViewModel: ObservableObject {
         }
     }
 
-    func beginSelectedTextBoxStyleEdit() {
-        guard !isGroupingTextBoxStyleEdit, selectedAnnotationIsText else { return }
+    func beginSelectedTextStyleEdit() {
+        guard !isGroupingTextStyleEdit, selectedAnnotationIsText else { return }
         recordHistory()
-        isGroupingTextBoxStyleEdit = true
+        isGroupingTextStyleEdit = true
     }
 
-    func endSelectedTextBoxStyleEdit() {
-        isGroupingTextBoxStyleEdit = false
+    func endSelectedTextStyleEdit() {
+        isGroupingTextStyleEdit = false
     }
 
     func beginSelectedTextFontSizeEdit() {
-        guard !isGroupingSelectedTextFontSizeEdit, selectedAnnotationIsText else { return }
-        recordHistory()
-        isGroupingSelectedTextFontSizeEdit = true
+        beginSelectedTextStyleEdit()
     }
 
     func endSelectedTextFontSizeEdit() {
-        isGroupingSelectedTextFontSizeEdit = false
+        endSelectedTextStyleEdit()
     }
 
     private func updateTextBoxStyle(_ mutation: (inout TextBoxStyle) -> Void) {
         if selectedAnnotationIsText, let index = selectedAnnotationIndex {
-            if !isGroupingTextBoxStyleEdit {
+            if !isGroupingTextStyleEdit {
                 recordHistory()
             }
             mutation(&annotations[index].textBoxStyle)
@@ -923,33 +1009,6 @@ class ScreenshotEditorViewModel: ObservableObject {
         recordHistory()
         annotations[index].fontFamily = family
         markDirty()
-        return true
-    }
-
-    @discardableResult
-    func updateSelectedTextFontSize(_ size: CGFloat) -> Bool {
-        if selectedAnnotationIsText, let index = selectedAnnotationIndex {
-            guard annotations[index].fontSize != size else { return true }
-            if !isGroupingSelectedTextFontSizeEdit {
-                recordHistory()
-            }
-            var annotation = annotations[index]
-            if annotation.fontSize > 0 {
-                let scale = size / annotation.fontSize
-                annotation.rect = CGRect(
-                    x: annotation.rect.midX - annotation.rect.width * scale / 2,
-                    y: annotation.rect.midY - annotation.rect.height * scale / 2,
-                    width: annotation.rect.width * scale,
-                    height: annotation.rect.height * scale
-                )
-            }
-            annotation.fontSize = size
-            annotations[index] = annotation
-            markDirty()
-            return true
-        }
-        guard selectedTool == .text else { return false }
-        textFontSize = size
         return true
     }
 
@@ -980,34 +1039,169 @@ class ScreenshotEditorViewModel: ObservableObject {
         return true
     }
 
-    func selectedArrowStyle() -> ArrowStyle? {
+    /// Resizes the selected text. Its box scales with the font around the same center, as a
+    /// handle resize does, so the glyphs keep fitting.
+    @discardableResult
+    func updateSelectedTextFontSize(_ size: CGFloat) -> Bool {
+        guard selectedAnnotationIsText, let index = selectedAnnotationIndex else { return false }
+        let oldSize = annotations[index].fontSize
+        guard size != oldSize else { return true }
+        if !isGroupingTextStyleEdit {
+            recordHistory()
+        }
+        let scale = size / max(oldSize, 1)
+        let rect = annotations[index].rect
+        annotations[index].rect = CGRect(
+            x: rect.midX - rect.width * scale / 2,
+            y: rect.midY - rect.height * scale / 2,
+            width: rect.width * scale,
+            height: rect.height * scale
+        )
+        annotations[index].fontSize = size
+        markDirty()
+        return true
+    }
+
+    /// Canvas units per source-image pixel for an image drawn at `imageSize`.
+    func displayScale(forImageSize imageSize: CGSize) -> CGFloat {
+        imagePixelSize.width > 0 ? imageSize.width / imagePixelSize.width : 1
+    }
+
+    func setAdjustingSelectedLineWidth(_ isAdjusting: Bool) {
+        isAdjustingSelectedLineWidth = isAdjusting
+        didRecordLineWidthAdjustment = false
+    }
+
+    func setAdjustingSelectedFillOpacity(_ isAdjusting: Bool) {
+        isAdjustingSelectedFillOpacity = isAdjusting
+        didRecordFillOpacityAdjustment = false
+    }
+
+    private func selectedIndex(using uses: (EditTool) -> Bool) -> Int? {
         guard selectedTool == .move,
               let index = selectedAnnotationIndex,
               annotations.indices.contains(index),
-              annotations[index].tool == .arrow else {
+              uses(annotations[index].tool) else {
             return nil
         }
-        return annotations[index].arrowStyle
+        return index
+    }
+
+    func selectedStartCap() -> StrokeCap? {
+        selectedIndex(using: \.usesStartCap).map { annotations[$0].startCap }
     }
 
     @discardableResult
-    func updateSelectedArrowStyle(_ style: ArrowStyle) -> Bool {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index),
-              annotations[index].tool == .arrow else {
-            return false
-        }
+    func updateSelectedStartCap(_ cap: StrokeCap) -> Bool {
+        guard let index = selectedIndex(using: \.usesStartCap) else { return false }
+        guard annotations[index].startCap != cap else { return true }
         recordHistory()
-        annotations[index].arrowStyle = style
+        annotations[index].startCap = cap
         markDirty()
         return true
+    }
+
+    func selectedEndCap() -> StrokeCap? {
+        selectedIndex(using: \.usesEndCap).map { annotations[$0].endCap }
+    }
+
+    @discardableResult
+    func updateSelectedEndCap(_ cap: StrokeCap) -> Bool {
+        guard let index = selectedIndex(using: \.usesEndCap) else { return false }
+        guard annotations[index].endCap != cap else { return true }
+        recordHistory()
+        annotations[index].endCap = cap
+        markDirty()
+        return true
+    }
+
+    func selectedLineJoin() -> StrokeJoin? {
+        selectedIndex(using: \.usesJoin).map { annotations[$0].lineJoin }
+    }
+
+    @discardableResult
+    func updateSelectedLineJoin(_ join: StrokeJoin) -> Bool {
+        guard let index = selectedIndex(using: \.usesJoin) else { return false }
+        guard annotations[index].lineJoin != join else { return true }
+        recordHistory()
+        annotations[index].lineJoin = join
+        markDirty()
+        return true
+    }
+
+    func selectedOutlineColor() -> Color? {
+        selectedIndex(using: \.usesOutline).map { annotations[$0].outlineColor }
+    }
+
+    @discardableResult
+    func updateSelectedOutlineColor(_ color: Color) -> Bool {
+        guard let index = selectedIndex(using: \.usesOutline) else { return false }
+        recordHistory()
+        annotations[index].outlineColor = color
+        markDirty()
+        return true
+    }
+
+    func selectedOutlineWidth() -> CGFloat? {
+        selectedIndex(using: \.usesOutline).map { annotations[$0].outlineWidth }
+    }
+
+    @discardableResult
+    func updateSelectedOutlineWidth(_ width: CGFloat) -> Bool {
+        guard let index = selectedIndex(using: \.usesOutline) else { return false }
+        guard annotations[index].outlineWidth != width else { return true }
+        // A slider drag is one undo step, recorded at its first change.
+        if !isAdjustingSelectedLineWidth || !didRecordLineWidthAdjustment {
+            recordHistory()
+            didRecordLineWidthAdjustment = isAdjustingSelectedLineWidth
+        }
+        annotations[index].outlineWidth = width
+        markDirty()
+        return true
+    }
+
+    var showsOutlineControls: Bool { inspectorTool.usesOutline }
+
+    func selectedStrokeAlignment() -> StrokeAlignment? {
+        selectedIndex(using: \.usesAlignment).map { annotations[$0].strokeAlignment }
+    }
+
+    @discardableResult
+    func updateSelectedStrokeAlignment(_ alignment: StrokeAlignment) -> Bool {
+        guard let index = selectedIndex(using: \.usesAlignment) else { return false }
+        recordHistory()
+        annotations[index].strokeAlignment = alignment
+        markDirty()
+        return true
+    }
+
+    func selectedArrowShape() -> ArrowShapeOptions? {
+        selectedIndex(using: { $0 == .arrow }).map { annotations[$0].arrow }
+    }
+
+    @discardableResult
+    func updateSelectedArrowShape(_ shape: ArrowShapeOptions) -> Bool {
+        guard let index = selectedIndex(using: { $0 == .arrow }) else { return false }
+        guard annotations[index].arrow != shape else { return true }
+        // A slider drag is one undo step, recorded at its first change.
+        if !isAdjustingSelectedArrowShape || !didRecordArrowShapeAdjustment {
+            recordHistory()
+            didRecordArrowShapeAdjustment = isAdjustingSelectedArrowShape
+        }
+        annotations[index].arrow = shape
+        markDirty()
+        return true
+    }
+
+    func setAdjustingSelectedArrowShape(_ isAdjusting: Bool) {
+        isAdjustingSelectedArrowShape = isAdjusting
+        didRecordArrowShapeAdjustment = false
     }
 
     func handleDrag(start: CGPoint, current: CGPoint, isAspectLocked: Bool = false, displaySize: CGSize = .zero) {
         switch selectedTool {
         case .move:
-            if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint && !isRotatingAnnotation && activeResizeHandle == nil {
+            if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint && !isDraggingBend && !isRotatingAnnotation && activeResizeHandle == nil {
                 // First drag event — find what we hit
                 let selectedIndex = selectedAnnotationIndex.flatMap { (index: Int) -> Int? in
                     guard annotations.indices.contains(index) else { return nil }
@@ -1018,6 +1212,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                 }
                 if let idx = selectedIndex ?? annotationIndex(at: start) {
                     beginDragHistory()
+                    let wasSelected = selectedAnnotationIndex == idx
                     selectedAnnotationIndex = idx
                     let annotation = annotations[idx]
                     dragOriginalAnnotationRect = annotation.rect
@@ -1046,8 +1241,22 @@ class ScreenshotEditorViewModel: ObservableObject {
                         let distToEnd = hypot(start.x - endPt.x, start.y - endPt.y)
                         let distToStart = hypot(start.x - startPt.x, start.y - startPt.y)
                         let threshold: CGFloat = 0.04
+                        // The bend handle is only shown on a selected arrow, and it is grabbed
+                        // within a few screen points so the rest of the arrow still moves it.
+                        var distToBend = CGFloat.greatestFiniteMagnitude
+                        var isOnBendHandle = false
+                        if wasSelected, ann.tool == .arrow {
+                            let handle = arrowHandle(for: ann)
+                            distToBend = hypot(start.x - handle.x, start.y - handle.y)
+                            isOnBendHandle = hypot(
+                                (start.x - handle.x) * displaySize.width,
+                                (start.y - handle.y) * displaySize.height
+                            ) <= 8
+                        }
 
-                        if distToEnd < threshold && distToEnd <= distToStart {
+                        if isOnBendHandle && distToBend < min(distToEnd, distToStart) {
+                            isDraggingBend = true
+                        } else if distToEnd < threshold && distToEnd <= distToStart {
                             isDraggingEndpoint = true
                         } else if distToStart < threshold && distToStart < distToEnd {
                             isDraggingStartpoint = true
@@ -1087,6 +1296,8 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ann.rect = directedRect(from: updated)
                     annotations[idx] = ann
                     markDirty()
+                } else if isDraggingBend {
+                    bendArrow(at: idx, toward: current, displaySize: displaySize)
                 } else if isDraggingStartpoint {
                     // Move the start point (reverse rotate)
                     var ann = annotations[idx]
@@ -1121,6 +1332,9 @@ class ScreenshotEditorViewModel: ObservableObject {
         case .text, .number, .emoji:
             break // text/number/emoji use click, not drag
 
+        case .background:
+            break // the Background tool only edits the sidebar's frame settings
+
         default:
             let rect = makeRect(from: start, to: current, isAspectLocked: isAspectLocked)
             currentAnnotation = ScreenshotAnnotation(
@@ -1134,7 +1348,13 @@ class ScreenshotEditorViewModel: ObservableObject {
                 points: (selectedTool == .arrow || selectedTool == .line) ? [start, current] : [],
                 redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
                 isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
-                arrowStyle: selectedArrowStylePreset
+                arrow: arrowShape,
+                startCap: startCap,
+                endCap: endCap,
+                lineJoin: lineJoin,
+                strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
+                outlineColor: outlineColor,
+                outlineWidth: outlineWidth
             )
         }
     }
@@ -1145,6 +1365,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             isDraggingAnnotation = false
             isDraggingEndpoint = false
             isDraggingStartpoint = false
+            isDraggingBend = false
             isRotatingAnnotation = false
             activeResizeHandle = nil
             commitDragHistory()
@@ -1171,6 +1392,9 @@ class ScreenshotEditorViewModel: ObservableObject {
         case .text, .number, .emoji:
             break // handled by SpatialTapGesture
 
+        case .background:
+            break
+
         default:
             let rect = makeRect(from: start, to: end, isAspectLocked: isAspectLocked)
             let w = abs(rect.width)
@@ -1188,7 +1412,13 @@ class ScreenshotEditorViewModel: ObservableObject {
                     points: (selectedTool == .arrow || selectedTool == .line) ? [start, end] : [],
                     redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
                     isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
-                    arrowStyle: selectedArrowStylePreset
+                    arrow: arrowShape,
+                    startCap: startCap,
+                    endCap: endCap,
+                    lineJoin: lineJoin,
+                    strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
+                    outlineColor: outlineColor,
+                    outlineWidth: outlineWidth
                 ))
                 markDirty()
             }
@@ -1820,17 +2050,35 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
-    private func distanceFromPoint(_ point: CGPoint, toLineSegmentStart start: CGPoint, end: CGPoint) -> CGFloat {
-        let dx = end.x - start.x
-        let dy = end.y - start.y
-        let len2 = dx * dx + dy * dy
-        if len2 <= 0.000001 {
-            return hypot(point.x - start.x, point.y - start.y)
-        }
-        let t = max(0, min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / len2))
-        let proj = CGPoint(x: start.x + t * dx, y: start.y + t * dy)
-        return hypot(point.x - proj.x, point.y - proj.y)
+    /// An arrow's bend handle, normalized like its endpoints. The bend is defined in pixels, so
+    /// the handle is found there and mapped back.
+    private func arrowHandle(for annotation: ScreenshotAnnotation) -> CGPoint {
+        let size = hitTestImageSize
+        let line = linePoints(for: annotation)
+        let handle = ArrowGeometry.handle(
+            start: CGPoint(x: line.start.x * size.width, y: line.start.y * size.height),
+            end: CGPoint(x: line.end.x * size.width, y: line.end.y * size.height),
+            bend: annotation.arrow.bend
+        )
+        return CGPoint(x: handle.x / size.width, y: handle.y / size.height)
     }
+
+    /// Bends the arrow so its curve passes nearest `point`, snapping straight within a few
+    /// screen points of the chord.
+    private func bendArrow(at index: Int, toward point: CGPoint, displaySize: CGSize) {
+        let size = hitTestImageSize
+        let line = linePoints(for: annotations[index])
+        let start = CGPoint(x: line.start.x * size.width, y: line.start.y * size.height)
+        let end = CGPoint(x: line.end.x * size.width, y: line.end.y * size.height)
+        var bend = ArrowGeometry.bend(start: start, end: end, handle: CGPoint(x: point.x * size.width, y: point.y * size.height))
+        let pixelsPerPoint = displaySize.width > 0 ? size.width / displaySize.width : 1
+        if abs(bend) * hypot(end.x - start.x, end.y - start.y) < 6 * pixelsPerPoint {
+            bend = 0
+        }
+        annotations[index].arrow.bend = bend
+        markDirty()
+    }
+
 
     private func makeRect(from start: CGPoint, to end: CGPoint, isAspectLocked: Bool = false) -> CGRect {
         // Arrow/line store start in origin and end in maxX/maxY (can be negative width/height)
@@ -1889,7 +2137,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             isUnderlined: textIsUnderlined,
             textBoxStyle: textBoxStyle,
             redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
-            arrowStyle: selectedArrowStylePreset
+            arrow: arrowShape
         ))
         markDirty()
         textEditPosition = nil
@@ -1924,7 +2172,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             text: "\(nextNumberLabel)",
             points: [],
             redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
-            arrowStyle: selectedArrowStylePreset
+            arrow: arrowShape
         ))
         markDirty()
         nextNumberLabel += 1
@@ -1985,7 +2233,10 @@ class ScreenshotEditorViewModel: ObservableObject {
             return false
         }
 
-        recordHistory()
+        if !isAdjustingSelectedFillOpacity || !didRecordFillOpacityAdjustment {
+            recordHistory()
+            didRecordFillOpacityAdjustment = isAdjustingSelectedFillOpacity
+        }
         annotations[index].color = color
         markDirty()
         return true
@@ -2239,7 +2490,8 @@ class ScreenshotEditorViewModel: ObservableObject {
         let nsColor = NSColor(annotation.color)
         let cgColor = nsColor.cgColor
         ctx.setStrokeColor(cgColor)
-        let strokeWidth = exportStrokeWidth(baseWidth: annotation.lineWidth, outputWidth: outputSize.width)
+        // The export draws at source-image pixel scale, the unit stroke widths are stored in.
+        let strokeWidth = annotation.lineWidth
         ctx.setLineWidth(strokeWidth)
 
         switch annotation.tool {
@@ -2251,7 +2503,10 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ctx.fill(rect)
                 }
 
-                ctx.stroke(rect)
+                let ring = RectStrokeRing(bounds: rect.standardized, width: strokeWidth, alignment: annotation.strokeAlignment, join: annotation.lineJoin)
+                ctx.setFillColor(cgColor)
+                ctx.addPath(ring.path)
+                ctx.fillPath(using: .evenOdd)
             }
 
         case .circle:
@@ -2261,7 +2516,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                     ctx.setFillColor(fillCGColor)
                     ctx.fillEllipse(in: rect)
                 }
-                ctx.strokeEllipse(in: rect)
+                strokeAlignedCG(CGPath(ellipseIn: rect, transform: nil), alignment: annotation.strokeAlignment, width: strokeWidth, in: ctx)
             }
 
         case .arrow:
@@ -2274,86 +2529,59 @@ class ScreenshotEditorViewModel: ObservableObject {
                 x: (line.end.x * fullSize.width) - cropOrigin.x + contentOffset.x,
                 y: (line.end.y * fullSize.height) - cropOrigin.y + contentOffset.y
             )
-            let controlTopLeft = arrowControlPoint(start: startTopLeft, end: endTopLeft, style: annotation.arrowStyle)
-            let start = CGPoint(
-                x: startTopLeft.x,
-                y: outputSize.height - startTopLeft.y
+            // Build in the y-down space the geometry is defined in, then flip into the context.
+            let outline = ArrowGeometry.build(
+                start: startTopLeft,
+                end: endTopLeft,
+                width: strokeWidth,
+                options: annotation.arrow,
+                startCap: annotation.startCap,
+                join: annotation.lineJoin
             )
-            let end = CGPoint(
-                x: endTopLeft.x,
-                y: outputSize.height - endTopLeft.y
-            )
-            let control = CGPoint(
-                x: controlTopLeft.x,
-                y: outputSize.height - controlTopLeft.y
-            )
-            let headLength = max(26, strokeWidth * 5.0)
-            let headAngle: CGFloat = .pi / 6
-            let tipAngle: CGFloat
-            switch annotation.arrowStyle {
-            case .straight:
-                tipAngle = atan2(end.y - start.y, end.x - start.x)
-            case .curvedLeft, .curvedRight:
-                tipAngle = atan2(end.y - control.y, end.x - control.x)
+            var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: outputSize.height)
+            if let flipped = outline.path.copy(using: &flip) {
+                drawBodyCG(flipped, annotation: annotation, in: ctx)
             }
-
-            let wing1 = CGPoint(
-                x: end.x - headLength * cos(tipAngle - headAngle),
-                y: end.y - headLength * sin(tipAngle - headAngle)
-            )
-            let wing2 = CGPoint(
-                x: end.x - headLength * cos(tipAngle + headAngle),
-                y: end.y - headLength * sin(tipAngle + headAngle)
-            )
-            // Shaft ends at the base of the filled arrowhead
-            let shaftEnd = CGPoint(
-                x: end.x - headLength * cos(headAngle) * cos(tipAngle),
-                y: end.y - headLength * cos(headAngle) * sin(tipAngle)
-            )
-            ctx.move(to: start)
-            switch annotation.arrowStyle {
-            case .straight:
-                ctx.addLine(to: shaftEnd)
-            case .curvedLeft, .curvedRight:
-                ctx.addQuadCurve(to: shaftEnd, control: control)
-            }
-            ctx.strokePath()
-
-            // Filled triangular arrowhead
-            ctx.setFillColor(cgColor)
-            ctx.move(to: end)
-            ctx.addLine(to: wing1)
-            ctx.addLine(to: wing2)
-            ctx.closePath()
-            ctx.fillPath()
 
         case .line:
+            // Built y-down, where the geometry is defined, then flipped.
             let line = linePoints(for: annotation)
             let start = CGPoint(
                 x: (line.start.x * fullSize.width) - cropOrigin.x + contentOffset.x,
-                y: imageOutputHeight - ((line.start.y * fullSize.height) - cropOrigin.y) + contentOffset.y
+                y: (line.start.y * fullSize.height) - cropOrigin.y
             )
             let end = CGPoint(
                 x: (line.end.x * fullSize.width) - cropOrigin.x + contentOffset.x,
-                y: imageOutputHeight - ((line.end.y * fullSize.height) - cropOrigin.y) + contentOffset.y
+                y: (line.end.y * fullSize.height) - cropOrigin.y
             )
-            ctx.move(to: start)
-            ctx.addLine(to: end)
-            ctx.strokePath()
+            let outline = LineGeometry.outline(
+                start: start,
+                end: end,
+                width: strokeWidth,
+                startCap: annotation.startCap,
+                endCap: annotation.endCap
+            )
+            var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: imageOutputHeight + contentOffset.y)
+            if let flipped = LineGeometry.path(outline).copy(using: &flip) {
+                drawBodyCG(flipped, annotation: annotation, in: ctx)
+            }
 
         case .pencil:
             if annotation.points.count > 1 {
-                let scaledPoints = annotation.points.map { pt in
-                    CGPoint(
-                        x: (pt.x * fullSize.width) - cropOrigin.x + contentOffset.x,
-                        y: imageOutputHeight - ((pt.y * fullSize.height) - cropOrigin.y) + contentOffset.y
-                    )
+                // Built in image pixels (y-down, where the geometry is defined), then flipped and
+                // moved into the context.
+                let pixelPoints = annotation.points.map { CGPoint(x: $0.x * fullSize.width, y: $0.y * fullSize.height) }
+                let outline = PenGeometry.outline(pixelPoints, width: strokeWidth)
+                var place = CGAffineTransform(
+                    a: 1, b: 0, c: 0, d: -1,
+                    tx: contentOffset.x - cropOrigin.x,
+                    ty: imageOutputHeight + cropOrigin.y + contentOffset.y
+                )
+                if let placed = PenGeometry.smoothPath(outline).copy(using: &place) {
+                    ctx.setFillColor(cgColor)
+                    ctx.addPath(placed)
+                    ctx.fillPath()
                 }
-                ctx.move(to: scaledPoints[0])
-                for pt in scaledPoints.dropFirst() {
-                    ctx.addLine(to: pt)
-                }
-                ctx.strokePath()
             }
 
         case .blur:
@@ -2481,7 +2709,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             )
             ctx.restoreGState()
 
-        case .crop, .move:
+        case .crop, .move, .background:
             break
         }
     }
@@ -2502,9 +2730,43 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
-    private func exportStrokeWidth(baseWidth: CGFloat, outputWidth: CGFloat) -> CGFloat {
-        let widthScale = max(1.0, outputWidth / 900.0)
-        return baseWidth * widthScale
+    /// Strokes a closed `shape` at its alignment with the context's stroke color and join. Inside
+    /// and outside strokes are drawn at double width clipped to the shape (or to everything outside
+    /// it), since an offset curve is generally not the same shape.
+    private func strokeAlignedCG(_ shape: CGPath, alignment: StrokeAlignment, width: CGFloat, in ctx: CGContext) {
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        ctx.setLineWidth(width)
+        guard alignment != .center else {
+            ctx.addPath(shape)
+            ctx.strokePath()
+            return
+        }
+        if alignment == .outside {
+            // Cover everything the doubled stroke can reach, mitered points included.
+            let reach = shape.copy(
+                strokingWithWidth: width * 2, lineCap: .butt, lineJoin: .miter, miterLimit: 10
+            ).boundingBoxOfPath
+            ctx.addRect(reach.insetBy(dx: -1, dy: -1))
+        }
+        ctx.addPath(shape)
+        ctx.clip(using: .evenOdd)
+        ctx.setLineWidth(width * 2)
+        ctx.addPath(shape)
+        ctx.strokePath()
+    }
+
+    /// Fills an arrow's or line's body and draws its outline, if it has one.
+    private func drawBodyCG(_ body: CGPath, annotation: ScreenshotAnnotation, in ctx: CGContext) {
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        ctx.setFillColor(NSColor(annotation.color).cgColor)
+        ctx.addPath(body)
+        ctx.fillPath()
+        guard annotation.outlineWidth > 0 else { return }
+        ctx.setStrokeColor(NSColor(annotation.outlineColor).cgColor)
+        ctx.setLineJoin(annotation.lineJoin.cgLineJoin)
+        strokeAlignedCG(body, alignment: annotation.strokeAlignment, width: annotation.outlineWidth, in: ctx)
     }
 
     /// Runs `draw` with the context rotated about `rect`'s center when the annotation is rotated.

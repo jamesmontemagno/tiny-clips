@@ -42,6 +42,7 @@ jobs:
               - 'mac/**'
               - 'shared/studio/fixtures/**'
               - 'shared/automation/**'
+              - 'shared/screenshot/fixtures/**'
               - '.github/workflows/build.yml'
               - '!**/*.md'
           base: ${{ github.ref }}

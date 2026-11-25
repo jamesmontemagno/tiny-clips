@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.UI;
+using TinyClips.App.Controls.Studio;
 using TinyClips.Core.Editing;
 
 namespace TinyClips.App.ScreenshotEditor;
@@ -24,6 +25,8 @@ public sealed partial class EditorInspector : UserControl
 {
     private EditorController _controller = null!;
     private bool _inspectorInitializing = true;
+    private string _strokeSliderLabel = "Stroke";
+    private string _strokeOpacityLabel = "Stroke opacity";
     private bool _bgInitializing;
     private bool _backgroundSelectionBusy;
     private ContentDialog? _backgroundColorDialog;
@@ -35,12 +38,19 @@ public sealed partial class EditorInspector : UserControl
     }
 
     internal event EventHandler? BackgroundImageRequested;
+    internal event EventHandler? ApplyCropRequested;
 
     /// <summary>Raised with the button to anchor the sensitive-text review flyout to.</summary>
     internal event EventHandler<FrameworkElement>? SensitiveTextRequested;
 
     private void OnFindSensitiveTextClick(object sender, RoutedEventArgs e) =>
         SensitiveTextRequested?.Invoke(this, FindSensitiveTextButton);
+
+    internal void SetCropSelectionAvailable(bool available) =>
+        ApplyCropButton.IsEnabled = available;
+
+    private void OnApplyCropClick(object sender, RoutedEventArgs e) =>
+        ApplyCropRequested?.Invoke(this, EventArgs.Empty);
 
     internal void SetBackgroundSelectionBusy(bool busy)
     {
@@ -69,8 +79,8 @@ public sealed partial class EditorInspector : UserControl
 
         AnnotationColorPicker.Color = controller.StrokeColor;
         NumberColorPicker.Color = controller.NumberTextColor;
-        RedactionCombo.SelectedIndex = (int)controller.RedactionLevelDefault;
-        RedactStyleCombo.SelectedIndex = (int)controller.RedactionStyleDefault;
+        RedactionChoice.SelectedIndex = (int)controller.RedactionLevelDefault;
+        RedactStyleChoice.SelectedIndex = (int)controller.RedactionStyleDefault;
 
         InitializeInspectorControls();
         InitializeBackgroundControls();
@@ -81,6 +91,14 @@ public sealed partial class EditorInspector : UserControl
         controller.AnnotationVisualInvalidated += (_, ann) =>
         {
             // Keep the rotation slider in step with the on-canvas rotation grip.
+            // Keep the arrow sliders in step with the on-canvas bend handle.
+            if (ann.Tool == EditTool.Arrow
+                && ReferenceEquals(ann, _controller.SelectedAnnotation)
+                && Math.Abs(ArrowArcSlider.Value - Math.Round(ann.Arrow.Bend * 100)) >= 1)
+            {
+                ShowArrowShape(ann.Arrow);
+            }
+
             if (ann.Tool.StoresRotation()
                 && ReferenceEquals(ann, _controller.SelectedAnnotation)
                 && Math.Abs(RotationSlider.Value - ann.Rotation) > 0.5)
@@ -115,6 +133,17 @@ public sealed partial class EditorInspector : UserControl
                 ShowForTool(_controller.Tool);
             }
         };
+        controller.AnnotationsStructureChanged += (_, _) =>
+        {
+            if (_controller.SelectedAnnotation is { } selected)
+            {
+                ShowForSelection(selected);
+            }
+            else
+            {
+                ShowForTool(_controller.Tool);
+            }
+        };
 
         ShowForTool(controller.Tool);
     }
@@ -132,11 +161,16 @@ public sealed partial class EditorInspector : UserControl
         FontFamilyCombo.SelectedIndex = 0;
 
         StrokeSlider.Value = _controller.StrokeThickness;
+        StrokeOpacitySlider.Value = AnnotationColorMath.Opacity(_controller.StrokeColor) * 100;
+        BadgeOpacitySlider.Value = AnnotationColorMath.Opacity(_controller.StrokeColor) * 100;
         NumberSizeSlider.Value = _controller.NumberScale;
         FontSizeSlider.Value = _controller.TextFontSize;
         SyncTextBoxStyle(_controller.TextBoxStyleDefault);
         FillCheck.IsChecked = _controller.FillEnabled;
         FillColorPicker.Color = _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
+        FillOpacitySlider.Value = _controller.FillEnabled
+            ? AnnotationColorMath.Opacity(_controller.FillColor) * 100
+            : 0;
         UpdateInspectorHeaders();
 
         _inspectorInitializing = false;
@@ -144,10 +178,55 @@ public sealed partial class EditorInspector : UserControl
 
     private void UpdateInspectorHeaders()
     {
-        StrokeSlider.Header = $"Stroke — {(int)_controller.StrokeThickness} px";
-        NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(_controller.NumberScale * 100)}%";
-        FontSizeSlider.Header = $"Font size — {(int)_controller.TextFontSize} px";
+        // Read the sliders, which hold the selection's values while one is shown.
+        StrokeSlider.Header = $"{_strokeSliderLabel} — {(int)StrokeSlider.Value} px";
+        OutlineSlider.Header = OutlineSlider.Value > 0 ? $"Stroke — {(int)OutlineSlider.Value} px" : "Stroke — none";
+        StrokeOpacitySlider.Header = $"{_strokeOpacityLabel} — {Math.Round(StrokeOpacitySlider.Value)}%";
+        BadgeOpacitySlider.Header = $"Badge opacity — {Math.Round(BadgeOpacitySlider.Value)}%";
+        FillOpacitySlider.Header = $"Fill opacity — {Math.Round(FillOpacitySlider.Value)}%";
+        OutlineOpacitySlider.Header = $"Stroke opacity — {Math.Round(OutlineOpacitySlider.Value)}%";
+        TextBackgroundOpacitySlider.Header = $"Background opacity — {Math.Round(TextBackgroundOpacitySlider.Value)}%";
+        NumberSizeSlider.Header = $"Badge size — {(int)Math.Round(NumberSizeSlider.Value * 100)}%";
+        FontSizeSlider.Header = $"Font size — {(int)FontSizeSlider.Value} px";
         RotationSlider.Header = $"Rotation — {(int)Math.Round(RotationSlider.Value)}°";
+    }
+
+    private void SyncPrimaryFillOpacity(Color color)
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+        AnnotationColorPicker.Color = color;
+        BadgeOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
+        StrokeOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
+        _inspectorInitializing = wasInitializing;
+    }
+
+    private void SyncFillOpacityControls()
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+
+        var primaryColor = _controller.SelectedAnnotation is { } selected
+            ? selected.Color
+            : _controller.StrokeColor;
+        AnnotationColorPicker.Color = primaryColor;
+        BadgeOpacitySlider.Value = AnnotationColorMath.Opacity(primaryColor) * 100;
+        StrokeOpacitySlider.Value = AnnotationColorMath.Opacity(primaryColor) * 100;
+
+        var fillColor = _controller.SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } fillable
+            ? fillable.FillColor
+            : _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
+        FillColorPicker.Color = fillColor.A > 0 ? fillColor : Colors.Transparent;
+        FillOpacitySlider.Value = fillColor.A > 0
+            ? AnnotationColorMath.Opacity(fillColor) * 100
+            : 0;
+        FillCheck.IsChecked = fillColor.A > 0;
+
+        var textBackground = CurrentTextBoxStyle().BackgroundColor;
+        TextBackgroundColorPicker.Color = textBackground;
+        TextBackgroundOpacitySlider.Value = AnnotationColorMath.Opacity(textBackground) * 100;
+
+        _inspectorInitializing = wasInitializing;
     }
 
     private void InitializeEmojiControls()
@@ -235,6 +314,7 @@ public sealed partial class EditorInspector : UserControl
     private void ShowForTool(EditTool tool)
     {
         _inspectorInitializing = true;
+        Visibility = Visibility.Visible;
 
         var showsStroke = tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Arrow
             or EditTool.Line or EditTool.Pen;
@@ -246,16 +326,31 @@ public sealed partial class EditorInspector : UserControl
         var showsRedact = tool is EditTool.Redact;
         var showsArrowStyle = tool is EditTool.Arrow;
         var showsEmoji = tool is EditTool.Emoji;
+        var showsBackground = tool is EditTool.Background;
+        var showsCrop = tool is EditTool.Crop;
 
+        SelectHintSection.Visibility = tool == EditTool.Select
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CropSection.Visibility = showsCrop ? Visibility.Visible : Visibility.Collapsed;
         ColorSection.Visibility = showsColor ? Visibility.Visible : Visibility.Collapsed;
+        ShowColorLabel(tool);
+        ShowOutline(tool, _controller.OutlineColorDefault, _controller.OutlineWidthDefault);
         StrokeSection.Visibility = showsStroke ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = showsArrowStyle ? Visibility.Visible : Visibility.Collapsed;
+        ShowStrokeEnds(
+            tool,
+            _controller.StartCapDefault,
+            _controller.EndCapDefault,
+            _controller.LineJoinDefault,
+            tool.UsesOutline() ? _controller.OutlineAlignmentDefault : _controller.StrokeAlignmentDefault);
         FillSection.Visibility = showsFill ? Visibility.Visible : Visibility.Collapsed;
         TextSection.Visibility = showsText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = showsNumber ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = showsRedact ? Visibility.Visible : Visibility.Collapsed;
         SensitiveTextSection.Visibility = showsRedact ? Visibility.Visible : Visibility.Collapsed;
         EmojiSection.Visibility = showsEmoji ? Visibility.Visible : Visibility.Collapsed;
+        BackgroundSection.Visibility = showsBackground ? Visibility.Visible : Visibility.Collapsed;
         RotationSection.Visibility = Visibility.Collapsed;
 
         if (showsColor)
@@ -279,13 +374,33 @@ public sealed partial class EditorInspector : UserControl
 
         if (showsArrowStyle)
         {
-            ArrowStyleCombo.SelectedIndex = (int)_controller.ArrowStyleDefault;
+            ShowArrowShape(_controller.ArrowDefault);
+        }
+
+        // A selection shown earlier left its values in these controls; show what the tool draws.
+        if (showsColor)
+        {
+            AnnotationColorPicker.Color = _controller.StrokeColor;
+        }
+        if (showsStroke)
+        {
+            StrokeSlider.Value = _controller.StrokeThickness;
+        }
+        if (showsFill)
+        {
+            FillCheck.IsChecked = _controller.FillEnabled;
+            FillColorPicker.Color = _controller.FillEnabled ? _controller.FillColor : Colors.Transparent;
+        }
+        if (showsNumber)
+        {
+            NumberSizeSlider.Value = _controller.NumberScale;
+            NumberColorPicker.Color = _controller.NumberTextColor;
         }
 
         if (showsRedact)
         {
-            RedactStyleCombo.SelectedIndex = (int)_controller.RedactionStyleDefault;
-            RedactionCombo.SelectedIndex = (int)_controller.RedactionLevelDefault;
+            RedactStyleChoice.SelectedIndex = (int)_controller.RedactionStyleDefault;
+            RedactionChoice.SelectedIndex = (int)_controller.RedactionLevelDefault;
         }
         if (showsText)
         {
@@ -293,10 +408,12 @@ public sealed partial class EditorInspector : UserControl
             SelectFontInCombo(_controller.TextFontFamily);
             SyncTextBoxStyle(_controller.TextBoxStyleDefault);
         }
+        SyncFillOpacityControls();
 
         InspectorTitle.Text = tool switch
         {
             EditTool.Select => "Select & move",
+            EditTool.Background => "Background",
             EditTool.Crop => "Crop",
             EditTool.Rectangle => "Rectangle",
             EditTool.Ellipse => "Ellipse",
@@ -319,6 +436,7 @@ public sealed partial class EditorInspector : UserControl
     private void ShowForSelection(Annotation ann)
     {
         _inspectorInitializing = true;
+        Visibility = Visibility.Visible;
 
         var isShape = ann.Tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Arrow
             or EditTool.Line or EditTool.Pen;
@@ -330,15 +448,21 @@ public sealed partial class EditorInspector : UserControl
         var isEmoji = ann.Tool is EditTool.Emoji;
         var hasColor = isShape || isText || isCounter;
 
+        SelectHintSection.Visibility = Visibility.Collapsed;
+        CropSection.Visibility = Visibility.Collapsed;
         ColorSection.Visibility = hasColor ? Visibility.Visible : Visibility.Collapsed;
+        ShowColorLabel(ann.Tool);
+        ShowOutline(ann.Tool, ann.OutlineColor, ann.OutlineWidth);
         StrokeSection.Visibility = isShape ? Visibility.Visible : Visibility.Collapsed;
         ArrowStyleSection.Visibility = isArrow ? Visibility.Visible : Visibility.Collapsed;
+        ShowStrokeEnds(ann.Tool, ann.StartCap, ann.EndCap, ann.LineJoin, ann.StrokeAlignment);
         FillSection.Visibility = isFillable ? Visibility.Visible : Visibility.Collapsed;
         TextSection.Visibility = isText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = isCounter ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = isRedact ? Visibility.Visible : Visibility.Collapsed;
         SensitiveTextSection.Visibility = Visibility.Collapsed;
         EmojiSection.Visibility = isEmoji ? Visibility.Visible : Visibility.Collapsed;
+        BackgroundSection.Visibility = Visibility.Collapsed;
         var isRotatable = ann.Tool.StoresRotation();
         RotationSection.Visibility = isRotatable ? Visibility.Visible : Visibility.Collapsed;
         InspectorTitle.Text = $"{ann.Tool} (selected)";
@@ -354,7 +478,7 @@ public sealed partial class EditorInspector : UserControl
 
         if (isArrow)
         {
-            ArrowStyleCombo.SelectedIndex = (int)ann.ArrowStyle;
+            ShowArrowShape(ann.Arrow);
         }
 
         if (hasColor)
@@ -384,10 +508,11 @@ public sealed partial class EditorInspector : UserControl
         }
         if (isRedact)
         {
-            RedactionCombo.SelectedIndex = (int)ann.Redaction;
-            RedactStyleCombo.SelectedIndex = (int)ann.RedactStyle;
+            RedactionChoice.SelectedIndex = (int)ann.Redaction;
+            RedactStyleChoice.SelectedIndex = (int)ann.RedactStyle;
         }
 
+        SyncFillOpacityControls();
         UpdateInspectorHeaders();
         _inspectorInitializing = false;
     }
@@ -408,15 +533,16 @@ public sealed partial class EditorInspector : UserControl
     {
         var wasInitializing = _inspectorInitializing;
         _inspectorInitializing = true;
-        PlainTextPreset.IsChecked = style.Preset == TextBoxPreset.Plain;
-        LightTextPreset.IsChecked = style.Preset == TextBoxPreset.Light;
-        DarkTextPreset.IsChecked = style.Preset == TextBoxPreset.Dark;
-        AccentTextPreset.IsChecked = style.Preset == TextBoxPreset.Accent;
+        TextStyleChoice.SelectedIndex = style.Preset == TextBoxPreset.Custom ? -1 : (int)style.Preset;
+        TextStyleCustomLabel.Visibility = style.Preset == TextBoxPreset.Custom
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         TextBackgroundColorPicker.Color = style.BackgroundColor;
         TextBorderColorPicker.Color = style.BorderColor;
         TextBorderWidthSlider.Value = style.BorderWidth;
         TextPaddingSlider.Value = style.Padding;
         TextCornerRadiusSlider.Value = style.CornerRadius;
+        TextBackgroundOpacitySlider.Value = AnnotationColorMath.Opacity(style.BackgroundColor) * 100;
         TextBorderWidthSlider.Header = $"Border width — {(int)style.BorderWidth} px";
         TextPaddingSlider.Header = $"Padding — {(int)style.Padding} px";
         TextCornerRadiusSlider.Header = $"Corner radius — {(int)style.CornerRadius} px";
@@ -430,7 +556,32 @@ public sealed partial class EditorInspector : UserControl
         if (!_inspectorInitializing)
         {
             _controller.SetStrokeColor(color);
+            SyncPrimaryFillOpacity(color);
         }
+    }
+
+    private void OnBadgeOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetStrokeOpacity(e.NewValue / 100);
+        SyncPrimaryFillOpacity(_controller.StrokeColor);
+        UpdateInspectorHeaders();
+    }
+
+    private void OnStrokeOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetStrokeOpacity(e.NewValue / 100);
+        SyncPrimaryFillOpacity(_controller.StrokeColor);
+        UpdateInspectorHeaders();
     }
 
     private void OnNumberColorChanged(object? sender, Color color)
@@ -452,14 +603,192 @@ public sealed partial class EditorInspector : UserControl
         UpdateInspectorHeaders();
     }
 
-    private void OnArrowStyleChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>
+    /// Names the color and width controls for the tool. Arrows and lines are filled bodies, so
+    /// their color is the fill and their width the body's size, with the stroke as an outline;
+    /// other shapes' color sits right above their stroke width.
+    /// </summary>
+    private void ShowColorLabel(EditTool tool)
+    {
+        var label = tool.UsesOutline() ? "Fill"
+            : tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Pen ? "Stroke color"
+            : "Color";
+        var usesPrimarySize = tool is EditTool.Rectangle or EditTool.Ellipse or EditTool.Arrow
+            or EditTool.Line or EditTool.Pen;
+        _strokeOpacityLabel = tool.UsesOutline() ? "Fill opacity" : "Stroke opacity";
+        ColorLabel.Text = label;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(AnnotationColorPicker, label);
+        StrokeOpacitySlider.Visibility = usesPrimarySize ? Visibility.Visible : Visibility.Collapsed;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            StrokeOpacitySlider,
+            _strokeOpacityLabel);
+        _strokeSliderLabel = tool.UsesOutline() ? "Size" : "Stroke";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(StrokeSlider, tool.UsesOutline() ? "Size" : "Stroke width");
+    }
+
+    // Callers hold _inspectorInitializing, so loading the controls doesn't write back.
+    private void ShowOutline(EditTool tool, Color color, double width)
+    {
+        OutlineSection.Visibility = tool.UsesOutline() ? Visibility.Visible : Visibility.Collapsed;
+        OutlineColorPicker.Color = color;
+        OutlineSlider.Value = width;
+        OutlineOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
+    }
+
+    private void OnOutlineColorChanged(object? sender, Color color)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.SetOutlineColor(color);
+            SyncOutlineOpacity(color);
+        }
+    }
+
+    private void OnOutlineOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_inspectorInitializing)
         {
             return;
         }
 
-        _controller.SetArrowStyle((ArrowStyle)Math.Clamp(ArrowStyleCombo.SelectedIndex, 0, 2));
+        _controller.SetOutlineOpacity(e.NewValue / 100);
+        var color = _controller.SelectedAnnotation is { } selected && selected.Tool.UsesOutline()
+            ? selected.OutlineColor
+            : _controller.OutlineColorDefault;
+        SyncOutlineOpacity(color);
+        UpdateInspectorHeaders();
+    }
+
+    private void SyncOutlineOpacity(Color color)
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+        OutlineColorPicker.Color = color;
+        OutlineOpacitySlider.Value = AnnotationColorMath.Opacity(color) * 100;
+        _inspectorInitializing = wasInitializing;
+    }
+
+    private void OnOutlineWidthChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetOutlineWidth(e.NewValue);
+        UpdateInspectorHeaders();
+    }
+
+    // Callers hold _inspectorInitializing, so loading the choices doesn't write back.
+    private void ShowStrokeEnds(EditTool tool, StrokeCap startCap, StrokeCap endCap, StrokeJoin join, StrokeAlignment alignment)
+    {
+        StrokeAlignmentSection.Visibility = tool.UsesAlignment() ? Visibility.Visible : Visibility.Collapsed;
+        StrokeAlignmentChoice.SelectedIndex = (int)alignment;
+        StartCapSection.Visibility = tool.UsesStartCap() ? Visibility.Visible : Visibility.Collapsed;
+        EndCapSection.Visibility = tool.UsesEndCap() ? Visibility.Visible : Visibility.Collapsed;
+        StrokeAdvancedExpander.Visibility = tool.UsesJoin() ? Visibility.Visible : Visibility.Collapsed;
+        ArrowAdvancedPanel.Visibility = tool == EditTool.Arrow ? Visibility.Visible : Visibility.Collapsed;
+        StartCapChoice.SelectedIndex = (int)startCap;
+        EndCapChoice.SelectedIndex = (int)endCap;
+        LineJoinChoice.SelectedIndex = (int)join;
+    }
+
+    // The inspector showing values, or a choice putting its selection back the first time it
+    // appears, isn't the user choosing. Only the user's choices are written to the document.
+    private bool IsLoadingChoice(StudioSegmented choice) =>
+        _inspectorInitializing || choice.IsApplyingTemplate || choice.SelectedIndex < 0;
+
+    private void OnStrokeAlignmentChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (IsLoadingChoice(StrokeAlignmentChoice))
+        {
+            return;
+        }
+
+        _controller.SetStrokeAlignment((StrokeAlignment)StrokeAlignmentChoice.SelectedIndex);
+    }
+
+    private void OnStartCapChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (IsLoadingChoice(StartCapChoice))
+        {
+            return;
+        }
+
+        _controller.SetStartCap((StrokeCap)StartCapChoice.SelectedIndex);
+    }
+
+    private void OnEndCapChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (IsLoadingChoice(EndCapChoice))
+        {
+            return;
+        }
+
+        _controller.SetEndCap((StrokeCap)EndCapChoice.SelectedIndex);
+    }
+
+    private void OnLineJoinChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (IsLoadingChoice(LineJoinChoice))
+        {
+            return;
+        }
+
+        _controller.SetLineJoin((StrokeJoin)LineJoinChoice.SelectedIndex);
+    }
+
+    // Callers outside the change handlers hold _inspectorInitializing so loading doesn't write back.
+    private void ShowArrowShape(ArrowShapeOptions shape)
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+        ArrowPresetChoice.SelectedIndex = (int)shape.Preset;
+        ArrowArcSlider.Value = Math.Round(shape.Bend * 100);
+        ArrowStartWidthSlider.Value = Math.Round(shape.StartWidthScale * 100);
+        ArrowEndWidthSlider.Value = Math.Round(shape.EndWidthScale * 100);
+        ArrowHeadSizeSlider.Value = Math.Round(shape.HeadScale * 100);
+        ArrowArcSlider.Header = $"Arc — {(int)ArrowArcSlider.Value}%";
+        ArrowStartWidthSlider.Header = $"Start width — {(int)ArrowStartWidthSlider.Value}%";
+        ArrowEndWidthSlider.Header = $"End width — {(int)ArrowEndWidthSlider.Value}%";
+        ArrowHeadSizeSlider.Header = $"Head size — {(int)ArrowHeadSizeSlider.Value}%";
+        _inspectorInitializing = wasInitializing;
+    }
+
+    private void OnArrowPresetChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (IsLoadingChoice(ArrowPresetChoice))
+        {
+            return;
+        }
+
+        var preset = (ArrowPreset)ArrowPresetChoice.SelectedIndex;
+        if (preset == ArrowPreset.Custom)
+        {
+            // Custom is whatever the sliders say, so choosing it opens them and leaves the shape alone.
+            StrokeAdvancedExpander.IsExpanded = true;
+            return;
+        }
+
+        var shape = ArrowShapeOptions.For(preset);
+        _controller.SetArrowShape(shape);
+        ShowArrowShape(shape);
+    }
+
+    private void OnArrowSliderChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        var shape = new ArrowShapeOptions(
+            ArrowArcSlider.Value / 100,
+            ArrowStartWidthSlider.Value / 100,
+            ArrowEndWidthSlider.Value / 100,
+            ArrowHeadSizeSlider.Value / 100);
+        _controller.SetArrowShape(shape);
+        ShowArrowShape(shape);
     }
 
     private void OnFillToggled(object sender, RoutedEventArgs e)
@@ -471,7 +800,8 @@ public sealed partial class EditorInspector : UserControl
 
         var enabled = FillCheck.IsChecked == true;
         _controller.SetFillEnabled(enabled);
-        FillColorPicker.Color = enabled ? _controller.FillColor : Colors.Transparent;
+        SyncFillOpacityControls();
+        UpdateInspectorHeaders();
     }
 
     private void OnFillColorChanged(object? sender, Color color)
@@ -490,6 +820,20 @@ public sealed partial class EditorInspector : UserControl
         {
             FillCheck.IsChecked = true;
         }
+        SyncFillOpacityControls();
+        UpdateInspectorHeaders();
+    }
+
+    private void OnFillOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetFillOpacity(e.NewValue / 100);
+        SyncFillOpacityControls();
+        UpdateInspectorHeaders();
     }
 
     private void OnFontFamilyChanged(object sender, SelectionChangedEventArgs e)
@@ -516,14 +860,14 @@ public sealed partial class EditorInspector : UserControl
         UpdateInspectorHeaders();
     }
 
-    private void OnTextPresetClick(object sender, RoutedEventArgs e)
+    private void OnTextPresetChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_inspectorInitializing || sender is not ToggleButton { Tag: string tag }
-            || !Enum.TryParse<TextBoxPreset>(tag, out var preset))
+        if (_inspectorInitializing || TextStyleChoice.IsApplyingTemplate || TextStyleChoice.SelectedIndex < 0)
         {
             return;
         }
 
+        var preset = (TextBoxPreset)TextStyleChoice.SelectedIndex;
         var accent = Application.Current.Resources.TryGetValue("SystemAccentColor", out var resource)
             && resource is Color color
             ? color
@@ -547,6 +891,19 @@ public sealed partial class EditorInspector : UserControl
         }
         _controller.SetTextBoxBackground(color);
         SyncTextBoxStyle(CurrentTextBoxStyle());
+        UpdateInspectorHeaders();
+    }
+
+    private void OnTextBackgroundOpacityChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_inspectorInitializing)
+        {
+            return;
+        }
+
+        _controller.SetTextBoxBackgroundOpacity(e.NewValue / 100);
+        SyncTextBoxStyle(CurrentTextBoxStyle());
+        UpdateInspectorHeaders();
     }
 
     private void OnTextBorderColorChanged(object? sender, Color color)
@@ -737,22 +1094,25 @@ public sealed partial class EditorInspector : UserControl
         _inspectorInitializing = false;
     }
 
+    // Item order matches RedactionLevel and RedactionStyle.
     private void OnRedactionLevelChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (RedactionCombo.SelectedItem is ComboBoxItem { Tag: string tag }
-            && Enum.TryParse<RedactionLevel>(tag, out var level))
+        if (IsLoadingChoice(RedactionChoice))
         {
-            _controller.SetRedactionLevel(level);
+            return;
         }
+
+        _controller.SetRedactionLevel((RedactionLevel)RedactionChoice.SelectedIndex);
     }
 
     private void OnRedactionStyleChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (RedactStyleCombo.SelectedItem is ComboBoxItem { Tag: string tag }
-            && Enum.TryParse<RedactionStyle>(tag, out var style))
+        if (IsLoadingChoice(RedactStyleChoice))
         {
-            _controller.SetRedactionStyle(style);
+            return;
         }
+
+        _controller.SetRedactionStyle((RedactionStyle)RedactStyleChoice.SelectedIndex);
     }
 
     // -- Export background handlers -----------------------------------------------------------
@@ -804,8 +1164,8 @@ public sealed partial class EditorInspector : UserControl
         {
             BgStyleCombo.SelectedIndex = (int)_controller.BgStyle;
             BgStyleCombo.IsEnabled = !_backgroundSelectionBusy;
-            BackgroundImagePlacementCombo.SelectedIndex = (int)_controller.ImagePlacement;
-            BackgroundImagePlacementCombo.IsEnabled = !_backgroundSelectionBusy && _controller.HasBackgroundImage;
+            BackgroundImagePlacementChoice.SelectedIndex = (int)_controller.ImagePlacement;
+            BackgroundImagePlacementChoice.IsEnabled = !_backgroundSelectionBusy && _controller.HasBackgroundImage;
             ChooseBackgroundImageButton.IsEnabled = !_backgroundSelectionBusy;
             ChooseBackgroundImageButton.Content = _controller.HasBackgroundImage ? "Replace image..." : "Choose image...";
             RemoveBackgroundImageButton.IsEnabled = !_backgroundSelectionBusy && _controller.HasBackgroundImage;
@@ -825,8 +1185,8 @@ public sealed partial class EditorInspector : UserControl
 
     private void OnBackgroundImagePlacementChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_bgInitializing || _inspectorInitializing || BackgroundImagePlacementCombo.SelectedIndex < 0) return;
-        _controller.SetBackgroundImagePlacement((BackgroundImagePlacement)BackgroundImagePlacementCombo.SelectedIndex);
+        if (_bgInitializing || IsLoadingChoice(BackgroundImagePlacementChoice)) return;
+        _controller.SetBackgroundImagePlacement((BackgroundImagePlacement)BackgroundImagePlacementChoice.SelectedIndex);
     }
 
     private void UpdateBackgroundStyleUi()

@@ -1,4 +1,3 @@
-using System.Numerics;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Foundation;
 using Windows.UI;
@@ -49,13 +48,3 @@ internal static class EditorFonts
         "Verdana",
     };
 }
-
-/// <summary>Geometry for a straight or curved arrow, shared by the live preview and Win2D bake.</summary>
-internal readonly record struct ArrowShape(
-    bool Curved,
-    Vector2 ShaftStart,
-    Vector2 ShaftControl,
-    Vector2 ShaftEnd,
-    Vector2 Tip,
-    Vector2 Head1,
-    Vector2 Head2);

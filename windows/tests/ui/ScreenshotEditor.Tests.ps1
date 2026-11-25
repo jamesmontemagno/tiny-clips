@@ -9,6 +9,7 @@
     Run with no screenshot editors open. Also checks live output-resolution metadata on initial
     load, scale/focus return, and padding changes. Reset is a consistency smoke check because it
     retains scale/padding; manually check crop -> reset for changing source dimensions.
+    A crop must be undoable as a document operation and must restore its editable annotations.
     Also smoke-checks immediate close after capture and Reset. These timing-sensitive UI checks
     cannot prove late bitmap disposal; closed UIA elements cannot be queried reliably.
 
@@ -141,6 +142,12 @@ if (-not $first) {
 }
 $firstTarget = @("-w", "$($first.hwnd)")
 
+Test-UI "Clean editor keeps edit commands disabled" {
+    Invoke-UI wait-for "EditorUndoButton" @firstTarget -p IsEnabled --value False -t 3000 | Out-Null
+    Invoke-UI wait-for "EditorResetButton" @firstTarget -p IsEnabled --value False -t 3000 | Out-Null
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000 | Out-Null
+}
+
 Test-UI "Fit clears the remembered actual-size mode" {
     Invoke-UI invoke "Fit screenshot to viewport" @firstTarget
     Invoke-UI wait-for "ScreenshotEditorNativeSizeButton" @firstTarget --value "Off" -t 3000 | Out-Null
@@ -175,7 +182,7 @@ Test-UI "Padding updates the output-resolution name" {
     # Padding adds 64 source pixels to each dimension, hence 32 output pixels at 50%.
     $dimensions = $scaledOutputResolution -split ' × | px'
     $script:paddedOutputResolution = "$([int]$dimensions[0] + 32) × $([int]$dimensions[1] + 32) px"
-    Invoke-UI invoke "EditorBackgroundExpander" @firstTarget
+    Invoke-UI invoke "EditorToolBackground" @firstTarget
     Invoke-UI wait-for "EditorPaddingSlider" @firstTarget -t 3000
     Invoke-UI set-value "EditorPaddingSlider" 32 @firstTarget
     Assert-OutputResolution $paddedOutputResolution | Out-Null
@@ -198,7 +205,64 @@ Test-UI "Add unsaved annotation to first editor" {
     winapp ui wait-for "TextDialogEntry" -a $AppPid --gone -t 5000
 }
 
+Test-UI "Editing enables Undo and Reset without enabling Delete" {
+    Invoke-UI wait-for "EditorUndoButton" @firstTarget -p IsEnabled --value True -t 3000 | Out-Null
+    Invoke-UI wait-for "EditorResetButton" @firstTarget -p IsEnabled --value True -t 3000 | Out-Null
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000 | Out-Null
+}
+
+Test-UI "Delete is enabled only for a selected annotation" {
+    Invoke-UI invoke "EditorToolSelect" @firstTarget
+    Invoke-UI click "multi-editor regression" @firstTarget
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000 | Out-Null
+    Invoke-UI invoke "EditorToolText" @firstTarget
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000 | Out-Null
+}
+
+Test-UI "Undo crop restores the full document and editable annotations" {
+    $canvasResult = Invoke-UI search "OverlayCanvas" @firstTarget --json | ConvertFrom-Json
+    $canvas = @($canvasResult.matches | Where-Object { $_.automationId -eq "OverlayCanvas" })
+    if ($canvas.Count -ne 1) {
+        throw "Expected one annotation canvas, found $($canvas.Count)."
+    }
+
+    $startX = [Math]::Round($canvas[0].x + $canvas[0].width * 0.2)
+    $startY = [Math]::Round($canvas[0].y + $canvas[0].height * 0.2)
+    $endX = [Math]::Round($canvas[0].x + $canvas[0].width * 0.8)
+    $endY = [Math]::Round($canvas[0].y + $canvas[0].height * 0.8)
+
+    Invoke-UI focus "ScreenshotEditorTitleBar" @firstTarget
+    Invoke-UI invoke "EditorToolCrop" @firstTarget
+    Invoke-UI drag "$startX,$startY" "$endX,$endY" @firstTarget
+    Invoke-UI wait-for "EditorApplyCropButton" @firstTarget -t 3000 | Out-Null
+    Invoke-UI invoke "EditorApplyCropButton" @firstTarget
+
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        $croppedResolution = Invoke-UI get-value "EditorImageSizeText" @firstTarget
+        if ($croppedResolution -ne $scaledOutputResolution) {
+            break
+        }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    if ($croppedResolution -eq $scaledOutputResolution) {
+        throw "Crop did not change the screenshot dimensions."
+    }
+
+    Invoke-UI invoke "EditorUndoButton" @firstTarget
+    Invoke-UI wait-for "EditorImageSizeText" @firstTarget -p Name --value $scaledOutputResolution -t 5000 | Out-Null
+    Assert-OutputResolution $scaledOutputResolution | Out-Null
+    $annotationResult = Invoke-UI search "multi-editor regression" @firstTarget --json | ConvertFrom-Json
+    $annotations = @($annotationResult.matches | Where-Object { $_.name -eq "multi-editor regression" })
+    if ($annotations.Count -ne 1) {
+        throw "Crop undo did not restore the editable annotation."
+    }
+}
+
 Test-UI "Alt+F4 dismisses the background picker before discard confirmation" {
+    # The background controls only show while the Background tool is active.
+    Invoke-UI invoke "EditorToolBackground" @firstTarget
+    Invoke-UI wait-for "EditorBgStyleCombo" @firstTarget -t 3000 | Out-Null
     Invoke-UI invoke "EditorBgStyleCombo" @firstTarget
     Invoke-UI send-keys "down" @firstTarget --via send-input
     Invoke-UI send-keys "enter" @firstTarget --via send-input
@@ -272,7 +336,7 @@ Test-UI "Immediate Reset then close does not reopen the clean second editor" {
     $second = @(Get-EditorWindows | Where-Object { $_.hwnd -ne $first.hwnd })
     if ($second.Count -ne 1) { throw "Expected one clean second editor." }
     $secondTarget = @("-w", "$($second[0].hwnd)")
-    Invoke-UI invoke "EditorResetButton" @secondTarget
+    Invoke-UI wait-for "EditorResetButton" @secondTarget -p IsEnabled --value False -t 3000 | Out-Null
     Invoke-UI invoke "EditorCloseButton" @secondTarget
     Invoke-UI wait-for "ScreenshotEditorTitleBar" @secondTarget --gone -t 5000
     Start-Sleep -Milliseconds 1000
@@ -283,7 +347,10 @@ Test-UI "Immediate Reset then close does not reopen the clean second editor" {
 # Reset and close each editor so the test leaves the running app usable.
 foreach ($editor in @(Get-EditorWindows)) {
     $target = @("-w", "$($editor.hwnd)")
-    winapp ui invoke "EditorResetButton" @target 2>$null | Out-Null
+    $reset = Invoke-UI get-property "EditorResetButton" @target -p IsEnabled --json | ConvertFrom-Json
+    if ($reset.properties.IsEnabled -eq "True") {
+        Invoke-UI invoke "EditorResetButton" @target
+    }
     Start-Sleep -Milliseconds 500
     if ($editor.hwnd -eq $first.hwnd) {
         Test-UI "Reset clears the background and preserves output-resolution metadata" {

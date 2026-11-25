@@ -44,6 +44,7 @@ public sealed partial class EditorToolbar : UserControl
     private IEnumerable<(ToggleButton Button, EditTool Tool)> ToolButtons()
     {
         yield return (ToolSelect, EditTool.Select);
+        yield return (ToolBackground, EditTool.Background);
         yield return (ToolCrop, EditTool.Crop);
         yield return (ToolRectangle, EditTool.Rectangle);
         yield return (ToolEllipse, EditTool.Ellipse);

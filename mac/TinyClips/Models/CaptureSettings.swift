@@ -409,6 +409,9 @@ class CaptureSettings: ObservableObject {
     static let confirmEditorEscapeKey = CaptureSettingsDefaultsKey.confirmEditorEscape
     static let studioExportResolutionKey = CaptureSettingsDefaultsKey.studioExportResolution
     static let screenshotEditorNativeSizeKey = "screenshotEditorNativeSize"
+    /// The editor tool a new screenshot editor starts with, as an `EditTool.settingID`.
+    static let screenshotEditorDefaultToolKey = "screenshotEditorDefaultTool"
+    static let screenshotEditorDefaultToolMigrationKey = "screenshotEditorDefaultToolBackgroundMigration"
     /// Where the Captions panel keeps the language captions are generated in, as a BCP 47 tag, or
     /// empty for the system's.
     static let studioCaptionLanguageKey = "studioCaptionLanguage"
@@ -535,6 +538,7 @@ class CaptureSettings: ObservableObject {
     @CapturePreference("webcamCornerRadius") var webcamCornerRadius: Double = -1
     @CapturePreference("showScreenshotEditor") var showScreenshotEditor: Bool = true
     @CapturePreference("screenshotEditorNativeSize") var screenshotEditorNativeSize: Bool = false
+    @CapturePreference("screenshotEditorDefaultTool") var screenshotEditorDefaultTool: String = EditTool.background.settingID
     @CapturePreference(CaptureSettingsDefaultsKey.confirmEditorEscape) var confirmEditorEscape: Bool = true
     @CapturePreference("showGifTrimmer") var showGifTrimmer: Bool = true
     @CapturePreference("saveImmediatelyScreenshot") var saveImmediatelyScreenshot: Bool = true
@@ -934,6 +938,8 @@ class CaptureSettings: ObservableObject {
     func resetPreferences(preservingHotKeys: Bool = false) {
         objectWillChange.send()
         Self.resetStoredDefaults(defaults, preservingHotKeys: preservingHotKeys)
+        // Store it so finishing onboarding again can't make the migration treat this as an upgrade.
+        screenshotEditorDefaultTool = EditTool.background.settingID
         defaults.set(true, forKey: Self.useDefaultSaveDirectoriesKey)
         ensureSaveDirectoryDefaults(defaults)
     }
@@ -970,7 +976,7 @@ class CaptureSettings: ObservableObject {
         studioExportResolutionKey, CaptureSettingsDefaultsKey.studioExportQuality,
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
-        "showScreenshotEditor", screenshotEditorNativeSizeKey, confirmEditorEscapeKey, "showGifTrimmer",
+        "showScreenshotEditor", screenshotEditorNativeSizeKey, screenshotEditorDefaultToolKey, confirmEditorEscapeKey, "showGifTrimmer",
         "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
         "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
         "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
@@ -1025,6 +1031,7 @@ class CaptureSettings: ObservableObject {
 
         Self.migrateSaveDirectorySettings(in: defaults)
         ensureSaveDirectoryDefaults(defaults)
+        Self.migrateScreenshotEditorDefaultTool(in: defaults)
 
         guard defaults.object(forKey: "multiMonitorCaptureMode") == nil else { return }
 
@@ -1092,6 +1099,23 @@ class CaptureSettings: ObservableObject {
             defaults.set(videoGifDisplayPath, forKey: "gifSaveDirectoryDisplayPath")
         }
 #endif
+    }
+
+    /// Move was the legacy pre-Background default. Migrate that one-time fallback to Background,
+    /// while preserving a different explicit choice made before this migration runs.
+    static func migrateScreenshotEditorDefaultTool(in defaults: UserDefaults) {
+        guard !defaults.bool(forKey: screenshotEditorDefaultToolMigrationKey) else { return }
+        let storedTool = defaults.string(forKey: screenshotEditorDefaultToolKey)
+            .flatMap { EditTool(settingID: $0) }
+        if storedTool == nil || storedTool == .move {
+            defaults.set(EditTool.background.settingID, forKey: screenshotEditorDefaultToolKey)
+        }
+        defaults.set(true, forKey: screenshotEditorDefaultToolMigrationKey)
+    }
+
+    var screenshotEditorDefaultEditTool: EditTool {
+        get { EditTool(settingID: screenshotEditorDefaultTool) ?? .background }
+        set { screenshotEditorDefaultTool = newValue.settingID }
     }
 
     /// Whether someone chose a save folder, as opposed to the default folders saved for them.

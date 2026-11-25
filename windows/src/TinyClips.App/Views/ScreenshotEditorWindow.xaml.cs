@@ -29,10 +29,10 @@ namespace TinyClips.App;
 /// </summary>
 public sealed partial class ScreenshotEditorWindow : Window
 {
-    // Minimum dimensions chosen to keep the tool rail + inspector + a usable canvas visible.
-    // Width 760 DIP: tool rail (~52) + inspector (~200) + canvas floor (~300) + margins (~208).
-    // The CommandBar will gracefully overflow AppBarButtons into its "More" menu below this width.
-    // Height 520 DIP: TitleBar (~48) + CommandBar row (~60) + canvas floor (~300) + padding (~112).
+    // The initial size keeps the full tool rail, inspector, and a useful canvas visible. Smaller
+    // displays clamp to their work area; the minimum still permits a compact usable editor.
+    private const int DefaultWidthDip = 1280;
+    private const int DefaultHeightDip = 900;
     private const int MinimumWidthDip  = 760;
     private const int MinimumHeightDip = 520;
 
@@ -103,27 +103,34 @@ public sealed partial class ScreenshotEditorWindow : Window
             _controller = new EditorController(DispatcherQueue, settings.ScreenshotEditorDefaultTool);
             Toolbar.Attach(_controller);
             Inspector.Attach(_controller);
+            Inspector.ApplyCropRequested += OnApplyCrop;
             Inspector.BackgroundImageRequested += OnChooseBackgroundImage;
             Inspector.SensitiveTextRequested += (_, anchor) => SensitiveTextFlyout.ShowAt(anchor);
             Canvas.Attach(_controller, settings);
 
             _controller.ImageChanged += OnControllerImageChanged;
             _controller.DocumentChanged += OnSensitiveTextDocumentChanged;
+            _controller.DocumentChanged += (_, _) => UpdateCommandButtonStates();
+            _controller.SelectionChanged += (_, _) => UpdateCommandButtonStates();
+            _controller.AnnotationsStructureChanged += (_, _) => UpdateCommandButtonStates();
             // Padding, corner radius, shadow and frame presets change the exported frame size without
             // touching the source bitmap, so the advertised output resolution has to follow them too.
             _controller.BackgroundChanged += OnControllerImageChanged;
             Canvas.CropSelectionAvailabilityChanged += (_, available) =>
             {
-                ApplyCropButton.IsEnabled = available;
+                Inspector.SetCropSelectionAvailable(available);
                 _hasPendingCropSelection = available;
             };
+            UpdateCommandButtonStates();
         }
 
         using (_openTrace?.Measure(WindowOpenPhase.ChromeAndPlacement))
         {
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(AppTitleBar);
-            AppWindowPlacement.CenterInCurrentWorkAreaAtHalfSize(AppWindow);
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            AppWindowPlacement.CenterInCurrentWorkAreaAtDipSize(
+                AppWindow, hwnd, DefaultWidthDip, DefaultHeightDip);
 
             // WindowChromeController owns: icon-on-activation, DIP minimum enforcement, XamlRoot
             // scale tracking, and cleanup of all three on Closed. The Closed subscription here is
@@ -150,7 +157,18 @@ public sealed partial class ScreenshotEditorWindow : Window
         _openTrace?.Mark(WindowOpenMilestone.ConstructorCompleted);
     }
 
-    private void OnControllerImageChanged(object? sender, EventArgs e) => UpdateOutputResolutionText();
+    private void OnControllerImageChanged(object? sender, EventArgs e)
+    {
+        UpdateOutputResolutionText();
+        UpdateCommandButtonStates();
+    }
+
+    private void UpdateCommandButtonStates()
+    {
+        UndoButton.IsEnabled = _controller.CanUndo;
+        ResetButton.IsEnabled = _controller.CanReset;
+        DeleteButton.IsEnabled = _controller.CanDeleteSelected;
+    }
 
     /// <summary>
     /// Uses the renderer's shared frame truncation/scale rounding so the advertised size matches
@@ -507,6 +525,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         var tool = e.Key switch
         {
             Windows.System.VirtualKey.V => EditTool.Select,
+            Windows.System.VirtualKey.G => EditTool.Background,
             Windows.System.VirtualKey.C => EditTool.Crop,
             Windows.System.VirtualKey.R => EditTool.Rectangle,
             Windows.System.VirtualKey.O => EditTool.Ellipse,
@@ -566,14 +585,31 @@ public sealed partial class ScreenshotEditorWindow : Window
         }
     }
 
-    private void OnUndo(object sender, RoutedEventArgs e)
+    private async void OnUndo(object sender, RoutedEventArgs e)
     {
+        if (!_controller.CanUndo)
+        {
+            return;
+        }
+
         // Cancel any in-flight drag/move on the canvas before the controller mutates its
         // annotation list — otherwise a redaction mid-move (or mid-draw) can keep tracking the
         // pointer against an annotation Undo just removed, leaving a "ghost" that redraws itself
         // on the next pointer move even though it no longer exists in Annotations.
         Canvas.CancelActiveInteraction();
-        _controller.Undo();
+        UndoButton.IsEnabled = false;
+        try
+        {
+            await _controller.UndoAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Undo failed: {ex}");
+        }
+        finally
+        {
+            UpdateCommandButtonStates();
+        }
     }
 
     private void OnDeleteSelected(object sender, RoutedEventArgs e)
@@ -584,11 +620,17 @@ public sealed partial class ScreenshotEditorWindow : Window
         _controller.DeleteSelected();
     }
 
-    private void OnReset(object sender, RoutedEventArgs e) => _ = LoadAsync();
+    private void OnReset(object sender, RoutedEventArgs e)
+    {
+        if (_controller.CanReset)
+        {
+            _ = LoadAsync();
+        }
+    }
 
     // -- Crop -------------------------------------------------------------------------------
 
-    private async void OnApplyCrop(object sender, RoutedEventArgs e)
+    private async void OnApplyCrop(object? sender, EventArgs e)
     {
         var bounds = Canvas.GetCropSelectionPixelBounds();
         if (bounds is not { } rect || rect.Width < 1 || rect.Height < 1)
@@ -689,7 +731,10 @@ public sealed partial class ScreenshotEditorWindow : Window
                 _activeSavePath = path;
             }
 
-            _controller.MarkSaved(snapshot.Revision);
+            if (_controller.MarkSaved(snapshot.Revision))
+            {
+                UpdateCommandButtonStates();
+            }
             App.ShowSaveNotification(path);
         }
 

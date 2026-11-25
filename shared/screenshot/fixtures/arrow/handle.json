@@ -1,0 +1,80 @@
+{
+  "description": "The bend a dragged handle sets: on the curve, off to the side (projected), past the clamp, and on a zero-length arrow.",
+  "cases": [
+    {
+      "start": {
+        "x": 100,
+        "y": 100
+      },
+      "end": {
+        "x": 400,
+        "y": 100
+      },
+      "handle": {
+        "x": 250,
+        "y": 40
+      },
+      "expected": 0.2
+    },
+    {
+      "start": {
+        "x": 100,
+        "y": 100
+      },
+      "end": {
+        "x": 400,
+        "y": 100
+      },
+      "handle": {
+        "x": 310,
+        "y": 130
+      },
+      "expected": -0.1
+    },
+    {
+      "start": {
+        "x": 50,
+        "y": 300
+      },
+      "end": {
+        "x": 350,
+        "y": 60
+      },
+      "handle": {
+        "x": 300,
+        "y": 300
+      },
+      "expected": -0.4065040650406504
+    },
+    {
+      "start": {
+        "x": 100,
+        "y": 100
+      },
+      "end": {
+        "x": 110,
+        "y": 100
+      },
+      "handle": {
+        "x": 105,
+        "y": 400
+      },
+      "expected": -1
+    },
+    {
+      "start": {
+        "x": 120,
+        "y": 80
+      },
+      "end": {
+        "x": 120,
+        "y": 80
+      },
+      "handle": {
+        "x": 130,
+        "y": 90
+      },
+      "expected": 0
+    }
+  ]
+}
