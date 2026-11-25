@@ -6,6 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Screenshot recovery Save As preserves an existing destination if encoding fails or is canceled.
+- Saved screenshots no longer retain an extra recovery pixel buffer for the lifetime of their editor.
 - Rectangle, ellipse, arrow, line, and Draw controls in the Windows screenshot editor now expose direct stroke-opacity sliders; fill and badge opacity sliders sit directly below their related size controls.
 - The screenshot editor's Undo and Reset commands stay disabled until there are editable changes, and Delete is enabled only while an annotation is selected.
 - The Windows screenshot editor's Add/Edit text popup no longer clips controls at the right edge and now stretches its optional box controls to the available width.

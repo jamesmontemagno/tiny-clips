@@ -190,6 +190,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     internal Task<ScreenshotEditorLoadOutcome> InitialLoad => _initialLoad.Task;
     internal event Action<Exception>? ImageLoadFailed;
+    internal event Action? PermanentSaveCompleted;
     internal bool HasImageLoadFailure { get; private set; }
     internal bool HasUnsavedUnbackedScreenshot =>
         string.IsNullOrEmpty(_activeSavePath) &&
@@ -839,6 +840,7 @@ public sealed partial class ScreenshotEditorWindow : Window
             {
                 _activeSavePath = savedPath;
                 OpenSaveFolderButton.IsEnabled = true;
+                PermanentSaveCompleted?.Invoke();
             }
 
             if (_controller.MarkSaved(snapshot.Revision))

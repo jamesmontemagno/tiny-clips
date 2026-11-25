@@ -1880,11 +1880,12 @@ public partial class App : Application
         CapturedFrame frame, ScreenshotOutputSelection selection, bool fitsEditor,
         bool alreadyBranded, bool wasPickerInitiated)
     {
-        public CapturedFrame Frame { get; } = frame;
+        public CapturedFrame Frame => Progress.Frame ??
+            throw new InvalidOperationException("The screenshot no longer needs recovery.");
         public bool FitsEditor { get; } = fitsEditor;
         public bool AlreadyBranded { get; } = alreadyBranded;
         public bool WasPickerInitiated { get; } = wasPickerInitiated;
-        public ScreenshotRecoveryProgress Progress { get; } = new(selection, fitsEditor);
+        public ScreenshotRecoveryProgress Progress { get; } = new(selection, fitsEditor, frame);
         public ScreenshotRoutingResult? LastResult { get; set; }
         public ScreenshotEditorWindow? Editor { get; set; }
         public bool AnalyticsRecorded { get; set; }
@@ -2089,6 +2090,7 @@ public partial class App : Application
         {
             var path = await Services.GetRequiredService<ScreenshotCaptureRouter>()
                 .SaveRecoveredAsync(state.Frame, state.AlreadyBranded, recordCapture: !state.AnalyticsRecorded);
+            state.Progress.ReleaseFrame();
             state.AnalyticsRecorded = true;
             PresentRecoverySave(path);
             return true;
@@ -2097,6 +2099,7 @@ public partial class App : Application
         {
             var path = await Services.GetRequiredService<ScreenshotCaptureRouter>()
                 .SaveRecoveredAsAsync(state.Frame, destination, state.AlreadyBranded, recordCapture: !state.AnalyticsRecorded);
+            state.Progress.ReleaseFrame();
             state.AnalyticsRecorded = true;
             PresentRecoverySave(path);
             return true;
@@ -4612,6 +4615,7 @@ public partial class App : Application
         }
 
         onWindowCreated(window);
+        window.PermanentSaveCompleted += state.Progress.ReleaseFrame;
         window.ImageLoadFailed += exception =>
         {
             _ = HandleRoutedEditorLoadFailureAsync(state, window, routingCompleted);
@@ -4670,6 +4674,7 @@ public partial class App : Application
     {
         if (state.IsFinished || state.IsRecoveryOpen) return;
         state.IsFinished = true;
+        state.Progress.ReleaseFrame();
         if (afterEditor) FinishScreenshotCaptureFlow(state.WasPickerInitiated);
         else ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, state.WasPickerInitiated);
     }

@@ -31,6 +31,8 @@ When saving is off, the captured image is a **temporary** file in app-private st
 
 With saving on, both platforms write the captured image **directly** to the generated capture URL, as before #668. Do not add temp-then-move, hard links, file identity checks, or reparse-point handling to this path; that machinery was removed on purpose. For a name collision, keep the existing behavior: overwrite or use the next numbered name.
 
+Explicit editor/recovery **Save As** is different: preserve an existing destination until encoding succeeds. On Windows, use `ScreenshotExportFile.WriteAsync` to stage the export beside its destination.
+
 ## 4. Temporary file lifetime
 
 - Create temporary screenshots only through the lease APIs:
@@ -40,6 +42,7 @@ With saving on, both platforms write the captured image **directly** to the gene
 - At startup, both platforms delete leftover screenshot temporaries older than one day. On mac, `removeStaleFiles(olderThan:avoiding:)` runs in `TinyClipsApp.swift`. On Windows, `ScreenshotTemporaryCleanupService.PurgeStaleAsync` runs in `App.xaml.cs`. Do not shorten this window or run the sweep while captures may be active. The manual **Clear temporary files** action is the only immediate purge.
 - On Windows, a temporary screenshot's clipboard copy publishes **bitmap bytes** through `ClipboardService.CopyTemporaryScreenshotAsync`, not a file reference, so it still pastes after the file is deleted. Persistent screenshots keep their existing clipboard formats.
 - On mac, build Retina clipboard images from an `NSBitmapImageRep` whose `size` is set to the logical point size. `NSImage(cgImage:size:)` loses 2× density.
+- Recovery state must release its original pixel buffer once a permanent output succeeds. Editor close/load-failure callbacks must not keep that buffer alive for an already-saved, file-backed screenshot. Unsaved screenshots still retain their recovery frame.
 
 ## 5. Recovery, analytics, and prompts
 

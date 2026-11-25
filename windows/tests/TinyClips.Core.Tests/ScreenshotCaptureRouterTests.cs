@@ -406,6 +406,7 @@ public sealed class ScreenshotCaptureRouterTests : IDisposable
             _frame, destination, alreadyBranded: true, recordCapture: false, TestContext.Current.CancellationToken));
 
         Assert.Same(failure, error);
+        Assert.Equal("original", await File.ReadAllTextAsync(destination, TestContext.Current.CancellationToken));
         Assert.Equal(8 * 8 * 4, _frame.BgraPixels.Length);
         Assert.Empty(_recent.GetRecentCaptures());
         Assert.Empty(Directory.GetFiles(folder, ".tinyclips-export-*"));
@@ -414,6 +415,76 @@ public sealed class ScreenshotCaptureRouterTests : IDisposable
         await router.SaveRecoveredAsAsync(_frame, destination,
             alreadyBranded: true, recordCapture: false, TestContext.Current.CancellationToken);
         Assert.Equal((8, 8), ScreenshotBackgroundDecoder.ReadDimensions(destination, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task RecoverySaveAs_CancellationPreservesOriginalFileAndDoesNotRecordCapture()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed = new HeldScreenshotService(_screenshots, release.Task);
+        var router = new ScreenshotCaptureRouter(observed, _storage, _analytics, _recent, _temporary);
+        var folder = Path.Combine(_root, "chosen");
+        Directory.CreateDirectory(folder);
+        var destination = Path.Combine(folder, "selected.png");
+        await File.WriteAllTextAsync(destination, "original", TestContext.Current.CancellationToken);
+        using var cancellation = new CancellationTokenSource();
+
+        var saving = router.SaveRecoveredAsAsync(_frame, destination,
+            alreadyBranded: true, recordCapture: true, cancellation.Token);
+        cancellation.Cancel();
+        release.SetResult();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => saving);
+
+        Assert.Equal("original", await File.ReadAllTextAsync(destination, TestContext.Current.CancellationToken));
+        Assert.Empty(Directory.GetFiles(folder, ".tinyclips-export-*"));
+        Assert.Empty(_recent.GetRecentCaptures());
+        Assert.Equal(0, _analytics.GetLifetimeTotals().ScreenshotCount);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public async Task FileBackedEditor_ReleasesRecoveryPixelsOnlyAfterPermanentOutput(
+        bool save, bool editorHasPermanentSave)
+    {
+        _settings.ScreenshotScale = 50;
+        var selection = new ScreenshotOutputSelection(save, false, true);
+        ScreenshotTemporaryFileLease? editorLease = null;
+        var result = await _router.RouteAsync(_frame, selection, true, false, true,
+            _ => Task.CompletedTask,
+            request =>
+            {
+                editorLease = request.Lease;
+                return Task.FromResult(ScreenshotEditorOutcome.Loaded);
+            });
+        using (editorLease)
+        {
+            // Isolate the recovery owner's references from completed encoder tasks and Debug await temporaries.
+            var (progress, pixels) = CreateRecoveryFrame(selection);
+            Action retainedEditorCallback = progress.MarkEditorFailed;
+            progress.RecordResult(selection, result);
+            Assert.Equal((4, 4), ScreenshotBackgroundDecoder.ReadDimensions(
+                Assert.IsType<string>(result.Path), TestContext.Current.CancellationToken));
+            retainedEditorCallback();
+            var hasPermanentOutput = save || editorHasPermanentSave;
+            Assert.Equal(!hasPermanentOutput,
+                progress.RequiresRecovery(result, editorIsOpen: false, editorHasPermanentSave));
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            Assert.Equal(!hasPermanentOutput, pixels.TryGetTarget(out _));
+            GC.KeepAlive(retainedEditorCallback);
+        }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (ScreenshotRecoveryProgress Progress, WeakReference<byte[]> Pixels) CreateRecoveryFrame(
+        ScreenshotOutputSelection selection)
+    {
+        var frame = new CapturedFrame(new byte[8 * 8 * 4], 8, 8);
+        return (new(selection, fitsEditor: true, frame), new(frame.BgraPixels));
     }
 
     [Fact]

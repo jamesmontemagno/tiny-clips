@@ -1,3 +1,4 @@
+using TinyClips.Core.Editing;
 using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 
@@ -51,10 +52,12 @@ public sealed record ScreenshotRoutingResult(
 }
 
 /// <summary>Tracks incomplete outputs across retries without republishing a successful clipboard.</summary>
-public sealed class ScreenshotRecoveryProgress(ScreenshotOutputSelection selection, bool fitsEditor)
+public sealed class ScreenshotRecoveryProgress(
+    ScreenshotOutputSelection selection, bool fitsEditor, CapturedFrame? frame = null)
 {
     private bool _editorFailed;
 
+    public CapturedFrame? Frame { get; private set; } = frame;
     public bool Copied { get; private set; }
     public ScreenshotOutputSelection RetrySelection => new(false,
         selection.CopyToClipboard && !Copied, selection.OpenEditor && fitsEditor);
@@ -62,6 +65,7 @@ public sealed class ScreenshotRecoveryProgress(ScreenshotOutputSelection selecti
 
     public void RecordResult(ScreenshotOutputSelection attempted, ScreenshotRoutingResult result)
     {
+        if (result.IsPermanent && result.Path is not null) ReleaseFrame();
         Copied |= result.Copied;
         if (attempted.OpenEditor)
             _editorFailed = result.EditorUnavailable ||
@@ -70,9 +74,15 @@ public sealed class ScreenshotRecoveryProgress(ScreenshotOutputSelection selecti
 
     public void MarkEditorFailed() => _editorFailed = true;
 
+    public void ReleaseFrame() => Frame = null;
+
     public bool RequiresRecovery(ScreenshotRoutingResult result, bool editorIsOpen, bool editorHasPermanentSave)
     {
-        if ((result.IsPermanent && result.Path is not null) || editorHasPermanentSave) return false;
+        if ((result.IsPermanent && result.Path is not null) || editorHasPermanentSave)
+        {
+            ReleaseFrame();
+            return false;
+        }
         if (_editorFailed) return true;
         if (Copied || editorIsOpen) return false;
 
@@ -201,9 +211,13 @@ public sealed class ScreenshotCaptureRouter
             ".webp" => ImageFormat.Webp,
             _ => throw new IOException("Choose a PNG, JPEG, or WebP file."),
         };
-        await using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 81920, useAsync: true))
+        await ScreenshotExportFile.WriteAsync(path, async (temporaryPath, token) =>
+        {
+            await using var stream = new FileStream(temporaryPath, FileMode.CreateNew,
+                FileAccess.Write, FileShare.Read, 81920, useAsync: true);
             await _screenshots.WriteFrameAsync(frame, stream, format,
-                applyBranding: !alreadyBranded, cancellationToken).ConfigureAwait(false);
+                applyBranding: !alreadyBranded, token).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
         if (recordCapture) _analytics.RecordCapture(CaptureType.Screenshot);
         _recent.Record(path, CaptureType.Screenshot);
         return path;
