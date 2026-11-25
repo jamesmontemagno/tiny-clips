@@ -89,7 +89,7 @@
                         <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Capture overview" />
                         <TextBlock Style="{StaticResource GuideBodyStyle}" Text="Tiny Clips lives in the system tray. Take a still image, record an MP4 or GIF, stitch a long page, or copy text from the screen." />
                         <Border Style="{StaticResource GuideDiagramStyle}" AutomationProperties.AutomationId="GuideCaptureDrawing"
-                                AutomationProperties.Name="Capture illustration: the tray opens a picker; select a region, screen, or window, then produce an image. Scrolling joins overlapping views; OCR produces text instead.">
+                                AutomationProperties.Name="Capture illustration: the tray opens a picker; select a region, screen, window-only capture, or fixed window area, then produce an image. Scrolling joins overlapping views; OCR produces text instead.">
                             <Viewbox Stretch="Uniform" StretchDirection="DownOnly" AutomationProperties.AccessibilityView="Raw">
                                 <Grid Width="560" Height="180" ColumnSpacing="12" RowSpacing="12">
                                     <Grid.ColumnDefinitions>
@@ -128,14 +128,14 @@
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
                                 <local:GuideRow Glyph="&#xE722;" Title="Screenshot, Video, or GIF" Subtitle="Use the tray tiles or a saved shortcut. Screenshots support PNG, JPEG, and WebP. Ordinary video saves H.264 MP4; GIF is a silent animation. Studio is a separate recording entry point." />
-                                <local:GuideRow Glyph="&#xE7A8;" Title="Region, Screen, or Window" Subtitle="In the picker, R selects a rectangle, S selects a monitor, and W selects an application window. Direct screenshot shortcuts skip the picker. Cancel with Esc." />
+                                <local:GuideRow Glyph="&#xE7A8;" Title="Choose a capture target" Subtitle="In the picker, R selects a rectangle, S selects a monitor, and W starts Window only. Open the Window menu for Window area, a fixed crop of the visible screen bounds that includes overlays. Direct screenshot shortcuts remain window-only. Cancel with Esc." />
                                 <local:GuideRow Glyph="&#xE8D2;" Title="Recognize Text" Subtitle="Use Capture Text in the tray or your saved OCR shortcut, then select a region. Windows OCR copies recognized text to the clipboard instead of saving an image. Check the result; accuracy depends on text size, contrast, and installed OCR language support." />
                             </StackPanel>
                         </Border>
                         <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Take a screenshot — step by step" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow Glyph="&#xE734;" Title="1. Open the tray and choose Screenshot" Subtitle="Pick Region, Screen, or Window, then select what belongs in the image. Keep unrelated personal information out of the selection." />
+                                <local:GuideRow Glyph="&#xE734;" Title="1. Open the tray and choose Screenshot" Subtitle="Pick Region, Screen, Window only, or Window area. The area is fixed to the selected window's visible bounds and can include overlays; keep unrelated personal information out of it." />
                                 <local:GuideRow Glyph="&#xE70F;" Title="2. Review the result" Subtitle="The editor opens if Open editor after capture is enabled in Settings → Screenshot. Add annotations or redactions before sharing." />
                                 <local:GuideRow Glyph="&#xE74E;" Title="3. Find or copy your capture" Subtitle="Settings → Screenshot controls the save folder, format, scale, clipboard copy, and editor behavior. Recent captures and the tray's capture folders help you find saved files; the Library holds the longer history." />
                             </StackPanel>
@@ -260,7 +260,7 @@
                         <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Record and trim — step by step" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow Glyph="&#xE714;" Title="1. Choose Video or GIF and a target" Subtitle="Select Region, Screen, or Window. In setup, confirm options and choose Record. If countdown is enabled, use the delay to prepare the screen." />
+                                <local:GuideRow Glyph="&#xE714;" Title="1. Choose Video or GIF and a target" Subtitle="Select Region, Screen, Window only, or Window area. The fixed area can include visible overlays and does not follow later window movement. In setup, confirm options and choose Record." />
                                 <local:GuideRow Glyph="&#xE71A;" Title="2. Perform the demonstration, then Stop" Subtitle="Use pause/resume for interruptions. Check that the right microphone and camera are active before a long take. Stop keeps the recording; discard does not." />
                                 <local:GuideRow Glyph="&#xE8A1;" Title="3. Choose the useful range" Subtitle="Enable the post-recording trimmer in Video or GIF settings, or reopen the file from Library. Preview, set the start and end handles, and save the trimmed result. Video can remove audio; GIF lets you inspect individual frames." />
                                 <local:GuideRow Glyph="&#xE91B;" Title="4. Save a still or the recording" Subtitle="In the video trimmer, Copy frame copies the selected frame at source resolution without saving a file; Export frame saves a PNG. Review your saved video or GIF in Library before sharing." />

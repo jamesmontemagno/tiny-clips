@@ -19,6 +19,14 @@ class WindowSelector {
     }
 
     static func selectWindow() async -> SCWindow? {
+        await selectWindow(selectArea: false)
+    }
+
+    static func selectWindowArea() async -> SCWindow? {
+        await selectWindow(selectArea: true)
+    }
+
+    private static func selectWindow(selectArea: Bool) async -> SCWindow? {
         let windows: [SCWindow]
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -46,7 +54,7 @@ class WindowSelector {
         }
 
         return await withCheckedContinuation { continuation in
-            let controller = WindowSelectorController(windows: windows) { window in
+            let controller = WindowSelectorController(windows: windows, selectArea: selectArea) { window in
                 Self.activeSelector = nil
                 continuation.resume(returning: window)
             }
@@ -164,10 +172,12 @@ enum WindowPickerHitTesting {
 
 @MainActor
 private class WindowSelectorController {
-    private static let instructions = "Choose a window to capture. Press Tab to move between windows, Return to capture, or Escape to cancel."
+    private static let windowInstructions = "Choose a window to capture. Press Tab to move between windows, Return to capture, or Escape to cancel."
+    private static let areaInstructions = "Choose a window area. Visible overlays inside its fixed display-clipped bounds are included. Press Tab to move between windows, Return to select, or Escape to cancel."
 
     private var overlayWindows: [(window: NSWindow, screen: NSScreen)] = []
     private let scWindows: [SCWindow]
+    private let selectArea: Bool
     private let completion: (SCWindow?) -> Void
     private var hoveredIndex: Int?
     private let primaryScreenHeight: CGFloat
@@ -177,8 +187,9 @@ private class WindowSelectorController {
     private var scaleCache: [CGWindowID: CGFloat] = [:]
     private var isFinished = false
 
-    init(windows: [SCWindow], completion: @escaping (SCWindow?) -> Void) {
+    init(windows: [SCWindow], selectArea: Bool, completion: @escaping (SCWindow?) -> Void) {
         self.scWindows = windows
+        self.selectArea = selectArea
         self.completion = completion
         self.primaryScreenHeight = CaptureCoordinateMath.primaryDisplayHeight(
             forDisplayFrames: NSScreen.screens.map(\.frame)
@@ -209,7 +220,10 @@ private class WindowSelectorController {
             let view = WindowSelectionView(frame: NSRect(origin: .zero, size: screen.frame.size))
             view.hintText = scWindows.isEmpty
                 ? "No windows to capture · Esc to cancel"
-                : "Click a window to capture · Tab to cycle · Esc to cancel"
+                : selectArea
+                    ? "Window area · includes visible overlays · Tab to cycle · Esc to cancel"
+                    : "Click a window to capture · Tab to cycle · Esc to cancel"
+            view.isWindowAreaPicker = selectArea
             view.onMouseMoved = { [weak self] in
                 self?.updateHoveredWindow(at: NSEvent.mouseLocation)
             }
@@ -245,7 +259,10 @@ private class WindowSelectorController {
             guard let self, !self.isFinished else { return }
             NSApp.activate()
             self.overlayWindows.first?.window.makeKeyAndOrderFront(nil)
-            AccessibilityAnnouncementService.shared.announce(WindowSelectorController.instructions, priority: .high)
+            AccessibilityAnnouncementService.shared.announce(
+                self.selectArea ? WindowSelectorController.areaInstructions : WindowSelectorController.windowInstructions,
+                priority: .high
+            )
         }
     }
 
@@ -312,20 +329,29 @@ private class WindowSelectorController {
     private func updateHighlights() {
         let hovered = hoveredIndex.map { scWindows[$0] }
         let appKitFrame = hovered.map { scFrameToAppKit($0.frame) }
-        let labelScreen = appKitFrame.flatMap {
+        let areaGeometry = selectArea
+            ? appKitFrame.flatMap {
+                CaptureCoordinateMath.windowAreaGeometry(
+                    windowFrame: $0,
+                    displayFrames: overlayWindows.map { $0.screen.frame }
+                )
+            }
+            : nil
+        let highlightFrame = areaGeometry?.clippedFrame ?? appKitFrame
+        let labelScreen = areaGeometry?.displayIndex ?? appKitFrame.flatMap {
             WindowPickerHitTesting.labelScreenIndex(for: $0, screenFrames: overlayWindows.map { $0.screen.frame })
         }
 
         for (offset, overlay) in overlayWindows.enumerated() {
             guard let view = overlay.window.contentView as? WindowSelectionView else { continue }
             let screenFrame = overlay.screen.frame
-            guard let hovered, let appKitFrame else {
+            guard let hovered, let highlightFrame else {
                 view.highlightFrame = nil
                 view.label = nil
                 continue
             }
 
-            let intersection = screenFrame.intersection(appKitFrame)
+            let intersection = screenFrame.intersection(highlightFrame)
             if intersection.isNull || intersection.isEmpty {
                 view.highlightFrame = nil
                 view.label = nil
@@ -337,18 +363,22 @@ private class WindowSelectorController {
                     height: intersection.height
                 )
                 view.label = offset == labelScreen
-                    ? label(for: hovered)
+                    ? label(for: hovered, area: areaGeometry, screen: overlay.screen)
                     : nil
             }
         }
     }
 
-    private func label(for window: SCWindow) -> WindowPickerLabel {
+    private func label(for window: SCWindow, area: WindowAreaGeometry?, screen: NSScreen) -> WindowPickerLabel {
         let appName = window.owningApplication?.applicationName ?? ""
         let title = window.title.flatMap { $0.isEmpty ? nil : $0 } ?? appName
-        let size = WindowPickerHitTesting.pixelSizeText(for: window.frame, scale: pixelScale(for: window))
+        let size = area.map {
+            WindowPickerHitTesting.pixelSizeText(for: $0.clippedFrame, scale: screen.backingScaleFactor)
+        } ?? WindowPickerHitTesting.pixelSizeText(for: window.frame, scale: pixelScale(for: window))
+        let areaPrefix = area == nil ? "" : "Window area · "
+        let clipping = area?.wasClipped == true ? " · clipped to display" : ""
         let detail = appName.isEmpty || appName == title ? size : "\(appName) · \(size)"
-        return WindowPickerLabel(icon: icon(for: window), title: title, detail: detail)
+        return WindowPickerLabel(icon: icon(for: window), title: title, detail: "\(areaPrefix)\(detail)\(clipping)")
     }
 
     /// The scale the window will actually be captured at, so the label matches the saved image
@@ -365,7 +395,19 @@ private class WindowSelectorController {
     private func description(for window: SCWindow) -> String {
         let appName = window.owningApplication?.applicationName ?? ""
         let title = window.title.flatMap { $0.isEmpty ? nil : $0 } ?? appName
-        return appName.isEmpty || appName == title ? title : "\(title), \(appName)"
+        guard selectArea else {
+            return appName.isEmpty || appName == title ? title : "\(title), \(appName)"
+        }
+        let appKitFrame = scFrameToAppKit(window.frame)
+        guard let area = CaptureCoordinateMath.windowAreaGeometry(
+            windowFrame: appKitFrame,
+            displayFrames: overlayWindows.map { $0.screen.frame }
+        ), overlayWindows.indices.contains(area.displayIndex) else {
+            return "\(title), no visible area on a display"
+        }
+        let display = overlayWindows[area.displayIndex].screen
+        let size = WindowPickerHitTesting.pixelSizeText(for: area.clippedFrame, scale: display.backingScaleFactor)
+        return "Window area for \(title), \(size), fixed; visible overlays are included"
     }
 
     private func icon(for window: SCWindow) -> NSImage? {
@@ -434,6 +476,8 @@ private class WindowSelectionView: NSView {
         didSet { needsDisplay = true }
     }
 
+    var isWindowAreaPicker = false
+
     override var acceptsFirstResponder: Bool { true }
 
     override func resetCursorRects() {
@@ -449,6 +493,12 @@ private class WindowSelectionView: NSView {
             return "\(label.title), \(label.detail)"
         }
         return "Choose a window to capture"
+    }
+
+    override func accessibilityHelp() -> String? {
+        isWindowAreaPicker
+            ? "Captures visible content inside the fixed, display-clipped bounds, including unrelated overlays. The area does not follow the window."
+            : "Select a window. Separate dialogs or menus may be omitted."
     }
 
     override func draw(_ dirtyRect: NSRect) {

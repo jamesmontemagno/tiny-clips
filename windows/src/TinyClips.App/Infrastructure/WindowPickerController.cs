@@ -4,6 +4,8 @@ using TinyClips.Core.Capture;
 
 namespace TinyClips.App;
 
+internal sealed record WindowPickerSelection(nint Hwnd, WindowAreaSelection? Area, MonitorInfo? Monitor);
+
 /// <summary>
 /// Runs the hover-to-highlight window picker: one frozen-backdrop overlay per monitor, sharing a
 /// single front-to-back window list so the highlight follows the window that is actually on top
@@ -13,28 +15,47 @@ internal sealed class WindowPickerController
 {
     private readonly IReadOnlyList<WindowPickerCandidate> _candidates;
     private readonly WindowPickerTarget[] _targets;
+    private readonly WindowAreaSelection?[] _areas;
+    private readonly IReadOnlyList<MonitorInfo> _monitors;
     private readonly PixelRect[] _monitorBounds;
     private readonly List<WindowPickerWindow> _windows = [];
-    private readonly TaskCompletionSource<nint?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<WindowPickerSelection?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly bool _selectArea;
     private int _hovered = -1;
     private int _completed;
 
-    private WindowPickerController(IReadOnlyList<MonitorInfo> monitors, IReadOnlyList<WindowPickerCandidate> candidates)
+    private WindowPickerController(
+        IReadOnlyList<MonitorInfo> monitors,
+        IReadOnlyList<WindowPickerCandidate> candidates,
+        bool selectArea)
     {
+        _monitors = monitors;
         _candidates = candidates;
-        _targets = candidates.Select(c => c.Target).ToArray();
         _monitorBounds = monitors.Select(m => new PixelRect(m.X, m.Y, m.Width, m.Height)).ToArray();
+        _selectArea = selectArea;
+        _areas = candidates
+            .Select(candidate => selectArea
+                ? WindowPickerGeometry.ResolveWindowArea(candidate.Bounds, _monitorBounds)
+                : null)
+            .ToArray();
+        _targets = candidates.Select((candidate, index) => new WindowPickerTarget(
+            candidate.Hwnd,
+            candidate.Bounds,
+            candidate.IsSelectable && (!selectArea || _areas[index] is not null))).ToArray();
     }
 
     public bool HasSelectableWindows => _targets.Any(t => t.IsSelectable);
 
+    public bool SelectArea => _selectArea;
+
     /// <summary>
-    /// Shows the picker on every monitor and resolves with the chosen window handle, or null on
-    /// cancel. Windows are enumerated before any overlay appears so the picker never lists itself.
+    /// Shows the picker on every monitor and resolves with the chosen window, or null on cancel.
+    /// Windows are enumerated before any overlay appears so the picker never lists itself.
     /// </summary>
-    public static async Task<nint?> RunAsync(
+    public static async Task<WindowPickerSelection?> RunAsync(
         IReadOnlyList<MonitorInfo> monitors,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool selectArea = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (monitors.Count == 0)
@@ -47,7 +68,7 @@ internal sealed class WindowPickerController
 
         var backdrops = RegionSelectController.CaptureBackdropsAsync(monitors);
 
-        var controller = new WindowPickerController(monitors, candidates);
+        var controller = new WindowPickerController(monitors, candidates, selectArea);
         try
         {
             for (var i = 0; i < monitors.Count; i++)
@@ -105,7 +126,7 @@ internal sealed class WindowPickerController
         var index = WindowPickerGeometry.HitTest(_targets, x, y);
         if (index >= 0)
         {
-            Complete(_candidates[index].Hwnd);
+            Select(index);
         }
     }
 
@@ -115,7 +136,7 @@ internal sealed class WindowPickerController
     {
         if (_hovered >= 0)
         {
-            Complete(_candidates[_hovered].Hwnd);
+            Select(_hovered);
         }
     }
 
@@ -126,6 +147,27 @@ internal sealed class WindowPickerController
     {
         var app = string.IsNullOrEmpty(candidate.AppName) ? string.Empty : $" – {candidate.AppName}";
         return $"{candidate.Title}{app}, {WindowPickerGeometry.FormatSize(candidate.Bounds)}";
+    }
+
+    private void Select(int index)
+    {
+        var candidate = _candidates[index];
+        WindowAreaSelection? area = _selectArea ? _areas[index] : null;
+        MonitorInfo? monitor = area is { } selected ? _monitors[selected.MonitorIndex] : null;
+
+        if (_selectArea)
+        {
+            var current = WindowEnumerator.GetWindows().FirstOrDefault(window => window.Hwnd == candidate.Hwnd && window.IsSelectable);
+            if (current is null || current.Bounds != candidate.Bounds)
+            {
+                CaptureFlowTrace.Mark("window area: selected window changed before commitment");
+                Complete(null);
+                App.ShowMessageNotification("That window changed while the picker was open. Please select it again.");
+                return;
+            }
+        }
+
+        Complete(new WindowPickerSelection(candidate.Hwnd, area, monitor));
     }
 
     internal void OnWindowClosed() => Complete(null);
@@ -167,12 +209,19 @@ internal sealed class WindowPickerController
 
         _hovered = index;
         var candidate = index >= 0 ? _candidates[index] : null;
+        var area = index >= 0 ? _areas[index] : null;
         var labelMonitor = candidate is null
             ? -1
-            : WindowPickerGeometry.LabelMonitorIndex(candidate.Bounds, _monitorBounds);
+            : area?.MonitorIndex ?? WindowPickerGeometry.LabelMonitorIndex(candidate.Bounds, _monitorBounds);
+        var highlightBounds = area?.ClippedBounds ?? candidate?.Bounds;
+        var detail = candidate is null
+            ? null
+            : area is { } selected
+                ? $"{WindowPickerGeometry.FormatSize(selected.ClippedBounds)} · Display {selected.MonitorIndex + 1}{(selected.WasClipped ? " · clipped to display" : string.Empty)}"
+                : WindowPickerGeometry.FormatSize(candidate.Bounds);
         for (var i = 0; i < _windows.Count; i++)
         {
-            _windows[i].ShowHighlight(candidate, showLabel: i == labelMonitor);
+            _windows[i].ShowHighlight(candidate, highlightBounds, detail, showLabel: i == labelMonitor);
         }
 
         if (announce && candidate is not null)
@@ -193,14 +242,14 @@ internal sealed class WindowPickerController
         target.Announce(Describe(candidate));
     }
 
-    private void Complete(nint? hwnd)
+    private void Complete(WindowPickerSelection? selection)
     {
         if (Interlocked.Exchange(ref _completed, 1) != 0)
         {
             return;
         }
 
-        _completion.TrySetResult(hwnd);
+        _completion.TrySetResult(selection);
         CloseAll();
     }
 

@@ -25,6 +25,8 @@ public sealed class CapturePickerTests
         Assert.Contains("CaptureRegionButton", automationIds);
         Assert.Contains("CaptureScreenButton", automationIds);
         Assert.Contains("CaptureWindowButton", automationIds);
+        Assert.Contains("CaptureWindowOnlyMenuItem", automationIds);
+        Assert.Contains("CaptureWindowAreaMenuItem", automationIds);
         Assert.Contains("CaptureScrollButton", automationIds);
         Assert.Equal("Tiny Clips capture picker", (string?)document.Root?.Attribute("Title"));
         Assert.DoesNotContain("RecognizeTextButton", automationIds);

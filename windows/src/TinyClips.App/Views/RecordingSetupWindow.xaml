@@ -32,6 +32,28 @@
                 Orientation="Horizontal"
                 Spacing="8"
                 VerticalAlignment="Center">
+                <StackPanel
+                    x:Name="WindowAreaSummary"
+                    AutomationProperties.AutomationId="WindowAreaSummary"
+                    AutomationProperties.Name="Window area target"
+                    AutomationProperties.HelpText="Captures visible content inside this fixed area, including unrelated overlays. The area does not follow the window."
+                    MaxWidth="260"
+                    Spacing="1"
+                    ToolTipService.ToolTip="Includes anything visible inside this area, including unrelated overlays. Does not follow the window."
+                    Visibility="Collapsed">
+                    <TextBlock
+                        x:Name="WindowAreaSize"
+                        AutomationProperties.AccessibilityView="Raw"
+                        Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock
+                        AutomationProperties.AccessibilityView="Raw"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        MaxLines="2"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Fixed area · visible overlays are included"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
                 <recordingSetup:AudioDeviceControl x:Name="AudioDevices" />
 
                 <recordingSetup:WebcamOptionsControl x:Name="WebcamOptions" />

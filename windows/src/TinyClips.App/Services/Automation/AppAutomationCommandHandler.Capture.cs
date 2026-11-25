@@ -67,21 +67,33 @@ internal sealed partial class AppAutomationCommandHandler
     private async Task<JsonNode> CaptureScreenshotAsync(AutomationCommandContext context, CancellationToken cancellationToken)
     {
         var request = AutomationCaptureRequest.Parse(context.Params);
-        var (path, width, height) = await OnUiAsync(() => CaptureOnUiAsync(request, cancellationToken));
-        return new JsonObject
+        var (path, width, height, windowArea) = await OnUiAsync(() => CaptureOnUiAsync(request, cancellationToken));
+        var result = new JsonObject
         {
             ["path"] = path,
             ["mode"] = ModeName(request.Mode),
             ["width"] = width,
             ["height"] = height,
         };
+        if (windowArea is not null)
+        {
+            result["windowArea"] = windowArea;
+        }
+
+        return result;
     }
 
-    private Task<(string Path, int Width, int Height)> CaptureOnUiAsync(AutomationCaptureRequest request, CancellationToken cancellationToken)
+    private async Task<(string Path, int Width, int Height, JsonObject? WindowArea)> CaptureOnUiAsync(
+        AutomationCaptureRequest request,
+        CancellationToken cancellationToken)
     {
         EnsureIdle();
-        var (target, region) = ResolveCaptureTarget(request);
-        return _app.CaptureForAutomationAsync(target, region, cancellationToken);
+        var (target, region, area, monitor) = ResolveCaptureTarget(request, allowWindowArea: true);
+        var (path, width, height) = await _app.CaptureForAutomationAsync(target, region, cancellationToken);
+        var windowArea = area is { } selected && monitor is { } display
+            ? CreateWindowAreaResult(selected, display)
+            : null;
+        return (path, width, height, windowArea);
     }
 
     private async Task<JsonNode> RecognizeTextAsync(AutomationCommandContext context, CancellationToken cancellationToken)
@@ -103,12 +115,14 @@ internal sealed partial class AppAutomationCommandHandler
 
     private Task<string> RecognizeOnUiAsync(AutomationCaptureRequest request, CancellationToken cancellationToken)
     {
-        var (target, region) = ResolveCaptureTarget(request);
+        var (target, region, _, _) = ResolveCaptureTarget(request);
         return _app.RecognizeTextForAutomationAsync(target, region, cancellationToken);
     }
 
     /// <summary>Re-validates opaque IDs against the current displays and windows.</summary>
-    private (CaptureTarget Target, PixelRect? Region) ResolveCaptureTarget(AutomationCaptureRequest request)
+    private (CaptureTarget Target, PixelRect? Region, WindowAreaSelection? WindowArea, MonitorInfo? Monitor) ResolveCaptureTarget(
+        AutomationCaptureRequest request,
+        bool allowWindowArea = false)
     {
         switch (request.Mode)
         {
@@ -120,14 +134,54 @@ internal sealed partial class AppAutomationCommandHandler
                         "windowId does not match an open window. Call capture.targets for current IDs.");
                 }
 
-                return (CaptureTarget.Window(hwnd), null);
+                return (CaptureTarget.Window(hwnd), null, null, null);
+
+            case AutomationCaptureMode.WindowArea:
+            {
+                if (!allowWindowArea)
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                        "mode windowArea is supported for screenshots and recordings, not text recognition or scrolling capture.");
+                }
+
+                if (!CaptureTargets.TryResolveWindow(request.WindowId!, out var areaHwnd))
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                        "windowId does not match an open window. Call capture.targets for current IDs.");
+                }
+
+                var window = WindowEnumerator.GetWindows()
+                    .FirstOrDefault(candidate => candidate.IsSelectable && candidate.Hwnd == areaHwnd);
+                if (window is null)
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                        "windowId does not match a visible window. Call capture.targets for current IDs.");
+                }
+
+                var monitors = App.Services.GetRequiredService<IMonitorService>().GetMonitors();
+                var area = WindowPickerGeometry.ResolveWindowArea(
+                    window.Bounds,
+                    monitors.Select(display => new PixelRect(display.X, display.Y, display.Width, display.Height)).ToArray());
+                if (area is not { } selectedArea || selectedArea.MonitorIndex >= monitors.Count)
+                {
+                    throw new AutomationException(AutomationErrorCodes.InvalidParams,
+                        "The selected window does not overlap a connected display.");
+                }
+
+                var monitor = monitors[selectedArea.MonitorIndex];
+                return (
+                    CaptureTarget.Monitor(monitor.HMonitor),
+                    selectedArea.MonitorLocalBounds,
+                    selectedArea,
+                    monitor);
+            }
 
             case AutomationCaptureMode.Region:
             {
                 var monitor = ResolveDisplay(request.DisplayId!);
                 var region = request.Region!.Value;
                 AutomationCaptureRequest.EnsureRegionFits(region, monitor.Width, monitor.Height);
-                return (CaptureTarget.Monitor(monitor.HMonitor), region);
+                return (CaptureTarget.Monitor(monitor.HMonitor), region, null, monitor);
             }
 
             default:
@@ -136,7 +190,7 @@ internal sealed partial class AppAutomationCommandHandler
                     ? ResolveDisplay(displayId)
                     : _app.GetPreferredAutomationMonitor()
                         ?? throw new AutomationException(AutomationErrorCodes.Internal, "No display was found to capture.");
-                return (CaptureTarget.Monitor(monitor.HMonitor), null);
+                return (CaptureTarget.Monitor(monitor.HMonitor), null, null, monitor);
             }
         }
     }
@@ -157,7 +211,22 @@ internal sealed partial class AppAutomationCommandHandler
     {
         AutomationCaptureMode.Region => "region",
         AutomationCaptureMode.Window => "window",
+        AutomationCaptureMode.WindowArea => "windowArea",
         _ => "screen",
+    };
+
+    private static JsonObject CreateWindowAreaResult(WindowAreaSelection area, MonitorInfo monitor) => new()
+    {
+        ["displayId"] = CaptureTargets.GetDisplayId(monitor.HMonitor),
+        ["region"] = new JsonObject
+        {
+            ["x"] = area.MonitorLocalBounds.X,
+            ["y"] = area.MonitorLocalBounds.Y,
+            ["width"] = area.MonitorLocalBounds.Width,
+            ["height"] = area.MonitorLocalBounds.Height,
+        },
+        ["fixed"] = true,
+        ["clipped"] = area.WasClipped,
     };
 
     // -- editor.annotate ---------------------------------------------------------------------

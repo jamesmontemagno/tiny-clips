@@ -316,8 +316,11 @@ final class AutomationCommandRouter {
     }
 
     /// Captures an agent target with no picker, countdown, or editor.
-    private func captureTargetImage(_ params: [String: Any]) async throws -> (image: CGImage, scaleFactor: CGFloat, target: AutomationCaptureTarget) {
-        let target = try AutomationCaptureTargets.parse(params)
+    private func captureTargetImage(
+        _ params: [String: Any],
+        allowWindowArea: Bool = false
+    ) async throws -> (image: CGImage, scaleFactor: CGFloat, target: AutomationCaptureTarget, windowArea: [String: Any]?) {
+        let target = try AutomationCaptureTargets.parse(params, allowWindowArea: allowWindowArea)
         let manager = try captureManager()
         try requireIdle(manager)
         try requireScreenRecordingPermission()
@@ -325,7 +328,7 @@ final class AutomationCommandRouter {
             let captured = try await manager.performAutomationCapture {
                 try await AutomationCaptureEnvironment.captureImage(target)
             }
-            return (captured.image, captured.scaleFactor, target)
+            return (captured.image, captured.scaleFactor, target, captured.windowArea)
         } catch let error as AutomationError {
             throw error
         } catch {
@@ -336,7 +339,7 @@ final class AutomationCommandRouter {
     private func screenshot(_ params: [String: Any]) async throws -> [String: Any] {
         let manager = try captureManager()
         defer { manager.notifyStoreReviewCaptureWorkBecameIdle() }
-        let captured = try await captureTargetImage(params)
+        let captured = try await captureTargetImage(params, allowWindowArea: true)
         let url: URL
         do {
             url = try ScreenshotCapture.saveImage(
@@ -349,12 +352,16 @@ final class AutomationCommandRouter {
         }
         CaptureAnalyticsStore.shared.recordCapture(.screenshot)
         SaveService.shared.handleSavedFile(url: url, type: .screenshot)
-        return [
+        var result: [String: Any] = [
             "path": url.path,
             "mode": captured.target.modeName,
             "width": captured.image.width,
             "height": captured.image.height,
         ]
+        if let windowArea = captured.windowArea {
+            result["windowArea"] = windowArea
+        }
+        return result
     }
 
     private func ocr(_ params: [String: Any]) async throws -> [String: Any] {
@@ -502,22 +509,31 @@ final class AutomationCommandRouter {
             microphoneAuthorized: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
             cameraAuthorized: AVCaptureDevice.authorizationStatus(for: .video) == .authorized
         )
-        let target = try await manager.resolveAutomationCaptureTarget(targetParams(from: params))
+        let targetRequest = try AutomationCaptureTargets.parse(
+            AutomationRecordingDevices.targetParameters(from: params),
+            allowWindowArea: true
+        )
+        let target = try await manager.resolveAutomationCaptureTarget(targetRequest)
         try await manager.startAutomationVideoRecording(forStudio: studio, target: target, devices: devices)
-        return ["started": true, "studio": studio]
+        var result: [String: Any] = ["started": true, "studio": studio]
+        if let selection = target.windowAreaSelection {
+            result["windowArea"] = AutomationCaptureTargets.windowAreaJSON(selection)
+        }
+        return result
     }
 
     private func startGif(_ params: [String: Any]) async throws -> [String: Any] {
         let manager = try captureManager()
         try requireIdle(manager)
         try requireScreenRecordingPermission()
-        let target = try await manager.resolveAutomationCaptureTarget(AutomationCaptureTargets.parse(params))
+        let targetRequest = try AutomationCaptureTargets.parse(params, allowWindowArea: true)
+        let target = try await manager.resolveAutomationCaptureTarget(targetRequest)
         try await manager.startAutomationGifRecording(target: target)
-        return ["started": true]
-    }
-
-    private func targetParams(from params: [String: Any]) throws -> AutomationCaptureTarget {
-        try AutomationCaptureTargets.parse(AutomationRecordingDevices.targetParameters(from: params))
+        var result: [String: Any] = ["started": true]
+        if let selection = target.windowAreaSelection {
+            result["windowArea"] = AutomationCaptureTargets.windowAreaJSON(selection)
+        }
+        return result
     }
 
     private func startScrollingCapture(_ params: [String: Any]) async throws -> [String: Any] {

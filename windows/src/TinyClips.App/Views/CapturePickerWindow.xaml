@@ -69,17 +69,32 @@
                     </StackPanel>
                 </Button>
 
-                <Button
+                <SplitButton
                     x:Name="WindowButton"
                     AutomationProperties.AutomationId="CaptureWindowButton"
                     AutomationProperties.Name="Capture window"
+                    AutomationProperties.HelpText="Capture the selected window only. Open the menu for Window area, which includes visible overlays inside the window bounds."
                     Click="OnWindow"
-                    ToolTipService.ToolTip="Select a window (W)">
+                    ToolTipService.ToolTip="Select a window (W). Open the menu for Window area.">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Glyph="&#xE737;" />
                         <TextBlock Text="Window" />
                     </StackPanel>
-                </Button>
+                    <SplitButton.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="CaptureWindowOnlyMenuItem"
+                                AutomationProperties.HelpText="Captures only this window. Separate dialogs and menus may be omitted."
+                                Click="OnWindowOnly"
+                                Text="Window only" />
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="CaptureWindowAreaMenuItem"
+                                AutomationProperties.HelpText="Captures visible content inside this window's fixed, display-clipped bounds, including unrelated overlays. The area does not follow the window."
+                                Click="OnWindowArea"
+                                Text="Window area" />
+                        </MenuFlyout>
+                    </SplitButton.Flyout>
+                </SplitButton>
 
                 <Button
                     x:Name="ScrollButton"

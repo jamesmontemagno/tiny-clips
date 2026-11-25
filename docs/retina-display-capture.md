@@ -123,6 +123,7 @@ The resulting invariant is that `sourceRect.origin × scaleFactor` and `sourceRe
 | Region selector drag | View → window → screen → display-local | Converted to Y-down |
 | Full screen | `(0, 0, screen.frame.width, screen.frame.height)` | Already display-local |
 | Window capture | `SCWindow.frame` converted to display-local | Y-flipped from AppKit |
+| Window area | Visible window bounds clipped to the display with largest overlap | Fixed display-local region; overlays inside the area remain visible |
 
 ## Screenshot Capture
 
@@ -157,6 +158,14 @@ config.width  = Int((sourceRect.width * scaleFactor).rounded())         // pixel
 config.height = Int((sourceRect.height * scaleFactor).rounded())        // pixels
 config.scalesToFit = false
 ```
+
+### Window-area capture
+
+Window area is distinct from the isolated window screenshot: it selects the display with the
+largest overlap, clips the visible window bounds to that display, and captures that fixed
+display-local region from the live screen after the picker closes. The crop can contain unrelated
+windows, menus, or other visible overlays inside its bounds, and does not move if the selected
+window moves. The same geometry is used for Window-area video/GIF recording.
 
 ### No custom DPI metadata
 

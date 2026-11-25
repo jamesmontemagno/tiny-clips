@@ -26,6 +26,7 @@ class StartRecordingPanel: NSPanel {
     convenience init(
         captureType: CaptureType,
         forStudio: Bool = false,
+        windowAreaSummary: String? = nil,
         onStart: @escaping (Bool, MicrophoneSelection, WebcamSelection, Bool, Int) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -87,6 +88,7 @@ class StartRecordingPanel: NSPanel {
             availableWebcams: availableWebcams,
             mouseClicksEnabled: defaultMouseClicksEnabled,
             allowsMouseClickToggle: allowsMouseClickToggle,
+            windowAreaSummary: windowAreaSummary,
             isStudioRecording: captureType == .video && forStudio,
             onStart: { [weak self] systemAudio, microphone, webcam, mouseClicksEnabled, videoTimeLimitMinutes in
                 guard let panel = self, let onStart = panel.onStart else { return }
@@ -138,6 +140,7 @@ private struct StartRecordingView: View {
     let availableWebcams: [WebcamDeviceOption]
     @State var mouseClicksEnabled: Bool
     let allowsMouseClickToggle: Bool
+    let windowAreaSummary: String?
     /// The recording was started with Studio Recording and opens in Tiny Clips Studio. Chosen
     /// in the menu, not here: the panel only says so.
     let isStudioRecording: Bool
@@ -341,6 +344,17 @@ private struct StartRecordingView: View {
                     .help("A Studio recording: the screen and camera are kept as separate layers, and Tiny Clips Studio opens when recording ends.")
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Studio recording")
+            }
+
+            if let windowAreaSummary {
+                Label(windowAreaSummary, systemImage: "macwindow")
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                    .frame(maxWidth: 180)
+                    .help("The display area is fixed at the selected window bounds. Visible overlays inside it are included.")
+                    .accessibilityLabel("Window area recording target")
+                    .accessibilityValue(windowAreaSummary)
+                    .accessibilityHint("The fixed display area includes anything visible inside the selected window bounds.")
             }
 
             Divider()

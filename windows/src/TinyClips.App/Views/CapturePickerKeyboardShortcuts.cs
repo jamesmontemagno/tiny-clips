@@ -8,6 +8,7 @@ public enum CapturePickerMode
     Region,
     Screen,
     Window,
+    WindowArea,
     RecognizeText,
     /// <summary>Screenshot only: select a region, scroll, and stitch the frames into one tall image.</summary>
     Scrolling,

@@ -69,6 +69,43 @@ public sealed class WindowPickerGeometryTests
     }
 
     [Fact]
+    public void ResolveWindowArea_ChoosesLargestOverlapAndReturnsMonitorLocalCrop()
+    {
+        var monitors = new[]
+        {
+            new PixelRect(0, 0, 100, 1000),
+            new PixelRect(100, 0, 1000, 3000),
+        };
+        var window = new PixelRect(0, -600, 150, 3000);
+
+        var area = WindowPickerGeometry.ResolveWindowArea(window, monitors);
+
+        Assert.True(monitors[0].X <= window.X + (window.Width / 2));
+        Assert.True(monitors[0].X + monitors[0].Width > window.X + (window.Width / 2));
+        Assert.Equal(1, area?.MonitorIndex);
+        Assert.Equal(new PixelRect(100, 0, 50, 2400), area?.ClippedBounds);
+        Assert.Equal(new PixelRect(0, 0, 50, 2400), area?.MonitorLocalBounds);
+        Assert.True(area?.WasClipped);
+    }
+
+    [Fact]
+    public void ResolveWindowArea_UsesMonitorOrderForTiesAndReturnsNullWithoutOverlap()
+    {
+        var monitors = new[]
+        {
+            new PixelRect(0, 0, 100, 100),
+            new PixelRect(100, 0, 100, 100),
+        };
+
+        var tied = WindowPickerGeometry.ResolveWindowArea(new PixelRect(50, 0, 100, 100), monitors);
+
+        Assert.Equal(0, tied?.MonitorIndex);
+        Assert.Equal(new PixelRect(50, 0, 50, 100), tied?.MonitorLocalBounds);
+        Assert.True(tied?.WasClipped);
+        Assert.Null(WindowPickerGeometry.ResolveWindowArea(new PixelRect(-300, 0, 100, 100), monitors));
+    }
+
+    [Fact]
     public void LabelMonitorIndex_PrefersMonitorContainingCenterThenLargestOverlap()
     {
         var monitors = new[]
