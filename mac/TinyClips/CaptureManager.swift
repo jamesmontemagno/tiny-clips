@@ -2463,7 +2463,7 @@ class CaptureManager: ObservableObject {
                 }
             }
             // Defer release so the window isn't deallocated mid-callback
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [self] in
                 self.trimmerWindow = nil
                 self.editorWindowClosed { [weak self] in
                     if reopenPickerAfterClose,
@@ -2506,7 +2506,7 @@ class CaptureManager: ObservableObject {
             if let resultURL {
                 SaveService.shared.handleSavedFile(url: resultURL, type: .gif)
             }
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [self] in
                 self.gifTrimmerWindow = nil
                 self.editorWindowClosed { [weak self] in
                     if reopenPickerAfterClose,
