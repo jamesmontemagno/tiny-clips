@@ -143,6 +143,7 @@
                         AutomationProperties.Name="Default screenshot editor tool"
                         SelectedIndex="{x:Bind ViewModel.ScreenshotEditorDefaultToolIndex, Mode=TwoWay}">
                         <ComboBoxItem Content="Move / select" />
+                        <ComboBoxItem Content="Background" />
                         <ComboBoxItem Content="Crop" />
                         <ComboBoxItem Content="Rectangle" />
                         <ComboBoxItem Content="Ellipse" />

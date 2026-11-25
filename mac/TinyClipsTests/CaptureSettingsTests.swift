@@ -187,6 +187,41 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: CaptureSettings.screenshotEditorNativeSizeKey))
     }
 
+    func testScreenshotEditorDefaultToolMigratesLegacyMoveToBackground() throws {
+        defaults.set(true, forKey: "hasCompletedOnboarding")
+        defaults.set(EditTool.move.settingID, forKey: CaptureSettings.screenshotEditorDefaultToolKey)
+
+        CaptureSettings.migrateScreenshotEditorDefaultTool(in: defaults)
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .background)
+
+        defaults.set(EditTool.arrow.settingID, forKey: CaptureSettings.screenshotEditorDefaultToolKey)
+        CaptureSettings.migrateScreenshotEditorDefaultTool(in: defaults)
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .arrow)
+
+        let newInstallSuite = "TinyClipsTests.NewDefault.\(UUID().uuidString)"
+        let newInstall = try XCTUnwrap(UserDefaults(suiteName: newInstallSuite))
+        defer { newInstall.removePersistentDomain(forName: newInstallSuite) }
+        newInstall.removePersistentDomain(forName: newInstallSuite)
+        CaptureSettings.migrateScreenshotEditorDefaultTool(in: newInstall)
+        XCTAssertEqual(CaptureSettings(defaults: newInstall, performMigrations: false).screenshotEditorDefaultEditTool, .background)
+    }
+
+    func testScreenshotEditorDefaultToolStoresSharedNamesAndFallsBackToBackground() {
+        // Windows and Agent Control use the same names.
+        XCTAssertEqual(EditTool.allCases.map(\.settingID), [
+            "move", "background", "crop", "rectangle", "ellipse", "arrow", "line", "pen", "text", "number", "emoji", "redact"
+        ])
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        settings.screenshotEditorDefaultEditTool = .pencil
+        XCTAssertEqual(defaults.string(forKey: CaptureSettings.screenshotEditorDefaultToolKey), "pen")
+
+        defaults.set("not-a-tool", forKey: CaptureSettings.screenshotEditorDefaultToolKey)
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .background)
+
+        CaptureSettings.resetStoredDefaults(defaults)
+        XCTAssertNil(defaults.object(forKey: CaptureSettings.screenshotEditorDefaultToolKey))
+    }
+
     func testClickLightScreenshotExclusionDefaultsOff() {
         let settings = CaptureSettings(defaults: defaults, performMigrations: false)
 

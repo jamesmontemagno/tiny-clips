@@ -7,6 +7,8 @@ namespace TinyClips.Core.Services;
 public sealed class CaptureSettings : ICaptureSettings
 {
     private const string StudioDefaultLookKey = "studioDefaultLook";
+    private const string ScreenshotEditorDefaultToolKey = "screenshotEditorDefaultTool";
+    private const string ScreenshotEditorDefaultToolMigrationKey = "screenshotEditorDefaultToolBackgroundMigration";
 
     private readonly ISettingsService _settings;
     private readonly IClipAnalyticsService? _analytics;
@@ -24,6 +26,7 @@ public sealed class CaptureSettings : ICaptureSettings
         }
 
         MigrateLegacySaveDirectory();
+        MigrateScreenshotEditorDefaultTool();
     }
 
     public string SaveDirectory
@@ -486,14 +489,14 @@ public sealed class CaptureSettings : ICaptureSettings
     {
         get
         {
-            var persisted = _settings.Get("screenshotEditorDefaultTool", EditTool.Select.ToString());
+            var persisted = _settings.Get(ScreenshotEditorDefaultToolKey, EditTool.Background.ToString());
             return Enum.TryParse<EditTool>(persisted, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
                 ? parsed
-                : EditTool.Select;
+                : EditTool.Background;
         }
         set => _settings.Set(
-            "screenshotEditorDefaultTool",
-            Enum.IsDefined(value) ? value.ToString() : EditTool.Select.ToString());
+            ScreenshotEditorDefaultToolKey,
+            Enum.IsDefined(value) ? value.ToString() : EditTool.Background.ToString());
     }
 
     public bool ConfirmEditorEscape
@@ -1015,7 +1018,8 @@ public sealed class CaptureSettings : ICaptureSettings
         WebcamCornerRadius = null;
         ShowScreenshotEditor = true;
         ScreenshotEditorNativeSize = false;
-        ScreenshotEditorDefaultTool = EditTool.Select;
+        // Stored, so finishing onboarding again can't make the migration treat this as an upgrade.
+        ScreenshotEditorDefaultTool = EditTool.Background;
         ConfirmEditorEscape = true;
         ScreenshotUsesLiveCapture = false;
         ShowGifTrimmer = true;
@@ -1074,6 +1078,25 @@ public sealed class CaptureSettings : ICaptureSettings
         ScreenshotScreenHotKeyCode = 0;
         ScreenshotScreenHotKeyModifiers = 0;
         _analytics?.Clear();
+    }
+
+    // Select was the legacy pre-Background default. Migrate that one-time fallback while
+    // preserving a different explicit choice made before this migration runs.
+    private void MigrateScreenshotEditorDefaultTool()
+    {
+        if (_settings.Get(ScreenshotEditorDefaultToolMigrationKey, false))
+        {
+            return;
+        }
+
+        var persisted = _settings.Get(ScreenshotEditorDefaultToolKey, string.Empty);
+        if (!Enum.TryParse<EditTool>(persisted, ignoreCase: true, out var tool)
+            || !Enum.IsDefined(tool)
+            || tool == EditTool.Select)
+        {
+            ScreenshotEditorDefaultTool = EditTool.Background;
+        }
+        _settings.Set(ScreenshotEditorDefaultToolMigrationKey, true);
     }
 
     private void MigrateLegacySaveDirectory()

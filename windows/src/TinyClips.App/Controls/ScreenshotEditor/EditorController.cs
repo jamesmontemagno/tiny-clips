@@ -49,12 +49,47 @@ internal sealed class EditorController : IDisposable
     private bool _isDisposed;
 
     private readonly List<Annotation> _annotations = new();
+    private readonly Stack<CropUndoEntry> _cropUndo = new();
     private readonly Stack<TextStyleUndoEntry> _textStyleUndo = new();
+    private Annotation? _pendingBendAnnotation;
+    private AnnotationSnapshot? _pendingBendUndo;
     private int _counterValue = 1;
+    private bool _isUndoing;
+    private bool _hasResettableExportEdits;
     private bool _textStyleEditGroupActive;
     private bool _textStyleEditGroupRecorded;
 
     private sealed record TextStyleUndoEntry(Annotation Annotation, AnnotationSnapshot Snapshot);
+
+    private sealed class CropUndoEntry(
+        SharedResource<EditorImage> imageOwner,
+        SoftwareBitmap bitmap,
+        Annotation[] annotations,
+        TextStyleUndoEntry[] textStyleUndo,
+        int counterValue) : IDisposable
+    {
+        private SharedResource<EditorImage>? _imageOwner = imageOwner;
+
+        public SoftwareBitmap Bitmap { get; } = bitmap;
+        public Annotation[] Annotations { get; } = annotations;
+        public TextStyleUndoEntry[] TextStyleUndo { get; } = textStyleUndo;
+        public int CounterValue { get; } = counterValue;
+
+        public bool HasImageOwner => _imageOwner is not null;
+
+        public SharedResource<EditorImage> TakeImageOwner()
+        {
+            var owner = _imageOwner;
+            _imageOwner = null;
+            return owner ?? throw new InvalidOperationException("Crop undo image has already been restored.");
+        }
+
+        public void Dispose()
+        {
+            _imageOwner?.Dispose();
+            _imageOwner = null;
+        }
+    }
 
     public static readonly BackgroundPreset[] SolidPresets =
     {
@@ -88,10 +123,10 @@ internal sealed class EditorController : IDisposable
         new("prism", "Prism", ExportBackgroundStyle.Gradient, Color.FromArgb(255, 250, 41, 97), Color.FromArgb(255, 46, 219, 237)),
     };
 
-    public EditorController(DispatcherQueue dispatcherQueue, EditTool initialTool = EditTool.Select)
+    public EditorController(DispatcherQueue dispatcherQueue, EditTool initialTool = EditTool.Background)
     {
         _dispatcherQueue = dispatcherQueue;
-        Tool = Enum.IsDefined(initialTool) ? initialTool : EditTool.Select;
+        Tool = Enum.IsDefined(initialTool) ? initialTool : EditTool.Background;
     }
 
     // -- State ------------------------------------------------------------------------------
@@ -115,10 +150,24 @@ internal sealed class EditorController : IDisposable
     /// </summary>
     public bool IsDirty => _revision.IsDirty;
 
+    public bool CanUndo => !_isUndoing
+        && CanExport
+        && (_annotations.Count > 0 || _textStyleUndo.Count > 0 || _cropUndo.Count > 0);
+
+    public bool CanReset => CanExport
+        && IsDirty
+        && (_annotations.Count > 0 || _cropUndo.Count > 0 || _hasResettableExportEdits);
+
+    public bool CanDeleteSelected => CanExport && SelectedAnnotation is not null;
+
     public event EventHandler? DocumentChanged;
 
-    private void MarkDirty()
+    private void MarkDirty(bool resettableExportEdit = false)
     {
+        if (resettableExportEdit)
+        {
+            _hasResettableExportEdits = true;
+        }
         _revision.MarkEdited();
         DocumentChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -175,7 +224,23 @@ internal sealed class EditorController : IDisposable
 
     public RedactionStyle RedactionStyleDefault { get; private set; } = RedactionStyle.Blur;
 
-    public ArrowStyle ArrowStyleDefault { get; private set; } = ArrowStyle.Straight;
+    public ArrowShapeOptions ArrowDefault { get; private set; } = ArrowShapeOptions.Classic;
+
+    public StrokeCap StartCapDefault { get; private set; } = AnnotationStroke.DefaultCap;
+
+    public StrokeCap EndCapDefault { get; private set; } = AnnotationStroke.DefaultCap;
+
+    public StrokeJoin LineJoinDefault { get; private set; } = AnnotationStroke.DefaultJoin;
+
+    public StrokeAlignment StrokeAlignmentDefault { get; private set; } = StrokeAlignment.Center;
+
+    public Color OutlineColorDefault { get; private set; } = Colors.Black;
+
+    /// <summary>New arrows and lines start without an outline.</summary>
+    public double OutlineWidthDefault { get; private set; }
+
+    /// <summary>Arrow and line outlines start outside the body, so they frame it rather than cover it.</summary>
+    public StrokeAlignment OutlineAlignmentDefault { get; private set; } = StrokeAlignment.Outside;
 
     public string EmojiDefault { get; private set; } = EmojiAnnotationMath.DefaultEmoji;
 
@@ -296,6 +361,7 @@ internal sealed class EditorController : IDisposable
         VerifyAccess();
         CancelDocumentWork();
         _revision.ReplaceDocument();
+        _hasResettableExportEdits = false;
         _isReplacingImage = true;
         DocumentChanged?.Invoke(this, EventArgs.Empty);
         return _revision.Current;
@@ -313,7 +379,11 @@ internal sealed class EditorController : IDisposable
     }
 
     private async Task<bool> SetBitmapAsync(
-        SoftwareBitmap bitmap, DocumentRevision revision, bool resetAnnotations, CancellationToken cancellationToken = default)
+        SoftwareBitmap bitmap,
+        DocumentRevision revision,
+        bool resetAnnotations,
+        CancellationToken cancellationToken = default,
+        Action<SharedResource<EditorImage>>? transferPreviousImage = null)
     {
         var ownsBitmap = true;
         SoftwareBitmapSource? source = null;
@@ -329,15 +399,28 @@ internal sealed class EditorController : IDisposable
             CancelActiveAnnotation();
             CancelDocumentWork();
             if (!resetAnnotations) _revision.ReplaceDocument();
-            _imageOwner?.Dispose();
+            var previousImageOwner = _imageOwner;
             _bitmap = bitmap;
             _imageOwner = new SharedResource<EditorImage>(new EditorImage(bitmap));
             ownsBitmap = false;
             PreviewSource = source;
             source = null;
             _annotations.Clear();
+            ClearTextStyleUndo();
+            if (resetAnnotations) ClearCropUndo();
             _counterValue = 1;
             SelectedAnnotation = null;
+            if (previousImageOwner is not null)
+            {
+                if (transferPreviousImage is null)
+                {
+                    previousImageOwner.Dispose();
+                }
+                else
+                {
+                    transferPreviousImage(previousImageOwner);
+                }
+            }
             if (resetAnnotations)
             {
                 ReleaseBackgroundImage();
@@ -401,8 +484,28 @@ internal sealed class EditorController : IDisposable
                 continue;
             }
 
+            var pad = ann.Thickness + ann.OutlineWidth + 6;
+            if (ann.Tool == EditTool.Arrow)
+            {
+                // A curved arrow is hit along its curve, not anywhere in the box around it.
+                var (start, end) = Segment(ann);
+                var point = new PointD(pixelPoint.X, pixelPoint.Y);
+                if (ArrowGeometry.DistanceToCurve(point, ToPoint(start), ToPoint(end), ann.Arrow.Bend) <= pad)
+                {
+                    return ann;
+                }
+                // The head and wide shaft ends reach past the curve's pad.
+                var outline = ArrowGeometry.Build(
+                    ToPoint(start), ToPoint(end), ann.Thickness, ann.Arrow, ann.StartCap, ann.LineJoin);
+                var reach = ann.StrokeAlignment == StrokeAlignment.Inside ? 0 : ann.OutlineWidth;
+                if (ArrowGeometry.OutlineContains(outline.Points, point, reach + 6))
+                {
+                    return ann;
+                }
+                continue;
+            }
+
             var b = InteractionBounds(ann);
-            var pad = ann.Thickness + 6;
             var inflated = new Rect(b.X - pad, b.Y - pad, b.Width + pad * 2, b.Height + pad * 2);
             if (inflated.Contains(pixelPoint))
             {
@@ -454,6 +557,14 @@ internal sealed class EditorController : IDisposable
         }
     }
 
+    public void SetStrokeOpacity(double opacity)
+    {
+        var source = Tool == EditTool.Select && SelectedAnnotation is { } selected
+            ? selected.Color
+            : StrokeColor;
+        SetStrokeColor(AnnotationColorMath.WithOpacity(source, opacity));
+    }
+
     public void SetNumberColor(Color color)
     {
         NumberTextColor = color;
@@ -476,22 +587,161 @@ internal sealed class EditorController : IDisposable
         }
     }
 
-    public void SetArrowStyle(ArrowStyle style)
+    public void SetArrowShape(ArrowShapeOptions shape)
     {
         if (SelectedAnnotation is { Tool: EditTool.Arrow } ann)
         {
-            ann.ArrowStyle = style;
+            ann.Arrow = shape;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
         else
         {
-            ArrowStyleDefault = style;
+            ArrowDefault = shape;
             if (ActiveAnnotation is { Tool: EditTool.Arrow } active)
             {
-                active.ArrowStyle = style;
+                active.Arrow = shape;
                 AnnotationVisualInvalidated?.Invoke(this, active);
             }
+        }
+    }
+
+    /// <summary>
+    /// Starts a bend-handle drag. The arrow's shape is saved so the first change made by
+    /// <see cref="MoveArrowBend"/> becomes one Undo step.
+    /// </summary>
+    public void BeginArrowBend(Annotation ann)
+    {
+        _pendingBendAnnotation = ann;
+        _pendingBendUndo = ann.CaptureSnapshot();
+    }
+
+    /// <summary>
+    /// Bends an arrow so its curve passes nearest <paramref name="pixelPoint"/>. Within
+    /// <paramref name="snapPixels"/> of the straight line it snaps straight.
+    /// </summary>
+    public void MoveArrowBend(Annotation ann, Point pixelPoint, double snapPixels)
+    {
+        if (ann.Tool != EditTool.Arrow)
+        {
+            return;
+        }
+        var (start, end) = Segment(ann);
+        var bend = ArrowGeometry.Bend(ToPoint(start), ToPoint(end), new PointD(pixelPoint.X, pixelPoint.Y));
+        if (Math.Abs(bend) * Vector2.Distance(start, end) < snapPixels)
+        {
+            bend = 0;
+        }
+        if (bend == ann.Arrow.Bend)
+        {
+            return;
+        }
+        if (_pendingBendUndo is { } before && ReferenceEquals(_pendingBendAnnotation, ann))
+        {
+            // One Undo restores the shape from before this drag.
+            ClearTextStyleUndo();
+            _textStyleUndo.Push(new TextStyleUndoEntry(ann, before));
+            _pendingBendUndo = null;
+            _pendingBendAnnotation = null;
+        }
+        ann.Arrow = ann.Arrow with { Bend = bend };
+        MarkDirty();
+        AnnotationVisualInvalidated?.Invoke(this, ann);
+    }
+
+    public void SetStartCap(StrokeCap cap)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesStartCap())
+        {
+            ann.StartCap = cap;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            StartCapDefault = cap;
+        }
+    }
+
+    public void SetEndCap(StrokeCap cap)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesEndCap())
+        {
+            ann.EndCap = cap;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            EndCapDefault = cap;
+        }
+    }
+
+    public void SetLineJoin(StrokeJoin join)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesJoin())
+        {
+            ann.LineJoin = join;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            LineJoinDefault = join;
+        }
+    }
+
+    public void SetOutlineColor(Color color)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesOutline())
+        {
+            ann.OutlineColor = color;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            OutlineColorDefault = color;
+        }
+    }
+
+    public void SetOutlineOpacity(double opacity)
+    {
+        var source = SelectedAnnotation is { } selected && selected.Tool.UsesOutline()
+            ? selected.OutlineColor
+            : OutlineColorDefault;
+        SetOutlineColor(AnnotationColorMath.WithOpacity(source, opacity));
+    }
+
+    public void SetOutlineWidth(double width)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesOutline())
+        {
+            ann.OutlineWidth = width;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            OutlineWidthDefault = width;
+        }
+    }
+
+    public void SetStrokeAlignment(StrokeAlignment alignment)
+    {
+        if (SelectedAnnotation is { } ann && ann.Tool.UsesAlignment())
+        {
+            ann.StrokeAlignment = alignment;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else if (Tool.UsesOutline())
+        {
+            OutlineAlignmentDefault = alignment;
+        }
+        else
+        {
+            StrokeAlignmentDefault = alignment;
         }
     }
 
@@ -528,6 +778,40 @@ internal sealed class EditorController : IDisposable
             ann.FillColor = color;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+    }
+
+    public void SetFillOpacity(double opacity)
+    {
+        opacity = Math.Clamp(opacity, 0, 1);
+        var selected = SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann
+            ? ann
+            : null;
+        var source = selected is { FillColor.A: > 0 } ? selected.FillColor : FillColor;
+
+        if (opacity <= 0)
+        {
+            FillEnabled = false;
+            // Keep a remembered RGB color and previous nonzero alpha for the next slider move.
+            var rememberedAlpha = FillColor.A > 0 ? FillColor.A : (byte)255;
+            FillColor = Color.FromArgb(rememberedAlpha, source.R, source.G, source.B);
+            if (selected is not null)
+            {
+                selected.FillColor = Colors.Transparent;
+                MarkDirty();
+                AnnotationVisualInvalidated?.Invoke(this, selected);
+            }
+            return;
+        }
+
+        var updated = AnnotationColorMath.WithOpacity(source, opacity);
+        FillColor = updated;
+        FillEnabled = true;
+        if (selected is not null)
+        {
+            selected.FillColor = updated;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, selected);
         }
     }
 
@@ -652,6 +936,17 @@ internal sealed class EditorController : IDisposable
 
     public void SetTextBoxBackground(Color color) =>
         UpdateTextBoxStyle(style => style with { BackgroundColor = color });
+
+    public void SetTextBoxBackgroundOpacity(double opacity)
+    {
+        var current = SelectedAnnotation is { Tool: EditTool.Text } selected
+            ? selected.TextBoxStyle.BackgroundColor
+            : TextBoxStyleDefault.BackgroundColor;
+        SetTextBoxBackground(AnnotationColorMath.WithOpacity(
+            current,
+            opacity,
+            Color.FromArgb(255, 245, 245, 248)));
+    }
 
     public void SetTextBoxBorderColor(Color color) =>
         UpdateTextBoxStyle(style => style with { BorderColor = color });
@@ -893,7 +1188,7 @@ internal sealed class EditorController : IDisposable
             preview = null;
             BackgroundFileName = fileName;
             BgStyle = ExportBackgroundStyle.Image;
-            MarkDirty();
+            MarkDirty(resettableExportEdit: true);
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
         finally
@@ -921,7 +1216,7 @@ internal sealed class EditorController : IDisposable
         if (!HasBackgroundImage && BgStyle == ExportBackgroundStyle.Transparent) return;
         ReleaseBackgroundImage();
         BgStyle = ExportBackgroundStyle.Transparent;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -931,7 +1226,7 @@ internal sealed class EditorController : IDisposable
         if (ImagePlacement == placement) return;
         ImagePlacement = placement;
         if (BgStyle != ExportBackgroundStyle.Image) return;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -942,7 +1237,7 @@ internal sealed class EditorController : IDisposable
         BgStyle = preset.Style;
         BgColor = preset.Primary;
         BgColor2 = preset.Secondary ?? preset.Primary;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -953,7 +1248,7 @@ internal sealed class EditorController : IDisposable
         CancelBackgroundSelection();
         if (BgStyle == style) return;
         BgStyle = style;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -963,7 +1258,7 @@ internal sealed class EditorController : IDisposable
         BgColor = color;
         if (BgStyle is ExportBackgroundStyle.Solid or ExportBackgroundStyle.Gradient)
         {
-            MarkDirty();
+            MarkDirty(resettableExportEdit: true);
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -974,7 +1269,7 @@ internal sealed class EditorController : IDisposable
         BgColor2 = color;
         if (BgStyle == ExportBackgroundStyle.Gradient)
         {
-            MarkDirty();
+            MarkDirty(resettableExportEdit: true);
             BackgroundChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -988,7 +1283,7 @@ internal sealed class EditorController : IDisposable
         if (GradientDirectionDegrees == degrees) return;
 
         GradientDirectionDegrees = degrees;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -998,7 +1293,7 @@ internal sealed class EditorController : IDisposable
         if (BgStyle == ExportBackgroundStyle.Solid && BgColor == color) return;
         BgStyle = ExportBackgroundStyle.Solid;
         BgColor = color;
-        MarkDirty();
+        MarkDirty(resettableExportEdit: true);
         BackgroundChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1141,7 +1436,13 @@ internal sealed class EditorController : IDisposable
             Thickness = StrokeThickness,
             Redaction = RedactionLevelDefault,
             RedactStyle = RedactionStyleDefault,
-            ArrowStyle = ArrowStyleDefault,
+            Arrow = ArrowDefault,
+            StartCap = StartCapDefault,
+            EndCap = EndCapDefault,
+            LineJoin = LineJoinDefault,
+            StrokeAlignment = tool.UsesOutline() ? OutlineAlignmentDefault : StrokeAlignmentDefault,
+            OutlineColor = OutlineColorDefault,
+            OutlineWidth = OutlineWidthDefault,
             Bounds = new Rect(pixelStart.X, pixelStart.Y, 0, 0),
         };
 
@@ -1587,7 +1888,35 @@ internal sealed class EditorController : IDisposable
         return true;
     }
 
-    public void Undo()
+    public void Undo() => _ = UndoAsync();
+
+    public async Task UndoAsync()
+    {
+        if (_isUndoing)
+        {
+            return;
+        }
+
+        _isUndoing = true;
+        try
+        {
+            if (TryUndoAnnotationEdit())
+            {
+                return;
+            }
+
+            if (_cropUndo.Count > 0)
+            {
+                await RestorePreviousImageAsync();
+            }
+        }
+        finally
+        {
+            _isUndoing = false;
+        }
+    }
+
+    private bool TryUndoAnnotationEdit()
     {
         while (_textStyleUndo.Count > 0)
         {
@@ -1602,12 +1931,12 @@ internal sealed class EditorController : IDisposable
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, entry.Annotation);
             SelectionChanged?.Invoke(this, SelectedAnnotation);
-            return;
+            return true;
         }
 
         if (_annotations.Count == 0)
         {
-            return;
+            return false;
         }
 
         var last = _annotations[^1];
@@ -1620,6 +1949,7 @@ internal sealed class EditorController : IDisposable
         SelectedAnnotation = null;
         MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     public void DeleteSelected()
@@ -1649,7 +1979,7 @@ internal sealed class EditorController : IDisposable
         annotation.SizeScale = snapshot.SizeScale;
         annotation.Redaction = snapshot.Redaction;
         annotation.RedactStyle = snapshot.RedactStyle;
-        annotation.ArrowStyle = snapshot.ArrowStyle;
+        annotation.Arrow = snapshot.Arrow;
         annotation.Points.Clear();
         annotation.Points.AddRange(snapshot.Points);
         annotation.TextColor = snapshot.TextColor;
@@ -1661,6 +1991,12 @@ internal sealed class EditorController : IDisposable
         annotation.Strikethrough = snapshot.Strikethrough;
         annotation.TextBoxStyle = snapshot.TextBoxStyle;
         annotation.Rotation = snapshot.Rotation;
+        annotation.StartCap = snapshot.StartCap;
+        annotation.EndCap = snapshot.EndCap;
+        annotation.LineJoin = snapshot.LineJoin;
+        annotation.StrokeAlignment = snapshot.StrokeAlignment;
+        annotation.OutlineColor = snapshot.OutlineColor;
+        annotation.OutlineWidth = snapshot.OutlineWidth;
     }
 
     // -- Crop -------------------------------------------------------------------------------
@@ -1696,12 +2032,16 @@ internal sealed class EditorController : IDisposable
 
     public async Task ApplyCropAsync(BitmapBounds bounds)
     {
-        if (!CanExport || bounds.Width < 1 || bounds.Height < 1)
+        if (!CanExport || _isUndoing || bounds.Width < 1 || bounds.Height < 1)
         {
             return;
         }
 
         using var snapshot = CaptureRenderSnapshot(includeBackground: false);
+        var previousBitmap = _bitmap!;
+        var previousAnnotations = _annotations.ToArray();
+        var previousTextStyleUndo = _textStyleUndo.Reverse().ToArray();
+        var previousCounterValue = _counterValue;
         _cropCancellation?.Cancel();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(snapshot.DocumentCancellation);
         _cropCancellation = cancellation;
@@ -1715,7 +2055,18 @@ internal sealed class EditorController : IDisposable
                 cropped.Dispose();
                 cancellation.Token.ThrowIfCancellationRequested();
             }
-            await SetBitmapAsync(cropped, snapshot.Revision, resetAnnotations: false, cancellationToken: cancellation.Token);
+            await SetBitmapAsync(
+                cropped,
+                snapshot.Revision,
+                resetAnnotations: false,
+                cancellationToken: cancellation.Token,
+                transferPreviousImage: previousImageOwner =>
+                    _cropUndo.Push(new CropUndoEntry(
+                        previousImageOwner,
+                        previousBitmap,
+                        previousAnnotations,
+                        previousTextStyleUndo,
+                        previousCounterValue)));
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -1724,6 +2075,82 @@ internal sealed class EditorController : IDisposable
         finally
         {
             if (ReferenceEquals(_cropCancellation, cancellation)) _cropCancellation = null;
+        }
+    }
+
+    private async Task RestorePreviousImageAsync()
+    {
+        var entry = _cropUndo.Pop();
+        var revision = _revision.Current;
+        SoftwareBitmapSource? source = null;
+        try
+        {
+            _cropCancellation?.Cancel();
+            source = new SoftwareBitmapSource();
+            await source.SetBitmapAsync(entry.Bitmap);
+            if (_isDisposed || !IsCurrent(revision))
+            {
+                PutBackCropUndo(entry, revision);
+                return;
+            }
+
+            CancelActiveAnnotation();
+            CancelDocumentWork();
+
+            var currentImageOwner = _imageOwner;
+            var previousImageOwner = entry.TakeImageOwner();
+            _revision.ReplaceDocument();
+            _imageOwner = previousImageOwner;
+            _bitmap = entry.Bitmap;
+            PreviewSource = source;
+            source = null;
+            _annotations.Clear();
+            _annotations.AddRange(entry.Annotations);
+            ClearTextStyleUndo();
+            foreach (var textStyleEntry in entry.TextStyleUndo)
+            {
+                _textStyleUndo.Push(textStyleEntry);
+            }
+            _counterValue = entry.CounterValue;
+            SelectedAnnotation = null;
+            currentImageOwner?.Dispose();
+
+            MarkDirty();
+            ImageChanged?.Invoke(this, EventArgs.Empty);
+            AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+            SelectionChanged?.Invoke(this, null);
+        }
+        catch
+        {
+            if (entry.HasImageOwner)
+            {
+                PutBackCropUndo(entry, revision);
+            }
+            throw;
+        }
+        finally
+        {
+            source?.Dispose();
+        }
+    }
+
+    private void PutBackCropUndo(CropUndoEntry entry, DocumentRevision revision)
+    {
+        if (!_isDisposed && IsSameDocument(revision))
+        {
+            _cropUndo.Push(entry);
+        }
+        else
+        {
+            entry.Dispose();
+        }
+    }
+
+    private void ClearCropUndo()
+    {
+        while (_cropUndo.Count > 0)
+        {
+            _cropUndo.Pop().Dispose();
         }
     }
 
@@ -2277,7 +2704,12 @@ internal sealed class EditorController : IDisposable
                 {
                     ds.FillRectangle((float)b.X, (float)b.Y, (float)b.Width, (float)b.Height, ann.FillColor);
                 }
-                ds.DrawRectangle((float)b.X, (float)b.Y, (float)b.Width, (float)b.Height, color, thickness);
+                var ring = StrokeAlignmentGeometry.RectangleRing(
+                    new RectD(b.X, b.Y, b.Width, b.Height), thickness, ann.StrokeAlignment, ann.LineJoin);
+                using (var ringGeometry = CreateRingGeometry(ds, ring))
+                {
+                    ds.FillGeometry(ringGeometry, color);
+                }
                 break;
             }
             case EditTool.Ellipse:
@@ -2292,24 +2724,14 @@ internal sealed class EditorController : IDisposable
                         (float)(b.Height / 2),
                         ann.FillColor);
                 }
-                ds.DrawEllipse(
-                    (float)(b.X + b.Width / 2),
-                    (float)(b.Y + b.Height / 2),
-                    (float)(b.Width / 2),
-                    (float)(b.Height / 2),
-                    color,
-                    thickness);
+                DrawAlignedEllipseStroke(ds, b, color, thickness, ann.StrokeAlignment);
                 break;
             }
             case EditTool.Line:
             {
-                var (s, en) = Segment(ann);
-                ds.DrawLine(
-                    s,
-                    en,
-                    color,
-                    thickness,
-                    new CanvasStrokeStyle { StartCap = CanvasCapStyle.Round, EndCap = CanvasCapStyle.Round });
+                var (start, end) = Segment(ann);
+                var outline = LineGeometry.Outline(ToPoint(start), ToPoint(end), thickness, ann.StartCap, ann.EndCap);
+                DrawBodyWithOutline(ds, outline, color, ann);
                 break;
             }
             case EditTool.Arrow:
@@ -2319,19 +2741,24 @@ internal sealed class EditorController : IDisposable
             }
             case EditTool.Pen:
             {
-                if (ann.Points.Length > 1)
+                var outline = PenGeometry.Outline(ann.Points.Select(p => new PointD(p.X, p.Y)).ToArray(), ann.Thickness);
+                if (outline.Count < 3)
                 {
-                    var style = new CanvasStrokeStyle
-                    {
-                        StartCap = CanvasCapStyle.Round,
-                        EndCap = CanvasCapStyle.Round,
-                        LineJoin = CanvasLineJoin.Round,
-                    };
-                    for (var i = 1; i < ann.Points.Length; i++)
-                    {
-                        ds.DrawLine(ann.Points[i - 1], ann.Points[i], color, thickness, style);
-                    }
+                    break;
                 }
+                // Quadratic curves through each pair of points' midpoints keep the edge from looking faceted.
+                using var pb = new CanvasPathBuilder(ds.Device);
+                pb.SetFilledRegionDetermination(CanvasFilledRegionDetermination.Winding);
+                pb.BeginFigure(ToVector2(outline[0]));
+                for (var i = 0; i < outline.Count; i++)
+                {
+                    var point = outline[i];
+                    var next = outline[(i + 1) % outline.Count];
+                    pb.AddQuadraticBezier(ToVector2(point), ToVector2(new PointD((point.X + next.X) / 2, (point.Y + next.Y) / 2)));
+                }
+                pb.EndFigure(CanvasFigureLoop.Closed);
+                using var geometry = CanvasGeometry.CreatePath(pb);
+                ds.FillGeometry(geometry, color);
                 break;
             }
             case EditTool.Text:
@@ -2420,28 +2847,155 @@ internal sealed class EditorController : IDisposable
     private static void DrawArrowToSession(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)
     {
         var (start, end) = Segment(ann);
-        var shape = BuildArrow(start, end, thickness, ann.ArrowStyle);
-        var strokeStyle = new CanvasStrokeStyle { StartCap = CanvasCapStyle.Round, EndCap = CanvasCapStyle.Round };
+        var outline = ArrowGeometry.Build(ToPoint(start), ToPoint(end), thickness, ann.Arrow, ann.StartCap, ann.LineJoin);
+        DrawBodyWithOutline(ds, outline.Points, color, ann);
+    }
 
-        if (shape.Curved)
+    /// <summary>
+    /// Fills an arrow's or line's body, then draws its outline. Inside and outside outlines are
+    /// drawn at double width clipped to (or outside) the body, so they sit exactly where asked.
+    /// </summary>
+    private static void DrawBodyWithOutline(CanvasDrawingSession ds, IReadOnlyList<PointD> points, Color fill, AnnotationSnapshot ann)
+    {
+        if (points.Count < 3)
         {
-            using var pb = new CanvasPathBuilder(ds.Device);
-            pb.BeginFigure(shape.ShaftStart);
-            pb.AddQuadraticBezier(shape.ShaftControl, shape.ShaftEnd);
-            pb.EndFigure(CanvasFigureLoop.Open);
-            using var geo = CanvasGeometry.CreatePath(pb);
-            ds.DrawGeometry(geo, color, thickness, strokeStyle);
-        }
-        else
-        {
-            ds.DrawLine(shape.ShaftStart, shape.ShaftEnd, color, thickness, strokeStyle);
+            return;
         }
 
-        using var head = CanvasGeometry.CreatePolygon(ds.Device, new[] { shape.Tip, shape.Head1, shape.Head2 });
-        ds.FillGeometry(head, color);
+        // The nonzero rule keeps a tight bend that folds the shaft over itself solid.
+        using var pb = new CanvasPathBuilder(ds.Device);
+        pb.SetFilledRegionDetermination(CanvasFilledRegionDetermination.Winding);
+        pb.BeginFigure(ToVector2(points[0]));
+        for (var i = 1; i < points.Count; i++)
+        {
+            pb.AddLine(ToVector2(points[i]));
+        }
+        pb.EndFigure(CanvasFigureLoop.Closed);
+        using var body = CanvasGeometry.CreatePath(pb);
+        ds.FillGeometry(body, fill);
+
+        var width = (float)ann.OutlineWidth;
+        if (width <= 0 || ann.OutlineColor.A == 0)
+        {
+            return;
+        }
+        var style = new CanvasStrokeStyle { LineJoin = ToCanvasJoin(ann.LineJoin) };
+        if (ann.StrokeAlignment == StrokeAlignment.Center)
+        {
+            ds.DrawGeometry(body, ann.OutlineColor, width, style);
+            return;
+        }
+
+        CanvasGeometry? outside = null;
+        try
+        {
+            var clip = body;
+            if (ann.StrokeAlignment == StrokeAlignment.Outside)
+            {
+                // Cover everything the doubled stroke reaches, mitered points included.
+                var bounds = body.ComputeStrokeBounds(width * 2, style);
+                using var around = CanvasGeometry.CreateRectangle(
+                    ds, (float)bounds.X - 1, (float)bounds.Y - 1, (float)bounds.Width + 2, (float)bounds.Height + 2);
+                outside = around.CombineWith(body, Matrix3x2.Identity, CanvasGeometryCombine.Exclude);
+                clip = outside;
+            }
+            using (ds.CreateLayer(1f, clip))
+            {
+                ds.DrawGeometry(body, ann.OutlineColor, width * 2, style);
+            }
+        }
+        finally
+        {
+            outside?.Dispose();
+        }
     }
 
     // -- Geometry helpers (also used by EditorCanvas for the live XAML preview) ----------------
+
+    private static PointD ToPoint(Vector2 v) => new(v.X, v.Y);
+
+    /// <summary>A rectangle's stroke as one fillable ring, matching the macOS renderer exactly.</summary>
+    private static CanvasGeometry CreateRingGeometry(ICanvasResourceCreator resources, RectStrokeRing ring)
+    {
+        var o = ring.Outer;
+        var c = (float)ring.CornerSize;
+        using var outer = ring.OuterJoin switch
+        {
+            StrokeJoin.Round when c > 0 => CanvasGeometry.CreateRoundedRectangle(
+                resources, (float)o.X, (float)o.Y, (float)o.Width, (float)o.Height, c, c),
+            StrokeJoin.Bevel when c > 0 => CanvasGeometry.CreatePolygon(resources, new[]
+            {
+                new Vector2((float)o.Left + c, (float)o.Top),
+                new Vector2((float)o.Right - c, (float)o.Top),
+                new Vector2((float)o.Right, (float)o.Top + c),
+                new Vector2((float)o.Right, (float)o.Bottom - c),
+                new Vector2((float)o.Right - c, (float)o.Bottom),
+                new Vector2((float)o.Left + c, (float)o.Bottom),
+                new Vector2((float)o.Left, (float)o.Bottom - c),
+                new Vector2((float)o.Left, (float)o.Top + c),
+            }),
+            _ => CanvasGeometry.CreateRectangle(resources, (float)o.X, (float)o.Y, (float)o.Width, (float)o.Height),
+        };
+        var i = ring.Inner;
+        using var inner = CanvasGeometry.CreateRectangle(resources, (float)i.X, (float)i.Y, (float)i.Width, (float)i.Height);
+        return outer.CombineWith(inner, Matrix3x2.Identity, CanvasGeometryCombine.Exclude);
+    }
+
+    /// <summary>
+    /// An ellipse's offset curve is not an ellipse, so inside and outside strokes are drawn at
+    /// double width and clipped to the shape (or to everything outside it).
+    /// </summary>
+    private static void DrawAlignedEllipseStroke(CanvasDrawingSession ds, Rect b, Color color, float thickness, StrokeAlignment alignment)
+    {
+        var center = new Vector2((float)(b.X + b.Width / 2), (float)(b.Y + b.Height / 2));
+        var rx = (float)(b.Width / 2);
+        var ry = (float)(b.Height / 2);
+        if (alignment == StrokeAlignment.Center)
+        {
+            ds.DrawEllipse(center, rx, ry, color, thickness);
+            return;
+        }
+
+        using var ellipse = CanvasGeometry.CreateEllipse(ds, center, rx, ry);
+        CanvasGeometry clip = ellipse;
+        CanvasGeometry? outside = null;
+        if (alignment == StrokeAlignment.Outside)
+        {
+            var margin = thickness * 2;
+            using var around = CanvasGeometry.CreateRectangle(
+                ds, (float)b.X - margin, (float)b.Y - margin, (float)b.Width + margin * 2, (float)b.Height + margin * 2);
+            outside = around.CombineWith(ellipse, Matrix3x2.Identity, CanvasGeometryCombine.Exclude);
+            clip = outside;
+        }
+
+        try
+        {
+            using (ds.CreateLayer(1f, clip))
+            {
+                ds.DrawEllipse(center, rx, ry, color, thickness * 2);
+            }
+        }
+        finally
+        {
+            outside?.Dispose();
+        }
+    }
+
+    private static CanvasCapStyle ToCanvasCap(StrokeCap cap) => cap switch
+    {
+        StrokeCap.Butt => CanvasCapStyle.Flat,
+        StrokeCap.Square => CanvasCapStyle.Square,
+        _ => CanvasCapStyle.Round,
+    };
+
+    private static CanvasLineJoin ToCanvasJoin(StrokeJoin join) => join switch
+    {
+        StrokeJoin.Miter => CanvasLineJoin.Miter,
+        StrokeJoin.Bevel => CanvasLineJoin.Bevel,
+        _ => CanvasLineJoin.Round,
+    };
+
+    private static Vector2 ToVector2(PointD p) => new((float)p.X, (float)p.Y);
 
     public static Rect NormalizedBounds(Annotation ann) => NormalizeBounds(ann.Bounds);
 
@@ -2570,64 +3124,6 @@ internal sealed class EditorController : IDisposable
         return new Point(start.X + Math.Sign(dx) * len, start.Y + Math.Sign(dy) * len);
     }
 
-    public static ArrowShape BuildArrow(Vector2 start, Vector2 end, double thickness, ArrowStyle style)
-    {
-        var dir = end - start;
-        var len = dir.Length();
-        var headLen = (float)Math.Max(12, thickness * 3.5);
-        const double spread = Math.PI / 7;
-
-        if (len < 0.001f)
-        {
-            return new ArrowShape(false, start, start, start, end, end, end);
-        }
-
-        if (style == ArrowStyle.Straight)
-        {
-            var u = dir / len;
-            var trim = Math.Min(headLen * 0.9f, len * 0.98f);
-            var shaftEnd = end - u * trim;
-            var angle = Math.Atan2(dir.Y, dir.X);
-            var h1 = new Vector2(
-                (float)(end.X - headLen * Math.Cos(angle - spread)),
-                (float)(end.Y - headLen * Math.Sin(angle - spread)));
-            var h2 = new Vector2(
-                (float)(end.X - headLen * Math.Cos(angle + spread)),
-                (float)(end.Y - headLen * Math.Sin(angle + spread)));
-            return new ArrowShape(false, start, shaftEnd, shaftEnd, end, h1, h2);
-        }
-
-        // Curved: quadratic bezier bowed perpendicular to the start→end line.
-        var mid = (start + end) * 0.5f;
-        var perp = new Vector2(-dir.Y, dir.X) / len;
-        var bow = (float)(len * 0.22);
-        if (style == ArrowStyle.Curved2)
-        {
-            bow = -bow;
-        }
-        var control = mid + perp * bow;
-
-        // Tangent at the tip of a quadratic bezier is proportional to (end - control).
-        var tipTangent = end - control;
-        var tlen = tipTangent.Length();
-        tipTangent = tlen < 0.001f ? dir / len : tipTangent / tlen;
-        var tipAngle = Math.Atan2(tipTangent.Y, tipTangent.X);
-        var ch1 = new Vector2(
-            (float)(end.X - headLen * Math.Cos(tipAngle - spread)),
-            (float)(end.Y - headLen * Math.Sin(tipAngle - spread)));
-        var ch2 = new Vector2(
-            (float)(end.X - headLen * Math.Cos(tipAngle + spread)),
-            (float)(end.Y - headLen * Math.Sin(tipAngle + spread)));
-
-        // de Casteljau split so the shaft stops short of the tip and the cap never pokes through.
-        var trimC = Math.Min(headLen * 0.9f, len * 0.6f);
-        var t = (float)Math.Clamp(1.0 - trimC / len, 0.02, 0.98);
-        var a = Vector2.Lerp(start, control, t);
-        var b = Vector2.Lerp(control, end, t);
-        var bt = Vector2.Lerp(a, b, t);
-        return new ArrowShape(true, start, a, bt, end, ch1, ch2);
-    }
-
     public void Dispose()
     {
         if (_isDisposed) return;
@@ -2635,6 +3131,7 @@ internal sealed class EditorController : IDisposable
         _revision.Close();
         CancelDocumentWork();
         _documentCancellation.Dispose();
+        ClearCropUndo();
         _imageOwner?.Dispose();
         _imageOwner = null;
         _bitmap = null;

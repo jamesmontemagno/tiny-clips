@@ -76,6 +76,15 @@
     <EmbeddedResource Include="..\..\src\TinyClips.App\Views\SettingsWindow.xaml.cs" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Settings\GeneralSettingsSection.xaml.cs" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Settings\StudioSettingsSection.xaml.cs" Link="Settings\Markup\%(Filename)%(Extension)" LogicalName="SettingsMarkup.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\ScreenshotEditor\EditorInspector.xaml"
+                      Link="ScreenshotEditorMarkup\EditorInspector.xaml"
+                      LogicalName="ScreenshotEditorMarkup.EditorInspector.xaml" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\TextEntryDialog.xaml"
+                      Link="ScreenshotEditorMarkup\TextEntryDialog.xaml"
+                      LogicalName="ScreenshotEditorMarkup.TextEntryDialog.xaml" />
+    <Content Include="..\..\src\TinyClips.App\Views\ScreenshotEditorWindow.xaml"
+             Link="ScreenshotEditorWindow.xaml"
+             CopyToOutputDirectory="PreserveNewest" />
     <!-- A clock a test advances by hand, shared with the Core tests. -->
     <Compile Include="..\TinyClips.Core.Tests\ManualTimeProvider.cs" Link="Support\ManualTimeProvider.cs" />
     <Compile Include="..\..\src\TinyClips.App\Views\CapturePickerKeyboardShortcuts.cs" Link="CapturePickerKeyboardShortcuts.cs" />

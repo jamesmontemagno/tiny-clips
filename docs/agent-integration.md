@@ -240,6 +240,8 @@ For scripts and MCP calls, pass `resultFormat=standard` to get `{"opened":true,"
 
 These commands cover screenshot editors only, not Studio or video/GIF trimmers. They are advertised only on macOS; Windows returns `not_supported`. The macOS **Close All Screenshot Editors** menu action additionally offers normal unsaved-work confirmations, one window at a time, and Cancel stops the operation.
 
+The `screenshotEditorDefaultTool` setting picks the tool selected when the interactive screenshot editor opens: `move`, `background`, `crop`, `rectangle`, `ellipse`, `arrow`, `line`, `pen`, `text`, `number`, `emoji`, or `redact`. Its built-in default is `background` on macOS and Windows; a different choice remains saved. It has no effect on `editor.annotate`.
+
 ### Trimming and frames
 
 `editor.trim` takes a video or GIF `path` plus `start` and `end` in seconds and saves a trimmed copy; an `end` past the media length is clamped. Pass `removeAudio: true` to drop a video's audio. GIFs keep each frame overlapping the range, and the result reports the actual `start`, `end`, and `frameCount`. `editor.saveFrame` saves a single still image from a video at `time` seconds, or from a GIF at `time` or a zero-based `frame` index. Windows saves frames as PNG; macOS uses the configured screenshot format. Both commands need the `edit` scope, add a new library item, never overwrite or delete the source, and do not open a trimmer window.

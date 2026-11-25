@@ -43,6 +43,15 @@
                     <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE8B0;" />
                 </ToggleButton>
                 <ToggleButton
+                    x:Name="ToolBackground"
+                    AutomationProperties.AutomationId="EditorToolBackground"
+                    AutomationProperties.Name="Background"
+                    Click="OnToolClick"
+                    Tag="Background"
+                    ToolTipService.ToolTip="Background (G)">
+                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE7F4;" />
+                </ToggleButton>
+                <ToggleButton
                     x:Name="ToolCrop"
                     AutomationProperties.AutomationId="EditorToolCrop"
                     AutomationProperties.Name="Crop"
