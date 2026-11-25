@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
-- After 30 combined captures, the Mac App Store build asks once, after a safe editor close, whether to leave a review, send feedback, or dismiss. Apple controls whether its review request appears; feedback opens a prefilled GitHub issue for the user to submit. These choices remain UI-only. Eligibility is not evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
+- The screenshot picker distinguishes **Window only** from **Window area**. Video/GIF pickers label their existing fixed-area window target **Window area**; visible overlays inside the fixed bounds are included.
+- After 30 combined captures, the Mac App Store build asks once, after a safe editor close, whether to leave a review, send feedback, or dismiss. Apple controls whether its review request appears; a link can open the App Store review page directly. Feedback opens a prefilled GitHub issue for the user to submit. These choices remain UI-only. Eligibility is not evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
+
+### Fixed
+- The macOS App Store review prompt now opens at its intended size, with its message and buttons fully visible.
 
 ### Fixed
 - Switching tools in the macOS screenshot editor now deselects the selected annotation, so color and size changes go to the new tool instead of quietly changing the last annotation you selected. For example, after selecting text, the pencil's color picker now shows and changes the pencil's color.

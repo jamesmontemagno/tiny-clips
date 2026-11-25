@@ -91,6 +91,19 @@ public class ContractTests
     }
 
     [Fact]
+    public void WindowAreaIsOptInOnlyForScreenshotAndRecordingCommands()
+    {
+        var contract = Contract.Current;
+        foreach (var name in new[] { "capture.screenshot", "recording.startVideo", "recording.startGif" })
+        {
+            Assert.Contains("windowArea", contract.Find(name)!.Params["mode"].Enum!);
+        }
+
+        Assert.DoesNotContain("windowArea", contract.Find("capture.ocr")!.Params["mode"].Enum!);
+        Assert.DoesNotContain("windowArea", contract.Find("capture.scrolling.start")!.Params["mode"].Enum!);
+    }
+
+    [Fact]
     public void GuideNavigationSchemaIsOptionalAndSharedAcrossPlatforms()
     {
         var command = Contract.Current.Find("app.open")!;

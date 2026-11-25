@@ -84,6 +84,15 @@ final class AutomationCaptureTargetsTests: XCTestCase {
         for name in ["recording.startVideo", "recording.startGif", "capture.scrolling.start"] {
             XCTAssertNotNil(contract.command(named: name)?.params["mode"])
         }
+        for name in ["capture.screenshot", "recording.startVideo", "recording.startGif"] {
+            XCTAssertEqual(
+                contract.command(named: name)?.params["mode"]?.enum,
+                ["screen", "region", "window", "windowArea"]
+            )
+        }
+        for name in ["capture.ocr", "capture.scrolling.start"] {
+            XCTAssertFalse(contract.command(named: name)?.params["mode"]?.enum?.contains("windowArea") ?? true)
+        }
         let video = try XCTUnwrap(contract.command(named: "recording.startVideo"))
         for device in ["microphone", "camera"] {
             XCTAssertEqual(video.params[device]?.type, "boolean")
@@ -277,6 +286,38 @@ final class AutomationCaptureTargetsTests: XCTestCase {
         ])
         XCTAssertEqual(region, .region(displayID: 7, pixelRect: CGRect(x: 10, y: 20, width: 300, height: 200)))
         XCTAssertEqual(try AutomationCaptureTargets.parse(["mode": "window", "windowId": "window:42"]), .window(windowID: 42))
+    }
+
+    func testWindowAreaIsOptInForScreenshotAndRecordingTargetsOnly() throws {
+        let params: [String: Any] = ["mode": "windowArea", "windowId": "window:42"]
+        XCTAssertEqual(
+            try AutomationCaptureTargets.parse(params, allowWindowArea: true),
+            .windowArea(windowID: 42)
+        )
+        assertInvalid { _ = try AutomationCaptureTargets.parse(params) }
+        assertInvalid {
+            _ = try AutomationCaptureTargets.parse(
+                ["mode": "windowArea", "windowId": "window:42", "displayId": "display:7"],
+                allowWindowArea: true
+            )
+        }
+    }
+
+    func testWindowAreaResponseUsesDisplayLocalPhysicalPixelsAndClippingState() {
+        let selection = WindowAreaCaptureSelection(
+            region: CaptureRegion(
+                sourceRect: CGRect(x: 10, y: 20, width: 120, height: 80),
+                displayID: 7,
+                scaleFactor: 2
+            ),
+            wasClipped: true
+        )
+        let result = AutomationCaptureTargets.windowAreaJSON(selection)
+        XCTAssertEqual(result["displayId"] as? String, "display:7")
+        let region = result["region"] as? [String: Int]
+        XCTAssertEqual(region, ["x": 20, "y": 40, "width": 240, "height": 160])
+        XCTAssertEqual(result["fixed"] as? Bool, true)
+        XCTAssertEqual(result["clipped"] as? Bool, true)
     }
 
     func testParseRejectsMissingTargetsInsteadOfOpeningPicker() {

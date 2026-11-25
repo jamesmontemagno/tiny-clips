@@ -26,6 +26,8 @@ own `CHANGELOG.md` at the repository root.
 - The screenshot editor opens in a larger 1280 × 900 DIP window by default, clamped to the current display's work area, so the full vertical tool rail and more of the canvas are available immediately.
 - **Apply crop** now lives in the Crop tool's inspector section instead of the main command bar. The inspector stays open when **Select** is active with nothing selected, showing a short instruction so the canvas does not shift when an annotation is selected or cleared.
 - Short choices in the screenshot editor (**Arrow**, **Stroke position**, **Start**, **End**, **Corners**, redaction **Style** and **Strength**, and background image **Placement**) are now segmented controls instead of drop-downs.
+### Added
+- The capture picker offers **Window area** for screenshots, video, and GIF. It captures the visible screen bounds of a selected window, including overlays, and clips the fixed area to one display when needed. If that display changes before capture starts, Tiny Clips cancels the capture, releases the prepared recorder, and asks you to select the area again.
 
 ## [v2.3.1-windows] - 2026-11-24
 

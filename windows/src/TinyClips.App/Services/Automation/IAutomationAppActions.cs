@@ -40,7 +40,13 @@ internal interface IAutomationAppActions
 
     /// <summary>Starts a targeted recording without showing the picker or recording setup.</summary>
     Task BeginTargetedAutomationRecordingAsync(
-        CaptureType type, bool studio, CaptureTarget target, PixelRect? region, VideoRecordingOptions? options = null);
+        CaptureType type,
+        bool studio,
+        CaptureTarget target,
+        PixelRect? region,
+        VideoRecordingOptions? options = null,
+        WindowAreaSelection? windowArea = null,
+        MonitorInfo? monitor = null);
 
     Task StartAutomationScrollingCaptureAsync(CaptureTarget target, PixelRect? region);
 

@@ -224,7 +224,11 @@ public sealed partial class CapturePickerWindow : Window
 
     private void OnScreen(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.Screen);
 
-    private void OnWindow(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.Window);
+    private void OnWindow(SplitButton sender, SplitButtonClickEventArgs e) => Complete(CapturePickerMode.Window);
+
+    private void OnWindowOnly(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.Window);
+
+    private void OnWindowArea(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.WindowArea);
 
     private void OnScrolling(object sender, RoutedEventArgs e) => Complete(CapturePickerMode.Scrolling);
 

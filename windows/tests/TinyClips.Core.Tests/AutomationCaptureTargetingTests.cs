@@ -90,12 +90,18 @@ public sealed class AutomationCaptureTargetingTests
 
         var window = AutomationCaptureRequest.Parse(Params("""{"mode":"window","windowId":"window-a"}"""));
         Assert.Equal("window-a", window.WindowId);
+        var windowArea = AutomationCaptureRequest.Parse(Params("""{"mode":"windowArea","windowId":"window-b"}"""));
+        Assert.Equal(AutomationCaptureMode.WindowArea, windowArea.Mode);
+        Assert.Equal("window-b", windowArea.WindowId);
     }
 
     [Theory]
     [InlineData("""{"mode":"window"}""")]
     [InlineData("""{"mode":"window","windowId":"w","region":{"x":0,"y":0,"width":1,"height":1}}""")]
     [InlineData("""{"mode":"window","windowId":"w","displayId":"d"}""")]
+    [InlineData("""{"mode":"windowArea","windowId":"w","region":{"x":0,"y":0,"width":1,"height":1}}""")]
+    [InlineData("""{"mode":"windowArea","windowId":"w","displayId":"d"}""")]
+    [InlineData("""{"mode":"windowArea"}""")]
     [InlineData("""{"mode":"region","region":{"x":0,"y":0,"width":1,"height":1}}""")]
     [InlineData("""{"mode":"region","displayId":"d"}""")]
     [InlineData("""{"mode":"region","displayId":"d","windowId":"w","region":{"x":0,"y":0,"width":1,"height":1}}""")]

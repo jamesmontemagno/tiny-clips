@@ -165,7 +165,7 @@ private struct GuideWindowView: View {
             sectionCard(title: "Your first capture", icon: "camera") {
                 steps([
                     "Click the menu bar camera icon and choose Screenshot, Record Video, or Record GIF.",
-                    "Choose Region (R), Screen (S), or Window (W). Draw a region, select a display, or choose the highlighted window. Esc cancels.",
+                    "Choose Region (R), Screen (S), or Window (W). Window options let you capture only the window or its fixed visible screen area; the area can include overlays. Esc cancels.",
                     "For recordings, confirm the options in the start panel and click Record. Stop using the floating controls or your assigned stop shortcut.",
                     "Edit or trim when enabled, then copy or save. Find the result in Recent Captures or Clips Library."
                 ])
@@ -208,7 +208,7 @@ private struct GuideWindowView: View {
         VStack(alignment: .leading, spacing: 20) {
             sectionCard(title: "Make a recording", icon: "record.circle") {
                 steps([
-                    "Choose Record Video or Record GIF from the menu bar. Choose a region, screen, or window and an optional countdown.",
+                    "Choose Record Video or Record GIF from the menu bar. Choose a region, screen, or Window area and an optional countdown. The fixed area includes visible overlays inside the selected window bounds.",
                     "Confirm your recording options, then click Record. Use video for audio and camera; choose GIF for a short silent loop.",
                     "Use the floating controls to pause/resume or stop. An assigned Stop Recording shortcut is global only while recording.",
                     "If a trimmer opens, drag the range handles around the part to keep and save the result."

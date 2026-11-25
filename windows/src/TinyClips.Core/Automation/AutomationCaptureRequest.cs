@@ -9,6 +9,7 @@ public enum AutomationCaptureMode
     Screen,
     Region,
     Window,
+    WindowArea,
 }
 
 /// <summary>
@@ -31,7 +32,8 @@ public sealed record AutomationCaptureRequest(
             null or "screen" => AutomationCaptureMode.Screen,
             "region" => AutomationCaptureMode.Region,
             "window" => AutomationCaptureMode.Window,
-            var other => throw Invalid($"mode must be screen, region, or window, not {other}."),
+            "windowArea" => AutomationCaptureMode.WindowArea,
+            var other => throw Invalid($"mode must be screen, region, window, or windowArea, not {other}."),
         };
         var displayId = OptionalString(parameters, "displayId");
         var windowId = OptionalString(parameters, "windowId");
@@ -65,7 +67,8 @@ public sealed record AutomationCaptureRequest(
 
                 return new AutomationCaptureRequest(mode, displayId, null, ParseRegion(regionNode));
 
-            default:
+            case AutomationCaptureMode.Window:
+            case AutomationCaptureMode.WindowArea:
                 if (displayId is not null || regionNode is not null)
                 {
                     throw Invalid("Window captures take only a windowId.");
@@ -77,6 +80,9 @@ public sealed record AutomationCaptureRequest(
                 }
 
                 return new AutomationCaptureRequest(mode, null, windowId, null);
+
+            default:
+                throw new InvalidOperationException($"Unexpected capture mode: {mode}.");
         }
     }
 

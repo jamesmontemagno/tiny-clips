@@ -25,8 +25,9 @@ final class StoreReviewPromptWindow: NSWindow, NSWindowDelegate {
         requestReview: @escaping StoreReviewPromptCoordinator.ReviewAction,
         onComplete: @escaping @MainActor () -> Void
     ) {
+        let contentSize = NSSize(width: 540, height: 370)
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 370),
+            contentRect: NSRect(origin: .zero, size: contentSize),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -35,7 +36,6 @@ final class StoreReviewPromptWindow: NSWindow, NSWindowDelegate {
         delegate = self
         isReleasedWhenClosed = false
         title = "Enjoying Tiny Clips?"
-        center()
         reviewController.view = NSHostingView(rootView: StoreReviewPromptView(
             onReview: { [weak self] in
                 guard let self else { return false }
@@ -49,6 +49,9 @@ final class StoreReviewPromptWindow: NSWindow, NSWindowDelegate {
             }
         ))
         contentViewController = reviewController
+        // Installing the controller can resize the window to the hosting view's initial frame.
+        setContentSize(contentSize)
+        center()
     }
 
     func windowDidEndSheet(_ notification: Notification) {
@@ -75,6 +78,11 @@ final class StoreReviewPromptWindow: NSWindow, NSWindowDelegate {
 }
 
 private struct StoreReviewPromptView: View {
+    // The web URL can redirect without the review action; open the Mac App Store directly.
+    private static let reviewURL = URL(
+        string: "macappstore://apps.apple.com/us/app/tiny-clips/id6759208660?action=write-review"
+    )!
+
     let onReview: () -> Bool
     let onDismiss: () -> Void
 
@@ -97,11 +105,16 @@ private struct StoreReviewPromptView: View {
                     .font(.title2.bold())
                     .accessibilityAddTraits(.isHeader)
                 Text(reviewRequested
-                    ? "The App Store decides whether to show a review request. Close this window when you're finished."
+                    ? "If the review prompt didn't appear, you can leave a review in the App Store."
                     : "An App Store review helps other people discover Tiny Clips. If something could be better, tell us directly.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 400)
+                if reviewRequested {
+                    Link("Open App Store review page", destination: Self.reviewURL)
+                        .accessibilityIdentifier("StoreReviewOpenAppStoreLink")
+                        .accessibilityHint("Opens Tiny Clips in the App Store so you can write a review.")
+                }
                 if reviewUnavailable && !reviewRequested {
                     Text("Finish any capture and close all editors before leaving a review.")
                         .font(.callout)

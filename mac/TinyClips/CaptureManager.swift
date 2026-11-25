@@ -647,6 +647,23 @@ class CaptureManager: ObservableObject {
                 shouldReturnToPickerAfterCapture: shouldReturnToPicker
             )
 
+        case .windowArea:
+            guard let window = await WindowSelector.selectWindowArea(),
+                  let selection = WindowAreaCaptureResolver.resolve(window: window)
+            else {
+                if shouldReturnToPicker {
+                    showScreenshotPicker(cursorScreen: cursorScreen)
+                }
+                return
+            }
+            doScreenshotCapture(
+                region: selection.region,
+                window: nil,
+                countdownEnabled: countdownEnabled,
+                countdownDuration: countdownDuration,
+                shouldReturnToPickerAfterCapture: shouldReturnToPicker
+            )
+
         case .scrolling:
             guard let region = await RegionSelector.selectRegion() else {
                 if shouldReturnToPicker {
@@ -1190,6 +1207,16 @@ class CaptureManager: ObservableObject {
                 throw AutomationError(.notFound, "That window is not on a capturable display.")
             }
             return CaptureTarget(region: region, studioCaptureKind: .window)
+        case .windowArea(let windowID):
+            let window = try await AutomationCaptureEnvironment.window(windowID)
+            guard let selection = WindowAreaCaptureResolver.resolve(window: window) else {
+                throw AutomationError(.notFound, "That window does not overlap a capturable display.")
+            }
+            return CaptureTarget(
+                region: selection.region,
+                studioCaptureKind: .window,
+                windowAreaSelection: selection
+            )
         }
     }
 
@@ -2463,7 +2490,7 @@ class CaptureManager: ObservableObject {
                 }
             }
             // Defer release so the window isn't deallocated mid-callback
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [self] in
                 self.trimmerWindow = nil
                 self.editorWindowClosed { [weak self] in
                     if reopenPickerAfterClose,
@@ -2506,7 +2533,7 @@ class CaptureManager: ObservableObject {
             if let resultURL {
                 SaveService.shared.handleSavedFile(url: resultURL, type: .gif)
             }
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [self] in
                 self.gifTrimmerWindow = nil
                 self.editorWindowClosed { [weak self] in
                     if reopenPickerAfterClose,
@@ -2526,6 +2553,9 @@ class CaptureManager: ObservableObject {
         let panel = StartRecordingPanel(
             captureType: pendingRecordingType ?? .video,
             forStudio: pendingVideoIsForStudio,
+            windowAreaSummary: pendingRecordingTarget?.windowAreaSelection.map {
+                $0.wasClipped ? "Window area · fixed · clipped to display" : "Window area · fixed"
+            },
             onStart: { [weak self] systemAudio, microphoneSelection, webcamSelection, mouseClicksEnabled, _ in
                 guard
                     let self,
@@ -3022,6 +3052,17 @@ class CaptureManager: ObservableObject {
                 return nil
             }
             return CaptureTarget(region: region, studioCaptureKind: .window)
+        case .windowArea:
+            guard let window = await WindowSelector.selectWindowArea(),
+                  let selection = WindowAreaCaptureResolver.resolve(window: window)
+            else {
+                return nil
+            }
+            return CaptureTarget(
+                region: selection.region,
+                studioCaptureKind: .window,
+                windowAreaSelection: selection
+            )
         case .scrolling:
             return nil
         }

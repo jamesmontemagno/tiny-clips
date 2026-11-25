@@ -8,12 +8,14 @@ enum AutomationCaptureTarget: Equatable {
     /// A display-local rectangle in physical pixels with a top-left origin.
     case region(displayID: CGDirectDisplayID, pixelRect: CGRect)
     case window(windowID: CGWindowID)
+    case windowArea(windowID: CGWindowID)
 
     var modeName: String {
         switch self {
         case .screen: return "screen"
         case .region: return "region"
         case .window: return "window"
+        case .windowArea: return "windowArea"
         }
     }
 }
@@ -53,15 +55,16 @@ enum AutomationCaptureTargets {
 
     /// Parses `mode`, `displayId`, `windowId`, and `region`. Missing targets are errors; a picker
     /// is never shown for agent requests.
-    static func parse(_ params: [String: Any]) throws -> AutomationCaptureTarget {
+    static func parse(_ params: [String: Any], allowWindowArea: Bool = false) throws -> AutomationCaptureTarget {
         if let unknown = params.keys.first(where: { !allowedParams.contains($0) }) {
             throw AutomationError(.invalidParams, "Unknown parameter \(unknown).")
         }
+        let acceptedModes = allowWindowArea ? "screen, region, window, or windowArea" : "screen, region, or window"
         let mode: String
         switch params["mode"] {
         case nil, is NSNull: mode = "screen"
         case let value as String: mode = value
-        default: throw AutomationError(.invalidParams, "mode must be screen, region, or window.")
+        default: throw AutomationError(.invalidParams, "mode must be \(acceptedModes).")
         }
 
         func optionalString(_ key: String) throws -> String? {
@@ -105,8 +108,21 @@ enum AutomationCaptureTargets {
                 throw AutomationError(.invalidParams, "windowId \(windowValue) is not a window ID from capture.targets.")
             }
             return .window(windowID: id)
+        case "windowArea":
+            guard allowWindowArea else {
+                throw AutomationError(.invalidParams,
+                    "mode windowArea is supported for screenshots and recordings, not OCR or scrolling capture.")
+            }
+            try reject(["displayId", "region"])
+            guard let windowValue = try optionalString("windowId") else {
+                throw AutomationError(.invalidParams, "mode windowArea needs windowId from capture.targets.")
+            }
+            guard let id = parseWindowID(windowValue) else {
+                throw AutomationError(.invalidParams, "windowId \(windowValue) is not a window ID from capture.targets.")
+            }
+            return .windowArea(windowID: id)
         default:
-            throw AutomationError(.invalidParams, "mode must be screen, region, or window.")
+            throw AutomationError(.invalidParams, "mode must be \(acceptedModes).")
         }
     }
 
@@ -163,6 +179,22 @@ enum AutomationCaptureTargets {
             "height": display.pixelHeight,
             "scaleFactor": Double(display.scaleFactor),
             "isMain": display.isMain,
+        ]
+    }
+
+    /// Describes the fixed area in display-local physical pixels.
+    static func windowAreaJSON(_ selection: WindowAreaCaptureSelection) -> [String: Any] {
+        let rect = selection.pixelRect
+        return [
+            "displayId": displayID(for: selection.region.displayID),
+            "region": [
+                "x": Int(rect.minX),
+                "y": Int(rect.minY),
+                "width": Int(rect.width),
+                "height": Int(rect.height),
+            ],
+            "fixed": true,
+            "clipped": selection.wasClipped,
         ]
     }
 }
@@ -260,7 +292,8 @@ enum AutomationCaptureEnvironment {
     }
 
     /// Captures the target as an image without showing any picker or overlay.
-    static func captureImage(_ target: AutomationCaptureTarget) async throws -> (image: CGImage, scaleFactor: CGFloat) {
+    static func captureImage(_ target: AutomationCaptureTarget) async throws
+        -> (image: CGImage, scaleFactor: CGFloat, windowArea: [String: Any]?) {
         switch target {
         case .screen(let displayID):
             let display = try display(displayID)
@@ -269,15 +302,23 @@ enum AutomationCaptureEnvironment {
                 displayID: display.displayID,
                 scaleFactor: display.scaleFactor
             )
-            return (try await ScreenshotCapture.captureImage(region: region), display.scaleFactor)
+            return (try await ScreenshotCapture.captureImage(region: region), display.scaleFactor, nil)
         case .region(let displayID, let pixelRect):
             let display = try display(displayID)
             let sourceRect = try AutomationCaptureTargets.sourceRect(forPixelRect: pixelRect, on: display)
             let region = CaptureRegion(sourceRect: sourceRect, displayID: display.displayID, scaleFactor: display.scaleFactor)
-            return (try await ScreenshotCapture.captureImage(region: region), display.scaleFactor)
+            return (try await ScreenshotCapture.captureImage(region: region), display.scaleFactor, nil)
         case .window(let windowID):
             let window = try await window(windowID)
-            return try await ScreenshotCapture.captureWindowImage(window)
+            let captured = try await ScreenshotCapture.captureWindowImage(window)
+            return (captured.image, captured.scaleFactor, nil)
+        case .windowArea(let windowID):
+            let window = try await window(windowID)
+            guard let selection = WindowAreaCaptureResolver.resolve(window: window) else {
+                throw AutomationError(.notFound, "That window does not overlap a capturable display.")
+            }
+            let image = try await ScreenshotCapture.captureImage(region: selection.region)
+            return (image, selection.region.scaleFactor, AutomationCaptureTargets.windowAreaJSON(selection))
         }
     }
 }

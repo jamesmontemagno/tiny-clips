@@ -1386,6 +1386,7 @@ public partial class App : Application
         var captureFlowCts = new CancellationTokenSource();
         _captureFlowCts = captureFlowCts;
         Task? recorderPrepare = null;
+        var windowAreaDisplayChanged = false;
         try
         {
             CaptureFlowTrace.Begin(type.ToString().ToLowerInvariant() + (forcedMode is null ? string.Empty : $"/{forcedMode}"));
@@ -1503,6 +1504,15 @@ public partial class App : Application
                 }
             }
 
+            if (!EnsureWindowAreaDisplayAvailable(selection))
+            {
+                // Cancel rather than return so the handler below discards the pre-warmed
+                // recorder and closes the countdown indicators.
+                windowAreaDisplayChanged = true;
+                captureFlowCts.Cancel();
+                captureFlowCts.Token.ThrowIfCancellationRequested();
+            }
+
             switch (type)
             {
                 case CaptureType.Screenshot when isTextRecognition:
@@ -1617,6 +1627,11 @@ public partial class App : Application
             UpdateRecordingState();
             if (automationSelection is not null)
             {
+                if (windowAreaDisplayChanged)
+                {
+                    throw new AutomationException(AutomationErrorCodes.Conflict,
+                        "The selected display changed. Call capture.targets and start again.");
+                }
                 throw;
             }
         }
@@ -2142,6 +2157,9 @@ public partial class App : Application
                 var audioDevices = Services.GetRequiredService<IAudioDeviceService>();
                 var webcamDevices = Services.GetRequiredService<IWebcamDeviceEnumerator>();
                 var mediaPermissions = Services.GetRequiredService<IMediaDevicePermissionService>();
+                var windowAreaSummary = selection.WindowArea is { } area
+                    ? $"Window area · {WindowPickerGeometry.FormatSize(area.ClippedBounds)}{(area.WasClipped ? " · clipped" : string.Empty)}"
+                    : null;
                 return await RecordingSetupWindow.RunAsync(
                     type,
                     settings,
@@ -2150,7 +2168,8 @@ public partial class App : Application
                     mediaPermissions,
                     monitor,
                     region,
-                    isStudioRecording);
+                    isStudioRecording,
+                    windowAreaSummary);
             }
             finally
             {
@@ -2162,6 +2181,9 @@ public partial class App : Application
         var setupAudioDevices = Services.GetRequiredService<IAudioDeviceService>();
         var setupWebcamDevices = Services.GetRequiredService<IWebcamDeviceEnumerator>();
         var setupMediaPermissions = Services.GetRequiredService<IMediaDevicePermissionService>();
+        var targetSummary = selection.WindowArea is { } selectedArea
+            ? $"Window area · {WindowPickerGeometry.FormatSize(selectedArea.ClippedBounds)}{(selectedArea.WasClipped ? " · clipped" : string.Empty)}"
+            : null;
         return await RecordingSetupWindow.RunAsync(
             type,
             settings,
@@ -2170,7 +2192,8 @@ public partial class App : Application
             setupMediaPermissions,
             setupMonitor,
             region,
-            isStudioRecording);
+            isStudioRecording,
+            targetSummary);
     }
 
     private static void ApplyRecordingSetup(CaptureType type, RecordingSetupResult setup, ICaptureSettings settings)
@@ -2251,9 +2274,22 @@ public partial class App : Application
             {
                 // The window picker always spans every monitor so any window can be chosen.
                 var all = monitors.GetMonitors();
-                var hwnd = await WindowPickerController.RunAsync(all, cancellationToken);
-                return hwnd is { } h
-                    ? new TargetSelection(CaptureTarget.Window(h), null, null)
+                var picked = await WindowPickerController.RunAsync(all, cancellationToken);
+                return picked is { } selection
+                    ? new TargetSelection(CaptureTarget.Window(selection.Hwnd), null, null)
+                    : null;
+            }
+
+            case CapturePickerMode.WindowArea:
+            {
+                var all = monitors.GetMonitors();
+                var picked = await WindowPickerController.RunAsync(all, cancellationToken, selectArea: true);
+                return picked is { Area: { } area, Monitor: { } monitor }
+                    ? new TargetSelection(
+                        CaptureTarget.Monitor(monitor.HMonitor),
+                        area.MonitorLocalBounds,
+                        monitor,
+                        WindowArea: area)
                     : null;
             }
 
@@ -2322,7 +2358,36 @@ public partial class App : Application
         return monitors.FirstOrDefault(m => m.HMonitor == hMonitor) ?? monitorService.GetPrimaryMonitor();
     }
 
-    private readonly record struct TargetSelection(CaptureTarget Target, PixelRect? Region, MonitorInfo? Monitor, CapturedFrame? Backdrop = null);
+    private bool EnsureWindowAreaDisplayAvailable(TargetSelection selection)
+    {
+        if (selection.WindowArea is not { } area || selection.Monitor is not { } selectedMonitor)
+        {
+            return true;
+        }
+
+        var current = Services.GetRequiredService<IMonitorService>().GetMonitors()
+            .FirstOrDefault(monitor => monitor.HMonitor == selectedMonitor.HMonitor);
+        if (current is not null
+            && current.X == selectedMonitor.X
+            && current.Y == selectedMonitor.Y
+            && current.Width == selectedMonitor.Width
+            && current.Height == selectedMonitor.Height
+            && current.ScaleFactor == selectedMonitor.ScaleFactor)
+        {
+            return true;
+        }
+
+        CaptureFlowTrace.Mark($"window area: display changed before capture ({area.MonitorIndex})");
+        ShowMessageNotification("The selected display changed. Please select the window area again.");
+        return false;
+    }
+
+    private readonly record struct TargetSelection(
+        CaptureTarget Target,
+        PixelRect? Region,
+        MonitorInfo? Monitor,
+        CapturedFrame? Backdrop = null,
+        WindowAreaSelection? WindowArea = null);
 
     private Task ToggleVideoAsync() => ToggleVideoAsync(VideoRecordingCommand.RecordVideo);
 
