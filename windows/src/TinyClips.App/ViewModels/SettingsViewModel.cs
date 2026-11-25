@@ -46,7 +46,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly DispatcherQueue? _dispatcherQueue;
     private readonly ITeleprompterTranscriptSaveScheduler? _teleprompterTranscriptSaveScheduler;
     private readonly Func<TemporaryFilesSummary> _getTemporaryFilesSummary;
-    private readonly Func<TemporaryFilesPurgeResult> _purgeTemporaryFiles;
+    private readonly Func<Task<TemporaryFilesPurgeResult>> _purgeTemporaryFiles;
     private Task? _temporaryFilesInitialization;
     private static readonly EditTool[] _screenshotEditorToolChoices =
     [
@@ -121,9 +121,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         IUploadcareCredentialStore uploadcareCredentials,
         IStudioProjectStore studioProjects,
         StudioProjectCleanupService studioCleanup,
-        StudioProjectTracker studioTracker)
+        StudioProjectTracker studioTracker,
+        Func<Task<TemporaryFilesPurgeResult>>? purgeTemporaryFilesAsync = null)
         : this(settings, hotKeys, launchAtLogin, audioDevices, webcamDevices, storage, analytics,
-            uploadcareCredentials, DispatcherQueue.GetForCurrentThread(), null, studioProjects, studioCleanup, studioTracker)
+            uploadcareCredentials, DispatcherQueue.GetForCurrentThread(), null, studioProjects, studioCleanup,
+            studioTracker, purgeTemporaryFilesAsync: purgeTemporaryFilesAsync)
     {
     }
 
@@ -160,7 +162,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         StudioProjectCleanupService? studioCleanup = null,
         StudioProjectTracker? studioTracker = null,
         Func<TemporaryFilesSummary>? getTemporaryFilesSummary = null,
-        Func<TemporaryFilesPurgeResult>? purgeTemporaryFiles = null)
+        Func<TemporaryFilesPurgeResult>? purgeTemporaryFiles = null,
+        Func<Task<TemporaryFilesPurgeResult>>? purgeTemporaryFilesAsync = null)
     {
         _settings = settings;
         _hotKeys = hotKeys;
@@ -174,8 +177,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         _studioCleanup = studioCleanup;
         _studioTracker = studioTracker;
         _getTemporaryFilesSummary = getTemporaryFilesSummary ?? TinyClipsTemporaryFiles.GetSummary;
-        _purgeTemporaryFiles = purgeTemporaryFiles ??
-            (() => TinyClipsTemporaryFiles.Purge(WebcamDiagnostics.ActiveFilePaths));
+        _purgeTemporaryFiles = purgeTemporaryFilesAsync ?? (() => Task.Run(purgeTemporaryFiles ?? (() =>
+            TinyClipsTemporaryFiles.Purge(WebcamDiagnostics.ActiveFilePaths))));
         if (_studioTracker is not null)
         {
             _studioTracker.Changed += OnStudioOpenProjectsChanged;
@@ -417,7 +420,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             return default;
         }
 
-        var result = await Task.Run(_purgeTemporaryFiles);
+        var result = await _purgeTemporaryFiles();
         if (!_closed)
         {
             await RefreshTemporaryFilesAsync();
@@ -533,8 +536,37 @@ public sealed partial class SettingsViewModel : ObservableObject
     // Guards the toggle's change handler while we set LaunchAtLogin to reflect OS truth.
     private bool _suppressLaunchAtLogin;
 
-    [ObservableProperty]
+    private bool _saveScreenshotToDisk;
     private bool _copyScreenshotToClipboard;
+    private bool _showScreenshotEditor;
+    private bool _hasScreenshotOutputWarning;
+    private bool _refreshingScreenshotOutputs;
+
+    public bool SaveScreenshotToDisk
+    {
+        get => _saveScreenshotToDisk;
+        set => SetScreenshotOutput(ref _saveScreenshotToDisk, value, ScreenshotOutput.SaveToDisk, nameof(SaveScreenshotToDisk));
+    }
+
+    public bool CopyScreenshotToClipboard
+    {
+        get => _copyScreenshotToClipboard;
+        set => SetScreenshotOutput(ref _copyScreenshotToClipboard, value, ScreenshotOutput.CopyToClipboard, nameof(CopyScreenshotToClipboard));
+    }
+
+    public bool ShowScreenshotEditor
+    {
+        get => _showScreenshotEditor;
+        set => SetScreenshotOutput(ref _showScreenshotEditor, value, ScreenshotOutput.OpenEditor, nameof(ShowScreenshotEditor));
+    }
+
+    public bool HasScreenshotOutputWarning
+    {
+        get => _hasScreenshotOutputWarning;
+        private set => SetProperty(ref _hasScreenshotOutputWarning, value);
+    }
+
+    public string ScreenshotOutputExplanation => ScreenshotOutputPolicy.LastOutputExplanation;
 
     [ObservableProperty]
     private bool _copyVideoToClipboard;
@@ -560,9 +592,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private double _screenshotCountdownDuration;
-
-    [ObservableProperty]
-    private bool _showScreenshotEditor;
 
     [ObservableProperty]
     private int _screenshotEditorDefaultToolIndex;
@@ -1433,6 +1462,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
             if (kind is null or SettingsSectionKind.Screenshot)
             {
+                HasScreenshotOutputWarning = false;
+                SaveScreenshotToDisk = _settings.SaveScreenshotToDisk;
                 CopyScreenshotToClipboard = _settings.CopyScreenshotToClipboard;
                 ScreenshotFormatIndex = _settings.ImageFormat switch
                 {
@@ -1921,8 +1952,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         _settings.LaunchAtLogin = enabled;
     }
 
-    partial void OnCopyScreenshotToClipboardChanged(bool value) => Persist(SettingsSectionKind.Screenshot, () => _settings.CopyScreenshotToClipboard = value);
-
     partial void OnCopyVideoToClipboardChanged(bool value) => Persist(SettingsSectionKind.Video, () => _settings.CopyVideoToClipboard = value);
 
     partial void OnCopyGifToClipboardChanged(bool value) => Persist(SettingsSectionKind.Gif, () => _settings.CopyGifToClipboard = value);
@@ -1950,8 +1979,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnScreenshotCountdownDurationChanged(double value) =>
         Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotCountdownDuration = (int)Math.Round(value));
-
-    partial void OnShowScreenshotEditorChanged(bool value) => Persist(SettingsSectionKind.Screenshot, () => _settings.ShowScreenshotEditor = value);
 
     partial void OnScreenshotEditorDefaultToolIndexChanged(int value) =>
         Persist(SettingsSectionKind.Screenshot, () => _settings.ScreenshotEditorDefaultTool =
@@ -2263,6 +2290,52 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnShowGifsInChartChanged(bool value) =>
         RefreshAnalyticsChartOrKeepSeriesSelected(value, () => ShowGifsInChart = true);
 
+    private void SetScreenshotOutput(ref bool current, bool value, ScreenshotOutput output, string propertyName)
+    {
+        if (_refreshingScreenshotOutputs)
+        {
+            return;
+        }
+
+        if (IsPersistenceSuppressed(SettingsSectionKind.Screenshot))
+        {
+            SetProperty(ref current, value, propertyName);
+            return;
+        }
+
+        if (current == value)
+        {
+            RefreshScreenshotOutputs();
+            return;
+        }
+
+        var accepted = ScreenshotOutputPolicy.TrySet(_settings, output, value);
+        HasScreenshotOutputWarning = !accepted;
+        RefreshScreenshotOutputs();
+        if (!accepted)
+        {
+            OnPropertyChanged(propertyName);
+        }
+    }
+
+    private void RefreshScreenshotOutputs()
+    {
+        var save = _settings.SaveScreenshotToDisk;
+        var copy = _settings.CopyScreenshotToClipboard;
+        var editor = _settings.ShowScreenshotEditor;
+        _refreshingScreenshotOutputs = true;
+        try
+        {
+            SetProperty(ref _saveScreenshotToDisk, save, nameof(SaveScreenshotToDisk));
+            SetProperty(ref _copyScreenshotToClipboard, copy, nameof(CopyScreenshotToClipboard));
+            SetProperty(ref _showScreenshotEditor, editor, nameof(ShowScreenshotEditor));
+        }
+        finally
+        {
+            _refreshingScreenshotOutputs = false;
+        }
+    }
+
     private void Persist(SettingsSectionKind kind, Action apply)
     {
         if (IsPersistenceSuppressed(kind))
@@ -2284,8 +2357,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        _uploadcareCredentials.RemoveSecretKey();
         _settings.ResetToDefaults();
+        _uploadcareCredentials.RemoveSecretKey();
         _teleprompterTranscriptSaveScheduler?.Stop();
         _pendingTeleprompterTranscript = null;
         _savedTeleprompterTranscript = string.Empty;

@@ -26,13 +26,22 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   final frame so sticky footers and nearby floating controls (such as Teams' **New messages**)
   appear only once. Scroll gradually with overlapping content; large jumps without enough clear
   overlap are skipped rather than stitched through fixed UI. Memory use is bounded (the capture
-  stops and saves automatically when a limit is reached). Enter/Esc
+  stops automatically when a limit is reached). Enter/Esc
   apply while the panel has focus; use its buttons after clicking into the page.
 - **Video recording** → hardware-accelerated **H.264 MP4** (configurable frame rate, audio sources,
   microphone device, mouse-click visuals, and time limit before each recording).
 - **GIF recording** → animated GIF (frame rate, max-width downscale, infinite loop).
 - **Recording indicator** — a floating always-on-top panel shows the elapsed time and a Stop button
   (with the stop hotkey) while recording.
+- **Screenshot outputs** — independently save to disk, copy to the clipboard, or open the editor
+  for normal and scrolling screenshots. At least one output must stay enabled. Saving is on by
+  default; when it is off, use the editor's **Save** or **Save a copy** to keep a file. Temporary
+  files live in the app-private local-data `TinyClips\Temp\Screenshots` folder and are deleted
+  when the editor closes and pending outputs finish. Startup also sweeps files older than one day.
+  Temporary screenshots copy bitmap bytes, not file references, so pasting still works after cleanup.
+  Save locations remain freely configurable. Save-on captures write directly to their destination;
+  video and GIF saving are unchanged. Analytics count a screenshot only after an output succeeds,
+  once even if recovery is needed.
 - **Editor & trimmers** — an optional post-capture **screenshot editor** (crop, copy, save / save-a-copy),
   a **video trimmer**, and a **GIF trimmer**, each openable automatically after capture. `Esc`
   closes each of them, asking first unless **Confirm before closing editors with Esc** is turned
@@ -46,9 +55,9 @@ A native **WinUI 3 / Windows App SDK** port of Tiny Clips — a tray-based scree
   for the screen and the camera, cuts, speed changes, trim, and MP4 export.
   The project stays editable afterward. See [Tiny Clips Studio](#tiny-clips-studio).
 - **Region outline** — a red outline frames the selected region during the countdown.
-- **Onboarding & Guide** — a first-run welcome wizard with five quick preferences: launch at
-  login, copy screenshots to clipboard, open the screenshot editor, video/GIF countdown, and
-  save notifications. Customize Screenshot, Record Video, Studio recording, and Record GIF shortcuts with the
+- **Onboarding & Guide** — a first-run welcome wizard with six quick preferences: launch at
+  login, save screenshots to disk, copy screenshots to clipboard, open the screenshot editor,
+  video/GIF countdown, and save notifications. Customize Screenshot, Record Video, Studio recording, and Record GIF shortcuts with the
   same validated recorder used in Settings. Explicit changes apply immediately and remain if
   you skip setup; opening setup never resets saved choices. The countdown choice updates both
   video and GIF without changing their saved durations, and shows Custom if they differ.

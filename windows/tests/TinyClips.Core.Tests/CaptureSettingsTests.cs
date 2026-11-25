@@ -40,7 +40,11 @@ public sealed class CaptureSettingsTests
         var settingsService = new TestSettingsService();
         var settings = new CaptureSettings(settingsService);
 
+        Assert.True(settings.SaveScreenshotToDisk);
         Assert.True(settings.CopyScreenshotToClipboard);
+        Assert.True(settings.ShowScreenshotEditor);
+        Assert.False(settings.CopyVideoToClipboard);
+        Assert.False(settings.CopyGifToClipboard);
         Assert.True(settings.UseDefaultSaveDirectories);
         Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Screenshot), settings.ScreenshotSaveDirectory);
         Assert.Equal(CaptureSettings.DefaultSaveDirectory(CaptureType.Video), settings.VideoSaveDirectory);
@@ -78,6 +82,73 @@ public sealed class CaptureSettingsTests
         Assert.False(settings.UploadcareAutoUpload);
         Assert.False(settings.UploadcareCopyUrl);
         Assert.Equal(EditTool.Background, settings.ScreenshotEditorDefaultTool);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void ScreenshotSave_DefaultIgnoresLegacyValue_PersistsAndResets(bool legacyValue, bool editorEnabled)
+    {
+        var store = new TestSettingsService();
+        store.Set("saveImmediatelyScreenshot", legacyValue);
+        store.Set("showScreenshotEditor", editorEnabled);
+        var settings = new CaptureSettings(store);
+
+        Assert.True(settings.SaveScreenshotToDisk);
+        Assert.Equal(legacyValue, settings.SaveImmediatelyScreenshot);
+        Assert.Equal(editorEnabled, settings.ShowScreenshotEditor);
+
+        settings.SaveScreenshotToDisk = false;
+        Assert.False(store.Get("saveScreenshotToDisk", true));
+        store.Set("saveImmediatelyScreenshot", !legacyValue);
+        Assert.False(new CaptureSettings(store).SaveScreenshotToDisk);
+
+        settings.ResetToDefaults();
+        Assert.True(settings.SaveScreenshotToDisk);
+        Assert.True(new CaptureSettings(store).SaveScreenshotToDisk);
+        Assert.True(settings.ShowScreenshotEditor);
+        Assert.True(settings.CopyScreenshotToClipboard);
+        Assert.True(settings.SaveImmediatelyVideo);
+        Assert.True(settings.SaveImmediatelyGif);
+        Assert.False(settings.CopyVideoToClipboard);
+        Assert.False(settings.CopyGifToClipboard);
+    }
+
+    [Fact]
+    public void ScreenshotOutputPolicy_AppliesEveryValidTransitionWithoutPartialWrites()
+    {
+        foreach (var mask in Enumerable.Range(1, 7))
+        {
+            foreach (var output in Enum.GetValues<ScreenshotOutput>())
+            {
+                foreach (var enabled in new[] { false, true })
+                {
+                    var settings = new CaptureSettings(new TestSettingsService())
+                    {
+                        SaveScreenshotToDisk = (mask & 1) != 0,
+                        CopyScreenshotToClipboard = (mask & 2) != 0,
+                        ShowScreenshotEditor = (mask & 4) != 0,
+                    };
+                    var bit = output switch
+                    {
+                        ScreenshotOutput.SaveToDisk => 1,
+                        ScreenshotOutput.CopyToClipboard => 2,
+                        ScreenshotOutput.OpenEditor => 4,
+                        _ => throw new InvalidOperationException(),
+                    };
+                    var allowed = enabled || (mask & ~bit) != 0;
+                    var expectedMask = !allowed ? mask : enabled ? mask | bit : mask & ~bit;
+
+                    Assert.Equal(allowed, ScreenshotOutputPolicy.TrySet(settings, output, enabled));
+                    var actualMask = (settings.SaveScreenshotToDisk ? 1 : 0)
+                        | (settings.CopyScreenshotToClipboard ? 2 : 0)
+                        | (settings.ShowScreenshotEditor ? 4 : 0);
+                    Assert.Equal(expectedMask, actualMask);
+                }
+            }
+        }
     }
 
     [Fact]

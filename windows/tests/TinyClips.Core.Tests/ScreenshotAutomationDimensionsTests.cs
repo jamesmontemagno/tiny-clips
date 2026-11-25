@@ -33,6 +33,29 @@ public sealed class ScreenshotAutomationDimensionsTests : IDisposable
         Assert.Equal((6, 4), ScreenshotBackgroundDecoder.ReadDimensions(path, TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task SaveFrameAsync_RemainsPersistentWhenInteractiveSavingIsOff()
+    {
+        var storage = new MemorySettings();
+        var settings = new CaptureSettings(storage)
+        {
+            UseDefaultSaveDirectories = false,
+            ScreenshotSaveDirectory = _directory,
+            SaveScreenshotToDisk = false,
+            ImageFormat = ImageFormat.Png,
+        };
+        var files = new ClipStorageService(settings, new FileNameService(settings), new TinyClips.Core.Services.FileSystem());
+        var service = new ScreenshotService(
+            new ScreenCaptureService(), new MonitorService(), files, settings, new ClipAnalyticsService(storage));
+        var frame = new CapturedFrame(new byte[4 * 4 * 4], 4, 4);
+
+        var path = await service.SaveFrameAsync(frame, applyBranding: false, TestContext.Current.CancellationToken);
+
+        Assert.False(settings.SaveScreenshotToDisk);
+        Assert.Equal(_directory, Path.GetDirectoryName(path));
+        Assert.True(File.Exists(path));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);

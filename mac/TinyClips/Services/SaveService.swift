@@ -434,19 +434,39 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func outputDirectoryURL(for type: CaptureType) -> URL {
-        let settings = CaptureSettings.shared
-        guard !settings.useDefaultSaveDirectories else {
+        outputDirectoryURL(
+            for: type,
+            useDefaultSaveDirectories: CaptureSettings.shared.useDefaultSaveDirectories
+        )
+    }
+
+    private func outputDirectoryURL(for type: CaptureType, useDefaultSaveDirectories: Bool) -> URL {
+        guard !useDefaultSaveDirectories else {
             return defaultDirectoryURL(for: type)
         }
 
 #if APPSTORE
         return customDirectoryURLFromBookmark(for: type) ?? defaultDirectoryURL(for: type)
 #else
-        let directory = settings.saveDirectoryPath(for: type)
+        let directory = CaptureSettings.shared.saveDirectoryPath(for: type)
         return directory.isEmpty
             ? defaultDirectoryURL(for: type)
             : URL(fileURLWithPath: directory, isDirectory: true)
 #endif
+    }
+
+    func captureLibraryDirectories(useDefaultSaveDirectories: Bool? = nil) -> [URL] {
+        let useDefaults = useDefaultSaveDirectories ?? CaptureSettings.shared.useDefaultSaveDirectories
+        return Self.captureLibraryDirectories {
+            outputDirectoryURL(for: $0, useDefaultSaveDirectories: useDefaults)
+        }
+    }
+
+    static func captureLibraryDirectories(resolving outputDirectory: (CaptureType) -> URL) -> [URL] {
+        let types: [CaptureType] = [.screenshot, .video, .gif]
+        var seen: Set<String> = []
+        return types.map(outputDirectory)
+            .filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
     func generatedFileName(for type: CaptureType, fileExtension: String, date: Date = Date()) -> String {
@@ -614,11 +634,13 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
 #endif
 
     @MainActor
-    func handleSavedFile(url: URL, type: CaptureType) {
+    func handleSavedFile(url: URL, type: CaptureType, copyToClipboard: Bool = true) {
         let settings = CaptureSettings.shared
         RecentCaptureStore.shared.record(url: url, type: type)
 
-        copyToClipboardIfEnabled(url: url, type: type)
+        if copyToClipboard {
+            copyToClipboardIfEnabled(url: url, type: type)
+        }
 
         AccessibilityAnnouncementService.shared.announceSaveSuccess(for: type, url: url)
 
@@ -637,6 +659,12 @@ class SaveService: NSObject, UNUserNotificationCenterDelegate {
     func copyToClipboardIfEnabled(url: URL, type: CaptureType) {
         guard CaptureSettings.shared.shouldCopyToClipboard(for: type) else { return }
         copyToClipboard(url: url, type: type)
+    }
+
+    @MainActor
+    func copyScreenshotToClipboard(from url: URL) -> Bool {
+        guard let image = ImagePixelDensity.loadImage(contentsOf: url) else { return false }
+        return copyImageToClipboard(image)
     }
 
     @MainActor

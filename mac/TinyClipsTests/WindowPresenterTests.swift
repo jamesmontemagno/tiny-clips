@@ -369,6 +369,207 @@ final class WindowPresenterTests: XCTestCase {
         XCTAssertTrue(opened.isEmpty)
     }
 
+    func testPendingScreenshotEditorFailureRetainsImageAndDoesNotComplete() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TinyClipsEditorTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lease = try TinyClipsTemporaryFiles.makeScreenshotLease(
+            fileExtension: "png", root: root
+        )
+        try Data([1]).write(to: lease.url)
+
+        let registry = ScreenshotEditorRegistry(presentWindow: { _ in }, applyActivationPolicy: {})
+        var failures = 0
+        var attachments = 0
+        var completions = 0
+        var captureCount = 0
+        let outputSuccess = ScreenshotOutputSuccess { captureCount += 1 }
+        registry.present(
+            imageURL: lease.url,
+            deleteSourceAfterSave: true,
+            onPresentationFailure: {
+                failures += 1
+                do {
+                    try lease.keepForRecovery()
+                } catch {
+                    XCTFail("Could not retain the synthetic screenshot: \(error)")
+                }
+            },
+            onPresentationSuccess: {
+                attachments += 1
+                outputSuccess.recordOnce()
+            }
+        ) { _ in completions += 1 }
+        let value = try XCTUnwrap(registry.listEditors().first?["id"] as? String)
+        let id = try XCTUnwrap(UUID(uuidString: value))
+
+        registry.failPendingPresentation(id)
+        registry.failPendingPresentation(id)
+        var opened: [UUID] = []
+        registry.installOpener { opened.append($0) }
+        XCTAssertEqual(failures, 1)
+        XCTAssertEqual(attachments, 0)
+        XCTAssertEqual(captureCount, 0)
+        XCTAssertEqual(completions, 0)
+        XCTAssertTrue(opened.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: lease.url.path))
+        XCTAssertEqual(try TinyClipsTemporaryFiles.purge(root: root).protectedCount, 1)
+    }
+
+    func testAttachedScreenshotEditorIsNotTreatedAsPresentationFailure() throws {
+        let registry = ScreenshotEditorRegistry(presentWindow: { _ in }, applyActivationPolicy: {})
+        var opened: [UUID] = []
+        var failures = 0
+        var attachments = 0
+        var completions = 0
+        var captureCount = 0
+        let outputSuccess = ScreenshotOutputSuccess { captureCount += 1 }
+        registry.installOpener { opened.append($0) }
+        registry.present(
+            imageURL: URL(fileURLWithPath: "/test/source.png"),
+            onPresentationFailure: { failures += 1 },
+            onPresentationSuccess: {
+                attachments += 1
+                outputSuccess.recordOnce()
+            }
+        ) { _ in completions += 1 }
+        let id = try XCTUnwrap(opened.first)
+        let window = FakeWindow(record: { _ in })
+        registry.windowDidAttach(window, for: id)
+        registry.windowDidAttach(window, for: id)
+        registry.failPendingPresentation(id)
+        XCTAssertTrue(registry.hasOpenSessions)
+        XCTAssertEqual(failures, 0)
+        XCTAssertEqual(attachments, 1)
+        XCTAssertEqual(captureCount, 1)
+        registry.windowWillClose(for: id)
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testScreenshotEditorSourceIsProtectedDuringPendingSave() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TinyClipsEditorTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lease = try TinyClipsTemporaryFiles.makeScreenshotLease(
+            fileExtension: "png", root: root
+        )
+        try Data([1]).write(to: lease.url)
+        let registry = ScreenshotEditorRegistry(presentWindow: { _ in }, applyActivationPolicy: {})
+        var opened: [UUID] = []
+        registry.installOpener { opened.append($0) }
+        registry.present(imageURL: lease.url, deleteSourceAfterSave: true) { _ in lease.discard() }
+        let id = try XCTUnwrap(opened.first)
+        let lifecycle = try XCTUnwrap(registry.session(for: id)?.lifecycle)
+        let window = FakeWindow(record: { _ in })
+        let model = ScreenshotEditorViewModel(url: lease.url)
+        registry.windowDidAttach(window, for: id)
+        lifecycle.attach(model)
+        lifecycle.isSaving = true
+
+        XCTAssertEqual(lifecycle.blockReason, .saving)
+        XCTAssertEqual(try TinyClipsTemporaryFiles.purge(root: root).protectedCount, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: lease.url.path))
+        lifecycle.isSaving = false
+        lifecycle.isFinishing = true
+        registry.windowWillClose(for: id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lease.url.path))
+    }
+
+    func testNativeCloseRequestsInteractiveScreenshotConfirmation() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TinyClipsEditorTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lease = try TinyClipsTemporaryFiles.makeScreenshotLease(
+            fileExtension: "png", root: root
+        )
+        try Data([1]).write(to: lease.url)
+        let registry = ScreenshotEditorRegistry(presentWindow: { _ in }, applyActivationPolicy: {})
+        var opened: [UUID] = []
+        registry.installOpener { opened.append($0) }
+        registry.present(imageURL: lease.url, deleteSourceAfterSave: true) { _ in lease.discard() }
+        let id = try XCTUnwrap(opened.first)
+        let lifecycle = try XCTUnwrap(registry.session(for: id)?.lifecycle)
+        let window = FakeWindow(record: { _ in })
+        let model = ScreenshotEditorViewModel(url: lease.url)
+        registry.windowDidAttach(window, for: id)
+        lifecycle.attach(model)
+        let requested = expectation(description: "Native close requests the interactive close flow")
+        let observer = lifecycle.$closeRequest.dropFirst().compactMap { $0 }.sink { request in
+            XCTAssertEqual(request.mode, .interactive)
+            requested.fulfill()
+        }
+
+        registry.requestWindowClose(for: id)
+        await fulfillment(of: [requested], timeout: 2)
+        lifecycle.resolve(.cancelled)
+        XCTAssertTrue(registry.hasOpenSessions)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: lease.url.path))
+        withExtendedLifetime(observer) {}
+        lifecycle.isFinishing = true
+        registry.windowWillClose(for: id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lease.url.path))
+    }
+
+    func testUnexpectedNativeCloseRetainsUnsavedScreenshot() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TinyClipsEditorTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lease = try TinyClipsTemporaryFiles.makeScreenshotLease(
+            fileExtension: "png", root: root
+        )
+        try Data([1]).write(to: lease.url)
+        let registry = ScreenshotEditorRegistry(presentWindow: { _ in }, applyActivationPolicy: {})
+        var opened: [UUID] = []
+        var recovered = 0
+        registry.installOpener { opened.append($0) }
+        registry.present(
+            imageURL: lease.url,
+            deleteSourceAfterSave: true,
+            onUnexpectedClose: {
+                recovered += 1
+                do {
+                    try lease.keepForRecovery()
+                } catch {
+                    XCTFail("Failed to retain the screenshot for recovery: \(error)")
+                }
+            }
+        ) { _ in lease.discard() }
+        let id = try XCTUnwrap(opened.first)
+        let window = FakeWindow(record: { _ in })
+        registry.windowDidAttach(window, for: id)
+        registry.windowWillClose(for: id)
+        registry.windowWillClose(for: id)
+
+        XCTAssertEqual(recovered, 1)
+        XCTAssertFalse(registry.hasOpenSessions)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: lease.url.path))
+        XCTAssertEqual(try TinyClipsTemporaryFiles.purge(root: root).protectedCount, 1)
+        try lease.discardExplicitly()
+    }
+
+    func testPendingEditorProtectsUnleasedTemporarySource() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TinyClipsEditorTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("TinyClips-\(UUID().uuidString).png")
+        try Data([1]).write(to: source)
+        let registry = ScreenshotEditorRegistry(presentWindow: { _ in }, applyActivationPolicy: {})
+        registry.present(imageURL: source) { _ in }
+        let value = try XCTUnwrap(registry.listEditors().first?["id"] as? String)
+        let id = try XCTUnwrap(UUID(uuidString: value))
+
+        XCTAssertEqual(try TinyClipsTemporaryFiles.purge(root: root).protectedCount, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+        registry.finish(id, result: nil)
+        XCTAssertEqual(try TinyClipsTemporaryFiles.purge(root: root).removedCount, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+    }
+
     func testSafeCloseLeavesDirtyUnsavedAndSavingEditorsOpen() async throws {
         let registry = ScreenshotEditorRegistry(presentWindow: { _ in }, applyActivationPolicy: {})
         var ids: [UUID] = []

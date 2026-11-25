@@ -42,13 +42,15 @@ public sealed class AutomationSettingsCatalog
             Text("screenshotFormat", () => s.ScreenshotFormat, v => s.ScreenshotFormat = v, allowed: ["jpg", "png", "webp"]),
             Int("screenshotScale", () => s.ScreenshotScale, v => s.ScreenshotScale = v, 25, 100),
             Double("jpegQuality", () => s.JpegQuality, v => s.JpegQuality = v, 0.1, 1),
-            Bool("copyScreenshotToClipboard", () => s.CopyScreenshotToClipboard, v => s.CopyScreenshotToClipboard = v),
+            Bool("copyScreenshotToClipboard", () => s.CopyScreenshotToClipboard,
+                v => SetScreenshotOutput(s, ScreenshotOutput.CopyToClipboard, v)),
             Bool("copyVideoToClipboard", () => s.CopyVideoToClipboard, v => s.CopyVideoToClipboard = v),
             Bool("copyGifToClipboard", () => s.CopyGifToClipboard, v => s.CopyGifToClipboard = v),
             Bool("showInExplorer", () => s.ShowInExplorer, v => s.ShowInExplorer = v),
             Bool("studioRevealAfterFirstSave", () => s.StudioRevealAfterFirstSave, v => s.StudioRevealAfterFirstSave = v),
             Bool("showSaveNotifications", () => s.ShowSaveNotifications, v => s.ShowSaveNotifications = v),
-            Bool("showScreenshotEditor", () => s.ShowScreenshotEditor, v => s.ShowScreenshotEditor = v),
+            Bool("showScreenshotEditor", () => s.ShowScreenshotEditor,
+                v => SetScreenshotOutput(s, ScreenshotOutput.OpenEditor, v)),
             Text("screenshotEditorDefaultTool", () => s.ScreenshotEditorDefaultTool.SettingId(),
                 v => s.ScreenshotEditorDefaultTool = EditToolExtensions.TryParseSettingId(v, out var tool) ? tool : s.ScreenshotEditorDefaultTool,
                 allowed: [.. EditToolExtensions.SettingIds]),
@@ -141,6 +143,14 @@ public sealed class AutomationSettingsCatalog
 
     private static Entry ReadOnly(string key, Func<string> read) =>
         new(key, () => JsonValue.Create(read()), null);
+
+    private static void SetScreenshotOutput(ICaptureSettings settings, ScreenshotOutput output, bool enabled)
+    {
+        if (!ScreenshotOutputPolicy.TrySet(settings, output, enabled))
+        {
+            throw new AutomationException(AutomationErrorCodes.Conflict, ScreenshotOutputPolicy.LastOutputExplanation);
+        }
+    }
 
     private static Entry Bool(string key, Func<bool> read, Action<bool> write) =>
         new(key, () => JsonValue.Create(read()), node =>

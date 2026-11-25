@@ -183,12 +183,25 @@ On macOS, opening the same unchanged video from Finder, the trimmer or Clips Lib
 | Option | Description |
 |--------|-------------|
 | Save Directory | Where captures are saved (default: Pictures/TinyClips) |
+| Screenshot outputs | Save to disk, copy to clipboard, and open the editor independently; at least one must remain on. Saving defaults to on. |
 | Copy to Clipboard | Auto-copy captures to clipboard |
 | Reveal in Finder / Explorer | Reveal the saved file after capture |
 | GIF Frame Rate | 5–30 fps (default: 10) |
 | GIF Max Width | 320–1920 px (default: 640) |
 | Video Frame Rate | 24, 30, or 60 fps |
 | Open Trimmer | Show trim editor after recording |
+
+When screenshot saving is off, an interactive screenshot can still be copied or opened in the
+editor without being added to the saved captures. Use **Save** or **Save As** in the editor to
+keep it as a file. Video and GIF saving are unchanged.
+
+On macOS, unsaved screenshots use an app-private `TinyClips-Screenshots` temporary
+directory, not the capture folder. Closing the editor or releasing its temporary
+lease deletes the source. **Keep for Recovery** retains it for the current app
+session; after restarting, it is eligible for the startup cleanup of files older
+than 24 hours. Settings → General also offers a temporary-file purge, preserving
+open editors and current-session recovery files. Legacy video/GIF processing
+cleanup still avoids capture folders; saved user files are not cleanup targets.
 
 ## Sparkle Setup (macOS)
 

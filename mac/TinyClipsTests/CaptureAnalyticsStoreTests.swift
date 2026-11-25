@@ -208,8 +208,56 @@ final class CaptureAnalyticsStoreTests: XCTestCase {
         XCTAssertEqual(harness.chooseReview(), false)
         XCTAssertEqual(harness.reviewRequestCount, 0)
         harness.hasOpenCaptureEditor = false
+        harness.hasScreenshotRecovery = true
+        XCTAssertEqual(harness.chooseReview(), false)
+        harness.hasScreenshotRecovery = false
         XCTAssertEqual(harness.chooseReview(), true)
         XCTAssertEqual(harness.reviewRequestCount, 1)
+    }
+
+    func testScreenshotRecoveryBlocksPromptAndPickerContinuation() {
+        let harness = eligibleReviewHarness()
+        var pickerContinuations = 0
+        harness.hasScreenshotRecovery = true
+        harness.coordinator.editorWindowClosed { pickerContinuations += 1 }
+        harness.coordinator.captureWorkBecameIdle()
+        XCTAssertEqual(harness.promptCount, 0)
+        XCTAssertEqual(pickerContinuations, 0)
+        XCTAssertFalse(harness.state.hasClaimedPrompt)
+
+        harness.hasScreenshotRecovery = false
+        harness.coordinator.captureWorkBecameIdle()
+        XCTAssertEqual(pickerContinuations, 1)
+        harness.coordinator.editorWindowClosed()
+        XCTAssertEqual(harness.promptCount, 1)
+    }
+
+    func testScreenshotAnalyticsRequireSuccessfulOutputAndCountRecoveryOnlyOnce() throws {
+        for saved in [false, true] {
+            for copied in [false, true] {
+                for recovered in [false, true] {
+                    var captures = 0
+                    let success = ScreenshotOutputSuccess { captures += 1 }
+                    _ = try ScreenshotOutputRouter.deliver(
+                        policy: ScreenshotOutputPolicy(
+                            saveToDisk: saved, copyToClipboard: true, openEditor: true
+                        ),
+                        recordSaved: {},
+                        copy: { copied },
+                        recoverCopy: { recovered ? .available : .retained },
+                        openEditor: { false },
+                        releaseTemporary: {},
+                        outputSucceeded: { success.recordOnce() }
+                    )
+                    XCTAssertEqual(captures, saved || copied || recovered ? 1 : 0)
+
+                    // A later editor attachment or recovery must not count the same image twice.
+                    success.recordOnce()
+                    success.recordOnce()
+                    XCTAssertEqual(captures, 1)
+                }
+            }
+        }
     }
 
     func testChosenReviewAndPickerWaitUntilCaptureAndEditorsAreIdle() {
@@ -232,6 +280,10 @@ final class CaptureAnalyticsStoreTests: XCTestCase {
         XCTAssertEqual(pickerContinuations, 0)
 
         harness.hasOpenCaptureEditor = false
+        harness.hasScreenshotRecovery = true
+        harness.coordinator.captureWorkBecameIdle()
+        XCTAssertEqual(pickerContinuations, 0)
+        harness.hasScreenshotRecovery = false
         harness.coordinator.captureWorkBecameIdle()
         XCTAssertEqual(harness.reviewRequestCount, 1)
         XCTAssertEqual(pickerContinuations, 1)
@@ -269,6 +321,7 @@ private final class StoreReviewPromptHarness {
     let state: StoreReviewPromptState
     var isCaptureInProgress = false
     var hasActiveCaptureWork = false
+    var hasScreenshotRecovery = false
     var hasOpenCaptureEditor = false
     var promptCount = 0
     var reviewRequestCount = 0
@@ -279,6 +332,7 @@ private final class StoreReviewPromptHarness {
         state: state,
         isCaptureInProgress: { [unowned self] in self.isCaptureInProgress },
         hasActiveCaptureWork: { [unowned self] in self.hasActiveCaptureWork },
+        hasScreenshotRecovery: { [unowned self] in self.hasScreenshotRecovery },
         hasOpenCaptureEditor: { [unowned self] in self.hasOpenCaptureEditor },
         presentPrompt: { [unowned self] requestReview, completion in
             self.promptCount += 1

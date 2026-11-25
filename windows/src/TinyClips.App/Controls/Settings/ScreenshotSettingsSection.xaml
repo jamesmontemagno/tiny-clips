@@ -114,7 +114,7 @@
 
             <StackPanel Spacing="2">
                 <controls:SettingsCard
-                    Description="Start another screenshot with the same picker after saving."
+                    Description="Start another screenshot with the same picker after capture."
                     Header="Show capture picker after screenshot"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE81C;}">
                     <ToggleSwitch
@@ -125,13 +125,41 @@
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
-                    Description="Review, crop, and copy each screenshot before saving."
+                    Description="Save screenshots to your screenshot folder."
+                    Header="Save file to disk"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE74E;}">
+                    <ToggleSwitch
+                        x:Name="SaveScreenshotToDiskToggle"
+                        AutomationProperties.AutomationId="SaveScreenshotToDiskToggle"
+                        AutomationProperties.HelpText="At least one screenshot option must stay on."
+                        AutomationProperties.Name="Save screenshots to disk"
+                        IsOn="{x:Bind ViewModel.SaveScreenshotToDisk, Mode=OneWay}"
+                        Toggled="OnScreenshotOutputToggled" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Header="Copy screenshots to the clipboard"
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
+                    <ToggleSwitch
+                        x:Name="CopyScreenshotToggle"
+                        AutomationProperties.AutomationId="CopyScreenshotToggle"
+                        AutomationProperties.HelpText="At least one screenshot option must stay on."
+                        AutomationProperties.Name="Copy screenshots to the clipboard"
+                        IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=OneWay}"
+                        Toggled="OnScreenshotOutputToggled" />
+                </controls:SettingsCard>
+
+                <controls:SettingsCard
+                    Description="Review, crop, and annotate each screenshot after capture."
                     Header="Open editor after capture"
                     HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}">
                     <ToggleSwitch
+                        x:Name="ShowScreenshotEditorToggle"
                         AutomationProperties.AutomationId="ShowScreenshotEditorToggle"
+                        AutomationProperties.HelpText="At least one screenshot option must stay on."
                         AutomationProperties.Name="Open editor after capture"
-                        IsOn="{x:Bind ViewModel.ShowScreenshotEditor, Mode=TwoWay}" />
+                        IsOn="{x:Bind ViewModel.ShowScreenshotEditor, Mode=OneWay}"
+                        Toggled="OnScreenshotOutputToggled" />
                 </controls:SettingsCard>
 
                 <controls:SettingsCard
@@ -157,14 +185,16 @@
                     </ComboBox>
                 </controls:SettingsCard>
 
-                <controls:SettingsCard
-                    Header="Copy screenshots to the clipboard"
-                    HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
-                    <ToggleSwitch
-                        AutomationProperties.AutomationId="CopyScreenshotToggle"
-                        AutomationProperties.Name="Copy screenshots to the clipboard"
-                        IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=TwoWay}" />
-                </controls:SettingsCard>
+                <InfoBar
+                    x:Name="ScreenshotOutputStatus"
+                    AutomationProperties.AutomationId="ScreenshotOutputStatus"
+                    AutomationProperties.LiveSetting="Polite"
+                    AutomationProperties.Name="{x:Bind ViewModel.ScreenshotOutputExplanation, Mode=OneWay}"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.HasScreenshotOutputWarning, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.ScreenshotOutputExplanation, Mode=OneWay}"
+                    Severity="Warning"
+                    Title="Keep at least one screenshot option on" />
             </StackPanel>
 
             <controls:SettingsExpander

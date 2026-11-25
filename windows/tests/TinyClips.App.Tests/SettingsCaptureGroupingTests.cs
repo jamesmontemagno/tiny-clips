@@ -17,7 +17,7 @@ public sealed class SettingsCaptureGroupingTests
             ["ShowScreenshotCapturePickerToggle", "ScreenshotCountdownDurationNumberBox", "ScreenshotCountdownToggle"],
             groups["Before capture"]);
         Assert.Equal(
-            ["ShowScreenshotCapturePickerAfterCaptureToggle", "ShowScreenshotEditorToggle", "ScreenshotEditorDefaultToolComboBox", "CopyScreenshotToggle"],
+            ["ShowScreenshotCapturePickerAfterCaptureToggle", "SaveScreenshotToDiskToggle", "CopyScreenshotToggle", "ShowScreenshotEditorToggle", "ScreenshotEditorDefaultToolComboBox"],
             groups["After capture"]);
         Assert.Equal(["ScreenshotLiveCaptureToggle"], groups["Advanced"]);
 
@@ -80,8 +80,8 @@ public sealed class SettingsCaptureGroupingTests
     public void OnlyGeneralSettingsOffersTheRecentCaptureLimit()
     {
         var elements = SettingsMarkup.Elements("GeneralSettingsSection.xaml");
-        var control = Assert.Single(elements
-            .Where(element => element.Attr(Id) == "LibraryRecentCapturesLimitBox"));
+        var control = Assert.Single(elements,
+            element => element.Attr(Id) == "LibraryRecentCapturesLimitBox");
 
         Assert.Equal("5", control.Attr("Minimum"));
         Assert.Equal("30", control.Attr("Maximum"));
@@ -125,7 +125,9 @@ public sealed class SettingsCaptureGroupingTests
                 content = children[++index];
                 Assert.Equal("StackPanel", content.Name.LocalName);
                 Assert.Equal("2", content.Attr("Spacing"));
-                Assert.All(content.Elements(), card => Assert.Equal("SettingsCard", card.Name.LocalName));
+                Assert.All(content.Elements(), element => Assert.True(
+                    element.Name.LocalName == "SettingsCard"
+                    || (name == "After capture" && element.Name.LocalName == "InfoBar")));
             }
 
             var controls = content.Descendants()

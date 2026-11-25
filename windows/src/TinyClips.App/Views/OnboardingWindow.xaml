@@ -148,21 +148,51 @@
                         IsOn="{x:Bind ViewModel.LaunchAtLogin, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
+                    Header="Save screenshots to disk"
+                    Description="Keep each screenshot in your screenshot folder."
+                    HeaderIcon="{ui:FontIcon Glyph=&#xE74E;}">
+                    <ToggleSwitch
+                        x:Name="OnboardingSaveScreenshotToDiskToggle"
+                        AutomationProperties.AutomationId="OnboardingSaveScreenshotToDiskToggle"
+                        AutomationProperties.HelpText="At least one screenshot option must stay on."
+                        AutomationProperties.Name="Save screenshots to disk"
+                        IsOn="{x:Bind ViewModel.SaveScreenshotToDisk, Mode=OneWay}"
+                        Toggled="OnScreenshotOutputToggled" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
                     Header="Copy screenshots to clipboard"
                     Description="Paste your screenshot straight into a chat or document."
                     HeaderIcon="{ui:FontIcon Glyph=&#xE8C8;}">
                     <ToggleSwitch
+                        x:Name="OnboardingCopyScreenshotToggle"
+                        AutomationProperties.AutomationId="OnboardingCopyScreenshotToggle"
+                        AutomationProperties.HelpText="At least one screenshot option must stay on."
                         AutomationProperties.Name="Copy screenshots to clipboard"
-                        IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=TwoWay}" />
+                        IsOn="{x:Bind ViewModel.CopyScreenshotToClipboard, Mode=OneWay}"
+                        Toggled="OnScreenshotOutputToggled" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Header="Open screenshot editor"
                     Description="Annotate or crop after capturing. Turn off for fewer interruptions."
                     HeaderIcon="{ui:FontIcon Glyph=&#xE70F;}">
                     <ToggleSwitch
+                        x:Name="OnboardingShowScreenshotEditorToggle"
+                        AutomationProperties.AutomationId="OnboardingShowScreenshotEditorToggle"
+                        AutomationProperties.HelpText="At least one screenshot option must stay on."
                         AutomationProperties.Name="Open screenshot editor after capture"
-                        IsOn="{x:Bind ViewModel.ShowScreenshotEditor, Mode=TwoWay}" />
+                        IsOn="{x:Bind ViewModel.ShowScreenshotEditor, Mode=OneWay}"
+                        Toggled="OnScreenshotOutputToggled" />
                 </controls:SettingsCard>
+                <InfoBar
+                    x:Name="OnboardingScreenshotOutputStatus"
+                    AutomationProperties.AutomationId="OnboardingScreenshotOutputStatus"
+                    AutomationProperties.LiveSetting="Polite"
+                    AutomationProperties.Name="{x:Bind ViewModel.ScreenshotOutputExplanation, Mode=OneWay}"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.HasScreenshotOutputWarning, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.ScreenshotOutputExplanation, Mode=OneWay}"
+                    Severity="Warning"
+                    Title="Keep at least one screenshot option on" />
                 <controls:SettingsCard
                     Header="Recording countdown"
                     Description="Get ready before recording video or GIF."

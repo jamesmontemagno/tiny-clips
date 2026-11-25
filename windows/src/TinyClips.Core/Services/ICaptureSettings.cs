@@ -12,6 +12,8 @@ public interface ICaptureSettings
     string VideoSaveDirectory { get; set; }
     string GifSaveDirectory { get; set; }
     AppTheme Theme { get; set; }
+    /// <summary>Save interactive screenshots to the screenshot folder. Default true.</summary>
+    bool SaveScreenshotToDisk { get; set; }
     bool CopyScreenshotToClipboard { get; set; }
     bool CopyVideoToClipboard { get; set; }
     bool CopyGifToClipboard { get; set; }

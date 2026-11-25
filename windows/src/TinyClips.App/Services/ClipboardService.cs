@@ -23,6 +23,28 @@ internal static class ClipboardService
         SetContent(package);
     }
 
+    /// <summary>Copies owned bytes, never a reference to a file that will be deleted.</summary>
+    public static Task CopyTemporaryScreenshotAsync(string path) =>
+        CopyTemporaryScreenshotAsync(path, package =>
+        {
+            SetContent(package);
+            return Task.CompletedTask;
+        });
+
+    internal static async Task CopyTemporaryScreenshotAsync(string path, Func<DataPackage, Task> publish)
+    {
+        using var stream = new InMemoryRandomAccessStream();
+        using (var output = stream.AsStreamForWrite())
+        {
+            var bytes = await File.ReadAllBytesAsync(path);
+            await output.WriteAsync(bytes);
+            await output.FlushAsync();
+            stream.Seek(0);
+            // Flush the clipboard while its stream is open, before releasing the file lease.
+            await publish(CreateBitmapPackage(stream));
+        }
+    }
+
     public static async Task CopyFilesAsync(IReadOnlyList<string> paths)
     {
         var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
@@ -74,11 +96,13 @@ internal static class ClipboardService
 
     /// <summary>UI-thread publication, separate from encoding so callers can reject stale results.</summary>
     public static void SetBitmapContent(IRandomAccessStream stream)
+        => SetContent(CreateBitmapPackage(stream));
+
+    private static DataPackage CreateBitmapPackage(IRandomAccessStream stream)
     {
         var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
         package.SetBitmap(RandomAccessStreamReference.CreateFromStream(stream));
-
-        SetContent(package);
+        return package;
     }
 
     private static void SetContent(DataPackage package)

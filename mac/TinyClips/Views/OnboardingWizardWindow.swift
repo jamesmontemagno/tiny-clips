@@ -90,13 +90,10 @@ private enum OnboardingStep: Int, CaseIterable {
 private struct OnboardingWizardView: View {
     @ObservedObject private var settings = CaptureSettings.shared
     @ObservedObject private var launchAtLogin = LaunchAtLoginManager.shared
-    @AppStorage("copyScreenshotToClipboard") private var copyScreenshotToClipboard = true
     @AppStorage("copyVideoToClipboard") private var copyVideoToClipboard = false
     @AppStorage("copyGifToClipboard") private var copyGifToClipboard = false
-    @AppStorage("showScreenshotEditor") private var showScreenshotEditor = true
     @AppStorage("showTrimmer") private var showTrimmer = true
     @AppStorage("showGifTrimmer") private var showGifTrimmer = true
-    @AppStorage("saveImmediatelyScreenshot") private var saveImmediatelyScreenshot = true
     @AppStorage("saveImmediatelyVideo") private var saveImmediatelyVideo = true
     @AppStorage("saveImmediatelyGif") private var saveImmediatelyGif = true
 #if !APPSTORE
@@ -107,6 +104,7 @@ private struct OnboardingWizardView: View {
     @State private var microphoneGranted = false
     @State private var notificationsGranted = false
     @State private var showSkipConfirmation = false
+    @State private var screenshotOutputRejectionCount = 0
     @State private var shortcutError: String?
     @State private var shortcutRevision = 0
 
@@ -360,12 +358,14 @@ private struct OnboardingWizardView: View {
                 symbolName: "camera.viewfinder",
                 accentColor: .blue,
                 openLabel: "Open editor after capture",
-                openBinding: $showScreenshotEditor,
-                saveBinding: $saveImmediatelyScreenshot,
-                copyBinding: $copyScreenshotToClipboard,
+                openBinding: screenshotOutputBinding(.openEditor),
+                saveBinding: screenshotOutputBinding(.saveToDisk),
+                copyBinding: screenshotOutputBinding(.copyToClipboard),
                 openHelp: "Open the screenshot editor after capture so you can annotate or crop before finishing.",
-                saveHelp: "When enabled, screenshots save right away instead of waiting for editor actions.",
-                copyHelp: "Copy screenshots to the clipboard as an image, even before saving in the editor."
+                saveHelp: "Save screenshots to the selected folder after capture.",
+                copyHelp: "Copy screenshots to the clipboard as an image, whether or not they are saved.",
+                saveLabel: "Save file to disk",
+                requiresSaveWithoutEditor: false
             )
 
             capturePreferenceCard(
@@ -585,7 +585,9 @@ private struct OnboardingWizardView: View {
         copyBinding: Binding<Bool>,
         openHelp: String,
         saveHelp: String,
-        copyHelp: String
+        copyHelp: String,
+        saveLabel: String = "Save immediately",
+        requiresSaveWithoutEditor: Bool = true
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
@@ -611,19 +613,19 @@ private struct OnboardingWizardView: View {
                 binding: openBinding
             )
                 .onChange(of: openBinding.wrappedValue) { _, isEnabled in
-                    if !isEnabled {
+                    if requiresSaveWithoutEditor && !isEnabled {
                         saveBinding.wrappedValue = true
                     }
                 }
 
             preferenceToggleRow(
-                title: "Save immediately",
+                title: saveLabel,
                 description: saveHelp,
                 binding: saveBinding
             )
-                .disabled(!openBinding.wrappedValue)
+                .disabled(requiresSaveWithoutEditor && !openBinding.wrappedValue)
 
-            if !openBinding.wrappedValue {
+            if requiresSaveWithoutEditor && !openBinding.wrappedValue {
                 Text("Save immediately stays enabled while the editor or trimmer is turned off.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -635,9 +637,34 @@ private struct OnboardingWizardView: View {
                 description: copyHelp,
                 binding: copyBinding
             )
+
+            if !requiresSaveWithoutEditor && screenshotOutputRejectionCount > 0 {
+                Text(CaptureSettings.screenshotOutputRequiredMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(14)
         .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func screenshotOutputBinding(_ output: CaptureSettings.ScreenshotOutput) -> Binding<Bool> {
+        settings.screenshotOutputBinding(
+            output,
+            onRejected: {
+                screenshotOutputRejectionCount += 1
+                AccessibilityAnnouncementService.shared.announce(
+                    CaptureSettings.screenshotOutputRequiredMessage,
+                    priority: .high
+                )
+            },
+            onChanged: {
+                if screenshotOutputRejectionCount != 0 {
+                    screenshotOutputRejectionCount = 0
+                }
+            }
+        )
     }
 
     private func preferenceToggleRow(title: String, description: String, binding: Binding<Bool>) -> some View {

@@ -9,6 +9,7 @@ struct GeneralSettingsSection: View {
     let showInDockBinding: Binding<Bool>
     @State private var showPurgeConfirmation = false
     @State private var temporaryFilesSummary: TinyClipsTemporaryFiles.Summary?
+    @State private var temporaryPurgeStatus: String?
     @State private var isLoadingTemporaryFiles = true
     @State private var notificationPermission: NotificationPermissionState?
     @State private var isRequestingNotifications = false
@@ -20,7 +21,7 @@ struct GeneralSettingsSection: View {
             SettingsToggleRow(
                 title: "Use default folders",
                 description: "Screenshots go to Pictures/TinyClips. Videos and GIFs go to Movies/TinyClips; Studio projects start in its Studio folder.",
-                isOn: $settings.useDefaultSaveDirectories,
+                isOn: useDefaultFoldersBinding,
                 accessibilityHint: "Use the default folders for captures and Studio projects."
             )
 
@@ -174,9 +175,9 @@ struct GeneralSettingsSection: View {
                 Button("Purge…", role: .destructive) {
                     showPurgeConfirmation = true
                 }
-                .help("Delete all temporary files currently created by TinyClips.")
+                .help("Delete unprotected temporary files created by TinyClips.")
                 .accessibilityLabel("Purge temp files now")
-                .accessibilityHint("Deletes temporary TinyClips files after confirmation.")
+                .accessibilityHint("Deletes unprotected TinyClips temporary files after confirmation.")
             }
 
             SettingsActionRow(title: "Reset all settings", description: "Return every setting to its default.") {
@@ -193,7 +194,13 @@ struct GeneralSettingsSection: View {
         ) {
             Button("Purge") {
                 do {
-                    try TinyClipsTemporaryFiles.purge()
+                    let report = try TinyClipsTemporaryFiles.purge(
+                        avoiding: SaveService.shared.captureLibraryDirectories()
+                    )
+                    let removed = report.removedCount == 1 ? "file" : "files"
+                    let status = "Removed \(report.removedCount) \(removed); kept \(report.protectedCount) protected."
+                    temporaryPurgeStatus = status
+                    AccessibilityAnnouncementService.shared.announce(status, priority: .medium)
                     Task {
                         await loadTemporaryFilesSummary()
                     }
@@ -204,11 +211,21 @@ struct GeneralSettingsSection: View {
             Button("Cancel", role: .cancel) {}
                 .keyboardShortcut(.defaultAction)
         } message: {
-            Text("This permanently deletes temporary files created by TinyClips, including recent files. Close any active recording or unsaved screenshot editor before continuing.")
+            Text("This permanently deletes unprotected temporary files created by TinyClips. Open editors, screenshots kept for recovery this session, and legacy processing files in capture folders are kept. Close active recordings before continuing.")
         }
         .task {
             await loadTemporaryFilesSummary()
         }
+    }
+
+    private var useDefaultFoldersBinding: Binding<Bool> {
+        Binding(
+            get: { settings.useDefaultSaveDirectories },
+            set: { useDefaults in
+                guard useDefaults != settings.useDefaultSaveDirectories else { return }
+                settings.useDefaultSaveDirectories = useDefaults
+            }
+        )
     }
 
     private func saveDirectoryRow(title: String, type: CaptureType) -> some View {
@@ -292,13 +309,21 @@ struct GeneralSettingsSection: View {
         }
         let fileLabel = temporaryFilesSummary.fileCount == 1 ? "file" : "files"
         let size = ByteCountFormatter.string(fromByteCount: temporaryFilesSummary.totalSize, countStyle: .file)
-        return "\(temporaryFilesSummary.fileCount) \(fileLabel) using \(size)"
+        var text = "\(temporaryFilesSummary.fileCount) \(fileLabel) using \(size)"
+        if temporaryFilesSummary.protectedCount > 0 {
+            text += " · \(temporaryFilesSummary.protectedCount) protected"
+        }
+        if let temporaryPurgeStatus {
+            text += ". \(temporaryPurgeStatus)"
+        }
+        return text
     }
 
     private func loadTemporaryFilesSummary() async {
         isLoadingTemporaryFiles = true
+        let directories = SaveService.shared.captureLibraryDirectories()
         temporaryFilesSummary = await Task.detached(priority: .utility) {
-            try? TinyClipsTemporaryFiles.summary()
+            try? TinyClipsTemporaryFiles.summary(avoiding: directories)
         }.value
         isLoadingTemporaryFiles = false
     }

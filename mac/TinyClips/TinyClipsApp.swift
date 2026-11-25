@@ -180,7 +180,8 @@ struct TinyClipsApp: App {
         switch SingleInstanceCoordinator.shared.acquire() {
         case .primary:
             _ = try? TinyClipsTemporaryFiles.removeStaleFiles(
-                olderThan: Date().addingTimeInterval(-24 * 60 * 60)
+                olderThan: Date().addingTimeInterval(-24 * 60 * 60),
+                avoiding: SaveService.shared.captureLibraryDirectories()
             )
             _ = SparkleController.shared
             NSApplication.shared.setActivationPolicy(

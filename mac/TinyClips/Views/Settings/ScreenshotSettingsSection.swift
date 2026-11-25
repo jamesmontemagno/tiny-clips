@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ScreenshotSettingsSection: View {
     @ObservedObject var settings: CaptureSettings
+    @State private var screenshotOutputRejectionCount = 0
 
     var body: some View {
         SettingsFormSection("Format", icon: "photo") {
@@ -61,7 +62,11 @@ struct ScreenshotSettingsSection: View {
             }
         }
 
-        SettingsFormSection("After Capture", icon: "arrow.right.square") {
+        SettingsFormSection(
+            "After Capture",
+            icon: "arrow.right.square",
+            footer: screenshotOutputRejectionCount > 0 ? CaptureSettings.screenshotOutputRequiredMessage : nil
+        ) {
             SettingsToggleRow(
                 title: "Show capture picker after screenshot",
                 isOn: $settings.showScreenshotCapturePickerAfterCapture,
@@ -71,20 +76,16 @@ struct ScreenshotSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Open editor after capture",
-                isOn: $settings.showScreenshotEditor,
-                help: "Open the screenshot editor after capture so you can annotate or crop."
+                isOn: screenshotOutputBinding(.openEditor),
+                help: "Open the screenshot editor after capture so you can annotate or crop.",
+                accessibilityHint: "Open the screenshot editor after capture. At least one screenshot output must stay on."
             )
-            .onChange(of: settings.showScreenshotEditor) { _, isEnabled in
-                if !isEnabled {
-                    settings.saveImmediatelyScreenshot = true
-                }
-            }
 
             SettingsToggleRow(
-                title: "Save immediately",
-                isOn: $settings.saveImmediatelyScreenshot,
-                help: "Save immediately instead of waiting for actions in the editor.",
-                disabled: !settings.showScreenshotEditor
+                title: "Save file to disk",
+                isOn: screenshotOutputBinding(.saveToDisk),
+                help: "Save screenshots to the selected folder after capture.",
+                accessibilityHint: "Save screenshots to the selected folder. At least one screenshot output must stay on."
             )
 
             Picker("Default editor tool", selection: $settings.screenshotEditorDefaultEditTool) {
@@ -96,8 +97,9 @@ struct ScreenshotSettingsSection: View {
 
             SettingsToggleRow(
                 title: "Copy to clipboard",
-                isOn: $settings.copyScreenshotToClipboard,
-                help: "Copy screenshots to the clipboard as an image, even before saving in the editor."
+                isOn: screenshotOutputBinding(.copyToClipboard),
+                help: "Copy screenshots to the clipboard as an image, whether or not they are saved.",
+                accessibilityHint: "Copy screenshots as an image. At least one screenshot output must stay on."
             )
         }
 
@@ -110,5 +112,23 @@ struct ScreenshotSettingsSection: View {
                 accessibilityHint: "Hides ClickLight overlays in screenshots only. Does not change video or GIF recordings."
             )
         }
+    }
+
+    private func screenshotOutputBinding(_ output: CaptureSettings.ScreenshotOutput) -> Binding<Bool> {
+        settings.screenshotOutputBinding(
+            output,
+            onRejected: {
+                screenshotOutputRejectionCount += 1
+                AccessibilityAnnouncementService.shared.announce(
+                    CaptureSettings.screenshotOutputRequiredMessage,
+                    priority: .high
+                )
+            },
+            onChanged: {
+                if screenshotOutputRejectionCount != 0 {
+                    screenshotOutputRejectionCount = 0
+                }
+            }
+        )
     }
 }

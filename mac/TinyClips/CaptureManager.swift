@@ -2,17 +2,341 @@ import SwiftUI
 import ScreenCaptureKit
 import AVFoundation
 import Combine
+import Darwin
+
+struct ScreenshotOutputPolicy: Equatable {
+    enum Destination: Equatable {
+        case saved
+        case temporary
+    }
+
+    let saveToDisk: Bool
+    let copyToClipboard: Bool
+    let openEditor: Bool
+
+    init(saveToDisk: Bool, copyToClipboard: Bool, openEditor: Bool) {
+        self.saveToDisk = saveToDisk
+        self.copyToClipboard = copyToClipboard
+        self.openEditor = openEditor
+    }
+
+    init(settings: CaptureSettings) {
+        self.init(
+            saveToDisk: settings.screenshotOutputIsEnabled(.saveToDisk),
+            copyToClipboard: settings.screenshotOutputIsEnabled(.copyToClipboard),
+            openEditor: settings.screenshotOutputIsEnabled(.openEditor)
+        )
+    }
+
+    var destination: Destination? {
+        guard saveToDisk || copyToClipboard || openEditor else { return nil }
+        return saveToDisk ? .saved : .temporary
+    }
+}
+
+enum ScreenshotOutputPolicyError: LocalizedError {
+    case noOutput
+
+    var errorDescription: String? {
+        switch self {
+        case .noOutput:
+            return "No screenshot output is enabled. Turn on saving, copying, or the editor in Screenshot Settings."
+        }
+    }
+}
+
+enum ScreenshotCopyRecoveryResult {
+    case available
+    case retained
+    case discarded
+}
+
+enum ScreenshotOutputRouter {
+    static func deliver(
+        policy: ScreenshotOutputPolicy,
+        recordSaved: () -> Void,
+        copy: () -> Bool,
+        recoverCopy: () -> ScreenshotCopyRecoveryResult,
+        openEditor: () -> Bool,
+        releaseTemporary: () -> Void,
+        outputSucceeded: () -> Void = {}
+    ) throws -> Bool {
+        guard policy.destination != nil else { throw ScreenshotOutputPolicyError.noOutput }
+        if policy.saveToDisk {
+            recordSaved()
+            outputSucceeded()
+        }
+        if policy.copyToClipboard {
+            if copy() {
+                outputSucceeded()
+            } else {
+                switch recoverCopy() {
+                case .available:
+                    outputSucceeded()
+                case .retained:
+                    if !policy.openEditor { return false }
+                case .discarded:
+                    return false
+                }
+            }
+        }
+        if policy.openEditor {
+            return openEditor()
+        }
+        releaseTemporary()
+        return false
+    }
+}
+
+enum ScreenshotMemoryRecoveryAction {
+    case retry
+    case copy
+    case saveAs
+    case discard
+    case showAgain
+}
+
+enum ScreenshotMemoryRecoveryResult<Source> {
+    case useSource(Source, copied: Bool, saved: Bool)
+    case finished
+}
+
+enum ScreenshotMemoryRecovery {
+    static func recover<Source>(
+        initialError: Error,
+        requiresSave: Bool,
+        requiresEditor: Bool,
+        choose: (_ error: String, _ copied: Bool) -> ScreenshotMemoryRecoveryAction,
+        retry: () throws -> Source,
+        copy: () -> Bool,
+        saveAs: () -> Source?
+    ) -> ScreenshotMemoryRecoveryResult<Source> {
+        var error = initialError.localizedDescription
+        var copied = false
+        while true {
+            switch choose(error, copied) {
+            case .retry:
+                do {
+                    return .useSource(try retry(), copied: copied, saved: false)
+                } catch let retryError {
+                    error = retryError.localizedDescription
+                }
+            case .copy:
+                if copy() {
+                    copied = true
+                    if !requiresSave && !requiresEditor { return .finished }
+                } else {
+                    error = "Could not copy the screenshot to the clipboard."
+                }
+            case .saveAs:
+                if let source = saveAs() {
+                    return .useSource(source, copied: copied, saved: true)
+                }
+            case .discard:
+                return .finished
+            case .showAgain:
+                break
+            }
+        }
+    }
+}
+
+enum ScreenshotUnavailableSourceRecovery {
+    static func ifMissing<Source>(
+        sourceExists: Bool,
+        saveToDisk: Bool,
+        recover: () -> ScreenshotMemoryRecoveryResult<Source>,
+        recordSavedRetry: (Source) -> Void
+    ) -> ScreenshotMemoryRecoveryResult<Source>? {
+        guard !sourceExists else { return nil }
+        let result = recover()
+        if case let .useSource(source, _, saved) = result, saveToDisk, !saved {
+            recordSavedRetry(source)
+        }
+        return result
+    }
+}
+
+struct ScreenshotCaptureRequest {
+    let policy: ScreenshotOutputPolicy
+    let encoding: ScreenshotEncodingOptions
+    let temporaryFile: ScreenshotTemporaryFileLease?
+    let temporaryRoot: URL
+
+    init(
+        settings: CaptureSettings,
+        temporaryRoot: URL = TinyClipsTemporaryFiles.directoryURL
+    ) throws {
+        let policy = ScreenshotOutputPolicy(settings: settings)
+        guard let destination = policy.destination else { throw ScreenshotOutputPolicyError.noOutput }
+        let encoding = ScreenshotEncodingOptions(settings: settings)
+        self.policy = policy
+        self.encoding = encoding
+        self.temporaryRoot = temporaryRoot
+        switch destination {
+        case .saved:
+            temporaryFile = nil
+        case .temporary:
+            temporaryFile = try TinyClipsTemporaryFiles.makeScreenshotLease(
+                fileExtension: encoding.format.rawValue,
+                root: temporaryRoot
+            )
+        }
+    }
+}
+
+@MainActor
+final class ScreenshotOutputSuccess {
+    private var recorded = false
+    private let record: () -> Void
+
+    init(record: @escaping () -> Void) {
+        self.record = record
+    }
+
+    func recordOnce() {
+        guard !recorded else { return }
+        recorded = true
+        record()
+    }
+}
+
+@MainActor
+final class ScreenshotRecoveryFrame {
+    var image: CGImage?
+    let scaleFactor: CGFloat
+    let request: ScreenshotCaptureRequest
+    let outputSuccess = ScreenshotOutputSuccess {
+        CaptureAnalyticsStore.shared.recordCapture(.screenshot)
+    }
+
+    init(image: CGImage, scaleFactor: CGFloat, request: ScreenshotCaptureRequest) {
+        self.image = image
+        self.scaleFactor = scaleFactor
+        self.request = request
+    }
+}
+
+enum ScreenshotTemporaryFileError: LocalizedError {
+    case unsafeDirectory
+    case invalidExtension
+    case missingImage
+
+    var errorDescription: String? {
+        switch self {
+        case .unsafeDirectory:
+            return "The temporary screenshot folder is not available."
+        case .invalidExtension:
+            return "The temporary screenshot format is not supported."
+        case .missingImage:
+            return "The temporary screenshot is no longer available."
+        }
+    }
+}
+
+final class ScreenshotTemporaryFileLease: @unchecked Sendable {
+    let url: URL
+    private let lock = NSLock()
+    private var isActive = true
+    private var isRetained = false
+
+    fileprivate init(url: URL) {
+        self.url = url
+    }
+
+    func keepForRecovery() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard isActive || isRetained,
+              FileManager.default.fileExists(atPath: url.path) else {
+            throw ScreenshotTemporaryFileError.missingImage
+        }
+        TinyClipsTemporaryFiles.retainScreenshot(url)
+        isActive = false
+        isRetained = true
+    }
+
+    func discard() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard isActive else { return }
+        do {
+            try TinyClipsTemporaryFiles.releaseScreenshot(url)
+        } catch {
+            TinyClipsTemporaryFiles.retainScreenshot(url)
+            NSLog("Could not remove temporary screenshot \(url.path): \(error.localizedDescription)")
+            isRetained = true
+        }
+        isActive = false
+    }
+
+    func discardExplicitly() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard isActive || isRetained else { return }
+        try TinyClipsTemporaryFiles.releaseScreenshot(url)
+        isActive = false
+        isRetained = false
+    }
+
+    deinit {
+        discard()
+    }
+}
+
+final class TemporaryEditorFileProtection: @unchecked Sendable {
+    private let path: String
+    private let lock = NSLock()
+    private var isActive = true
+
+    fileprivate init(path: String) {
+        self.path = path
+    }
+
+    func release() {
+        lock.lock()
+        let shouldRelease = isActive
+        isActive = false
+        lock.unlock()
+        if shouldRelease {
+            TinyClipsTemporaryFiles.releaseEditorProtection(path)
+        }
+    }
+
+    deinit {
+        release()
+    }
+}
 
 enum TinyClipsTemporaryFiles {
     private static let filenamePrefix = "TinyClips-"
+    private static let screenshotDirectoryName = "TinyClips-Screenshots"
+    private final class Ownership: @unchecked Sendable {
+        let lock = NSLock()
+        var activePaths: Set<String> = []
+        var retainedPaths: Set<String> = []
+        var editorPathCounts: [String: Int] = [:]
+    }
+
+    private static let ownership = Ownership()
 
     struct Summary: Sendable {
         let fileCount: Int
         let totalSize: Int64
+        let protectedCount: Int
+    }
+
+    struct PurgeReport: Sendable {
+        let removedCount: Int
+        let protectedCount: Int
     }
 
     static var directoryURL: URL {
         FileManager.default.temporaryDirectory
+    }
+
+    private static func screenshotDirectory(in root: URL) -> URL {
+        root.appendingPathComponent(screenshotDirectoryName, isDirectory: true)
     }
 
     static func makeURL(fileExtension: String) -> URL {
@@ -21,64 +345,218 @@ enum TinyClipsTemporaryFiles {
             .appendingPathExtension(fileExtension)
     }
 
-    @discardableResult
-    static func removeStaleFiles(olderThan date: Date) throws -> Int {
-        try removeMatchingFiles { fileURL in
-            guard let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]),
-                  let modificationDate = values.contentModificationDate else {
-                return false
+    static func makeScreenshotLease(
+        fileExtension: String,
+        root: URL = directoryURL
+    ) throws -> ScreenshotTemporaryFileLease {
+        let ext = fileExtension.lowercased()
+        guard ["png", "jpg", "jpeg", "webp"].contains(ext) else {
+            throw ScreenshotTemporaryFileError.invalidExtension
+        }
+        let directory = screenshotDirectory(in: root)
+        try validateScreenshotDirectory(directory)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try validateScreenshotDirectory(directory)
+
+        var url: URL
+        repeat {
+            url = directory
+                .appendingPathComponent("\(filenamePrefix)\(UUID().uuidString)")
+                .appendingPathExtension(ext)
+        } while FileManager.default.fileExists(atPath: url.path)
+
+        let ownershipPath = canonicalPath(url)
+        ownership.lock.lock()
+        ownership.activePaths.insert(ownershipPath)
+        ownership.lock.unlock()
+        return ScreenshotTemporaryFileLease(url: url)
+    }
+
+    private static func validateScreenshotDirectory(_ directory: URL) throws {
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: directory.path) {
+            guard attributes[.type] as? FileAttributeType == .typeDirectory else {
+                throw ScreenshotTemporaryFileError.unsafeDirectory
             }
-            return modificationDate < date
+        }
+    }
+
+    fileprivate static func retainScreenshot(_ url: URL) {
+        ownership.lock.lock()
+        defer { ownership.lock.unlock() }
+        let path = canonicalPath(url)
+        ownership.activePaths.remove(path)
+        ownership.retainedPaths.insert(path)
+    }
+
+    fileprivate static func releaseScreenshot(_ url: URL) throws {
+        ownership.lock.lock()
+        defer { ownership.lock.unlock() }
+        let path = canonicalPath(url)
+        guard ownership.activePaths.contains(path) || ownership.retainedPaths.contains(path) else { return }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            let fileError = error as NSError
+            guard fileError.domain == NSCocoaErrorDomain,
+                  fileError.code == NSFileNoSuchFileError || fileError.code == NSFileReadNoSuchFileError else {
+                throw error
+            }
+        }
+        ownership.activePaths.remove(path)
+        ownership.retainedPaths.remove(path)
+    }
+
+    static func protectEditorFile(_ url: URL) -> TemporaryEditorFileProtection {
+        let path = canonicalPath(url)
+        ownership.lock.lock()
+        ownership.editorPathCounts[path, default: 0] += 1
+        ownership.lock.unlock()
+        return TemporaryEditorFileProtection(path: path)
+    }
+
+    fileprivate static func releaseEditorProtection(_ path: String) {
+        ownership.lock.lock()
+        defer { ownership.lock.unlock() }
+        guard let count = ownership.editorPathCounts[path] else { return }
+        if count == 1 {
+            ownership.editorPathCounts.removeValue(forKey: path)
+        } else {
+            ownership.editorPathCounts[path] = count - 1
         }
     }
 
     @discardableResult
-    static func purge() throws -> Int {
-        try removeMatchingFiles { _ in true }
+    static func removeStaleFiles(
+        olderThan date: Date,
+        avoiding directories: [URL] = [],
+        root: URL = directoryURL
+    ) throws -> Int {
+        try removeMatchingFiles(olderThan: date, avoiding: directories, root: root).removedCount
     }
 
-    static func summary() throws -> Summary {
-        let fileManager = FileManager.default
-        let files = try fileManager.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        )
+    @discardableResult
+    static func purge(
+        avoiding directories: [URL] = [],
+        root: URL = directoryURL
+    ) throws -> PurgeReport {
+        try removeMatchingFiles(olderThan: nil, avoiding: directories, root: root)
+    }
 
+    static func summary(
+        avoiding directories: [URL] = [],
+        root: URL = directoryURL
+    ) throws -> Summary {
         var fileCount = 0
         var totalSize: Int64 = 0
-        for fileURL in files {
-            guard isTinyClipsTemporaryFile(fileURL),
-                  let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-                  values.isRegularFile == true else {
-                continue
-            }
+        var protectedCount = 0
+        for fileURL in try candidateFiles(in: root) {
+            guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]),
+                  values.isRegularFile == true, values.isSymbolicLink != true else { continue }
             fileCount += 1
             totalSize += Int64(values.fileSize ?? 0)
+            ownership.lock.lock()
+            let protected = isProtected(fileURL, root: root, avoiding: directories)
+            ownership.lock.unlock()
+            if protected {
+                protectedCount += 1
+            }
         }
-        return Summary(fileCount: fileCount, totalSize: totalSize)
+        return Summary(fileCount: fileCount, totalSize: totalSize, protectedCount: protectedCount)
     }
 
-    private static func removeMatchingFiles(shouldRemove: (URL) -> Bool) throws -> Int {
+    private static func removeMatchingFiles(
+        olderThan date: Date?,
+        avoiding directories: [URL],
+        root: URL
+    ) throws -> PurgeReport {
         let fileManager = FileManager.default
-        let files = try fileManager.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )
-
         var removedCount = 0
-        for fileURL in files {
-            guard isTinyClipsTemporaryFile(fileURL),
-                  let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]),
-                  values.isRegularFile == true,
-                  shouldRemove(fileURL) else {
+        var protectedCount = 0
+        for fileURL in try candidateFiles(in: root) {
+            guard let values = try? fileURL.resourceValues(
+                forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey]
+            ), values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+            if let date {
+                guard let modified = values.contentModificationDate, modified < date else { continue }
+            }
+            ownership.lock.lock()
+            if isProtected(fileURL, root: root, avoiding: directories) {
+                protectedCount += 1
+                ownership.lock.unlock()
                 continue
             }
-            try fileManager.removeItem(at: fileURL)
-            removedCount += 1
+            do {
+                try fileManager.removeItem(at: fileURL)
+                removedCount += 1
+                ownership.lock.unlock()
+            } catch {
+                ownership.lock.unlock()
+                throw error
+            }
         }
-        return removedCount
+        return PurgeReport(removedCount: removedCount, protectedCount: protectedCount)
+    }
+
+    private static func candidateFiles(in root: URL) throws -> [URL] {
+        let fileManager = FileManager.default
+        let keys: [URLResourceKey] = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]
+        let rootFiles = try fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles]
+        ).filter(isTinyClipsTemporaryFile)
+        let screenshots = screenshotDirectory(in: root)
+        guard let attributes = try? fileManager.attributesOfItem(atPath: screenshots.path),
+              attributes[.type] as? FileAttributeType == .typeDirectory else {
+            return rootFiles
+        }
+        let screenshotFiles = try fileManager.contentsOfDirectory(
+            at: screenshots,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles]
+        ).filter(isScreenshotTemporaryCandidate)
+        return rootFiles + screenshotFiles
+    }
+
+    private static func isManagedScreenshotCandidate(_ url: URL, root: URL) -> Bool {
+        isScreenshotTemporaryCandidate(url)
+            && canonicalPath(url.deletingLastPathComponent()) == canonicalPath(screenshotDirectory(in: root))
+    }
+
+    private static func isProtected(
+        _ url: URL,
+        root: URL,
+        avoiding directories: [URL]
+    ) -> Bool {
+        let path = canonicalPath(url)
+        if ownership.activePaths.contains(path)
+            || ownership.editorPathCounts[path] != nil
+            || ownership.retainedPaths.contains(path) {
+            return true
+        }
+        // Capture folders protect legacy root files, not the app-private screenshot directory.
+        return !isManagedScreenshotCandidate(url, root: root)
+            && isInsideAnyDirectory(url, directories: directories)
+    }
+
+    private static func canonicalPath(_ url: URL) -> String {
+        CaptureSettings.resolvingSymlinksInExistingPath(url).standardizedFileURL.path
+    }
+
+    static func isInsideAnyDirectory(_ url: URL, directories: [URL]) -> Bool {
+        let path = CaptureSettings.resolvingSymlinksInExistingPath(url).pathComponents.map { $0.lowercased() }
+        return directories.contains { directory in
+            let parent = CaptureSettings.resolvingSymlinksInExistingPath(directory).pathComponents.map { $0.lowercased() }
+            return path.count >= parent.count && Array(path.prefix(parent.count)) == parent
+        }
+    }
+
+    static func canSaveScreenshotPermanently(at url: URL, root: URL = directoryURL) -> Bool {
+        !isInsideAnyDirectory(url, directories: [screenshotDirectory(in: root)])
     }
 
     private static func isTinyClipsTemporaryFile(_ fileURL: URL) -> Bool {
@@ -95,6 +573,13 @@ enum TinyClipsTemporaryFiles {
         let webcamSuffix = "-webcam"
         guard identifier.hasSuffix(webcamSuffix) else { return false }
         return UUID(uuidString: String(identifier.dropLast(webcamSuffix.count))) != nil
+    }
+
+    private static func isScreenshotTemporaryCandidate(_ fileURL: URL) -> Bool {
+        guard ["png", "jpg", "jpeg", "webp"].contains(fileURL.pathExtension.lowercased()) else { return false }
+        let stem = fileURL.deletingPathExtension().lastPathComponent
+        guard stem.hasPrefix(filenamePrefix) else { return false }
+        return UUID(uuidString: String(stem.dropFirst(filenamePrefix.count))) != nil
     }
 }
 
@@ -151,6 +636,8 @@ class CaptureManager: ObservableObject {
         }
     }
     @Published private(set) var isScreenshotCaptureInProgress = false
+    private var screenshotRecoveryDepth = 0
+    var isScreenshotRecoveryInProgress: Bool { screenshotRecoveryDepth > 0 }
     @Published private(set) var isRecordingSetupInProgress = false {
         didSet {
             if !isRecordingSetupInProgress {
@@ -274,6 +761,7 @@ class CaptureManager: ObservableObject {
     private var scrollingCaptureScaleFactor: CGFloat = 1
     private var scrollingCaptureFrameCount = 0
     private var scrollingCaptureIsAutomation = false
+    private var scrollingScreenshotRequest: ScreenshotCaptureRequest?
     private var isStoppingScrollingCapture = false
     private var processingIndicatorShownAt: Date?
     private var isStoppingRecording = false
@@ -600,6 +1088,19 @@ class CaptureManager: ObservableObject {
             }
         }
 
+        let request: ScreenshotCaptureRequest
+        do {
+            request = try ScreenshotCaptureRequest(
+                settings: .shared
+            )
+        } catch {
+            SaveService.shared.showError("Screenshot could not start: \(error.localizedDescription)")
+            if shouldReturnToPicker {
+                showScreenshotPicker(cursorScreen: cursorScreen)
+            }
+            return
+        }
+
         switch mode {
         case .region:
             guard let region = await RegionSelector.selectRegion() else {
@@ -611,6 +1112,7 @@ class CaptureManager: ObservableObject {
             doScreenshotCapture(
                 region: region,
                 window: nil,
+                request: request,
                 countdownEnabled: countdownEnabled,
                 countdownDuration: countdownDuration,
                 shouldReturnToPickerAfterCapture: shouldReturnToPicker
@@ -627,6 +1129,7 @@ class CaptureManager: ObservableObject {
             doScreenshotCapture(
                 region: region,
                 window: nil,
+                request: request,
                 countdownEnabled: countdownEnabled,
                 countdownDuration: countdownDuration,
                 shouldReturnToPickerAfterCapture: shouldReturnToPicker
@@ -642,6 +1145,7 @@ class CaptureManager: ObservableObject {
             doScreenshotCapture(
                 region: nil,
                 window: window,
+                request: request,
                 countdownEnabled: countdownEnabled,
                 countdownDuration: countdownDuration,
                 shouldReturnToPickerAfterCapture: shouldReturnToPicker
@@ -659,6 +1163,7 @@ class CaptureManager: ObservableObject {
             doScreenshotCapture(
                 region: selection.region,
                 window: nil,
+                request: request,
                 countdownEnabled: countdownEnabled,
                 countdownDuration: countdownDuration,
                 shouldReturnToPickerAfterCapture: shouldReturnToPicker
@@ -672,7 +1177,11 @@ class CaptureManager: ObservableObject {
                 return
             }
             do {
-                try await startScrollingCapture(region: region, shouldReturnToPickerAfterCapture: shouldReturnToPicker)
+                try await startScrollingCapture(
+                    region: region,
+                    shouldReturnToPickerAfterCapture: shouldReturnToPicker,
+                    screenshotRequest: request
+                )
             } catch {
                 debugPrint("Scrolling capture could not start: \(error)")
             }
@@ -682,6 +1191,7 @@ class CaptureManager: ObservableObject {
     private func startScrollingCapture(
         region: CaptureRegion,
         shouldReturnToPickerAfterCapture: Bool,
+        screenshotRequest: ScreenshotCaptureRequest? = nil,
         isAutomation: Bool = false
     ) async throws {
         guard scrollingCaptureSession == nil else {
@@ -690,6 +1200,7 @@ class CaptureManager: ObservableObject {
         scrollingCaptureScaleFactor = region.scaleFactor
         scrollingCaptureFrameCount = 0
         scrollingCaptureIsAutomation = isAutomation
+        scrollingScreenshotRequest = screenshotRequest
         isScreenshotCaptureInProgress = true
         isStoppingScrollingCapture = false
         AccessibilityAnnouncementService.shared.announce(
@@ -880,6 +1391,7 @@ class CaptureManager: ObservableObject {
         guard scrollingCaptureSession === session else { return }
         let wasAutomation = scrollingCaptureIsAutomation
         let imageScaleFactor = scrollingCaptureScaleFactor
+        let request = scrollingScreenshotRequest
         if let panel = scrollingCapturePanel {
             scrollingCapturePanelPosition = panel.frame.origin
         }
@@ -890,6 +1402,7 @@ class CaptureManager: ObservableObject {
         scrollingCaptureScaleFactor = 1
         scrollingCaptureFrameCount = 0
         scrollingCaptureIsAutomation = false
+        scrollingScreenshotRequest = nil
         isStoppingScrollingCapture = false
         if !wasAutomation, image == nil {
             isScreenshotCaptureInProgress = false
@@ -917,6 +1430,16 @@ class CaptureManager: ObservableObject {
             return
         }
         guard let image else { return }
+        guard let request else {
+            isScreenshotCaptureInProgress = false
+            notifyStoreReviewCaptureWorkBecameIdle()
+            SaveService.shared.showError("Scrolling capture failed: Screenshot output settings are unavailable.")
+            if shouldReturnToPicker,
+               CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
+                showScreenshotPicker()
+            }
+            return
+        }
 
         Task {
             defer {
@@ -925,36 +1448,12 @@ class CaptureManager: ObservableObject {
             }
             var didPresentEditor = false
             do {
-                let settings = CaptureSettings.shared
-                let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
-                let outputURL = shouldSaveImmediately
-                    ? SaveService.shared.generateURL(for: .screenshot)
-                    : TinyClipsTemporaryFiles.makeURL(fileExtension: settings.imageFormat.rawValue)
-                let url = try ScreenshotCapture.saveImage(
+                didPresentEditor = try self.deliverScreenshot(
                     image,
-                    to: outputURL,
-                    scaleFactor: imageScaleFactor
+                    scaleFactor: imageScaleFactor,
+                    request: request,
+                    reopenPickerAfterClose: shouldReturnToPicker
                 )
-                CaptureAnalyticsStore.shared.recordCapture(.screenshot)
-                if settings.showScreenshotEditor {
-                    if shouldSaveImmediately {
-                        SaveService.shared.handleSavedFile(url: url, type: .screenshot)
-                    } else {
-                        SaveService.shared.copyToClipboardIfEnabled(url: url, type: .screenshot)
-                    }
-                    let initialSaveURL = shouldSaveImmediately
-                        ? url
-                        : SaveService.shared.generateURL(for: .screenshot, fileExtension: settings.imageFormat.rawValue)
-                    showScreenshotEditor(
-                        for: url,
-                        initialSaveURL: initialSaveURL,
-                        deleteSourceOnCancel: !shouldSaveImmediately,
-                        reopenPickerAfterClose: shouldReturnToPicker
-                    )
-                    didPresentEditor = true
-                } else {
-                    SaveService.shared.handleSavedFile(url: url, type: .screenshot)
-                }
             } catch {
                 SaveService.shared.showError("Scrolling capture failed: \(error.localizedDescription)")
             }
@@ -970,6 +1469,7 @@ class CaptureManager: ObservableObject {
     private func doScreenshotCapture(
         region: CaptureRegion?,
         window: SCWindow?,
+        request: ScreenshotCaptureRequest,
         countdownEnabled: Bool,
         countdownDuration: Int,
         shouldReturnToPickerAfterCapture: Bool
@@ -989,45 +1489,21 @@ class CaptureManager: ObservableObject {
                 }
                 var didPresentEditor = false
                 do {
-                    let settings = CaptureSettings.shared
-                    let shouldSaveImmediately = !settings.showScreenshotEditor || settings.saveImmediatelyScreenshot
-                    let outputURL: URL = shouldSaveImmediately
-                        ? SaveService.shared.generateURL(for: .screenshot)
-                        : TinyClipsTemporaryFiles.makeURL(fileExtension: settings.imageFormat.rawValue)
-
-                    let url: URL
+                    let captured: (image: CGImage, scaleFactor: CGFloat)
                     if let window {
-                        url = try await ScreenshotCapture.captureWindow(window, outputURL: outputURL)
+                        captured = try await ScreenshotCapture.captureWindowImage(window)
                     } else if let region {
-                        url = try await ScreenshotCapture.capture(region: region, outputURL: outputURL)
+                        captured = try await ScreenshotCapture.captureImageWithScale(region: region)
                     } else {
                         return
                     }
 
-                    CaptureAnalyticsStore.shared.recordCapture(.screenshot)
-
-                    if settings.showScreenshotEditor {
-                        if shouldSaveImmediately {
-                            SaveService.shared.handleSavedFile(url: url, type: .screenshot)
-                        } else {
-                            SaveService.shared.copyToClipboardIfEnabled(url: url, type: .screenshot)
-                        }
-                        let initialSaveURL = shouldSaveImmediately
-                            ? url
-                            : SaveService.shared.generateURL(
-                                for: .screenshot,
-                                fileExtension: settings.imageFormat.rawValue
-                            )
-                        self.showScreenshotEditor(
-                            for: url,
-                            initialSaveURL: initialSaveURL,
-                            deleteSourceOnCancel: !shouldSaveImmediately,
-                            reopenPickerAfterClose: shouldReturnToPickerAfterCapture
-                        )
-                        didPresentEditor = true
-                    } else {
-                        SaveService.shared.handleSavedFile(url: url, type: .screenshot)
-                    }
+                    didPresentEditor = try self.deliverScreenshot(
+                        captured.image,
+                        scaleFactor: captured.scaleFactor,
+                        request: request,
+                        reopenPickerAfterClose: shouldReturnToPickerAfterCapture
+                    )
                 } catch {
                     SaveService.shared.showError("Screenshot failed: \(error.localizedDescription)")
                 }
@@ -1056,6 +1532,620 @@ class CaptureManager: ObservableObject {
         }
         self.countdownWindow = window
         window.show()
+    }
+
+    private func deliverScreenshot(
+        _ image: CGImage,
+        scaleFactor: CGFloat,
+        request: ScreenshotCaptureRequest,
+        reopenPickerAfterClose: Bool
+    ) throws -> Bool {
+        let frame = ScreenshotRecoveryFrame(image: image, scaleFactor: scaleFactor, request: request)
+        var temporaryFile = request.temporaryFile
+        var sourceURL: URL
+        var copiedInRecovery = false
+        var savedInRecovery = false
+        do {
+            sourceURL = try writeScreenshot(
+                image,
+                scaleFactor: scaleFactor,
+                encoding: request.encoding,
+                temporaryFile: temporaryFile
+            )
+        } catch {
+            temporaryFile?.discard()
+            temporaryFile = nil
+            let recovery = recoverScreenshotInMemory(
+                image, scaleFactor: scaleFactor, request: request,
+                initialError: error, requiresEditor: request.policy.openEditor,
+                frame: frame
+            )
+            switch recovery {
+            case let .useSource(source, copied, saved):
+                sourceURL = source.0
+                temporaryFile = source.1
+                copiedInRecovery = copied
+                savedInRecovery = saved
+            case .finished:
+                return false
+            }
+        }
+
+        let remainingPolicy = ScreenshotOutputPolicy(
+            saveToDisk: request.policy.saveToDisk && !savedInRecovery,
+            copyToClipboard: request.policy.copyToClipboard && !copiedInRecovery,
+            openEditor: request.policy.openEditor
+        )
+        guard remainingPolicy.destination != nil else {
+            temporaryFile?.discard()
+            return false
+        }
+
+        return try ScreenshotOutputRouter.deliver(
+            policy: remainingPolicy,
+            recordSaved: {
+                SaveService.shared.handleSavedFile(url: sourceURL, type: .screenshot, copyToClipboard: false)
+            },
+            copy: {
+                self.copyScreenshotOutput(from: sourceURL, frame: frame)
+            },
+            recoverCopy: {
+                self.recoverScreenshotCopy(
+                    sourceURL: &sourceURL,
+                    temporaryFile: &temporaryFile,
+                    format: request.encoding.format,
+                    willOpenEditor: remainingPolicy.openEditor,
+                    frame: frame
+                )
+            },
+            openEditor: {
+                self.presentScreenshotEditorOrRecover(
+                    sourceURL: sourceURL,
+                    temporaryFile: temporaryFile,
+                    format: request.encoding.format,
+                    reopenPickerAfterClose: reopenPickerAfterClose,
+                    frame: frame
+                )
+            },
+            releaseTemporary: {
+                temporaryFile?.discard()
+                temporaryFile = nil
+            },
+            outputSucceeded: { frame.outputSuccess.recordOnce() }
+        )
+    }
+
+    private func recoverScreenshotInMemory(
+        _ image: CGImage,
+        scaleFactor: CGFloat,
+        request: ScreenshotCaptureRequest,
+        initialError: Error,
+        requiresEditor: Bool,
+        frame: ScreenshotRecoveryFrame
+    ) -> ScreenshotMemoryRecoveryResult<(URL, ScreenshotTemporaryFileLease?)> {
+        screenshotRecoveryDepth += 1
+        defer { finishScreenshotRecovery() }
+        return ScreenshotMemoryRecovery.recover(
+            initialError: initialError,
+            requiresSave: request.policy.saveToDisk,
+            requiresEditor: requiresEditor,
+            choose: { error, copied in
+                self.screenshotMemoryRecoveryAction(
+                    error: error,
+                    copied: copied,
+                    requiresSave: request.policy.saveToDisk,
+                    requiresEditor: requiresEditor
+                )
+            },
+            retry: {
+                let replacement: ScreenshotTemporaryFileLease?
+                if request.policy.saveToDisk {
+                    replacement = nil
+                } else {
+                    replacement = try TinyClipsTemporaryFiles.makeScreenshotLease(
+                        fileExtension: request.encoding.format.rawValue,
+                        root: request.temporaryRoot
+                    )
+                }
+                do {
+                    let url = try self.writeScreenshot(
+                        image,
+                        scaleFactor: scaleFactor,
+                        encoding: request.encoding,
+                        temporaryFile: replacement
+                    )
+                    if request.policy.saveToDisk { frame.outputSuccess.recordOnce() }
+                    return (url, replacement)
+                } catch {
+                    replacement?.discard()
+                    throw error
+                }
+            },
+            copy: {
+                let copied = SaveService.shared.copyImageToClipboard(ScreenshotCapture.clipboardImage(
+                    image,
+                    scaleFactor: scaleFactor,
+                    options: request.encoding
+                ))
+                if copied { frame.outputSuccess.recordOnce() }
+                return copied
+            },
+            saveAs: {
+                guard let url = self.saveScreenshotRecoveryImage(
+                    image,
+                    scaleFactor: scaleFactor,
+                    encoding: request.encoding,
+                    frame: frame
+                ) else { return nil }
+                return (url, nil)
+            }
+        )
+    }
+
+    private func writeScreenshot(
+        _ image: CGImage,
+        scaleFactor: CGFloat,
+        encoding: ScreenshotEncodingOptions,
+        temporaryFile: ScreenshotTemporaryFileLease?
+    ) throws -> URL {
+        if let temporaryFile {
+            return try ScreenshotCapture.saveImage(
+                image, to: temporaryFile.url, scaleFactor: scaleFactor, options: encoding
+            )
+        }
+        let outputURL = SaveService.shared.generateURL(
+            for: .screenshot,
+            fileExtension: encoding.format.rawValue
+        )
+        return try ScreenshotCapture.saveImage(
+            image,
+            to: outputURL,
+            scaleFactor: scaleFactor,
+            options: encoding
+        )
+    }
+
+    private func screenshotMemoryRecoveryAction(
+        error: String,
+        copied: Bool,
+        requiresSave: Bool,
+        requiresEditor: Bool
+    ) -> ScreenshotMemoryRecoveryAction {
+        let problem = "The screenshot could not be prepared."
+        AccessibilityAnnouncementService.shared.announceError(problem)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = problem
+        var detail = "The screenshot is still available in memory.\n\(error)"
+        if copied {
+            detail += "\n\nThe screenshot was copied to the clipboard."
+            if requiresSave || requiresEditor {
+                detail += " Retry or save it to complete the remaining output."
+            }
+        } else if requiresEditor {
+            detail += "\n\nRetry or save the screenshot to open it in the editor."
+        }
+        alert.informativeText = detail
+        _ = alert.addButton(withTitle: "Retry")
+        _ = alert.addButton(withTitle: "Copy")
+        _ = alert.addButton(withTitle: "Save As…")
+        _ = alert.addButton(withTitle: "Discard Screenshot")
+        let response = alert.runModal()
+        switch response {
+        case .alertFirstButtonReturn:
+            return .retry
+        case .alertSecondButtonReturn:
+            return .copy
+        case .alertThirdButtonReturn:
+            return .saveAs
+        case NSApplication.ModalResponse(
+            rawValue: NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + 3
+        ):
+            return .discard
+        default:
+            return .showAgain
+        }
+    }
+
+    private enum ScreenshotRecoveryAction {
+        case retry
+        case saveAs
+        case keep
+        case discard
+    }
+
+    private func screenshotRecoveryAction(
+        forEditor: Bool,
+        sourceURL: URL,
+        isTemporary: Bool,
+        willOpenEditor: Bool = false
+    ) -> ScreenshotRecoveryAction {
+        let problem = forEditor
+            ? "The screenshot editor could not be opened."
+            : "The screenshot could not be copied to the clipboard."
+        AccessibilityAnnouncementService.shared.announceError(problem)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = problem
+        var detail = isTemporary
+            ? "Retry, save a permanent copy, keep for recovery, or discard the temporary image at:\n\(sourceURL.path)"
+            : "Retry, save another copy, or keep the screenshot already saved at:\n\(sourceURL.path)"
+        if willOpenEditor {
+            detail += "\n\nThe editor will still open unless you discard the screenshot."
+        }
+        alert.informativeText = detail
+        _ = alert.addButton(withTitle: forEditor ? "Retry Editor" : "Retry Copy")
+        _ = alert.addButton(withTitle: "Save As…")
+        let keepButton = alert.addButton(withTitle: isTemporary ? "Keep for Recovery" : "Keep Saved Screenshot")
+        keepButton.keyEquivalent = "\u{1b}"
+        if isTemporary {
+            _ = alert.addButton(withTitle: "Discard Screenshot")
+        }
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            return .retry
+        case .alertSecondButtonReturn:
+            return .saveAs
+        case NSApplication.ModalResponse(
+            rawValue: NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + 3
+        ) where isTemporary:
+            return .discard
+        default:
+            return .keep
+        }
+    }
+
+    private func keepScreenshotForRecovery(_ temporaryFile: ScreenshotTemporaryFileLease?) -> Bool {
+        guard let temporaryFile else { return true }
+        do {
+            try temporaryFile.keepForRecovery()
+            return true
+        } catch {
+            SaveService.shared.showError("Could not keep the screenshot for recovery: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func discardScreenshotForRecovery(_ temporaryFile: ScreenshotTemporaryFileLease?) -> Bool {
+        guard let temporaryFile else { return false }
+        do {
+            try temporaryFile.discardExplicitly()
+            return true
+        } catch {
+            SaveService.shared.showError("Could not discard the temporary screenshot: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func chooseScreenshotRecoveryDestination(format: ImageFormat) -> URL? {
+        let panel = NSSavePanel()
+        panel.title = "Save screenshot"
+        panel.message = "Choose where to save the recovered screenshot."
+        panel.nameFieldLabel = "Name"
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [format.utType]
+        panel.directoryURL = SaveService.shared.outputDirectoryURL(for: .screenshot)
+        panel.nameFieldStringValue = SaveService.shared.generatedFileName(
+            for: .screenshot,
+            fileExtension: format.rawValue
+        )
+        guard panel.runModal() == .OK, var destination = panel.url else { return nil }
+        if destination.pathExtension.isEmpty {
+            destination.appendPathExtension(format.rawValue)
+        }
+        guard TinyClipsTemporaryFiles.canSaveScreenshotPermanently(at: destination) else {
+            SaveService.shared.showError("Choose a location outside the temporary screenshot folder.")
+            return nil
+        }
+        return destination
+    }
+
+    private func saveScreenshotRecoveryCopy(
+        sourceURL: URL, format: ImageFormat, frame: ScreenshotRecoveryFrame? = nil
+    ) -> URL? {
+        guard let destination = chooseScreenshotRecoveryDestination(format: format) else { return nil }
+        do {
+            let data = try Data(contentsOf: sourceURL, options: .mappedIfSafe)
+            try data.write(to: destination, options: .atomic)
+            frame?.outputSuccess.recordOnce()
+            SaveService.shared.handleSavedFile(url: destination, type: .screenshot, copyToClipboard: false)
+            return destination
+        } catch {
+            SaveService.shared.showError("Could not save the screenshot: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func saveScreenshotRecoveryImage(
+        _ image: CGImage,
+        scaleFactor: CGFloat,
+        encoding: ScreenshotEncodingOptions,
+        frame: ScreenshotRecoveryFrame
+    ) -> URL? {
+        guard let destination = chooseScreenshotRecoveryDestination(format: encoding.format) else { return nil }
+        do {
+            let url = try ScreenshotCapture.saveImage(
+                image, to: destination, scaleFactor: scaleFactor, options: encoding
+            )
+            frame.outputSuccess.recordOnce()
+            SaveService.shared.handleSavedFile(url: url, type: .screenshot, copyToClipboard: false)
+            return url
+        } catch {
+            SaveService.shared.showError("Could not save the screenshot: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func recoverScreenshotCopy(
+        sourceURL: inout URL,
+        temporaryFile: inout ScreenshotTemporaryFileLease?,
+        format: ImageFormat,
+        willOpenEditor: Bool = false,
+        frame: ScreenshotRecoveryFrame? = nil
+    ) -> ScreenshotCopyRecoveryResult {
+        screenshotRecoveryDepth += 1
+        defer { finishScreenshotRecovery() }
+        while true {
+            if let recovery = recoverUnavailableScreenshotSource(
+                sourceURL: sourceURL, frame: frame,
+                temporaryFile: temporaryFile, requiresEditor: willOpenEditor
+            ) {
+                temporaryFile = nil
+                switch recovery {
+                case .finished:
+                    return .discarded
+                case let .useSource(source, copied, saved):
+                    sourceURL = source.0
+                    temporaryFile = source.1
+                    if copied || saved || copyScreenshotOutput(from: sourceURL, frame: frame) {
+                        return .available
+                    }
+                    continue
+                }
+            }
+            switch screenshotRecoveryAction(
+                forEditor: false,
+                sourceURL: sourceURL,
+                isTemporary: temporaryFile != nil,
+                willOpenEditor: willOpenEditor
+            ) {
+            case .retry:
+                if copyScreenshotOutput(from: sourceURL, frame: frame) {
+                    return .available
+                }
+            case .saveAs:
+                if let savedURL = saveScreenshotRecoveryCopy(sourceURL: sourceURL, format: format, frame: frame) {
+                    temporaryFile?.discard()
+                    temporaryFile = nil
+                    sourceURL = savedURL
+                    return .available
+                }
+            case .keep:
+                if keepScreenshotForRecovery(temporaryFile) {
+                    return .retained
+                }
+            case .discard:
+                if discardScreenshotForRecovery(temporaryFile) {
+                    temporaryFile = nil
+                    return .discarded
+                }
+            }
+        }
+    }
+
+    private func presentScreenshotEditorOrRecover(
+        sourceURL: URL,
+        temporaryFile: ScreenshotTemporaryFileLease?,
+        format: ImageFormat,
+        reopenPickerAfterClose: Bool,
+        frame: ScreenshotRecoveryFrame
+    ) -> Bool {
+        if tryShowScreenshotEditor(
+            sourceURL: sourceURL,
+            temporaryFile: temporaryFile,
+            format: format,
+            reopenPickerAfterClose: reopenPickerAfterClose,
+            frame: frame
+        ) {
+            return true
+        }
+        return recoverScreenshotEditor(
+            sourceURL: sourceURL,
+            temporaryFile: temporaryFile,
+            format: format,
+            reopenPickerAfterClose: reopenPickerAfterClose,
+            frame: frame
+        )
+    }
+
+    private func tryShowScreenshotEditor(
+        sourceURL: URL,
+        temporaryFile: ScreenshotTemporaryFileLease?,
+        format: ImageFormat,
+        reopenPickerAfterClose: Bool,
+        frame: ScreenshotRecoveryFrame
+    ) -> Bool {
+        guard let image = ImagePixelDensity.loadImage(contentsOf: sourceURL),
+              image.cgImage(forProposedRect: nil, context: nil, hints: nil) != nil else {
+            return false
+        }
+        let initialSaveURL: URL
+        if let temporaryFile {
+            initialSaveURL = temporaryFile.url.deletingLastPathComponent().appendingPathComponent(
+                SaveService.shared.generatedFileName(for: .screenshot, fileExtension: format.rawValue)
+            )
+        } else {
+            initialSaveURL = sourceURL
+        }
+        showScreenshotEditor(
+            for: sourceURL,
+            initialSaveURL: initialSaveURL,
+            deleteSourceOnCancel: temporaryFile != nil,
+            reopenPickerAfterClose: reopenPickerAfterClose,
+            temporaryFile: temporaryFile,
+            onPresentationFailure: { [self] in
+                let presented = self.recoverScreenshotEditor(
+                    sourceURL: sourceURL,
+                    temporaryFile: temporaryFile,
+                    format: format,
+                    reopenPickerAfterClose: reopenPickerAfterClose,
+                    frame: frame
+                )
+                if !presented {
+                    self.editorWindowClosed { [weak self] in
+                        if reopenPickerAfterClose,
+                           CaptureSettings.shared.shouldShowCapturePickerAfterCapture(for: .screenshot) {
+                            self?.showScreenshotPicker()
+                        }
+                    }
+                }
+            },
+            onPresentationSuccess: {
+                frame.outputSuccess.recordOnce()
+                frame.image = nil
+            }
+        )
+        return true
+    }
+
+    private func recoverScreenshotEditor(
+        sourceURL: URL,
+        temporaryFile: ScreenshotTemporaryFileLease?,
+        format: ImageFormat,
+        reopenPickerAfterClose: Bool,
+        frame: ScreenshotRecoveryFrame
+    ) -> Bool {
+        screenshotRecoveryDepth += 1
+        defer { finishScreenshotRecovery() }
+        while true {
+            if let recovery = recoverUnavailableScreenshotSource(
+                sourceURL: sourceURL, frame: frame, temporaryFile: temporaryFile, requiresEditor: true
+            ) {
+                switch recovery {
+                case .finished:
+                    return false
+                case let .useSource(source, _, _):
+                    return presentScreenshotEditorOrRecover(
+                        sourceURL: source.0,
+                        temporaryFile: source.1,
+                        format: format,
+                        reopenPickerAfterClose: reopenPickerAfterClose,
+                        frame: frame
+                    )
+                }
+            }
+            switch screenshotRecoveryAction(
+                forEditor: true,
+                sourceURL: sourceURL,
+                isTemporary: temporaryFile != nil
+            ) {
+            case .retry:
+                if tryShowScreenshotEditor(
+                    sourceURL: sourceURL,
+                    temporaryFile: temporaryFile,
+                    format: format,
+                    reopenPickerAfterClose: reopenPickerAfterClose,
+                    frame: frame
+                ) {
+                    return true
+                }
+            case .saveAs:
+                if saveScreenshotRecoveryCopy(sourceURL: sourceURL, format: format, frame: frame) != nil {
+                    temporaryFile?.discard()
+                    return false
+                }
+            case .keep:
+                if keepScreenshotForRecovery(temporaryFile) {
+                    return false
+                }
+            case .discard:
+                if discardScreenshotForRecovery(temporaryFile) {
+                    return false
+                }
+            }
+        }
+    }
+
+    private func recoverUnavailableScreenshotSource(
+        sourceURL: URL,
+        frame: ScreenshotRecoveryFrame?,
+        temporaryFile: ScreenshotTemporaryFileLease?,
+        requiresEditor: Bool
+    ) -> ScreenshotMemoryRecoveryResult<(URL, ScreenshotTemporaryFileLease?)>? {
+        ScreenshotUnavailableSourceRecovery.ifMissing(
+            sourceExists: FileManager.default.fileExists(atPath: sourceURL.path),
+            saveToDisk: frame?.request.policy.saveToDisk == true,
+            recover: {
+                temporaryFile?.discard()
+                guard let frame, let image = frame.image else {
+                    SaveService.shared.showError("The screenshot is no longer available for recovery.")
+                    return .finished
+                }
+                return recoverScreenshotInMemory(
+                    image,
+                    scaleFactor: frame.scaleFactor,
+                    request: frame.request,
+                    initialError: ScreenshotTemporaryFileError.missingImage,
+                    requiresEditor: requiresEditor,
+                    frame: frame
+                )
+            },
+            recordSavedRetry: { source in
+                SaveService.shared.handleSavedFile(
+                    url: source.0, type: .screenshot, copyToClipboard: false
+                )
+            }
+        )
+    }
+
+    private func retainScreenshotAfterUnexpectedClose(
+        _ temporaryFile: ScreenshotTemporaryFileLease,
+        format: ImageFormat
+    ) {
+        screenshotRecoveryDepth += 1
+        defer { finishScreenshotRecovery() }
+        while FileManager.default.fileExists(atPath: temporaryFile.url.path) {
+            do {
+                try temporaryFile.keepForRecovery()
+                let message = "The unsaved screenshot was kept for recovery at \(temporaryFile.url.path)."
+                AccessibilityAnnouncementService.shared.announce(message, priority: .high)
+                SaveService.shared.showNotice(message)
+                return
+            } catch {
+                let problem = "The unsaved screenshot could not be kept for recovery."
+                AccessibilityAnnouncementService.shared.announceError(problem)
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = problem
+                alert.informativeText = "\(error.localizedDescription)\n\nRetry, save a permanent copy, or discard the screenshot."
+                _ = alert.addButton(withTitle: "Retry")
+                _ = alert.addButton(withTitle: "Save As…")
+                _ = alert.addButton(withTitle: "Discard Screenshot")
+                switch alert.runModal() {
+                case .alertSecondButtonReturn:
+                    if saveScreenshotRecoveryCopy(sourceURL: temporaryFile.url, format: format) != nil {
+                        temporaryFile.discard()
+                        return
+                    }
+                case .alertThirdButtonReturn:
+                    if discardScreenshotForRecovery(temporaryFile) { return }
+                default:
+                    break
+                }
+            }
+        }
+        SaveService.shared.showError("The screenshot is no longer available for recovery.")
+    }
+
+    private func copyScreenshotOutput(from url: URL, frame: ScreenshotRecoveryFrame?) -> Bool {
+        let copied = SaveService.shared.copyScreenshotToClipboard(from: url)
+        if copied { frame?.outputSuccess.recordOnce() }
+        return copied
+    }
+
+    private func finishScreenshotRecovery() {
+        screenshotRecoveryDepth -= 1
+        scheduleStoreReviewWhenCaptureIsIdle()
     }
 
     /// Starts setting up a video recording. `forStudio` makes it a Studio recording: the screen
@@ -2412,16 +3502,51 @@ class CaptureManager: ObservableObject {
         for url: URL,
         initialSaveURL: URL,
         deleteSourceOnCancel: Bool,
-        reopenPickerAfterClose: Bool
+        reopenPickerAfterClose: Bool,
+        temporaryFile: ScreenshotTemporaryFileLease? = nil,
+        onPresentationFailure: (() -> Void)? = nil,
+        onPresentationSuccess: (() -> Void)? = nil
     ) {
+        let onSaved: ((URL) -> Void)?
+        let onUnexpectedClose: (() -> Void)?
+        if let temporaryFile {
+            onSaved = { [weak self] savedURL in
+                temporaryFile.discard()
+                if let self {
+                    self.handleEditedScreenshotSave(savedURL)
+                } else {
+                    SaveService.shared.handleSavedFile(url: savedURL, type: .screenshot)
+                }
+            }
+            onUnexpectedClose = { [self] in
+                retainScreenshotAfterUnexpectedClose(
+                    temporaryFile,
+                    format: ImageFormat(rawValue: temporaryFile.url.pathExtension.lowercased()) ?? .png
+                )
+            }
+        } else {
+            onSaved = nil
+            onUnexpectedClose = nil
+        }
         ScreenshotEditorRegistry.shared.present(
             imageURL: url,
             initialSaveURL: initialSaveURL,
-            deleteSourceAfterSave: deleteSourceOnCancel
+            deleteSourceAfterSave: deleteSourceOnCancel,
+            onSaved: onSaved,
+            onPresentationFailure: onPresentationFailure,
+            onPresentationSuccess: onPresentationSuccess,
+            onUnexpectedClose: onUnexpectedClose
         ) { [weak self] resultURL in
-            if let resultURL {
-                SaveService.shared.handleSavedFile(url: resultURL, type: .screenshot)
-            } else if deleteSourceOnCancel {
+            if let resultURL, temporaryFile == nil {
+                if let self {
+                    self.handleEditedScreenshotSave(resultURL)
+                } else {
+                    SaveService.shared.handleSavedFile(url: resultURL, type: .screenshot)
+                }
+            }
+            if let temporaryFile {
+                temporaryFile.discard()
+            } else if resultURL == nil && deleteSourceOnCancel {
                 try? FileManager.default.removeItem(at: url)
             }
             DispatchQueue.main.async { [weak self] in
@@ -2433,6 +3558,17 @@ class CaptureManager: ObservableObject {
                 }
             }
         }
+    }
+
+    private func handleEditedScreenshotSave(_ url: URL) {
+        SaveService.shared.handleSavedFile(url: url, type: .screenshot, copyToClipboard: false)
+        guard CaptureSettings.shared.shouldCopyToClipboard(for: .screenshot),
+              !SaveService.shared.copyScreenshotToClipboard(from: url) else { return }
+        var sourceURL = url
+        var temporaryFile: ScreenshotTemporaryFileLease? = nil
+        let ext = url.pathExtension.lowercased()
+        let format = ext == "jpeg" ? ImageFormat.jpeg : ImageFormat(rawValue: ext) ?? .png
+        _ = recoverScreenshotCopy(sourceURL: &sourceURL, temporaryFile: &temporaryFile, format: format)
     }
 
     func openRecentCapture(_ item: RecentCaptureItem) {

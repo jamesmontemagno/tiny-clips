@@ -6,6 +6,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -19,6 +20,13 @@ using Windows.Storage;
 using Windows.Storage.Pickers;
 
 namespace TinyClips.App;
+
+internal enum ScreenshotEditorLoadOutcome
+{
+    Loaded,
+    Failed,
+    Closed,
+}
 
 /// <summary>
 /// Screenshot editor shell with annotation parity to the macOS app: crop plus rectangle, ellipse,
@@ -42,6 +50,10 @@ public sealed partial class ScreenshotEditorWindow : Window
     private string _activeSavePath;
     private readonly CapturedFrame? _initialFrame;
     private readonly Task<string>? _pendingSave;
+    private readonly bool _isTemporarySource;
+    private readonly ScreenshotTemporaryFileLease? _temporaryLease;
+    private readonly TaskCompletionSource<ScreenshotEditorLoadOutcome> _initialLoad =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly WindowOpenTrace? _openTrace;
 
     // Discard-changes-on-close tracking (parity with macOS's hasUnsavedChanges exit
@@ -65,7 +77,8 @@ public sealed partial class ScreenshotEditorWindow : Window
     private bool _initialLoadStarted;
 
     public ScreenshotEditorWindow(string filePath)
-        : this(filePath, initialFrame: null, pendingSave: null, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
+        : this(filePath, initialFrame: null, pendingSave: null, temporaryLease: null,
+            isTemporarySource: false, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
     {
     }
 
@@ -75,25 +88,43 @@ public sealed partial class ScreenshotEditorWindow : Window
     /// Open folder) as soon as that task yields the final path.
     /// </summary>
     public ScreenshotEditorWindow(CapturedFrame frame, Task<string> pendingSave)
-        : this(string.Empty, frame, pendingSave, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
+        : this(string.Empty, frame, pendingSave, temporaryLease: null,
+            isTemporarySource: false, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
     {
     }
 
-    private ScreenshotEditorWindow(string filePath, CapturedFrame? initialFrame, Task<string>? pendingSave, WindowOpenTrace? openTrace)
+    internal ScreenshotEditorWindow(CapturedFrame frame, Task<string> pendingFile, ScreenshotTemporaryFileLease temporaryLease)
+        : this(string.Empty, frame, pendingFile, temporaryLease,
+            isTemporarySource: true, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
+    {
+    }
+
+    internal ScreenshotEditorWindow(string filePath, ScreenshotTemporaryFileLease temporaryLease)
+        : this(filePath, initialFrame: null, pendingSave: null, temporaryLease,
+            isTemporarySource: true, WindowOpenTrace.Start(WindowOpenKind.ScreenshotEditor))
+    {
+    }
+
+    private ScreenshotEditorWindow(string filePath, CapturedFrame? initialFrame, Task<string>? pendingSave,
+        ScreenshotTemporaryFileLease? temporaryLease, bool isTemporarySource, WindowOpenTrace? openTrace)
     {
         _openTrace = openTrace;
         _openTrace?.Mark(WindowOpenMilestone.ConstructorEntered);
         using var construction = _openTrace?.Measure(WindowOpenPhase.ConstructorBody);
         _filePath = filePath;
-        _activeSavePath = filePath;
+        _activeSavePath = isTemporarySource ? string.Empty : filePath;
         _initialFrame = initialFrame;
         _pendingSave = pendingSave;
+        _temporaryLease = temporaryLease;
+        _isTemporarySource = isTemporarySource;
 
         using (_openTrace?.Measure(WindowOpenPhase.Xaml))
         {
             InitializeComponent();
             WindowCaptureVisibility.Register(this);
         }
+        DeleteScreenshotButton.IsEnabled = !isTemporarySource;
+        OpenSaveFolderButton.IsEnabled = !isTemporarySource;
 
         WindowOpenDiagnostics.Observe(this, RootGrid, _openTrace);
         ICaptureSettings settings;
@@ -157,6 +188,34 @@ public sealed partial class ScreenshotEditorWindow : Window
         _openTrace?.Mark(WindowOpenMilestone.ConstructorCompleted);
     }
 
+    internal Task<ScreenshotEditorLoadOutcome> InitialLoad => _initialLoad.Task;
+    internal event Action<Exception>? ImageLoadFailed;
+    internal bool HasImageLoadFailure { get; private set; }
+    internal bool HasUnsavedUnbackedScreenshot =>
+        string.IsNullOrEmpty(_activeSavePath) &&
+        (_isTemporarySource || (_initialFrame is not null && _pendingSave?.IsFaulted == true));
+    internal bool IsClosed => _isClosed;
+    internal bool HasPermanentSave => !string.IsNullOrEmpty(_activeSavePath);
+    internal string? PermanentSavePath => HasPermanentSave ? _activeSavePath : null;
+
+    internal bool ShowOutputWarning(string message)
+    {
+        if (_isClosed) return false;
+        ScreenshotOutputStatus.Message = message;
+        AutomationProperties.SetName(ScreenshotOutputStatus, message);
+        ScreenshotOutputStatus.IsOpen = true;
+        var peer = FrameworkElementAutomationPeer.FromElement(ScreenshotOutputStatus)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(ScreenshotOutputStatus);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        return true;
+    }
+
+    internal void CloseAfterOpenFailure()
+    {
+        _closeConfirmed = true;
+        Close();
+    }
+
     private void OnControllerImageChanged(object? sender, EventArgs e)
     {
         UpdateOutputResolutionText();
@@ -217,6 +276,8 @@ public sealed partial class ScreenshotEditorWindow : Window
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _isClosed = true;
+        _initialLoad.TrySetResult(ScreenshotEditorLoadOutcome.Closed);
+        _temporaryLease?.Dispose();
         ClearSensitiveTextReview();
         _controller.Dispose();
         UpdateOutputResolutionText();
@@ -260,7 +321,8 @@ public sealed partial class ScreenshotEditorWindow : Window
         }
     }
 
-    private bool HasUnsavedChanges => _controller.IsDirty || _hasPendingCropSelection;
+    private bool HasUnsavedChanges =>
+        _controller.IsDirty || _hasPendingCropSelection || HasUnsavedUnbackedScreenshot;
 
     private Task<bool> ShowDiscardChangesDialogAsync() => ShowClosePromptAsync(EditorEscapePrompt.DiscardChanges);
 
@@ -278,6 +340,21 @@ public sealed partial class ScreenshotEditorWindow : Window
         _isClosePromptOpen = true;
         try
         {
+            if (prompt == EditorEscapePrompt.DiscardChanges && HasUnsavedUnbackedScreenshot)
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = "Discard this screenshot?",
+                    Content = "This screenshot hasn't been saved yet. Closing may discard the image and any edits.",
+                    PrimaryButtonText = "Discard screenshot",
+                    CloseButtonText = "Keep editing",
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = RootGrid.XamlRoot,
+                    RequestedTheme = RootGrid.RequestedTheme,
+                };
+                AutomationProperties.SetAutomationId(dialog, "EditorUnsavedScreenshotCloseDialog");
+                return await dialog.ShowAsync() == ContentDialogResult.Primary;
+            }
             return await EditorEscapeConfirmation.ConfirmAsync(RootGrid, prompt, EditorEscapeSurface.ScreenshotEditor);
         }
         finally
@@ -312,7 +389,9 @@ public sealed partial class ScreenshotEditorWindow : Window
     private async Task CloseFromEscapeAsync()
     {
         var confirmOnEscape = App.Services.GetRequiredService<ICaptureSettings>().ConfirmEditorEscape;
-        if (EditorEscape.ResolvePrompt(confirmOnEscape, HasUnsavedChanges) is { } prompt &&
+        var closePrompt = EditorEscape.ResolveScreenshotPrompt(
+            confirmOnEscape, HasUnsavedChanges, HasUnsavedUnbackedScreenshot);
+        if (closePrompt is { } prompt &&
             !await ShowClosePromptAsync(prompt))
         {
             return;
@@ -378,6 +457,7 @@ public sealed partial class ScreenshotEditorWindow : Window
                 if (_isClosed || request != _loadRequest) return;
                 CaptureFlowTrace.Mark("editor: image visible (from memory)");
                 _openTrace?.Mark(WindowOpenMilestone.ContentReady);
+                _initialLoad.TrySetResult(ScreenshotEditorLoadOutcome.Loaded);
                 if (string.IsNullOrEmpty(_filePath))
                 {
                     _ = BindToPendingSaveAsync();
@@ -389,13 +469,18 @@ public sealed partial class ScreenshotEditorWindow : Window
             if (_isClosed || request != _loadRequest) return;
             CaptureFlowTrace.Mark("editor: image visible (from file)");
             _openTrace?.Mark(WindowOpenMilestone.ContentReady);
+            _initialLoad.TrySetResult(ScreenshotEditorLoadOutcome.Loaded);
         }
         catch (Exception ex)
         {
             if (_isClosed || request != _loadRequest) return;
             _openTrace?.Mark(WindowOpenMilestone.ContentFailed);
             System.Diagnostics.Debug.WriteLine($"Editor load failed: {ex}");
+            HasImageLoadFailure = true;
+            _initialLoad.TrySetResult(ScreenshotEditorLoadOutcome.Failed);
+            ImageLoadFailed?.Invoke(ex);
             App.ShowImageLoadFailureNotification(System.IO.Path.GetFileName(_filePath));
+            _closeConfirmed = true;
             Close();
         }
     }
@@ -410,13 +495,18 @@ public sealed partial class ScreenshotEditorWindow : Window
         try
         {
             var path = await _pendingSave;
+            if (_isClosed) return;
             _filePath = path;
-            _activeSavePath = path;
+            if (!_isTemporarySource)
+            {
+                _activeSavePath = path;
+            }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Background screenshot save failed: {ex}");
-            App.ShowSaveFailureNotification("the screenshot capture");
+            if (!_isClosed)
+                ShowOutputWarning("Couldn't prepare the screenshot file. Use Save as to keep the image.");
         }
     }
 
@@ -435,7 +525,12 @@ public sealed partial class ScreenshotEditorWindow : Window
 
         try
         {
-            await _pendingSave;
+            var path = await _pendingSave;
+            if (!_isClosed && !_isTemporarySource)
+            {
+                _filePath = path;
+                _activeSavePath = path;
+            }
         }
         catch
         {
@@ -655,13 +750,22 @@ public sealed partial class ScreenshotEditorWindow : Window
         if (!TryBeginOutput()) return;
         try
         {
-            if (!await EnsureFileBackingAsync() || _isClosed) return;
-            await SaveToPathAsync(_activeSavePath, updateActiveSavePath: true);
+            var createNew = _isTemporarySource && string.IsNullOrEmpty(_activeSavePath);
+            if (!createNew && !await EnsureFileBackingAsync())
+            {
+                if (_initialFrame is null) return;
+                createNew = true;
+            }
+            if (_isClosed) return;
+            var path = createNew
+                ? App.Services.GetRequiredService<IClipStorageService>().GenerateFilePath(CaptureType.Screenshot)
+                : _activeSavePath;
+            await SaveToPathAsync(path, updateActiveSavePath: true, createNew: createNew);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Save failed: {ex}");
-            if (!_isClosed) App.ShowSaveFailureNotification(System.IO.Path.GetFileName(_activeSavePath));
+            if (!_isClosed) ShowOutputWarning("Couldn't save the screenshot. Choose Save as to use another folder.");
         }
         finally
         {
@@ -674,13 +778,16 @@ public sealed partial class ScreenshotEditorWindow : Window
         if (!TryBeginOutput()) return;
         try
         {
-            await EnsureFileBackingAsync();
+            if (!_isTemporarySource) await EnsureFileBackingAsync();
             if (_isClosed) return;
             var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.PicturesLibrary };
             picker.FileTypeChoices.Add("PNG image", new[] { ".png" });
             picker.FileTypeChoices.Add("JPEG image", new[] { ".jpg" });
             picker.FileTypeChoices.Add("WebP image", new[] { ".webp" });
-            picker.DefaultFileExtension = System.IO.Path.GetExtension(_activeSavePath ?? string.Empty).ToLowerInvariant() switch
+            var extensionSource = string.IsNullOrEmpty(_activeSavePath) ? _filePath : _activeSavePath;
+            if (string.IsNullOrEmpty(extensionSource))
+                extensionSource = "." + App.Services.GetRequiredService<IClipStorageService>().FileExtensionFor(CaptureType.Screenshot);
+            picker.DefaultFileExtension = System.IO.Path.GetExtension(extensionSource).ToLowerInvariant() switch
             {
                 ".jpg" or ".jpeg" => ".jpg",
                 ".webp" => ".webp",
@@ -702,7 +809,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Save picker failed: {ex}");
-            if (!_isClosed) App.ShowSaveFailureNotification("the edited screenshot");
+            if (!_isClosed) ShowOutputWarning("Couldn't save the screenshot. Choose a different folder and try Save as again.");
         }
         finally
         {
@@ -718,31 +825,40 @@ public sealed partial class ScreenshotEditorWindow : Window
         return true;
     }
 
-    private async Task<bool> SaveToPathAsync(string path, bool updateActiveSavePath)
+    private async Task<bool> SaveToPathAsync(string path, bool updateActiveSavePath, bool createNew = false)
     {
         if (!_controller.CanExport) return false;
         using var snapshot = _controller.CaptureRenderSnapshot(_outputScalePercent);
         var quality = App.Services.GetRequiredService<ICaptureSettings>().JpegQuality;
-        var saved = await EncodeToFileAsync(path, snapshot, quality);
-        if (saved && _controller.IsSameDocument(snapshot.Revision))
+        var savedPath = await EncodeToFileAsync(path, snapshot, quality, createNew);
+        if (savedPath is null) return false;
+        var sameDocument = !_isClosed && _controller.IsSameDocument(snapshot.Revision);
+        if (sameDocument)
         {
             if (updateActiveSavePath)
             {
-                _activeSavePath = path;
+                _activeSavePath = savedPath;
+                OpenSaveFolderButton.IsEnabled = true;
             }
 
             if (_controller.MarkSaved(snapshot.Revision))
             {
                 UpdateCommandButtonStates();
             }
-            App.ShowSaveNotification(path);
         }
 
-        return saved;
+        if (sameDocument || _isTemporarySource)
+        {
+            if (_isTemporarySource || !string.Equals(savedPath, _filePath, StringComparison.OrdinalIgnoreCase))
+                App.Services.GetRequiredService<IRecentCaptureService>().Record(savedPath, CaptureType.Screenshot);
+            App.ShowSaveNotification(savedPath);
+        }
+        return true;
     }
 
     private async void OnOpenSaveFolder(object sender, RoutedEventArgs e)
     {
+        if (_isTemporarySource && string.IsNullOrEmpty(_activeSavePath)) return;
         if (!await EnsureFileBackingAsync())
         {
             return;
@@ -770,7 +886,7 @@ public sealed partial class ScreenshotEditorWindow : Window
 
     private async void OnDeleteScreenshot(object sender, RoutedEventArgs e)
     {
-        if (_isDeletingSource || _isOutputBusy || !await EnsureFileBackingAsync())
+        if (_isTemporarySource || _isDeletingSource || _isOutputBusy || !await EnsureFileBackingAsync())
         {
             return;
         }
@@ -875,7 +991,7 @@ public sealed partial class ScreenshotEditorWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Copy failed: {ex}");
-            if (!_isClosed) App.ShowClipboardFailureNotification(System.IO.Path.GetFileName(_filePath));
+            if (!_isClosed) ShowOutputWarning("Couldn't copy the screenshot. Try Copy again, or use Save as to keep it.");
         }
         finally
         {
@@ -883,26 +999,32 @@ public sealed partial class ScreenshotEditorWindow : Window
         }
     }
 
-    private async Task<bool> EncodeToFileAsync(string path, EditorRenderSnapshot snapshot, double quality)
+    private async Task<string?> EncodeToFileAsync(string path, EditorRenderSnapshot snapshot, double quality, bool createNew)
     {
         var token = snapshot.DocumentCancellation;
         try
         {
             using var rendered = await _controller.RenderToBitmapAsync(snapshot, token);
+            if (createNew)
+            {
+                return await Task.Run(() => ScreenshotExportFile.WriteNewAsync(path,
+                    (temporaryPath, cancellation) => EncodeBitmapToFileAsync(path, temporaryPath, rendered, quality, cancellation),
+                    token), token);
+            }
             await Task.Run(() => ScreenshotExportFile.WriteAsync(path,
                 (temporaryPath, cancellation) => EncodeBitmapToFileAsync(path, temporaryPath, rendered, quality, cancellation),
                 token), token);
-            return true;
+            return path;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            return false;
+            return null;
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Save failed: {ex}");
-            if (!_isClosed) App.ShowSaveFailureNotification(System.IO.Path.GetFileName(path));
-            return false;
+            if (!_isClosed) ShowOutputWarning("Couldn't save the screenshot. Choose a different folder and try Save as again.");
+            return null;
         }
     }
 

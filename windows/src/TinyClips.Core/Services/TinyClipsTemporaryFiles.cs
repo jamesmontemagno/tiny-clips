@@ -32,7 +32,7 @@ public static class TinyClipsTemporaryFiles
     /// <summary>Returns the number and total size of files managed by Tiny Clips.</summary>
     public static TemporaryFilesSummary GetSummary() => GetSummary(DirectoryPath);
 
-    /// <summary>Returns the number and total size of files in a temporary directory.</summary>
+    /// <summary>Returns the number and total size of Tiny Clips-owned temporary files.</summary>
     public static TemporaryFilesSummary GetSummary(string directoryPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
@@ -42,7 +42,14 @@ public static class TinyClipsTemporaryFiles
             return new TemporaryFilesSummary(0, 0);
         }
 
-        var files = new DirectoryInfo(directoryPath).EnumerateFiles();
+        var files = new DirectoryInfo(directoryPath).EnumerateFiles()
+            .Where(file => IsOwnedDiagnostic(file.Name));
+        var screenshotDirectory = Path.Combine(directoryPath, ScreenshotTemporaryFileStore.FolderName);
+        if (Directory.Exists(screenshotDirectory))
+        {
+            files = files.Concat(new DirectoryInfo(screenshotDirectory).EnumerateFiles()
+                .Where(file => ScreenshotTemporaryFileStore.IsOwnedFileName(file.Name)));
+        }
         var fileCount = 0;
         long totalSize = 0;
         foreach (var file in files)
@@ -58,7 +65,7 @@ public static class TinyClipsTemporaryFiles
     public static TemporaryFilesPurgeResult Purge(IEnumerable<string>? activeFilePaths = null) =>
         Purge(DirectoryPath, activeFilePaths);
 
-    /// <summary>Deletes temporary files in a directory, excluding active files.</summary>
+    /// <summary>Deletes owned diagnostic files in a directory, excluding active files.</summary>
     public static TemporaryFilesPurgeResult Purge(string directoryPath, IEnumerable<string>? activeFilePaths = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
@@ -76,7 +83,12 @@ public static class TinyClipsTemporaryFiles
 
         foreach (var file in new DirectoryInfo(directoryPath).EnumerateFiles())
         {
-            if (activePaths.Contains(file.FullName))
+            if (!IsOwnedDiagnostic(file.Name))
+            {
+                continue;
+            }
+
+            if (activePaths.Contains(file.FullName) || (file.Attributes & FileAttributes.ReparsePoint) != 0)
             {
                 skippedFileCount++;
                 continue;
@@ -95,6 +107,10 @@ public static class TinyClipsTemporaryFiles
 
         return new TemporaryFilesPurgeResult(removedFileCount, skippedFileCount);
     }
+
+    private static bool IsOwnedDiagnostic(string name) =>
+        name.Equals("capture-flow-trace.log", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("webcam-diagnostics.log", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>A point-in-time summary of files in the Tiny Clips temporary directory.</summary>

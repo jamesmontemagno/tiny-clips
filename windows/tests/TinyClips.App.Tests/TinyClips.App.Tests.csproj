@@ -88,6 +88,12 @@
     <!-- A clock a test advances by hand, shared with the Core tests. -->
     <Compile Include="..\TinyClips.Core.Tests\ManualTimeProvider.cs" Link="Support\ManualTimeProvider.cs" />
     <Compile Include="..\..\src\TinyClips.App\Views\CapturePickerKeyboardShortcuts.cs" Link="CapturePickerKeyboardShortcuts.cs" />
+    <!-- Compile the recovery/notice windows without starting the app or touching the clipboard. -->
+    <Compile Include="..\..\src\TinyClips.App\Views\ScreenshotRecoveryWindow.cs" Link="ScreenshotRecoveryWindow.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Views\ScreenshotOutputNoticeWindow.cs" Link="ScreenshotOutputNoticeWindow.cs" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\ScreenshotEditorWindow.xaml" LogicalName="ScreenshotOutputMarkup.ScreenshotEditorWindow.xaml" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\ScreenshotRecoveryWindow.cs" LogicalName="ScreenshotOutputMarkup.ScreenshotRecoveryWindow.cs" />
+    <EmbeddedResource Include="..\..\src\TinyClips.App\Views\ScreenshotOutputNoticeWindow.cs" LogicalName="ScreenshotOutputMarkup.ScreenshotOutputNoticeWindow.cs" />
   </ItemGroup>
 
   <ItemGroup>

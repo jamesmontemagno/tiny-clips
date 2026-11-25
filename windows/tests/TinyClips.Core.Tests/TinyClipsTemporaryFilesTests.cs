@@ -18,8 +18,9 @@ public sealed class TinyClipsTemporaryFilesTests : IDisposable
     [Fact]
     public void GetSummary_AggregatesFileCountAndSize()
     {
-        WriteFile("one.tmp", 3);
-        WriteFile("two.tmp", 5);
+        WriteFile("capture-flow-trace.log", 3);
+        WriteFile("webcam-diagnostics.log", 5);
+        WriteFile("unrelated.txt", 10);
 
         var summary = TinyClipsTemporaryFiles.GetSummary(_directory);
 
@@ -30,8 +31,9 @@ public sealed class TinyClipsTemporaryFilesTests : IDisposable
     [Fact]
     public void Purge_RemovesInactiveFilesAndPreservesActiveFiles()
     {
-        var inactivePath = WriteFile("inactive.tmp", 3);
-        var activePath = WriteFile("active.tmp", 5);
+        var inactivePath = WriteFile("capture-flow-trace.log", 3);
+        var activePath = WriteFile("webcam-diagnostics.log", 5);
+        var unrelatedPath = WriteFile("unrelated.txt", 8);
 
         var result = TinyClipsTemporaryFiles.Purge(_directory, [activePath]);
 
@@ -39,6 +41,7 @@ public sealed class TinyClipsTemporaryFilesTests : IDisposable
         Assert.Equal(1, result.SkippedFileCount);
         Assert.False(File.Exists(inactivePath));
         Assert.True(File.Exists(activePath));
+        Assert.True(File.Exists(unrelatedPath));
         Assert.Equal(new TemporaryFilesSummary(1, 5), TinyClipsTemporaryFiles.GetSummary(_directory));
     }
 

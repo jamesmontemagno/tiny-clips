@@ -390,6 +390,12 @@ struct CapturePreference<Value> {
 }
 
 class CaptureSettings: ObservableObject {
+    enum ScreenshotOutput: CaseIterable, Equatable {
+        case saveToDisk
+        case copyToClipboard
+        case openEditor
+    }
+
     let objectWillChange = ObservableObjectPublisher()
     static let shared = CaptureSettings()
     // Bump when release highlights change, independently of the app version.
@@ -412,6 +418,9 @@ class CaptureSettings: ObservableObject {
     /// The editor tool a new screenshot editor starts with, as an `EditTool.settingID`.
     static let screenshotEditorDefaultToolKey = "screenshotEditorDefaultTool"
     static let screenshotEditorDefaultToolMigrationKey = "screenshotEditorDefaultToolBackgroundMigration"
+    static let saveScreenshotToDiskKey = "saveScreenshotToDisk"
+    static let legacySaveImmediatelyScreenshotKey = "saveImmediatelyScreenshot"
+    static let screenshotOutputRequiredMessage = "At least one screenshot output must stay on. Turn on another option before turning this one off."
     /// Where the Captions panel keeps the language captions are generated in, as a BCP 47 tag, or
     /// empty for the system's.
     static let studioCaptionLanguageKey = "studioCaptionLanguage"
@@ -541,7 +550,8 @@ class CaptureSettings: ObservableObject {
     @CapturePreference("screenshotEditorDefaultTool") var screenshotEditorDefaultTool: String = EditTool.background.settingID
     @CapturePreference(CaptureSettingsDefaultsKey.confirmEditorEscape) var confirmEditorEscape: Bool = true
     @CapturePreference("showGifTrimmer") var showGifTrimmer: Bool = true
-    @CapturePreference("saveImmediatelyScreenshot") var saveImmediatelyScreenshot: Bool = true
+    @CapturePreference(CaptureSettings.saveScreenshotToDiskKey) var saveScreenshotToDisk: Bool = true
+    @CapturePreference(CaptureSettings.legacySaveImmediatelyScreenshotKey) var saveImmediatelyScreenshot: Bool = true
     @CapturePreference("saveImmediatelyVideo") var saveImmediatelyVideo: Bool = true
     @CapturePreference("saveImmediatelyGif") var saveImmediatelyGif: Bool = true
     @CapturePreference("showScreenshotCapturePicker") var showScreenshotCapturePicker: Bool = true {
@@ -817,6 +827,58 @@ class CaptureSettings: ObservableObject {
         }
     }
 
+    func screenshotOutputIsEnabled(_ output: ScreenshotOutput) -> Bool {
+        switch output {
+        case .saveToDisk:
+            return saveScreenshotToDisk
+        case .copyToClipboard:
+            return copyScreenshotToClipboard
+        case .openEditor:
+            return showScreenshotEditor
+        }
+    }
+
+    func canSetScreenshotOutput(_ output: ScreenshotOutput, enabled: Bool) -> Bool {
+        guard !enabled, screenshotOutputIsEnabled(output) else { return true }
+        return ScreenshotOutput.allCases.contains {
+            $0 != output && screenshotOutputIsEnabled($0)
+        }
+    }
+
+    @discardableResult
+    func setScreenshotOutput(_ output: ScreenshotOutput, enabled: Bool) -> Bool {
+        guard screenshotOutputIsEnabled(output) != enabled else { return true }
+        guard canSetScreenshotOutput(output, enabled: enabled) else { return false }
+
+        switch output {
+        case .saveToDisk:
+            saveScreenshotToDisk = enabled
+        case .copyToClipboard:
+            copyScreenshotToClipboard = enabled
+        case .openEditor:
+            showScreenshotEditor = enabled
+        }
+        return true
+    }
+
+    func screenshotOutputBinding(
+        _ output: ScreenshotOutput,
+        onRejected: @escaping () -> Void,
+        onChanged: @escaping () -> Void = {}
+    ) -> Binding<Bool> {
+        Binding(
+            get: { self.screenshotOutputIsEnabled(output) },
+            set: { enabled in
+                guard self.screenshotOutputIsEnabled(output) != enabled else { return }
+                if self.setScreenshotOutput(output, enabled: enabled) {
+                    onChanged()
+                } else {
+                    onRejected()
+                }
+            }
+        )
+    }
+
     func hotKeyBinding(for action: HotKeyAction) -> HotKeyBinding {
         Self.hotKeyBinding(for: action, defaults: defaults)
     }
@@ -977,7 +1039,7 @@ class CaptureSettings: ObservableObject {
         "recordAudio", "recordMicrophone", "audioOffsetMs", "microphoneLimiterEnabled", "windNoiseRemovalEnabled", "selectedMicrophoneID",
         "webcamEnabled", "selectedWebcamID", "webcamShape", "webcamSize", "webcamCorner", "webcamCornerRadius",
         "showScreenshotEditor", screenshotEditorNativeSizeKey, screenshotEditorDefaultToolKey, confirmEditorEscapeKey, "showGifTrimmer",
-        "saveImmediatelyScreenshot", "saveImmediatelyVideo", "saveImmediatelyGif",
+        saveScreenshotToDiskKey, legacySaveImmediatelyScreenshotKey, "saveImmediatelyVideo", "saveImmediatelyGif",
         "showScreenshotCapturePicker", "showScreenshotCapturePickerAfterCapture",
         "showVideoCapturePicker", "showVideoCapturePickerAfterCapture",
         "showGifCapturePicker", "showGifCapturePickerAfterCapture",
@@ -1018,6 +1080,9 @@ class CaptureSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard, performMigrations: Bool = true) {
         self.defaults = defaults
+        if performMigrations {
+            Self.migrateScreenshotSavePreference(in: defaults)
+        }
         audioOffsetMs = audioOffsetMs
         guard performMigrations else { return }
 
@@ -1039,6 +1104,13 @@ class CaptureSettings: ObservableObject {
             ? .mainDisplay
             : .askEveryTime
         defaults.removeObject(forKey: "alwaysCaptureMainDisplay")
+    }
+
+    static func migrateScreenshotSavePreference(in defaults: UserDefaults) {
+        guard defaults.object(forKey: saveScreenshotToDiskKey) == nil else { return }
+        let legacySaveImmediately = defaults.object(forKey: legacySaveImmediatelyScreenshotKey) as? Bool ?? true
+        let editorEnabled = defaults.object(forKey: "showScreenshotEditor") as? Bool ?? true
+        defaults.set(legacySaveImmediately || !editorEnabled, forKey: saveScreenshotToDiskKey)
     }
 
     static let useDefaultSaveDirectoriesKey = "useDefaultSaveDirectories"

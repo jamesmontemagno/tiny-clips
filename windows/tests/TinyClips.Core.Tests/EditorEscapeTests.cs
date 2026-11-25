@@ -5,6 +5,16 @@ namespace TinyClips.Core.Tests;
 public sealed class EditorEscapeTests
 {
     [Theory]
+    [InlineData(true, EditorEscapePrompt.DiscardChanges)]
+    [InlineData(false, null)]
+    public void UnbackedScreenshot_RespectsEscapeConfirmationPreference(
+        bool confirmOnEscape, EditorEscapePrompt? expected)
+    {
+        Assert.Equal(expected,
+            EditorEscape.ResolveScreenshotPrompt(confirmOnEscape, hasUnsavedChanges: false, hasUnbackedScreenshot: true));
+    }
+
+    [Theory]
     [InlineData(true, true, ScreenshotEditorEscapeAction.LeaveToTextInput)]
     [InlineData(true, false, ScreenshotEditorEscapeAction.LeaveToTextInput)]
     [InlineData(false, true, ScreenshotEditorEscapeAction.ClearCropSelection)]
