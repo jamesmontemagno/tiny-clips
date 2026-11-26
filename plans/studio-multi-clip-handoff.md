@@ -19,6 +19,10 @@ xcodebuild build -scheme TinyClipsMAS "${debug[@]}"
 
 For a fast loop, add `-only-testing:TinyClipsTests/StudioFixtureTests -only-testing:TinyClipsTests/StudioProjectTests` to the test command. Start with `testSharedMultiClipProjectFixtureMapsNativeAndFlatSources`: in the [shared fixture](../shared/studio/fixtures/timeline/two-clips-native-flat.json), the native clip's trim, cut, and speed edits leave **6 seconds**. Output time `6.0` belongs to the flat clip at source time `0.0`; total output is **11 seconds**. This checks the **map**, not decoded video or sound.
 
+These commands disable code signing for build and unit-test checks. For manual recording, open `mac/TinyClips.xcodeproj` in Xcode, run the `TinyClips` scheme with your normal local signing setup, and grant the capture permissions the app requests.
+
+**Known Windows build blocker at `899e5cf`:** [x64, ARM64 and Store CI](https://github.com/jamesmontemagno/tiny-clips/actions/runs/45870277698) reported `CS0104` at `StudioWindow.xaml.cs:46`: `StudioTimeline` refers to both the WinUI control and the new Core model. Qualify or alias the control where the view uses it, then rebuild all three targets. The Core test job was skipped, not passed.
+
 ## Implementation order
 
 | Step | Where to start | Done when |
