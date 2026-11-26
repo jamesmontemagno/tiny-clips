@@ -18,7 +18,11 @@ public sealed class TrayRefreshTests
         var end = source.IndexOf("private void RefreshTrayTiles()", start, StringComparison.Ordinal);
         var body = Regex.Replace(source[start..end], @"//[^\r\n]*", "");
         var calls = Regex.Matches(body, @"\b(\w+)\s*\(").Select(match => match.Groups[1].Value);
-        Assert.Equal(["ShowTrayPopup", "if", "TrayPopupWindow", "ShowNearCursor", "ResumeTrayRefresh"], calls);
+        Assert.Equal(
+            ["ShowTrayPopup", "if", "if", "RetryDeferredScreenshotRecovery", "if", "TrayPopupWindow", "ShowNearCursor", "ResumeTrayRefresh"],
+            calls);
+        Assert.Contains("_deferredScreenshotRecoveries.Count > 0", body);
+        Assert.Contains("RetryDeferredScreenshotRecovery();", body);
         Assert.Contains("_trayPopup ??= new TrayPopupWindow(_trayLayout)", body);
         Assert.Single(Regex.Matches(source, @"\bnew TrayPopupWindow\("));
         Assert.Contains("_trayPopup.ShowNearCursor(_trayPopupWidth, TrayPopupHeight)", body);
