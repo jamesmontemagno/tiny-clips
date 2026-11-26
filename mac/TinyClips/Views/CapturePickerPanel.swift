@@ -329,7 +329,10 @@ private struct CapturePickerView: View {
                             .background(.primary.opacity(0.1))
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
-                    .menuStyle(.borderlessButton)
+                    // A borderless menu draws an image-only label at full size and adds its own arrow.
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
                     .fixedSize()
                     .help("Choose Window only or Window area")
                     .accessibilityLabel("Window capture options")
