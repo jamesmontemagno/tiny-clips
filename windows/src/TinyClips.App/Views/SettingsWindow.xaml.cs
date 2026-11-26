@@ -65,7 +65,8 @@ public sealed partial class SettingsWindow : Window
                 App.Services.GetRequiredService<IUploadcareCredentialStore>(),
                 App.Services.GetRequiredService<IStudioProjectStore>(),
                 App.Services.GetRequiredService<StudioProjectCleanupService>(),
-                App.Services.GetRequiredService<StudioProjectTracker>())
+                App.Services.GetRequiredService<StudioProjectTracker>(),
+                App.Services.GetRequiredService<ScreenshotTemporaryCleanupService>().PurgeAsync)
             {
                 StudioCaptionModelStore = App.Services.GetRequiredService<StudioCaptionModelStore>(),
             };

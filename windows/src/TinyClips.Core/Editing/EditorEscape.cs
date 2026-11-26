@@ -31,9 +31,7 @@ public enum EditorEscapeSurface
 }
 
 /// <summary>
-/// Esc-to-close decisions shared by the screenshot editor and the trimmers. There is no
-/// "discard the capture" prompt: a capture is written to its save folder before any of these
-/// windows open, so closing only ever loses edits.
+/// Esc-to-close decisions shared by the screenshot editor and the trimmers.
 /// </summary>
 public static class EditorEscape
 {
@@ -59,6 +57,10 @@ public static class EditorEscape
 
         return hasUnsavedChanges ? EditorEscapePrompt.DiscardChanges : EditorEscapePrompt.CloseWithoutChanges;
     }
+
+    public static EditorEscapePrompt? ResolveScreenshotPrompt(
+        bool confirmOnEscape, bool hasUnsavedChanges, bool hasUnbackedScreenshot) =>
+        ResolvePrompt(confirmOnEscape, hasUnsavedChanges || hasUnbackedScreenshot);
 
     public static bool IsDestructive(EditorEscapePrompt prompt) => prompt == EditorEscapePrompt.DiscardChanges;
 

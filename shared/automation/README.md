@@ -30,6 +30,10 @@ Autonomous capture commands use ephemeral target IDs from `capture.targets`; ref
 
 `recording.startVideo` and `recording.startGif` use the same screen/region/window/windowArea target parameters, saved recording settings, and bypass interactive pickers and setup UI. Agent-started recordings save without opening a trimmer. Scrolling capture is a start/status/stop/cancel lifecycle; the agent performs the scrolling with its own UI tools, and Tiny Clips only captures and stitches frames.
 
+The interactive screenshot save preference is UI-only. `capture.screenshot` and
+`capture.scrolling.stop` always produce persistent files. Changes to the existing screenshot
+clipboard or editor settings return `conflict` if they would disable the last screenshot output.
+
 Video/Studio starts on macOS and Windows additionally accept optional `microphone` and `camera` booleans. Omitted values use saved preferences; `false` prevents device capture for this recording only. `true` requires both the saved device opt-in and existing OS permission, otherwise `permission_required`; no permission prompt or preference write occurs. Choices survive countdown, Studio fallback, and restart, with authorization rechecked before capture starts again. `recording.status` reports effective capture as `microphone` and `camera`; Windows also returns these fields in the start response. macOS schedules startup/countdown asynchronously, so poll status; its optional `error: {code, message}` reports startup/device failures and clears at the next recording setup or restart. Its device booleans reflect running sessions, so are false during countdown, startup, or pause until a session runs again. System audio is unchanged. GIFs use neither device.
 
 On macOS, resume and restart recheck device opt-ins and OS access for agent-controlled video takes, whether requested from the panel or an agent. If this check fails, the take is preserved and a paused take stays paused.

@@ -6,6 +6,102 @@ namespace TinyClips.App.Tests;
 
 public sealed class OnboardingViewModelTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ScreenshotOutputs_RefreshAllChoicesAfterExternalChanges(bool transitionAccepted)
+    {
+        var fixture = new Fixture();
+        fixture.Settings.SaveScreenshotToDisk = false;
+        fixture.Settings.ShowScreenshotEditor = transitionAccepted;
+
+        fixture.ViewModel.CopyScreenshotToClipboard = false;
+
+        Assert.False(fixture.ViewModel.SaveScreenshotToDisk);
+        Assert.Equal(!transitionAccepted, fixture.ViewModel.CopyScreenshotToClipboard);
+        Assert.Equal(transitionAccepted, fixture.ViewModel.ShowScreenshotEditor);
+        Assert.Equal(!transitionAccepted, fixture.ViewModel.HasScreenshotOutputWarning);
+        Assert.Equal(fixture.Settings.SaveScreenshotToDisk, fixture.ViewModel.SaveScreenshotToDisk);
+        Assert.Equal(fixture.Settings.CopyScreenshotToClipboard, fixture.ViewModel.CopyScreenshotToClipboard);
+        Assert.Equal(fixture.Settings.ShowScreenshotEditor, fixture.ViewModel.ShowScreenshotEditor);
+    }
+
+    [Theory]
+    [InlineData(ScreenshotOutput.SaveToDisk)]
+    [InlineData(ScreenshotOutput.CopyToClipboard)]
+    [InlineData(ScreenshotOutput.OpenEditor)]
+    public void ScreenshotOutputs_AllowValidTransitionsAndRejectTheLastOutput(ScreenshotOutput output)
+    {
+        var bit = output switch
+        {
+            ScreenshotOutput.SaveToDisk => 1,
+            ScreenshotOutput.CopyToClipboard => 2,
+            ScreenshotOutput.OpenEditor => 4,
+            _ => throw new InvalidOperationException(),
+        };
+        var propertyName = output switch
+        {
+            ScreenshotOutput.SaveToDisk => nameof(OnboardingViewModel.SaveScreenshotToDisk),
+            ScreenshotOutput.CopyToClipboard => nameof(OnboardingViewModel.CopyScreenshotToClipboard),
+            ScreenshotOutput.OpenEditor => nameof(OnboardingViewModel.ShowScreenshotEditor),
+            _ => throw new InvalidOperationException(),
+        };
+
+        foreach (var mask in Enumerable.Range(1, 7))
+        {
+            foreach (var enabled in new[] { false, true })
+            {
+                var store = new MemorySettings();
+                var settings = new CaptureSettings(store)
+                {
+                    SaveScreenshotToDisk = (mask & 1) != 0,
+                    CopyScreenshotToClipboard = (mask & 2) != 0,
+                    ShowScreenshotEditor = (mask & 4) != 0,
+                };
+                var vm = new OnboardingViewModel(new FakeLaunchAtLogin(), settings);
+                var writes = store.Writes;
+                var notifications = new List<string?>();
+                vm.PropertyChanged += (_, args) => notifications.Add(args.PropertyName);
+                var allowed = enabled || (mask & ~bit) != 0;
+                var expectedMask = !allowed ? mask : enabled ? mask | bit : mask & ~bit;
+
+                SetScreenshotOutput(vm, output, enabled);
+
+                Assert.Equal(expectedMask, ScreenshotMask(vm.SaveScreenshotToDisk, vm.CopyScreenshotToClipboard, vm.ShowScreenshotEditor));
+                Assert.Equal(expectedMask, ScreenshotMask(settings.SaveScreenshotToDisk, settings.CopyScreenshotToClipboard, settings.ShowScreenshotEditor));
+                Assert.Equal(!allowed, vm.HasScreenshotOutputWarning);
+                Assert.Equal(writes + (allowed && ((mask & bit) != 0) != enabled ? 1 : 0), store.Writes);
+                if (!allowed)
+                {
+                    Assert.Contains(propertyName, notifications);
+                    Assert.Equal(ScreenshotOutputPolicy.LastOutputExplanation, vm.ScreenshotOutputExplanation);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void ScreenshotOutputWarning_ClearsWhenAnotherOptionIsEnabledAndPersistsOnReopen()
+    {
+        var fixture = new Fixture();
+        fixture.Settings.CopyScreenshotToClipboard = false;
+        fixture.Settings.ShowScreenshotEditor = false;
+        fixture.ViewModel.RefreshPreferences();
+
+        fixture.ViewModel.SaveScreenshotToDisk = false;
+        Assert.True(fixture.ViewModel.SaveScreenshotToDisk);
+        Assert.True(fixture.ViewModel.HasScreenshotOutputWarning);
+        fixture.ViewModel.ShowScreenshotEditor = true;
+        Assert.False(fixture.ViewModel.HasScreenshotOutputWarning);
+        fixture.ViewModel.SaveScreenshotToDisk = false;
+
+        var reopened = new OnboardingViewModel(fixture.LaunchAtLogin, fixture.Settings);
+        Assert.False(reopened.SaveScreenshotToDisk);
+        Assert.False(reopened.CopyScreenshotToClipboard);
+        Assert.True(reopened.ShowScreenshotEditor);
+        Assert.False(reopened.HasScreenshotOutputWarning);
+    }
+
     [Fact]
     public async Task BeforeTheOsAnswers_ToggleIsLocked_ThenOffByDefaultWithoutChangingAnything()
     {
@@ -183,12 +279,38 @@ public sealed class OnboardingViewModelTests
         Assert.Equal("Launch at login", toggle.Attr("AutomationProperties.Name"));
         Assert.Equal("{x:Bind ViewModel.CanChangeLaunchAtLogin, Mode=OneWay}", toggle.Attr("IsEnabled"));
         Assert.Equal(
-            ["CopyScreenshotToClipboard", "LaunchAtLogin", "RecordingCountdown", "ShowSaveNotifications", "ShowScreenshotEditor"],
+            ["LaunchAtLogin", "RecordingCountdown", "ShowSaveNotifications"],
             SettingsMarkup.TwoWayViewModelProperties(markup).Order());
         var countdown = Assert.Single(elements, element =>
             element.Attr("AutomationProperties.Name") == "Countdown before video and GIF recording");
         Assert.Equal("ToggleSwitch", countdown.Name.LocalName);
         Assert.Equal("{x:Bind ViewModel.RecordingCountdown, Mode=TwoWay}", countdown.Attr("IsOn"));
+    }
+
+    [Fact]
+    public void ScreenshotOutputMarkup_UsesNamedNativeSwitchesAndAnAccessibleLiveWarning()
+    {
+        var elements = SettingsMarkup.Elements("OnboardingWindow.xaml");
+        foreach (var (id, property) in new[]
+        {
+            ("OnboardingSaveScreenshotToDiskToggle", "SaveScreenshotToDisk"),
+            ("OnboardingCopyScreenshotToggle", "CopyScreenshotToClipboard"),
+            ("OnboardingShowScreenshotEditorToggle", "ShowScreenshotEditor"),
+        })
+        {
+            var toggle = Assert.Single(elements, element => element.Attr("AutomationProperties.AutomationId") == id);
+            Assert.Equal("ToggleSwitch", toggle.Name.LocalName);
+            Assert.False(string.IsNullOrWhiteSpace(toggle.Attr("AutomationProperties.Name")));
+            Assert.Contains("must stay on", toggle.Attr("AutomationProperties.HelpText"));
+            Assert.Equal($"{{x:Bind ViewModel.{property}, Mode=OneWay}}", toggle.Attr("IsOn"));
+            Assert.Equal("OnScreenshotOutputToggled", toggle.Attr("Toggled"));
+        }
+
+        var notice = Assert.Single(elements, element => element.Attr("AutomationProperties.AutomationId") == "OnboardingScreenshotOutputStatus");
+        Assert.Equal("InfoBar", notice.Name.LocalName);
+        Assert.Equal("Polite", notice.Attr("AutomationProperties.LiveSetting"));
+        Assert.Equal("{x:Bind ViewModel.HasScreenshotOutputWarning, Mode=OneWay}", notice.Attr("IsOpen"));
+        Assert.Equal("{x:Bind ViewModel.ScreenshotOutputExplanation, Mode=OneWay}", notice.Attr("AutomationProperties.Name"));
     }
 
     [Fact]
@@ -220,6 +342,8 @@ public sealed class OnboardingViewModelTests
         Assert.False(model.RecordingCountdown);
         Assert.Equal("Custom", model.RecordingCountdownOffContent);
         Assert.False(model.CopyScreenshotToClipboard);
+        Assert.True(model.SaveScreenshotToDisk);
+        model.SaveScreenshotToDisk = model.SaveScreenshotToDisk;
         model.CopyScreenshotToClipboard = model.CopyScreenshotToClipboard;
         model.RecordingCountdown = model.RecordingCountdown;
         model.RefreshPreferences();
@@ -275,6 +399,25 @@ public sealed class OnboardingViewModelTests
         fixture.Settings.CopyScreenshotToClipboard = true;
         reopened.RefreshPreferences();
         Assert.True(reopened.CopyScreenshotToClipboard);
+    }
+
+    private static int ScreenshotMask(bool save, bool copy, bool editor) =>
+        (save ? 1 : 0) | (copy ? 2 : 0) | (editor ? 4 : 0);
+
+    private static void SetScreenshotOutput(OnboardingViewModel vm, ScreenshotOutput output, bool enabled)
+    {
+        switch (output)
+        {
+            case ScreenshotOutput.SaveToDisk:
+                vm.SaveScreenshotToDisk = enabled;
+                break;
+            case ScreenshotOutput.CopyToClipboard:
+                vm.CopyScreenshotToClipboard = enabled;
+                break;
+            case ScreenshotOutput.OpenEditor:
+                vm.ShowScreenshotEditor = enabled;
+                break;
+        }
     }
 
     private sealed class Fixture

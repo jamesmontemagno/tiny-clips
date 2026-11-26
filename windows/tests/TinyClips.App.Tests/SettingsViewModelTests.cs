@@ -10,6 +10,184 @@ namespace TinyClips.App.Tests;
 public sealed class SettingsViewModelTests
 {
     [Fact]
+    public void SaveLocationsAndResetDoNotRequireTemporaryScreenshotChecks()
+    {
+        var fixture = new Fixture();
+        var vm = fixture.CreateViewModel();
+        Realize(vm, SettingsSectionKind.General);
+        vm.UseDefaultSaveDirectories = false;
+        vm.ScreenshotSaveDirectory = @"\\server\captures";
+        vm.VideoSaveDirectory = @"C:\Videos";
+        vm.GifSaveDirectory = @"C:\GIFs";
+        Assert.False(vm.UseDefaultSaveDirectories);
+        Assert.False(fixture.Settings.UseDefaultSaveDirectories);
+        Assert.Equal(@"\\server\captures", fixture.Settings.ScreenshotSaveDirectory);
+        Assert.Equal(@"C:\Videos", fixture.Settings.VideoSaveDirectory);
+        Assert.Equal(@"C:\GIFs", fixture.Settings.GifSaveDirectory);
+        vm.ResetAllSettings();
+        Assert.True(vm.UseDefaultSaveDirectories);
+        Assert.True(fixture.Settings.UseDefaultSaveDirectories);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ScreenshotOutputs_RefreshAllChoicesAfterExternalChanges(bool transitionAccepted)
+    {
+        var fixture = new Fixture();
+        var vm = fixture.CreateViewModel();
+        Realize(vm, SettingsSectionKind.Screenshot);
+        fixture.Settings.SaveScreenshotToDisk = false;
+        fixture.Settings.ShowScreenshotEditor = transitionAccepted;
+
+        vm.CopyScreenshotToClipboard = false;
+
+        Assert.False(vm.SaveScreenshotToDisk);
+        Assert.Equal(!transitionAccepted, vm.CopyScreenshotToClipboard);
+        Assert.Equal(transitionAccepted, vm.ShowScreenshotEditor);
+        Assert.Equal(!transitionAccepted, vm.HasScreenshotOutputWarning);
+        Assert.Equal(fixture.Settings.SaveScreenshotToDisk, vm.SaveScreenshotToDisk);
+        Assert.Equal(fixture.Settings.CopyScreenshotToClipboard, vm.CopyScreenshotToClipboard);
+        Assert.Equal(fixture.Settings.ShowScreenshotEditor, vm.ShowScreenshotEditor);
+    }
+
+    [Theory]
+    [InlineData(ScreenshotOutput.SaveToDisk)]
+    [InlineData(ScreenshotOutput.CopyToClipboard)]
+    [InlineData(ScreenshotOutput.OpenEditor)]
+    public void ScreenshotOutputs_AllowValidTransitionsAndRejectTheLastOutput(ScreenshotOutput output)
+    {
+        var bit = output switch
+        {
+            ScreenshotOutput.SaveToDisk => 1,
+            ScreenshotOutput.CopyToClipboard => 2,
+            ScreenshotOutput.OpenEditor => 4,
+            _ => throw new InvalidOperationException(),
+        };
+        var propertyName = output switch
+        {
+            ScreenshotOutput.SaveToDisk => nameof(SettingsViewModel.SaveScreenshotToDisk),
+            ScreenshotOutput.CopyToClipboard => nameof(SettingsViewModel.CopyScreenshotToClipboard),
+            ScreenshotOutput.OpenEditor => nameof(SettingsViewModel.ShowScreenshotEditor),
+            _ => throw new InvalidOperationException(),
+        };
+
+        foreach (var mask in Enumerable.Range(1, 7))
+        {
+            foreach (var enabled in new[] { false, true })
+            {
+                var fixture = new Fixture();
+                fixture.Settings.SaveScreenshotToDisk = (mask & 1) != 0;
+                fixture.Settings.CopyScreenshotToClipboard = (mask & 2) != 0;
+                fixture.Settings.ShowScreenshotEditor = (mask & 4) != 0;
+                var vm = fixture.CreateViewModel();
+                Realize(vm, SettingsSectionKind.Screenshot);
+                var writes = fixture.Store.Writes;
+                var notifications = new List<string?>();
+                vm.PropertyChanged += (_, args) => notifications.Add(args.PropertyName);
+                var allowed = enabled || (mask & ~bit) != 0;
+                var expectedMask = !allowed ? mask : enabled ? mask | bit : mask & ~bit;
+
+                SetScreenshotOutput(vm, output, enabled);
+
+                Assert.Equal(expectedMask, ScreenshotMask(vm.SaveScreenshotToDisk, vm.CopyScreenshotToClipboard, vm.ShowScreenshotEditor));
+                Assert.Equal(expectedMask, ScreenshotMask(fixture.Settings.SaveScreenshotToDisk, fixture.Settings.CopyScreenshotToClipboard, fixture.Settings.ShowScreenshotEditor));
+                Assert.Equal(!allowed, vm.HasScreenshotOutputWarning);
+                Assert.Equal(writes + (allowed && ((mask & bit) != 0) != enabled ? 1 : 0), fixture.Store.Writes);
+                if (!allowed)
+                {
+                    Assert.Contains(propertyName, notifications);
+                    Assert.Equal(ScreenshotOutputPolicy.LastOutputExplanation, vm.ScreenshotOutputExplanation);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void ScreenshotOutputs_RealizationSuppressesInvalidBindingWritesAndRestoresPersistedChoices()
+    {
+        var fixture = new Fixture();
+        fixture.Settings.SaveScreenshotToDisk = false;
+        fixture.Settings.CopyScreenshotToClipboard = false;
+        fixture.Settings.ShowScreenshotEditor = true;
+        var vm = fixture.CreateViewModel();
+        var writes = fixture.Store.Writes;
+
+        var screenshot = vm.BeginSectionRealization(SettingsSectionKind.Screenshot);
+        vm.ShowScreenshotEditor = false;
+        Assert.False(vm.HasScreenshotOutputWarning);
+        vm.SaveScreenshotToDisk = true;
+        vm.CopyScreenshotToClipboard = true;
+        vm.CompleteSectionRealization(screenshot);
+
+        Assert.Equal(writes, fixture.Store.Writes);
+        Assert.False(vm.SaveScreenshotToDisk);
+        Assert.False(vm.CopyScreenshotToClipboard);
+        Assert.True(vm.ShowScreenshotEditor);
+        Assert.False(vm.HasScreenshotOutputWarning);
+        Assert.Equal(4, ScreenshotMask(fixture.Settings.SaveScreenshotToDisk, fixture.Settings.CopyScreenshotToClipboard, fixture.Settings.ShowScreenshotEditor));
+    }
+
+    [Fact]
+    public void ScreenshotOutputs_WarningClearsAfterAnotherChoiceAndResetRestoresDefaults()
+    {
+        var fixture = new Fixture();
+        fixture.Settings.CopyScreenshotToClipboard = false;
+        fixture.Settings.ShowScreenshotEditor = false;
+        fixture.Settings.CopyVideoToClipboard = true;
+        fixture.Settings.CopyGifToClipboard = true;
+        var vm = fixture.CreateViewModel();
+        Realize(vm, SettingsSectionKind.Screenshot);
+
+        vm.SaveScreenshotToDisk = false;
+        Assert.True(vm.SaveScreenshotToDisk);
+        Assert.True(vm.HasScreenshotOutputWarning);
+        vm.CopyScreenshotToClipboard = true;
+        Assert.False(vm.HasScreenshotOutputWarning);
+        vm.SaveScreenshotToDisk = false;
+        Assert.False(fixture.Settings.SaveScreenshotToDisk);
+        Assert.True(fixture.Settings.CopyVideoToClipboard);
+        Assert.True(fixture.Settings.CopyGifToClipboard);
+
+        var reopened = fixture.CreateViewModel();
+        Realize(reopened, SettingsSectionKind.Screenshot);
+        Assert.False(reopened.SaveScreenshotToDisk);
+        Assert.True(reopened.CopyScreenshotToClipboard);
+        reopened.ResetAllSettings();
+        Assert.True(reopened.SaveScreenshotToDisk);
+        Assert.True(fixture.Settings.SaveScreenshotToDisk);
+        Assert.True(reopened.CopyScreenshotToClipboard);
+        Assert.True(reopened.ShowScreenshotEditor);
+        Assert.False(reopened.HasScreenshotOutputWarning);
+    }
+
+    [Fact]
+    public void ScreenshotOutputMarkup_UsesNamedNativeSwitchesAndAnAccessibleLiveWarning()
+    {
+        var elements = SettingsMarkup.Elements("ScreenshotSettingsSection.xaml");
+        foreach (var (id, property) in new[]
+        {
+            ("SaveScreenshotToDiskToggle", "SaveScreenshotToDisk"),
+            ("CopyScreenshotToggle", "CopyScreenshotToClipboard"),
+            ("ShowScreenshotEditorToggle", "ShowScreenshotEditor"),
+        })
+        {
+            var toggle = Assert.Single(elements, element => element.Attr("AutomationProperties.AutomationId") == id);
+            Assert.Equal("ToggleSwitch", toggle.Name.LocalName);
+            Assert.False(string.IsNullOrWhiteSpace(toggle.Attr("AutomationProperties.Name")));
+            Assert.Contains("must stay on", toggle.Attr("AutomationProperties.HelpText"));
+            Assert.Equal($"{{x:Bind ViewModel.{property}, Mode=OneWay}}", toggle.Attr("IsOn"));
+            Assert.Equal("OnScreenshotOutputToggled", toggle.Attr("Toggled"));
+        }
+
+        var notice = Assert.Single(elements, element => element.Attr("AutomationProperties.AutomationId") == "ScreenshotOutputStatus");
+        Assert.Equal("InfoBar", notice.Name.LocalName);
+        Assert.Equal("Polite", notice.Attr("AutomationProperties.LiveSetting"));
+        Assert.Equal("{x:Bind ViewModel.HasScreenshotOutputWarning, Mode=OneWay}", notice.Attr("IsOpen"));
+        Assert.Equal("{x:Bind ViewModel.ScreenshotOutputExplanation, Mode=OneWay}", notice.Attr("AutomationProperties.Name"));
+    }
+
+    [Fact]
     public void GeneralSettingsEditsTheExistingRecentLimitAndClearingRestoresIt()
     {
         var fixture = new Fixture();
@@ -1126,6 +1304,25 @@ public sealed class SettingsViewModelTests
     private static void Realize(SettingsViewModel vm, SettingsSectionKind kind)
         => vm.CompleteSectionRealization(vm.BeginSectionRealization(kind));
 
+    private static int ScreenshotMask(bool save, bool copy, bool editor) =>
+        (save ? 1 : 0) | (copy ? 2 : 0) | (editor ? 4 : 0);
+
+    private static void SetScreenshotOutput(SettingsViewModel vm, ScreenshotOutput output, bool enabled)
+    {
+        switch (output)
+        {
+            case ScreenshotOutput.SaveToDisk:
+                vm.SaveScreenshotToDisk = enabled;
+                break;
+            case ScreenshotOutput.CopyToClipboard:
+                vm.CopyScreenshotToClipboard = enabled;
+                break;
+            case ScreenshotOutput.OpenEditor:
+                vm.ShowScreenshotEditor = enabled;
+                break;
+        }
+    }
+
     private sealed class Fixture
     {
         public CountingSettingsStore Store { get; } = new();
@@ -1182,7 +1379,11 @@ public sealed class SettingsViewModelTests
                 ? (T)Enum.Parse(typeof(T), text)
                 : (T)value!;
         }
-        public void Set<T>(string key, T value) { _values[key] = value; Writes++; }
+        public void Set<T>(string key, T value)
+        {
+            _values[key] = value;
+            Writes++;
+        }
         public string GetLargeText(string key, string defaultValue) => ReadLargeText(key, defaultValue, fail: false);
         public string GetLargeTextForEditing(string key, string defaultValue)
         {

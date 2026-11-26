@@ -20,8 +20,11 @@ public sealed class OnboardingViewModel : ObservableObject
     private bool _launchAtLogin;
     private bool _canChangeLaunchAtLogin;
     private string _launchAtLoginNote = string.Empty;
+    private bool _saveScreenshotToDisk;
     private bool _copyScreenshotToClipboard;
     private bool _showScreenshotEditor;
+    private bool _hasScreenshotOutputWarning;
+    private bool _refreshingScreenshotOutputs;
     private bool _showSaveNotifications;
     private bool? _recordingCountdown;
 
@@ -32,29 +35,31 @@ public sealed class OnboardingViewModel : ObservableObject
         RefreshPreferences();
     }
 
+    public bool SaveScreenshotToDisk
+    {
+        get => _saveScreenshotToDisk;
+        set => SetScreenshotOutput(ref _saveScreenshotToDisk, value, ScreenshotOutput.SaveToDisk, nameof(SaveScreenshotToDisk));
+    }
+
     public bool CopyScreenshotToClipboard
     {
         get => _copyScreenshotToClipboard;
-        set
-        {
-            if (SetProperty(ref _copyScreenshotToClipboard, value))
-            {
-                _settings.CopyScreenshotToClipboard = value;
-            }
-        }
+        set => SetScreenshotOutput(ref _copyScreenshotToClipboard, value, ScreenshotOutput.CopyToClipboard, nameof(CopyScreenshotToClipboard));
     }
 
     public bool ShowScreenshotEditor
     {
         get => _showScreenshotEditor;
-        set
-        {
-            if (SetProperty(ref _showScreenshotEditor, value))
-            {
-                _settings.ShowScreenshotEditor = value;
-            }
-        }
+        set => SetScreenshotOutput(ref _showScreenshotEditor, value, ScreenshotOutput.OpenEditor, nameof(ShowScreenshotEditor));
     }
+
+    public bool HasScreenshotOutputWarning
+    {
+        get => _hasScreenshotOutputWarning;
+        private set => SetProperty(ref _hasScreenshotOutputWarning, value);
+    }
+
+    public string ScreenshotOutputExplanation => ScreenshotOutputPolicy.LastOutputExplanation;
 
     public bool ShowSaveNotifications
     {
@@ -89,8 +94,8 @@ public sealed class OnboardingViewModel : ObservableObject
 
     public void RefreshPreferences()
     {
-        SetProperty(ref _copyScreenshotToClipboard, _settings.CopyScreenshotToClipboard, nameof(CopyScreenshotToClipboard));
-        SetProperty(ref _showScreenshotEditor, _settings.ShowScreenshotEditor, nameof(ShowScreenshotEditor));
+        RefreshScreenshotOutputs();
+        HasScreenshotOutputWarning = false;
         SetProperty(ref _showSaveNotifications, _settings.ShowSaveNotifications, nameof(ShowSaveNotifications));
         bool? countdown = _settings.VideoCountdownEnabled == _settings.GifCountdownEnabled
             ? _settings.VideoCountdownEnabled
@@ -98,6 +103,46 @@ public sealed class OnboardingViewModel : ObservableObject
         if (SetProperty(ref _recordingCountdown, countdown, nameof(RecordingCountdown)))
         {
             OnPropertyChanged(nameof(RecordingCountdownOffContent));
+        }
+    }
+
+    private void SetScreenshotOutput(ref bool current, bool value, ScreenshotOutput output, string propertyName)
+    {
+        if (_refreshingScreenshotOutputs)
+        {
+            return;
+        }
+
+        if (current == value)
+        {
+            RefreshScreenshotOutputs();
+            return;
+        }
+
+        var accepted = ScreenshotOutputPolicy.TrySet(_settings, output, value);
+        HasScreenshotOutputWarning = !accepted;
+        RefreshScreenshotOutputs();
+        if (!accepted)
+        {
+            OnPropertyChanged(propertyName);
+        }
+    }
+
+    private void RefreshScreenshotOutputs()
+    {
+        var save = _settings.SaveScreenshotToDisk;
+        var copy = _settings.CopyScreenshotToClipboard;
+        var editor = _settings.ShowScreenshotEditor;
+        _refreshingScreenshotOutputs = true;
+        try
+        {
+            SetProperty(ref _saveScreenshotToDisk, save, nameof(SaveScreenshotToDisk));
+            SetProperty(ref _copyScreenshotToClipboard, copy, nameof(CopyScreenshotToClipboard));
+            SetProperty(ref _showScreenshotEditor, editor, nameof(ShowScreenshotEditor));
+        }
+        finally
+        {
+            _refreshingScreenshotOutputs = false;
         }
     }
 

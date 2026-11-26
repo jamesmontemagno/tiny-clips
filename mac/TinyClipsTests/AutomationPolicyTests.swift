@@ -107,6 +107,40 @@ final class AutomationPolicyTests: XCTestCase {
     }
 
     @MainActor
+    func testScreenshotOutputSettingsRejectDisablingTheLastOutput() throws {
+        let suite = "TinyClipsAutomationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = CaptureSettings(defaults: defaults)
+        XCTAssertTrue(settings.setScreenshotOutput(.saveToDisk, enabled: false))
+        XCTAssertTrue(settings.setScreenshotOutput(.openEditor, enabled: false))
+        let copy = AutomationSetting.screenshotOutput("copyScreenshotToClipboard", .copyToClipboard, settings: settings)
+        let editor = AutomationSetting.screenshotOutput("showScreenshotEditor", .openEditor, settings: settings)
+
+        XCTAssertThrowsError(try copy.write(false)) {
+            XCTAssertEqual(($0 as? AutomationError)?.code, .conflict)
+        }
+        XCTAssertTrue(settings.copyScreenshotToClipboard)
+
+        try editor.write(true)
+        try copy.write(false)
+        XCTAssertThrowsError(try editor.write(false)) {
+            XCTAssertEqual(($0 as? AutomationError)?.code, .conflict)
+        }
+        XCTAssertTrue(settings.showScreenshotEditor)
+        XCTAssertFalse(settings.copyScreenshotToClipboard)
+
+        try copy.write(true)
+        try editor.write(false)
+        XCTAssertTrue(settings.copyScreenshotToClipboard)
+        XCTAssertFalse(settings.showScreenshotEditor)
+        XCTAssertThrowsError(try copy.write(1)) {
+            XCTAssertEqual(($0 as? AutomationError)?.code, .invalidParams)
+        }
+        XCTAssertNil(AutomationSetting.named("saveScreenshotToDisk"))
+    }
+
+    @MainActor
     func testStudioProjectFolderIsReadOnlyForAgents() throws {
         let setting = try XCTUnwrap(AutomationSetting.named("studioProjectFolder"))
         XCTAssertFalse(setting.writable)

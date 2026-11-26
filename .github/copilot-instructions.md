@@ -77,6 +77,7 @@ dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c De
   - `.github/instructions/mac-settings-ui.instructions.md`
   - `.github/instructions/capture-windows.instructions.md`
   - `.github/instructions/mas-storekit.instructions.md`
+  - `.github/instructions/screenshot-outputs.instructions.md`
 
 ### Windows
 
@@ -91,6 +92,10 @@ dotnet test windows/tests/TinyClips.Core.Tests/TinyClips.Core.Tests.csproj -c De
 - Preserve tray-first behavior (no main window at startup) unless explicitly requested.
 - Keep global hotkey defaults aligned with Windows conventions documented in [windows/README.md](../windows/README.md).
 - Prefer compact flyout-based filtering for the Windows Clips Library, inspired by the macOS app, while keeping grid and list presentations polished and action buttons well organized.
+
+### Both platforms: screenshot outputs
+
+- Screenshot save, clipboard, and editor outputs are independent; at least one must stay on. With saving off, the capture is a temporary file and must not reach the Library, Recent, notifications, reveal, or uploads. Count analytics only after an output succeeds. Before changing anything after capture, read `.github/instructions/screenshot-outputs.instructions.md`.
 
 ## PR Checklist
 

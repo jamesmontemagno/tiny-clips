@@ -266,7 +266,7 @@ public partial class App : IAutomationAppActions
             new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
         }
 
-        var path = await SaveScreenshotFrameAsync(
+        var path = await SavePersistentScreenshotFrameAsync(
             Services.GetRequiredService<IScreenshotService>(), frame, alreadyBranded: true, cancellationToken);
         var (width, height) = await Task.Run(
             () => ScreenshotBackgroundDecoder.ReadDimensions(path, cancellationToken), cancellationToken);
@@ -368,7 +368,7 @@ public partial class App : IAutomationAppActions
                 new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
             }
 
-            var path = await SaveScreenshotFrameAsync(
+            var path = await SavePersistentScreenshotFrameAsync(
                 Services.GetRequiredService<IScreenshotService>(),
                 frame,
                 alreadyBranded: true);

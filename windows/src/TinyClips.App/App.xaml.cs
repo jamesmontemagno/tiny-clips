@@ -70,6 +70,12 @@ public partial class App : Application
     private QuickBugReportWindow? _quickBugReportWindow;
     private OnboardingWindow? _onboardingWindow;
     private readonly HashSet<ScreenshotEditorWindow> _editorWindows = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<ScreenshotRecoveryWindow> _screenshotRecoveryWindows = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<ScreenshotOutputNoticeWindow> _screenshotOutputNoticeWindows = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<Task> _pendingScreenshotPresentations = new(ReferenceEqualityComparer.Instance);
+    private readonly List<Action> _deferredScreenshotRecoveries = [];
+    private const string NoScreenshotOutputMessage =
+        "Choose at least one screenshot output in Settings before capturing.";
     private Window? _trimmerWindow;
     private readonly HashSet<Window> _replacedTrimmerWindows = new(ReferenceEqualityComparer.Instance);
     private StudioWindowService? _studioWindows;
@@ -181,6 +187,8 @@ public partial class App : Application
             .AddSingleton<IStudioPreviewViewFactory, StudioPreviewViewFactory>()
             .AddSingleton<StudioWindowService>()
             .AddSingleton<StudioRecentDrafts>()
+            .AddSingleton(provider => new ScreenshotTemporaryCleanupService(
+                provider.GetRequiredService<ScreenshotTemporaryFileStore>()))
             .AddSingleton<AgentControlService>(CreateAgentControlService)
             .BuildServiceProvider();
 
@@ -215,6 +223,7 @@ public partial class App : Application
         RunStartupStep(nameof(RunStartupUpdateCheckAsync), () => _ = RunStartupUpdateCheckAsync());
 #endif
         RunStartupStep(nameof(ScheduleStudioProjectCleanup), ScheduleStudioProjectCleanup);
+        RunStartupStep(nameof(ScheduleScreenshotTemporaryCleanup), ScheduleScreenshotTemporaryCleanup);
         RunStartupStep(nameof(WatchStudioDrafts), WatchStudioDrafts);
         RunStartupStep(nameof(StartAgentControl), StartAgentControl);
         RunStartupStep(nameof(EndStartupPhaseAfterFirstDispatcherPass), EndStartupPhaseAfterFirstDispatcherPass);
@@ -230,6 +239,23 @@ public partial class App : Application
             await Task.Delay(StudioCleanupStartupDelay).ConfigureAwait(false);
             await Services.GetRequiredService<StudioProjectCleanupService>().RunAsync().ConfigureAwait(false);
             DeleteStaleStudioExportFiles();
+        });
+    }
+
+    private static void ScheduleScreenshotTemporaryCleanup()
+    {
+        var cleanup = Services.GetRequiredService<ScreenshotTemporaryCleanupService>();
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(StudioCleanupStartupDelay).ConfigureAwait(false);
+            try
+            {
+                await cleanup.PurgeStaleAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                CrashDiagnostics.Log("Screenshot temporary cleanup", ex, handled: true);
+            }
         });
     }
 
@@ -788,11 +814,18 @@ public partial class App : Application
 
     private void ShowTrayPopup()
     {
-        if (_isExiting || _trayLayout is null)
+        if (_isExiting)
         {
             return;
         }
 
+        if (_deferredScreenshotRecoveries.Count > 0)
+        {
+            RetryDeferredScreenshotRecovery();
+            return;
+        }
+
+        if (_trayLayout is null) return;
         // Prepare the content ahead of time, but create no window until it is requested.
         // A hidden acrylic window can otherwise leave an empty surface at startup.
         _trayPopup ??= new TrayPopupWindow(_trayLayout);
@@ -1790,6 +1823,13 @@ public partial class App : Application
         bool wasPickerInitiated,
         CancellationToken cancellationToken)
     {
+        if (!ScreenshotOutputPolicy.Read(settings).HasAnyOutput)
+        {
+            PresentScreenshotOutputProblem(NoScreenshotOutputMessage, offerSettings: true);
+            ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
+            return;
+        }
+
         CapturedFrame frame;
         if (selection.Backdrop is { } backdrop && !countdownRan && !settings.ScreenshotUsesLiveCapture)
         {
@@ -1809,13 +1849,13 @@ public partial class App : Application
             new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
         }
 
-        await PresentScreenshotFrameAsync(frame, settings, wasPickerInitiated, alreadyBranded: true);
+        await TrackScreenshotPresentationAsync(
+            PresentScreenshotFrameAsync(frame, settings, wasPickerInitiated, alreadyBranded: true));
     }
 
     /// <summary>
-    /// Shared post-capture path for screenshots and scrolling captures: save (and copy to the
-    /// clipboard) in the background, then open the editor from memory or from the saved file, or
-    /// optionally reveal + toast when the editor is disabled (or <paramref name="allowEditor"/> is false).
+    /// Shared post-capture path for normal and scrolling screenshots. Temporary files never enter
+    /// the saved-clip path; the editor can still open from memory while encoding runs.
     /// </summary>
     private async Task PresentScreenshotFrameAsync(
         CapturedFrame frame,
@@ -1824,45 +1864,297 @@ public partial class App : Application
         bool alreadyBranded,
         bool allowEditor = true)
     {
-        var screenshots = Services.GetRequiredService<IScreenshotService>();
-        var saveTask = SaveScreenshotFrameAsync(screenshots, frame, alreadyBranded);
-        if (settings.ShowScreenshotEditor && allowEditor)
+        var selection = ScreenshotOutputPolicy.Read(settings);
+        var state = new ScreenshotPresentationState(frame, selection, allowEditor, alreadyBranded, wasPickerInitiated);
+        if (!selection.HasAnyOutput)
         {
-            // With a downscale configured, the saved file's dimensions differ from the frame; keep
-            // the editor file-backed so Save/Reset/Copy operate on the same pixels as the file.
-            var scaleApplied = settings.ScreenshotScale is > 0 and < 100;
-            if (!scaleApplied)
-            {
-                OpenScreenshotEditor(frame, saveTask, reopenPickerAfterClose: wasPickerInitiated);
-                CaptureFlowTrace.Mark("screenshot: editor opened from memory");
-                try
-                {
-                    await saveTask;
-                }
-                catch (Exception ex)
-                {
-                    // The editor already reports the failure via BindToPendingSaveAsync.
-                    Debug.WriteLine($"Background screenshot save failed: {ex}");
-                }
-                return;
-            }
-
-            var savedPath = await saveTask;
-            OpenScreenshotEditor(savedPath, reopenPickerAfterClose: wasPickerInitiated);
-            CaptureFlowTrace.Mark("screenshot: editor opened from file (scaled)");
+            ShowScreenshotRecovery(state, NoScreenshotOutputMessage);
             return;
         }
 
-        var path = await saveTask;
-        if (settings.ShowInExplorer)
-        {
-            RevealInExplorer(path);
-        }
-        ShowSaveToast(path);
-        ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
+        if (!await RouteAndPresentScreenshotAsync(state, selection))
+            ShowScreenshotRecovery(state, ScreenshotRecoveryReason(state.LastResult!, state.Progress.Copied));
     }
 
-    private async Task<string> SaveScreenshotFrameAsync(
+    private sealed class ScreenshotPresentationState(
+        CapturedFrame frame, ScreenshotOutputSelection selection, bool fitsEditor,
+        bool alreadyBranded, bool wasPickerInitiated)
+    {
+        public CapturedFrame Frame => Progress.Frame ??
+            throw new InvalidOperationException("The screenshot no longer needs recovery.");
+        public bool FitsEditor { get; } = fitsEditor;
+        public bool AlreadyBranded { get; } = alreadyBranded;
+        public bool WasPickerInitiated { get; } = wasPickerInitiated;
+        public ScreenshotRecoveryProgress Progress { get; } = new(selection, fitsEditor, frame);
+        public ScreenshotRoutingResult? LastResult { get; set; }
+        public ScreenshotEditorWindow? Editor { get; set; }
+        public bool AnalyticsRecorded { get; set; }
+        public bool IsRouting { get; set; }
+        public bool IsRecoveryOpen { get; set; }
+        public bool IsFinished { get; set; }
+    }
+
+    private async Task TrackScreenshotPresentationAsync(Task presentation)
+    {
+        _pendingScreenshotPresentations.Add(presentation);
+        try { await presentation; }
+        finally { _pendingScreenshotPresentations.Remove(presentation); }
+    }
+
+    private async Task<bool> RouteAndPresentScreenshotAsync(
+        ScreenshotPresentationState state, ScreenshotOutputSelection selection)
+    {
+        state.IsRouting = true;
+        try
+        {
+            var (result, editor) = await RouteScreenshotAsync(state, selection);
+            if (result.Editor == ScreenshotEditorOutcome.Loaded && editor is { HasImageLoadFailure: true })
+                result = result with { Editor = ScreenshotEditorOutcome.Failed };
+            else if (result.Editor == ScreenshotEditorOutcome.Loaded && editor is { IsClosed: true })
+                result = result with { Editor = ScreenshotEditorOutcome.Closed };
+
+            state.LastResult = result;
+            state.Editor = editor;
+            state.AnalyticsRecorded |= result.AnalyticsRecorded;
+            state.Progress.RecordResult(selection, result);
+            var editorIsOpen = result.Editor == ScreenshotEditorOutcome.Loaded && editor is { IsClosed: false };
+            if (state.Progress.RequiresRecovery(result, editorIsOpen, editor?.HasPermanentSave == true))
+            {
+                LogScreenshotRoutingFailures(result);
+                return false;
+            }
+
+            PresentScreenshotResult(result, editor);
+            if (!editorIsOpen && !state.IsRecoveryOpen)
+                FinishScreenshotPresentation(state, result.EditorHandlesLifecycle);
+            return true;
+        }
+        finally { state.IsRouting = false; }
+    }
+
+    private async Task<(ScreenshotRoutingResult Result, ScreenshotEditorWindow? Editor)> RouteScreenshotAsync(
+        ScreenshotPresentationState state, ScreenshotOutputSelection selection)
+    {
+        var completion = new TaskCompletionSource<ScreenshotRoutingResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var settings = Services.GetRequiredService<ICaptureSettings>();
+        ScreenshotRoutingResult result;
+        ScreenshotEditorWindow? editor = null;
+        try
+        {
+            result = await Services.GetRequiredService<ScreenshotCaptureRouter>().RouteAsync(
+                state.Frame, selection, state.FitsEditor, useMemoryEditor: settings.ScreenshotScale is not (> 0 and < 100),
+                state.AlreadyBranded,
+                path => selection.SaveToDisk
+                    ? ClipboardService.CopySavedClipAsync(path, CaptureType.Screenshot)
+                    : ClipboardService.CopyTemporaryScreenshotAsync(path),
+                request => OpenRoutedScreenshotEditorAsync(request, state, completion.Task,
+                    window => { editor = window; state.Editor = window; }),
+                recordCapture: !state.AnalyticsRecorded);
+        }
+        catch (Exception ex)
+        {
+            // Keep the frame recoverable even for an unexpected service or analytics failure.
+            result = new(selection.SaveToDisk, null, false, ScreenshotEditorOutcome.NotRequested,
+                selection.OpenEditor && !state.FitsEditor, false, ex, null, null);
+        }
+        completion.TrySetResult(result);
+        return (result, editor);
+    }
+
+    private void PresentScreenshotResult(ScreenshotRoutingResult result, ScreenshotEditorWindow? editor)
+    {
+        LogScreenshotRoutingFailures(result);
+        var problems = new List<string>();
+        var editorIsOpen = result.Editor == ScreenshotEditorOutcome.Loaded && editor is { IsClosed: false };
+        var savedPath = (result.IsPermanent ? result.Path : null) ?? editor?.PermanentSavePath;
+        if (result.CopyError is not null)
+        {
+            problems.Add(editorIsOpen
+                ? "Couldn't copy the screenshot. Use Copy or Save as in the editor."
+                : savedPath is not null
+                    ? "Couldn't copy the screenshot. Open the saved file to copy it."
+                    : "Couldn't copy the screenshot.");
+        }
+        if (result.WriteError is not null && editorIsOpen)
+            problems.Add("Couldn't prepare the screenshot file. Use Save as in the editor to keep it.");
+        if (result.EditorUnavailable)
+            problems.Add(result.IsPermanent
+                ? "The scrolling screenshot is too large for the editor. Find the saved file in its folder."
+                : "The scrolling screenshot is too large for the editor. Paste it from the clipboard.");
+        else if (result.Editor == ScreenshotEditorOutcome.Failed)
+            problems.Add(result.IsPermanent
+                ? "Couldn't open the screenshot editor. The saved file is still available."
+                : "Couldn't open the screenshot editor. Paste the screenshot from the clipboard.");
+
+        if (problems.Count > 0)
+            PresentScreenshotOutputProblem(string.Join(" ", problems),
+                editorIsOpen ? editor : null, savedPath,
+                revealFile: result.EditorUnavailable || result.Editor == ScreenshotEditorOutcome.Failed);
+
+        if (!result.EditorHandlesLifecycle)
+        {
+            if (result.ShouldPresentSavedResult && result.Path is { } path)
+            {
+                if (Services.GetRequiredService<ICaptureSettings>().ShowInExplorer) RevealInExplorer(path);
+                ShowSaveToast(path);
+            }
+            else if (result.Copied)
+            {
+                Announce(AutomationNotificationKind.ActionCompleted, AutomationNotificationProcessing.MostRecent,
+                    "Screenshot copied to the clipboard.", "ScreenshotCopied");
+            }
+        }
+    }
+
+    private static void LogScreenshotRoutingFailures(ScreenshotRoutingResult result)
+    {
+        if (result.WriteError is not null) CrashDiagnostics.Log("Screenshot output", result.WriteError, handled: true);
+        if (result.CopyError is not null) CrashDiagnostics.Log("Screenshot clipboard", result.CopyError, handled: true);
+        if (result.EditorError is not null) CrashDiagnostics.Log("Screenshot editor", result.EditorError, handled: true);
+    }
+
+    private static string ScreenshotRecoveryReason(ScreenshotRoutingResult result, bool copied)
+    {
+        if (result.EditorUnavailable)
+            return copied
+                ? "The screenshot was copied, but it is too large for the editor. Save it to keep a file."
+                : "The scrolling screenshot is too large for the editor. Save it to keep the image.";
+        if (result.WriteError is not null)
+            return "Couldn't prepare the screenshot. Check your temporary and capture folders, then try again or save it.";
+        if (result.CopyError is not null)
+            return "Couldn't copy the screenshot. Try again, or save it to a file.";
+        if (copied)
+            return "The screenshot was copied, but the editor couldn't open. Try again or save it to a file.";
+        return "Couldn't open the screenshot editor. Try again, or save the screenshot to a file.";
+    }
+
+    private void ReportScreenshotOutputProblem(string message)
+    {
+        Announce(AutomationNotificationKind.ActionAborted, AutomationNotificationProcessing.ImportantMostRecent,
+            message, "ScreenshotOutputProblem");
+        ShowMessageNotification(message);
+    }
+
+    private void PresentScreenshotOutputProblem(
+        string message, ScreenshotEditorWindow? editor = null, string? savedPath = null,
+        bool offerSettings = false, bool revealFile = false)
+    {
+        ReportScreenshotOutputProblem(message);
+        if (editor?.ShowOutputWarning(message) == true) return;
+
+        ScreenshotOutputNoticeWindow? window = null;
+        try
+        {
+            Action? action = null;
+            string? label = null;
+            if (savedPath is { } path)
+            {
+                action = revealFile ? () => RevealInExplorer(path) : () => OpenScreenshotEditor(path);
+                label = revealFile ? "Show in folder" : "Open screenshot";
+            }
+            else if (offerSettings)
+            {
+                action = OpenSettingsWindow;
+                label = "Open settings";
+            }
+            window = new ScreenshotOutputNoticeWindow(message, Services.GetRequiredService<ICaptureSettings>(), label, action);
+            _screenshotOutputNoticeWindows.Add(window);
+            window.Closed += (_, _) => _screenshotOutputNoticeWindows.Remove(window);
+            ActivateWindowToForeground(window);
+        }
+        catch (Exception ex)
+        {
+            CrashDiagnostics.Log("Show screenshot output notice", ex, handled: true);
+            if (window is not null)
+            {
+                _screenshotOutputNoticeWindows.Remove(window);
+                try { window.Close(); }
+                catch (Exception closeException) { CrashDiagnostics.Log("Close screenshot output notice", closeException, handled: true); }
+            }
+        }
+    }
+
+    private void ShowScreenshotRecovery(ScreenshotPresentationState state, string reason)
+    {
+        if (state.IsRecoveryOpen || state.IsFinished) return;
+        ScreenshotRecoveryWindow? window = null;
+        Func<Task<bool>>? retry = state.Progress.CanRetry
+            ? async () =>
+            {
+                var delivered = await RouteAndPresentScreenshotAsync(state, state.Progress.RetrySelection);
+                if (!delivered && !state.Progress.CanRetry) window?.DisableRetry();
+                return delivered;
+            }
+            : null;
+        async Task<bool> SaveAsync()
+        {
+            var path = await Services.GetRequiredService<ScreenshotCaptureRouter>()
+                .SaveRecoveredAsync(state.Frame, state.AlreadyBranded, recordCapture: !state.AnalyticsRecorded);
+            state.Progress.ReleaseFrame();
+            state.AnalyticsRecorded = true;
+            PresentRecoverySave(path);
+            return true;
+        }
+        async Task<bool> SaveAsAsync(string destination)
+        {
+            var path = await Services.GetRequiredService<ScreenshotCaptureRouter>()
+                .SaveRecoveredAsAsync(state.Frame, destination, state.AlreadyBranded, recordCapture: !state.AnalyticsRecorded);
+            state.Progress.ReleaseFrame();
+            state.AnalyticsRecorded = true;
+            PresentRecoverySave(path);
+            return true;
+        }
+        void PresentRecoverySave(string path)
+        {
+            if (Services.GetRequiredService<ICaptureSettings>().ShowInExplorer) RevealInExplorer(path);
+            ShowSaveToast(path);
+        }
+
+        var suppressClosedFlow = false;
+        try
+        {
+            state.IsRecoveryOpen = true;
+            window = new ScreenshotRecoveryWindow(reason, retry, SaveAsync, SaveAsAsync,
+                Services.GetRequiredService<ICaptureSettings>());
+            _screenshotRecoveryWindows.Add(window);
+            window.Closed += (_, _) =>
+            {
+                _screenshotRecoveryWindows.Remove(window);
+                state.IsRecoveryOpen = false;
+                if (!suppressClosedFlow && (state.Editor is null || state.Editor.IsClosed))
+                    FinishScreenshotPresentation(state, state.LastResult?.EditorHandlesLifecycle == true);
+            };
+            Announce(AutomationNotificationKind.ActionAborted, AutomationNotificationProcessing.ImportantMostRecent,
+                reason, "ScreenshotRecovery");
+            ActivateWindowToForeground(window);
+        }
+        catch (Exception ex)
+        {
+            state.IsRecoveryOpen = false;
+            CrashDiagnostics.Log("Show screenshot recovery", ex, handled: true);
+            if (window is not null)
+            {
+                suppressClosedFlow = true;
+                _screenshotRecoveryWindows.Remove(window);
+                try { window.CloseForPresentationRetry(); }
+                catch (Exception closeException) { CrashDiagnostics.Log("Close screenshot recovery", closeException, handled: true); }
+            }
+            // Keep the pixels in memory and provide a way to retry even if window creation failed.
+            _deferredScreenshotRecoveries.Add(() => ShowScreenshotRecovery(state, reason));
+            ReportScreenshotOutputProblem("Couldn't open screenshot recovery. Open Tiny Clips from the tray to try again; the image is still available.");
+        }
+    }
+
+    private void RetryDeferredScreenshotRecovery()
+    {
+        if (_deferredScreenshotRecoveries.Count == 0) return;
+        var retry = _deferredScreenshotRecoveries[0];
+        _deferredScreenshotRecoveries.RemoveAt(0);
+        retry();
+    }
+
+    /// <summary>Automation always uses this permanent path, regardless of interactive save settings.</summary>
+    private async Task<string> SavePersistentScreenshotFrameAsync(
         IScreenshotService screenshots, CapturedFrame frame, bool alreadyBranded, CancellationToken cancellationToken = default)
     {
         var path = await screenshots.SaveFrameAsync(frame, applyBranding: !alreadyBranded, cancellationToken);
@@ -1888,6 +2180,13 @@ public partial class App : Application
         var service = Services.GetRequiredService<IScrollingCaptureService>();
         if (service.IsActive || _scrollingPanel is not null)
         {
+            return;
+        }
+
+        if (!isAutomation && !ScreenshotOutputPolicy.Read(settings).HasAnyOutput)
+        {
+            ReportScreenshotOutputProblem(NoScreenshotOutputMessage);
+            ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, wasPickerInitiated);
             return;
         }
 
@@ -2027,11 +2326,12 @@ public partial class App : Application
                 new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
             }
 
-            // The editor setting is re-read here; if it was toggled on mid-capture the image may
-            // exceed the Win2D/XAML texture cap, so fall back to a direct save in that case.
+            // The editor setting may have changed mid-capture. An oversized image is never
+            // automatically saved when saving is off; routing offers explicit recovery instead.
             var fitsEditor = frame.Width <= PanoramaCaptureLimits.EditorMaxOutputHeight
                 && frame.Height <= PanoramaCaptureLimits.EditorMaxOutputHeight;
-            await PresentScreenshotFrameAsync(frame, settings, wasPickerInitiated, alreadyBranded: true, allowEditor: fitsEditor);
+            await TrackScreenshotPresentationAsync(PresentScreenshotFrameAsync(
+                frame, settings, wasPickerInitiated, alreadyBranded: true, allowEditor: fitsEditor));
         }
         catch (Exception ex)
         {
@@ -4275,40 +4575,115 @@ public partial class App : Application
 
     private void OpenScreenshotEditor(string path, bool reopenPickerAfterClose = false)
     {
-        if (!OpenScreenshotEditorCore(
+        if (OpenScreenshotEditorCore(
                 () => new ScreenshotEditorWindow(path),
                 path,
-                reopenPickerAfterClose))
+                reopenPickerAfterClose) is null)
         {
             ContinueAfterScreenshotEditorFailure(reopenPickerAfterClose);
         }
     }
 
-    /// <summary>
-    /// Opens the editor directly from the captured pixels while <paramref name="saveTask"/>
-    /// encodes and writes the file in the background. The editor binds to the final path once
-    /// the save completes so Save/Save-a-copy work exactly as before.
-    /// </summary>
-    private void OpenScreenshotEditor(CapturedFrame frame, Task<string> saveTask, bool reopenPickerAfterClose)
+    private async Task<ScreenshotEditorOutcome> OpenRoutedScreenshotEditorAsync(
+        ScreenshotEditorRequest request, ScreenshotPresentationState state, Task<ScreenshotRoutingResult> routingCompleted,
+        Action<ScreenshotEditorWindow> onWindowCreated)
     {
-        if (!OpenScreenshotEditorCore(
-                () => new ScreenshotEditorWindow(frame, saveTask),
-                fallbackPath: null,
-                reopenPickerAfterClose,
-                saveTask))
+        ScreenshotEditorWindow? window;
+        try
         {
-            _ = FinishScreenshotCaptureFlowAsync(
-                saveTask,
-                reopenPickerAfterClose,
-                editorWindowClosed: false);
+            var path = request.UseMemory ? null : await request.File;
+            window = OpenScreenshotEditorCore(
+                () => request.UseMemory
+                    ? request.IsTemporary
+                        ? new ScreenshotEditorWindow(request.Frame, request.File, request.Lease!)
+                        : new ScreenshotEditorWindow(request.Frame, request.File)
+                    : request.IsTemporary
+                        ? new ScreenshotEditorWindow(path!, request.Lease!)
+                        : new ScreenshotEditorWindow(path!),
+                fallbackPath: null, state.WasPickerInitiated,
+                onClosed: closed => _ = HandleRoutedEditorClosedAsync(state, closed, routingCompleted));
+            if (window is null)
+            {
+                request.Lease?.Dispose();
+                return ScreenshotEditorOutcome.Failed;
+            }
         }
+        catch
+        {
+            request.Lease?.Dispose();
+            throw;
+        }
+
+        onWindowCreated(window);
+        window.PermanentSaveCompleted += state.Progress.ReleaseFrame;
+        window.ImageLoadFailed += exception =>
+        {
+            _ = HandleRoutedEditorLoadFailureAsync(state, window, routingCompleted);
+        };
+        var initialLoad = await window.InitialLoad;
+        try { await request.File; }
+        catch { /* Routing reports write failures and preserves the captured frame. */ }
+        var outcome = initialLoad switch
+        {
+            ScreenshotEditorLoadOutcome.Loaded => ScreenshotEditorOutcome.Loaded,
+            ScreenshotEditorLoadOutcome.Closed => ScreenshotEditorOutcome.ClosedBeforeLoad,
+            _ => ScreenshotEditorOutcome.Failed,
+        };
+        return ScreenshotEditorOutcomePolicy.AfterPendingWrite(outcome, window.IsClosed);
     }
 
-    private bool OpenScreenshotEditorCore(
+    private async Task HandleRoutedEditorLoadFailureAsync(
+        ScreenshotPresentationState state, ScreenshotEditorWindow window, Task<ScreenshotRoutingResult> routingCompleted)
+    {
+        var result = await routingCompleted;
+        // The main presentation handles initial load failures. A later Reset/reload failure needs
+        // its own recovery because the editor has already been reported as successfully opened.
+        if (result.Editor != ScreenshotEditorOutcome.Loaded || state.IsRouting || state.IsRecoveryOpen ||
+            state.IsFinished || state.Editor != window) return;
+        state.Progress.MarkEditorFailed();
+        var saved = window.HasPermanentSave || (result.IsPermanent && result.Path is not null);
+        if (!saved)
+        {
+            ShowScreenshotRecovery(state, state.Progress.Copied
+                ? "The screenshot was copied, but the editor couldn't reload. Try again or save it to a file."
+                : "Couldn't reload the screenshot editor. Try again, or save the screenshot to a file.");
+            return;
+        }
+
+        PresentScreenshotOutputProblem("Couldn't reload the screenshot editor. The saved file is still available.",
+            savedPath: (result.IsPermanent ? result.Path : null) ?? window.PermanentSavePath, revealFile: true);
+        FinishScreenshotPresentation(state, afterEditor: true);
+    }
+
+    private async Task HandleRoutedEditorClosedAsync(
+        ScreenshotPresentationState state, ScreenshotEditorWindow window, Task<ScreenshotRoutingResult> routingCompleted)
+    {
+        var result = await routingCompleted;
+        if (window.HasImageLoadFailure || state.IsRouting || state.IsRecoveryOpen ||
+            state.IsFinished || state.Editor != window) return;
+        result = (state.LastResult ?? result) with { Editor = ScreenshotEditorOutcome.Closed };
+        if (state.Progress.RequiresRecovery(result, editorIsOpen: false, window.HasPermanentSave))
+        {
+            ShowScreenshotRecovery(state, ScreenshotRecoveryReason(result, state.Progress.Copied));
+            return;
+        }
+        FinishScreenshotPresentation(state, afterEditor: true);
+    }
+
+    private void FinishScreenshotPresentation(ScreenshotPresentationState state, bool afterEditor)
+    {
+        if (state.IsFinished || state.IsRecoveryOpen) return;
+        state.IsFinished = true;
+        state.Progress.ReleaseFrame();
+        if (afterEditor) FinishScreenshotCaptureFlow(state.WasPickerInitiated);
+        else ReopenPickerAfterCaptureIfNeeded(CaptureType.Screenshot, state.WasPickerInitiated);
+    }
+
+    private ScreenshotEditorWindow? OpenScreenshotEditorCore(
         Func<ScreenshotEditorWindow> create,
         string? fallbackPath,
         bool reopenPickerAfterClose,
-        Task<string>? pendingCaptureSave = null)
+        Action<ScreenshotEditorWindow>? onClosed = null)
     {
         ScreenshotEditorWindow? createdWindow = null;
         try
@@ -4319,22 +4694,13 @@ public partial class App : Application
             {
                 if (_editorWindows.Remove(window))
                 {
-                    if (pendingCaptureSave is null)
-                    {
-                        FinishScreenshotCaptureFlow(reopenPickerAfterClose);
-                    }
-                    else
-                    {
-                        _ = FinishScreenshotCaptureFlowAsync(
-                            pendingCaptureSave,
-                            reopenPickerAfterClose,
-                            editorWindowClosed: true);
-                    }
+                    if (onClosed is not null) onClosed(window);
+                    else FinishScreenshotCaptureFlow(reopenPickerAfterClose);
                 }
             };
             _editorWindows.Add(window);
             ActivateWindowToForeground(window);
-            return true;
+            return window;
         }
         catch (Exception ex)
         {
@@ -4345,6 +4711,8 @@ public partial class App : Application
             if (createdWindow is not null)
             {
                 _editorWindows.Remove(createdWindow);
+                try { createdWindow.CloseAfterOpenFailure(); }
+                catch (Exception closeException) { CrashDiagnostics.Log("Close failed screenshot editor", closeException, handled: true); }
             }
             if (fallbackPath is not null)
             {
@@ -4354,33 +4722,7 @@ public partial class App : Application
                 }
                 ShowSaveToast(fallbackPath);
             }
-            return false;
-        }
-    }
-
-    private async Task FinishScreenshotCaptureFlowAsync(
-        Task<string> pendingCaptureSave,
-        bool reopenPickerAfterClose,
-        bool editorWindowClosed)
-    {
-        try
-        {
-            await pendingCaptureSave;
-        }
-        catch (Exception ex)
-        {
-            // The editor or caller reports the save failure. Waiting still makes picker sequencing
-            // deterministic and prevents a late 30th analytics event from stranding the prompt.
-            Debug.WriteLine($"Waiting for screenshot save before review sequencing failed: {ex}");
-        }
-
-        if (editorWindowClosed)
-        {
-            FinishScreenshotCaptureFlow(reopenPickerAfterClose);
-        }
-        else
-        {
-            ContinueAfterScreenshotEditorFailure(reopenPickerAfterClose);
+            return null;
         }
     }
 
@@ -4440,6 +4782,33 @@ public partial class App : Application
     {
         if (_isExiting)
         {
+            return;
+        }
+
+        if (_deferredScreenshotRecoveries.Count > 0)
+        {
+            ReportScreenshotOutputProblem("Resolve the retained screenshot before quitting Tiny Clips.");
+            RetryDeferredScreenshotRecovery();
+            return;
+        }
+
+        if (_screenshotRecoveryWindows.FirstOrDefault() is { } recovery)
+        {
+            ReportScreenshotOutputProblem("Save, retry, or discard the screenshot before quitting Tiny Clips.");
+            ActivateWindowToForeground(recovery);
+            return;
+        }
+
+        if (_editorWindows.FirstOrDefault(window => window.HasUnsavedUnbackedScreenshot) is { } unsavedEditor)
+        {
+            ReportScreenshotOutputProblem("Save or close the unsaved screenshot before quitting Tiny Clips.");
+            ActivateWindowToForeground(unsavedEditor);
+            return;
+        }
+
+        if (_pendingScreenshotPresentations.Count != 0 || _scrollingStopping)
+        {
+            ReportScreenshotOutputProblem("A screenshot is still being prepared. Try quitting again when it finishes.");
             return;
         }
 

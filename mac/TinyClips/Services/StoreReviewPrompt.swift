@@ -70,6 +70,7 @@ final class StoreReviewPromptCoordinator {
         state: .shared,
         isCaptureInProgress: { CaptureManager.current?.isAnyCaptureInProgress == true },
         hasActiveCaptureWork: { CaptureManager.current?.isCaptureWorkActive == true },
+        hasScreenshotRecovery: { CaptureManager.current?.isScreenshotRecoveryInProgress == true },
         hasOpenCaptureEditor: {
             if ScreenshotEditorRegistry.shared.hasOpenSessions
                 || StudioWindowRegistry.shared.hasOpenWindows {
@@ -88,6 +89,7 @@ final class StoreReviewPromptCoordinator {
     private let state: StoreReviewPromptState
     private let isCaptureInProgress: @MainActor () -> Bool
     private let hasActiveCaptureWork: @MainActor () -> Bool
+    private let hasScreenshotRecovery: @MainActor () -> Bool
     private let hasOpenCaptureEditor: @MainActor () -> Bool
     private let presentPrompt: PromptPresenter
     private var continuations: [@MainActor () -> Void] = []
@@ -98,12 +100,14 @@ final class StoreReviewPromptCoordinator {
         state: StoreReviewPromptState,
         isCaptureInProgress: @escaping @MainActor () -> Bool,
         hasActiveCaptureWork: @escaping @MainActor () -> Bool,
+        hasScreenshotRecovery: @escaping @MainActor () -> Bool = { false },
         hasOpenCaptureEditor: @escaping @MainActor () -> Bool,
         presentPrompt: @escaping PromptPresenter
     ) {
         self.state = state
         self.isCaptureInProgress = isCaptureInProgress
         self.hasActiveCaptureWork = hasActiveCaptureWork
+        self.hasScreenshotRecovery = hasScreenshotRecovery
         self.hasOpenCaptureEditor = hasOpenCaptureEditor
         self.presentPrompt = presentPrompt
     }
@@ -114,6 +118,7 @@ final class StoreReviewPromptCoordinator {
         guard !isPromptOpen,
               !isCaptureInProgress(),
               !hasActiveCaptureWork(),
+              !hasScreenshotRecovery(),
               !hasOpenCaptureEditor() else { return }
 
         if state.claimPromptAfterEditorWindowClosed() {
@@ -123,6 +128,7 @@ final class StoreReviewPromptCoordinator {
                     guard let self, self.isPromptOpen, !self.didRequestReview,
                           !self.isCaptureInProgress(),
                           !self.hasActiveCaptureWork(),
+                          !self.hasScreenshotRecovery(),
                           !self.hasOpenCaptureEditor() else { return false }
                     self.didRequestReview = true
                     requestReview()
@@ -150,7 +156,7 @@ final class StoreReviewPromptCoordinator {
 
     private func resumePendingActionsWhenIdle() {
         guard !isPromptOpen, !isCaptureInProgress(),
-              !hasActiveCaptureWork(), !hasOpenCaptureEditor() else { return }
+              !hasActiveCaptureWork(), !hasScreenshotRecovery(), !hasOpenCaptureEditor() else { return }
         flushContinuations()
     }
 

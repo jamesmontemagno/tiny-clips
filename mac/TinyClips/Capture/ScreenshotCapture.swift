@@ -259,6 +259,18 @@ enum WindowAreaCaptureResolver {
     }
 }
 
+struct ScreenshotEncodingOptions {
+    let format: ImageFormat
+    let quality: Double
+    let brandingEnabled: Bool
+
+    init(settings: CaptureSettings) {
+        format = settings.imageFormat
+        quality = settings.jpegQuality
+        brandingEnabled = settings.showBrandingOverlay
+    }
+}
+
 struct ScreenshotCapture {
     private struct CaptureResult {
         let image: CGImage
@@ -281,6 +293,11 @@ struct ScreenshotCapture {
     /// only ~86% of pixels identical. `CGImage.cropping(to:)` is a pure pixel copy.
     static func captureImage(region: CaptureRegion) async throws -> CGImage {
         (try await captureResult(region: region)).image
+    }
+
+    static func captureImageWithScale(region: CaptureRegion) async throws -> (image: CGImage, scaleFactor: CGFloat) {
+        let result = try await captureResult(region: region)
+        return (result.image, result.scaleFactor)
     }
 
     private static func captureResult(region: CaptureRegion) async throws -> CaptureResult {
@@ -352,30 +369,51 @@ struct ScreenshotCapture {
             : scaleFactorForWindow(window)
     }
 
+    static func clipboardImage(
+        _ image: CGImage,
+        scaleFactor: CGFloat,
+        options: ScreenshotEncodingOptions
+    ) -> NSImage {
+        let prepared = imageForOutput(image, options: options)
+        let size = ImagePixelDensity.logicalSize(
+            pixelWidth: prepared.width,
+            pixelHeight: prepared.height,
+            scaleFactor: scaleFactor
+        )
+        let representation = NSBitmapImageRep(cgImage: prepared)
+        representation.size = size
+        let clipboardImage = NSImage(size: size)
+        clipboardImage.addRepresentation(representation)
+        return clipboardImage
+    }
+
+    private static func imageForOutput(_ image: CGImage, options: ScreenshotEncodingOptions) -> CGImage {
+        options.brandingEnabled ? BrandingOverlayProcessor.applyToImage(image) : image
+    }
+
     static func saveImage(
         _ image: CGImage,
         to outputURL: URL,
-        scaleFactor: CGFloat = 1
+        scaleFactor: CGFloat = 1,
+        options: ScreenshotEncodingOptions? = nil
     ) throws -> URL {
-        let settings = CaptureSettings.shared
-        let imageType = settings.imageFormat.utType
+        let options = options ?? ScreenshotEncodingOptions(settings: .shared)
+        let imageType = options.format.utType
         let dpi = ImagePixelDensity.dpi(for: scaleFactor)
         var destinationProperties: [CFString: Any] = [
             kCGImagePropertyDPIWidth: dpi,
             kCGImagePropertyDPIHeight: dpi
         ]
-        if settings.imageFormat == .jpeg {
-            destinationProperties[kCGImageDestinationLossyCompressionQuality] = settings.jpegQuality
+        if options.format == .jpeg {
+            destinationProperties[kCGImageDestinationLossyCompressionQuality] = options.quality
         }
 
-        let imageToSave = settings.showBrandingOverlay
-            ? BrandingOverlayProcessor.applyToImage(image)
-            : image
+        let imageToSave = imageForOutput(image, options: options)
 
-        if settings.imageFormat == .webp {
+        if options.format == .webp {
             guard let data = WebPImageEncoder.encode(
                 imageToSave,
-                quality: settings.jpegQuality,
+                quality: options.quality,
                 scaleFactor: scaleFactor
             ) else {
                 throw CaptureError.saveFailed

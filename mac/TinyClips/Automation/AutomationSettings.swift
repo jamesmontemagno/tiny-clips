@@ -22,6 +22,26 @@ struct AutomationSetting {
         )
     }
 
+    static func screenshotOutput(
+        _ key: String,
+        _ output: CaptureSettings.ScreenshotOutput,
+        settings: CaptureSettings = .shared
+    ) -> AutomationSetting {
+        AutomationSetting(
+            key: key,
+            writable: true,
+            read: { settings.screenshotOutputIsEnabled(output) },
+            write: { value in
+                guard let bool = AutomationValue.bool(value) else {
+                    throw AutomationError(.invalidParams, "\(key) must be true or false.")
+                }
+                guard settings.setScreenshotOutput(output, enabled: bool) else {
+                    throw AutomationError(.conflict, CaptureSettings.screenshotOutputRequiredMessage)
+                }
+            }
+        )
+    }
+
     static func int(
         _ key: String,
         _ keyPath: ReferenceWritableKeyPath<CaptureSettings, Int>,
@@ -112,13 +132,13 @@ struct AutomationSetting {
         .string("screenshotFormat", \.screenshotFormat, allowed: ImageFormat.allCases.map(\.rawValue)),
         .int("screenshotScale", \.screenshotScale, 25...100, allowed: [25, 50, 75, 100]),
         .double("jpegQuality", \.jpegQuality, 0.1...1),
-        .bool("copyScreenshotToClipboard", \.copyScreenshotToClipboard),
+        .screenshotOutput("copyScreenshotToClipboard", .copyToClipboard),
         .bool("copyVideoToClipboard", \.copyVideoToClipboard),
         .bool("copyGifToClipboard", \.copyGifToClipboard),
         .bool("showInFinder", \.showInFinder),
         .bool("studioRevealAfterFirstSave", \.studioRevealAfterFirstSave),
         .bool("showSaveNotifications", \.showSaveNotifications),
-        .bool("showScreenshotEditor", \.showScreenshotEditor),
+        .screenshotOutput("showScreenshotEditor", .openEditor),
         .string("screenshotEditorDefaultTool", \.screenshotEditorDefaultTool, allowed: EditTool.allCases.map(\.settingID)),
         .bool("showTrimmer", \.showTrimmer),
         .bool("showGifTrimmer", \.showGifTrimmer),

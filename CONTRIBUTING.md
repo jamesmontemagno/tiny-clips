@@ -260,7 +260,7 @@ Accessibility is treated as a release gate. When adding or changing UI:
 
 ### Capture flows
 
-1. **Screenshot:** permission → picker (region/screen/window + countdown) → optional screen picker for multi-display → optional region indicator → capture → optional editor → save.
+1. **Screenshot:** permission → picker (region/screen/window + countdown) → optional screen picker for multi-display → optional region indicator → capture → outputs. Save to disk, copy to clipboard, and open the editor are independent, and at least one stays on. With saving off, the image is an app-private temporary file that is deleted when the editor closes, and leftovers are swept at startup. It never enters the Library or Recent. If no output succeeds, the user is offered recovery. Follow [.github/instructions/screenshot-outputs.instructions.md](.github/instructions/screenshot-outputs.instructions.md) when changing this flow.
 2. **Video/GIF:** permission → picker → optional region indicator → start panel → optional countdown → record → stop panel → optional trimmer → save.
 3. **Video for Studio** (started with **Studio Recording…** in the menu bar menu. `CaptureManager.startVideoRecording(forStudio:)` carries the recording intent to the recorder, and **Record Video…** never sets it): as video, but the screen and camera are written as separate tracks into a project folder with the click and cursor data, and the Studio editor opens instead of the trimmer. Nothing is rendered until export.
 

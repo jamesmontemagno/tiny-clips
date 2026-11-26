@@ -16,6 +16,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -146,6 +147,7 @@
                     Label="Save As"
                     ToolTipService.ToolTip="Save the edited image to a new file" />
                 <AppBarButton
+                    x:Name="OpenSaveFolderButton"
                     AutomationProperties.AutomationId="EditorOpenFolderButton"
                     Click="OnOpenSaveFolder"
                     Icon="Folder"
@@ -168,8 +170,18 @@
             </CommandBar>
         </Border>
 
+        <InfoBar
+            x:Name="ScreenshotOutputStatus"
+            Grid.Row="2"
+            Margin="16,0,16,10"
+            AutomationProperties.AutomationId="ScreenshotEditorOutputStatus"
+            AutomationProperties.LiveSetting="Polite"
+            IsOpen="False"
+            Severity="Warning"
+            Title="Screenshot needs attention" />
+
         <!--  Content: tool rail | inspector | canvas  -->
-        <Grid Grid.Row="2" Margin="16,0,16,16">
+        <Grid Grid.Row="3" Margin="16,0,16,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />

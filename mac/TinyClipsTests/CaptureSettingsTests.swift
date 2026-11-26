@@ -1,6 +1,7 @@
 import Carbon.HIToolbox
 import AVFoundation
 import AppKit
+import Combine
 import XCTest
 @testable import TinyClips
 
@@ -25,6 +26,196 @@ final class CaptureSettingsTests: XCTestCase {
         XCTAssertEqual(CaptureSettings.imageFormat(from: "webp"), .webp)
         XCTAssertEqual(ImageFormat.webp.utType.preferredFilenameExtension, "webp")
         XCTAssertEqual(CaptureSettings.imageFormat(from: "invalid"), .jpeg)
+    }
+
+    func testScreenshotOutputDefaultsAndPersistenceDoNotChangeRecordingPreferences() {
+        let settings = CaptureSettings(defaults: defaults)
+        XCTAssertTrue(settings.saveScreenshotToDisk)
+        XCTAssertTrue(settings.copyScreenshotToClipboard)
+        XCTAssertTrue(settings.showScreenshotEditor)
+        XCTAssertFalse(settings.copyVideoToClipboard)
+        XCTAssertFalse(settings.copyGifToClipboard)
+        XCTAssertTrue(settings.showTrimmer)
+        XCTAssertTrue(settings.showGifTrimmer)
+        XCTAssertTrue(settings.saveImmediatelyVideo)
+        XCTAssertTrue(settings.saveImmediatelyGif)
+
+        settings.copyVideoToClipboard = true
+        settings.copyGifToClipboard = true
+        settings.showTrimmer = false
+        settings.showGifTrimmer = false
+        settings.saveImmediatelyVideo = false
+        settings.saveImmediatelyGif = false
+        XCTAssertTrue(settings.setScreenshotOutput(.saveToDisk, enabled: false))
+
+        let reopened = CaptureSettings(defaults: defaults)
+        XCTAssertFalse(reopened.saveScreenshotToDisk)
+        XCTAssertEqual(defaults.object(forKey: CaptureSettings.saveScreenshotToDiskKey) as? Bool, false)
+        XCTAssertTrue(reopened.copyScreenshotToClipboard)
+        XCTAssertTrue(reopened.showScreenshotEditor)
+        XCTAssertTrue(reopened.copyVideoToClipboard)
+        XCTAssertTrue(reopened.copyGifToClipboard)
+        XCTAssertFalse(reopened.showTrimmer)
+        XCTAssertFalse(reopened.showGifTrimmer)
+        XCTAssertFalse(reopened.saveImmediatelyVideo)
+        XCTAssertFalse(reopened.saveImmediatelyGif)
+    }
+
+    func testScreenshotSaveMigrationPreservesLegacyEffectiveBehavior() {
+        let cases: [(legacy: Bool?, editor: Bool?, expected: Bool)] = [
+            (nil, nil, true),
+            (nil, true, true),
+            (nil, false, true),
+            (true, nil, true),
+            (true, true, true),
+            (true, false, true),
+            (false, nil, false),
+            (false, true, false),
+            (false, false, true)
+        ]
+
+        for scenario in cases {
+            defaults.removePersistentDomain(forName: suiteName)
+            if let legacy = scenario.legacy {
+                defaults.set(legacy, forKey: CaptureSettings.legacySaveImmediatelyScreenshotKey)
+            }
+            if let editor = scenario.editor {
+                defaults.set(editor, forKey: "showScreenshotEditor")
+            }
+            defaults.set(false, forKey: "copyScreenshotToClipboard")
+            defaults.set("mainDisplay", forKey: "multiMonitorCaptureMode")
+
+            let settings = CaptureSettings(defaults: defaults)
+            XCTAssertEqual(settings.saveScreenshotToDisk, scenario.expected, "\(scenario)")
+            XCTAssertEqual(defaults.object(forKey: CaptureSettings.saveScreenshotToDiskKey) as? Bool, scenario.expected)
+            XCTAssertEqual(settings.showScreenshotEditor, scenario.editor ?? true)
+            XCTAssertFalse(settings.copyScreenshotToClipboard)
+            XCTAssertEqual(
+                defaults.object(forKey: CaptureSettings.legacySaveImmediatelyScreenshotKey) as? Bool,
+                scenario.legacy
+            )
+        }
+    }
+
+    func testExistingScreenshotSaveValueWinsOnRepeatedInitialization() {
+        for newValue in [false, true] {
+            defaults.removePersistentDomain(forName: suiteName)
+            defaults.set(newValue, forKey: CaptureSettings.saveScreenshotToDiskKey)
+            defaults.set(!newValue, forKey: CaptureSettings.legacySaveImmediatelyScreenshotKey)
+            defaults.set(newValue, forKey: "showScreenshotEditor")
+
+            XCTAssertEqual(CaptureSettings(defaults: defaults).saveScreenshotToDisk, newValue)
+            defaults.set(false, forKey: CaptureSettings.legacySaveImmediatelyScreenshotKey)
+            defaults.set(!newValue, forKey: "showScreenshotEditor")
+            XCTAssertEqual(CaptureSettings(defaults: defaults).saveScreenshotToDisk, newValue)
+            XCTAssertEqual(defaults.object(forKey: CaptureSettings.saveScreenshotToDiskKey) as? Bool, newValue)
+        }
+    }
+
+    func testScreenshotResetClearsLegacyPreferenceAndDoesNotRemigrateIt() {
+        defaults.set(false, forKey: CaptureSettings.legacySaveImmediatelyScreenshotKey)
+        defaults.set(true, forKey: "showScreenshotEditor")
+        defaults.set(false, forKey: "copyScreenshotToClipboard")
+        let settings = CaptureSettings(defaults: defaults)
+        XCTAssertFalse(settings.saveScreenshotToDisk)
+
+        settings.resetPreferences()
+
+        XCTAssertNil(defaults.object(forKey: CaptureSettings.saveScreenshotToDiskKey))
+        XCTAssertNil(defaults.object(forKey: CaptureSettings.legacySaveImmediatelyScreenshotKey))
+        XCTAssertTrue(settings.saveScreenshotToDisk)
+        XCTAssertTrue(settings.copyScreenshotToClipboard)
+        XCTAssertTrue(settings.showScreenshotEditor)
+
+        let reopened = CaptureSettings(defaults: defaults)
+        XCTAssertTrue(reopened.saveScreenshotToDisk)
+        XCTAssertTrue(reopened.copyScreenshotToClipboard)
+        XCTAssertTrue(reopened.showScreenshotEditor)
+        XCTAssertEqual(defaults.object(forKey: CaptureSettings.saveScreenshotToDiskKey) as? Bool, true)
+        XCTAssertNil(defaults.object(forKey: CaptureSettings.legacySaveImmediatelyScreenshotKey))
+    }
+
+    func testScreenshotOutputTransitionsPreserveOtherChoices() {
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        settings.saveImmediatelyScreenshot = false
+        settings.saveImmediatelyVideo = false
+        settings.saveImmediatelyGif = false
+        settings.copyVideoToClipboard = true
+        settings.copyGifToClipboard = true
+        settings.showTrimmer = false
+        settings.showGifTrimmer = false
+        let outputs: [CaptureSettings.ScreenshotOutput] = [.saveToDisk, .copyToClipboard, .openEditor]
+        let keys = [CaptureSettings.saveScreenshotToDiskKey, "copyScreenshotToClipboard", "showScreenshotEditor"]
+
+        for save in [false, true] {
+            for copy in [false, true] {
+                for editor in [false, true] {
+                    let before = [save, copy, editor]
+                    for (index, output) in outputs.enumerated() {
+                        for requested in [false, true] {
+                            for (key, value) in zip(keys, before) {
+                                defaults.set(value, forKey: key)
+                            }
+                            var candidate = before
+                            candidate[index] = requested
+                            let rejected = before[index] && !requested && !candidate.contains(true)
+                            let expected = rejected ? before : candidate
+                            let context = "\(before), \(output), \(requested)"
+
+                            XCTAssertEqual(settings.canSetScreenshotOutput(output, enabled: requested), !rejected, context)
+                            XCTAssertEqual(settings.setScreenshotOutput(output, enabled: requested), !rejected, context)
+                            XCTAssertEqual(outputs.map { settings.screenshotOutputIsEnabled($0) }, expected, context)
+                            XCTAssertEqual(keys.map { defaults.bool(forKey: $0) }, expected, context)
+                        }
+                    }
+                }
+            }
+        }
+
+        XCTAssertFalse(settings.saveImmediatelyScreenshot)
+        XCTAssertFalse(settings.saveImmediatelyVideo)
+        XCTAssertFalse(settings.saveImmediatelyGif)
+        XCTAssertTrue(settings.copyVideoToClipboard)
+        XCTAssertTrue(settings.copyGifToClipboard)
+        XCTAssertFalse(settings.showTrimmer)
+        XCTAssertFalse(settings.showGifTrimmer)
+    }
+
+    func testScreenshotOutputBindingIgnoresNoOpsAndExplainsOnlyRejectedTransitions() {
+        defaults.set(false, forKey: CaptureSettings.saveScreenshotToDiskKey)
+        defaults.set(false, forKey: "copyScreenshotToClipboard")
+        defaults.set(false, forKey: "showScreenshotEditor")
+        let settings = CaptureSettings(defaults: defaults, performMigrations: false)
+        var changes = 0
+        var rejections = 0
+        var acceptedChanges = 0
+        let subscription = settings.objectWillChange.sink { _ in changes += 1 }
+        let binding = settings.screenshotOutputBinding(
+            .saveToDisk,
+            onRejected: { rejections += 1 },
+            onChanged: { acceptedChanges += 1 }
+        )
+
+        binding.wrappedValue = false
+        XCTAssertEqual(changes, 0)
+        XCTAssertEqual(rejections, 0)
+        XCTAssertEqual(acceptedChanges, 0)
+
+        binding.wrappedValue = true
+        binding.wrappedValue = true
+        XCTAssertTrue(binding.wrappedValue)
+        XCTAssertEqual(changes, 1)
+        XCTAssertEqual(rejections, 0)
+        XCTAssertEqual(acceptedChanges, 1)
+
+        binding.wrappedValue = false
+        XCTAssertTrue(binding.wrappedValue)
+        XCTAssertEqual(changes, 1)
+        XCTAssertEqual(rejections, 1)
+        XCTAssertEqual(acceptedChanges, 1)
+        XCTAssertFalse(settings.copyScreenshotToClipboard)
+        XCTAssertFalse(settings.showScreenshotEditor)
+        subscription.cancel()
     }
 
     func testWelcomeCountdownChoiceUpdatesBothWithoutChangingDurationsOrScreenshotCountdown() {

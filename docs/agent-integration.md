@@ -118,6 +118,12 @@ keeps the lower viewport overlap until the final frame so bottom-floating contro
 large jumps without enough clear overlap are skipped. Agent-started captures use the same stitcher
 as interactive captures, with no additional command or setting.
 
+The interactive screenshot **Save file to disk** preference is UI-only. On both platforms,
+`capture.screenshot` and `capture.scrolling.stop` always save a persistent screenshot, even when
+interactive saving is off. Existing `settings.set` changes to `copyScreenshotToClipboard` or
+`showScreenshotEditor` return `conflict` without changing the setting if they would disable the
+last screenshot output. Enable another output before retrying.
+
 Supporter plans are intentionally not available to agents, on either platform: spending money needs a person, and the store's purchase dialog is theirs to confirm. No command buys a plan or reports supporter status.
 
 Keyboard shortcut configuration is also intentionally UI-only on both platforms. Assign, clear,

@@ -16,6 +16,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileSystem, FileSystem>();
         services.AddSingleton<IFileNameService, FileNameService>();
         services.AddSingleton<IClipStorageService, ClipStorageService>();
+        services.AddSingleton<ScreenshotTemporaryFileStore>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IClipAnalyticsService>(provider => new ClipAnalyticsService(
             provider.GetRequiredService<ISettingsService>(),
@@ -42,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMonitorService, MonitorService>();
         services.AddSingleton<IScreenCaptureService, ScreenCaptureService>();
         services.AddSingleton<IScreenshotService, ScreenshotService>();
+        services.AddSingleton<ScreenshotCaptureRouter>();
         services.AddSingleton<IOcrService, OcrService>();
         services.AddSingleton<IVideoRecordingService, VideoRecordingService>();
         services.AddSingleton<IGifRecordingService, GifRecordingService>();

@@ -475,10 +475,41 @@ private struct ExportAlignmentGrid: View {
 
 // MARK: - Editor View
 
+enum ScreenshotEditorSaveDestination {
+    static func resolve(
+        currentURL: URL,
+        format: ImageFormat,
+        needsPermanentURL: Bool,
+        configuredDirectory: URL,
+        temporaryRoot: URL = TinyClipsTemporaryFiles.directoryURL,
+        generate: () -> URL
+    ) -> URL? {
+        if needsPermanentURL {
+            guard TinyClipsTemporaryFiles.canSaveScreenshotPermanently(
+                at: configuredDirectory,
+                root: temporaryRoot
+            ) else { return nil }
+            let generated = generate()
+            return TinyClipsTemporaryFiles.canSaveScreenshotPermanently(at: generated, root: temporaryRoot)
+                ? generated
+                : nil
+        }
+        let currentExtension = currentURL.pathExtension.lowercased()
+        if currentExtension == format.rawValue || (format == .jpeg && currentExtension == "jpeg") {
+            return currentURL
+        }
+        return SaveService.uniqueURL(
+            in: currentURL.deletingLastPathComponent(),
+            filename: "\(currentURL.deletingPathExtension().lastPathComponent).\(format.rawValue)"
+        )
+    }
+}
+
 struct ScreenshotEditorView: View {
     let imageURL: URL
     let initialSaveURL: URL
     let deleteSourceAfterSave: Bool
+    let onSaved: ((URL) -> Void)?
     let onDone: (URL?) -> Void
 
     @StateObject private var viewModel: ScreenshotEditorViewModel
@@ -510,11 +541,13 @@ struct ScreenshotEditorView: View {
         initialSaveURL: URL,
         deleteSourceAfterSave: Bool,
         lifecycle: ScreenshotEditorLifecycle,
+        onSaved: ((URL) -> Void)? = nil,
         onDone: @escaping (URL?) -> Void
     ) {
         self.imageURL = imageURL
         self.initialSaveURL = initialSaveURL
         self.deleteSourceAfterSave = deleteSourceAfterSave
+        self.onSaved = onSaved
         self.onDone = onDone
         self.lifecycle = lifecycle
         _viewModel = StateObject(wrappedValue: ScreenshotEditorViewModel(url: imageURL))
@@ -2215,19 +2248,34 @@ struct ScreenshotEditorView: View {
         lifecycle.isSaving = true
 
         DispatchQueue.main.async {
-            let currentExtension = currentSaveURL.pathExtension.lowercased()
-            let saveURL = currentExtension == viewModel.saveFormat.rawValue
-                || (viewModel.saveFormat == .jpeg && currentExtension == "jpeg")
-                ? currentSaveURL
-                : SaveService.uniqueURL(
-                    in: currentSaveURL.deletingLastPathComponent(),
-                    filename: "\(currentSaveURL.deletingPathExtension().lastPathComponent).\(viewModel.saveFormat.rawValue)"
-                )
+            let needsPermanentURL = deleteSourceAfterSave && lastSavedURL == nil
+            let directory = needsPermanentURL
+                ? SaveService.shared.outputDirectoryURL(for: .screenshot)
+                : currentSaveURL.deletingLastPathComponent()
+            guard let saveURL = ScreenshotEditorSaveDestination.resolve(
+                currentURL: currentSaveURL,
+                format: viewModel.saveFormat,
+                needsPermanentURL: needsPermanentURL,
+                configuredDirectory: directory,
+                generate: {
+                    SaveService.shared.generateURL(
+                        for: .screenshot,
+                        fileExtension: viewModel.saveFormat.rawValue
+                    )
+                }
+            ) else {
+                SaveService.shared.showError("Choose a screenshot save folder outside the temporary screenshot folder.")
+                lifecycle.isSaving = false
+                return
+            }
             if let url = viewModel.save(to: saveURL) {
                 currentSaveURL = url
                 lifecycle.lastSavedURL = url
                 viewModel.markSaved()
-                removeTemporarySourceAfterSave(to: url)
+                if onSaved == nil {
+                    removeTemporarySourceAfterSave(to: url)
+                }
+                onSaved?(url)
             } else {
                 SaveService.shared.showError("Could not save the edited image.")
             }
@@ -2244,6 +2292,10 @@ struct ScreenshotEditorView: View {
         guard !isSaving else { return }
 
         guard let targetURL = chooseSaveLocation() else { return }
+        guard isPermanentSaveLocation(targetURL) else {
+            SaveService.shared.showError("Choose a location outside the temporary screenshot folder.")
+            return
+        }
 
         lifecycle.isSaving = true
         DispatchQueue.main.async {
@@ -2251,7 +2303,10 @@ struct ScreenshotEditorView: View {
                 currentSaveURL = url
                 lifecycle.lastSavedURL = url
                 viewModel.markSaved()
-                removeTemporarySourceAfterSave(to: url)
+                if onSaved == nil {
+                    removeTemporarySourceAfterSave(to: url)
+                }
+                onSaved?(url)
                 activePopover = nil
             } else {
                 SaveService.shared.showError("Could not save the edited image.")
@@ -2298,6 +2353,10 @@ struct ScreenshotEditorView: View {
             return
         }
         try? FileManager.default.removeItem(at: imageURL)
+    }
+
+    private func isPermanentSaveLocation(_ url: URL) -> Bool {
+        TinyClipsTemporaryFiles.canSaveScreenshotPermanently(at: url)
     }
 
     private func requestClose() {

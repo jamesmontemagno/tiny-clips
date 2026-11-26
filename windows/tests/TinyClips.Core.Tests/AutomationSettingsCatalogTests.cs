@@ -115,6 +115,39 @@ public sealed class AutomationSettingsCatalogTests
     }
 
     [Fact]
+    public void ScreenshotSettings_RejectDisablingTheLastOutput()
+    {
+        var settings = new CaptureSettings(new MemorySettings())
+        {
+            SaveScreenshotToDisk = false,
+            ShowScreenshotEditor = false,
+        };
+        var catalog = new AutomationSettingsCatalog(settings);
+
+        var copyError = Assert.Throws<AutomationException>(() =>
+            catalog.Set("copyScreenshotToClipboard", JsonValue.Create(false)));
+        Assert.Equal(AutomationErrorCodes.Conflict, copyError.Code);
+        Assert.True(settings.CopyScreenshotToClipboard);
+
+        catalog.Set("showScreenshotEditor", JsonValue.Create(true));
+        catalog.Set("copyScreenshotToClipboard", JsonValue.Create(false));
+        var editorError = Assert.Throws<AutomationException>(() =>
+            catalog.Set("showScreenshotEditor", JsonValue.Create(false)));
+        Assert.Equal(AutomationErrorCodes.Conflict, editorError.Code);
+        Assert.True(settings.ShowScreenshotEditor);
+        Assert.False(settings.CopyScreenshotToClipboard);
+
+        catalog.Set("copyScreenshotToClipboard", JsonValue.Create(true));
+        catalog.Set("showScreenshotEditor", JsonValue.Create(false));
+        catalog.Set("showGifTrimmer", JsonValue.Create(false));
+        Assert.True(settings.CopyScreenshotToClipboard);
+        Assert.False(settings.ShowScreenshotEditor);
+        Assert.False(settings.ShowGifTrimmer);
+        Assert.DoesNotContain("saveScreenshotToDisk", catalog.Keys);
+        AssertInvalid(() => catalog.Get("saveScreenshotToDisk"));
+    }
+
+    [Fact]
     public void RecentLimitChangesNotifyOnlyWhenTheEffectiveValueChanges()
     {
         var settings = new CaptureSettings(new MemorySettings());

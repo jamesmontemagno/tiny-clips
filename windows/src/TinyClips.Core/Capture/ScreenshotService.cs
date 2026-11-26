@@ -57,37 +57,68 @@ public sealed class ScreenshotService : IScreenshotService
     public async Task<string> SaveFrameAsync(CapturedFrame frame, bool applyBranding = true, CancellationToken cancellationToken = default)
     {
         var path = _storage.GenerateFilePath(CaptureType.Screenshot);
-
-        if (applyBranding && _settings.ShowBrandingOverlay)
-        {
-            new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
-        }
-
-        var encoded = await EncodeAsync(frame).ConfigureAwait(false);
-        CaptureFlowTrace.Mark("screenshot: encoded");
-
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory))
         {
             Directory.CreateDirectory(directory);
         }
 
-        await File.WriteAllBytesAsync(path, encoded, cancellationToken).ConfigureAwait(false);
-        CaptureFlowTrace.Mark("screenshot: written to disk");
+        await WriteFrameAsync(frame, path, applyBranding, cancellationToken).ConfigureAwait(false);
         _analytics.RecordCapture(CaptureType.Screenshot);
         return path;
     }
 
-    private async Task<byte[]> EncodeAsync(CapturedFrame frame)
+    public async Task WriteFrameAsync(
+        CapturedFrame frame, string path, bool applyBranding = true, CancellationToken cancellationToken = default)
     {
-        if (_settings.ImageFormat == ImageFormat.Webp)
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var encoded = await EncodeFrameAsync(frame, _settings.ImageFormat, applyBranding, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        await File.WriteAllBytesAsync(path, encoded, cancellationToken).ConfigureAwait(false);
+        CaptureFlowTrace.Mark("screenshot: written to disk");
+    }
+
+    public async Task WriteFrameAsync(
+        CapturedFrame frame, Stream destination, bool applyBranding = true, CancellationToken cancellationToken = default)
+        => await WriteFrameAsync(frame, destination, _settings.ImageFormat, applyBranding, cancellationToken).ConfigureAwait(false);
+
+    public async Task WriteFrameAsync(
+        CapturedFrame frame, Stream destination, ImageFormat format,
+        bool applyBranding = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(destination);
+        if (!destination.CanWrite) throw new ArgumentException("The destination must be writable.", nameof(destination));
+        var encoded = await EncodeFrameAsync(frame, format, applyBranding, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        await destination.WriteAsync(encoded, cancellationToken).ConfigureAwait(false);
+        CaptureFlowTrace.Mark("screenshot: written to disk");
+    }
+
+    private async Task<byte[]> EncodeFrameAsync(
+        CapturedFrame frame, ImageFormat format, bool applyBranding, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var scale = _settings.ScreenshotScale;
+        var quality = _settings.JpegQuality;
+        if (applyBranding && _settings.ShowBrandingOverlay)
+            new BrandingOverlayCompositor().Draw(frame.BgraPixels, frame.Width, frame.Height);
+        var encoded = await EncodeAsync(frame, format, scale, quality).ConfigureAwait(false);
+        CaptureFlowTrace.Mark("screenshot: encoded");
+        return encoded;
+    }
+
+    private static async Task<byte[]> EncodeAsync(CapturedFrame frame, ImageFormat format, int scale, double jpegQuality)
+    {
+        if (format == ImageFormat.Webp)
         {
             return await Task.Run(() => WebpImageEncoder.Encode(
-                frame.BgraPixels, frame.Width, frame.Height, _settings.ScreenshotScale, _settings.JpegQuality))
+                frame.BgraPixels, frame.Width, frame.Height, scale, jpegQuality))
                 .ConfigureAwait(false);
         }
 
-        var isPng = _settings.ImageFormat == ImageFormat.Png;
+        var isPng = format == ImageFormat.Png;
         var encoderId = isPng ? BitmapEncoder.PngEncoderId : BitmapEncoder.JpegEncoderId;
 
         using var stream = new InMemoryRandomAccessStream();
@@ -99,7 +130,7 @@ public sealed class ScreenshotService : IScreenshotService
         }
         else
         {
-            var quality = (float)Math.Clamp(_settings.JpegQuality, 0.1, 1.0);
+            var quality = (float)Math.Clamp(jpegQuality, 0.1, 1.0);
             var propertySet = new BitmapPropertySet
             {
                 { "ImageQuality", new BitmapTypedValue(quality, Windows.Foundation.PropertyType.Single) },
@@ -116,7 +147,6 @@ public sealed class ScreenshotService : IScreenshotService
             96.0,
             frame.BgraPixels);
 
-        var scale = _settings.ScreenshotScale;
         if (scale is > 0 and < 100)
         {
             encoder.BitmapTransform.ScaledWidth = (uint)Math.Max(1, frame.Width * scale / 100);

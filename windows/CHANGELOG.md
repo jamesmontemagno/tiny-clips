@@ -6,6 +6,8 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Screenshot recovery Save As preserves an existing destination if encoding fails or is canceled.
+- Saved screenshots no longer retain an extra recovery pixel buffer for the lifetime of their editor.
 - Rectangle, ellipse, arrow, line, and Draw controls in the Windows screenshot editor now expose direct stroke-opacity sliders; fill and badge opacity sliders sit directly below their related size controls.
 - The screenshot editor's Undo and Reset commands stay disabled until there are editable changes, and Delete is enabled only while an annotation is selected.
 - The Windows screenshot editor's Add/Edit text popup no longer clips controls at the right edge and now stretches its optional box controls to the available width.
@@ -27,6 +29,8 @@ own `CHANGELOG.md` at the repository root.
 - **Apply crop** now lives in the Crop tool's inspector section instead of the main command bar. The inspector stays open when **Select** is active with nothing selected, showing a short instruction so the canvas does not shift when an annotation is selected or cleared.
 - Short choices in the screenshot editor (**Arrow**, **Stroke position**, **Start**, **End**, **Corners**, redaction **Style** and **Strength**, and background image **Placement**) are now segmented controls instead of drop-downs.
 ### Added
+- Screenshot settings now offer independent save-to-disk, clipboard, and editor outputs. Saving can be turned off for temporary screenshots, which can still be saved explicitly from the editor; at least one output must remain enabled.
+- Temporary screenshots use app-private storage, are deleted when their editor and pending outputs finish, and are swept after one day at startup. Clipboard copies retain bitmap bytes instead of temporary file references. Save locations remain unrestricted, save-on writes directly, and screenshot analytics count successful outputs only, once across recovery.
 - The capture picker offers **Window area** for screenshots, video, and GIF. It captures the visible screen bounds of a selected window, including overlays, and clips the fixed area to one display when needed. If that display changes before capture starts, Tiny Clips cancels the capture, releases the prepared recorder, and asks you to select the area again.
 
 ## [v2.3.1-windows] - 2026-11-24

@@ -271,12 +271,24 @@ struct ScreenshotEditorScene: Scene {
 private final class ScreenshotEditorWindowObserverView: NSView {
     var onAttach: ((NSWindow) -> Void)?
     var onClose: (() -> Void)?
+    var onRequestClose: (() -> Bool)?
     private var closeObserver: AnyCancellable?
+    private weak var closeButton: NSButton?
+    private weak var previousCloseTarget: AnyObject?
+    private var previousCloseAction: Selector?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        restoreCloseButton()
         closeObserver = nil
         guard let window else { return }
+        if let button = window.standardWindowButton(.closeButton) {
+            closeButton = button
+            previousCloseTarget = button.target as AnyObject?
+            previousCloseAction = button.action
+            button.target = self
+            button.action = #selector(requestWindowClose(_:))
+        }
         closeObserver = NotificationCenter.default.publisher(for: NSWindow.willCloseNotification, object: window)
             .sink { [weak self] _ in
                 MainActor.assumeIsolated {
@@ -287,6 +299,22 @@ private final class ScreenshotEditorWindowObserverView: NSView {
             guard let self, let window, self.window === window else { return }
             self.onAttach?(window)
         }
+    }
+
+    @objc private func requestWindowClose(_ sender: Any?) {
+        if onRequestClose?() != true {
+            window?.close()
+        }
+    }
+
+    private func restoreCloseButton() {
+        if let closeButton, closeButton.target === self {
+            closeButton.target = previousCloseTarget
+            closeButton.action = previousCloseAction
+        }
+        closeButton = nil
+        previousCloseTarget = nil
+        previousCloseAction = nil
     }
 }
 
@@ -306,6 +334,9 @@ private struct ScreenshotEditorWindowObserver: NSViewRepresentable {
         view.onClose = {
             ScreenshotEditorRegistry.shared.windowWillClose(for: sessionID)
         }
+        view.onRequestClose = {
+            ScreenshotEditorRegistry.shared.requestWindowClose(for: sessionID)
+        }
     }
 }
 
@@ -321,7 +352,8 @@ private struct ScreenshotEditorSceneRoot: View {
                     imageURL: session.imageURL,
                     initialSaveURL: session.initialSaveURL,
                     deleteSourceAfterSave: session.deleteSourceAfterSave,
-                    lifecycle: session.lifecycle
+                    lifecycle: session.lifecycle,
+                    onSaved: session.onSaved
                 ) { resultURL in
                     guard !session.lifecycle.isFinishing else { return }
                     session.lifecycle.isFinishing = true
@@ -451,8 +483,13 @@ final class ScreenshotEditorRegistry: ObservableObject {
         let identity: URL
         let initialSaveURL: URL
         let deleteSourceAfterSave: Bool
+        let onSaved: ((URL) -> Void)?
+        let onPresentationFailure: (() -> Void)?
+        let onPresentationSuccess: (() -> Void)?
+        let onUnexpectedClose: (() -> Void)?
         let onComplete: (URL?) -> Void
         let lifecycle: ScreenshotEditorLifecycle
+        let sourceProtection: TemporaryEditorFileProtection
     }
 
     @Published private var sessions: [UUID: Session] = [:]
@@ -489,6 +526,10 @@ final class ScreenshotEditorRegistry: ObservableObject {
         imageURL: URL,
         initialSaveURL: URL? = nil,
         deleteSourceAfterSave: Bool = false,
+        onSaved: ((URL) -> Void)? = nil,
+        onPresentationFailure: (() -> Void)? = nil,
+        onPresentationSuccess: (() -> Void)? = nil,
+        onUnexpectedClose: (() -> Void)? = nil,
         onComplete: @escaping (URL?) -> Void
     ) {
         let identity = imageURL.standardizedFileURL.resolvingSymlinksInPath()
@@ -504,8 +545,13 @@ final class ScreenshotEditorRegistry: ObservableObject {
             identity: identity,
             initialSaveURL: initialSaveURL ?? imageURL,
             deleteSourceAfterSave: deleteSourceAfterSave,
+            onSaved: onSaved,
+            onPresentationFailure: onPresentationFailure,
+            onPresentationSuccess: onPresentationSuccess,
+            onUnexpectedClose: onUnexpectedClose,
             onComplete: onComplete,
-            lifecycle: ScreenshotEditorLifecycle(deleteSourceAfterSave: deleteSourceAfterSave)
+            lifecycle: ScreenshotEditorLifecycle(deleteSourceAfterSave: deleteSourceAfterSave),
+            sourceProtection: TinyClipsTemporaryFiles.protectEditorFile(imageURL)
         )
         sessionOrder.append(id)
         pendingWindowPresentations.insert(id)
@@ -515,6 +561,12 @@ final class ScreenshotEditorRegistry: ObservableObject {
         } else {
             pendingOpens.append(id)
         }
+        if onPresentationFailure != nil {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                self?.failPendingPresentation(id)
+            }
+        }
     }
 
     func session(for id: UUID) -> Session? {
@@ -522,17 +574,60 @@ final class ScreenshotEditorRegistry: ObservableObject {
     }
 
     func windowDidAttach(_ window: any WindowPresentationTarget, for id: UUID) {
-        guard sessions[id] != nil, pendingWindowPresentations.remove(id) != nil else { return }
+        guard sessions[id] != nil else {
+            (window as? NSWindow)?.close()
+            return
+        }
+        guard pendingWindowPresentations.remove(id) != nil else { return }
         sessions[id]?.lifecycle.window = window
+        sessions[id]?.onPresentationSuccess?()
         presentWindow(window)
     }
 
     func windowWillClose(for id: UUID) {
         guard let session = sessions[id] else { return }
-        finish(id, result: session.lifecycle.completionResult)
+        if pendingWindowPresentations.contains(id), session.onPresentationFailure != nil {
+            failPendingPresentation(id)
+            return
+        }
+        finish(
+            id,
+            result: session.lifecycle.completionResult,
+            recoverUnexpectedClose: !session.lifecycle.isFinishing
+        )
+    }
+
+    /// Routes the window's close button through the editor's close flow.
+    /// Returns false when the window should close directly: SwiftUI's `dismissWindow` presses the
+    /// same button once the editor has decided to close, and an unregistered window has no flow.
+    @discardableResult
+    func requestWindowClose(for id: UUID) -> Bool {
+        guard let lifecycle = sessions[id]?.lifecycle, !lifecycle.isFinishing else { return false }
+        Task { @MainActor in
+            _ = await lifecycle.requestClose(mode: .interactive)
+        }
+        return true
+    }
+
+    func failPendingPresentation(_ id: UUID) {
+        guard pendingWindowPresentations.contains(id),
+              let session = sessions[id],
+              let onPresentationFailure = session.onPresentationFailure else { return }
+        sessions.removeValue(forKey: id)
+        sessionOrder.removeAll { $0 == id }
+        pendingOpens.removeAll { $0 == id }
+        pendingWindowPresentations.remove(id)
+        session.lifecycle.finish()
+        applyActivationPolicy()
+        onPresentationFailure()
+        session.sourceProtection.release()
     }
 
     func finish(_ id: UUID, result: URL?) {
+        finish(id, result: result, recoverUnexpectedClose: false)
+    }
+
+    private func finish(_ id: UUID, result: URL?, recoverUnexpectedClose: Bool) {
         guard let session = sessions.removeValue(forKey: id) else { return }
         sessionOrder.removeAll { $0 == id }
         pendingOpens.removeAll { $0 == id }
@@ -540,8 +635,12 @@ final class ScreenshotEditorRegistry: ObservableObject {
         if let window = session.lifecycle.window as? NSWindow {
             TinyClipsActivationPolicy.endPresentation(of: window)
         }
+        if recoverUnexpectedClose, session.deleteSourceAfterSave, session.lifecycle.lastSavedURL == nil {
+            session.onUnexpectedClose?()
+        }
         session.lifecycle.finish()
         session.onComplete(result)
+        session.sourceProtection.release()
         applyActivationPolicy()
 #if APPSTORE
         DispatchQueue.main.async {

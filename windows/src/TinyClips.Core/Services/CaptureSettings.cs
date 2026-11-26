@@ -94,6 +94,13 @@ public sealed class CaptureSettings : ICaptureSettings
         set => _settings.Theme = value;
     }
 
+    public bool SaveScreenshotToDisk
+    {
+        // The legacy saveImmediatelyScreenshot setting was not used by Windows captures.
+        get => _settings.Get("saveScreenshotToDisk", true);
+        set => _settings.Set("saveScreenshotToDisk", value);
+    }
+
     public bool CopyScreenshotToClipboard
     {
         get => _settings.Get("copyScreenshotToClipboard", true);
@@ -967,6 +974,7 @@ public sealed class CaptureSettings : ICaptureSettings
         VideoSaveDirectory = DefaultSaveDirectory(CaptureType.Video);
         GifSaveDirectory = DefaultSaveDirectory(CaptureType.Gif);
         Theme = AppTheme.Default;
+        SaveScreenshotToDisk = true;
         CopyScreenshotToClipboard = true;
         CopyVideoToClipboard = false;
         CopyGifToClipboard = false;
