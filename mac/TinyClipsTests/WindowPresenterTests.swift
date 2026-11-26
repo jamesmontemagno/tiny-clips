@@ -509,8 +509,11 @@ final class WindowPresenterTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: lease.url.path))
         withExtendedLifetime(observer) {}
         lifecycle.isFinishing = true
+        // SwiftUI's dismissWindow presses the close button again; it must now close the window.
+        XCTAssertFalse(registry.requestWindowClose(for: id))
         registry.windowWillClose(for: id)
         XCTAssertFalse(FileManager.default.fileExists(atPath: lease.url.path))
+        XCTAssertFalse(registry.requestWindowClose(for: id))
     }
 
     func testUnexpectedNativeCloseRetainsUnsavedScreenshot() throws {

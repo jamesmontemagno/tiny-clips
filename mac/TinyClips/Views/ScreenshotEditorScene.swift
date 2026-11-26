@@ -271,7 +271,7 @@ struct ScreenshotEditorScene: Scene {
 private final class ScreenshotEditorWindowObserverView: NSView {
     var onAttach: ((NSWindow) -> Void)?
     var onClose: (() -> Void)?
-    var onRequestClose: (() -> Void)?
+    var onRequestClose: (() -> Bool)?
     private var closeObserver: AnyCancellable?
     private weak var closeButton: NSButton?
     private weak var previousCloseTarget: AnyObject?
@@ -302,7 +302,9 @@ private final class ScreenshotEditorWindowObserverView: NSView {
     }
 
     @objc private func requestWindowClose(_ sender: Any?) {
-        onRequestClose?()
+        if onRequestClose?() != true {
+            window?.close()
+        }
     }
 
     private func restoreCloseButton() {
@@ -595,11 +597,16 @@ final class ScreenshotEditorRegistry: ObservableObject {
         )
     }
 
-    func requestWindowClose(for id: UUID) {
-        guard let lifecycle = sessions[id]?.lifecycle else { return }
+    /// Routes the window's close button through the editor's close flow.
+    /// Returns false when the window should close directly: SwiftUI's `dismissWindow` presses the
+    /// same button once the editor has decided to close, and an unregistered window has no flow.
+    @discardableResult
+    func requestWindowClose(for id: UUID) -> Bool {
+        guard let lifecycle = sessions[id]?.lifecycle, !lifecycle.isFinishing else { return false }
         Task { @MainActor in
             _ = await lifecycle.requestClose(mode: .interactive)
         }
+        return true
     }
 
     func failPendingPresentation(_ id: UUID) {
