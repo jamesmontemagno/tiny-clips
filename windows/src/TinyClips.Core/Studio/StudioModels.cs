@@ -171,6 +171,7 @@ public enum StudioRedactLevel
 public sealed record StudioProject
 {
     public const int CurrentSchemaVersion = 1;
+    public const int SupportedSchemaVersion = 2;
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string Id { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
@@ -180,6 +181,10 @@ public sealed record StudioProject
     public StudioAppInfo App { get; init; } = new();
     public bool KeepSources { get; init; }
     public StudioSources Sources { get; init; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StudioMediaSource[]? MediaSources { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StudioTimeline? Timeline { get; init; }
     public StudioCanvas Canvas { get; init; } = new();
     public StudioScreenStyle Screen { get; init; } = new();
     public StudioCameraStyle Camera { get; init; } = new();
@@ -190,6 +195,58 @@ public sealed record StudioProject
     public StudioOverlays Overlays { get; init; } = new();
     public StudioCaptions Captions { get; init; } = new();
     public StudioExport[] Exports { get; init; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+[JsonConverter(typeof(StudioMediaSourceKindJsonConverter))]
+public enum StudioMediaSourceKind
+{
+    NativeRecording,
+    FlatVideo,
+}
+
+public sealed record StudioMediaSource
+{
+    public string Id { get; init; } = string.Empty;
+    public StudioMediaSourceKind Kind { get; init; }
+    public StudioSources Sources { get; init; } = new();
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+public sealed record StudioTimeline
+{
+    public StudioTimelineClip[] Clips { get; init; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+public sealed record StudioTimelineClip
+{
+    public string Id { get; init; } = string.Empty;
+    public string SourceId { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public double SourceStart { get; init; }
+    public double SourceEnd { get; init; }
+    public StudioEdits Edits { get; init; } = new();
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StudioScreenStyle? Screen { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StudioCameraStyle? Camera { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StudioScene[]? Scenes { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StudioZoom[]? Zooms { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StudioAudio? Audio { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StudioOverlays? Overlays { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StudioCaptions? Captions { get; init; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
@@ -222,6 +279,8 @@ public sealed record StudioScreenSource
     public double FrameRate { get; init; } = 30;
     public double Duration { get; init; }
     public bool External { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? RotationDegrees { get; init; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];

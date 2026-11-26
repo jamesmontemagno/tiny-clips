@@ -121,6 +121,8 @@ struct StudioProject: Codable, Equatable, Sendable {
     var app: StudioAppInfo
     var keepSources: Bool
     var sources: StudioSources
+    var mediaSources: [StudioMediaSource]?
+    var timeline: StudioTimeline?
     var canvas: StudioCanvas
     var screen: StudioScreenStyle
     var camera: StudioCameraStyle
@@ -164,6 +166,8 @@ struct StudioProject: Codable, Equatable, Sendable {
         self.app = app
         self.keepSources = keepSources
         self.sources = sources
+        self.mediaSources = nil
+        self.timeline = nil
         self.canvas = canvas
         self.screen = screen
         self.camera = camera
@@ -197,6 +201,12 @@ struct StudioProject: Codable, Equatable, Sendable {
             throw StudioProjectError.invalidProject("Missing required property sources.screen")
         }
         sources = decodedSources
+        if container.contains(StudioJSONKey("mediaSources")) {
+            mediaSources = try container.decodeCompactArray("mediaSources", default: [])
+        } else {
+            mediaSources = nil
+        }
+        timeline = try container.decodeIfPresent(StudioTimeline.self, forKey: StudioJSONKey("timeline"))
         canvas = try container.decodeIfPresent(StudioCanvas.self, forKey: StudioJSONKey("canvas")) ?? StudioCanvas()
         screen = try container.decodeIfPresent(StudioScreenStyle.self, forKey: StudioJSONKey("screen")) ?? StudioScreenStyle()
         camera = try container.decodeIfPresent(StudioCameraStyle.self, forKey: StudioJSONKey("camera")) ?? StudioCameraStyle()
@@ -209,6 +219,33 @@ struct StudioProject: Codable, Equatable, Sendable {
         captions = try container.decodeIfPresent(StudioCaptions.self, forKey: StudioJSONKey("captions")) ?? StudioCaptions()
         exports = try container.decodeCompactArray("exports", default: [])
         extra = try StudioJSON.decodeExtra(from: container, excluding: Self.knownKeys)
+        if schemaVersion >= 2 {
+            guard let mediaSources, !mediaSources.isEmpty, let timeline, !timeline.clips.isEmpty else {
+                throw StudioProjectError.invalidProject("Schema version 2 requires mediaSources and timeline.clips")
+            }
+            let sourceIDs = Set(mediaSources.map(\.id))
+            let sourceDurations = Dictionary(mediaSources.map { ($0.id, $0.sources.screen.duration) }, uniquingKeysWith: { first, _ in first })
+            let clipIDs = timeline.clips.map(\.id)
+            let clipIDSet = Set(clipIDs)
+            guard sourceIDs.count == mediaSources.count,
+                  mediaSources.allSatisfy({ !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
+                  mediaSources.allSatisfy({
+                      $0.kind != .flatVideo || ($0.sources.camera == nil && $0.sources.events == nil)
+                  }),
+                  clipIDSet.count == clipIDs.count,
+                  sourceIDs.isDisjoint(with: clipIDSet),
+                  timeline.clips.allSatisfy({
+                      !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          && sourceIDs.contains($0.sourceId)
+                          && $0.sourceStart.isFinite
+                          && $0.sourceEnd.isFinite
+                          && $0.sourceStart >= 0
+                          && $0.sourceEnd > $0.sourceStart
+                          && $0.sourceEnd <= (sourceDurations[$0.sourceId] ?? 0)
+                  }) else {
+                throw StudioProjectError.invalidProject("Schema version 2 timeline contains duplicate IDs or an invalid source range")
+            }
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -223,6 +260,8 @@ struct StudioProject: Codable, Equatable, Sendable {
         try container.encode(app, forKey: StudioJSONKey("app"))
         try container.encode(keepSources, forKey: StudioJSONKey("keepSources"))
         try container.encode(sources, forKey: StudioJSONKey("sources"))
+        try container.encodeIfPresent(mediaSources, forKey: StudioJSONKey("mediaSources"))
+        try container.encodeIfPresent(timeline, forKey: StudioJSONKey("timeline"))
         try container.encode(canvas, forKey: StudioJSONKey("canvas"))
         try container.encode(screen, forKey: StudioJSONKey("screen"))
         try container.encode(camera, forKey: StudioJSONKey("camera"))
@@ -237,9 +276,167 @@ struct StudioProject: Codable, Equatable, Sendable {
 
     private static let knownKeys: Set<String> = [
         "schemaVersion", "id", "name", "createdAt", "modifiedAt", "lastOpenedAt", "app",
-        "keepSources", "sources", "canvas", "screen", "camera", "scenes", "zooms",
+        "keepSources", "sources", "mediaSources", "timeline", "canvas", "screen", "camera", "scenes", "zooms",
         "edits", "audio", "overlays", "captions", "exports"
     ]
+}
+
+enum StudioMediaSourceKind: String, Codable, Equatable, Sendable {
+    case nativeRecording
+    case flatVideo
+}
+
+struct StudioMediaSource: Codable, Equatable, Sendable {
+    var id: String
+    var kind: StudioMediaSourceKind
+    var sources: StudioSources
+    var extra: [String: StudioJSONValue]
+
+    init(id: String, kind: StudioMediaSourceKind, sources: StudioSources, extra: [String: StudioJSONValue] = [:]) {
+        self.id = id
+        self.kind = kind
+        self.sources = sources
+        self.extra = extra
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: StudioJSONKey.self)
+        guard let id = try container.decodeIfPresent(String.self, forKey: StudioJSONKey("id")) else {
+            throw StudioProjectError.invalidProject("Missing required property mediaSources[].id")
+        }
+        guard let kind = try container.decodeIfPresent(StudioMediaSourceKind.self, forKey: StudioJSONKey("kind")) else {
+            throw StudioProjectError.invalidProject("Missing or unsupported mediaSources[].kind")
+        }
+        guard let sources = try container.decodeIfPresent(StudioSources.self, forKey: StudioJSONKey("sources")) else {
+            throw StudioProjectError.invalidProject("Missing required property mediaSources[].sources")
+        }
+        self.id = id
+        self.kind = kind
+        self.sources = sources
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["id", "kind", "sources"])
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: StudioJSONKey.self)
+        try StudioJSON.encodeExtra(extra, to: &container)
+        try container.encode(id, forKey: StudioJSONKey("id"))
+        try container.encode(kind, forKey: StudioJSONKey("kind"))
+        try container.encode(sources, forKey: StudioJSONKey("sources"))
+    }
+}
+
+struct StudioTimeline: Codable, Equatable, Sendable {
+    var clips: [StudioTimelineClip]
+    var extra: [String: StudioJSONValue]
+
+    init(clips: [StudioTimelineClip] = [], extra: [String: StudioJSONValue] = [:]) {
+        self.clips = clips
+        self.extra = extra
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: StudioJSONKey.self)
+        clips = try container.decodeCompactArray("clips", default: [])
+        extra = try StudioJSON.decodeExtra(from: container, excluding: ["clips"])
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: StudioJSONKey.self)
+        try StudioJSON.encodeExtra(extra, to: &container)
+        try container.encode(clips, forKey: StudioJSONKey("clips"))
+    }
+}
+
+struct StudioTimelineClip: Codable, Equatable, Sendable {
+    var id: String
+    var sourceId: String
+    var name: String
+    var sourceStart: Double
+    var sourceEnd: Double
+    var edits: StudioEdits
+    var screen: StudioScreenStyle?
+    var camera: StudioCameraStyle?
+    var scenes: [StudioScene]?
+    var zooms: [StudioZoom]?
+    var audio: StudioAudio?
+    var overlays: StudioOverlays?
+    var captions: StudioCaptions?
+    var extra: [String: StudioJSONValue]
+
+    init(
+        id: String,
+        sourceId: String,
+        name: String = "",
+        sourceStart: Double,
+        sourceEnd: Double,
+        edits: StudioEdits = StudioEdits(),
+        screen: StudioScreenStyle? = nil,
+        camera: StudioCameraStyle? = nil,
+        scenes: [StudioScene]? = nil,
+        zooms: [StudioZoom]? = nil,
+        audio: StudioAudio? = nil,
+        overlays: StudioOverlays? = nil,
+        captions: StudioCaptions? = nil,
+        extra: [String: StudioJSONValue] = [:]
+    ) {
+        self.id = id
+        self.sourceId = sourceId
+        self.name = name
+        self.sourceStart = sourceStart
+        self.sourceEnd = sourceEnd
+        self.edits = edits
+        self.screen = screen
+        self.camera = camera
+        self.scenes = scenes
+        self.zooms = zooms
+        self.audio = audio
+        self.overlays = overlays
+        self.captions = captions
+        self.extra = extra
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: StudioJSONKey.self)
+        guard let id = try container.decodeIfPresent(String.self, forKey: StudioJSONKey("id")),
+              let sourceId = try container.decodeIfPresent(String.self, forKey: StudioJSONKey("sourceId")) else {
+            throw StudioProjectError.invalidProject("Timeline clips require id and sourceId")
+        }
+        self.id = id
+        self.sourceId = sourceId
+        name = try container.decodeString("name", default: "")
+        sourceStart = try container.decodeDouble("sourceStart", default: 0)
+        sourceEnd = try container.decodeDouble("sourceEnd", default: 0)
+        edits = try container.decodeIfPresent(StudioEdits.self, forKey: StudioJSONKey("edits")) ?? StudioEdits()
+        screen = try container.decodeIfPresent(StudioScreenStyle.self, forKey: StudioJSONKey("screen"))
+        camera = try container.decodeIfPresent(StudioCameraStyle.self, forKey: StudioJSONKey("camera"))
+        scenes = try container.decodeIfPresent([StudioScene].self, forKey: StudioJSONKey("scenes"))
+        zooms = try container.decodeIfPresent([StudioZoom].self, forKey: StudioJSONKey("zooms"))
+        audio = try container.decodeIfPresent(StudioAudio.self, forKey: StudioJSONKey("audio"))
+        overlays = try container.decodeIfPresent(StudioOverlays.self, forKey: StudioJSONKey("overlays"))
+        captions = try container.decodeIfPresent(StudioCaptions.self, forKey: StudioJSONKey("captions"))
+        extra = try StudioJSON.decodeExtra(from: container, excluding: [
+            "id", "sourceId", "name", "sourceStart", "sourceEnd", "edits",
+            "screen", "camera", "scenes", "zooms", "audio", "overlays", "captions"
+        ])
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: StudioJSONKey.self)
+        try StudioJSON.encodeExtra(extra, to: &container)
+        try container.encode(id, forKey: StudioJSONKey("id"))
+        try container.encode(sourceId, forKey: StudioJSONKey("sourceId"))
+        try container.encode(name, forKey: StudioJSONKey("name"))
+        try container.encode(sourceStart, forKey: StudioJSONKey("sourceStart"))
+        try container.encode(sourceEnd, forKey: StudioJSONKey("sourceEnd"))
+        try container.encode(edits, forKey: StudioJSONKey("edits"))
+        try container.encodeIfPresent(screen, forKey: StudioJSONKey("screen"))
+        try container.encodeIfPresent(camera, forKey: StudioJSONKey("camera"))
+        try container.encodeIfPresent(scenes, forKey: StudioJSONKey("scenes"))
+        try container.encodeIfPresent(zooms, forKey: StudioJSONKey("zooms"))
+        try container.encodeIfPresent(audio, forKey: StudioJSONKey("audio"))
+        try container.encodeIfPresent(overlays, forKey: StudioJSONKey("overlays"))
+        try container.encodeIfPresent(captions, forKey: StudioJSONKey("captions"))
+    }
 }
 
 // MARK: - Sources
@@ -326,6 +523,7 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
     var frameRate: Double
     var duration: Double
     var external: Bool
+    var rotationDegrees: Double?
 
     /// What each sound track of the file holds, in the file's order: `system`, `microphone` or
     /// `mixed` (see `StudioAudioTrackKind`). Nil when it is not known.
@@ -339,6 +537,7 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
         frameRate: Double = 30,
         duration: Double,
         external: Bool = false,
+        rotationDegrees: Double? = nil,
         audioTracks: [String]? = nil,
         extra: [String: StudioJSONValue] = [:]
     ) {
@@ -348,6 +547,7 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
         self.frameRate = frameRate
         self.duration = duration
         self.external = external
+        self.rotationDegrees = rotationDegrees
         self.audioTracks = audioTracks
         self.extra = extra
     }
@@ -360,13 +560,14 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
         frameRate = try container.decodeDouble("frameRate", default: 30)
         duration = try StudioJSON.requireNonNegative(container.decodeRequiredDouble("duration"), "sources.screen.duration")
         external = try container.decodeBool("external", default: false)
+        rotationDegrees = try container.decodeIfPresent(Double.self, forKey: StudioJSONKey("rotationDegrees"))
         if !external {
             file = try StudioJSON.requirePlainFileName(file, "sources.screen.file")
         }
         audioTracks = try container.decodeIfPresent([String?].self, forKey: StudioJSONKey("audioTracks"))?.compactMap { $0 }
         extra = try StudioJSON.decodeExtra(
             from: container,
-            excluding: ["file", "width", "height", "frameRate", "duration", "external", "audioTracks"]
+            excluding: ["file", "width", "height", "frameRate", "duration", "external", "rotationDegrees", "audioTracks"]
         )
     }
 
@@ -379,6 +580,7 @@ struct StudioScreenSource: Codable, Equatable, Sendable {
         try container.encode(frameRate, forKey: StudioJSONKey("frameRate"))
         try container.encode(duration, forKey: StudioJSONKey("duration"))
         try container.encode(external, forKey: StudioJSONKey("external"))
+        try container.encodeIfPresent(rotationDegrees, forKey: StudioJSONKey("rotationDegrees"))
         if let audioTracks {
             try container.encode(audioTracks, forKey: StudioJSONKey("audioTracks"))
         }

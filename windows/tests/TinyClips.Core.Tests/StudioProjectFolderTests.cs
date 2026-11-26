@@ -482,11 +482,11 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
         var file = Path.Combine(folder, "Later.tinyclips");
         var text = File.ReadAllText(file);
         Assert.Contains("\"schemaVersion\": 1", text);
-        File.WriteAllText(file, text.Replace("\"schemaVersion\": 1", "\"schemaVersion\": 2"));
+        File.WriteAllText(file, text.Replace("\"schemaVersion\": 1", "\"schemaVersion\": 3"));
 
         var refusal = AssertRefused(StudioProjectFolderProblem.NewerVersion, () => Open(file));
 
-        Assert.Equal(2, refusal.SchemaVersion);
+        Assert.Equal(3, refusal.SchemaVersion);
         Assert.Equal([id], Names(StoreRoot));
     }
 

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 2,
+  "id": "3f0013cf-ba10-4453-af91-792b7882dae6",
+  "name": "Native and imported",
+  "sources": {
+    "screen": { "file": "screen.mp4", "width": 1920, "height": 1080, "duration": 10 },
+    "camera": { "file": "camera.mp4", "width": 640, "height": 480, "duration": 10 },
+    "events": "events.json"
+  },
+  "mediaSources": [
+    {
+      "id": "native-source",
+      "kind": "nativeRecording",
+      "sources": {
+        "screen": { "file": "screen.mp4", "width": 1920, "height": 1080, "duration": 10 },
+        "camera": { "file": "camera.mp4", "width": 640, "height": 480, "duration": 10 },
+        "events": "events.json"
+      }
+    },
+    {
+      "id": "flat-source",
+      "kind": "flatVideo",
+      "sources": {
+        "screen": { "file": "imported.mp4", "width": 1080, "height": 1920, "duration": 5, "rotationDegrees": 90 }
+      }
+    }
+  ],
+  "timeline": {
+    "clips": [
+      {
+        "id": "native-clip",
+        "sourceId": "native-source",
+        "name": "Recording",
+        "sourceStart": 1,
+        "sourceEnd": 9,
+        "edits": {
+          "trimStart": 1,
+          "trimEnd": 9,
+          "cuts": [{ "start": 4, "end": 5 }],
+          "speed": [{ "start": 6, "end": 8, "rate": 2 }]
+        },
+        "scenes": [{ "start": 1, "layout": "bubble" }],
+        "captions": { "cues": [{ "id": "cue-one", "start": 2, "end": 3, "text": "Native clip" }] }
+      },
+      {
+        "id": "flat-clip",
+        "sourceId": "flat-source",
+        "name": "Imported video",
+        "sourceStart": 0,
+        "sourceEnd": 5,
+        "edits": { "trimStart": 0, "trimEnd": 5, "cuts": [], "speed": [] }
+      }
+    ]
+  }
+}

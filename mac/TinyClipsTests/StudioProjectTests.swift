@@ -358,9 +358,9 @@ final class StudioProjectTests: XCTestCase {
         """))
 
         XCTAssertThrowsError(try decodeProject("""
-        { "schemaVersion": 2, "id": "\(validID)", "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } } }
+        { "schemaVersion": 3, "id": "\(validID)", "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } } }
         """)) { error in
-            XCTAssertEqual(error as? StudioProjectError, .unsupportedVersion(2))
+            XCTAssertEqual(error as? StudioProjectError, .unsupportedVersion(3))
         }
     }
 
@@ -1744,6 +1744,73 @@ final class StudioProjectTests: XCTestCase {
             "canvas.background.secondary"
         ])
         try assertNullAndMissingDefaults(EventDocument.self, data: eventData, requiredPaths: [], explicitNullSurvives: [])
+    }
+
+    func testTimelineUpgradePreservesV1AsNativeSingleClipAndMapsClipTimes() throws {
+        let legacy = try decodeProject("""
+        {
+          "schemaVersion": 1,
+          "id": "\(validID)",
+          "name": "Original",
+          "sources": {
+            "screen": { "file": "screen.mp4", "width": 1920, "height": 1080, "duration": 10 },
+            "camera": { "file": "camera.mp4", "width": 640, "height": 480, "duration": 10 },
+            "events": "events.json"
+          },
+          "edits": { "trimStart": 1, "trimEnd": 9, "cuts": [{ "start": 4, "end": 5 }], "speed": [{ "start": 6, "end": 8, "rate": 2 }] },
+          "scenes": [{ "start": 0, "layout": "bubble" }]
+        }
+        """)
+
+        let upgraded = StudioTimelineEditing.timelineProject(from: legacy)
+        XCTAssertEqual(legacy.schemaVersion, 1)
+        XCTAssertNil(legacy.mediaSources)
+        XCTAssertEqual(upgraded.schemaVersion, 2)
+        XCTAssertEqual(upgraded.mediaSources?.first?.kind, .nativeRecording)
+        XCTAssertEqual(upgraded.mediaSources?.first?.sources.camera, legacy.sources.camera)
+        XCTAssertEqual(upgraded.mediaSources?.first?.sources.events, "events.json")
+        let clip = try XCTUnwrap(upgraded.timeline?.clips.first)
+        XCTAssertEqual(clip.scenes, legacy.scenes)
+        XCTAssertEqual(clip.edits, legacy.edits)
+
+        let map = try StudioTimelineMap(
+            timeline: try XCTUnwrap(upgraded.timeline),
+            sources: try XCTUnwrap(upgraded.mediaSources)
+        )
+        XCTAssertEqual(map.duration, 6, accuracy: 1e-6)
+        XCTAssertEqual(map.sourcePosition(atProjectTime: 4)?.sourceTime ?? -1, 6, accuracy: 1e-6)
+        XCTAssertEqual(map.projectTime(clipID: clip.id, sourceTime: 7) ?? -1, 4.5, accuracy: 1e-6)
+
+        let restored = try decodeProject(String(decoding: StudioJSON.makeEncoder().encode(upgraded), as: UTF8.self))
+        XCTAssertEqual(restored.timeline, upgraded.timeline)
+        XCTAssertEqual(restored.mediaSources, upgraded.mediaSources)
+    }
+
+    func testTimelineSplitAndReorderKeepPerClipLayerData() throws {
+        let project = StudioTimelineEditing.timelineProject(from: try decodeProject("""
+        {
+          "schemaVersion": 1,
+          "id": "\(validID)",
+          "sources": { "screen": { "width": 1920, "height": 1080, "duration": 10 } },
+          "scenes": [{ "start": 0, "layout": "screen" }]
+        }
+        """))
+        let original = try XCTUnwrap(project.timeline)
+        let clipID = try XCTUnwrap(original.clips.first?.id)
+        let split = try XCTUnwrap(StudioTimelineEditing.splitClip(id: clipID, at: 5, in: original))
+        XCTAssertEqual(split.clips.count, 2)
+        XCTAssertEqual(split.clips.map(\.sourceStart), [0, 5])
+        XCTAssertEqual(split.clips.map(\.sourceEnd), [5, 10])
+        XCTAssertEqual(split.clips[0].scenes, split.clips[1].scenes)
+        XCTAssertNotEqual(split.clips[0].id, split.clips[1].id)
+
+        let trimmed = try XCTUnwrap(StudioTimelineEditing.trimClip(id: clipID, toStart: 2, end: 8, in: original))
+        XCTAssertEqual(trimmed.clips[0].sourceStart, 2)
+        XCTAssertEqual(trimmed.clips[0].sourceEnd, 8)
+
+        let moved = try XCTUnwrap(StudioTimelineEditing.moveClip(id: split.clips[0].id, to: 1, in: split))
+        XCTAssertEqual(moved.clips.map(\.id), split.clips.reversed().map(\.id))
+        XCTAssertEqual(StudioTimelineEditing.removeClip(id: moved.clips[0].id, from: moved)?.clips.count, 1)
     }
 
     // MARK: - Helpers

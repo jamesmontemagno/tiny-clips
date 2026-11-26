@@ -400,11 +400,11 @@ final class StudioProjectFolderTests: XCTestCase {
         let file = folder.appendingPathComponent("Later.tinyclips")
         let text = try String(contentsOf: file, encoding: .utf8)
         XCTAssertTrue(text.contains("\"schemaVersion\" : 1"))
-        try text.replacingOccurrences(of: "\"schemaVersion\" : 1", with: "\"schemaVersion\" : 2")
+        try text.replacingOccurrences(of: "\"schemaVersion\" : 1", with: "\"schemaVersion\" : 3")
             .write(to: file, atomically: true, encoding: .utf8)
 
         XCTAssertThrowsError(try store.importProjectFolder(projectFile: file)) { error in
-            XCTAssertEqual(error as? StudioProjectError, .unsupportedVersion(2))
+            XCTAssertEqual(error as? StudioProjectError, .unsupportedVersion(3))
         }
         XCTAssertEqual(try names(in: storeURL), [id])
     }

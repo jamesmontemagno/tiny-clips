@@ -98,6 +98,25 @@ final class StudioFixtureTests: XCTestCase {
         }
     }
 
+    func testSharedMultiClipProjectFixtureMapsNativeAndFlatSources() throws {
+        let files = try fixtureFiles(in: "timeline")
+        XCTAssertFalse(files.isEmpty, "Expected shared Studio timeline fixtures")
+
+        for file in files {
+            let project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(contentsOf: file))
+            let timeline = try XCTUnwrap(project.timeline)
+            let sources = try XCTUnwrap(project.mediaSources)
+            let map = try StudioTimelineMap(timeline: timeline, sources: sources)
+
+            XCTAssertEqual(project.schemaVersion, 2, file.lastPathComponent)
+            XCTAssertEqual(map.duration, 11, accuracy: 1e-6, file.lastPathComponent)
+            XCTAssertEqual(timeline.clips.map(\.id), ["native-clip", "flat-clip"], file.lastPathComponent)
+            XCTAssertEqual(sources.first(where: { $0.id == "flat-source" })?.kind, .flatVideo, file.lastPathComponent)
+            XCTAssertEqual(sources.first(where: { $0.id == "flat-source" })?.sources.screen.rotationDegrees, 90, file.lastPathComponent)
+            XCTAssertEqual(map.sourcePosition(atProjectTime: 6)?.clipID, "flat-clip", file.lastPathComponent)
+        }
+    }
+
     /// Section 9.1: the scenes a new project gets from what was changed while recording.
     func testSharedRecordingFixtures() throws {
         let files = try fixtureFiles(in: "recording")

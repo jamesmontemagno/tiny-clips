@@ -1,4 +1,4 @@
-# Tiny Clips Studio project format (v1)
+# Tiny Clips Studio project format (v1 and v2)
 
 This is the contract between the macOS and Windows implementations of Tiny Clips Studio: the files a project is made of, every field in them, and the math that turns a project into a frame layout. The design it serves is in [plans/video-studio-plan.md](../plans/video-studio-plan.md).
 
@@ -48,7 +48,7 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 
 | Property | Type | Default | Notes |
 |---|---|---|---|
-| `schemaVersion` | int | 1 | |
+| `schemaVersion` | int | 1 | Version 1 is the existing single-source format. Version 2 adds `mediaSources` and `timeline`; readers must refuse versions above the highest project version they support. |
 | `id` | string | | Lowercase UUID |
 | `name` | string | `""` | Display name |
 | `createdAt`, `modifiedAt`, `lastOpenedAt` | timestamp | | |
@@ -1306,3 +1306,25 @@ A summary names the findings by count, in the order of the table, joined by `, `
 **Generating** replaces `captions.cues` with what speech recognition heard, and sets `captions.language` to the language it heard, or null if it does not say, as one undoable edit. Other properties of `captions` stay. A cue's times, and those of its `words`, are source time, so generating listens to the whole recording, including what is cut, muted, or trimmed away, and an edit made while it runs is kept. Recognition breaks its cues at word boundaries, at most 84 characters long, and then the safe fixes of section 15.6 are made. A recording in which nothing is heard is an error and leaves the captions as they were, and so does stopping.
 
 The speech recognition is the platform's own, so two platforms need not make the same cues from the same sound.
+
+## 16. Multi-clip projects (v2)
+
+Version 2 adds an ordered primary video lane. It remains a single sequential lane: clips do not overlap and there are no inter-clip transitions. A v1 reader refuses a v2 project rather than opening a partial edit. Current readers leave v1 projects in v1 when opening them; converting one to the v2 representation is an explicit edit, not an open-time migration.
+
+The existing root `sources`, `screen`, `camera`, `scenes`, `zooms`, `edits`, `audio`, `overlays`, and `captions` remain required-compatible fields. They are the legacy single-source view and are not the authority for a v2 timeline. V2 adds:
+
+| Property | Type | Notes |
+|---|---|---|
+| `mediaSources` | `MediaSource[]` | Non-empty source registry. IDs are stable and unique within the project. |
+| `timeline` | `Timeline` | The ordered primary lane. |
+| `timeline.clips` | `TimelineClip[]` | Non-empty and ordered as played. Each clip and each source has a stable, project-unique ID. |
+
+A `MediaSource` is `{ "id", "kind", "sources" }`. `kind` is `nativeRecording` or `flatVideo`; `sources` uses the existing `Sources` shape (screen file metadata, optional camera media, optional events file). Media source file names follow section 1 and are copied into the destination project when imported. `sources.screen.rotationDegrees` is optional and defaults to 0; it records clockwise display rotation metadata in degrees without changing the coded dimensions. A flat video does not have recoverable camera, cursor, click, or recording-event data.
+
+A `TimelineClip` contains `{ "id", "sourceId", "name", "sourceStart", "sourceEnd", "edits" }` and may include clip-specific `screen`, `camera`, `scenes`, `zooms`, `audio`, `overlays`, and `captions`. These optional fields use the matching v1 shapes and defaults. Missing clip-specific fields inherit the corresponding project-level default. A native source keeps its separate camera, audio track description, and events in its source registry entry; edits and user-visible native layers remain in the clip payload. A split creates a new clip ID, keeps the same source, and preserves each side's applicable native layers and edits. It does not duplicate or delete media.
+
+`sourceStart`, `sourceEnd`, and all times inside the clip's `edits` and native layers are source time for the referenced media. The clip's selected source interval is half-open `[sourceStart, sourceEnd)`. Its `edits.trimStart` and `edits.trimEnd` are clamped to that interval; cuts and speed ranges are interpreted by section 7. A clip with no playable time is invalid. Timeline order defines project/output-time placement: each clip begins when the previous clip's edited output ends. The project time mapping is the cumulative sum of prior clips' output durations plus the current clip's section-7 time map. At a boundary, the following clip owns the boundary time; the project end maps to the final clip's final source time.
+
+The project canvas and default look stay stable across all clips. A source of a different size or orientation is fitted into that canvas; it must not stretch the picture or change export dimensions at a clip boundary. Per-clip style/layer values override defaults only for that clip. Export and preview must use the same mapping and cut/speed rules.
+
+`shared/studio/fixtures/timeline/` contains cross-platform v2 examples. v1 fixtures and behavior remain unchanged; events files continue to use their existing event schema version independently of the project version.

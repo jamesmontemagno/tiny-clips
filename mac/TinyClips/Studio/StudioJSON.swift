@@ -84,7 +84,8 @@ enum StudioProjectError: Error, Equatable, LocalizedError {
 // MARK: - Helpers
 
 enum StudioJSON {
-    static let supportedSchemaVersion = 1
+    static let supportedSchemaVersion = 2
+    static let supportedEventsSchemaVersion = 1
 
     static func makeDecoder() -> JSONDecoder {
         JSONDecoder()
