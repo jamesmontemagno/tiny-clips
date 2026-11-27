@@ -80,4 +80,13 @@ public static class PointerGeometry
         var anchor = Hotspot(style);
         return new RectD(hotspot.X - anchor.X * side, hotspot.Y - anchor.Y * side, side, side);
     }
+
+    /// <summary>Changes the size without moving the image pixel the pointer points to.</summary>
+    public static RectD ResizeAtHotspot(RectD bounds, PointerStyle style, double rotation, double side)
+    {
+        var square = Fit(bounds);
+        var anchor = RotatableAnnotationGeometry.Rotate(Hotspot(style), new PointD(0.5, 0.5), rotation);
+        var delta = square.Width - side;
+        return new RectD(square.X + anchor.X * delta, square.Y + anchor.Y * delta, side, side);
+    }
 }

@@ -91,6 +91,12 @@ public sealed partial class EditorInspector : UserControl
         controller.PointerAppearanceChanged += (_, _) => SyncPointerControls();
         controller.AnnotationVisualInvalidated += (_, ann) =>
         {
+            if (ann.Tool == EditTool.Pointer && ReferenceEquals(ann, _controller.SelectedAnnotation)
+                && PointerSizeSlider.Value != ann.Bounds.Width)
+            {
+                SyncPointerSize();
+            }
+
             // Keep the rotation slider in step with the on-canvas rotation grip.
             // Keep the arrow sliders in step with the on-canvas bend handle.
             if (ann.Tool == EditTool.Arrow
@@ -354,7 +360,6 @@ public sealed partial class EditorInspector : UserControl
         EmojiSection.Visibility = showsEmoji ? Visibility.Visible : Visibility.Collapsed;
         PointerSection.Visibility = showsPointer ? Visibility.Visible : Visibility.Collapsed;
         PointerPlaceAtCenterButton.Visibility = Visibility.Visible;
-        PointerAdjustPanel.Visibility = Visibility.Collapsed;
         BackgroundSection.Visibility = showsBackground ? Visibility.Visible : Visibility.Collapsed;
         RotationSection.Visibility = Visibility.Collapsed;
         if (showsPointer)
@@ -475,7 +480,6 @@ public sealed partial class EditorInspector : UserControl
         EmojiSection.Visibility = isEmoji ? Visibility.Visible : Visibility.Collapsed;
         PointerSection.Visibility = isPointer ? Visibility.Visible : Visibility.Collapsed;
         PointerPlaceAtCenterButton.Visibility = Visibility.Collapsed;
-        PointerAdjustPanel.Visibility = Visibility.Visible;
         if (isPointer)
         {
             SyncPointerControls();
@@ -541,12 +545,12 @@ public sealed partial class EditorInspector : UserControl
         var wasInitializing = _inspectorInitializing;
         _inspectorInitializing = true;
         PointerStyleChoice.SelectedIndex = (int)pointer.Style;
+        SyncPointerSize();
         PointerFillColorPicker.Color = pointer.Fill;
         PointerFillOpacitySlider.Value = AnnotationColorMath.Opacity(pointer.Fill) * 100;
         PointerStrokeColorPicker.Color = pointer.Stroke;
         PointerStrokeOpacitySlider.Value = AnnotationColorMath.Opacity(pointer.Stroke) * 100;
         PointerStrokeWidthSlider.Value = pointer.StrokeWidth;
-        PointerOpacitySlider.Value = pointer.Opacity * 100;
         PointerShadowCheck.IsChecked = pointer.Shadow.Enabled;
         UpdatePointerHeaders();
         _inspectorInitializing = wasInitializing;
@@ -559,7 +563,26 @@ public sealed partial class EditorInspector : UserControl
         PointerStrokeWidthSlider.Header = PointerStrokeWidthSlider.Value > 0
             ? $"Stroke width — {(int)PointerStrokeWidthSlider.Value} px"
             : "Stroke width — none";
-        PointerOpacitySlider.Header = $"Opacity — {Math.Round(PointerOpacitySlider.Value)}%";
+    }
+
+    private void SyncPointerSize()
+    {
+        var wasInitializing = _inspectorInitializing;
+        _inspectorInitializing = true;
+        PointerSizeSlider.Minimum = EmojiAnnotationMath.MinimumSidePixels;
+        PointerSizeSlider.Maximum = _controller.MaximumPointerSize;
+        PointerSizeSlider.Value = _controller.PointerSizeForInspector;
+        PointerSizeSlider.Header = $"Size — {Math.Round(PointerSizeSlider.Value)} px";
+        _inspectorInitializing = wasInitializing;
+    }
+
+    private void OnPointerSizeChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (!_inspectorInitializing)
+        {
+            _controller.SetPointerSize(e.NewValue);
+            SyncPointerSize();
+        }
     }
 
     private void OnPointerStyleChanged(object sender, SelectionChangedEventArgs e)
@@ -603,7 +626,6 @@ public sealed partial class EditorInspector : UserControl
             _ when ReferenceEquals(sender, PointerStrokeOpacitySlider) =>
                 a => a with { Stroke = AnnotationColorMath.WithOpacity(a.Stroke, value / 100, Colors.Black) },
             _ when ReferenceEquals(sender, PointerStrokeWidthSlider) => a => a with { StrokeWidth = value },
-            _ when ReferenceEquals(sender, PointerOpacitySlider) => a => a with { Opacity = value / 100 },
             _ => null,
         };
         if (change is not null)
@@ -625,16 +647,6 @@ public sealed partial class EditorInspector : UserControl
 
     private void OnPointerPlaceAtCenterClick(object sender, RoutedEventArgs e) =>
         _controller.PlacePointerAtCenter();
-
-    private void OnPointerAdjustClick(object sender, RoutedEventArgs e)
-    {
-        if (ReferenceEquals(sender, PointerNudgeLeftButton)) _controller.AdjustSelectedPointer(dx: -1);
-        else if (ReferenceEquals(sender, PointerNudgeRightButton)) _controller.AdjustSelectedPointer(dx: 1);
-        else if (ReferenceEquals(sender, PointerNudgeUpButton)) _controller.AdjustSelectedPointer(dy: -1);
-        else if (ReferenceEquals(sender, PointerNudgeDownButton)) _controller.AdjustSelectedPointer(dy: 1);
-        else if (ReferenceEquals(sender, PointerSmallerButton)) _controller.AdjustSelectedPointer(scale: 0.9);
-        else if (ReferenceEquals(sender, PointerLargerButton)) _controller.AdjustSelectedPointer(scale: 1.1);
-    }
 
     private void SelectFontInCombo(string font)
     {

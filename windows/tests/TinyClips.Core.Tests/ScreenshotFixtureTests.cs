@@ -31,6 +31,19 @@ public sealed class ScreenshotFixtureTests
         Assert.Equal(new RectD(30, 20, 40, 40), PointerGeometry.Fit(new RectD(10, 20, 80, 40)));
     }
 
+    [Theory]
+    [InlineData(PointerStyle.Arrow, 90, 10.8, 48.4)]
+    [InlineData(PointerStyle.Hand, 0, 22.8, 49.2)]
+    [InlineData(PointerStyle.Text, -45, 20, 40)]
+    public void ResizingPointerKeepsItsVisibleHotspot(PointerStyle style, double rotation, double x, double y)
+    {
+        var resized = PointerGeometry.ResizeAtHotspot(new RectD(30, 50, 40, 40), style, rotation, 60);
+        Assert.Equal(x, resized.X, 6);
+        Assert.Equal(y, resized.Y, 6);
+        Assert.Equal(60, resized.Width);
+        Assert.Equal(60, resized.Height);
+    }
+
     [Fact]
     public void SharedArrowFixturesMatchWindowsImplementation()
     {

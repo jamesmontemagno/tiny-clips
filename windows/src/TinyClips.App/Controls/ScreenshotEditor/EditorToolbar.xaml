@@ -40,7 +40,7 @@
                     Click="OnToolClick"
                     Tag="Select"
                     ToolTipService.ToolTip="Select / Move (V)">
-                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE8B0;" />
+                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE7C2;" />
                 </ToggleButton>
                 <ToggleButton
                     x:Name="ToolBackground"

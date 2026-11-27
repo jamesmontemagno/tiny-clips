@@ -247,6 +247,8 @@ internal sealed class EditorController : IDisposable
     /// <summary>Appearance for the next pointer placed; lasts for this editor session.</summary>
     public PointerAppearance PointerDefault { get; private set; } = PointerAppearance.Default;
 
+    private double? _pointerSizeOverride;
+
     // Shared across editor windows for the lifetime of the process so the "Recent" row survives
     // closing and reopening the editor.
     private static List<string> s_recentEmoji = new();
@@ -1141,6 +1143,16 @@ internal sealed class EditorController : IDisposable
     public PointerAppearance PointerForInspector =>
         SelectedAnnotation is { Tool: EditTool.Pointer } ann ? ann.Pointer : PointerDefault;
 
+    public double MaximumPointerSize => EmojiAnnotationMath.MaximumSidePixels(
+        _bitmap?.PixelWidth ?? 1000, _bitmap?.PixelHeight ?? 1000);
+
+    private double DefaultPointerSize => _pointerSizeOverride is { } size
+        ? Math.Min(size, MaximumPointerSize)
+        : EmojiAnnotationMath.DefaultSidePixels(_bitmap?.PixelWidth ?? 1000, _bitmap?.PixelHeight ?? 1000);
+
+    public double PointerSizeForInspector =>
+        SelectedAnnotation is { Tool: EditTool.Pointer } ann ? ann.Bounds.Width : DefaultPointerSize;
+
     /// <summary>Edits the selected pointer, or the default when no pointer is selected.</summary>
     public void SetPointerAppearance(Func<PointerAppearance, PointerAppearance> change)
     {
@@ -1172,10 +1184,7 @@ internal sealed class EditorController : IDisposable
     public Annotation AddPointerAnnotation(Point pixelHotspot)
     {
         ClearTextStyleUndo();
-        var imageWidth = _bitmap?.PixelWidth ?? 1000;
-        var imageHeight = _bitmap?.PixelHeight ?? 1000;
-        var side = EmojiAnnotationMath.DefaultSidePixels(imageWidth, imageHeight);
-        var bounds = PointerGeometry.Place(new PointD(pixelHotspot.X, pixelHotspot.Y), PointerDefault.Style, side);
+        var bounds = PointerGeometry.Place(new PointD(pixelHotspot.X, pixelHotspot.Y), PointerDefault.Style, DefaultPointerSize);
         var ann = new Annotation
         {
             Tool = EditTool.Pointer,
@@ -1203,26 +1212,22 @@ internal sealed class EditorController : IDisposable
         return ann;
     }
 
-    /// <summary>Moves the selected pointer by image pixels and scales it about its center.</summary>
-    public void AdjustSelectedPointer(double dx = 0, double dy = 0, double scale = 1)
+    public void SetPointerSize(double side)
     {
+        side = Math.Clamp(side, EmojiAnnotationMath.MinimumSidePixels, MaximumPointerSize);
         if (SelectedAnnotation is not { Tool: EditTool.Pointer } ann)
+        {
+            _pointerSizeOverride = side;
+            return;
+        }
+        if (side == ann.Bounds.Width)
         {
             return;
         }
-        EndSelectedTextStyleEdit();
+
         RecordTextStyleUndo(ann);
-        var b = NormalizedBounds(ann);
-        b = new Rect(b.X + dx, b.Y + dy, b.Width, b.Height);
-        if (scale != 1)
-        {
-            var width = Math.Max(4, b.Width * scale);
-            var height = Math.Max(4, b.Height * scale);
-            var cx = b.X + b.Width / 2;
-            var cy = b.Y + b.Height / 2;
-            b = new Rect(cx - width / 2, cy - height / 2, width, height);
-        }
-        ann.Bounds = b;
+        var bounds = PointerGeometry.ResizeAtHotspot(ToRectD(ann.Bounds), ann.Pointer.Style, ann.Rotation, side);
+        ann.Bounds = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
         MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
     }

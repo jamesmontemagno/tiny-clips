@@ -470,6 +470,16 @@
                             <controls:SegmentedItem Content="I-beam" />
                         </studio:StudioSegmented>
                     </StackPanel>
+                    <Slider
+                        x:Name="PointerSizeSlider"
+                        AutomationProperties.AutomationId="EditorPointerSizeSlider"
+                        AutomationProperties.Name="Pointer size in pixels"
+                        Header="Size"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnPointerSizeChanged" />
                     <TextBlock
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Style="{StaticResource CaptionTextBlockStyle}"
@@ -528,18 +538,6 @@
                         PointerReleased="OnTextStyleSliderPointerReleased"
                         StepFrequency="1"
                         ValueChanged="OnPointerSliderChanged" />
-                    <Slider
-                        x:Name="PointerOpacitySlider"
-                        AutomationProperties.AutomationId="EditorPointerOpacitySlider"
-                        AutomationProperties.Name="Opacity"
-                        Header="Opacity"
-                        Maximum="100"
-                        Minimum="0"
-                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
-                        PointerPressed="OnTextStyleSliderPointerPressed"
-                        PointerReleased="OnTextStyleSliderPointerReleased"
-                        StepFrequency="1"
-                        ValueChanged="OnPointerSliderChanged" />
                     <CheckBox
                         x:Name="PointerShadowCheck"
                         AutomationProperties.AutomationId="EditorPointerShadowCheck"
@@ -555,83 +553,6 @@
                         AutomationProperties.Name="Place pointer at center"
                         Click="OnPointerPlaceAtCenterClick"
                         Content="Place pointer at center" />
-                    <StackPanel x:Name="PointerAdjustPanel" Spacing="6" Visibility="Collapsed">
-                        <TextBlock
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Nudge and resize" />
-                        <Grid ColumnSpacing="4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.Resources>
-                                <Style BasedOn="{StaticResource DefaultButtonStyle}" TargetType="Button">
-                                    <Setter Property="HorizontalAlignment" Value="Stretch" />
-                                    <Setter Property="MinWidth" Value="0" />
-                                    <Setter Property="Padding" Value="0,8" />
-                                </Style>
-                            </Grid.Resources>
-                            <Button
-                                x:Name="PointerNudgeLeftButton"
-                                Grid.Column="0"
-                                AutomationProperties.AutomationId="EditorPointerNudgeLeft"
-                                AutomationProperties.Name="Move pointer left"
-                                Click="OnPointerAdjustClick"
-                                ToolTipService.ToolTip="Move left">
-                                <FontIcon FontSize="14" Glyph="&#xE72B;" />
-                            </Button>
-                            <Button
-                                x:Name="PointerNudgeRightButton"
-                                Grid.Column="1"
-                                AutomationProperties.AutomationId="EditorPointerNudgeRight"
-                                AutomationProperties.Name="Move pointer right"
-                                Click="OnPointerAdjustClick"
-                                ToolTipService.ToolTip="Move right">
-                                <FontIcon FontSize="14" Glyph="&#xE72A;" />
-                            </Button>
-                            <Button
-                                x:Name="PointerNudgeUpButton"
-                                Grid.Column="2"
-                                AutomationProperties.AutomationId="EditorPointerNudgeUp"
-                                AutomationProperties.Name="Move pointer up"
-                                Click="OnPointerAdjustClick"
-                                ToolTipService.ToolTip="Move up">
-                                <FontIcon FontSize="14" Glyph="&#xE74A;" />
-                            </Button>
-                            <Button
-                                x:Name="PointerNudgeDownButton"
-                                Grid.Column="3"
-                                AutomationProperties.AutomationId="EditorPointerNudgeDown"
-                                AutomationProperties.Name="Move pointer down"
-                                Click="OnPointerAdjustClick"
-                                ToolTipService.ToolTip="Move down">
-                                <FontIcon FontSize="14" Glyph="&#xE74B;" />
-                            </Button>
-                            <Button
-                                x:Name="PointerSmallerButton"
-                                Grid.Column="4"
-                                AutomationProperties.AutomationId="EditorPointerSmaller"
-                                AutomationProperties.Name="Make pointer smaller"
-                                Click="OnPointerAdjustClick"
-                                ToolTipService.ToolTip="Smaller">
-                                <FontIcon FontSize="14" Glyph="&#xE738;" />
-                            </Button>
-                            <Button
-                                x:Name="PointerLargerButton"
-                                Grid.Column="5"
-                                AutomationProperties.AutomationId="EditorPointerLarger"
-                                AutomationProperties.Name="Make pointer larger"
-                                Click="OnPointerAdjustClick"
-                                ToolTipService.ToolTip="Larger">
-                                <FontIcon FontSize="14" Glyph="&#xE710;" />
-                            </Button>
-                        </Grid>
-                    </StackPanel>
                 </StackPanel>
 
                 <!--  Rotation (selected rotatable annotation)  -->

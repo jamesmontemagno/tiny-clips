@@ -36,6 +36,21 @@ public sealed class ScreenshotEditorTextMarkupTests
     }
 
     [Fact]
+    public void PointerInspectorOffersSizeAndPerColorOpacityWithoutAdjustmentButtons()
+    {
+        var elements = Read("EditorInspector.xaml").Descendants();
+        var size = Assert.Single(elements, e => Attribute(e, AutomationId) == "EditorPointerSizeSlider");
+        var controls = size.Parent!.Elements().ToList();
+        Assert.Equal("Slider", size.Name.LocalName);
+        Assert.Equal("Pointer size in pixels", Attribute(size, "AutomationProperties.Name"));
+        Assert.Equal(new[] { "Fill opacity", "Stroke opacity" }, controls
+            .Where(e => e.Name.LocalName == "Slider" && Attribute(e, "Header")?.Contains("opacity", StringComparison.OrdinalIgnoreCase) == true)
+            .Select(e => Attribute(e, "Header")));
+        var place = Assert.Single(size.Parent.Descendants(), e => e.Name.LocalName == "Button");
+        Assert.Equal("EditorPointerPlaceAtCenter", Attribute(place, AutomationId));
+    }
+
+    [Fact]
     public void StrokeAndFillColors_HaveDirectOpacitySliders()
     {
         var elements = Read("EditorInspector.xaml").Descendants().ToList();
