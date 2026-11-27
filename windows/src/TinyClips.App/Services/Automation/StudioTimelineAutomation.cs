@@ -100,8 +100,8 @@ internal sealed class StudioTimelineAutomation(
                 StudioProject ReadLinked(string sourceId)
                 {
                     var sourceEditor = editorFor(sourceId);
-                    sourceEditor?.CommitCaptionText();
-                    return ReadProject(sourceId, store, sourceEditor);
+                    return sourceEditor is null ? ReadProject(sourceId, store, null)
+                        : sourceEditor.SnapshotForTimelineImport() ?? throw EditorNotReady();
                 }
                 var linked = linkedId is null ? null : ReadLinked(linkedId);
                 if (linked?.SchemaVersion >= 2)
@@ -167,6 +167,9 @@ internal sealed class StudioTimelineAutomation(
 
     private static AutomationException TimelineConflict(string message) => new(AutomationErrorCodes.Conflict, message);
 
+    private static AutomationException EditorNotReady() =>
+        new(AutomationErrorCodes.Busy, "The Studio project is not ready for agent control.");
+
     private static AutomationException EditorFailure(StudioTimelineChangeFailure failure, string message) =>
         new(failure switch
         {
@@ -183,7 +186,7 @@ internal sealed class StudioTimelineAutomation(
     internal static StudioProject ReadProject(string id, IStudioProjectStore store, StudioViewModel? editor)
     {
         if (editor is not null)
-            return editor.Manifest ?? throw new AutomationException(AutomationErrorCodes.Busy, "The Studio project is not ready for agent control.");
+            return editor.Manifest ?? throw EditorNotReady();
         if (!store.Exists(id)) throw new AutomationException(AutomationErrorCodes.NotFound, $"No Studio project with ID {id}.");
         try { return store.Load(id); }
         catch (DirectoryNotFoundException) { throw new AutomationException(AutomationErrorCodes.NotFound, $"No Studio project with ID {id}."); }

@@ -20,6 +20,19 @@ public sealed partial class StudioViewModel
     /// </summary>
     public StudioProject? Manifest => _session.Manifest;
 
+    // Import what the user sees without committing the source editor's text box or undo history.
+    internal StudioProject? SnapshotForTimelineImport()
+    {
+        var source = Manifest;
+        if (source is not { SchemaVersion: 1 } || _pendingCaptionText is not { } text
+            || _session.SelectedCaptionIndex is not { } index)
+            return source;
+
+        var snapshot = new StudioEditorModel(source);
+        snapshot.SetCaptionText(index, text);
+        return snapshot.Manifest;
+    }
+
     public StudioTimelineMap? TimelineMap => _session.TimelineMap;
 
     public string? SelectedClipId => _session.SelectedClipId;

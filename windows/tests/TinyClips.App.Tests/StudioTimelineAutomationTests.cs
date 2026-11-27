@@ -194,6 +194,39 @@ public sealed class StudioTimelineAutomationTests : IDisposable
 
     public sealed class StudioTimelineOpenEditorAutomationTests : StudioViewModelTestBase
     {
+        [Fact]
+        public async Task EditorLeaseAndExternalEditReturnDifferentActionableErrors()
+        {
+            var id = CreateProject(camera: false);
+            var editor = await OpenAsync(id);
+            try
+            {
+                var service = new StudioTimelineAutomation(Projects, _ => editor, path => path, _ => { });
+                var token = TestContext.Current.CancellationToken;
+                var args = new JsonObject { ["projectId"] = id };
+                var lane = await service.ExecuteAsync(new("studio.timeline.get", "test", "test", args), null, token);
+                args["expectedModifiedAt"] = lane["modifiedAt"]!.DeepClone();
+                args["expectedRevision"] = lane["revision"]!.DeepClone();
+                args["clipId"] = lane["clips"]![0]!["clipId"]!.DeepClone();
+                args["sourceTime"] = 2;
+                var split = new TimelineRequest("studio.timeline.split", "test", "test", args);
+                using (var held = editor.BeginTimelineChange().Lease)
+                {
+                    Assert.NotNull(held);
+                    var busy = await Assert.ThrowsAsync<AutomationException>(() => service.ExecuteAsync(split, null, token));
+                    Assert.Equal("busy", busy.Code);
+                }
+
+                var saved = Projects.Load(id);
+                Projects.Save(saved with { Audio = saved.Audio with { Muted = true } });
+                var stale = await Assert.ThrowsAsync<AutomationException>(() => service.ExecuteAsync(split, null, token));
+                Assert.Equal("conflict", stale.Code);
+                Assert.Null(Projects.Load(id).Timeline);
+                Assert.True(Projects.Load(id).Audio.Muted);
+            }
+            finally { await CloseAsync(editor); }
+        }
+
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
@@ -239,6 +272,8 @@ public sealed class StudioTimelineAutomationTests : IDisposable
                     var added = Projects.Load(destination).Timeline!.Clips[1];
                     Assert.Equal("Typed before import", Assert.Single(added.Captions!.Cues).Text);
                 }
+                Assert.False(editor.CanUndo);
+                Assert.Equal("Saved", Assert.Single(editor.Project!.Captions.Cues).Text);
             }
             finally { await CloseAsync(editor); }
         }
