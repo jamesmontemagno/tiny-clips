@@ -19,7 +19,7 @@ final class AutomationCommandRouter {
         "studio.project.openFolder", "studio.project.delete",
         "studio.project.edit", "studio.zoom.suggest", "studio.export.options", "studio.export",
         "studio.timeline.get", "studio.timeline.import", "studio.timeline.insert", "studio.timeline.move",
-        "studio.timeline.split", "studio.timeline.trim", "studio.timeline.remove", "studio.timeline.record",
+        "studio.timeline.split", "studio.timeline.trim", "studio.timeline.transition", "studio.timeline.remove", "studio.timeline.record",
         "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
     ]).union(StudioAppleSpeech.isAvailable ? ["studio.captions.models", "studio.captions.generate"] : [])
 
@@ -105,7 +105,7 @@ final class AutomationCommandRouter {
             }
         case "studio.project.get": return try getStudioProject(params)
         case "studio.timeline.get", "studio.timeline.import", "studio.timeline.insert", "studio.timeline.move",
-             "studio.timeline.split", "studio.timeline.trim", "studio.timeline.remove", "studio.timeline.record":
+             "studio.timeline.split", "studio.timeline.trim", "studio.timeline.transition", "studio.timeline.remove", "studio.timeline.record":
             do {
                 return try await studioTimeline(command, params, clientName: clientName, validateAccess: validateAccess)
             } catch StudioProjectError.invalidProject(let message) {
@@ -1107,7 +1107,8 @@ final class AutomationCommandRouter {
         let id = try Self.requiredString(params, "projectId")
         let project = try currentStudioProject(id)
         let isHEVC = CaptureSettings.shared.videoCodec == .hevc
-        let options = StudioExportOptionsModel(project: project, isHEVC: isHEVC, saved: try Self.studioExportChoice(params))
+        let options = try StudioExportOptionsModel(project: project, timelineMap: StudioTimelineMap(project: project),
+                                                   isHEVC: isHEVC, saved: Self.studioExportChoice(params))
         return [
             "projectId": id,
             "resolution": options.choice.resolution.rawValue,
@@ -1443,9 +1444,15 @@ extension AutomationCommandRouter {
         guard let lane = base.timeline, let sources = base.mediaSources else { throw AutomationError(.invalidParams) }
         let map = try StudioTimelineMap(timeline: lane, sources: sources)
         let clips: [[String: Any]] = zip(lane.clips, map.clips).map { clip, range in
-            ["clipId": clip.id, "sourceId": clip.sourceId, "name": clip.name,
-             "sourceStart": clip.sourceStart, "sourceEnd": clip.sourceEnd,
-             "projectStart": range.projectStart, "projectEnd": range.projectEnd]
+            var item: [String: Any] = ["clipId": clip.id, "sourceId": clip.sourceId, "name": clip.name,
+                                       "sourceStart": clip.sourceStart, "sourceEnd": clip.sourceEnd,
+                                       "projectStart": range.projectStart, "projectEnd": range.projectEnd,
+                                       "transitionIn": clip.transitionIn.rawValue]
+            if let entry = range.entry {
+                item["transitionStart"] = entry.start
+                item["transitionEnd"] = entry.end
+            }
+            return item
         }
         let media: [[String: Any]] = sources.map { source in
             var item: [String: Any] = ["sourceId": source.id, "kind": source.kind.rawValue, "duration": source.sources.screen.duration,
@@ -1521,6 +1528,7 @@ extension AutomationCommandRouter {
         case "studio.timeline.insert":
             var copy = clip
             copy.id = UUID().uuidString.lowercased()
+            copy.transitionIn = .cut
             updated = try inserting(copy, into: lane, sources: sources, at: time)
         case "studio.timeline.move":
             guard let index = AutomationValue.int(params["index"]), lane.clips.indices.contains(index) else {
@@ -1537,6 +1545,14 @@ extension AutomationCommandRouter {
                 throw AutomationError(.invalidParams, "Supply sourceStart and sourceEnd in source seconds.")
             }
             updated = StudioTimelineEditing.trimClip(id: id, toStart: start, end: end, in: lane)
+        case "studio.timeline.transition":
+            guard let name = params["kind"] as? String, let kind = StudioClipTransition(rawValue: name) else {
+                throw AutomationError(.invalidParams, "Choose cut, fadeThroughBlack, fadeThroughWhite, or crossDissolve.")
+            }
+            guard let changed = StudioTimelineEditing.setTransition(kind, before: id, in: lane) else {
+                throw AutomationError(.invalidParams, "Choose a clip with a preceding clip.")
+            }
+            updated = changed
         case "studio.timeline.remove":
             guard lane.clips.count > 1 else { throw AutomationError(.invalidParams, "The final clip cannot be removed.") }
             updated = StudioTimelineEditing.removeClip(id: id, from: lane)

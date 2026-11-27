@@ -8,54 +8,19 @@ import Vision
 
 // MARK: - Video Composition Instruction
 
-/// Every property is set once in `init`. The conformance is unchecked only because `NSValue`,
-/// which AVFoundation asks for the track IDs as, is not marked `Sendable`.
-final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
+/// One independently styled source piece. Its clock does not restart when a join
+/// or a piece boundary in the other clip divides the AVFoundation instruction.
+struct StudioVideoLayer: Sendable {
     let timeRange: CMTimeRange
-    let enablePostProcessing = false
-    /// The picture changes with time even while the source frames stay the same: a zoom eases,
-    /// a scene moves into place, and a click ring grows and fades over a still screen. The
-    /// recorder writes a screen frame only when the screen changes, so without this
-    /// AVFoundation may keep showing one composed frame for as long as the screen stood still.
-    let containsTweening = true
-    let requiredSourceTrackIDs: [NSValue]?
-    let passthroughTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid
     let screenTrackID: CMPersistentTrackID
     let cameraTrackID: CMPersistentTrackID?
-    let renderSize: CGSize
     let renderState: StudioRenderState
-    let projectDirectory: URL
     let screenTransform: CGAffineTransform
-    let piece: StudioTimePiece?
-    let clipOutputStart: Double
+    var piece: StudioTimePiece?
+    var clipOutputStart: Double = 0
+    var clipIndex: Int = 0
 
-    init(
-        timeRange: CMTimeRange,
-        screenTrackID: CMPersistentTrackID,
-        cameraTrackID: CMPersistentTrackID?,
-        renderSize: CGSize,
-        renderState: StudioRenderState,
-        projectDirectory: URL,
-        screenTransform: CGAffineTransform = .identity,
-        piece: StudioTimePiece? = nil,
-        clipOutputStart: Double = 0
-    ) {
-        self.timeRange = timeRange
-        self.screenTrackID = screenTrackID
-        self.cameraTrackID = cameraTrackID
-        self.renderSize = renderSize
-        self.renderState = renderState
-        self.projectDirectory = projectDirectory
-        self.screenTransform = screenTransform
-        self.piece = piece
-        self.clipOutputStart = clipOutputStart
-        var trackIDs: [NSValue] = [NSNumber(value: screenTrackID)]
-        if let cameraTrackID {
-            trackIDs.append(NSNumber(value: cameraTrackID))
-        }
-        requiredSourceTrackIDs = trackIDs
-        super.init()
-    }
+    var trackIDs: [CMPersistentTrackID] { [screenTrackID, cameraTrackID].compactMap { $0 } }
 
     func position(at time: CMTime, map: StudioTimeMap) -> (source: Double, clipOutput: Double) {
         let elapsed = (time - timeRange.start).seconds
@@ -67,6 +32,39 @@ final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstr
                     clipOutputStart + piece.outputDuration * progress)
         }
         return (map.outputToSource(elapsed), elapsed)
+    }
+}
+
+/// Every property is set once. `NSValue`, required by AVFoundation, is not marked `Sendable`.
+final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
+    enum Effect {
+        case none
+        case fadeThrough(white: Bool, range: CMTimeRange)
+        case dissolve(to: StudioVideoLayer, range: CMTimeRange)
+    }
+
+    let timeRange: CMTimeRange
+    let enablePostProcessing = false
+    // Sparse screen recordings still need new frames for overlays, zooms and transitions.
+    let containsTweening = true
+    let requiredSourceTrackIDs: [NSValue]?
+    let passthroughTrackID = kCMPersistentTrackID_Invalid
+    let primary: StudioVideoLayer
+    let effect: Effect
+    let renderSize: CGSize
+    let projectDirectory: URL
+
+    init(timeRange: CMTimeRange, primary: StudioVideoLayer, effect: Effect = .none,
+         renderSize: CGSize, projectDirectory: URL) {
+        self.timeRange = timeRange
+        self.primary = primary
+        self.effect = effect
+        self.renderSize = renderSize
+        self.projectDirectory = projectDirectory
+        var ids = primary.trackIDs
+        if case let .dissolve(incoming, _) = effect { ids += incoming.trackIDs }
+        requiredSourceTrackIDs = ids.map { NSNumber(value: $0) }
+        super.init()
     }
 }
 
@@ -219,7 +217,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
 
     private let lock = NSLock()
     private var renderContext: AVVideoCompositionRenderContext?
-    private let personSegmenter = StudioPersonSegmenter()
+    private let personSegmenters = [StudioPersonSegmenter(), StudioPersonSegmenter()]
 
     var sourcePixelBufferAttributes: [String: any Sendable]? {
         [
@@ -254,9 +252,32 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             return
         }
 
+        let extent = CGRect(origin: .zero, size: instruction.renderSize)
+        var output = clipImage(for: instruction.primary, instruction: instruction, request: request)
+        func progress(in range: CMTimeRange) -> Double {
+            min(1, max(0, (request.compositionTime - range.start).seconds / range.duration.seconds))
+        }
+        switch instruction.effect {
+        case .none: break
+        case let .fadeThrough(white, range):
+            let shade: CGFloat = white ? 1 : 0
+            let opacity = 1 - abs(2 * progress(in: range) - 1)
+            let color = CIColor(red: shade, green: shade, blue: shade, alpha: opacity)
+            output = CIImage(color: color).cropped(to: extent).composited(over: output)
+        case let .dissolve(incoming, range):
+            let image = clipImage(for: incoming, instruction: instruction, request: request)
+            output = faded(image, opacity: progress(in: range)).composited(over: output)
+        }
+        Self.sharedContext.render(output.cropped(to: extent), to: outputBuffer, bounds: extent, colorSpace: nil)
+        request.finish(withComposedVideoFrame: outputBuffer)
+    }
+
+    /// Compose each clip, including its redactions and captions, before blending pictures.
+    private func clipImage(for video: StudioVideoLayer, instruction: StudioVideoCompositionInstruction,
+                           request: AVAsynchronousVideoCompositionRequest) -> CIImage {
         let renderSize = instruction.renderSize
-        let snapshot = instruction.renderState.read()
-        let (sourceTime, localTime) = instruction.position(at: request.compositionTime, map: snapshot.timeMap)
+        let snapshot = video.renderState.read()
+        let (sourceTime, localTime) = video.position(at: request.compositionTime, map: snapshot.timeMap)
         let frame = StudioLayoutResolver.resolve(
             project: snapshot.project,
             time: sourceTime,
@@ -277,7 +298,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         // one, so its shadow, its border and its click rings fade with it (section 6.7).
         if let screen = frame.screen,
            screen.opacity > 0,
-           let screenBuffer = request.sourceFrame(byTrackID: instruction.screenTrackID) {
+           let screenBuffer = request.sourceFrame(byTrackID: video.screenTrackID) {
             // Whole-pixel layer rectangles keep the shape mask and the layer exactly on top of each other.
             var alignedScreen = screen
             alignedScreen.rect = pixelAligned(screen.rect)
@@ -293,7 +314,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
                 shape: screenShape
             )
             let rawScreen = CIImage(cvPixelBuffer: screenBuffer)
-            let preferred = instruction.screenTransform
+            let preferred = video.screenTransform
             let orientation = StudioRenderGeometry.sourceOrientationTransform(
                 preferred: StudioRenderAffineTransform(
                     a: preferred.a, b: preferred.b, c: preferred.c,
@@ -339,7 +360,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         if let camera = frame.camera,
            camera.visible,
            camera.opacity > 0,
-           let cameraTrackID = instruction.cameraTrackID,
+           let cameraTrackID = video.cameraTrackID,
            let cameraBuffer = request.sourceFrame(byTrackID: cameraTrackID) {
             let cameraRect = pixelAligned(camera.rect)
             let whole = camera.opacity >= 1
@@ -351,7 +372,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             var cameraSource = CIImage(cvPixelBuffer: cameraBuffer)
             var showsPeopleOnly = false
             let cutout = snapshot.project.camera.cutout
-            if cutout != .none, let personMask = personSegmenter.mask(for: cameraBuffer, in: instruction.renderState) {
+            if cutout != .none, let personMask = personSegmenters[video.clipIndex % 2].mask(for: cameraBuffer, in: video.renderState) {
                 if cutout == .blur {
                     cameraSource = blurringAllButPeople(in: cameraSource, mask: personMask)
                 } else {
@@ -425,9 +446,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             output = caption.composited(over: output)
         }
 
-        output = output.cropped(to: outputExtent)
-        Self.sharedContext.render(output, to: outputBuffer, bounds: outputExtent, colorSpace: nil)
-        request.finish(withComposedVideoFrame: outputBuffer)
+        return output.cropped(to: outputExtent)
     }
 
     func cancelAllPendingVideoCompositionRequests() {}

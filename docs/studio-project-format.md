@@ -1309,7 +1309,7 @@ The speech recognition is the platform's own, so two platforms need not make the
 
 ## 16. Multi-clip projects (v2)
 
-Version 2 adds an ordered primary video lane. It remains a single sequential lane: clips do not overlap and there are no inter-clip transitions. A v1 reader refuses a v2 project rather than opening a partial edit. Current readers leave v1 projects in v1 when opening them; converting one to the v2 representation is an explicit edit, not an open-time migration.
+Version 2 adds one ordered primary video lane. Joins default to cuts; only an explicit cross-dissolve overlaps adjacent clips. A v1 reader refuses a v2 project rather than opening a partial edit. Current readers leave v1 projects in v1 when opening them; converting one to the v2 representation is an explicit edit, not an open-time migration.
 
 The existing root `sources`, `screen`, `camera`, `scenes`, `zooms`, `edits`, `audio`, `overlays`, and `captions` remain required-compatible fields. They are the legacy single-source view and are not the authority for a v2 timeline. V2 adds:
 
@@ -1323,7 +1323,17 @@ A `MediaSource` is `{ "id", "kind", "sources" }`. `kind` is `nativeRecording` or
 
 A `TimelineClip` contains `{ "id", "sourceId", "name", "sourceStart", "sourceEnd", "edits" }` and may include clip-specific `screen`, `camera`, `scenes`, `zooms`, `audio`, `overlays`, and `captions`. These optional fields use the matching v1 shapes and defaults. Missing clip-specific fields inherit the corresponding project-level default. A native source keeps its separate camera, audio track description, and events in its source registry entry; edits and user-visible native layers remain in the clip payload. A split creates a new clip ID, keeps the same source, and preserves each side's applicable native layers and edits. It does not duplicate or delete media.
 
-`sourceStart`, `sourceEnd`, and all times inside the clip's `edits` and native layers are source time for the referenced media. The clip's selected source interval is half-open `[sourceStart, sourceEnd)`. Its `edits.trimStart` and `edits.trimEnd` are clamped to that interval; cuts and speed ranges are interpreted by section 7. A clip with no playable time is invalid. Timeline order defines project/output-time placement: each clip begins when the previous clip's edited output ends. The project time mapping is the cumulative sum of prior clips' output durations plus the current clip's section-7 time map. At a boundary, the following clip owns the boundary time; the project end maps to the final clip's final source time.
+`sourceStart`, `sourceEnd`, and all times inside the clip's `edits` and native layers are source time for the referenced media. The clip's selected source interval is half-open `[sourceStart, sourceEnd)`. Its `edits.trimStart` and `edits.trimEnd` are clamped to that interval; cuts and speed ranges are interpreted by section 7. A clip with no playable time is invalid. An annotation, including one attached to the canvas (`frame`), belongs to that clip. Splitting through a visible annotation keeps it on both halves in source time; this does not create a project-wide overlay.
+
+`timeline.clips[].transitionIn` is an optional string on the **incoming** clip. It moves with that clip and is ignored while first. A split keeps it on the left half and makes a cut into the right half. New and duplicated clips start with a cut. For adjacent clips with edited output lengths `A` and `B`, macOS Studio renders:
+
+| Value | Picture and sound | Placement |
+|---|---|---|
+| `cut` (default, also for missing/null/unknown) | Switch directly to the incoming clip. | The incoming clip starts at the outgoing clip's end. |
+| `fadeThroughBlack`, `fadeThroughWhite` | Fade the finished outgoing picture linearly to the named color, then from that color into the finished incoming picture. Audio is unchanged. | Same as a cut; each half of the fade lasts `min(0.25, A/2, B/2)` output seconds. The color is solid at the join. |
+| `crossDissolve` | Play both clips' edited pictures and sound simultaneously, linearly blending from outgoing to incoming. Composite each clip's own camera, redactions, annotations and captions **before** blending. | The incoming clip starts `min(0.5, A/2, B/2)` seconds before the outgoing clip ends. Subtract this overlap once from the total duration. |
+
+Project time is the clip's project start plus its section-7 time map. At the incoming clip's start, including the start of a dissolve, project transport and insertion target the incoming clip; clip-local editing can still address either visible source. The project end maps to the final clip's final source time. Trimming, reordering, and changing speed recalculate join bounds. No middle clip ever needs both neighbors on screen at once. Readers without transition rendering, including the current Windows model-only pickup, cannot reproduce a transitioned export.
 
 The project canvas and default look stay stable across all clips. A source of a different size or orientation is fitted into that canvas; it must not stretch the picture or change export dimensions at a clip boundary. Per-clip style/layer values override defaults only for that clip. Export and preview must use the same mapping and cut/speed rules.
 

@@ -12,6 +12,21 @@ struct StudioCompositionSoundTrack {
         let range: CMTimeRange
         let state: StudioRenderState
         let trackCount: Int
+        let fadeIn: CMTimeRange?
+        let fadeOut: CMTimeRange?
+
+        func apply(gain: Float, to parameters: AVMutableAudioMixInputParameters) {
+            if let fadeIn {
+                parameters.setVolumeRamp(fromStartVolume: 0, toEndVolume: gain, timeRange: fadeIn)
+            }
+            let hold = CMTimeRange(start: fadeIn?.end ?? range.start, end: fadeOut?.start ?? range.end)
+            if hold.duration > .zero {
+                parameters.setVolumeRamp(fromStartVolume: gain, toEndVolume: gain, timeRange: hold)
+            }
+            if let fadeOut {
+                parameters.setVolumeRamp(fromStartVolume: gain, toEndVolume: 0, timeRange: fadeOut)
+            }
+        }
     }
     var clipVolumes: [ClipVolume] = []
 }
@@ -32,6 +47,10 @@ struct StudioCompositionBuildResult {
     var soundTrackCountInFile = 0
     var clips: [StudioClipRenderContext] = []
 
+    private var hasAudioRamps: Bool {
+        soundTracks.contains { $0.clipVolumes.contains { $0.fadeIn != nil || $0.fadeOut != nil } }
+    }
+
     func trackGains(for project: StudioProject) -> [[Double]] {
         let single = StudioSound.trackGains(project: project, trackCount: soundTrackCountInFile)
         return soundTracks.map { track in
@@ -47,7 +66,7 @@ struct StudioCompositionBuildResult {
     /// plays all of them together as they are.
     func audioMix(for project: StudioProject) -> AVAudioMix? {
         let gains = trackGains(for: project)
-        guard gains.joined().contains(where: { $0 != 1 }) else { return nil }
+        guard hasAudioRamps || gains.joined().contains(where: { $0 != 1 }) else { return nil }
         return mix(gains: gains)
     }
 
@@ -57,7 +76,7 @@ struct StudioCompositionBuildResult {
     /// the microphone as two tracks plays without the voice wherever only the first is played.
     func exportAudioMix(for project: StudioProject) -> AVAudioMix? {
         let gains = trackGains(for: project)
-        guard StudioSound.exportIsMixed(trackGains: Array(gains.joined()), soundTracksInVideo: soundTracks.count) else { return nil }
+        guard hasAudioRamps || StudioSound.exportIsMixed(trackGains: Array(gains.joined()), soundTracksInVideo: soundTracks.count) else { return nil }
         return mix(gains: gains)
     }
 
@@ -69,10 +88,8 @@ struct StudioCompositionBuildResult {
             if soundTrack.clipVolumes.isEmpty {
                 parameters.setVolume(Float(volumes[0]), at: .zero)
             } else {
-                // Two level points can interpolate. A plain cut keeps each clip's gain
-                // constant right up to the next boundary.
                 for (volume, clip) in zip(volumes, soundTrack.clipVolumes) {
-                    parameters.setVolumeRamp(fromStartVolume: Float(volume), toEndVolume: Float(volume), timeRange: clip.range)
+                    clip.apply(gain: Float(volume), to: parameters)
                 }
             }
             return parameters
@@ -353,15 +370,15 @@ enum StudioCompositionBuilder {
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = try await frameDuration(project: project, track: screenTrack)
         videoComposition.customVideoCompositorClass = StudioCompositor.self
+        let videoRange = CMTimeRange(start: .zero, duration: outputDuration)
         videoComposition.instructions = [
             StudioVideoCompositionInstruction(
-                timeRange: CMTimeRange(start: .zero, duration: outputDuration),
-                screenTrackID: compositionScreenTrack.trackID,
-                cameraTrackID: cameraTrackID,
+                timeRange: videoRange,
+                primary: StudioVideoLayer(timeRange: videoRange, screenTrackID: compositionScreenTrack.trackID,
+                                          cameraTrackID: cameraTrackID, renderState: state,
+                                          screenTransform: compositionScreenTrack.preferredTransform),
                 renderSize: renderSize,
-                renderState: state,
-                projectDirectory: paths.projectDirectory,
-                screenTransform: compositionScreenTrack.preferredTransform
+                projectDirectory: paths.projectDirectory
             )
         ]
 
@@ -525,6 +542,18 @@ extension StudioCompositionBuilder {
         }
     }
 
+    /// Only a real overlap needs a second set of tracks. At cuts the next clip reuses the same set.
+    private struct TrackBank {
+        var screen: LaneTrack
+        var camera: LaneTrack?
+        var sounds: [Int: LaneTrack] = [:]
+        var layers: [StudioVideoLayer] = []
+
+        init(in composition: AVMutableComposition) throws {
+            screen = try LaneTrack(in: composition, type: .video)
+        }
+    }
+
     private static func buildTimeline(_ project: StudioProject, paths: StudioProjectPaths,
                                       renderSize: CGSize, state: StudioRenderState) async throws -> StudioCompositionBuildResult {
         guard let sources = project.mediaSources, let timeline = project.timeline, !timeline.clips.isEmpty else {
@@ -533,16 +562,21 @@ extension StudioCompositionBuilder {
         let map = try StudioTimelineMap(timeline: timeline, sources: sources)
         let registry = Dictionary(sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let composition = AVMutableComposition()
-        var screen = try LaneTrack(in: composition, type: .video)
-        var camera: LaneTrack?
-        var sounds: [Int: LaneTrack] = [:]
+        var banks = [try TrackBank(in: composition)]
+        var bank = 0
         var mediaByID: [String: TimelineMedia] = [:]
         var contexts: [StudioClipRenderContext] = []
-        var instructions: [StudioVideoCompositionInstruction] = []
         func time(_ seconds: Double) -> CMTime { CMTime(seconds: seconds, preferredTimescale: speedTimescale) }
+        let joins = map.clips.map { clip in
+            clip.entry.flatMap { join -> (kind: StudioClipTransition, range: CMTimeRange)? in
+                let range = CMTimeRange(start: time(join.start), end: time(join.end))
+                return range.duration > .zero ? (join.kind, range) : nil
+            }
+        }
 
-        for (clip, span) in zip(timeline.clips, map.clips) {
+        for (index, clip) in timeline.clips.enumerated() {
             try Task.checkCancellation()
+            let span = map.clips[index]
             guard let source = registry[clip.sourceId] else { throw Error.emptyTimeline }
             let media: TimelineMedia
             if let cached = mediaByID[source.id] {
@@ -557,6 +591,13 @@ extension StudioCompositionBuilder {
             let start = time(span.projectStart)
             let range = CMTimeRange(start: start, end: time(span.projectEnd))
             guard range.duration > .zero else { continue }
+            let fadeIn = joins[index].flatMap { $0.kind == .crossDissolve ? $0.range : nil }
+            let next = index + 1 < joins.count ? joins[index + 1] : nil
+            let fadeOut = next.flatMap { $0.kind == .crossDissolve ? $0.range : nil }
+            if fadeIn != nil {
+                bank = 1 - bank
+                if bank == banks.count { banks.append(try TrackBank(in: composition)) }
+            }
             var usedSound = Set<Int>()
             var elapsed = 0.0
             for piece in span.timeMap.pieces {
@@ -589,44 +630,48 @@ extension StudioCompositionBuilder {
                     var samples = part
                     if part.end <= picture.start { samples = CMTimeRange(start: picture.start, duration: instant) }
                     if part.start >= picture.end { samples = CMTimeRange(start: picture.end - instant, duration: instant) }
-                    screen.append(media.screen, source: samples, target: target(part))
+                    banks[bank].screen.append(media.screen, source: samples, target: target(part))
                 }
                 if let feed = media.camera {
                     let offset = time(source.sources.camera?.startOffset ?? 0)
                     let available = CMTimeRange(start: feed.range.start + offset, duration: feed.range.duration)
                     let overlap = interval.intersection(available)
                     if overlap.duration > .zero, target(overlap).duration > .zero {
-                        if camera == nil { camera = try LaneTrack(in: composition, type: .video) }
-                        camera?.append(feed, source: CMTimeRange(start: overlap.start - offset, duration: overlap.duration),
-                                       target: target(overlap))
-                        cameraID = camera?.track.trackID
+                        if banks[bank].camera == nil { banks[bank].camera = try LaneTrack(in: composition, type: .video) }
+                        banks[bank].camera?.append(feed, source: CMTimeRange(start: overlap.start - offset, duration: overlap.duration),
+                                                  target: target(overlap))
+                        cameraID = banks[bank].camera?.track.trackID
                     }
                 }
                 if piece.rate == 1, !(clip.audio ?? project.audio).muted {
                     for (index, track) in media.sound.enumerated() {
                         let overlap = interval.intersection(track.range)
                         guard overlap.duration > .zero, target(overlap).duration > .zero else { continue }
-                        if sounds[index] == nil { sounds[index] = try LaneTrack(in: composition, type: .audio) }
-                        sounds[index]?.append(track, source: overlap, target: target(overlap))
+                        if banks[bank].sounds[index] == nil { banks[bank].sounds[index] = try LaneTrack(in: composition, type: .audio) }
+                        banks[bank].sounds[index]?.append(track, source: overlap, target: target(overlap))
                         if usedSound.insert(index).inserted {
-                            sounds[index]?.volumes.append(.init(range: range, state: context.state, trackCount: media.sound.count))
+                            banks[bank].sounds[index]?.volumes.append(.init(range: range, state: context.state, trackCount: media.sound.count,
+                                                                            fadeIn: fadeIn, fadeOut: fadeOut))
                         }
                     }
                 }
-                instructions.append(StudioVideoCompositionInstruction(
-                    timeRange: pieceRange, screenTrackID: screen.track.trackID, cameraTrackID: cameraID,
-                    renderSize: renderSize, renderState: context.state, projectDirectory: paths.projectDirectory,
-                    screenTransform: media.transform, piece: piece, clipOutputStart: elapsed
-                ))
+                let layer = StudioVideoLayer(timeRange: pieceRange, screenTrackID: banks[bank].screen.track.trackID,
+                                             cameraTrackID: cameraID, renderState: context.state, screenTransform: media.transform,
+                                             piece: piece, clipOutputStart: elapsed, clipIndex: index)
+                banks[bank].layers.append(layer)
                 elapsed += piece.outputDuration
             }
         }
+        let instructions = try timelineInstructions(banks: banks, joins: joins.compactMap { $0 },
+                                                    renderSize: renderSize, directory: paths.projectDirectory)
         guard !instructions.isEmpty else { throw Error.emptyTimeline }
-        try screen.commit()
-        try camera?.commit()
-        let soundTracks = try sounds.sorted(by: { $0.key < $1.key }).map { index, lane in
-            try lane.commit()
-            return StudioCompositionSoundTrack(trackID: lane.track.trackID, indexInFile: index, clipVolumes: lane.volumes)
+        let soundTracks = try banks.flatMap { bank in
+            try bank.screen.commit()
+            try bank.camera?.commit()
+            return try bank.sounds.sorted(by: { $0.key < $1.key }).map { index, lane in
+                try lane.commit()
+                return StudioCompositionSoundTrack(trackID: lane.track.trackID, indexInFile: index, clipVolumes: lane.volumes)
+            }
         }
         let video = AVMutableVideoComposition()
         // Canvas and cadence belong to the destination, not the first or selected lane clip.
@@ -636,8 +681,53 @@ extension StudioCompositionBuilder {
         video.instructions = instructions
         return StudioCompositionBuildResult(
             composition: composition, videoComposition: video, renderState: state, duration: time(map.duration),
-            screenTrackID: screen.track.trackID, cameraTrackID: camera?.track.trackID,
+            screenTrackID: banks[0].screen.track.trackID, cameraTrackID: banks[0].camera?.track.trackID,
             soundTracks: soundTracks, clips: contexts
         )
+    }
+
+    /// Partition on both clips' piece edges and the join edges. A cut or speed change
+    /// inside a dissolve changes its source piece, not the progress of the dissolve.
+    private static func timelineInstructions(banks: [TrackBank], joins: [(kind: StudioClipTransition, range: CMTimeRange)],
+                                             renderSize: CGSize, directory: URL) throws -> [StudioVideoCompositionInstruction] {
+        let layers = banks.map(\.layers)
+        if joins.isEmpty {
+            return layers[0].map { .init(timeRange: $0.timeRange, primary: $0, renderSize: renderSize, projectDirectory: directory) }
+        }
+        let edges = (layers.flatMap { $0.flatMap { [$0.timeRange.start, $0.timeRange.end] } }
+                     + joins.flatMap { [$0.range.start, $0.range.end] }).sorted()
+        var cursors = Array(repeating: 0, count: banks.count)
+        var joinIndex = 0
+        var instructions: [StudioVideoCompositionInstruction] = []
+        for (start, end) in zip(edges, edges.dropFirst()) where end > start {
+            var active: [StudioVideoLayer] = []
+            for bank in layers.indices {
+                while cursors[bank] < layers[bank].count, layers[bank][cursors[bank]].timeRange.end <= start {
+                    cursors[bank] += 1
+                }
+                if cursors[bank] < layers[bank].count {
+                    let layer = layers[bank][cursors[bank]]
+                    if layer.timeRange.start <= start { active.append(layer) }
+                }
+            }
+            active.sort { $0.clipIndex < $1.clipIndex }
+            guard let primary = active.first else { throw Error.emptyTimeline }
+            while joinIndex < joins.count, joins[joinIndex].range.end <= start { joinIndex += 1 }
+            var effect = StudioVideoCompositionInstruction.Effect.none
+            if joinIndex < joins.count, joins[joinIndex].range.start <= start {
+                let join = joins[joinIndex]
+                switch join.kind {
+                case .fadeThroughBlack, .fadeThroughWhite:
+                    effect = .fadeThrough(white: join.kind == .fadeThroughWhite, range: join.range)
+                case .crossDissolve:
+                    guard active.count == 2 else { throw Error.unsupportedInstruction }
+                    effect = .dissolve(to: active[1], range: join.range)
+                case .cut: break
+                }
+            }
+            instructions.append(.init(timeRange: CMTimeRange(start: start, end: end), primary: primary,
+                                      effect: effect, renderSize: renderSize, projectDirectory: directory))
+        }
+        return instructions
     }
 }

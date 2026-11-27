@@ -28,6 +28,29 @@ extension StudioTimelineClip {
 }
 
 struct StudioTimelineMap: Equatable, Sendable {
+    struct Join: Equatable, Sendable {
+        let kind: StudioClipTransition
+        let start: Double
+        let end: Double
+
+        init?(kind: StudioClipTransition, previous: Clip?, nextDuration: Double) {
+            guard kind != .cut, let previous else { return nil }
+            self.kind = kind
+            // Reserve at most half of either edited clip for this join. Two joins on
+            // a short middle clip can meet, but never need three pictures at once.
+            let limit = min(previous.timeMap.outputDuration, nextDuration) / 2
+            let boundary = previous.projectEnd
+            if kind == .crossDissolve {
+                start = boundary - min(0.5, limit)
+                end = boundary
+            } else {
+                let half = min(0.25, limit)
+                start = boundary - half
+                end = boundary + half
+            }
+        }
+    }
+
     struct Clip: Equatable, Sendable {
         var id: String
         var sourceId: String
@@ -36,14 +59,22 @@ struct StudioTimelineMap: Equatable, Sendable {
         var sourceStart: Double
         var sourceEnd: Double
         var timeMap: StudioTimeMap
+        var entry: Join?
     }
 
     let clips: [Clip]
     let duration: Double
 
+    init?(project: StudioProject) throws {
+        guard project.schemaVersion >= 2 else { return nil }
+        guard let timeline = project.timeline, let sources = project.mediaSources else {
+            throw StudioProjectError.invalidProject("The project is missing its clip lane or media.")
+        }
+        try self.init(timeline: timeline, sources: sources)
+    }
+
     init(timeline: StudioTimeline, sources: [StudioMediaSource]) throws {
         var mapped: [Clip] = []
-        var projectStart = 0.0
         let sourceIDs = Set(sources.map(\.id))
         let clipIDs = Set(timeline.clips.map(\.id))
         guard !timeline.clips.isEmpty, sourceIDs.count == sources.count, clipIDs.count == timeline.clips.count,
@@ -69,6 +100,9 @@ struct StudioTimelineMap: Equatable, Sendable {
             guard timeMap.outputDuration > 0 else {
                 throw StudioProjectError.invalidProject("Timeline clip has no playable duration")
             }
+            let entry = Join(kind: clip.transitionIn, previous: mapped.last, nextDuration: timeMap.outputDuration)
+            var projectStart = mapped.last?.projectEnd ?? 0
+            if let entry, entry.kind == .crossDissolve { projectStart = entry.start }
             let projectEnd = projectStart + timeMap.outputDuration
             guard projectEnd.isFinite, projectEnd > projectStart else {
                 throw StudioProjectError.invalidProject("Clip duration cannot be represented on the project timeline.")
@@ -80,19 +114,29 @@ struct StudioTimelineMap: Equatable, Sendable {
                 projectEnd: projectEnd,
                 sourceStart: timeMap.trimStart,
                 sourceEnd: timeMap.trimEnd,
-                timeMap: timeMap
+                timeMap: timeMap,
+                entry: entry
             ))
-            projectStart = projectEnd
         }
         clips = mapped
-        duration = projectStart
+        duration = mapped.last?.projectEnd ?? 0
     }
 
-    func sourcePosition(atProjectTime time: Double) -> (clipID: String, sourceID: String, sourceTime: Double)? {
-        guard !clips.isEmpty, time.isFinite else { return nil }
+    /// Project transport and insertion target the incoming clip during a dissolve.
+    /// A clip-local inspector can keep editing the outgoing clip's visible tail.
+    func clipIndex(atProjectTime time: Double, preferring id: String? = nil) -> Int? {
+        guard time.isFinite else { return nil }
         let clampedTime = min(max(0, time), duration)
-        let clip = clips.first(where: { clampedTime < $0.projectEnd }) ?? clips[clips.count - 1]
-        let localOutput = min(max(0, clampedTime - clip.projectStart), clip.timeMap.outputDuration)
+        if let id, let index = clips.firstIndex(where: {
+            $0.id == id && $0.projectStart <= clampedTime && clampedTime < $0.projectEnd
+        }) { return index }
+        return clips.lastIndex { $0.projectStart <= clampedTime }
+    }
+
+    func sourcePosition(atProjectTime time: Double, preferring id: String? = nil) -> (clipID: String, sourceID: String, sourceTime: Double)? {
+        guard let index = clipIndex(atProjectTime: time, preferring: id) else { return nil }
+        let clip = clips[index]
+        let localOutput = min(max(0, time - clip.projectStart), clip.timeMap.outputDuration)
         return (clip.id, clip.sourceId, clip.timeMap.outputToSource(localOutput))
     }
 
@@ -156,7 +200,7 @@ enum StudioTimelineEditing {
         }
         var result = timeline
         var index = result.clips.count
-        if let target = map.clips.firstIndex(where: { time < $0.projectEnd }) {
+        if time < map.duration, let target = map.clipIndex(atProjectTime: time) {
             index = target
             if time > map.clips[target].projectStart {
                 guard let position = map.sourcePosition(atProjectTime: time),
@@ -177,6 +221,13 @@ enum StudioTimelineEditing {
         var updated = timeline
         let clip = updated.clips.remove(at: oldIndex)
         updated.clips.insert(clip, at: min(max(0, index), updated.clips.count))
+        return updated
+    }
+
+    static func setTransition(_ kind: StudioClipTransition, before id: String, in timeline: StudioTimeline) -> StudioTimeline? {
+        guard let index = timeline.clips.firstIndex(where: { $0.id == id }), index > 0 else { return nil }
+        var updated = timeline
+        updated.clips[index].transitionIn = kind
         return updated
     }
 
@@ -213,6 +264,7 @@ enum StudioTimelineEditing {
 
         var right = clip
         right.id = UUID().uuidString.lowercased()
+        right.transitionIn = .cut
         right.sourceStart = sourceTime
         right.edits = clippedEdits(clip.edits, start: sourceTime, end: clip.sourceEnd)
         guard hasPlayableTime(left), hasPlayableTime(right) else { return nil }

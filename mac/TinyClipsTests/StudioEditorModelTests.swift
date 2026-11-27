@@ -3256,6 +3256,48 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(editor.previewProject, editor.manifest)
     }
 
+    func testDissolvesOnBothSidesOfAShortClipUseEditedTimeAndSurviveHistory() throws {
+        var project = StudioTimelineEditing.timelineProject(from: makeProject())
+        let source = try XCTUnwrap(project.mediaSources?.first?.id)
+        let lane = StudioTimeline(clips: [
+            StudioTimelineClip(id: "a", sourceId: source, sourceStart: 0, sourceEnd: 4),
+            StudioTimelineClip(id: "b", sourceId: source, sourceStart: 1, sourceEnd: 2,
+                               edits: StudioEdits(speed: [.init(start: 1, end: 2, rate: 2)])),
+            StudioTimelineClip(id: "c", sourceId: source, sourceStart: 0, sourceEnd: 4, transitionIn: .crossDissolve)
+        ])
+        project.timeline = lane
+        var editor = StudioEditorModel(project: project)
+        project.timeline = try XCTUnwrap(StudioTimelineEditing.setTransition(.crossDissolve, before: "b", in: lane))
+        editor.applyAutomationProject(project)
+        editor.undo()
+        XCTAssertEqual(editor.manifest.timeline, lane)
+        editor.redo()
+        let reopened = try StudioJSON.makeDecoder().decode(StudioProject.self, from: StudioJSON.makeEncoder().encode(editor.manifest))
+        let map = try XCTUnwrap(StudioTimelineMap(project: reopened))
+        XCTAssertEqual(map.clips.map(\.projectStart), [0, 3.75, 4])
+        XCTAssertEqual(map.clips.map(\.projectEnd), [4, 4.25, 8])
+        XCTAssertEqual(map.sourcePosition(atProjectTime: 3.875)?.sourceTime, 1.25)
+        XCTAssertEqual(map.sourcePosition(atProjectTime: 3.875, preferring: "a")?.sourceTime, 3.875)
+        XCTAssertEqual(map.sourcePosition(atProjectTime: 4)?.clipID, "c")
+        XCTAssertEqual(map.projectTime(clipID: "b", sourceTime: 1.25), 3.875)
+        let options = StudioExportOptionsModel(project: reopened, timelineMap: map, isHEVC: false, saved: .default)
+        XCTAssertEqual(options.duration, 8)
+
+        let edited = try XCTUnwrap(reopened.timeline)
+        let sources = try XCTUnwrap(reopened.mediaSources)
+        let addition = StudioTimelineClip(id: "d", sourceId: source, sourceStart: 0, sourceEnd: 1)
+        let inserted = try StudioTimelineEditing.insert(addition, atProjectTime: 3.875, in: edited, sources: sources)
+        XCTAssertEqual(inserted.clips[1].id, "b")
+        XCTAssertEqual(inserted.clips[1].sourceEnd, 1.25, "Insertion in the overlap splits the incoming clip")
+        XCTAssertEqual(inserted.clips[2].id, "d")
+        let split = try XCTUnwrap(StudioTimelineEditing.splitClip(id: "b", at: 1.5, in: edited))
+        XCTAssertEqual(split.clips.map(\.transitionIn), [.cut, .crossDissolve, .cut, .crossDissolve])
+        let moved = try XCTUnwrap(StudioTimelineEditing.moveClip(id: "b", to: 0, in: edited))
+        let reordered = try StudioTimelineMap(timeline: moved, sources: sources)
+        XCTAssertNil(reordered.clips[0].entry, "There is no transition into the start of the movie")
+        XCTAssertNil(StudioTimelineEditing.setTransition(.fadeThroughWhite, before: "b", in: moved))
+    }
+
     private func makeProject(duration: Double = 10, camera: Bool = true) -> StudioProject {
         StudioProject(
             id: "3f0013cf-ba10-4453-af91-792b7882dae6",

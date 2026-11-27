@@ -119,6 +119,27 @@ public class ContractTests
     }
 
     [Fact]
+    public void TimelineTransitionsValidateKindsAndTokensOnMacOnly()
+    {
+        var contract = Contract.Current;
+        var command = contract.Find("studio.timeline.transition")!;
+        Assert.Equal("edit", command.Scope);
+        Assert.Contains(command, contract.CommandsForPlatform("macos"));
+        Assert.DoesNotContain(command, contract.CommandsForPlatform("windows"));
+        var args = new JsonObject { ["projectId"] = "p", ["clipId"] = "b", ["expectedModifiedAt"] = "now", ["expectedRevision"] = "r" };
+        foreach (var kind in new[] { "cut", "fadeThroughBlack", "fadeThroughWhite", "crossDissolve" })
+        {
+            args["kind"] = kind;
+            Assert.Null(Contract.Validate(command, args));
+        }
+        args["kind"] = "unsupported";
+        Assert.NotNull(Contract.Validate(command, args));
+        args["kind"] = "cut";
+        args.Remove("expectedRevision");
+        Assert.NotNull(Contract.Validate(command, args));
+    }
+
+    [Fact]
     public void InputSchemaIncludesNestedAnnotationShape()
     {
         var schema = Contract.InputSchema(Contract.Current.Find("editor.annotate")!);

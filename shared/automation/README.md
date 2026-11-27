@@ -15,7 +15,7 @@ to start editable recordings with `recording.startVideo studio=true`; no shortcu
 
 The macOS-only `studio.timeline.*` commands assemble a sequential lane without driving its editor.
 The CLI and MCP use the contract's `platforms` field; check `session.hello.commands` for live support.
-`studio.timeline.get` is read-only (including on v1). Import/insert/move/split/trim/remove need `edit`;
+`studio.timeline.get` is read-only (including on v1). Import/insert/move/split/trim/transition/remove need `edit`;
 `studio.timeline.record` needs `record` **and** its `additionalScopes: ["edit"]`. Agents cannot use
 the import command to read arbitrary files. Import and recording recheck access and both optimistic
 concurrency tokens at commit. Removing a clip never deletes source media. See the

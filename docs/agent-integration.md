@@ -341,13 +341,15 @@ Every mutation takes `projectId`, `expectedModifiedAt` and `expectedRevision`. U
 | `studio.timeline.move` | `clipId`, `index` | Reorder to the zero-based **final** index. |
 | `studio.timeline.split` | `clipId`, `sourceTime` | Split at a playable point in the clip, in **source** seconds. The left clip keeps its ID. |
 | `studio.timeline.trim` | `clipId`, `sourceStart`, `sourceEnd` | Narrow the clip to a playable source interval; source files are unchanged. |
+| `studio.timeline.transition` | `clipId`, `kind` | Set the join **into** this clip from its predecessor: `cut` (default), `fadeThroughBlack`, `fadeThroughWhite`, or `crossDissolve`. The first clip has no join. |
 | `studio.timeline.remove` | `clipId` | Remove a clip, not its source. Refuses the final clip. No discard/delete approval is implied. |
 | `studio.timeline.record` | Optional `projectTime` and the usual recording target and device choices | Record a native segment for the specified destination. Requires **both `record` and `edit`**; the other mutations need `edit` only. |
 
-`projectTime` is in **edited output seconds**. Omit it to append, use a boundary to insert between clips, or insert inside a clip to split it and insert in one edit. Adjacent clips meet with plain cuts.
+`projectTime` is in **edited output seconds**. Omit it to append, use the incoming clip's `projectStart` to insert before it, or insert inside a clip to split it and insert in one edit. Clips meet with a cut unless a transition is set. Color fades do not move the clips; a cross-dissolve overlaps their pictures and audio by up to 0.5 seconds. Inside that overlap, insertion targets the incoming clip. Read `studio.timeline.get` again after a join or trim changes timing: each clip includes its stored `transitionIn`, and active effects include `transitionStart` and `transitionEnd` in project seconds.
 
 ```sh
 tinyclips call studio.timeline.import --params '{"projectId":"<id>","expectedModifiedAt":"<timestamp>","expectedRevision":"<revision>","path":"/Users/me/Movies/Part 2.mp4","projectTime":5.25}'
+tinyclips call studio.timeline.transition --params '{"projectId":"<id>","expectedModifiedAt":"<latest-timestamp>","expectedRevision":"<latest-revision>","clipId":"<incoming-clip-id>","kind":"crossDissolve"}'
 ```
 
 `studio.timeline.record` uses the `recording.startVideo` capture path, saved opt-ins, OS permissions and countdown. `started: true` is not an insertion receipt. Use `recording.status`, `recording.togglePause` and `recording.stop` as usual; restart/discard still require sensitive approval. After stopping, wait for processing to finish, inspect `recording.status.error` and read the timeline again. If access or the destination revision changed, the destination is unchanged and a successfully finalized take remains a separate Studio draft. A successful insert does not delete the original draft.

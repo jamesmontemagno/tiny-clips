@@ -256,7 +256,7 @@ final class StudioTimelineRenderingTests: XCTestCase {
         for (index, instruction) in instructions.enumerated() {
             let exactStart = Double(index) * 0.5 / 3.7
             XCTAssertEqual(instruction.timeRange.start, CMTime(seconds: exactStart, preferredTimescale: 48_000))
-            XCTAssertEqual(instruction.position(at: instruction.timeRange.start, map: instruction.renderState.read().timeMap).source, 0.01)
+            XCTAssertEqual(instruction.primary.position(at: instruction.timeRange.start, map: instruction.primary.renderState.read().timeMap).source, 0.01)
         }
         XCTAssertEqual(build.composition.duration, CMTime(seconds: Double(clips.count) * 0.5 / 3.7, preferredTimescale: 48_000))
         XCTAssertEqual(build.composition.tracks(withMediaType: .video).count, 1)
@@ -359,6 +359,79 @@ final class StudioTimelineRenderingTests: XCTestCase {
     }
 
     @MainActor
+    func testColorFadesAndDissolveInPreviewAndWrittenMovie() async throws {
+        var project = try manifest()
+        func clip(_ id: String, _ source: String, _ entry: StudioClipTransition = .cut) -> StudioTimelineClip {
+            StudioTimelineClip(id: id, sourceId: source, sourceStart: 0, sourceEnd: 1, transitionIn: entry,
+                               scenes: [StudioScene(layout: .screen)], audio: StudioAudio())
+        }
+        var outgoing = clip("c", "recording", .fadeThroughWhite)
+        outgoing.overlays = StudioOverlays(annotations: [
+            StudioAnnotation(id: "hide", kind: "redact", attach: .frame, start: 0.60, end: 0.68,
+                             x: 0.5, y: 0.5, fill: "#000000", width: 1, height: 1, redactStyle: .solid)
+        ])
+        var incoming = clip("d", "import")
+        // A source cut inside the dissolve must not restart its ramp. A later slow
+        // piece makes up the cut's duration so both source cards still last one second.
+        incoming.edits = StudioEdits(cuts: [.init(start: 0.1875, end: 0.3125)], speed: [.init(start: 0.625, end: 0.75, rate: 0.5)])
+        project.timeline = StudioTimeline(clips: [clip("a", "recording"), clip("b", "import", .fadeThroughBlack), outgoing, incoming])
+        let playback = StudioPlayback(project: project, paths: paths, renderSize: size)
+        let before = try await playback.makePlayerItem()
+        let originalDuration = try await before.asset.load(.duration)
+        XCTAssertEqual(originalDuration.seconds, 4, accuracy: 0.0001)
+        project.timeline?.clips[3].transitionIn = .crossDissolve
+        let item = try await playback.apply(project: project)
+        XCTAssertFalse(item === before)
+        let editedDuration = try await item.asset.load(.duration)
+        XCTAssertEqual(editedDuration.seconds, 3.5, accuracy: 0.0001)
+        let mid = CMTime(seconds: 2.75, preferredTimescale: 48_000)
+        let ramps = try XCTUnwrap(item.audioMix).inputParameters.compactMap { parameters -> [Float]? in
+            var start: Float = 0, end: Float = 0
+            var range = CMTimeRange.zero
+            guard parameters.getVolumeRamp(for: mid, startVolume: &start, endVolume: &end, timeRange: &range) else { return nil }
+            XCTAssertEqual(range.start.seconds, 2.5, accuracy: 0.0001)
+            XCTAssertEqual(range.duration.seconds, 0.5, accuracy: 0.0001)
+            return [start, end]
+        }
+        XCTAssertEqual(ramps.sorted { $0[0] < $1[0] }, [[0, 1], [1, 0]])
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await StudioExporter.export(project: project, events: StudioEvents(), paths: paths, outputURL: url,
+                                        renderSize: size, codec: .h264, quality: .standard)
+        let movie = AVURLAsset(url: url)
+        let writtenDuration = try await movie.load(.duration)
+        XCTAssertEqual(writtenDuration.seconds, 3.5, accuracy: 1.0 / 30)
+        let preview = AVAssetImageGenerator(asset: item.asset)
+        preview.videoComposition = item.videoComposition
+        let context = CIContext(options: [.useSoftwareRenderer: true])
+        // At frame 79 only the outgoing image is redacted: the incoming blue must still show.
+        let samples = [(15, [0, 255, 0]), (26, [0, 136, 0]), (30, [0, 0, 0]), (34, [0, 0, 136]),
+                       (45, [0, 0, 255]), (56, [119, 119, 255]), (60, [255, 255, 255]), (64, [119, 255, 119]),
+                       (75, [0, 255, 0]), (79, [0, 0, 68]), (82, [0, 136, 119]), (90, [0, 0, 255])]
+        for generator in [preview, AVAssetImageGenerator(asset: movie)] {
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            for (frame, rgb) in samples {
+                let image = try await generator.image(at: CMTime(value: Int64(frame), timescale: 30)).image
+                var pixel = [UInt8](repeating: 0, count: 4)
+                context.render(CIImage(cgImage: image), toBitmap: &pixel, rowBytes: 4,
+                               bounds: CGRect(x: 48, y: 32, width: 1, height: 1), format: .RGBA8,
+                               colorSpace: CGColorSpaceCreateDeviceRGB())
+                for channel in 0..<3 {
+                    XCTAssertEqual(Double(pixel[channel]), Double(rgb[channel]), accuracy: 28,
+                                   "\(generator === preview ? "Preview" : "Export") frame \(frame): \(pixel)")
+                }
+            }
+        }
+        let sound = try await readSound(movie, windows: [2.30..<2.40, 2.70..<2.80, 3.25..<3.35])
+        XCTAssertEqual(Double(sound[0].crossings), 44, accuracy: 2)
+        XCTAssertEqual(Double(sound[2].crossings), 88, accuracy: 2)
+        let midpointLevel = hypot(sound[0].rms, sound[2].rms) / 2
+        XCTAssertEqual(sound[1].rms, midpointLevel, accuracy: midpointLevel * 0.12)
+    }
+
+    @MainActor
     func testClipIsolationAndLiveUpdates() async throws {
         var project = try manifest()
         let playback = StudioPlayback(project: project, paths: paths, renderSize: size)
@@ -370,10 +443,10 @@ final class StudioTimelineRenderingTests: XCTestCase {
         XCTAssertEqual(video.frameDuration, CMTime(value: 1, timescale: 30))
         XCTAssertEqual(instructions.map(\.timeRange.start.seconds), [0, 0.25, 0.5])
         XCTAssertEqual(instructions.map { $0.requiredSourceTrackIDs?.count }, [2, 2, 1])
-        XCTAssertEqual(instructions.map { $0.renderState.read().events.clicks.count }, [1, 1, 0])
-        XCTAssertEqual(instructions.map { $0.position(at: $0.timeRange.start, map: $0.renderState.read().timeMap).source },
+        XCTAssertEqual(instructions.map { $0.primary.renderState.read().events.clicks.count }, [1, 1, 0])
+        XCTAssertEqual(instructions.map { $0.primary.position(at: $0.timeRange.start, map: $0.primary.renderState.read().timeMap).source },
                        [0, 0.5, 0.25])
-        let imported = try XCTUnwrap(instructions.last)
+        let imported = try XCTUnwrap(instructions.last?.primary)
         XCTAssertEqual(imported.renderState.read().captions, [.init(start: 0, end: 0.25, text: "Second")])
         let tracks = composition.tracks(withMediaType: .audio)
         XCTAssertEqual(tracks.count, 1)
@@ -401,7 +474,7 @@ final class StudioTimelineRenderingTests: XCTestCase {
         project.timeline?.clips.reverse()
         let reordered = try await playback.apply(project: project)
         XCTAssertFalse(reordered === item)
-        let first = try XCTUnwrap(reordered.videoComposition?.instructions.first as? StudioVideoCompositionInstruction)
+        let first = try XCTUnwrap(reordered.videoComposition?.instructions.first as? StudioVideoCompositionInstruction).primary
         XCTAssertNil(first.cameraTrackID)
         XCTAssertEqual(first.renderState.read().project.sources.screen.file, "flat.mp4")
     }

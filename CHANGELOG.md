@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- In macOS Studio, choose **Cut**, **Fade Through Black**, **Fade Through White**, or **Cross-Dissolve** between clips. Color fades keep timing unchanged. A dissolve blends picture and sound and shortens the project by up to half a second; short clips use shorter transitions.
 - macOS Studio can assemble a video from files, Clips Library videos, and new recording segments in one timeline. Append clips or insert at the playhead, split, trim, reorder, and undo without changing the originals. Linked recordings retain their editable layers; Save Project As includes the media needed to reopen the edit. Existing single-recording projects stay in v1 until a timeline operation converts them.
 - Screenshot settings now offer independent save-to-disk, clipboard, and editor outputs. Saving can be turned off for temporary screenshots, which can still be saved explicitly from the editor; at least one output must remain enabled. Temporary images use an app-private folder and are removed after editing or by age-based startup cleanup. Captures count toward statistics and review eligibility only after an output succeeds, and review prompts wait for screenshot recovery to finish.
 - The screenshot picker distinguishes **Window only** from **Window area**. Video/GIF pickers label their existing fixed-area window target **Window area**; visible overlays inside the fixed bounds are included.

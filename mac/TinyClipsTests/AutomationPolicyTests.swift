@@ -164,6 +164,50 @@ final class AutomationPolicyTests: XCTestCase {
     }
 
     @MainActor
+    func testTransitionCommandChecksTheIncomingClipAndReportsTheNewProjectClock() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = Self.repoRoot.appendingPathComponent("shared/studio/fixtures/timeline/two-clips-native-flat.json")
+        let project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(contentsOf: fixture))
+        let store = StudioProjectStore(rootURL: root)
+        try store.save(project)
+        let controller = AutomationController(contract: try loadContract())
+        let router = AutomationCommandRouter(controller: controller, studioStore: store)
+        let query = ["projectId": project.id]
+        let get = try await router.execute(command: "studio.timeline.get", params: query)
+        let command = "studio.timeline.transition"
+        var params: [String: Any] = ["projectId": project.id, "clipId": "native-clip", "kind": "crossDissolve",
+                                     "expectedRevision": try XCTUnwrap(get["revision"]), "expectedModifiedAt": try XCTUnwrap(get["modifiedAt"])]
+        do {
+            _ = try await router.execute(command: command, params: params)
+            XCTFail("The first clip has no incoming join")
+        } catch let error as AutomationError { XCTAssertEqual(error.code, .invalidParams) }
+        params["clipId"] = "flat-clip"
+        params["kind"] = "unknown"
+        do {
+            _ = try await router.execute(command: command, params: params)
+            XCTFail("An unsupported transition must not be stored")
+        } catch let error as AutomationError { XCTAssertEqual(error.code, .invalidParams) }
+        params["kind"] = "crossDissolve"
+        _ = try await router.execute(command: command, params: params)
+        let result = try await router.execute(command: "studio.timeline.get", params: query)
+        let clip = try XCTUnwrap((result["clips"] as? [[String: Any]])?.last)
+        XCTAssertEqual(clip["transitionIn"] as? String, "crossDissolve")
+        XCTAssertEqual(clip["transitionStart"] as? Double, 5.5)
+        XCTAssertEqual(clip["transitionEnd"] as? Double, 6)
+        XCTAssertEqual(result["duration"] as? Double, 10.5)
+        params["kind"] = "cut"
+        do {
+            _ = try await router.execute(command: command, params: params)
+            XCTFail("A stale command reset the transition")
+        } catch let error as AutomationError { XCTAssertEqual(error.code, .conflict) }
+        params["expectedRevision"] = result["revision"]
+        params["expectedModifiedAt"] = result["modifiedAt"]
+        _ = try await router.execute(command: command, params: params)
+        XCTAssertEqual(try store.load(id: project.id).timeline, project.timeline)
+    }
+
+    @MainActor
     func testTimelineImportRejectsOutsideFilesAndLinks() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let library = root.appendingPathComponent("Library")

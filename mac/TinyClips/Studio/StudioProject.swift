@@ -330,12 +330,19 @@ struct StudioTimeline: Codable, Equatable, Sendable {
     }
 }
 
+enum StudioClipTransition: String, StudioStringEnum, CaseIterable {
+    case cut, fadeThroughBlack, fadeThroughWhite, crossDissolve
+
+    static let defaultValue = Self.cut
+}
+
 struct StudioTimelineClip: Codable, Equatable, Sendable {
     var id: String
     var sourceId: String
     var name: String
     var sourceStart: Double
     var sourceEnd: Double
+    var transitionIn: StudioClipTransition
     var edits: StudioEdits
     var screen: StudioScreenStyle?
     var camera: StudioCameraStyle?
@@ -352,6 +359,7 @@ struct StudioTimelineClip: Codable, Equatable, Sendable {
         name: String = "",
         sourceStart: Double,
         sourceEnd: Double,
+        transitionIn: StudioClipTransition = .cut,
         edits: StudioEdits = StudioEdits(),
         screen: StudioScreenStyle? = nil,
         camera: StudioCameraStyle? = nil,
@@ -367,6 +375,7 @@ struct StudioTimelineClip: Codable, Equatable, Sendable {
         self.name = name
         self.sourceStart = sourceStart
         self.sourceEnd = sourceEnd
+        self.transitionIn = transitionIn
         self.edits = edits
         self.screen = screen
         self.camera = camera
@@ -389,6 +398,7 @@ struct StudioTimelineClip: Codable, Equatable, Sendable {
         name = try container.decodeString("name", default: "")
         sourceStart = try container.decodeDouble("sourceStart", default: 0)
         sourceEnd = try container.decodeDouble("sourceEnd", default: 0)
+        transitionIn = try container.decodeEnum("transitionIn", default: .cut)
         edits = try container.decodeIfPresent(StudioEdits.self, forKey: StudioJSONKey("edits")) ?? StudioEdits()
         screen = try container.decodeIfPresent(StudioScreenStyle.self, forKey: StudioJSONKey("screen"))
         camera = try container.decodeIfPresent(StudioCameraStyle.self, forKey: StudioJSONKey("camera"))
@@ -398,7 +408,7 @@ struct StudioTimelineClip: Codable, Equatable, Sendable {
         overlays = try container.decodeIfPresent(StudioOverlays.self, forKey: StudioJSONKey("overlays"))
         captions = try container.decodeIfPresent(StudioCaptions.self, forKey: StudioJSONKey("captions"))
         extra = try StudioJSON.decodeExtra(from: container, excluding: [
-            "id", "sourceId", "name", "sourceStart", "sourceEnd", "edits",
+            "id", "sourceId", "name", "sourceStart", "sourceEnd", "transitionIn", "edits",
             "screen", "camera", "scenes", "zooms", "audio", "overlays", "captions"
         ])
     }
@@ -411,6 +421,9 @@ struct StudioTimelineClip: Codable, Equatable, Sendable {
         try container.encode(name, forKey: StudioJSONKey("name"))
         try container.encode(sourceStart, forKey: StudioJSONKey("sourceStart"))
         try container.encode(sourceEnd, forKey: StudioJSONKey("sourceEnd"))
+        if transitionIn != .cut {
+            try container.encode(transitionIn, forKey: StudioJSONKey("transitionIn"))
+        }
         try container.encode(edits, forKey: StudioJSONKey("edits"))
         try container.encodeIfPresent(screen, forKey: StudioJSONKey("screen"))
         try container.encodeIfPresent(camera, forKey: StudioJSONKey("camera"))

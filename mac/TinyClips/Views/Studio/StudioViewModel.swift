@@ -339,14 +339,6 @@ final class StudioViewModel: ObservableObject {
     var canCancelAssembly: Bool { assemblyTask != nil }
     func cancelAssembly() { assemblyTask?.cancel() }
 
-    private static func map(for project: StudioProject) throws -> StudioTimelineMap? {
-        guard project.schemaVersion >= 2 else { return nil }
-        guard let timeline = project.timeline, let sources = project.mediaSources else {
-            throw StudioProjectError.invalidProject("The project is missing its clip lane or media.")
-        }
-        return try StudioTimelineMap(timeline: timeline, sources: sources)
-    }
-
     func selectTimelineClip(_ id: String) {
         guard canAssemble, let clip = timelineMap?.clips.first(where: { $0.id == id }) else { return }
         commitCaptionText()
@@ -361,15 +353,15 @@ final class StudioViewModel: ObservableObject {
         seekProject(to: seconds)
     }
 
-    private func seekProject(to seconds: Double) {
+    private func seekProject(to seconds: Double, preferring clipID: String? = nil) {
         guard let timelineMap else { return }
         let time = min(max(0, seconds), timelineMap.duration)
-        showProjectPosition(time)
+        showProjectPosition(time, preferring: clipID)
         player?.seek(to: CMTime(seconds: time, preferredTimescale: 48_000), toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
-    private func showProjectPosition(_ time: Double) {
-        guard let position = timelineMap?.sourcePosition(atProjectTime: time) else { return }
+    private func showProjectPosition(_ time: Double, preferring clipID: String? = nil) {
+        guard let position = timelineMap?.sourcePosition(atProjectTime: time, preferring: clipID) else { return }
         if selectedClipID != position.clipID {
             editor?.selectClip(id: position.clipID)
             clearClipSelection()
@@ -518,6 +510,13 @@ final class StudioViewModel: ObservableObject {
         replaceLane(moved, selecting: id)
     }
 
+    func setTransition(_ kind: StudioClipTransition, before id: String) {
+        commitCaptionText()
+        guard canAssemble, let lane = manifest?.timeline,
+              let updated = StudioTimelineEditing.setTransition(kind, before: id, in: lane) else { return }
+        replaceLane(updated, selecting: id)
+    }
+
     func removeTimelineClip(_ id: String) {
         commitCaptionText()
         guard canAssemble, let lane = manifest?.timeline, let index = lane.clips.firstIndex(where: { $0.id == id }),
@@ -536,7 +535,7 @@ final class StudioViewModel: ObservableObject {
         guard !isTornDown, var model = editor, updated.id == projectID, let diskState else {
             throw StudioProjectError.invalidProject("Reopen the project and try again.")
         }
-        let map = try Self.map(for: updated)
+        let map = try StudioTimelineMap(project: updated)
         let newPaths = try store.paths(for: updated)
         let oldID = selectedClipID
         let oldSource = model.project.sources
@@ -565,7 +564,7 @@ final class StudioViewModel: ObservableObject {
             let opened = try store.markOpened(id: projectID)
             let openedPaths = try store.paths(for: opened)
             let model = StudioEditorModel(project: opened)
-            timelineMap = try Self.map(for: opened)
+            timelineMap = try StudioTimelineMap(project: opened)
             diskState = StudioEditableState(project: opened)
             paths = openedPaths
             editor = model
@@ -2547,6 +2546,7 @@ final class StudioViewModel: ObservableObject {
         let settings = CaptureSettings.shared
         return StudioExportOptionsModel(
             project: project,
+            timelineMap: timelineMap,
             isHEVC: settings.videoCodec == .hevc,
             saved: settings.studioExportChoice
         )
@@ -3122,7 +3122,7 @@ final class StudioViewModel: ObservableObject {
         let previousClip = editor?.selectedClip?.id
         let isChanged = model.editableState != before
         if isChanged {
-            do { timelineMap = try Self.map(for: model.manifest) } catch {
+            do { timelineMap = try StudioTimelineMap(project: model.manifest) } catch {
                 SaveService.shared.showError(error.localizedDescription)
                 return
             }
@@ -3379,7 +3379,7 @@ final class StudioViewModel: ObservableObject {
             if seconds >= clip.projectEnd, clip.projectEnd < map.duration {
                 seconds = max(clip.projectStart, clip.projectEnd - 1 / max(1, editor.manifest.sources.screen.frameRate))
             }
-            seekProject(to: seconds)
+            seekProject(to: seconds, preferring: id)
             return
         }
         let time = editor.clampedSourceTime(sourceTime)

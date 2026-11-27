@@ -1601,13 +1601,14 @@ private struct StudioClipStrip: View {
         let name: String
         let start: Double
         let end: Double
+        var transitionIn: StudioClipTransition = .cut
     }
 
     private var items: [Item] {
         if let clips = viewModel.manifest?.timeline?.clips, let map = viewModel.timelineMap {
             return zip(clips, map.clips).enumerated().map { index, pair in
                 Item(id: pair.0.id, name: pair.0.name.isEmpty ? "Clip \(index + 1)" : pair.0.name,
-                     start: pair.1.projectStart, end: pair.1.projectEnd)
+                     start: pair.1.projectStart, end: pair.1.projectEnd, transitionIn: pair.0.transitionIn)
             }
         }
         return [Item(id: viewModel.projectID, name: viewModel.clipName, start: 0,
@@ -1631,8 +1632,12 @@ private struct StudioClipStrip: View {
                     ScrollView(.horizontal) {
                         HStack(spacing: 3) {
                             ForEach(Array(clips.enumerated()), id: \.element.id) { index, clip in
-                                let fraction = (clip.end - clip.start) / max(0.001, total)
-                                let width = max(88, fraction * max(1, geometry.size.width - CGFloat(clips.count - 1) * 3))
+                                if index > 0 {
+                                    transitionMenu(from: clips[index - 1], to: clip)
+                                }
+                                let nextStart = index + 1 < clips.count ? clips[index + 1].start : total
+                                let fraction = (nextStart - clip.start) / max(0.001, total)
+                                let width = max(88, fraction * max(1, geometry.size.width - CGFloat(clips.count - 1) * (Self.joinWidth + 6)))
                                 let selected = clip.id == viewModel.selectedClipID || viewModel.timelineMap == nil
                                 Button {
                                     viewModel.selectTimelineClip(clip.id)
@@ -1700,6 +1705,31 @@ private struct StudioClipStrip: View {
         }
     }
 
+    private static let joinWidth: CGFloat = 24
+
+    private func transitionMenu(from previous: Item, to clip: Item) -> some View {
+        Menu {
+            Picker("Transition", selection: Binding(get: { clip.transitionIn }, set: { viewModel.setTransition($0, before: clip.id) })) {
+                ForEach(StudioClipTransition.allCases, id: \.self) { kind in
+                    Text(kind == .crossDissolve ? "Cross-Dissolve (up to 0.5 s overlap)" : kind.title).tag(kind)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Image(systemName: clip.transitionIn.symbol)
+                .foregroundStyle(clip.transitionIn == .cut ? Color.secondary : Color.accentColor)
+                .frame(width: Self.joinWidth, height: 28)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: Self.joinWidth)
+        .disabled(!viewModel.canAssemble)
+        .help("Transition from \(previous.name) to \(clip.name): \(clip.transitionIn.title)")
+        .accessibilityLabel("Transition from \(previous.name) to \(clip.name)")
+        .accessibilityValue(clip.transitionIn.title)
+    }
+
     @ViewBuilder private func inputButtons(at time: Double?) -> some View {
         Button("Add Video File…", systemImage: "film") { viewModel.addClip(.file, at: time) }
         Button("Choose from Clips Library…", systemImage: "photo.on.rectangle") { viewModel.addClip(.library, at: time) }
@@ -1715,6 +1745,26 @@ private struct StudioClipStrip: View {
         Button("Move Earlier") { viewModel.moveTimelineClip(id, to: index - 1) }.disabled(index == 0)
         Button("Move Later") { viewModel.moveTimelineClip(id, to: index + 1) }.disabled(index + 1 >= count)
         Button("Remove from Timeline") { viewModel.removeTimelineClip(id) }.disabled(count == 1)
+    }
+}
+
+private extension StudioClipTransition {
+    var title: String {
+        switch self {
+        case .cut: "Cut"
+        case .fadeThroughBlack: "Fade Through Black"
+        case .fadeThroughWhite: "Fade Through White"
+        case .crossDissolve: "Cross-Dissolve"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .cut: "rectangle.split.2x1"
+        case .fadeThroughBlack: "circle.lefthalf.filled"
+        case .fadeThroughWhite: "circle.righthalf.filled"
+        case .crossDissolve: "square.on.square"
+        }
     }
 }
 

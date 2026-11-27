@@ -30,6 +30,7 @@ struct StudioTimelineSignature: Equatable, Sendable {
         let sourceID: String
         let start: Double
         let end: Double
+        let transitionIn: StudioClipTransition
         let edits: StudioEdits
         let muted: Bool
     }
@@ -50,7 +51,7 @@ struct StudioTimelineSignature: Equatable, Sendable {
             registry = project.mediaSources
             clips = project.timeline?.clips.map {
                 Clip(id: $0.id, sourceID: $0.sourceId, start: $0.sourceStart, end: $0.sourceEnd,
-                     edits: $0.edits, muted: ($0.audio ?? project.audio).muted)
+                     transitionIn: $0.transitionIn, edits: $0.edits, muted: ($0.audio ?? project.audio).muted)
             }
         }
         screenFile = project.sources.screen.file
