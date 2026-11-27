@@ -467,7 +467,7 @@
                             SelectionChanged="OnPointerStyleChanged">
                             <controls:SegmentedItem Content="Arrow" />
                             <controls:SegmentedItem Content="Hand" />
-                            <controls:SegmentedItem Content="Text" />
+                            <controls:SegmentedItem Content="I-beam" />
                         </studio:StudioSegmented>
                     </StackPanel>
                     <TextBlock

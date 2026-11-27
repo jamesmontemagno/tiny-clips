@@ -394,8 +394,8 @@ enum PointerAnnotationStyle: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .arrow: return "Arrow"
-        case .hand: return "Pointing hand"
-        case .text: return "Text I-beam"
+        case .hand: return "Hand"
+        case .text: return "I-beam"
         }
     }
 }

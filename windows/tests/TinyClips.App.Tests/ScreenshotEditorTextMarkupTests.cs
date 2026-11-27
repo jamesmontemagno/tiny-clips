@@ -27,7 +27,7 @@ public sealed class ScreenshotEditorTextMarkupTests
         var shadow = Assert.Single(elements, element => Attribute(element, AutomationId) == "EditorPointerShadowCheck");
 
         Assert.Equal("StudioSegmented", choice.Name.LocalName);
-        Assert.Equal(["Arrow", "Hand", "Text"], choice.Elements().Select(item => Attribute(item, "Content")));
+        Assert.Equal(["Arrow", "Hand", "I-beam"], choice.Elements().Select(item => Attribute(item, "Content")));
         Assert.Equal("CheckBox", shadow.Name.LocalName);
         Assert.Equal("Drop shadow", Attribute(shadow, "AutomationProperties.Name"));
         Assert.Equal(choice.Parent!.Parent, shadow.Parent);
