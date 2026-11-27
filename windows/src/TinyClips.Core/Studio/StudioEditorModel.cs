@@ -522,6 +522,19 @@ public sealed partial class StudioEditorModel
         }
     }
 
+    /// <summary>
+    /// One frame of the project: what a timeline steps by, at the frame rate the project's own
+    /// canvas has rather than the selected recording's.
+    /// </summary>
+    public double ProjectFrameDuration
+    {
+        get
+        {
+            var frameRate = Manifest.Sources.Screen.FrameRate;
+            return double.IsFinite(frameRate) && frameRate > 0 ? 1 / frameRate : FrameDuration;
+        }
+    }
+
     public StudioTimeMap TimeMap => new(SourceDuration, Project.Edits);
 
     public double OutputDuration => TimeMap.OutputDuration;
@@ -545,6 +558,16 @@ public sealed partial class StudioEditorModel
 
     public double ClampSourceTime(double sourceTime) =>
         double.IsFinite(sourceTime) ? Clamp(sourceTime, 0, SourceDuration) : 0;
+
+    /// <summary>
+    /// Where the playhead can be: anywhere in the recording, or for a timeline clip only in the
+    /// part of the recording the clip uses.
+    /// </summary>
+    public double ClampPlayhead(double sourceTime)
+    {
+        var time = ClampSourceTime(sourceTime);
+        return IsTimeline ? Clamp(time, TrimBounds.Start, TrimBounds.End) : time;
+    }
 
     /// <summary>
     /// Where playback starts when Play is pressed at <paramref name="sourceTime"/>: the same spot,

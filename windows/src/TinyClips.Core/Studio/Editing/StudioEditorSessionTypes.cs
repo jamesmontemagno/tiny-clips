@@ -144,7 +144,10 @@ public enum StudioEditorChanges
     /// <summary>Whether captions are being generated, and how far that is.</summary>
     Captions = 512,
 
-    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording | Inspector | ProjectFolder | Captions,
+    /// <summary>The preview was replaced, because the project became a timeline or stopped being one. The view binds its surface to the new one.</summary>
+    Preview = 1024,
+
+    All = State | Project | Playback | Export | Selection | Scene | ScreenRecording | Inspector | ProjectFolder | Captions | Preview,
 }
 
 public sealed class StudioEditorChangedEventArgs(StudioEditorChanges changes) : EventArgs
@@ -183,6 +186,9 @@ public enum StudioEditorErrorKind
     /// <see cref="StudioEditorSession.ScreenRecordingStatus"/>, under the button that was pressed.
     /// </summary>
     ScreenRecording,
+
+    /// <summary>Adding recordings to the timeline, or saving what that changed. The project keeps what it had.</summary>
+    Timeline,
 }
 
 public sealed class StudioEditorErrorEventArgs(StudioEditorErrorKind kind, string message) : EventArgs

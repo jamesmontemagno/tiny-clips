@@ -44,6 +44,7 @@ public sealed partial class StudioEditorSession
     private static readonly TimeSpan DeleteRetryDelay = TimeSpan.FromMilliseconds(120);
 
     private readonly IStudioProjectStore _store;
+    private readonly IStudioTimelineMediaStore? _timelineStore;
     private readonly IStudioPreviewFactory _previewFactory;
     private readonly IStudioExportService _exporter;
     private readonly ICaptureSettings _settings;
@@ -54,6 +55,19 @@ public sealed partial class StudioEditorSession
     private StudioEvents _events = new();
     private StudioProjectPaths? _paths;
     private IStudioPreview? _preview;
+
+    // Whether the open preview was opened for a timeline project. Its clock is the project's for
+    // a timeline and the recording's for a single recording, so it is reopened when this changes.
+    private bool _previewIsTimeline;
+    private int _previewGeneration;
+
+    // The clip the events belong to: null before they are read, empty for a single recording.
+    private string? _eventsClipId;
+
+    // The composition as the project file on disk had it when this editor last read or wrote it.
+    // A flush that must not overwrite changes made elsewhere compares the file with it.
+    private StudioEditableState? _persisted;
+    private StudioTimelineChangeLease? _timelineLease;
     private EventHandler? _positionHandler;
     private EventHandler? _isPlayingHandler;
     private EventHandler<StudioPreviewFailedEventArgs>? _failedHandler;
@@ -84,6 +98,8 @@ public sealed partial class StudioEditorSession
     /// <param name="settings">Where a look saved as the default goes.</param>
     /// <param name="post">Runs an action on the session's thread, later. It may be called from any thread.</param>
     /// <param name="timeProvider">The clock behind the autosave delay. Tests pass one they control.</param>
+    /// <param name="captionGenerator">Makes the captions. Without one the session cannot generate them.</param>
+    /// <param name="timelineStore">Copies recordings into the project for a timeline. Defaults to the store itself when it is one.</param>
     public StudioEditorSession(
         string projectId,
         IStudioProjectStore store,
@@ -92,7 +108,8 @@ public sealed partial class StudioEditorSession
         ICaptureSettings settings,
         Action<Action> post,
         TimeProvider? timeProvider = null,
-        IStudioCaptionGenerator? captionGenerator = null)
+        IStudioCaptionGenerator? captionGenerator = null,
+        IStudioTimelineMediaStore? timelineStore = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(projectId);
         ArgumentNullException.ThrowIfNull(store);
@@ -103,6 +120,7 @@ public sealed partial class StudioEditorSession
 
         ProjectId = projectId;
         _store = store;
+        _timelineStore = timelineStore ?? store as IStudioTimelineMediaStore;
         _previewFactory = previewFactory;
         _exporter = exporter;
         _settings = settings;
@@ -146,12 +164,23 @@ public sealed partial class StudioEditorSession
 
     public StudioProject? Project => Model?.Project;
 
-    /// <summary>The live preview, for the view that shows it. Null until the session is ready.</summary>
+    /// <summary>
+    /// The whole project, authoritative for saving, exporting and agents: for a timeline, every
+    /// clip and the registry of sources. <see cref="Project"/> is the clip the inspectors edit.
+    /// Each read is a detached copy that is free to change.
+    /// </summary>
+    public StudioProject? Manifest => Model is { } model ? StudioProjectJson.ReadProject(StudioProjectJson.WriteProject(model.Manifest)) : null;
+
+    /// <summary>Whether the project is a timeline of clips rather than one recording.</summary>
+    public bool IsTimeline => Model?.IsTimeline ?? false;
+
+    /// <summary>The live preview, for the view that shows it. Null until the session is ready, and while it is being reopened.</summary>
     public IStudioPreview? Preview => _preview;
 
     /// <summary>
-    /// Where the editor is in the recording, in source time. It moves at once when the user seeks,
-    /// steps or scrubs, and follows the preview only while that is playing.
+    /// Where the editor is in the active clip's recording, in source time. It moves at once when
+    /// the user seeks, steps or scrubs, and follows the preview only while that is playing.
+    /// <see cref="ProjectPlayhead"/> is the same place on the project's timeline.
     /// </summary>
     public double Playhead
     {
@@ -169,6 +198,15 @@ public sealed partial class StudioEditorSession
 
     public bool IsPlaying { get; private set; }
 
+    /// <summary>
+    /// The playhead on the project's timeline, with cuts, speed changes and joins applied. For a
+    /// single recording it is the output time.
+    /// </summary>
+    public double ProjectPlayhead => Model?.GetProjectTime(Playhead) ?? 0;
+
+    /// <summary>The length of the project's own timeline.</summary>
+    public double ProjectDuration => Model?.ProjectDuration ?? 0;
+
     public bool IsExporting { get; private set; }
 
     /// <summary>How far the running export is, from 0 to 1.</summary>
@@ -178,9 +216,10 @@ public sealed partial class StudioEditorSession
 
     /// <summary>
     /// Whether edits, the transport and export are accepted: ready, not exporting, not being
-    /// saved as a folder, not closed.
+    /// saved as a folder, not closed, and not held for a change to the timeline that is being
+    /// prepared (<see cref="BeginTimelineChange"/>).
     /// </summary>
-    public bool IsEditable => IsReady && !IsExporting && !IsSavingProjectFolder && !_isClosed;
+    public bool IsEditable => IsReady && !IsExporting && !IsSavingProjectFolder && !_isClosed && _timelineLease is null;
 
     public bool CanUndo => IsEditable && Model is { CanUndo: true };
 
@@ -188,7 +227,7 @@ public sealed partial class StudioEditorSession
 
     // Not while captions are being made: they are put in the project when they are done, and a
     // running export would refuse the edit.
-    public bool CanExport => IsEditable && !IsGeneratingCaptions && Model is { OutputDuration: > 0 };
+    public bool CanExport => IsEditable && !IsGeneratingCaptions && Model is { ProjectDuration: > 0 };
 
     /// <summary>
     /// Whether adding a zoom at the playhead has a zoom to answer with: one fits there, or one is
@@ -201,7 +240,7 @@ public sealed partial class StudioEditorSession
     public bool HasNeverExported => Model?.HasNeverExported ?? false;
 
     /// <summary>Whether the project is pinned against automatic cleanup.</summary>
-    public bool KeepSources => Model?.Project.KeepSources ?? false;
+    public bool KeepSources => Model?.Manifest.KeepSources ?? false;
 
     /// <summary>True from an edit until it has been written to the project on disk.</summary>
     public bool HasUnsavedEdits => _hasUnsavedEdits;
@@ -231,17 +270,17 @@ public sealed partial class StudioEditorSession
     /// <summary>The project name, or "Untitled recording".</summary>
     public string ClipName => StudioEditorText.GetClipName(Project?.Name);
 
-    /// <summary>The playhead and the length of the video, in output time: <c>0:02.5 / 0:10.0</c>.</summary>
+    /// <summary>The playhead and the length of the project, in project time: <c>0:02.5 / 0:10.0</c>.</summary>
     public string TimeText => Model is { } model
-        ? StudioEditorText.GetTimeText(model.GetOutputTime(Playhead), model.OutputDuration)
+        ? StudioEditorText.GetTimeText(model.GetProjectTime(Playhead), model.ProjectDuration)
         : StudioEditorText.GetTimeText(0, 0);
 
     /// <summary>
     /// The pixel size the editor lays the canvas out at: the canvas, limited on its long side.
     /// What an export comes to depends on the resolution chosen for it.
     /// </summary>
-    public StudioSize CanvasSize => Project is { } project
-        ? StudioExportLimits.GetExportSize(project)
+    public StudioSize CanvasSize => Model is { } model
+        ? StudioExportLimits.GetExportSize(model.Manifest)
         : new StudioSize(1920, 1080);
 
     /// <summary>The camera bubble on a canvas of the given size, while the bubble layout is showing.</summary>
@@ -269,10 +308,6 @@ public sealed partial class StudioEditorSession
         try
         {
             var opened = _store.MarkOpened(ProjectId);
-            if (opened.SchemaVersion >= 2)
-            {
-                throw new NotSupportedException("Multi-clip Studio projects cannot yet be edited on Windows.");
-            }
             paths = _store.GetPaths(opened);
             model = new StudioEditorModel(opened);
         }
@@ -287,21 +322,23 @@ public sealed partial class StudioEditorSession
         _paths = paths;
         Model = model;
         _projectSaveBaseline = model.EditableState;
+        _persisted = model.EditableState;
         global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: project file read");
 
-        if (!File.Exists(paths.ScreenPath))
+        if (!HasAllRecordings(model.Manifest, paths))
         {
             SetUnavailable(MissingRecordingMessage);
             return;
         }
 
-        _events = LoadEvents();
+        _events = LoadEvents(model);
         global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: events read");
 
         IStudioPreview preview;
         try
         {
-            preview = await _previewFactory.OpenAsync(model.Project, _events, paths, _lifetime.Token).ConfigureAwait(false);
+            _previewIsTimeline = model.IsTimeline;
+            preview = await _previewFactory.OpenAsync(model.Manifest, _events, paths, _lifetime.Token).ConfigureAwait(false);
             global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: preview opened");
         }
         catch (Exception ex)
@@ -320,18 +357,64 @@ public sealed partial class StudioEditorSession
         await PostAsync(() => AttachPreview(preview, model)).ConfigureAwait(false);
     }
 
-    /// <summary>Clicks and cursor samples are optional: a project without readable events has none.</summary>
-    private StudioEvents LoadEvents()
+    // A single recording has one file to find. A timeline has one for every clip, wherever its
+    // source was copied to.
+    private static bool HasAllRecordings(StudioProject project, StudioProjectPaths paths)
     {
+        if (project.SchemaVersion < 2)
+        {
+            return File.Exists(paths.ScreenPath);
+        }
+
         try
         {
-            return _store.LoadEvents(ProjectId);
+            return project.Timeline!.Clips.All(clip =>
+                File.Exists(StudioTimelineProjection.PathsForClip(project, paths, clip.Id).ScreenPath));
+        }
+        catch (StudioProjectInvalidException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Clicks and cursor samples are optional: a project without readable events has none. A
+    /// timeline has them per source, so these are the selected clip's.
+    /// </summary>
+    private StudioEvents LoadEvents(StudioEditorModel model)
+    {
+        _eventsClipId = model.SelectedClipId ?? string.Empty;
+        try
+        {
+            return model.SelectedClipId is { } clipId && _paths is { } paths
+                ? StudioTimelineProjection.EventsForClip(model.Manifest, paths, clipId)
+                : _store.LoadEvents(ProjectId);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Studio events could not be read for {ProjectId}: {ex.Message}");
             return new StudioEvents();
         }
+    }
+
+    // The events follow the clip the inspectors edit.
+    private void RefreshEvents()
+    {
+        if (Model is { } model && !string.Equals(_eventsClipId, model.SelectedClipId ?? string.Empty, StringComparison.Ordinal))
+        {
+            _events = LoadEvents(model);
+        }
+    }
+
+    private void HookPreview(IStudioPreview preview)
+    {
+        _preview = preview;
+        _positionHandler = (_, _) => OnPreviewPositionRaised(preview);
+        _isPlayingHandler = (_, _) => OnPreviewIsPlayingRaised(preview);
+        _failedHandler = (_, e) => OnPreviewFailedRaised(preview, e.Message);
+        preview.PositionChanged += _positionHandler;
+        preview.IsPlayingChanged += _isPlayingHandler;
+        preview.Failed += _failedHandler;
     }
 
     private void AttachPreview(IStudioPreview preview, StudioEditorModel model)
@@ -342,21 +425,143 @@ public sealed partial class StudioEditorSession
             return;
         }
 
-        _preview = preview;
-        _positionHandler = (_, _) => OnPreviewPositionRaised(preview);
-        _isPlayingHandler = (_, _) => OnPreviewIsPlayingRaised(preview);
-        _failedHandler = (_, e) => OnPreviewFailedRaised(preview, e.Message);
-        preview.PositionChanged += _positionHandler;
-        preview.IsPlayingChanged += _isPlayingHandler;
-        preview.Failed += _failedHandler;
+        HookPreview(preview);
 
         // The contract has no separate mute call: muting is part of the project the preview draws.
-        preview.UpdateProject(model.Project);
+        preview.UpdateProject(model.Manifest);
         _inspectorPanel = StudioInspectorPanels.GetInitial(model.HasCamera);
         State = StudioEditorLoadState.Ready;
-        Seek(model.TrimStart);
+        if (model.IsTimeline)
+        {
+            SeekProject(0, null);
+        }
+        else
+        {
+            Seek(model.TrimStart);
+        }
+
         RaiseChanged(StudioEditorChanges.All);
         global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: editor ready on UI thread");
+    }
+
+    // Hands the project to the preview after an edit. A preview is of one kind of project: its
+    // clock is the recording's for a single recording and the project's for a timeline, and it
+    // draws the one or the other. An edit, an undo or an adopted change that makes a single
+    // recording a timeline, or the other way round, therefore replaces the preview, and the view
+    // that shows it is told to bind its surface to the new one (StudioEditorChanges.Preview).
+    private void SyncPreview()
+    {
+        if (_preview is not { } preview || Model is not { } model)
+        {
+            return;
+        }
+
+        if (model.IsTimeline == _previewIsTimeline)
+        {
+            preview.UpdateProject(model.Manifest);
+
+            // The timeline keeps the project clock where it was, but an edit that moves the
+            // selected clip, or changes how much of it plays before the playhead, moves the
+            // playhead's place on the timeline. A playing preview is the clock the playhead follows.
+            if (model.IsTimeline && !IsPlaying)
+            {
+                var projectTime = model.GetProjectTime(Playhead);
+                if (!(Math.Abs(preview.Position - projectTime) < model.ProjectFrameDuration / 2))
+                {
+                    preview.Seek(projectTime);
+                }
+            }
+
+            return;
+        }
+
+        ReopenPreview(model);
+    }
+
+    private void ReopenPreview(StudioEditorModel model)
+    {
+        var old = DetachPreview();
+        var generation = ++_previewGeneration;
+        RefreshEvents();
+        RaiseChanged(StudioEditorChanges.Preview | StudioEditorChanges.Playback);
+        if (_paths is { } paths)
+        {
+            _ = ReopenPreviewAsync(old, model.Manifest, _events, paths, model.IsTimeline, generation);
+        }
+        else if (old is not null)
+        {
+            _ = DisposeQuietlyAsync(old);
+        }
+    }
+
+    private async Task ReopenPreviewAsync(
+        IStudioPreview? old,
+        StudioProject project,
+        StudioEvents events,
+        StudioProjectPaths paths,
+        bool isTimeline,
+        int generation)
+    {
+        // The old preview holds the media files open: it lets go of them first.
+        if (old is not null)
+        {
+            await DisposeQuietlyAsync(old).ConfigureAwait(false);
+        }
+
+        IStudioPreview preview;
+        try
+        {
+            if (_isClosed || generation != Volatile.Read(ref _previewGeneration))
+            {
+                return;
+            }
+
+            preview = await _previewFactory.OpenAsync(project, events, paths, _lifetime.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            await PostAsync(() =>
+            {
+                if (!_isClosed && generation == _previewGeneration)
+                {
+                    SetUnavailable(ex.Message);
+                }
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        await PostAsync(() => AttachReopenedPreview(preview, isTimeline, generation)).ConfigureAwait(false);
+    }
+
+    private void AttachReopenedPreview(IStudioPreview preview, bool isTimeline, int generation)
+    {
+        if (_isClosed || generation != _previewGeneration || Model is not { } model)
+        {
+            _ = DisposeQuietlyAsync(preview);
+            return;
+        }
+
+        _previewIsTimeline = isTimeline;
+        HookPreview(preview);
+        if (model.IsTimeline != isTimeline)
+        {
+            // The project crossed again while the preview was opening.
+            ReopenPreview(model);
+            return;
+        }
+
+        // Edits made while there was no preview are in the manifest, and the playhead is where it was.
+        preview.UpdateProject(model.Manifest);
+        if (model.IsTimeline)
+        {
+            SeekProject(model.GetProjectTime(Playhead), model.SelectedClipId);
+        }
+        else
+        {
+            Seek(Playhead);
+        }
+
+        RaiseChanged(StudioEditorChanges.Preview | StudioEditorChanges.Playback);
     }
 
     private void SetUnavailable(string? message)
@@ -843,6 +1048,7 @@ public sealed partial class StudioEditorSession
         }
 
         var before = model.EditableState;
+        var clipBefore = model.SelectedClipId;
         var zoomsBefore = model.Project.Zooms;
         var cutsBefore = model.Project.Edits.Cuts;
         var speedBefore = model.Project.Edits.Speed;
@@ -851,11 +1057,23 @@ public sealed partial class StudioEditorSession
         var selection = change(model);
         var isChanged = !model.EditableState.ContentEquals(before);
 
+        // An edit that changes the clip the inspectors edit, as undo and redo do, leaves nothing
+        // of the lanes it had: the indices were places in the lists of another clip.
+        var clipChanged = !string.Equals(clipBefore, model.SelectedClipId, StringComparison.Ordinal);
+        if (clipChanged)
+        {
+            selection = null;
+            ClearClipSelections();
+            RefreshEvents();
+            _inspectorPanel = StudioInspectorPanels.Resolve(_inspectorPanel, model.HasCamera);
+            Playhead = model.ClampPlayhead(Playhead);
+        }
+
         if (selection is { Kind: EditSelectionKind.Zoom } zoomChosen)
         {
             _selectedZoomIndex = zoomChosen.Index;
         }
-        else if (isChanged && selected.Zoom is { } zoomIndex)
+        else if (!clipChanged && isChanged && selected.Zoom is { } zoomIndex)
         {
             _selectedZoomIndex = StudioEditorModel.FindZoomFollowing(zoomsBefore, zoomIndex, model.Project.Zooms);
         }
@@ -864,7 +1082,7 @@ public sealed partial class StudioEditorSession
         {
             _selectedCutIndex = cutChosen.Index;
         }
-        else if (isChanged && selected.Cut is { } cutIndex)
+        else if (!clipChanged && isChanged && selected.Cut is { } cutIndex)
         {
             _selectedCutIndex = StudioEditorModel.FindCutFollowing(cutsBefore, cutIndex, model.Project.Edits.Cuts);
         }
@@ -873,7 +1091,7 @@ public sealed partial class StudioEditorSession
         {
             _selectedSpeedIndex = speedChosen.Index;
         }
-        else if (isChanged && selected.Speed is { } speedIndex)
+        else if (!clipChanged && isChanged && selected.Speed is { } speedIndex)
         {
             _selectedSpeedIndex = StudioEditorModel.FindSpeedFollowing(speedBefore, speedIndex, model.Project.Edits.Speed);
         }
@@ -882,7 +1100,7 @@ public sealed partial class StudioEditorSession
         {
             _selectedAnnotationIndex = annotationChosen.Index;
         }
-        else if (isChanged && selected.Annotation is { } annotationIndex)
+        else if (!clipChanged && isChanged && selected.Annotation is { } annotationIndex)
         {
             _selectedAnnotationIndex = StudioEditorModel.FindAnnotationFollowing(annotationsBefore, annotationIndex, model.Project.Overlays.Annotations);
         }
@@ -917,8 +1135,8 @@ public sealed partial class StudioEditorSession
         _selectedCutIndex = SelectedCutIndex;
         _selectedSpeedIndex = SelectedSpeedIndex;
         _selectedAnnotationIndex = SelectedAnnotationIndex;
-        var selectionChange = Selection != selected
-            ? StudioEditorChanges.Selection
+        var selectionChange = Selection != selected || clipChanged
+            ? StudioEditorChanges.Selection | (clipChanged ? StudioEditorChanges.Inspector : StudioEditorChanges.None)
             : StudioEditorChanges.None;
         if (!isChanged)
         {
@@ -933,8 +1151,8 @@ public sealed partial class StudioEditorSession
 
         _hasUnsavedEdits = true;
         ScheduleSave();
-        _preview?.UpdateProject(model.Project);
-        if (IsPlaying && model.IsAtPlaybackEnd(Playhead))
+        SyncPreview();
+        if (IsPlaying && !model.IsTimeline && model.IsAtPlaybackEnd(Playhead))
         {
             PausePreview();
         }
@@ -1009,7 +1227,8 @@ public sealed partial class StudioEditorSession
 
     /// <summary>
     /// Pauses when playing. Otherwise plays from the playhead, or from the trim start when the
-    /// playhead is outside the kept range or at its end.
+    /// playhead is outside the kept range or at its end. A timeline plays from the start of the
+    /// project when it is at the end.
     /// </summary>
     public void TogglePlayback()
     {
@@ -1021,6 +1240,21 @@ public sealed partial class StudioEditorSession
         if (IsPlaying)
         {
             Pause();
+            return;
+        }
+
+        if (model.IsTimeline)
+        {
+            // The engine of a timeline plays through cuts, speed changes and joins itself.
+            if (model.GetProjectTime(Playhead) >= model.ProjectDuration - model.ProjectFrameDuration / 2)
+            {
+                SeekProject(0, null);
+            }
+
+            Interlocked.Increment(ref _playGeneration);
+            preview.Play();
+            IsPlaying = true;
+            RaiseChanged(StudioEditorChanges.Playback);
             return;
         }
 
@@ -1057,24 +1291,40 @@ public sealed partial class StudioEditorSession
         }
 
         PausePreview();
-        Seek(Playhead + count * model.FrameDuration);
+        if (model.IsTimeline)
+        {
+            SeekProject(model.GetProjectTime(Playhead) + count * model.ProjectFrameDuration, model.SelectedClipId);
+        }
+        else
+        {
+            Seek(Playhead + count * model.FrameDuration);
+        }
+
         RaiseChanged(StudioEditorChanges.Playback);
     }
 
     /// <summary>Pauses and moves the playhead whole seconds back (negative) or on, within the video.</summary>
     public void StepSeconds(int count)
     {
-        if (!IsEditable)
+        if (!IsEditable || Model is not { } model)
         {
             return;
         }
 
         PausePreview();
-        Seek(Playhead + count);
+        if (model.IsTimeline)
+        {
+            SeekProject(model.GetProjectTime(Playhead) + count, model.SelectedClipId);
+        }
+        else
+        {
+            Seek(Playhead + count);
+        }
+
         RaiseChanged(StudioEditorChanges.Playback);
     }
 
-    /// <summary>Pauses and moves the playhead to the first picture of the trimmed video.</summary>
+    /// <summary>Pauses and moves the playhead to the first picture of the trimmed video, or of the project.</summary>
     public void GoToStart()
     {
         if (!IsEditable || Model is not { } model)
@@ -1083,11 +1333,19 @@ public sealed partial class StudioEditorSession
         }
 
         PausePreview();
-        Seek(model.PlaybackStart);
+        if (model.IsTimeline)
+        {
+            SeekProject(0, null);
+        }
+        else
+        {
+            Seek(model.PlaybackStart);
+        }
+
         RaiseChanged(StudioEditorChanges.Playback);
     }
 
-    /// <summary>Pauses and moves the playhead to the last picture of the trimmed video.</summary>
+    /// <summary>Pauses and moves the playhead to the last picture of the trimmed video, or of the project.</summary>
     public void GoToEnd()
     {
         if (!IsEditable || Model is not { } model)
@@ -1096,11 +1354,22 @@ public sealed partial class StudioEditorSession
         }
 
         PausePreview();
-        Seek(Math.Max(model.PlaybackStart, model.PlaybackEnd - model.FrameDuration));
+        if (model.IsTimeline)
+        {
+            SeekProject(Math.Max(0, model.ProjectDuration - model.ProjectFrameDuration), null);
+        }
+        else
+        {
+            Seek(Math.Max(model.PlaybackStart, model.PlaybackEnd - model.FrameDuration));
+        }
+
         RaiseChanged(StudioEditorChanges.Playback);
     }
 
-    /// <summary>Pauses and moves the playhead to a source time, for dragging along the timeline.</summary>
+    /// <summary>
+    /// Pauses and moves the playhead to a source time of the selected clip, for dragging along
+    /// a lane of the inspector.
+    /// </summary>
     public void Scrub(double sourceTime)
     {
         if (!IsEditable)
@@ -1111,6 +1380,50 @@ public sealed partial class StudioEditorSession
         PausePreview();
         Seek(sourceTime);
         RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    /// <summary>
+    /// Pauses and moves the playhead to a time on the project's timeline, for dragging along the
+    /// clip strip. The clip there is selected, unless the time is in an overlap with the clip
+    /// that is selected already.
+    /// </summary>
+    public void ScrubProject(double projectTime)
+    {
+        if (!IsEditable || Model is not { IsTimeline: true } model)
+        {
+            return;
+        }
+
+        PausePreview();
+        SeekProject(projectTime, model.SelectedClipId);
+        RaiseChanged(StudioEditorChanges.Playback);
+    }
+
+    /// <summary>
+    /// Selects a clip and puts the playhead at its first picture, or at <paramref name="sourceTime"/>
+    /// in it. The strip does this when a clip is chosen.
+    /// </summary>
+    public bool SelectClip(string clipId, double? sourceTime = null)
+    {
+        if (!IsEditable || Model is not { IsTimeline: true } model || model.TimelineMap is not { } map)
+        {
+            return false;
+        }
+
+        var entry = map.Clips.FirstOrDefault(clip => string.Equals(clip.ClipId, clipId, StringComparison.Ordinal));
+        if (entry is null)
+        {
+            return false;
+        }
+
+        PausePreview();
+        FollowClip(clipId);
+        var time = sourceTime is { } requested
+            ? model.ClampPlayhead(requested)
+            : model.TrimStart;
+        Seek(time);
+        RaiseChanged(StudioEditorChanges.Playback | StudioEditorChanges.Selection);
+        return true;
     }
 
     private void PausePreview()
@@ -1128,9 +1441,38 @@ public sealed partial class StudioEditorSession
             var position = preview.Position;
             if (double.IsFinite(position))
             {
-                Playhead = model.ClampSourceTime(position);
+                FollowPreviewPosition(model, position);
             }
         }
+    }
+
+    // The playhead goes where the preview is. A single recording's preview is in source time. A
+    // timeline's is in project time, and the clip it is in is the one the editor follows.
+    private void FollowPreviewPosition(StudioEditorModel model, double position)
+    {
+        if (model.IsTimeline)
+        {
+            ShowProjectPosition(model, position, model.SelectedClipId);
+        }
+        else
+        {
+            Playhead = model.ClampSourceTime(position);
+        }
+    }
+
+    private void ShowProjectPosition(StudioEditorModel model, double projectTime, string? preferredClipId)
+    {
+        if (model.GetSourcePosition(projectTime, preferredClipId) is not { } position)
+        {
+            return;
+        }
+
+        if (!string.Equals(position.ClipId, model.SelectedClipId, StringComparison.Ordinal))
+        {
+            FollowClip(position.ClipId);
+        }
+
+        Playhead = model.ClampPlayhead(position.SourceTime);
     }
 
     private void Seek(double sourceTime)
@@ -1140,9 +1482,45 @@ public sealed partial class StudioEditorSession
             return;
         }
 
-        var time = model.ClampSourceTime(sourceTime);
+        var time = model.ClampPlayhead(sourceTime);
         Playhead = time;
+        _preview?.Seek(model.IsTimeline ? model.GetProjectTime(time) : time);
+    }
+
+    private void SeekProject(double projectTime, string? preferredClipId)
+    {
+        if (Model is not { IsTimeline: true } model)
+        {
+            return;
+        }
+
+        var time = double.IsFinite(projectTime) ? Math.Clamp(projectTime, 0, model.ProjectDuration) : 0;
+        ShowProjectPosition(model, time, preferredClipId);
         _preview?.Seek(time);
+    }
+
+    // The inspectors edit another clip. What was selected in the lanes belonged to the one before.
+    private void FollowClip(string clipId)
+    {
+        if (Model is not { } model || !model.SelectClip(clipId))
+        {
+            return;
+        }
+
+        ClearClipSelections();
+        RefreshEvents();
+        _inspectorPanel = StudioInspectorPanels.Resolve(_inspectorPanel, model.HasCamera);
+        RaiseChanged(StudioEditorChanges.Selection | StudioEditorChanges.Inspector | StudioEditorChanges.Project);
+    }
+
+    private void ClearClipSelections()
+    {
+        _selectedZoomIndex = null;
+        _selectedCutIndex = null;
+        _selectedSpeedIndex = null;
+        _selectedAnnotationIndex = null;
+        _selectedCaptionIndex = null;
+        _selectedCaptionList = null;
     }
 
     // Preview events. These three arrive on a worker thread.
@@ -1181,6 +1559,22 @@ public sealed partial class StudioEditorSession
         var position = preview.Position;
         if (!double.IsFinite(position))
         {
+            return;
+        }
+
+        if (model.IsTimeline)
+        {
+            if (position >= model.ProjectDuration - 1e-6)
+            {
+                PausePreview();
+                SeekProject(model.ProjectDuration, null);
+            }
+            else
+            {
+                ShowProjectPosition(model, position, model.SelectedClipId);
+            }
+
+            RaiseChanged(StudioEditorChanges.Playback);
             return;
         }
 
@@ -1230,6 +1624,19 @@ public sealed partial class StudioEditorSession
         // The preview stopped by itself: the end of the recording, or an interruption.
         IsPlaying = false;
         var position = preview.Position;
+        if (model.IsTimeline)
+        {
+            if (double.IsFinite(position))
+            {
+                // A preview reports the start of the frame it shows, so at the end it stops one
+                // frame short of the end of the project.
+                SeekProject(position >= model.ProjectDuration - model.ProjectFrameDuration * 1.5 ? model.ProjectDuration : position, model.SelectedClipId);
+            }
+
+            RaiseChanged(StudioEditorChanges.Playback);
+            return;
+        }
+
         if (double.IsFinite(position))
         {
             Playhead = model.ClampSourceTime(position);
@@ -1272,7 +1679,19 @@ public sealed partial class StudioEditorSession
         try
         {
             var onDisk = _store.Load(ProjectId);
+
+            // A project that is or was a timeline is saved only over what this editor last saw
+            // on disk: its lanes are written whole, so a change made elsewhere would be lost.
+            if (IsDiskStale(model, onDisk))
+            {
+                ReportError(
+                    StudioEditorErrorKind.Save,
+                    "Studio did not save this project, because it was changed outside the editor. Close the editor and open the project again.");
+                return false;
+            }
+
             var saved = _store.Save(model.EditableState.ApplyTo(onDisk));
+            _persisted = StudioEditableState.From(saved);
             model.RefreshBookkeeping(saved);
             _hasUnsavedEdits = false;
             RaiseChanged(StudioEditorChanges.Project);
@@ -1285,6 +1704,10 @@ public sealed partial class StudioEditorSession
         }
     }
 
+    private bool IsDiskStale(StudioEditorModel model, StudioProject onDisk) =>
+        (model.IsTimeline || onDisk.SchemaVersion >= 2 || _persisted is { SchemaVersion: >= 2 })
+        && !StudioEditableState.From(onDisk).ContentEquals(_persisted);
+
     /// <summary>Applies an agent update to the live undo history when its observed revision is current.</summary>
     public bool ApplyAutomationProject(StudioProject updated, DateTimeOffset expectedModifiedAt)
     {
@@ -1292,7 +1715,7 @@ public sealed partial class StudioEditorSession
         if (!IsEditable
             || IsInGesture
             || Model is not { } model
-            || model.Project.ModifiedAt != expectedModifiedAt
+            || model.Manifest.ModifiedAt != expectedModifiedAt
             || !string.Equals(updated.Id, ProjectId, StringComparison.Ordinal))
         {
             return false;
@@ -1391,7 +1814,7 @@ public sealed partial class StudioEditorSession
         ExportProgress = 0;
         RaiseChanged(StudioEditorChanges.All);
 
-        var project = model.Project;
+        var project = model.Manifest;
         var rendered = model.EditableState;
         var events = _events;
         string? outputPath = null;
@@ -1685,7 +2108,7 @@ public sealed partial class StudioEditorSession
             MarkLastUsed();
         }
 
-        var project = Model?.Project;
+        var project = Model?.Manifest;
         var paths = _paths;
         var events = _events;
 
