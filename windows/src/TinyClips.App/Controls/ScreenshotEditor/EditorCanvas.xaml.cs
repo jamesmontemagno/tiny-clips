@@ -320,6 +320,7 @@ public sealed partial class EditorCanvas : UserControl
             EditTool.Text => "Click where you want text to open the editor; double-click text to edit it.",
             EditTool.Counter => "Click to drop a numbered badge.",
             EditTool.Emoji => "Pick an emoji in the panel, then click to place it. Use Select to move, resize, or rotate it.",
+            EditTool.Pointer => "Click where the pointer should point. Use Select to move, resize, or rotate it.",
             EditTool.Pen => "Drag to draw freehand.",
             EditTool.Redact => "Drag over content to redact it.",
             EditTool.Rectangle or EditTool.Ellipse => "Drag to draw. Hold Shift for a perfect shape.",
@@ -836,6 +837,24 @@ public sealed partial class EditorCanvas : UserControl
                 OverlayCanvas.Children.Add(grid);
                 return new AnnotationVisual { Primary = grid };
             }
+            case EditTool.Pointer:
+            {
+                var grid = new Grid { IsHitTestVisible = false };
+                MakeRotatable(grid);
+                var shadowBrush = new SolidColorBrush();
+                var fill = new SolidColorBrush();
+                var stroke = new SolidColorBrush();
+                grid.Children.Add(new Polygon
+                {
+                    Fill = shadowBrush,
+                    Stroke = shadowBrush,
+                    StrokeLineJoin = PenLineJoin.Round,
+                    RenderTransform = new TranslateTransform(),
+                });
+                grid.Children.Add(new Polygon { Fill = fill, Stroke = stroke, StrokeLineJoin = PenLineJoin.Round });
+                OverlayCanvas.Children.Add(grid);
+                return new AnnotationVisual { Primary = grid, FillBrush = fill, StrokeBrush = stroke, TextBrush = shadowBrush };
+            }
             default:
                 throw new ArgumentOutOfRangeException(nameof(ann), ann.Tool, "Unsupported annotation tool.");
         }
@@ -996,7 +1015,66 @@ public sealed partial class EditorCanvas : UserControl
             case EditTool.Emoji:
                 PositionEmoji(ann, visual, scale, offX, offY);
                 break;
+            case EditTool.Pointer:
+                PositionPointer(ann, visual, scale, offX, offY);
+                break;
         }
+    }
+
+    // XAML shapes cannot blur, so the preview shows the shadow as a soft-edged silhouette; the
+    // export draws the real blurred shadow. The offset is counter-rotated so it stays
+    // screen-aligned like the export's.
+    private static void PositionPointer(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)
+    {
+        var b = EditorController.NormalizedBounds(ann);
+        var tl = ToCanvas(new Point(b.X, b.Y), scale, offX, offY);
+        var width = b.Width * scale;
+        var height = b.Height * scale;
+        var pointer = ann.Pointer;
+        var grid = (Grid)visual.Primary;
+        grid.Width = width;
+        grid.Height = height;
+        grid.Opacity = Math.Clamp(pointer.Opacity, 0, 1);
+        ApplyRotation(grid, ann.Rotation);
+
+        var fit = PointerGeometry.Fit(new RectD(0, 0, width, height));
+        var points = new PointCollection();
+        foreach (var p in PointerGeometry.Outline(pointer.Style))
+        {
+            points.Add(new Point(fit.X + p.X * fit.Width, fit.Y + p.Y * fit.Height));
+        }
+
+        var body = (Polygon)grid.Children[1];
+        body.Points = points;
+        visual.FillBrush!.Color = pointer.Fill;
+        visual.StrokeBrush!.Color = pointer.Stroke;
+        body.StrokeThickness = pointer.StrokeWidth * scale;
+
+        var shadowShape = (Polygon)grid.Children[0];
+        var shadow = pointer.Shadow;
+        var showsShadow = shadow.Enabled && shadow.Opacity > 0;
+        shadowShape.Visibility = showsShadow ? Visibility.Visible : Visibility.Collapsed;
+        if (showsShadow)
+        {
+            var shadowPoints = new PointCollection();
+            foreach (var p in points)
+            {
+                shadowPoints.Add(p);
+            }
+            shadowShape.Points = shadowPoints;
+            visual.TextBrush!.Color = Color.FromArgb((byte)Math.Round(Math.Clamp(shadow.Opacity, 0, 1) * 255), 0, 0, 0);
+            shadowShape.StrokeThickness = (pointer.StrokeWidth + shadow.Blur * 0.5) * scale;
+            shadowShape.Opacity = shadow.Blur > 0 ? 0.75 : 1;
+            var radians = -ann.Rotation * Math.PI / 180.0;
+            var dx = shadow.OffsetX * scale;
+            var dy = shadow.OffsetY * scale;
+            var translate = (TranslateTransform)shadowShape.RenderTransform;
+            translate.X = dx * Math.Cos(radians) - dy * Math.Sin(radians);
+            translate.Y = dx * Math.Sin(radians) + dy * Math.Cos(radians);
+        }
+
+        Canvas.SetLeft(grid, tl.X);
+        Canvas.SetTop(grid, tl.Y);
     }
 
     private static void PositionEmoji(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)
@@ -1336,7 +1414,7 @@ public sealed partial class EditorCanvas : UserControl
         }
         var (scale, offX, offY) = HostLayout();
 
-        if (ann.Tool == EditTool.Emoji || ann.IsRotated)
+        if (ann.Tool is EditTool.Emoji or EditTool.Pointer || ann.IsRotated)
         {
             var (stickerBounds, _) = CanvasStickerGeometry(EditorController.InteractionBounds(ann), scale, offX, offY);
             var corners = RotatableAnnotationGeometry.Corners(stickerBounds, ann.Rotation);
@@ -1550,6 +1628,13 @@ public sealed partial class EditorCanvas : UserControl
         {
             var center = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
             _controller.AddEmojiAnnotation(center);
+            return;
+        }
+
+        if (tool == EditTool.Pointer)
+        {
+            var hotspot = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
+            _controller.AddPointerAnnotation(hotspot);
             return;
         }
 

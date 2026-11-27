@@ -211,15 +211,14 @@ public static class EditToolExtensions
     };
 
     /// <summary>Every tool's <see cref="SettingId"/>, in toolbar order.</summary>
-    // Pointer is not an available Windows tool until its editor and renderer are implemented.
     public static IReadOnlyList<string> SettingIds { get; } =
-        [.. Enum.GetValues<EditTool>().Where(tool => tool != EditTool.Pointer).Select(SettingId)];
+        [.. Enum.GetValues<EditTool>().Select(SettingId)];
 
     public static bool TryParseSettingId(string? id, out EditTool tool)
     {
         foreach (var candidate in Enum.GetValues<EditTool>())
         {
-            if (candidate != EditTool.Pointer && string.Equals(candidate.SettingId(), id, StringComparison.Ordinal))
+            if (string.Equals(candidate.SettingId(), id, StringComparison.Ordinal))
             {
                 tool = candidate;
                 return true;

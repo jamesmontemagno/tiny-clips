@@ -454,6 +454,228 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!--  Pointer (item order matches PointerStyle)  -->
+                <StackPanel x:Name="PointerSection" Spacing="8" Visibility="Collapsed">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Pointer" />
+                        <studio:StudioSegmented
+                            x:Name="PointerStyleChoice"
+                            HorizontalAlignment="Stretch"
+                            studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                            AutomationProperties.AutomationId="EditorPointerStyleChoice"
+                            AutomationProperties.Name="Pointer style"
+                            SelectionChanged="OnPointerStyleChanged">
+                            <controls:SegmentedItem Content="Arrow" />
+                            <controls:SegmentedItem Content="Hand" />
+                            <controls:SegmentedItem Content="Text" />
+                        </studio:StudioSegmented>
+                    </StackPanel>
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Fill" />
+                    <local:SwatchColorPicker
+                        x:Name="PointerFillColorPicker"
+                        AutomationProperties.AutomationId="EditorPointerFillColorButton"
+                        AutomationProperties.Name="Pointer fill color"
+                        AllowTransparent="True"
+                        ColorChanged="OnPointerFillColorChanged"
+                        IsAlphaEnabled="True" />
+                    <Slider
+                        x:Name="PointerFillOpacitySlider"
+                        AutomationProperties.AutomationId="EditorPointerFillOpacitySlider"
+                        AutomationProperties.Name="Fill opacity"
+                        Header="Fill opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnPointerSliderChanged" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Stroke" />
+                    <local:SwatchColorPicker
+                        x:Name="PointerStrokeColorPicker"
+                        AutomationProperties.AutomationId="EditorPointerStrokeColorButton"
+                        AutomationProperties.Name="Pointer stroke color"
+                        AllowTransparent="True"
+                        ColorChanged="OnPointerStrokeColorChanged"
+                        IsAlphaEnabled="True" />
+                    <Slider
+                        x:Name="PointerStrokeOpacitySlider"
+                        AutomationProperties.AutomationId="EditorPointerStrokeOpacitySlider"
+                        AutomationProperties.Name="Stroke opacity"
+                        Header="Stroke opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnPointerSliderChanged" />
+                    <Slider
+                        x:Name="PointerStrokeWidthSlider"
+                        AutomationProperties.AutomationId="EditorPointerStrokeWidthSlider"
+                        AutomationProperties.Name="Stroke width"
+                        Header="Stroke width"
+                        Maximum="20"
+                        Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnPointerSliderChanged" />
+                    <Slider
+                        x:Name="PointerOpacitySlider"
+                        AutomationProperties.AutomationId="EditorPointerOpacitySlider"
+                        AutomationProperties.Name="Opacity"
+                        Header="Opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnPointerSliderChanged" />
+                    <Expander
+                        x:Name="PointerShadowExpander"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorPointerShadowExpander"
+                        AutomationProperties.Name="Drop shadow"
+                        Header="Drop shadow">
+                        <Expander.Resources>
+                            <Thickness x:Key="ExpanderContentPadding">12,8,12,12</Thickness>
+                        </Expander.Resources>
+                        <StackPanel Spacing="8">
+                            <CheckBox
+                                x:Name="PointerShadowCheck"
+                                AutomationProperties.AutomationId="EditorPointerShadowCheck"
+                                AutomationProperties.Name="Show shadow"
+                                Checked="OnPointerShadowToggled"
+                                Content="Show shadow"
+                                Unchecked="OnPointerShadowToggled" />
+                            <StackPanel x:Name="PointerShadowControls" Spacing="2">
+                            <Slider
+                                x:Name="PointerShadowOpacitySlider"
+                                AutomationProperties.AutomationId="EditorPointerShadowOpacitySlider"
+                                AutomationProperties.Name="Shadow opacity"
+                                Header="Shadow opacity"
+                                Maximum="100"
+                                Minimum="0"
+                                PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                                PointerPressed="OnTextStyleSliderPointerPressed"
+                                PointerReleased="OnTextStyleSliderPointerReleased"
+                                StepFrequency="1"
+                                ValueChanged="OnPointerSliderChanged" />
+                            <Slider
+                                x:Name="PointerShadowBlurSlider"
+                                AutomationProperties.AutomationId="EditorPointerShadowBlurSlider"
+                                AutomationProperties.Name="Blur"
+                                Header="Blur"
+                                Maximum="40"
+                                Minimum="0"
+                                PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                                PointerPressed="OnTextStyleSliderPointerPressed"
+                                PointerReleased="OnTextStyleSliderPointerReleased"
+                                StepFrequency="1"
+                                ValueChanged="OnPointerSliderChanged" />
+                            <Slider
+                                x:Name="PointerShadowOffsetXSlider"
+                                AutomationProperties.AutomationId="EditorPointerShadowOffsetXSlider"
+                                AutomationProperties.Name="Horizontal offset"
+                                Header="Horizontal offset"
+                                Maximum="40"
+                                Minimum="-40"
+                                PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                                PointerPressed="OnTextStyleSliderPointerPressed"
+                                PointerReleased="OnTextStyleSliderPointerReleased"
+                                StepFrequency="1"
+                                ValueChanged="OnPointerSliderChanged" />
+                            <Slider
+                                x:Name="PointerShadowOffsetYSlider"
+                                AutomationProperties.AutomationId="EditorPointerShadowOffsetYSlider"
+                                AutomationProperties.Name="Vertical offset"
+                                Header="Vertical offset"
+                                Maximum="40"
+                                Minimum="-40"
+                                PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                                PointerPressed="OnTextStyleSliderPointerPressed"
+                                PointerReleased="OnTextStyleSliderPointerReleased"
+                                StepFrequency="1"
+                                ValueChanged="OnPointerSliderChanged" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Expander>
+                    <Button
+                        x:Name="PointerPlaceAtCenterButton"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorPointerPlaceAtCenter"
+                        AutomationProperties.HelpText="Adds a pointer at the center and selects it for adjustment."
+                        AutomationProperties.Name="Place pointer at center"
+                        Click="OnPointerPlaceAtCenterClick"
+                        Content="Place pointer at center" />
+                    <StackPanel x:Name="PointerAdjustPanel" Spacing="6" Visibility="Collapsed">
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Nudge and resize" />
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button
+                                x:Name="PointerNudgeLeftButton"
+                                AutomationProperties.AutomationId="EditorPointerNudgeLeft"
+                                AutomationProperties.Name="Move pointer left"
+                                Click="OnPointerAdjustClick"
+                                ToolTipService.ToolTip="Move left">
+                                <FontIcon FontSize="14" Glyph="&#xE72B;" />
+                            </Button>
+                            <Button
+                                x:Name="PointerNudgeRightButton"
+                                AutomationProperties.AutomationId="EditorPointerNudgeRight"
+                                AutomationProperties.Name="Move pointer right"
+                                Click="OnPointerAdjustClick"
+                                ToolTipService.ToolTip="Move right">
+                                <FontIcon FontSize="14" Glyph="&#xE72A;" />
+                            </Button>
+                            <Button
+                                x:Name="PointerNudgeUpButton"
+                                AutomationProperties.AutomationId="EditorPointerNudgeUp"
+                                AutomationProperties.Name="Move pointer up"
+                                Click="OnPointerAdjustClick"
+                                ToolTipService.ToolTip="Move up">
+                                <FontIcon FontSize="14" Glyph="&#xE74A;" />
+                            </Button>
+                            <Button
+                                x:Name="PointerNudgeDownButton"
+                                AutomationProperties.AutomationId="EditorPointerNudgeDown"
+                                AutomationProperties.Name="Move pointer down"
+                                Click="OnPointerAdjustClick"
+                                ToolTipService.ToolTip="Move down">
+                                <FontIcon FontSize="14" Glyph="&#xE74B;" />
+                            </Button>
+                            <Button
+                                x:Name="PointerSmallerButton"
+                                AutomationProperties.AutomationId="EditorPointerSmaller"
+                                AutomationProperties.Name="Make pointer smaller"
+                                Click="OnPointerAdjustClick"
+                                ToolTipService.ToolTip="Smaller">
+                                <FontIcon FontSize="14" Glyph="&#xE738;" />
+                            </Button>
+                            <Button
+                                x:Name="PointerLargerButton"
+                                AutomationProperties.AutomationId="EditorPointerLarger"
+                                AutomationProperties.Name="Make pointer larger"
+                                Click="OnPointerAdjustClick"
+                                ToolTipService.ToolTip="Larger">
+                                <FontIcon FontSize="14" Glyph="&#xE710;" />
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
                 <!--  Rotation (selected rotatable annotation)  -->
                 <StackPanel x:Name="RotationSection" Spacing="2" Visibility="Collapsed">
                     <Slider

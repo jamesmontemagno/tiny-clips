@@ -181,6 +181,7 @@
                         <ComboBoxItem Content="Text" />
                         <ComboBoxItem Content="Counter" />
                         <ComboBoxItem Content="Emoji" />
+                        <ComboBoxItem Content="Pointer" />
                         <ComboBoxItem Content="Redact" />
                     </ComboBox>
                 </controls:SettingsCard>

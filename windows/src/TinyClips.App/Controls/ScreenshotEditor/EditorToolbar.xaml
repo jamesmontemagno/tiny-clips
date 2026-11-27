@@ -140,6 +140,15 @@
                     <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE76E;" />
                 </ToggleButton>
                 <ToggleButton
+                    x:Name="ToolPointer"
+                    AutomationProperties.AutomationId="EditorToolPointer"
+                    AutomationProperties.Name="Pointer"
+                    Click="OnToolClick"
+                    Tag="Pointer"
+                    ToolTipService.ToolTip="Pointer (P)">
+                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE7C9;" />
+                </ToggleButton>
+                <ToggleButton
                     x:Name="ToolRedact"
                     AutomationProperties.AutomationId="EditorToolRedact"
                     AutomationProperties.Name="Redact"
