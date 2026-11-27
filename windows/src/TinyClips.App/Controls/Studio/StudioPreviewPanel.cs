@@ -43,7 +43,7 @@ public sealed partial class StudioPreviewPanel : SwapChainPanel, IStudioPreviewS
     private readonly object _sync = new();
 
     // UI thread.
-    private StudioPreviewEngine? _engine;
+    private IStudioSurfacePreview? _engine;
 
     // What layout wants and what the buffers are. _sync.
     private EventHandler? _invalidated;
@@ -112,13 +112,13 @@ public sealed partial class StudioPreviewPanel : SwapChainPanel, IStudioPreviewS
     }
 
     /// <summary>The engine whose picture the panel shows, or null.</summary>
-    public StudioPreviewEngine? Engine => _engine;
+    public IStudioSurfacePreview? Engine => _engine;
 
     /// <summary>
     /// Shows <paramref name="engine"/>'s picture in this panel, in place of any other engine's.
     /// If the panel is not in a window yet, the picture appears when it is loaded. UI thread.
     /// </summary>
-    public void Attach(StudioPreviewEngine engine)
+    public void Attach(IStudioSurfacePreview engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
         if (ReferenceEquals(_engine, engine))

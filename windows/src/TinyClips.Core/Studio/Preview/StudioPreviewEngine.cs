@@ -29,7 +29,7 @@ namespace TinyClips.Core.Studio.Preview;
 /// players' frame copies, the scene renderer, a surface's buffers) does so under the device's lock.
 /// </para>
 /// </remarks>
-public sealed partial class StudioPreviewEngine : IStudioPreview, IStudioPreviewTransport
+public sealed partial class StudioPreviewEngine : IStudioSurfacePreview, IStudioPreviewTransport
 {
     private const int OpenTimeoutMilliseconds = 30_000;
     private const int FirstFrameTimeoutMilliseconds = 10_000;

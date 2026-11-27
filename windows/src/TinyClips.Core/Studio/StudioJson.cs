@@ -479,9 +479,33 @@ public static class StudioProjectJson
         var elements = NonNullArrayElements(clipsElement);
         return timeline with
         {
-            Clips = clips.Select((clip, index) => clip with
+            Clips = clips.Select((clip, index) =>
             {
-                Edits = NormalizeEdits(clip.Edits, elements[index]),
+                var element = elements[index];
+                // Clip payloads use v1 shapes, including defaults inside present optional fields.
+                // Keep absent fields null so the projection can inherit project-level defaults.
+                var local = ApplyDefaults(new StudioProject
+                {
+                    Screen = clip.Screen ?? new(),
+                    Camera = clip.Camera ?? new(),
+                    Scenes = clip.Scenes ?? [],
+                    Zooms = clip.Zooms ?? [],
+                    Edits = clip.Edits,
+                    Audio = clip.Audio ?? new(),
+                    Overlays = clip.Overlays ?? new(),
+                    Captions = clip.Captions ?? new(),
+                }, element.GetRawText());
+                return clip with
+                {
+                    Edits = local.Edits,
+                    Screen = HasNonNull(element, "screen") ? local.Screen : null,
+                    Camera = HasNonNull(element, "camera") ? local.Camera : null,
+                    Scenes = HasNonNull(element, "scenes") ? local.Scenes : null,
+                    Zooms = HasNonNull(element, "zooms") ? local.Zooms : null,
+                    Audio = HasNonNull(element, "audio") ? local.Audio : null,
+                    Overlays = HasNonNull(element, "overlays") ? local.Overlays : null,
+                    Captions = HasNonNull(element, "captions") ? local.Captions : null,
+                };
             }).ToArray(),
         };
     }

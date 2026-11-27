@@ -22,7 +22,9 @@ public sealed class StudioPreviewFactory : IStudioPreviewFactory
         StudioEvents events,
         StudioProjectPaths paths,
         CancellationToken cancellationToken = default) =>
-        await OpenEngineAsync(project, events, paths, cancellationToken).ConfigureAwait(false);
+        project.SchemaVersion >= 2
+            ? await StudioTimelinePreview.OpenAsync(project, paths, _options, cancellationToken).ConfigureAwait(false)
+            : await OpenEngineAsync(project, events, paths, cancellationToken).ConfigureAwait(false);
 
     /// <summary>
     /// The same as <see cref="OpenAsync"/>, returning the engine itself, which is what a surface

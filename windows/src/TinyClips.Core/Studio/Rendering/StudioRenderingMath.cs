@@ -80,12 +80,14 @@ public static class StudioRenderingMath
         }
 
         var map = StudioTimeMap.FromProject(project);
-        var frameCount = CheckedFrameCount(map.OutputDuration, frameRate);
+        var timeline = project.SchemaVersion >= 2 ? StudioTimelineProjection.Map(project) : null;
+        var frameCount = CheckedFrameCount(timeline?.Duration ?? map.OutputDuration, frameRate);
         var frames = new StudioExportFrame[frameCount];
         for (var index = 0; index < frameCount; index++)
         {
             var outputTime = (index + 0.5) / frameRate;
-            frames[index] = new StudioExportFrame(index, outputTime, map.OutputToSource(outputTime));
+            frames[index] = new StudioExportFrame(index, outputTime,
+                timeline?.SourcePositionAt(outputTime)?.SourceTime ?? map.OutputToSource(outputTime));
         }
 
         return frames;

@@ -43,9 +43,11 @@ public static class StudioTimelineProjection
     public static StudioProjectPaths PathsForClip(StudioProject project, StudioProjectPaths paths, string clipId)
     {
         var sources = ProjectForClip(project, clipId).Sources;
+        if (sources.Screen.External)
+            throw new StudioProjectInvalidException("Timeline sources must be owned by the project, not external files.");
         return paths with
         {
-            ScreenPath = sources.Screen.External ? sources.Screen.File : OwnedPath(paths.ProjectDirectory, sources.Screen.File),
+            ScreenPath = OwnedPath(paths.ProjectDirectory, sources.Screen.File),
             CameraPath = sources.Camera is { } camera ? OwnedPath(paths.ProjectDirectory, camera.File) : null,
             EventsPath = OwnedPath(paths.ProjectDirectory, sources.Events ?? StudioProjectStore.EventsFileName),
         };
@@ -59,15 +61,18 @@ public static class StudioTimelineProjection
             : StudioProjectJson.ReadEvents(File.ReadAllText(PathsForClip(project, paths, clipId).EventsPath));
     }
 
-    private static string OwnedPath(string directory, string file)
+    internal static string OwnedPath(string directory, string file)
     {
         // Project media is portable and relative; never let a registry entry escape its folder.
-        var root = Path.GetFullPath(directory) + Path.DirectorySeparatorChar;
-        var path = Path.GetFullPath(Path.Combine(directory, file));
-        if (Path.IsPathRooted(file) || !path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        if (!StudioProjectJson.IsPlainFileName(file)
+            || file.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || file.EndsWith('.') || file.EndsWith(' '))
         {
-            throw new StudioProjectInvalidException($"Project media must stay inside its folder: {file}.");
+            throw new StudioProjectInvalidException($"Project media must be a plain file name: {file}.");
         }
+        var path = Path.Combine(Path.GetFullPath(directory), file);
+        if (Path.Exists(path) && (File.GetAttributes(path) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
+            throw new StudioProjectInvalidException($"Project media must be a regular file, not a link or folder: {file}.");
         return path;
     }
 }

@@ -347,6 +347,40 @@ public sealed partial class StudioSceneRenderer : IDisposable
         }
     }
 
+    internal void BlendTimeline(ID3D11Texture2D target, ID3D11Texture2D outgoing, ID3D11Texture2D? incoming,
+        int width, int height, double incomingOpacity, double colorOpacity, bool white)
+    {
+        var first = PrepareSource(new StudioGpuVideoFrame(outgoing, 0, width, height), ScreenSlot).Bitmap!;
+        var second = incoming is null ? null
+            : PrepareSource(new StudioGpuVideoFrame(incoming, 0, width, height), CameraSlot).Bitmap!;
+        _context.Target = GetTarget(target);
+        var began = false;
+        try
+        {
+            _context.BeginDraw();
+            began = true;
+            _context.Transform = Matrix3x2.Identity;
+            var rect = new RawRectF(0, 0, width, height);
+            _context.DrawBitmap(first, rect, 1, BitmapInterpolationMode.NearestNeighbor, null);
+            if (second is not null)
+                _context.DrawBitmap(second, rect, (float)incomingOpacity, BitmapInterpolationMode.NearestNeighbor, null);
+            if (colorOpacity > 0)
+            {
+                _brush.Color = white ? White : Black;
+                _brush.Opacity = (float)colorOpacity;
+                _context.FillRectangle(rect, _brush);
+                _brush.Opacity = 1;
+            }
+            _context.EndDraw().CheckError();
+            began = false;
+        }
+        finally
+        {
+            if (began) EndDrawQuietly();
+            _context.Target = null;
+        }
+    }
+
     /// <summary>Lets go of every source texture. Call it before source textures are released or replaced.</summary>
     public void ForgetSources()
     {
