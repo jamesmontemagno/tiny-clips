@@ -210,9 +210,8 @@ public static class EditToolExtensions
         _ => tool.ToString().ToLowerInvariant(),
     };
 
-    /// <summary>Every tool's <see cref="SettingId"/>, in toolbar order.</summary>
-    public static IReadOnlyList<string> SettingIds { get; } =
-        [.. Enum.GetValues<EditTool>().Select(SettingId)];
+    /// <summary>Every tool's <see cref="SettingId"/>, in enum order; newer tools are appended rather than placed in toolbar order.</summary>
+    public static IReadOnlyList<string> SettingIds { get; } = [.. Enum.GetValues<EditTool>().Select(SettingId)];
 
     public static bool TryParseSettingId(string? id, out EditTool tool)
     {

@@ -457,7 +457,7 @@
                 <!--  Pointer (item order matches PointerStyle)  -->
                 <StackPanel x:Name="PointerSection" Spacing="8" Visibility="Collapsed">
                     <StackPanel Spacing="4">
-                        <TextBlock Text="Pointer" />
+                        <TextBlock Text="Style" />
                         <studio:StudioSegmented
                             x:Name="PointerStyleChoice"
                             HorizontalAlignment="Stretch"
@@ -560,9 +560,25 @@
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Text="Nudge and resize" />
-                        <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Grid ColumnSpacing="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.Resources>
+                                <Style BasedOn="{StaticResource DefaultButtonStyle}" TargetType="Button">
+                                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                    <Setter Property="MinWidth" Value="0" />
+                                    <Setter Property="Padding" Value="0,8" />
+                                </Style>
+                            </Grid.Resources>
                             <Button
                                 x:Name="PointerNudgeLeftButton"
+                                Grid.Column="0"
                                 AutomationProperties.AutomationId="EditorPointerNudgeLeft"
                                 AutomationProperties.Name="Move pointer left"
                                 Click="OnPointerAdjustClick"
@@ -571,6 +587,7 @@
                             </Button>
                             <Button
                                 x:Name="PointerNudgeRightButton"
+                                Grid.Column="1"
                                 AutomationProperties.AutomationId="EditorPointerNudgeRight"
                                 AutomationProperties.Name="Move pointer right"
                                 Click="OnPointerAdjustClick"
@@ -579,6 +596,7 @@
                             </Button>
                             <Button
                                 x:Name="PointerNudgeUpButton"
+                                Grid.Column="2"
                                 AutomationProperties.AutomationId="EditorPointerNudgeUp"
                                 AutomationProperties.Name="Move pointer up"
                                 Click="OnPointerAdjustClick"
@@ -587,6 +605,7 @@
                             </Button>
                             <Button
                                 x:Name="PointerNudgeDownButton"
+                                Grid.Column="3"
                                 AutomationProperties.AutomationId="EditorPointerNudgeDown"
                                 AutomationProperties.Name="Move pointer down"
                                 Click="OnPointerAdjustClick"
@@ -595,6 +614,7 @@
                             </Button>
                             <Button
                                 x:Name="PointerSmallerButton"
+                                Grid.Column="4"
                                 AutomationProperties.AutomationId="EditorPointerSmaller"
                                 AutomationProperties.Name="Make pointer smaller"
                                 Click="OnPointerAdjustClick"
@@ -603,13 +623,14 @@
                             </Button>
                             <Button
                                 x:Name="PointerLargerButton"
+                                Grid.Column="5"
                                 AutomationProperties.AutomationId="EditorPointerLarger"
                                 AutomationProperties.Name="Make pointer larger"
                                 Click="OnPointerAdjustClick"
                                 ToolTipService.ToolTip="Larger">
                                 <FontIcon FontSize="14" Glyph="&#xE710;" />
                             </Button>
-                        </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </StackPanel>
 
