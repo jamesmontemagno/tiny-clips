@@ -756,7 +756,7 @@ internal sealed partial class WindowChecks
         string[] timeline =
         [
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
-            .. LanesShown(editor), "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
+            .. ClipStripStops(editor), .. LanesShown(editor), "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
         var at = order.IndexOf(section[0]);
         var sectionTogether = at >= 0 && order.Skip(at).Take(section.Length).SequenceEqual(section);

@@ -63,6 +63,7 @@
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Project.cs" Link="Studio\StudioViewModel.Project.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Scene.cs" Link="Studio\StudioViewModel.Scene.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Speed.cs" Link="Studio\StudioViewModel.Speed.cs" />
+    <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Timeline.cs" Link="Studio\StudioViewModel.Timeline.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioViewModel.Zoom.cs" Link="Studio\StudioViewModel.Zoom.cs" />
     <Compile Include="..\..\src\TinyClips.App\ViewModels\Studio\StudioAnnouncementEventArgs.cs" Link="Studio\StudioAnnouncementEventArgs.cs" />
     <EmbeddedResource Include="..\..\src\TinyClips.App\Controls\Studio\*.xaml" Link="Studio\Markup\%(Filename)%(Extension)" LogicalName="StudioMarkup.%(Filename)%(Extension)" />

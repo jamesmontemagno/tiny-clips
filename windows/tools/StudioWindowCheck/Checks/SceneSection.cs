@@ -447,7 +447,7 @@ internal sealed partial class WindowChecks
         string[] timeline =
         [
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioSplitSceneButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
-            .. LanesShown(editor), "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
+            .. ClipStripStops(editor), .. LanesShown(editor), "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
         string[] wanted =
         [
@@ -467,7 +467,7 @@ internal sealed partial class WindowChecks
             || id.StartsWith(InspectorRailId + "_", StringComparison.Ordinal)).ToArray();
         var rails = order.Count(id => id == InspectorRailId);
         _report.Check(
-            "the keyboard focus, moved from stop to stop with each panel on show in turn, comes to the rail, which is one stop, before any panel; goes through the Scene panel from top to bottom: Previous and Next scene, Layout, Split scene, Transition, Duration, the three Start buttons and Delete scene; on through the other panels in the order of the rail; and through the timeline as the transport row from Play to End here, then the scene lane, the zoom lane, the cut lane, the speed lane and the trim bar, with nothing between them; each lane is one stop, and no single scene, zoom, cut, speed change or item of the rail is one",
+            "the keyboard focus, moved from stop to stop with each panel on show in turn, comes to the rail, which is one stop, before any panel; goes through the Scene panel from top to bottom: Previous and Next scene, Layout, Split scene, Transition, Duration, the three Start buttons and Delete scene; on through the other panels in the order of the rail; and through the timeline as the transport row from Play to End here, then the clip strip's stops, then the scene lane, the zoom lane, the cut lane, the speed lane and the trim bar, with nothing between them; each lane is one stop, and no single scene, zoom, cut, speed change or item of the rail is one",
             missing.Length == 0 && !outOfOrder && together && blocks.Length == 0 && rails == 1,
             missing.Length == 0 && !outOfOrder && together && blocks.Length == 0 && rails == 1
                 ? $"{order.Count} stops, saved as {Path.GetFileName(path)}: {string.Join(", ", order.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}"

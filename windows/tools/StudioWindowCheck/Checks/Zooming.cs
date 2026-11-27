@@ -107,6 +107,20 @@ internal sealed partial class WindowChecks
     private const string CutLane = "StudioCutLane";
     private const string SpeedLane = "StudioSpeedLane";
 
+    /// <summary>
+    /// The clip strip's stops, which sit between the transport row and the lanes: Add clip when the
+    /// window can add (these projects' store cannot, so it is disabled and no stop), the Clip menu,
+    /// and the one clip a single recording shows.
+    /// </summary>
+    private static string[] ClipStripStops(Editor editor)
+    {
+        var stops = new List<string>();
+        if (Find(editor, "StudioAddClipButton", 0.5)?.IsEnabled == true) { stops.Add("StudioAddClipButton"); }
+        if (Find(editor, "StudioClipMenuButton", 0.5)?.IsEnabled == true) { stops.Add("StudioClipMenuButton"); }
+        stops.Add("StudioClip_0");
+        return [.. stops];
+    }
+
     /// <summary>The lanes that show for what the editor holds, from the top down. A lane with nothing on it takes no room and no stop.</summary>
     private string[] LanesShown(Editor editor)
     {

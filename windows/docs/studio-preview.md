@@ -16,6 +16,18 @@ source-time skipping or playback-rate commands. Reopen and rebind the preview wh
 or undo crosses the v1/v2 boundary. `UpdateProject` accepts v2 timeline/registry edits,
 preserving or clamping project position.
 
+The editor (`StudioEditorSession`) keeps one history over the whole manifest and computes the
+selected clip's source-local project (`StudioTimelineProjection.ProjectForClip`) for the
+inspectors, so they stay in that clip's own time while the transport is in project time
+(`ProjectPlayhead`, `ScrubProject`). It sends the preview the whole v2 manifest, never a clip's
+projection, and reopens it when `SchemaVersion` crosses v1/v2: `StudioViewModel` raises `Preview`
+before the old preview is disposed, and `StudioWindow` detaches and re-attaches the surface on
+that change. A change that adds, splits, moves or removes clips is one undo step; undo and redo
+across a conversion reopen the preview again. Changes that are prepared elsewhere (the picker, a
+drop, the Library, a recorded segment, an agent) go through `BeginTimelineChange` and
+`CommitTimelineChange`, which save what is unsaved, refuse a project that changed on disk, and
+publish the result as that one step. See `windows/src/TinyClips.Core/Studio/Editing/StudioEditorSession.Timeline.cs`.
+
 `StudioTimelineProjection` supplies the editor and renderer's source-local projects, paths and
 events. `StudioTimelineRenderer` decodes the current clip's real screen/camera frames; only a
 dissolve decodes both neighbors. Native events, camera offsets, annotations and captions stay

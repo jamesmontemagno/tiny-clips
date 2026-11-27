@@ -82,12 +82,18 @@
     <Compile Include="$(AppSource)\Models\Studio\*.cs" Link="Models\Studio\%(Filename)%(Extension)" />
     <Compile Include="$(AppSource)\Services\Studio\*.cs" Link="Services\Studio\%(Filename)%(Extension)" />
 
+    <!-- The Library chooser needs the Clips Library, which the tool does not host; only the app opens it. -->
+    <Page Remove="$(AppSource)\Views\Studio\StudioLibraryVideoDialog.xaml" />
+    <Compile Remove="$(AppSource)\Views\Studio\StudioLibraryVideoDialog.xaml.cs" />
+
     <!-- What those need from the rest of the app. WindowIcon is replaced: see Host\StandIns.cs. -->
     <Page Include="$(AppSource)\Controls\SwatchColorPicker.xaml" Link="Controls\SwatchColorPicker.xaml" />
     <Compile Include="$(AppSource)\Controls\SwatchColorPicker.xaml.cs" Link="Controls\SwatchColorPicker.xaml.cs" />
     <Compile Include="$(AppSource)\Infrastructure\WindowChromeController.cs" Link="Infrastructure\WindowChromeController.cs" />
     <Compile Include="$(AppSource)\Infrastructure\AppWindowPlacement.cs" Link="Infrastructure\AppWindowPlacement.cs" />
     <Compile Include="$(AppSource)\Infrastructure\AppVersionInfo.cs" Link="Infrastructure\AppVersionInfo.cs" />
+    <!-- Which dropped or picked files the Studio can take. -->
+    <Compile Include="$(AppSource)\Infrastructure\ActivatedFile.cs" Link="Infrastructure\ActivatedFile.cs" />
     <!-- The question the other editors ask before Esc closes them. The Studio window asks it too. -->
     <Compile Include="$(AppSource)\Views\EditorEscapeConfirmation.cs" Link="Views\EditorEscapeConfirmation.cs" />
     <Compile Include="$(AppSource)\Controls\ScreenshotEditor\EditorController.cs" Link="Controls\ScreenshotEditor\EditorController.cs" />
