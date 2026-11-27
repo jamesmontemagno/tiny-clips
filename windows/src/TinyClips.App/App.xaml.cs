@@ -109,6 +109,11 @@ public partial class App : Application
     // kind of recording that was asked for last.
     private StudioRecordingIntent? _studioRecordingIntent;
 
+    // The Studio recording that is being made for a caller who waits for the draft it leaves: the
+    // editor adding a segment to a timeline, or an agent. It is kept from just before the recorder
+    // starts until the caller has been told, so that a restart keeps it and a discard ends it.
+    private volatile StudioTake? _studioTake;
+
     // Whether the recording that completed last was started from the capture picker. A Studio
     // recording reports its project in a second callback, queued right after the first one.
     private bool _completedRecordingWasPickerInitiated;
@@ -1396,16 +1401,45 @@ public partial class App : Application
     /// What a video recording was asked for with, which decides whether it is one for Studio.
     /// Null for a screenshot or a GIF.
     /// </param>
+    /// <param name="studioDraftCompleted">
+    /// For a Studio recording whose caller waits for the draft it leaves; a recording asked for
+    /// with anything but <see cref="VideoRecordingCommand.StudioRecording"/> ignores it. Called on
+    /// the UI thread with the id of the finished draft, instead of opening the editor. The
+    /// recording counts as still being processed (<see cref="HasPendingStudioDraftCompletion"/>)
+    /// until it returns. It is kept when the recording is restarted, and dropped when the
+    /// recording fails to start, is cancelled or discarded, or leaves no draft.
+    /// </param>
+    /// <param name="validateStudioStart">
+    /// Called on the UI thread right before the recorder starts, after the countdown and the
+    /// preparation, to check what the caller depends on. What it throws cancels the recording,
+    /// is not reported as a failure to save, and reaches an automation caller as it was thrown.
+    /// </param>
+    /// <param name="studioTakeEnded">
+    /// Called once when the Studio recording that <paramref name="studioDraftCompleted"/> waits
+    /// for will leave no draft: it never started, was discarded, or was kept as a plain video.
+    /// </param>
     private async Task BeginCaptureAsync(
         CaptureType type,
         CapturePickerMode? forcedMode = null,
         bool abortIfRecording = false,
         VideoRecordingCommand? videoCommand = null,
         TargetSelection? automationSelection = null,
-        VideoRecordingOptions? automationOptions = null)
+        VideoRecordingOptions? automationOptions = null,
+        Func<string, Task>? studioDraftCompleted = null,
+        Action? validateStudioStart = null,
+        Action? studioTakeEnded = null)
     {
-        if (_captureFlowCts is not null || _scrollingPanel is not null)
+        var studioTake = type == CaptureType.Video
+            && videoCommand == VideoRecordingCommand.StudioRecording
+            && studioDraftCompleted is not null
+                ? new StudioTake(studioDraftCompleted, studioTakeEnded)
+                : null;
+
+        // Another take, or its callback, still holds the recorder's result.
+        if (_captureFlowCts is not null || _scrollingPanel is not null
+            || (studioTake is not null && _studioTake is not null))
         {
+            FinishStudioTake(studioTake);
             return;
         }
 
@@ -1420,6 +1454,8 @@ public partial class App : Application
         _captureFlowCts = captureFlowCts;
         Task? recorderPrepare = null;
         var windowAreaDisplayChanged = false;
+        var studioTakeStarted = false;
+        var studioStartRejected = false;
         try
         {
             CaptureFlowTrace.Begin(type.ToString().ToLowerInvariant() + (forcedMode is null ? string.Empty : $"/{forcedMode}"));
@@ -1603,8 +1639,36 @@ public partial class App : Application
                     AcquireDisplaySleepAssertionIfEnabled();
                     await AwaitRecorderPrepareAsync(recorderPrepare);
                     videoOptions.ValidateDeviceAccess?.Invoke(videoOptions);
+                    if (validateStudioStart is not null)
+                    {
+                        try
+                        {
+                            validateStudioStart();
+                        }
+                        catch
+                        {
+                            studioStartRejected = true;
+                            throw;
+                        }
+                    }
+
+                    // Kept before the recorder starts: its completion is queued to this thread,
+                    // and can run while StartAsync is still awaited.
+                    if (studioTake is not null)
+                    {
+                        if (videoOptions.RecordForStudio)
+                        {
+                            _studioTake = studioTake;
+                        }
+                        else
+                        {
+                            FinishStudioTake(studioTake);
+                        }
+                    }
+
                     await Services.GetRequiredService<IVideoRecordingService>()
                         .StartAsync(selection.Target, selection.Region, pick.VideoTimeLimitMinutes, videoOptions, captureFlowCts.Token);
+                    studioTakeStarted = studioTake is not null && videoOptions.RecordForStudio;
                     CaptureFlowTrace.Mark("video: StartAsync returned");
                     ActivateRecordingIndicatorForStartedCapture(CaptureType.Video);
                     UpdateRecordingState();
@@ -1685,13 +1749,17 @@ public partial class App : Application
             {
                 _ = DiscardPreparedRecordersAsync(recorderPrepare);
             }
-            if (ex is CaptureVisibilityException)
+            // A start the caller refused is reported by that caller, not as a failure to save.
+            if (!studioStartRejected)
             {
-                ShowMessageNotification($"{ex.Message} Capture was cancelled.");
-            }
-            else
-            {
-                ShowSaveFailureNotification(CaptureOutputDescription(type));
+                if (ex is CaptureVisibilityException)
+                {
+                    ShowMessageNotification($"{ex.Message} Capture was cancelled.");
+                }
+                else
+                {
+                    ShowSaveFailureNotification(CaptureOutputDescription(type));
+                }
             }
             UpdateRecordingState();
             CloseRecordingRegionIndicator();
@@ -1706,7 +1774,7 @@ public partial class App : Application
             HideRecordingIndicatorIfNotRecording();
             if (automationSelection is not null)
             {
-                if (ex is AutomationException)
+                if (ex is AutomationException || studioStartRejected)
                 {
                     throw;
                 }
@@ -1716,6 +1784,11 @@ public partial class App : Application
         }
         finally
         {
+            if (!studioTakeStarted)
+            {
+                FinishStudioTake(studioTake);
+            }
+
             if (ReferenceEquals(_captureFlowCts, captureFlowCts))
             {
                 _captureFlowCts = null;
@@ -2904,6 +2977,7 @@ public partial class App : Application
             _completedRecordingWasPickerInitiated = wasPickerInitiated;
             if (_isExiting)
             {
+                AbandonStudioTake();
                 return;
             }
 
@@ -2914,6 +2988,13 @@ public partial class App : Application
 
             if (string.IsNullOrEmpty(path))
             {
+                // A Studio recording that made a project reports it right after this, in the
+                // second event. A recording that ended with nothing at all never does.
+                if (type == CaptureType.Video && _studioTake is { } waiting)
+                {
+                    SettleStudioTakeWithoutProject(waiting);
+                }
+
                 return;
             }
 
@@ -2925,6 +3006,7 @@ public partial class App : Application
                 // video goes the way any video does below: to the trimmer, or to the save
                 // folder, as the trimmer switch says.
                 ShowMessageNotification(StudioFallbackNotice(path));
+                AbandonStudioTake();
             }
 
             Services.GetRequiredService<IRecentCaptureService>().Record(path, type);
@@ -2973,11 +3055,40 @@ public partial class App : Application
     {
         // The recorder raises RecordingCompleted(null) just before this, so OnRecordingCompleted
         // has already queued the recording UI cleanup ahead of this callback.
-        _dispatcher?.TryEnqueue(() =>
+        _dispatcher?.TryEnqueue(async () =>
         {
             CaptureFlowTrace.Mark("studio: completed event on UI thread");
             var wasPickerInitiated = _completedRecordingWasPickerInitiated;
             _completedRecordingWasPickerInitiated = false;
+
+            // A caller waits for this draft, so it is theirs: no editor opens and no picker comes
+            // back. The take stays pending until their callback is done, which is how a status
+            // that asks whether the recording is still processed can tell.
+            if (_studioTake is { Completing: false } take)
+            {
+                if (_isExiting)
+                {
+                    FinishStudioTake(take);
+                    return;
+                }
+
+                take.Completing = true;
+                try
+                {
+                    await take.Completed(projectId);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Studio recording callback failed: {ex}");
+                }
+                finally
+                {
+                    FinishStudioTake(take);
+                }
+
+                return;
+            }
+
             if (_isExiting)
             {
                 return;
@@ -2986,6 +3097,88 @@ public partial class App : Application
             OpenStudioProject(projectId, wasPickerInitiated);
             CaptureFlowTrace.Mark("studio: editor window opened");
         });
+    }
+
+    /// <summary>
+    /// A Studio recording whose caller waits for the draft it leaves, kept from just before the
+    /// recorder starts until the caller has been told. Used on the UI thread.
+    /// </summary>
+    private sealed class StudioTake(Func<string, Task> completed, Action? ended)
+    {
+        public Func<string, Task> Completed { get; } = completed;
+
+        public Action? Ended { get; } = ended;
+
+        /// <summary>A draft was made and the callback has been, or is being, called.</summary>
+        public bool Completing { get; set; }
+
+        public bool Settled { get; set; }
+    }
+
+    /// <summary>
+    /// Whether a Studio recording that was started for a caller is still being handled: from
+    /// before the recorder starts until the caller's callback has returned, or until it is known
+    /// that no draft will come. A status that sees no recording running reports processing while
+    /// this holds. May be read from any thread.
+    /// </summary>
+    internal bool HasPendingStudioDraftCompletion => _studioTake is not null;
+
+    /// <summary>
+    /// Lets go of a take. The caller is told that no draft will come, unless it already has one.
+    /// </summary>
+    private void FinishStudioTake(StudioTake? take)
+    {
+        if (take is null || take.Settled)
+        {
+            return;
+        }
+
+        take.Settled = true;
+        if (ReferenceEquals(_studioTake, take))
+        {
+            _studioTake = null;
+        }
+
+        if (take.Completing)
+        {
+            return;
+        }
+
+        try
+        {
+            take.Ended?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio recording end callback failed: {ex}");
+        }
+    }
+
+    /// <summary>Ends the take that is kept, as a recording that leaves no draft, unless its draft is on its way.</summary>
+    private void AbandonStudioTake()
+    {
+        if (_studioTake is { Completing: false } take)
+        {
+            FinishStudioTake(take);
+        }
+    }
+
+    /// <summary>
+    /// Ends a take whose recording said it was done but never reports a project. The recorder
+    /// raises the event of a project right after the one before it, from its own thread, so a
+    /// moment is given before concluding there is none.
+    /// </summary>
+    private void SettleStudioTakeWithoutProject(StudioTake take)
+    {
+        _ = Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(
+            _ => _dispatcher?.TryEnqueue(() =>
+            {
+                if (!take.Completing)
+                {
+                    FinishStudioTake(take);
+                }
+            }),
+            TaskScheduler.Default);
     }
 
     /// <summary>
@@ -3068,6 +3261,9 @@ public partial class App : Application
             _studioWindows.ScreenRecordingSaved += OnStudioExported;
             _studioWindows.ErrorReported += (_, e) => ShowMessageNotification(e.Message);
             _studioWindows.CaptionNotificationRequested += (_, e) => ShowStudioProjectNotification(e);
+            _studioWindows.ChooseLibraryVideo = ChooseStudioLibraryVideoAsync;
+            _studioWindows.CanRecordStudioSegment = CanRecordStudioSegment;
+            _studioWindows.RecordStudioSegment = RecordStudioSegmentAsync;
 #if TINYCLIPS_STORE_BUILD
             _studioWindows.EditorClosed += OnStudioEditorClosed;
 #endif
@@ -3075,6 +3271,64 @@ public partial class App : Application
 
         return _studioWindows;
     }
+
+    /// <summary>
+    /// Whether the Studio editor can offer to record another segment: nothing is being captured
+    /// or recorded, and no earlier take is still being handled. Must be called on the UI thread.
+    /// </summary>
+    private bool CanRecordStudioSegment() =>
+        !_isExiting
+        && _captureFlowCts is null
+        && _scrollingPanel is null
+        && _studioTake is null
+        && !IsAnyRecordingActive();
+
+    /// <summary>
+    /// Records a Studio take for the editor that asked: the capture picker and the recording
+    /// follow as they do for Studio recording, but the draft goes to the editor instead of
+    /// opening in a window of its own. Returns the id of the draft, or null when nothing was
+    /// recorded: the capture was cancelled, discarded or did not start.
+    /// </summary>
+    private async Task<string?> RecordStudioSegmentAsync(CancellationToken cancellationToken)
+    {
+        if (!CanRecordStudioSegment())
+        {
+            throw new InvalidOperationException("Finish the current capture before recording another segment.");
+        }
+
+        var draft = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellation = cancellationToken.Register(() =>
+        {
+            draft.TrySetCanceled(cancellationToken);
+
+            // Still being set up: stop that. A recording that is under way is left to its user.
+            _dispatcher?.TryEnqueue(() =>
+            {
+                if (_studioTake is null)
+                {
+                    CancelCaptureFlow();
+                }
+            });
+        });
+
+        await BeginCaptureAsync(
+            CaptureType.Video,
+            videoCommand: VideoRecordingCommand.StudioRecording,
+            studioDraftCompleted: projectId =>
+            {
+                draft.TrySetResult(projectId);
+                return Task.CompletedTask;
+            },
+            studioTakeEnded: () => draft.TrySetResult(null));
+
+        return await draft.Task;
+    }
+
+    private static Task<ClipEntry?> ChooseStudioLibraryVideoAsync(Window owner) =>
+        TinyClips.App.Views.Studio.StudioLibraryVideoDialog.ChooseAsync(
+            owner,
+            Services.GetRequiredService<IClipLibraryService>(),
+            Services.GetRequiredService<IThumbnailCache>());
 
     /// <summary>
     /// A video exported from Studio is a saved video like any other: it is copied, revealed and
@@ -3143,6 +3397,12 @@ public partial class App : Application
                 ShowSaveFailureNotification(CaptureOutputDescription(type));
             }
 
+            // A stop that fails leaves a recorder that is still recording as it is. One that is
+            // not leaves no draft to wait for.
+            if (!IsAnyRecordingActive())
+            {
+                AbandonStudioTake();
+            }
             if (throwOnFailure)
             {
                 throw new AutomationException(AutomationErrorCodes.Internal, $"Recording failed to stop: {ex.Message}");
@@ -3301,6 +3561,7 @@ public partial class App : Application
         {
             Debug.WriteLine($"Failed to restart {type} recording: {ex}");
             ShowSaveFailureNotification(CaptureOutputDescription(type));
+            AbandonStudioTake();
             HideRecordingIndicator();
             CloseRecordingRegionIndicator();
             _activeRecordingSelection = null;
@@ -3358,6 +3619,12 @@ public partial class App : Application
             {
                 _activeRecordingSelection = null;
                 _activeRecordingType = null;
+
+                // A restart goes through here too and keeps its take: it records again.
+                if (!IsAnyRecordingActive())
+                {
+                    AbandonStudioTake();
+                }
             }
         }
     }
