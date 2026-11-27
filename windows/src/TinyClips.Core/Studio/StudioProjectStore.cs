@@ -18,7 +18,8 @@ public interface IStudioProjectStore
     StudioProjectPaths GetPaths(StudioProject project);
     bool Exists(string projectId);
     StudioProject Load(string projectId);
-    StudioProject Save(StudioProject project);
+    /// <summary>With an editor baseline, write only the editable fields and refuse to replace a different composition.</summary>
+    StudioProject Save(StudioProject project, StudioEditableState? replacing = null);
     void Delete(string projectId);
     /// <summary>Keeps a project protected from cleanup and deletion until the lease is disposed.</summary>
     IDisposable AcquireProjectUse(string projectId);
@@ -268,13 +269,20 @@ public sealed partial class StudioProjectStore : IStudioProjectStore, IStudioTim
         }
     }
 
-    public StudioProject Save(StudioProject project)
+    public StudioProject Save(StudioProject project, StudioEditableState? replacing = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         ValidateProjectId(project.Id);
 
         lock (_sync)
         {
+            if (replacing is not null)
+            {
+                var latest = LoadProjectFile(ProjectDirectory(project.Id), project.Id);
+                if (!StudioEditableState.From(latest).ContentEquals(replacing))
+                    throw new StudioProjectStaleException();
+                project = StudioEditableState.From(project).ApplyTo(latest);
+            }
             var updated = project with { ModifiedAt = _timeProvider.GetUtcNow().ToUniversalTime() };
             SaveProjectFile(ProjectDirectory(updated.Id), updated);
             _exportIndexLoaded = false;

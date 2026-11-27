@@ -303,7 +303,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
 
         public StudioProject Load(string projectId) => _inner.Load(projectId);
 
-        public StudioProject Save(StudioProject project)
+        public StudioProject Save(StudioProject project, StudioEditableState? replacing = null)
         {
             (string ProjectId, string Message)? refuse;
             lock (_gate)
@@ -317,7 +317,7 @@ namespace TinyClips.Tools.StudioWindowCheck.Host
                 throw new IOException(refused.Message);
             }
 
-            return _inner.Save(project);
+            return _inner.Save(project, replacing);
         }
 
         public IDisposable AcquireProjectUse(string projectId) => _inner.AcquireProjectUse(projectId);

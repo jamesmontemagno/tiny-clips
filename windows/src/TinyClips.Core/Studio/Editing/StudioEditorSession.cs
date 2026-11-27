@@ -169,7 +169,8 @@ public sealed partial class StudioEditorSession
     /// clip and the registry of sources. <see cref="Project"/> is the clip the inspectors edit.
     /// Each read is a detached copy that is free to change.
     /// </summary>
-    public StudioProject? Manifest => Model is { } model ? StudioProjectJson.ReadProject(StudioProjectJson.WriteProject(model.Manifest)) : null;
+    public StudioProject? Manifest => Model is not { } model ? null
+        : Detach(!_hasUnsavedEdits && _persisted is not null ? _persisted.ApplyTo(model.Manifest) : model.Manifest);
 
     /// <summary>Whether the project is a timeline of clips rather than one recording.</summary>
     public bool IsTimeline => Model?.IsTimeline ?? false;
@@ -309,6 +310,8 @@ public sealed partial class StudioEditorSession
         {
             var opened = _store.MarkOpened(ProjectId);
             paths = _store.GetPaths(opened);
+            // A v1 editor sorts scenes and clamps ranges for display. Those are not disk edits.
+            _persisted = StudioEditableState.From(opened);
             model = new StudioEditorModel(opened);
         }
         catch (Exception ex)
@@ -322,7 +325,6 @@ public sealed partial class StudioEditorSession
         _paths = paths;
         Model = model;
         _projectSaveBaseline = model.EditableState;
-        _persisted = model.EditableState;
         global::TinyClips.Core.Capture.CaptureFlowTrace.Mark("studio load: project file read");
 
         if (!HasAllRecordings(model.Manifest, paths))
@@ -1678,24 +1680,17 @@ public sealed partial class StudioEditorSession
 
         try
         {
-            var onDisk = _store.Load(ProjectId);
-
-            // A project that is or was a timeline is saved only over what this editor last saw
-            // on disk: its lanes are written whole, so a change made elsewhere would be lost.
-            if (IsDiskStale(model, onDisk))
-            {
-                ReportError(
-                    StudioEditorErrorKind.Save,
-                    "Studio did not save this project, because it was changed outside the editor. Close the editor and open the project again.");
-                return false;
-            }
-
-            var saved = _store.Save(model.EditableState.ApplyTo(onDisk));
-            _persisted = StudioEditableState.From(saved);
+            var saved = _store.Save(model.Manifest, _persisted ?? throw new InvalidOperationException("No saved Studio project baseline."));
+            _persisted = StudioEditableState.From(Detach(saved));
             model.RefreshBookkeeping(saved);
             _hasUnsavedEdits = false;
             RaiseChanged(StudioEditorChanges.Project);
             return true;
+        }
+        catch (StudioProjectStaleException)
+        {
+            ReportError(StudioEditorErrorKind.Save, ChangedOutsideMessage);
+            return false;
         }
         catch (Exception ex)
         {
@@ -1703,10 +1698,6 @@ public sealed partial class StudioEditorSession
             return false;
         }
     }
-
-    private bool IsDiskStale(StudioEditorModel model, StudioProject onDisk) =>
-        (model.IsTimeline || onDisk.SchemaVersion >= 2 || _persisted is { SchemaVersion: >= 2 })
-        && !StudioEditableState.From(onDisk).ContentEquals(_persisted);
 
     /// <summary>Applies an agent update to the live undo history when its observed revision is current.</summary>
     public bool ApplyAutomationProject(StudioProject updated, DateTimeOffset expectedModifiedAt)

@@ -531,10 +531,10 @@ internal sealed class RecordingStore(StudioProjectStore inner, List<string> log)
         return inner.Load(projectId);
     }
 
-    public StudioProject Save(StudioProject project)
+    public StudioProject Save(StudioProject project, StudioEditableState? replacing = null)
     {
         log.Add("store.save");
-        return inner.Save(project);
+        return inner.Save(project, replacing);
     }
 
     public void Delete(string projectId)

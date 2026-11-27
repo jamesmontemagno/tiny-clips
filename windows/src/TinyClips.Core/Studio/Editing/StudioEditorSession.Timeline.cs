@@ -116,19 +116,23 @@ public sealed partial class StudioEditorSession
                 return StudioTimelineChangeStart.Refused(StudioTimelineChangeFailure.StaleDisk, ChangedOutsideMessage);
             }
 
-            if (model.EditableState.ContentEquals(persisted))
+            if (!_hasUnsavedEdits || model.EditableState.ContentEquals(persisted))
             {
                 flushed = onDisk;
             }
             else
             {
-                var saved = _store.Save(model.EditableState.ApplyTo(onDisk));
+                var saved = _store.Save(model.Manifest, persisted);
                 flushed = Detach(saved);
                 _persisted = StudioEditableState.From(flushed);
             }
 
             model.RefreshBookkeeping(flushed);
             _hasUnsavedEdits = false;
+        }
+        catch (StudioProjectStaleException)
+        {
+            return StudioTimelineChangeStart.Refused(StudioTimelineChangeFailure.StaleDisk, ChangedOutsideMessage);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

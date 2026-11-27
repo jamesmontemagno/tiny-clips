@@ -249,6 +249,27 @@ public sealed class StudioEditorSessionTimelineTests : StudioEditorSessionTestBa
         Assert.Equal(0.3, Projects.Load(id).Audio.Volume, Precision);
         Assert.Equal(0.06, Projects.Load(id).Canvas.Padding, Precision);
         Assert.True(session.IsEditable);
+
+        Assert.False(session.SaveNow());
+        Assert.Equal(0.3, Projects.Load(id).Audio.Volume, Precision);
+    }
+
+    [Fact]
+    public async Task StartingFromANormalizedLegacyRecordingDoesNotMistakeItsOwnEditsForAnExternalChange()
+    {
+        var id = CreateProject();
+        var project = Projects.Load(id);
+        Projects.Save(project with { Edits = project.Edits with { TrimEnd = project.Sources.Screen.Duration } });
+        var session = await OpenAsync(id);
+        var before = Projects.Load(id);
+        Assert.Null(session.Project!.Edits.TrimEnd);
+        Assert.Equal(before.Edits.TrimEnd, session.Manifest!.Edits.TrimEnd);
+        Time.Advance(TimeSpan.FromMinutes(1));
+
+        var start = session.BeginTimelineChange();
+        using var lease = start.Lease;
+        Assert.True(start.Succeeded, start.Message);
+        Assert.Equal(before.ModifiedAt, Projects.Load(id).ModifiedAt);
     }
 
     [Fact]
