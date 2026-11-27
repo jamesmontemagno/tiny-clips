@@ -47,6 +47,15 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         "studio.project.get",
         "studio.project.saveCopy",
         "studio.project.edit",
+        "studio.timeline.get",
+        "studio.timeline.import",
+        "studio.timeline.insert",
+        "studio.timeline.move",
+        "studio.timeline.split",
+        "studio.timeline.trim",
+        "studio.timeline.transition",
+        "studio.timeline.remove",
+        "studio.timeline.record",
         "studio.zoom.suggest",
         "studio.export.options",
         "studio.export",
@@ -97,7 +106,7 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             "capture.targets" => await OnUiAsync(() => ListCaptureTargets(context)),
             "capture.screenshot" => await CaptureScreenshotAsync(context, cancellationToken),
             "capture.ocr" => await RecognizeTextAsync(context, cancellationToken),
-            "recording.startVideo" => await OnUiAsync(() => StartVideoAsync(context)),
+            "recording.startVideo" or "studio.timeline.record" => await OnUiAsync(() => StartVideoAsync(context, cancellationToken), cancellationToken),
             "recording.startGif" => await OnUiAsync(() => StartGifAsync(context)),
             "capture.scrolling.start" => await OnUiAsync(async () => { await StartScrollingCaptureAsync(context, cancellationToken); return true; }),
             "capture.scrolling.stop" => await OnUiAsync(StopScrollingCaptureAsync),
@@ -108,12 +117,15 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             "recording.restart" => await OnUiAsync(RestartRecordingAsync, cancellationToken),
             "recording.discard" => await OnUiAsync(DiscardRecordingAsync, cancellationToken),
             "editor.open" => await OpenEditorAsync(context, cancellationToken),
+            "studio.timeline.get" or "studio.timeline.import" or "studio.timeline.insert" or "studio.timeline.move"
+                or "studio.timeline.split" or "studio.timeline.trim" or "studio.timeline.transition" or "studio.timeline.remove"
+                => await OnUiAsync(() => _app.ExecuteTimelineCommandAsync(context, cancellationToken), cancellationToken),
             "studio.projects.list" or "studio.project.open" or "studio.project.get" or "studio.project.saveCopy" or "studio.project.edit"
                 or "studio.project.openFolder" or "studio.project.delete"
                 or "studio.zoom.suggest" or "studio.export.options" or "studio.export"
                 or "studio.captions.check" or "studio.captions.import" or "studio.captions.fix" or "studio.captions.export"
                 or "studio.captions.models" or "studio.captions.generate"
-                => await OnUiAsync(() => _app.ExecuteStudioAutomationCommandAsync(context.Command.Name, context.Params, cancellationToken)),
+                => await OnUiAsync(() => _app.ExecuteStudioAutomationCommandAsync(context, cancellationToken), cancellationToken),
             "editor.annotate" => await AnnotateAsync(context, cancellationToken),
             "editor.trim" => await TrimAsync(context, cancellationToken),
             "editor.saveFrame" => await SaveFrameAsync(context, cancellationToken),
@@ -169,6 +181,8 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         {
             result["kind"] = KindName(kind);
         }
+        if (snapshot.Error is { } error)
+            result["error"] = new JsonObject { ["code"] = error.Code, ["message"] = error.Message };
 
         return result;
     }
@@ -196,9 +210,10 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
 
     // -- Capture and recording ---------------------------------------------------------------
 
-    private async Task<JsonNode> StartVideoAsync(AutomationCommandContext context)
+    private async Task<JsonNode> StartVideoAsync(AutomationCommandContext context, CancellationToken cancellationToken)
     {
-        var studio = context.GetBoolean("studio");
+        var timeline = context.Command.Name == "studio.timeline.record";
+        var studio = timeline || context.GetBoolean("studio");
         var settings = App.Services.GetRequiredService<ICaptureSettings>();
         var (target, region, windowArea, monitor) = ResolveCaptureTarget(
             AutomationCaptureRequest.Parse(context.Params),
@@ -208,7 +223,10 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             mediaPermissions.HasMicrophoneAccess, mediaPermissions.HasCameraAccess);
 
         EnsureIdle();
-        await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Video, studio, target, region, options, windowArea, monitor);
+        (Action ValidateStart, Func<string, Task> Complete)? take =
+            timeline ? _app.PrepareTimelineRecording(context, cancellationToken) : null;
+        await _app.BeginTargetedAutomationRecordingAsync(CaptureType.Video, studio, target, region, options, windowArea, monitor,
+            take?.Complete, take?.ValidateStart);
         var snapshot = _app.GetRecordingSnapshot();
         var result = new JsonObject
         {
@@ -217,6 +235,7 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
             ["microphone"] = snapshot.Microphone,
             ["camera"] = snapshot.Camera,
         };
+        if (timeline) result["projectId"] = context.GetString("projectId");
         if (windowArea is { } area && monitor is { } display)
         {
             result["windowArea"] = CreateWindowAreaResult(area, display);

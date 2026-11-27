@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +24,7 @@ public partial class App : IAutomationAppActions
     private const string GlyphAgent = "\uE99A";
     private TrayAgentIndicator? _trayAgentIndicator;
     private bool _agentControlWired;
+    private AutomationException? _timelineRecordingError;
 
     internal AgentControlService AgentControl => Services.GetRequiredService<AgentControlService>();
 
@@ -211,13 +210,13 @@ public partial class App : IAutomationAppActions
             return new(gif.IsPaused ? "paused" : "recording", true, CaptureType.Gif);
         }
 
-        if (_processingIndicator is not null)
+        if (_processingIndicator is not null || HasPendingStudioDraftCompletion)
         {
             return new("processing", true, _activeRecordingType);
         }
 
         var busy = _captureFlowCts is not null || _scrollingPanel is not null || _isExiting;
-        return new("idle", busy, null);
+        return new("idle", busy, null, Error: _timelineRecordingError);
     }
 
     string? IAutomationAppActions.OpenAutomationWindow(string window, string? guideTopic)
@@ -301,7 +300,9 @@ public partial class App : IAutomationAppActions
         PixelRect? region,
         VideoRecordingOptions? options,
         WindowAreaSelection? windowArea,
-        MonitorInfo? monitor)
+        MonitorInfo? monitor,
+        Func<string, Task>? studioDraftCompleted,
+        Action? validateStudioStart)
     {
         VideoRecordingCommand? videoCommand = type == CaptureType.Video
             ? studio ? VideoRecordingCommand.StudioRecording : VideoRecordingCommand.RecordVideo
@@ -311,12 +312,15 @@ public partial class App : IAutomationAppActions
         var selection = windowArea is not null && monitor is not null
             ? new TargetSelection(target, region, monitor, WindowArea: windowArea)
             : new TargetSelection(target, region, ResolveMonitorForTarget(target));
+        _timelineRecordingError = null;
         await BeginCaptureAsync(
             type,
             abortIfRecording: true,
             videoCommand: videoCommand,
             automationSelection: selection,
-            automationOptions: options);
+            automationOptions: options,
+            studioDraftCompleted: studioDraftCompleted,
+            validateStudioStart: validateStudioStart);
     }
 
     private static void EnsureAutomationDevicePermissions(VideoRecordingOptions options)
@@ -465,20 +469,15 @@ public partial class App : IAutomationAppActions
         }
     }
 
-    Task<JsonNode> IAutomationAppActions.ExecuteStudioAutomationCommandAsync(
-        string commandName,
-        JsonObject parameters,
-        CancellationToken cancellationToken) =>
-        ExecuteStudioAutomationCommandAsync(commandName, parameters, cancellationToken);
-
-    private async Task<JsonNode> ExecuteStudioAutomationCommandAsync(
-        string commandName,
-        JsonObject parameters,
+    async Task<JsonNode> IAutomationAppActions.ExecuteStudioAutomationCommandAsync(
+        AutomationCommandContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var settings = Services.GetRequiredService<ICaptureSettings>();
         var store = Services.GetRequiredService<IStudioProjectStore>();
+        var commandName = context.Command.Name;
+        var parameters = context.Params;
         switch (commandName)
         {
             case "studio.projects.list":
@@ -506,7 +505,7 @@ public partial class App : IAutomationAppActions
                 var projectId = RequiredStudioString(parameters, "projectId");
                 var folderName = RequiredStudioString(parameters, "folderName");
                 using var projectUse = store.AcquireProjectUse(projectId);
-                _ = ReadAutomationProject(projectId, store);
+                _ = ReadAutomationProject(projectId, store, allowTimeline: true);
                 if (StudioWindows().FindOpenViewModel(projectId) is { } openEditor
                     && !openEditor.PrepareAutomationProjectCopy())
                 {
@@ -523,7 +522,7 @@ public partial class App : IAutomationAppActions
                 var projectId = RequiredStudioString(parameters, "projectId");
                 if (StudioWindows().FindOpenViewModel(projectId) is null)
                 {
-                    _ = ReadAutomationProject(projectId, store);
+                    _ = ReadAutomationProject(projectId, store, allowTimeline: true);
                 }
 
                 if (OpenStudioWindow(projectId) is null)
@@ -577,7 +576,14 @@ public partial class App : IAutomationAppActions
                         "patch may contain editable Studio properties only.");
                 }
 
-                var current = ReadAutomationProject(projectId, store);
+                var current = ReadAutomationProject(projectId, store, allowTimeline: true);
+                if (current.SchemaVersion >= 2)
+                {
+                    if (patch.Count != 1 || patch["canvas"] is not JsonObject)
+                        throw new AutomationException(AutomationErrorCodes.NotSupported,
+                            "Only the canvas can be patched globally; other timeline properties belong to individual clips.");
+                    return await CreateTimelineAutomation().ExecuteAsync(TimelineRequest.From(context), null, cancellationToken);
+                }
                 var currentNode = ProjectNode(current).AsObject();
                 if (!string.Equals(currentNode["modifiedAt"]?.GetValue<string>(), expectedModifiedAt, StringComparison.Ordinal)
                     || !string.Equals(ProjectRevision(current), expectedRevision, StringComparison.Ordinal))
@@ -586,7 +592,7 @@ public partial class App : IAutomationAppActions
                         "The Studio project changed since it was read. Get it again before editing.");
                 }
 
-                MergeStudioJson(patch, currentNode);
+                StudioTimelineAutomation.MergeEditableFields(patch, currentNode);
                 StudioProject updated;
                 try
                 {
@@ -788,7 +794,7 @@ public partial class App : IAutomationAppActions
             case "studio.export.options":
             {
                 var projectId = RequiredStudioString(parameters, "projectId");
-                var project = StudioWindows().FindOpenViewModel(projectId)?.Project ?? ReadAutomationProject(projectId, store);
+                var project = ReadAutomationProject(projectId, store, allowTimeline: true);
                 var choice = ReadStudioExportChoice(parameters, settings);
                 var natural = StudioCanvasMath.NaturalSize(project);
                 var options = StudioExportPresets.CreateOptions(project, settings.VideoCodec, choice);
@@ -855,12 +861,13 @@ public partial class App : IAutomationAppActions
                         "The configured video-save folder does not exist.");
                 }
 
-                var project = ReadAutomationProject(projectId, store);
+                using var projectUse = store.AcquireProjectUse(projectId);
+                var project = ReadAutomationProject(projectId, store, allowTimeline: true);
                 var openEditor = StudioWindows().FindOpenViewModel(projectId);
                 openEditor?.CommitCaptionText();
                 if (openEditor is not null)
                 {
-                    if (!openEditor.SaveForAutomationExport() || openEditor.Project is not { } current)
+                    if (!openEditor.SaveForAutomationExport() || openEditor.Manifest is not { } current)
                     {
                         throw new AutomationException(AutomationErrorCodes.Busy,
                             "The Studio project is not ready to export.");
@@ -887,7 +894,7 @@ public partial class App : IAutomationAppActions
                 {
                     await Services.GetRequiredService<IStudioExportService>().ExportAsync(
                         project,
-                        store.LoadEvents(projectId),
+                        project.SchemaVersion >= 2 ? new StudioEvents() : store.LoadEvents(projectId),
                         paths,
                         temporaryPath,
                         codec,
@@ -1004,26 +1011,8 @@ public partial class App : IAutomationAppActions
 
     private StudioProject ReadAutomationProject(string projectId, IStudioProjectStore store, bool allowTimeline = false)
     {
-        if (StudioWindows().FindOpenViewModel(projectId) is { } viewModel)
-        {
-            var openProject = viewModel.Project
-                ?? throw new AutomationException(AutomationErrorCodes.Busy, "The Studio project is not ready for agent control.");
-            return CheckAutomationTimeline(openProject, allowTimeline);
-        }
-
-        if (!store.Exists(projectId))
-        {
-            throw new AutomationException(AutomationErrorCodes.NotFound, $"No Studio project with ID {projectId}.");
-        }
-
-        try
-        {
-            return CheckAutomationTimeline(store.Load(projectId), allowTimeline);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            throw new AutomationException(AutomationErrorCodes.NotFound, $"No Studio project with ID {projectId}.");
-        }
+        return CheckAutomationTimeline(StudioTimelineAutomation.ReadProject(projectId, store,
+            StudioWindows().FindOpenViewModel(projectId)), allowTimeline);
     }
 
     private static StudioProject CheckAutomationTimeline(StudioProject project, bool allowTimeline)
@@ -1031,7 +1020,7 @@ public partial class App : IAutomationAppActions
         if (!allowTimeline && project.SchemaVersion >= 2)
         {
             throw new AutomationException(AutomationErrorCodes.NotSupported,
-                "Multi-clip Studio projects are not yet supported by Windows Studio.");
+                "This command works on a single recording, not on a multi-clip timeline.");
         }
 
         return project;
@@ -1041,9 +1030,7 @@ public partial class App : IAutomationAppActions
         JsonNode.Parse(StudioProjectJson.WriteProject(project))
         ?? throw new InvalidOperationException("Studio project serialization returned no JSON.");
 
-    private static string ProjectRevision(StudioProject project) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(StudioProjectJson.WriteProject(project))))
-            .ToLowerInvariant();
+    private static string ProjectRevision(StudioProject project) => AutomationStudioTimeline.Revision(project);
 
     // What was asked for, and for what was not (left out or null), the choice last made in Export's flyout.
     private static StudioExportChoice ReadStudioExportChoice(JsonObject parameters, ICaptureSettings settings)
@@ -1075,18 +1062,47 @@ public partial class App : IAutomationAppActions
     private static string FormatStudioTimestamp(DateTimeOffset value) =>
         value.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
-    private static void MergeStudioJson(JsonObject patch, JsonObject target)
+    private StudioTimelineAutomation CreateTimelineAutomation() => new(
+        Services.GetRequiredService<IStudioProjectStore>(), StudioWindows().FindOpenViewModel,
+        path => AutomationStudioTimeline.ResolveImportPath(path,
+            Services.GetRequiredService<IClipLibraryService>().GetLibraryDirectories(),
+            Services.GetRequiredService<IRecentCaptureService>().GetRecentCaptures().Select(item => item.Path)),
+        request => request.RequireAccess(!_isExiting && AgentControl.IsEnabled, AgentControl.Clients));
+
+    Task<JsonNode> IAutomationAppActions.ExecuteTimelineCommandAsync(AutomationCommandContext context, CancellationToken cancellationToken) =>
+        CreateTimelineAutomation().ExecuteAsync(TimelineRequest.From(context), null, cancellationToken);
+
+    (Action ValidateStart, Func<string, Task> Complete) IAutomationAppActions.PrepareTimelineRecording(
+        AutomationCommandContext context, CancellationToken cancellationToken)
     {
-        foreach (var (key, value) in patch)
+        var request = TimelineRequest.From(context);
+        var timeline = CreateTimelineAutomation();
+        void ValidateStart() => timeline.ValidateRecordingStart(request, cancellationToken);
+        ValidateStart();
+        return (ValidateStart, id => CompleteTimelineRecordingAsync(timeline, request, id));
+    }
+
+    private async Task CompleteTimelineRecordingAsync(StudioTimelineAutomation timeline, TimelineRequest request, string recordingId)
+    {
+        string? error = null;
+        try
         {
-            if (value is JsonObject patchObject && target[key] is JsonObject targetObject)
+            await timeline.ExecuteAsync(request, recordingId, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            error = ex is AutomationException failure ? failure.Code : AutomationErrorCodes.Internal;
+            _timelineRecordingError = new AutomationException(error,
+                $"{ex.Message} The finished take was kept as Studio draft {recordingId}.");
+            throw _timelineRecordingError;
+        }
+        finally
+        {
+            AgentControl.AuditLog.Write(new AutomationAuditEntry
             {
-                MergeStudioJson(patchObject, targetObject);
-            }
-            else
-            {
-                target[key] = value?.DeepClone();
-            }
+                Timestamp = DateTimeOffset.UtcNow, Command = request.Command, ClientId = request.ClientId,
+                ClientName = request.ClientName, ErrorCode = error, Outcome = error is null ? "ok" : "error",
+            });
         }
     }
 

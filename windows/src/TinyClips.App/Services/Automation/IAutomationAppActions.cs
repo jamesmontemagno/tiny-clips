@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using TinyClips.Core.Automation;
 using TinyClips.Core.Capture;
 using TinyClips.Core.Models;
 
@@ -6,7 +7,7 @@ namespace TinyClips.App;
 
 /// <summary>What the recording UI is doing, as reported by <c>recording.status</c>.</summary>
 internal sealed record AutomationRecordingSnapshot(
-    string State, bool Busy, CaptureType? Kind, bool Microphone = false, bool Camera = false);
+    string State, bool Busy, CaptureType? Kind, bool Microphone = false, bool Camera = false, AutomationException? Error = null);
 internal sealed record AutomationScrollingSnapshot(bool Active, bool Stopping, int FrameCount);
 
 /// <summary>
@@ -46,7 +47,9 @@ internal interface IAutomationAppActions
         PixelRect? region,
         VideoRecordingOptions? options = null,
         WindowAreaSelection? windowArea = null,
-        MonitorInfo? monitor = null);
+        MonitorInfo? monitor = null,
+        Func<string, Task>? studioDraftCompleted = null,
+        Action? validateStudioStart = null);
 
     Task StartAutomationScrollingCaptureAsync(CaptureTarget target, PixelRect? region);
 
@@ -71,7 +74,11 @@ internal interface IAutomationAppActions
     Task<string> OpenEditorForAutomationAsync(string path, CaptureType? type, bool studio = false, CancellationToken cancellationToken = default);
 
     /// <summary>Reads or edits a Studio project, suggests zooms, or exports its current snapshot.</summary>
-    Task<JsonNode> ExecuteStudioAutomationCommandAsync(string commandName, JsonObject parameters, CancellationToken cancellationToken);
+    Task<JsonNode> ExecuteStudioAutomationCommandAsync(AutomationCommandContext context, CancellationToken cancellationToken);
+
+    Task<JsonNode> ExecuteTimelineCommandAsync(AutomationCommandContext context, CancellationToken cancellationToken);
+
+    (Action ValidateStart, Func<string, Task> Complete) PrepareTimelineRecording(AutomationCommandContext context, CancellationToken cancellationToken);
 
     void RevealForAutomation(string path);
 
