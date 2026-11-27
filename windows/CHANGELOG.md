@@ -6,7 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
-- The screenshot editor has a **Pointer** tool (press **P**) that places editable arrow, pointing-hand, or text I-beam pointers where you click, with fill, stroke, opacity, and drop shadow controls. **Place pointer at center** and the nudge and resize buttons let you add and adjust pointers from the keyboard. Pointer is also available as the default screenshot editor tool.
+- The screenshot editor has a **Pointer** tool (press **P**) that places editable arrow, pointing-hand, or text I-beam pointers where you click, with a segmented style picker, fill, stroke, and opacity controls, and a drop-shadow toggle. **Place pointer at center** and the nudge and resize buttons let you add and adjust pointers from the keyboard. Pointer is also available as the default screenshot editor tool.
 
 ### Fixed
 - Screenshot recovery Save As preserves an existing destination if encoding fails or is canceled.

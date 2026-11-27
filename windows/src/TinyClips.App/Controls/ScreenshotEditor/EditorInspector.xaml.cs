@@ -548,11 +548,6 @@ public sealed partial class EditorInspector : UserControl
         PointerStrokeWidthSlider.Value = pointer.StrokeWidth;
         PointerOpacitySlider.Value = pointer.Opacity * 100;
         PointerShadowCheck.IsChecked = pointer.Shadow.Enabled;
-        PointerShadowControls.Visibility = pointer.Shadow.Enabled ? Visibility.Visible : Visibility.Collapsed;
-        PointerShadowOpacitySlider.Value = pointer.Shadow.Opacity * 100;
-        PointerShadowBlurSlider.Value = pointer.Shadow.Blur;
-        PointerShadowOffsetXSlider.Value = pointer.Shadow.OffsetX;
-        PointerShadowOffsetYSlider.Value = pointer.Shadow.OffsetY;
         UpdatePointerHeaders();
         _inspectorInitializing = wasInitializing;
     }
@@ -565,10 +560,6 @@ public sealed partial class EditorInspector : UserControl
             ? $"Stroke width — {(int)PointerStrokeWidthSlider.Value} px"
             : "Stroke width — none";
         PointerOpacitySlider.Header = $"Opacity — {Math.Round(PointerOpacitySlider.Value)}%";
-        PointerShadowOpacitySlider.Header = $"Shadow opacity — {Math.Round(PointerShadowOpacitySlider.Value)}%";
-        PointerShadowBlurSlider.Header = $"Blur — {(int)PointerShadowBlurSlider.Value} px";
-        PointerShadowOffsetXSlider.Header = $"Horizontal offset — {(int)PointerShadowOffsetXSlider.Value} px";
-        PointerShadowOffsetYSlider.Header = $"Vertical offset — {(int)PointerShadowOffsetYSlider.Value} px";
     }
 
     private void OnPointerStyleChanged(object sender, SelectionChangedEventArgs e)
@@ -613,14 +604,6 @@ public sealed partial class EditorInspector : UserControl
                 a => a with { Stroke = AnnotationColorMath.WithOpacity(a.Stroke, value / 100, Colors.Black) },
             _ when ReferenceEquals(sender, PointerStrokeWidthSlider) => a => a with { StrokeWidth = value },
             _ when ReferenceEquals(sender, PointerOpacitySlider) => a => a with { Opacity = value / 100 },
-            _ when ReferenceEquals(sender, PointerShadowOpacitySlider) =>
-                a => a with { Shadow = a.Shadow with { Opacity = value / 100 } },
-            _ when ReferenceEquals(sender, PointerShadowBlurSlider) =>
-                a => a with { Shadow = a.Shadow with { Blur = value } },
-            _ when ReferenceEquals(sender, PointerShadowOffsetXSlider) =>
-                a => a with { Shadow = a.Shadow with { OffsetX = value } },
-            _ when ReferenceEquals(sender, PointerShadowOffsetYSlider) =>
-                a => a with { Shadow = a.Shadow with { OffsetY = value } },
             _ => null,
         };
         if (change is not null)

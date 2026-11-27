@@ -540,76 +540,13 @@
                         PointerReleased="OnTextStyleSliderPointerReleased"
                         StepFrequency="1"
                         ValueChanged="OnPointerSliderChanged" />
-                    <Expander
-                        x:Name="PointerShadowExpander"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        AutomationProperties.AutomationId="EditorPointerShadowExpander"
+                    <CheckBox
+                        x:Name="PointerShadowCheck"
+                        AutomationProperties.AutomationId="EditorPointerShadowCheck"
                         AutomationProperties.Name="Drop shadow"
-                        Header="Drop shadow">
-                        <Expander.Resources>
-                            <Thickness x:Key="ExpanderContentPadding">12,8,12,12</Thickness>
-                        </Expander.Resources>
-                        <StackPanel Spacing="8">
-                            <CheckBox
-                                x:Name="PointerShadowCheck"
-                                AutomationProperties.AutomationId="EditorPointerShadowCheck"
-                                AutomationProperties.Name="Show shadow"
-                                Checked="OnPointerShadowToggled"
-                                Content="Show shadow"
-                                Unchecked="OnPointerShadowToggled" />
-                            <StackPanel x:Name="PointerShadowControls" Spacing="2">
-                            <Slider
-                                x:Name="PointerShadowOpacitySlider"
-                                AutomationProperties.AutomationId="EditorPointerShadowOpacitySlider"
-                                AutomationProperties.Name="Shadow opacity"
-                                Header="Shadow opacity"
-                                Maximum="100"
-                                Minimum="0"
-                                PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
-                                PointerPressed="OnTextStyleSliderPointerPressed"
-                                PointerReleased="OnTextStyleSliderPointerReleased"
-                                StepFrequency="1"
-                                ValueChanged="OnPointerSliderChanged" />
-                            <Slider
-                                x:Name="PointerShadowBlurSlider"
-                                AutomationProperties.AutomationId="EditorPointerShadowBlurSlider"
-                                AutomationProperties.Name="Blur"
-                                Header="Blur"
-                                Maximum="40"
-                                Minimum="0"
-                                PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
-                                PointerPressed="OnTextStyleSliderPointerPressed"
-                                PointerReleased="OnTextStyleSliderPointerReleased"
-                                StepFrequency="1"
-                                ValueChanged="OnPointerSliderChanged" />
-                            <Slider
-                                x:Name="PointerShadowOffsetXSlider"
-                                AutomationProperties.AutomationId="EditorPointerShadowOffsetXSlider"
-                                AutomationProperties.Name="Horizontal offset"
-                                Header="Horizontal offset"
-                                Maximum="40"
-                                Minimum="-40"
-                                PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
-                                PointerPressed="OnTextStyleSliderPointerPressed"
-                                PointerReleased="OnTextStyleSliderPointerReleased"
-                                StepFrequency="1"
-                                ValueChanged="OnPointerSliderChanged" />
-                            <Slider
-                                x:Name="PointerShadowOffsetYSlider"
-                                AutomationProperties.AutomationId="EditorPointerShadowOffsetYSlider"
-                                AutomationProperties.Name="Vertical offset"
-                                Header="Vertical offset"
-                                Maximum="40"
-                                Minimum="-40"
-                                PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
-                                PointerPressed="OnTextStyleSliderPointerPressed"
-                                PointerReleased="OnTextStyleSliderPointerReleased"
-                                StepFrequency="1"
-                                ValueChanged="OnPointerSliderChanged" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Expander>
+                        Checked="OnPointerShadowToggled"
+                        Content="Drop shadow"
+                        Unchecked="OnPointerShadowToggled" />
                     <Button
                         x:Name="PointerPlaceAtCenterButton"
                         HorizontalAlignment="Stretch"

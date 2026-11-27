@@ -527,7 +527,6 @@ struct ScreenshotEditorView: View {
     @State private var currentSaveURL: URL
     @State private var zoomScale: CGFloat = 1
     @State private var isStrokeAdvancedExpanded = false
-    @State private var isPointerShadowExpanded = false
     /// Set when Custom is chosen while the values still match a preset, so the picker stays on
     /// Custom while the sliders are adjusted.
     @State private var isChoosingCustomArrow = false
@@ -1446,41 +1445,33 @@ struct ScreenshotEditorView: View {
         suffix: String,
         multiplier: CGFloat = 1
     ) -> some View {
-        LabeledContent(label) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Slider(value: value, in: range, onEditingChanged: viewModel.setAdjustingPointer)
-                    .accessibilityLabel(label)
-                    .accessibilityValue("\(Int((value.wrappedValue * multiplier).rounded()))\(multiplier == 100 ? "%" : suffix)")
+                Text(label)
+                    .accessibilityHidden(true)
+                Spacer()
                 Text("\(Int((value.wrappedValue * multiplier).rounded()))\(multiplier == 100 ? "%" : suffix)")
                     .font(.caption.monospacedDigit())
+                    .accessibilityHidden(true)
             }
+            Slider(value: value, in: range, onEditingChanged: viewModel.setAdjustingPointer)
+                .accessibilityLabel(label)
+                .accessibilityValue("\(Int((value.wrappedValue * multiplier).rounded()))\(multiplier == 100 ? "%" : suffix)")
         }
     }
 
     private var styleControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             if inspectorTool == .pointer {
-                Picker("Pointer", selection: pointerBinding(\.style)) {
-                    ForEach(PointerAnnotationStyle.allCases) { style in
-                        Text(style.label).tag(style)
-                    }
-                }
+                segmentedPicker("Pointer style", selection: pointerBinding(\.style), options: PointerAnnotationStyle.allCases, label: \.label)
                 SwatchColorPicker(label: "Fill", color: pointerBinding(\.fill), supportsOpacity: true, allowsTransparent: true)
-                opacitySlider("Fill opacity", value: pointerColorOpacityBinding(\.fill), onEditingChanged: viewModel.setAdjustingPointer)
+                pointerSlider("Fill opacity", value: pointerColorOpacityBinding(\.fill), range: AnnotationColorOpacity.percentRange, suffix: "%")
                 SwatchColorPicker(label: "Stroke", color: pointerBinding(\.stroke), supportsOpacity: true, allowsTransparent: true)
-                opacitySlider("Stroke opacity", value: pointerColorOpacityBinding(\.stroke), onEditingChanged: viewModel.setAdjustingPointer)
+                pointerSlider("Stroke opacity", value: pointerColorOpacityBinding(\.stroke), range: AnnotationColorOpacity.percentRange, suffix: "%")
                 pointerSlider("Stroke width", value: pointerBinding(\.strokeWidth), range: 0...20, suffix: "px")
                 pointerSlider("Opacity", value: pointerBinding(\.opacity), range: 0...1, suffix: "", multiplier: 100)
 
-                DisclosureGroup("Drop shadow", isExpanded: $isPointerShadowExpanded) {
-                    Toggle("Show shadow", isOn: pointerBinding(\.shadow.enabled))
-                    if viewModel.pointerForInspector().shadow.enabled {
-                        pointerSlider("Shadow opacity", value: pointerBinding(\.shadow.opacity), range: 0...1, suffix: "", multiplier: 100)
-                        pointerSlider("Blur", value: pointerBinding(\.shadow.blur), range: 0...40, suffix: "px")
-                        pointerSlider("Horizontal offset", value: pointerBinding(\.shadow.offsetX), range: -40...40, suffix: "px")
-                        pointerSlider("Vertical offset", value: pointerBinding(\.shadow.offsetY), range: -40...40, suffix: "px")
-                    }
-                }
+                Toggle("Drop shadow", isOn: pointerBinding(\.shadow.enabled))
                 if viewModel.selectedTool == .pointer {
                     Button("Place pointer at center") { viewModel.placePointerAtCenter() }
                         .accessibilityHint("Adds a pointer at the center and selects it for adjustment.")

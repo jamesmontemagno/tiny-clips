@@ -20,6 +20,22 @@ public sealed class ScreenshotEditorTextMarkupTests
     }
 
     [Fact]
+    public void PointerStyle_IsSegmentedAndShadowIsADirectToggle()
+    {
+        var elements = Read("EditorInspector.xaml").Descendants().ToList();
+        var choice = Assert.Single(elements, element => Attribute(element, AutomationId) == "EditorPointerStyleChoice");
+        var shadow = Assert.Single(elements, element => Attribute(element, AutomationId) == "EditorPointerShadowCheck");
+
+        Assert.Equal("StudioSegmented", choice.Name.LocalName);
+        Assert.Equal(["Arrow", "Hand", "Text"], choice.Elements().Select(item => Attribute(item, "Content")));
+        Assert.Equal("CheckBox", shadow.Name.LocalName);
+        Assert.Equal("Drop shadow", Attribute(shadow, "AutomationProperties.Name"));
+        Assert.Equal(choice.Parent!.Parent, shadow.Parent);
+        Assert.DoesNotContain(elements, element => Attribute(element, AutomationId)?.StartsWith("EditorPointerShadow") == true
+            && element.Name.LocalName is "Slider" or "Expander");
+    }
+
+    [Fact]
     public void StrokeAndFillColors_HaveDirectOpacitySliders()
     {
         var elements = Read("EditorInspector.xaml").Descendants().ToList();
