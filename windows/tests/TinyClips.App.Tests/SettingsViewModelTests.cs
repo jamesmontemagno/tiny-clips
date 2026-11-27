@@ -438,7 +438,7 @@ public sealed class SettingsViewModelTests
             "{x:Bind ViewModel.ScreenshotEditorDefaultToolIndex, Mode=TwoWay}",
             combo.Attr("SelectedIndex"));
         Assert.Equal(
-            ["Move / select", "Background", "Crop", "Rectangle", "Ellipse", "Arrow", "Line", "Pen", "Text", "Counter", "Emoji", "Redact"],
+            ["Move / select", "Background", "Crop", "Rectangle", "Ellipse", "Arrow", "Line", "Pen", "Text", "Counter", "Emoji", "Pointer", "Redact"],
             combo.Elements().Select(item => item.Attr("Content")));
     }
 
