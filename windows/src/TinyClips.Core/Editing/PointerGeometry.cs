@@ -38,6 +38,9 @@ public readonly record struct PointerAppearance(
 
 public static class PointerGeometry
 {
+    /// <summary>Side of a newly placed pointer, in image pixels, until the user picks a size.</summary>
+    public const double DefaultSidePixels = 50;
+
     public static PointD Hotspot(PointerStyle style) => style switch
     {
         PointerStyle.Arrow => new(0.08, 0.04),

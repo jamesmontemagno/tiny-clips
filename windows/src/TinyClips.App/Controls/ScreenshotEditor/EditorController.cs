@@ -1146,9 +1146,8 @@ internal sealed class EditorController : IDisposable
     public double MaximumPointerSize => EmojiAnnotationMath.MaximumSidePixels(
         _bitmap?.PixelWidth ?? 1000, _bitmap?.PixelHeight ?? 1000);
 
-    private double DefaultPointerSize => _pointerSizeOverride is { } size
-        ? Math.Min(size, MaximumPointerSize)
-        : EmojiAnnotationMath.DefaultSidePixels(_bitmap?.PixelWidth ?? 1000, _bitmap?.PixelHeight ?? 1000);
+    private double DefaultPointerSize => Math.Min(
+        _pointerSizeOverride ?? PointerGeometry.DefaultSidePixels, MaximumPointerSize);
 
     public double PointerSizeForInspector =>
         SelectedAnnotation is { Tool: EditTool.Pointer } ann ? ann.Bounds.Width : DefaultPointerSize;
