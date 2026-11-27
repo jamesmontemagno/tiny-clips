@@ -18,6 +18,7 @@ public sealed partial class StudioProjectStore
         ValidateProjectId(projectId);
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         cancellationToken.ThrowIfCancellationRequested();
+        using var use = AcquireProjectUse(projectId);
 
         var target = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
         var name = Path.GetFileName(target);
@@ -83,7 +84,8 @@ public sealed partial class StudioProjectStore
         var project = store.Load(projectId);
         if (project.SchemaVersion >= 2)
         {
-            throw new NotSupportedException("Multi-clip Studio projects cannot yet be saved as folders on Windows.");
+            return new(StudioProjectMedia.Files(project, store.GetPaths(project).ProjectDirectory),
+                StudioProjectJson.WriteProject(project with { Exports = [] }));
         }
         var paths = store.GetPaths(project);
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -114,7 +116,14 @@ public sealed partial class StudioProjectStore
             // Only the portable snapshot owns the copy; the editor keeps its original source.
             project = project with
             {
-                Sources = project.Sources with { Screen = project.Sources.Screen with { File = screenName, External = false } },
+                Sources = project.Sources with
+                {
+                    Screen = project.Sources.Screen with { File = screenName, External = false },
+                    ExtensionData = new(project.Sources.ExtensionData)
+                    {
+                        ["mediaKind"] = System.Text.Json.JsonSerializer.SerializeToElement("flatVideo"),
+                    },
+                },
             };
         }
         else
@@ -142,16 +151,14 @@ public sealed partial class StudioProjectStore
 
         var file = StudioProjectFolder.FindProjectFile(path);
         var project = StudioProjectFolder.ReadProjectFile(file);
-        if (project.SchemaVersion >= 2)
-        {
-            throw new NotSupportedException("Multi-clip Studio project folders cannot yet be opened on Windows.");
-        }
         if (project.Sources.Screen.External)
         {
             throw StudioProjectFolderException.ExternalSource();
         }
 
         var folder = Path.GetDirectoryName(file)!;
+        if (StudioProjectFolder.IsLink(folder) || StudioProjectFolder.IsLink(file))
+            throw StudioProjectFolderException.FileOutsideFolder("project");
         var names = new List<string>();
 
         // Only the name of a file in the folder is followed, so a project file cannot name
@@ -194,24 +201,31 @@ public sealed partial class StudioProjectStore
             }
         }
 
-        Require(project.Sources.Screen.File, "sources.screen.file");
-        if (project.Sources.Camera is { } camera)
+        if (project.SchemaVersion >= 2)
         {
-            Require(camera.File, "sources.camera.file");
+            names.AddRange(StudioProjectMedia.Files(project, folder).Select(asset => asset.Name));
         }
-
-        if (project.Sources.Events is { } events)
+        else
         {
-            Follow(events, "sources.events");
-        }
+            Require(project.Sources.Screen.File, "sources.screen.file");
+            if (project.Sources.Camera is { } camera)
+            {
+                Require(camera.File, "sources.camera.file");
+            }
 
-        IncludeIfPresent(project.Sources.Events ?? EventsFileName);
-        if (project.Canvas.Background.Image is { } image)
-        {
-            IncludeIfPresent(image);
-        }
+            if (project.Sources.Events is { } events)
+            {
+                Follow(events, "sources.events");
+            }
 
-        IncludeIfPresent(PosterFileName);
+            IncludeIfPresent(project.Sources.Events ?? EventsFileName);
+            if (project.Canvas.Background.Image is { } image)
+            {
+                IncludeIfPresent(image);
+            }
+
+            IncludeIfPresent(PosterFileName);
+        }
 
         // The new folder has no project.json until the files are in it. Cleanup takes such a
         // folder for a recording that is still being made, and leaves it alone for a day.

@@ -154,21 +154,20 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
     // Saving a folder
 
     [Fact]
-    public void MultiClipProjectsAreNotCopiedAsIncompleteFolders()
+    public void MultiClipFoldersReuseTheLegacySourceWithoutCopyingItTwice()
     {
-        var id = MakeProject(camera: false);
+        var id = MakeProject(camera: false, events: true);
         var project = StudioTimelineEditing.ToTimelineProject(Store.Load(id));
         Store.Save(project);
         var folder = Path.Combine(Outside, "Copy");
 
-        Assert.Throws<NotSupportedException>(() => Save(id, folder));
-        Assert.False(Directory.Exists(folder));
-
-        Directory.CreateDirectory(folder);
+        Save(id, folder);
         var manifest = Path.Combine(folder, "Copy.tinyclips");
-        File.WriteAllText(manifest, StudioProjectJson.WriteProject(project));
-        File.WriteAllText(Path.Combine(folder, "screen.mp4"), "screen");
-        Assert.Throws<NotSupportedException>(() => Open(manifest));
+        var opened = Open(manifest);
+        Assert.Equal(2, opened.SchemaVersion);
+        Assert.Single(opened.Timeline!.Clips);
+        Assert.Single(opened.MediaSources!);
+        Assert.Equal(["Copy.tinyclips", "events.json", "screen.mp4"], Names(folder));
         Assert.Equal("screen", File.ReadAllText(Path.Combine(folder, "screen.mp4")));
     }
 

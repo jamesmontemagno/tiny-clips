@@ -323,6 +323,7 @@ public static class StudioProjectFolder
             {
                 return null;
             }
+            if (IsLink(fullPath)) return StudioProjectFolderException.DestinationExists();
 
             // What is in the file says what belongs to it. A file that cannot be read says nothing.
             string projectFile;
@@ -337,22 +338,9 @@ public static class StudioProjectFolder
                 return StudioProjectFolderException.DestinationExists(ex);
             }
 
-            var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                Path.GetFileName(projectFile),
-                project.Sources.Screen.File,
-                project.Sources.Events ?? StudioProjectStore.EventsFileName,
-                StudioProjectStore.PosterFileName,
-            };
-            if (project.Sources.Camera is { } camera)
-            {
-                written.Add(camera.File);
-            }
-
-            if (project.Canvas.Background.Image is { } image)
-            {
-                written.Add(image);
-            }
+            if (project.SchemaVersion >= 2) _ = StudioProjectMedia.Assets(project);
+            var written = StudioProjectDestination.OwnedFiles(project);
+            written.Add(Path.GetFileName(projectFile));
 
             var other = Directory.EnumerateFileSystemEntries(fullPath)
                 .Where(entry => !IsPlainFile(entry) || !(written.Contains(Path.GetFileName(entry)) || IsSystemLitter(Path.GetFileName(entry))))
@@ -361,7 +349,8 @@ public static class StudioProjectFolder
                 .FirstOrDefault();
             return other is null ? null : StudioProjectFolderException.DestinationHasOtherFiles(other);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException or ArgumentException
+            or NotSupportedException or StudioProjectFolderException or StudioProjectInvalidException)
         {
             return StudioProjectFolderException.DestinationExists(ex);
         }

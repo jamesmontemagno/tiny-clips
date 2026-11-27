@@ -6,7 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
-- Windows now refuses to edit, render, or copy multi-clip Studio projects until timeline support is available, rather than silently using only their legacy single-source data.
+- Windows now refuses to edit or render multi-clip Studio projects until timeline support is available, rather than silently using only their legacy single-source data.
 - Screenshot recovery Save As preserves an existing destination if encoding fails or is canceled.
 - Saved screenshots no longer retain an extra recovery pixel buffer for the lifetime of their editor.
 - Rectangle, ellipse, arrow, line, and Draw controls in the Windows screenshot editor now expose direct stroke-opacity sliders; fill and badge opacity sliders sit directly below their related size controls.
@@ -30,6 +30,7 @@ own `CHANGELOG.md` at the repository root.
 - **Apply crop** now lives in the Crop tool's inspector section instead of the main command bar. The inspector stays open when **Select** is active with nothing selected, showing a short instruction so the canvas does not shift when an annotation is selected or cleared.
 - Short choices in the screenshot editor (**Arrow**, **Stroke position**, **Start**, **End**, **Corners**, redaction **Style** and **Strength**, and background image **Placement**) are now segmented controls instead of drop-downs.
 ### Added
+- Studio's media store can stage ordered video/linked-recording imports and explicit v1 conversion as one revision-checked transaction. Portable folders include every registered source and recording background asset, including media retained for undo.
 - Studio's shared project model now recognizes the v2 sequential clip/source timeline, including explicit v1 conversion, per-clip edits/layers, stable IDs, rotation metadata, and source/output time mapping. Existing v1 projects remain unchanged until conversion.
 - Screenshot settings now offer independent save-to-disk, clipboard, and editor outputs. Saving can be turned off for temporary screenshots, which can still be saved explicitly from the editor; at least one output must remain enabled.
 - Temporary screenshots use app-private storage, are deleted when their editor and pending outputs finish, and are swept after one day at startup. Clipboard copies retain bitmap bytes instead of temporary file references. Save locations remain unrestricted, save-on writes directly, and screenshot analytics count successful outputs only, once across recovery.

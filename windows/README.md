@@ -384,6 +384,38 @@ described in [`docs/studio-rendering.md`](docs/studio-rendering.md) and the live
 app, plays no sound and sends no input, and so has the editor window. None runs in CI, and the
 preview and window tools are not in the solution.
 
+### Timeline media transactions
+
+`StudioProjectStore` implements `IStudioTimelineMediaStore` for the v2 format's owned media.
+Call `StageTimelineAsync(destination, imports, cancellationToken)` with the current editor
+snapshot and an ordered list of `StudioTimelineImport(VideoPath, Recording?, ExpectedVideoIdentity?)`.
+A linked `Recording` is a v1 snapshot, including unsaved source-local edits; its native screen,
+camera, events and background are copied rather than importing its rendered export. A portable
+flat recording marked with `sources.mediaKind = "flatVideo"` remains flat. An empty batch prepares
+conversion only; opening a v1 project never converts it.
+
+The returned `StudioPreparedTimelineEdit` is disposable and exposes `BaseProject`, ordered
+`ImportedSources`/`ImportedClips`, and an appended `ProposedProject`. Build an insertion proposal
+from these if needed, revalidate the live editor and access on its owning thread, then synchronously
+call `Commit(proposal, cancellationToken)`. It returns the saved project only after installing the
+private, probed copies and atomically publishing the manifest against `ExpectedDiskRevision`
+(SHA-256 of the exact pre-staging manifest bytes). Commit is single-use; failure, cancellation,
+or disposal before commit removes the transaction's files. Success retains sources for undo.
+The prepared registry must remain unchanged in the proposal; timeline and clip edits may change.
+
+For an authorized selected input, pass `StudioMediaFileIdentity.Capture(path)` captured during
+preflight. Staging checks its Windows handle identity and copies from that same read-only handle,
+which excludes writers and deletion, then probes the private copy, including a decoded frame.
+Callers must still recheck authorization and editor state after the await. `StudioProjectStaleException`
+and `StudioMediaFileChangedException` signal conflicts; `StudioProjectInvalidException` signals
+invalid media/proposals; `StudioProjectFolderException.Problem` describes missing/unsafe assets.
+I/O errors and `OperationCanceledException` remain distinct. This service does not add or advertise
+Agent commands or bypass their permissions.
+
+V2 Save, Save As and Open include all registry media and `recordingBackgroundImage`, including
+unused sources retained for undo. Project-relative assets cannot escape the folder, be links, or
+use the local `saved-project.json` record. Unrelated files continue to prevent folder replacement.
+
 ```powershell
 # Renderer, exporter and camera recorder. No window; about four minutes.
 dotnet run --project windows/tools/StudioRenderCheck/StudioRenderCheck.csproj -c Release -p:Platform=x64

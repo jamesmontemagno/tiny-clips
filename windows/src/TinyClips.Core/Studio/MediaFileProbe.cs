@@ -4,7 +4,7 @@ namespace TinyClips.Core.Studio;
 
 public static class MediaFileProbe
 {
-    public static StudioRecordingSourceInfo Probe(string path, double fallbackFrameRate = 30)
+    public static StudioRecordingSourceInfo Probe(string path, double fallbackFrameRate = 30, bool requireDecodableFrame = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (!File.Exists(path))
@@ -16,7 +16,9 @@ public static class MediaFileProbe
         IMFSourceReader? reader = null;
         try
         {
-            reader = MediaFactory.MFCreateSourceReaderFromURL(path, null!);
+            using var attributes = MediaFactory.MFCreateAttributes(1);
+            if (requireDecodableFrame) attributes.Set(SourceReaderAttributeKeys.EnableVideoProcessing, 1u);
+            reader = MediaFactory.MFCreateSourceReaderFromURL(path, attributes);
             using var mediaType = reader.GetNativeMediaType(SourceReaderIndex.FirstVideoStream, 0);
 
             MediaFactory.MFGetAttributeSize(mediaType, MediaTypeAttributeKeys.FrameSize, out var width, out var height).CheckError();
@@ -54,7 +56,34 @@ public static class MediaFileProbe
                 durationSeconds = signedDuration / 10_000_000.0;
             }
 
-            return new StudioRecordingSourceInfo((int)width, (int)height, durationSeconds, frameRate);
+            var rotation = mediaType.GetUInt32(MediaTypeAttributeKeys.VideoRotation, out var degrees).Success ? degrees : 0;
+            if (requireDecodableFrame)
+            {
+                reader.SetStreamSelection(SourceReaderIndex.AllStreams, false);
+                reader.SetStreamSelection(SourceReaderIndex.FirstVideoStream, true);
+                using var decodedType = MediaFactory.MFCreateMediaType();
+                decodedType.Set(MediaTypeAttributeKeys.MajorType, MediaTypeGuids.Video);
+                decodedType.Set(MediaTypeAttributeKeys.Subtype, VideoFormatGuids.Rgb32);
+                reader.SetCurrentMediaType(SourceReaderIndex.FirstVideoStream, decodedType);
+                var decoded = false;
+                for (var attempt = 0; attempt < 64; attempt++)
+                {
+                    using var sample = reader.ReadSample(SourceReaderIndex.FirstVideoStream,
+                        SourceReaderControlFlag.None, out _, out var flags, out _);
+                    if (sample is not null && sample.BufferCount > 0)
+                    {
+                        using var buffer = sample.ConvertToContiguousBuffer();
+                        decoded = buffer.CurrentLength > 0;
+                        if (decoded) break;
+                    }
+                    if ((flags & (SourceReaderFlag.EndOfStream | SourceReaderFlag.Error)) != 0) break;
+                }
+                if (!decoded) throw new InvalidDataException("The imported video has no decodable video frames.");
+            }
+            return new StudioRecordingSourceInfo((int)width, (int)height, durationSeconds, frameRate)
+            {
+                RotationDegrees = rotation,
+            };
         }
         finally
         {

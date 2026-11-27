@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using TinyClips.Core.Services.ClipsLibrary;
@@ -168,7 +169,7 @@ public interface IStudioProjectStore
         CancellationToken cancellationToken = default);
 }
 
-public sealed partial class StudioProjectStore : IStudioProjectStore
+public sealed partial class StudioProjectStore : IStudioProjectStore, IStudioTimelineMediaStore
 {
     public const string ProjectFileName = "project.json";
     public const string EventsFileName = "events.json";
@@ -182,15 +183,28 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
 
     private readonly string _rootDirectory;
     private readonly TimeProvider _timeProvider;
-    private readonly object _sync = new();
+    private sealed class StoreState
+    {
+        internal readonly object Sync = new();
+        internal readonly Dictionary<string, int> ProjectUseCounts = new(StringComparer.Ordinal);
+    }
+
+    private static readonly ConcurrentDictionary<string, StoreState> StoreStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _sync;
+    private readonly Func<string, StudioRecordingSourceInfo> _probeTimelineMedia;
     private readonly Dictionary<string, string> _exportIndex = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, int> _projectUseCounts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _projectUseCounts;
     private bool _exportIndexLoaded;
 
-    public StudioProjectStore(string? rootDirectory = null, TimeProvider? timeProvider = null)
+    public StudioProjectStore(string? rootDirectory = null, TimeProvider? timeProvider = null,
+        Func<string, StudioRecordingSourceInfo>? probeTimelineMedia = null)
     {
         _rootDirectory = rootDirectory ?? DefaultRootDirectory();
         _timeProvider = timeProvider ?? TimeProvider.System;
+        var state = StoreStates.GetOrAdd(StudioExportTarget.ResolvePath(_rootDirectory), _ => new StoreState());
+        _sync = state.Sync;
+        _projectUseCounts = state.ProjectUseCounts;
+        _probeTimelineMedia = probeTimelineMedia ?? (path => MediaFileProbe.Probe(path, requireDecodableFrame: true));
     }
 
     public string RootDirectory => _rootDirectory;
@@ -921,22 +935,24 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
 
     private static void AtomicWrite(string path, string contents)
     {
-        var temporaryPath = path + ".tmp";
-        File.WriteAllText(temporaryPath, contents);
-        for (var attempt = 0; attempt < 3; attempt++)
+        var temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
         {
-            try
+            File.WriteAllText(temporaryPath, contents);
+            for (var attempt = 0; ; attempt++)
             {
-                File.Move(temporaryPath, path, overwrite: true);
-                return;
-            }
-            catch (Exception ex) when (attempt < 2 && ex is IOException or UnauthorizedAccessException)
-            {
-                Thread.Sleep(25 * (attempt + 1));
+                try
+                {
+                    File.Move(temporaryPath, path, overwrite: true);
+                    return;
+                }
+                catch (Exception ex) when (attempt < 2 && ex is IOException or UnauthorizedAccessException)
+                {
+                    Thread.Sleep(25 * (attempt + 1));
+                }
             }
         }
-
-        File.Move(temporaryPath, path, overwrite: true);
+        finally { File.Delete(temporaryPath); }
     }
 
     private string ProjectDirectory(string projectId)
@@ -1004,7 +1020,10 @@ public sealed partial class StudioProjectStore : IStudioProjectStore
     private readonly record struct ProjectFolder(string Id, string Directory);
 }
 
-public sealed record StudioRecordingSourceInfo(int Width, int Height, double Duration, double FrameRate = 30);
+public sealed record StudioRecordingSourceInfo(int Width, int Height, double Duration, double FrameRate = 30)
+{
+    public double RotationDegrees { get; init; }
+}
 
 public sealed record StudioCameraSourceInfo(int Width, int Height, double Duration, double StartOffset = 0);
 
