@@ -72,12 +72,12 @@ public sealed class AutomationPolicy
             return AutomationDecision.Deny(AutomationErrorCodes.UnknownCommand);
         }
 
-        if (!grantedScopes.Contains(definition.Scope, StringComparer.Ordinal))
+        if (definition.MissingScope(grantedScopes) is not null)
         {
             return AutomationDecision.Deny(AutomationErrorCodes.MissingScope);
         }
 
-        return _contract.IsSensitiveScope(definition.Scope)
+        return _contract.IsSensitiveScope(definition.Scope) || definition.AdditionalScopes.Any(_contract.IsSensitiveScope)
             ? AutomationDecision.Approve
             : AutomationDecision.Allow;
     }

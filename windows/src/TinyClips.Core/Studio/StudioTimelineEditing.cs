@@ -119,6 +119,11 @@ public sealed class StudioTimelineMap
 
 public static class StudioTimelineEditing
 {
+    public static bool IsFlatRecording(StudioProject project) => project.SchemaVersion == 1
+        && (project.Sources.Screen.External
+            || (project.Sources.ExtensionData.TryGetValue("mediaKind", out var kind)
+                && kind.ValueKind == System.Text.Json.JsonValueKind.String && kind.GetString() == "flatVideo"));
+
     public static StudioProject ToTimelineProject(StudioProject project)
     {
         ArgumentNullException.ThrowIfNull(project);
@@ -144,14 +149,15 @@ public static class StudioTimelineEditing
             Overlays = project.Overlays,
             Captions = project.Captions,
         };
+        var flat = IsFlatRecording(project);
         return project with
         {
             SchemaVersion = 2,
             MediaSources = [new StudioMediaSource
             {
                 Id = sourceId,
-                Kind = project.Sources.Screen.External ? StudioMediaSourceKind.FlatVideo : StudioMediaSourceKind.NativeRecording,
-                Sources = project.Sources,
+                Kind = flat ? StudioMediaSourceKind.FlatVideo : StudioMediaSourceKind.NativeRecording,
+                Sources = flat ? project.Sources with { Camera = null, Events = null } : project.Sources,
             }],
             Timeline = new StudioTimeline { Clips = [clip] },
         };

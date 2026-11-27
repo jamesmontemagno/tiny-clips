@@ -15,7 +15,14 @@ public sealed record AutomationCommandDefinition(
     string Name,
     string Scope,
     string Description,
-    IReadOnlyDictionary<string, AutomationParameterDefinition> Parameters);
+    IReadOnlyDictionary<string, AutomationParameterDefinition> Parameters)
+{
+    public IReadOnlyList<string> AdditionalScopes { get; init; } = [];
+
+    public string? MissingScope(IReadOnlyCollection<string> grants) =>
+        !grants.Contains(Scope, StringComparer.Ordinal) ? Scope
+            : AdditionalScopes.FirstOrDefault(scope => !grants.Contains(scope, StringComparer.Ordinal));
+}
 
 /// <summary>
 /// The agent automation contract (<c>shared/automation/commands.json</c>) shared with the macOS
@@ -131,7 +138,14 @@ public sealed class AutomationContract
                 }
             }
 
-            commands.Add(new AutomationCommandDefinition(name, scope, description, parameters));
+            var additional = command.TryGetProperty("additionalScopes", out var extra)
+                ? extra.EnumerateArray().Select(value => value.GetString()!).ToArray()
+                : [];
+            if (additional.Any(grant => !scopes.ContainsKey(grant)))
+            {
+                throw new InvalidDataException($"Command '{name}' uses an unknown additional scope.");
+            }
+            commands.Add(new AutomationCommandDefinition(name, scope, description, parameters) { AdditionalScopes = additional });
         }
 
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);

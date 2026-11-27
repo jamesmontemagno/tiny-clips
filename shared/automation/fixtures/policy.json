@@ -188,6 +188,20 @@
       "decision": "missing_scope"
     },
     {
+      "name": "recording permission alone cannot edit the destination",
+      "enabled": true,
+      "scopes": ["record"],
+      "command": "studio.timeline.record",
+      "decision": "missing_scope"
+    },
+    {
+      "name": "record and edit can append a take",
+      "enabled": true,
+      "scopes": ["record", "edit"],
+      "command": "studio.timeline.record",
+      "decision": "allow"
+    },
+    {
       "name": "unknown command",
       "enabled": true,
       "scopes": [
