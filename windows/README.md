@@ -387,8 +387,8 @@ preview and window tools are not in the solution.
 ### Timeline media transactions
 
 `StudioProjectStore` implements `IStudioTimelineMediaStore` for the v2 format's owned media.
-Call `StageTimelineAsync(destination, imports, cancellationToken)` with the current editor
-snapshot and an ordered list of `StudioTimelineImport(VideoPath, Recording?, ExpectedVideoIdentity?)`.
+Call `StageTimelineAsync(destination, imports, cancellationToken)` with the flushed destination
+manifest and an ordered list of `StudioTimelineImport(VideoPath, Recording?, ExpectedVideoIdentity?)`.
 A linked `Recording` is a v1 snapshot, including unsaved source-local edits; its native screen,
 camera, events and background are copied rather than importing its rendered export. A portable
 flat recording marked with `sources.mediaKind = "flatVideo"` remains flat. An empty batch prepares

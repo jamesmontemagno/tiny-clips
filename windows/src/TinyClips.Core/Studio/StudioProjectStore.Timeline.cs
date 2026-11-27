@@ -37,6 +37,10 @@ public sealed partial class StudioProjectStore
                 token.ThrowIfCancellationRequested();
                 leases.Add(AcquireProjectUse(destination.Id));
                 original = ReadTimelineManifest(destination.Id);
+                using var reader = new StreamReader(new MemoryStream(original, writable: false));
+                var onDisk = StudioProjectJson.ReadProject(reader.ReadToEnd()) with { Id = destination.Id };
+                if (StudioProjectJson.WriteProject(onDisk) != StudioProjectJson.WriteProject(destination))
+                    throw new StudioProjectStaleException();
                 foreach (var recording in imports.Select(item => item.Recording).OfType<StudioProject>())
                 {
                     if (recording.SchemaVersion != 1)
@@ -88,7 +92,7 @@ public sealed partial class StudioProjectStore
         if (destination.SchemaVersion >= 2) return basis;
         var paths = GetPaths(destination);
         var sources = destination.Sources;
-        var flat = IsFlatRecording(destination);
+        var flat = StudioTimelineEditing.IsFlatRecording(destination);
         if (flat)
         {
             var path = sources.Screen.External
@@ -158,7 +162,7 @@ public sealed partial class StudioProjectStore
         var paths = GetPaths(recording);
         if (StudioProjectFolder.IsLink(paths.ProjectDirectory))
             throw StudioProjectFolderException.FileOutsideFolder("recording");
-        var flat = IsFlatRecording(recording);
+        var flat = StudioTimelineEditing.IsFlatRecording(recording);
         var screenPath = recording.Sources.Screen.External ? paths.ScreenPath : RequireTimelineFile(paths.ScreenPath);
         var sources = recording.Sources with
         {
@@ -271,11 +275,6 @@ public sealed partial class StudioProjectStore
         stream.ReadExactly(bytes);
         return bytes;
     }
-
-    private static bool IsFlatRecording(StudioProject project) =>
-        project.Sources.Screen.External
-        || (project.Sources.ExtensionData.TryGetValue("mediaKind", out var kind)
-            && kind.ValueKind == JsonValueKind.String && kind.GetString() == "flatVideo");
 
     private string? TimelineEventsName(StudioProject project)
     {

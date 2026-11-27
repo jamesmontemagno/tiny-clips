@@ -167,6 +167,18 @@ public sealed class StudioTimelineMediaStoreTests : StudioProjectFolderTestBase
     }
 
     [Fact]
+    public async Task EditMadeBeforeStagingCannotBeOverwrittenByAnOlderEditorSnapshot()
+    {
+        var store = FakeStore();
+        var old = store.Load(MakeProject(camera: false));
+        store.Save(old with { Name = "Renamed elsewhere" });
+        await Assert.ThrowsAsync<StudioProjectStaleException>(() =>
+            store.StageTimelineAsync(old, [new(Video("Incoming"))], Token));
+        Assert.Equal("Renamed elsewhere", store.Load(old.Id).Name);
+        Assert.Empty(Directory.GetDirectories(store.GetPaths(old).ProjectDirectory));
+    }
+
+    [Fact]
     public async Task ExactDiskRevisionRejectsEvenAWhitespaceOnlyChangeAndKeepsThatChange()
     {
         var store = FakeStore();
