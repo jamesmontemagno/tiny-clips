@@ -1552,43 +1552,29 @@ private struct StudioTimelineView: View {
                 .help("End the video at the playhead (O)")
             }
 
-            // A lane shows only with something on it, so the timeline stays low until then.
-            VStack(spacing: 4) {
-                if isLaneShown(.scene) {
-                    StudioSceneLane(viewModel: viewModel)
-                        .frame(height: 24)
-                }
-
-                if isLaneShown(.zoom) {
-                    StudioZoomLane(viewModel: viewModel)
-                        .frame(height: 26)
-                }
-
-                if isLaneShown(.cut) {
-                    StudioCutLane(viewModel: viewModel)
-                        .frame(height: 22)
-                }
-
-                if isLaneShown(.speed) {
-                    StudioSpeedLane(viewModel: viewModel)
-                        .frame(height: 22)
-                }
-
-                if isLaneShown(.annotate) {
-                    StudioAnnotationLane(viewModel: viewModel)
-                        .frame(height: 22)
+            VStack(spacing: StudioTimelineLane.spacing) {
+                ForEach(viewModel.project.map(StudioTimelineLane.shown(in:)) ?? [], id: \.self) { lane in
+                    detailLane(lane)
+                        .frame(height: lane.height)
                 }
 
                 StudioTrimBar(viewModel: viewModel)
-                    .frame(height: 36)
+                    .frame(height: StudioTimelineLane.trimHeight)
             }
+            .frame(minHeight: viewModel.minimumTimelineDetailHeight, alignment: .bottom)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
-    private func isLaneShown(_ lane: StudioTimelineLane) -> Bool {
-        viewModel.project.map(lane.isShown(in:)) ?? false
+    @ViewBuilder private func detailLane(_ lane: StudioTimelineLane) -> some View {
+        switch lane {
+        case .scene: StudioSceneLane(viewModel: viewModel)
+        case .zoom: StudioZoomLane(viewModel: viewModel)
+        case .cut: StudioCutLane(viewModel: viewModel)
+        case .speed: StudioSpeedLane(viewModel: viewModel)
+        case .annotate: StudioAnnotationLane(viewModel: viewModel)
+        }
     }
 }
 

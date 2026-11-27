@@ -792,6 +792,32 @@ final class StudioProjectFolderTests: XCTestCase {
     // MARK: - Timeline imports
 
     @MainActor
+    func testDetailHeightFollowsTimelineEditsAndUndoButNotClipSelection() async throws {
+        let url = outsideURL.appendingPathComponent("Clip.mp4")
+        let second = outsideURL.appendingPathComponent("Second.mp4")
+        try copyMovieFixture("native.mp4", to: url)
+        try copyMovieFixture("flat.mp4", to: second)
+        let project = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: url, width: 64, height: 48, duration: 1, appVersion: "test"
+        ))
+        let vm = StudioViewModel(projectID: project.id, store: store)
+        await vm.load()
+        defer { vm.tearDown() }
+        vm.addZoomAtPlayhead()
+        await vm.addClip(.dropped([second]), at: nil)?.value
+        let firstID = try XCTUnwrap(vm.manifest?.timeline?.clips.first?.id)
+        XCTAssertTrue(vm.zooms.isEmpty)
+        XCTAssertEqual(vm.minimumTimelineDetailHeight, 66)
+        vm.selectTimelineClip(firstID)
+        XCTAssertFalse(vm.zooms.isEmpty)
+        XCTAssertEqual(vm.minimumTimelineDetailHeight, 66)
+        vm.removeTimelineClip(firstID)
+        XCTAssertNil(vm.minimumTimelineDetailHeight)
+        vm.undo()
+        XCTAssertEqual(vm.minimumTimelineDetailHeight, 66)
+    }
+
+    @MainActor
     func testEditorBatchInsertIsAtomicUndoableAndReopensAfterRemovingOriginals() async throws {
         let original = outsideURL.appendingPathComponent("Original.mp4")
         let first = outsideURL.appendingPathComponent("First.mp4")

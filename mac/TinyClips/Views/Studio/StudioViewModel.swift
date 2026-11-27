@@ -113,6 +113,7 @@ final class StudioViewModel: ObservableObject {
     @Published private var events = StudioEvents()
     private var sourceEventsTask: Task<Void, Never>?
     private(set) var timelineMap: StudioTimelineMap?
+    private(set) var minimumTimelineDetailHeight: CGFloat?
     private var diskState: StudioEditableState?
     private var assemblyTask: Task<Void, Never>?
     private var generatingClipID: String?
@@ -531,6 +532,11 @@ final class StudioViewModel: ObservableObject {
         do { try commitAssembly(updated, selecting: id) } catch { SaveService.shared.showError(error.localizedDescription) }
     }
 
+    private func updateTimeline(_ map: StudioTimelineMap?, for manifest: StudioProject) {
+        timelineMap = map
+        minimumTimelineDetailHeight = StudioTimelineLane.minimumStackHeight(in: manifest)
+    }
+
     private func commitAssembly(_ updated: StudioProject, selecting id: String?) throws {
         guard !isTornDown, var model = editor, updated.id == projectID, let diskState else {
             throw StudioProjectError.invalidProject("Reopen the project and try again.")
@@ -550,7 +556,7 @@ final class StudioViewModel: ObservableObject {
         self.diskState = StudioEditableState(project: saved)
         pause()
         editor = model
-        timelineMap = map
+        updateTimeline(map, for: model.manifest)
         if newPaths != paths { paths = newPaths; pendingPlaybackPaths = newPaths }
         clearClipSelection()
         if oldID != selectedClipID || oldSource != model.project.sources { loadSelectedEvents() }
@@ -564,7 +570,7 @@ final class StudioViewModel: ObservableObject {
             let opened = try store.markOpened(id: projectID)
             let openedPaths = try store.paths(for: opened)
             let model = StudioEditorModel(project: opened)
-            timelineMap = try StudioTimelineMap(project: opened)
+            try updateTimeline(StudioTimelineMap(project: opened), for: opened)
             diskState = StudioEditableState(project: opened)
             paths = openedPaths
             editor = model
@@ -3122,7 +3128,7 @@ final class StudioViewModel: ObservableObject {
         let previousClip = editor?.selectedClip?.id
         let isChanged = model.editableState != before
         if isChanged {
-            do { timelineMap = try StudioTimelineMap(project: model.manifest) } catch {
+            do { try updateTimeline(StudioTimelineMap(project: model.manifest), for: model.manifest) } catch {
                 SaveService.shared.showError(error.localizedDescription)
                 return
             }

@@ -99,7 +99,7 @@ enum StudioInspectorPanel: String, CaseIterable, Identifiable {
 }
 
 /// The lanes of the timeline that can come and go. The trim bar under them always shows. A lane
-/// takes room only when it has something on it; the buttons, the keys, and the inspector add the
+/// shows only when it has something on it; the buttons, the keys, and the inspector add the
 /// first zoom, cut, speed change, or annotation without one. The same on Windows
 /// (`StudioTimelineLanes.cs`).
 enum StudioTimelineLane: CaseIterable {
@@ -129,6 +129,30 @@ enum StudioTimelineLane: CaseIterable {
     /// The lanes a project shows, from the top down.
     static func shown(in project: StudioProject) -> [StudioTimelineLane] {
         allCases.filter { $0.isShown(in: project) }
+    }
+
+    static let spacing: CGFloat = 4
+    static let trimHeight: CGFloat = 36
+
+    var height: CGFloat {
+        switch self {
+        case .scene: return 24
+        case .zoom: return 26
+        case .cut, .speed, .annotate: return 22
+        }
+    }
+
+    /// Only the active clip's lanes are drawn. Reserve the tallest actual stack, not the
+    /// union of all lane types, so changing clips doesn't resize the preview or waste space.
+    static func minimumStackHeight(in manifest: StudioProject) -> CGFloat? {
+        guard let clips = manifest.timeline?.clips, clips.count > 1, let sources = manifest.mediaSources else { return nil }
+        let sourcesByID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
+        return clips.reduce(trimHeight) { tallest, clip in
+            guard let source = sourcesByID[clip.sourceId] else { return tallest }
+            let local = clip.resolvedProject(in: manifest, source: source)
+            let height = shown(in: local).reduce(trimHeight) { $0 + spacing + $1.height }
+            return max(tallest, height)
+        }
     }
 }
 
