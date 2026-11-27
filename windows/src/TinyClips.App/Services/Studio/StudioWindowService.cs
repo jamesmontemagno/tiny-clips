@@ -284,13 +284,14 @@ public sealed class StudioWindowService : IStudioProjectHost
         var linkedId = await Task.Run(() => _store.FindProjectIdByExportPath(path), cancellationToken);
 
         // A video exported from a recording comes in with the recording's own layers, as it was
-        // last edited: the open editor has the newest edits, the store the saved ones. The project
-        // being added to is not a recording to add to itself, and a timeline is not one recording.
+        // last edited: the open editor has the newest edits (including caption text still being
+        // typed), the store the saved ones. The project being added to is not a recording to add
+        // to itself, and a timeline is not one recording.
         StudioProject? recording = null;
         if (linkedId is not null && !string.Equals(linkedId, destination.ProjectId, StringComparison.Ordinal))
         {
             var current = FindOpenViewModel(linkedId) is { } open
-                ? open.Manifest ?? throw new InvalidOperationException(
+                ? open.SnapshotForTimelineImport() ?? throw new InvalidOperationException(
                     "The linked Studio project is not ready. Wait for it to load and try again.")
                 : await Task.Run(() => _store.Load(linkedId), cancellationToken);
             recording = current.SchemaVersion == 1 ? current : null;

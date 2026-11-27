@@ -703,6 +703,8 @@ internal sealed class CountingStore(IStudioProjectStore inner) : IStudioProjectS
 
     public bool Exists(string projectId) => inner.Exists(projectId);
 
+    public IDisposable AcquireProjectUse(string projectId) => inner.AcquireProjectUse(projectId);
+
     public StudioProject Load(string projectId) => inner.Load(projectId);
 
     public StudioProject Save(StudioProject project, StudioEditableState? replacing = null) => inner.Save(project, replacing);
