@@ -911,7 +911,8 @@ public partial class App : IAutomationAppActions
                             "The export destination was created by another process; choose a new filename.");
                     }
 
-                    _ = store.RecordExport(projectId, outputPath);
+                    var saved = store.RecordExport(projectId, outputPath);
+                    StudioWindows().FindOpenViewModel(projectId)?.RefreshExportBookkeeping(saved);
                     Services.GetRequiredService<IRecentCaptureService>().Record(outputPath, CaptureType.Video);
                     ShowSaveToast(outputPath);
                     var natural = StudioCanvasMath.NaturalSize(project);

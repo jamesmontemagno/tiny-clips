@@ -63,6 +63,35 @@ public sealed class StudioTimelineAutomationTests : IDisposable
     }
 
     [Fact]
+    public async Task LinkedTimelineRequiresExplicitFileModeToImportItsRenderedVideo()
+    {
+        var timeline = Service();
+        var project = _store.Load(_id);
+        var take = CreateTake(project);
+        var token = TestContext.Current.CancellationToken;
+        using (var staged = await _store.StageTimelineAsync(_store.Load(take), [new(_video)], token))
+            staged.Commit(staged.ProposedProject, token);
+        var exported = Path.Combine(_library, "linked-export.mp4");
+        File.Copy(_video, exported);
+        _store.RecordExport(take, exported);
+
+        var args = Tokens(AutomationStudioTimeline.Describe(project, _store.GetPaths(project)));
+        args["path"] = exported;
+        var request = new TimelineRequest("studio.timeline.import", _client.Id, _client.Name, args);
+        var error = await Assert.ThrowsAsync<AutomationException>(() => timeline.ExecuteAsync(request, null, token));
+        Assert.Equal("not_supported", error.Code);
+        Assert.Equal(1, _store.Load(_id).SchemaVersion);
+
+        args["mode"] = "file";
+        await timeline.ExecuteAsync(request, null, token);
+        var saved = _store.Load(_id);
+        var imported = Assert.Single(saved.Timeline!.Clips, clip => clip.Name == "linked-export");
+        var source = Assert.Single(saved.MediaSources!, media => media.Id == imported.SourceId);
+        Assert.Equal(StudioMediaSourceKind.FlatVideo, source.Kind);
+        Assert.False(source.Sources.Screen.External);
+    }
+
+    [Fact]
     public async Task LosingPermissionAtCommitRollsBackStagedMedia()
     {
         var count = 0;
