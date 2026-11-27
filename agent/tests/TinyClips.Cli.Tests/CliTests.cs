@@ -125,16 +125,17 @@ public class CliTests
     [Fact]
     public async Task TimelineImportRequiresAndForwardsConcurrencyTokens()
     {
-        if (OperatingSystem.IsWindows()) return;
         await using var app = new FakeApp();
         app.Clients["t"] = ["edit"];
         var (output, error) = (new StringWriter(), new StringWriter());
         var env = app.Environment(output, error, token: "t");
-        string[] args = ["studio.timeline.import", "projectId=p", "path=/Movies/Part.mp4", "expectedModifiedAt=now", "projectTime=1.5", "mode=file"];
+        var path = Path.Combine(Path.GetTempPath(), "Part.mp4");
+        string[] args = ["studio.timeline.import", "projectId=p", $"path={path}", "expectedModifiedAt=now", "projectTime=1.5", "mode=file"];
         Assert.NotEqual(0, await Cli.RunAsync(args, env, TestContext.Current.CancellationToken));
         Assert.Empty(app.Received);
         Assert.Equal(0, await Cli.RunAsync([.. args, "expectedRevision=r"], env, TestContext.Current.CancellationToken));
         var parameters = Json(output)["params"]!;
+        Assert.Equal(path, (string?)parameters["path"]);
         Assert.Equal("r", (string?)parameters["expectedRevision"]);
         Assert.Equal(1.5, (double?)parameters["projectTime"]);
         Assert.Equal("file", (string?)parameters["mode"]);

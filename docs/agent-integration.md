@@ -326,9 +326,9 @@ To draw captions into the picture, set `overlays.captions` through `studio.proje
 
 `studio.export` takes an optional `resolution` (`source`, `2160p`, `1440p`, `1080p`, `720p`, or `480p`) and `quality` (`best`, `high`, `standard`, or `small`). A video keeps the shape of its canvas, fits inside the named frame turned to match the canvas, and is never scaled up, so check the `width` and `height` it reports. It also reports the video `codec` it wrote (`h264` or `hevc`): the `videoCodec` setting, except that a Mac without a usable HEVC encoder for that size writes H.264 instead. `source` is the canvas at its own size, which can be larger than 4K; past 4K, the largest size the PC or Mac can encode varies, and a size it cannot encode fails with an error suggesting 4K or smaller. Omitted or null values use the choices last made in Studio's Export popup, which start at `1080p` and `high`; agents can read and set them as the `studioExportResolution` and `studioExportQuality` settings. `studio.export.options` is the read-only view of the same popup: the resolutions offered for a project with their sizes, and each quality's video bitrate and estimated file size at the chosen resolution.
 
-#### Assemble a Studio timeline (macOS)
+#### Assemble a Studio timeline
 
-Check `session.hello.commands` before using `studio.timeline.*`. The commands are available on macOS, not advertised on Windows. For MCP, replace dots with underscores and prepend `tinyclips_` (for example `tinyclips_studio_timeline_import`).
+Check `session.hello.commands` before using `studio.timeline.*` on macOS or Windows: older app versions may not support assembly. For MCP, replace dots with underscores and prepend `tinyclips_` (for example `tinyclips_studio_timeline_import`).
 
 Run `tinyclips studio.timeline.get projectId=<id>` with `read` scope. Its `clips` are in playback order and have stable `clipId`, `sourceId`, source bounds and `projectStart`/`projectEnd` in edited output seconds. `sources` includes recording vs. flat-video kind, dimensions, duration and available layer metadata. Looking at a single-source project does not upgrade it.
 

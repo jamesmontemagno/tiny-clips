@@ -13,13 +13,13 @@ bindings. An unassigned Stop Recording shortcut does not disable `recording.stop
 Studio Recording has a separate optional UI shortcut, unassigned by default. Agents continue
 to start editable recordings with `recording.startVideo studio=true`; no shortcut is required.
 
-The macOS-only `studio.timeline.*` commands assemble a sequential lane without driving its editor.
+On macOS and Windows, `studio.timeline.*` assembles a sequential lane without driving its editor.
 The CLI and MCP use the contract's `platforms` field; check `session.hello.commands` for live support.
 `studio.timeline.get` is read-only (including on v1). Import/insert/move/split/trim/transition/remove need `edit`;
 `studio.timeline.record` needs `record` **and** its `additionalScopes: ["edit"]`. Agents cannot use
 the import command to read arbitrary files. Import and recording recheck access and both optimistic
 concurrency tokens at commit. Removing a clip never deletes source media. See the
-[timeline command reference](../../docs/agent-integration.md#assemble-a-studio-timeline-macos).
+[timeline command reference](../../docs/agent-integration.md#assemble-a-studio-timeline).
 
 The `recentCapturesLimit` automation setting controls how many saved captures and Studio drafts
 the macOS menu bar and Windows tray Recent popover displays. It is readable and writable on both

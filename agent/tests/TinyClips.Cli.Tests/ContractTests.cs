@@ -119,13 +119,13 @@ public class ContractTests
     }
 
     [Fact]
-    public void TimelineTransitionsValidateKindsAndTokensOnMacOnly()
+    public void TimelineTransitionsValidateKindsAndTokensOnBothPlatforms()
     {
         var contract = Contract.Current;
         var command = contract.Find("studio.timeline.transition")!;
         Assert.Equal("edit", command.Scope);
         Assert.Contains(command, contract.CommandsForPlatform("macos"));
-        Assert.DoesNotContain(command, contract.CommandsForPlatform("windows"));
+        Assert.Contains(command, contract.CommandsForPlatform("windows"));
         var args = new JsonObject { ["projectId"] = "p", ["clipId"] = "b", ["expectedModifiedAt"] = "now", ["expectedRevision"] = "r" };
         foreach (var kind in new[] { "cut", "fadeThroughBlack", "fadeThroughWhite", "crossDissolve" })
         {

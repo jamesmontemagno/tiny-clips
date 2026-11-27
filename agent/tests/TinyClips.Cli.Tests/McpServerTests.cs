@@ -75,9 +75,14 @@ public class McpServerTests
     [Fact]
     public async Task TimelineRecordingRequiresRecordAndEditAndForwardsTarget()
     {
-        Assert.DoesNotContain(McpServer.ListTools("windows"), t => t.Name.StartsWith("tinyclips_studio_timeline_", StringComparison.Ordinal));
-        Assert.False(McpServer.ListTools("macos").Single(t => t.Name == "tinyclips_studio_timeline_remove").Annotations!.DestructiveHint);
-        if (OperatingSystem.IsWindows()) return;
+        var commands = new[] { "get", "import", "insert", "move", "record", "remove", "split", "transition", "trim" };
+        foreach (var platform in new[] { "macos", "windows" })
+        {
+            const string prefix = "tinyclips_studio_timeline_";
+            var tools = McpServer.ListTools(platform).Where(t => t.Name.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+            Assert.Equal(commands, tools.Select(t => t.Name[prefix.Length..]).Order(StringComparer.Ordinal));
+            Assert.False(tools.Single(t => t.Name == prefix + "remove").Annotations!.DestructiveHint);
+        }
         await using var app = new FakeApp();
         await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>
         {
