@@ -32,6 +32,8 @@ public sealed partial class StudioViewModel
     /// <summary>Whether a clip can be added, or a timeline edit started, now.</summary>
     public bool CanAddClips => _session.CanAddClips;
 
+    internal bool IsReadyForTimelineChange => _session.IsReadyForTimelineChange;
+
     public bool CanSplitClip => _session.CanSplitClipAtPlayhead;
 
     /// <summary>Whether clips can be moved, removed and joined differently: the editor is free to edit.</summary>

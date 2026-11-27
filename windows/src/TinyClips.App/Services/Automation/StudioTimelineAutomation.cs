@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.Core.Automation;
 using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App;
 
@@ -57,17 +58,19 @@ internal sealed class StudioTimelineAutomation(
                 return TimelineEditResult(current);
 
             var editor = editorFor(id);
-            using var lease = editor?.BeginTimelineChange();
-            if (editor is not null && lease is null)
-                throw new AutomationException(AutomationErrorCodes.Busy, "The Studio editor is busy.");
+            var start = editor?.BeginTimelineChange();
+            if (start is { Succeeded: false })
+                throw EditorFailure(start.Failure, start.Message);
+            using var lease = start?.Lease;
             if (lease is not null)
             {
                 // Flushing the exact edit the client saw can advance modifiedAt, but must not
                 // silently accept different edits or new bookkeeping along with that timestamp.
-                if (AutomationStudioTimeline.Revision(lease.BaseProject with { ModifiedAt = current.ModifiedAt })
+                var flushed = lease.BaseProject;
+                if (AutomationStudioTimeline.Revision(flushed with { ModifiedAt = current.ModifiedAt })
                     != AutomationStudioTimeline.Revision(current))
                     throw TimelineConflict("The Studio project changed while flushing the editor.");
-                current = lease.BaseProject;
+                current = flushed;
             }
             var revision = AutomationStudioTimeline.Revision(current);
 
@@ -94,7 +97,13 @@ internal sealed class StudioTimelineAutomation(
                 string? LinkedProjectId() => parameters["mode"]?.GetValue<string>() == "file" ? null
                     : store.FindProjectIdByExportPath(path) ?? store.FindProjectIdByExportPath(resolved);
                 var linkedId = LinkedProjectId();
-                var linked = linkedId is null ? null : ReadProject(linkedId, store, editorFor(linkedId));
+                StudioProject ReadLinked(string sourceId)
+                {
+                    var sourceEditor = editorFor(sourceId);
+                    sourceEditor?.CommitCaptionText();
+                    return ReadProject(sourceId, store, sourceEditor);
+                }
+                var linked = linkedId is null ? null : ReadLinked(linkedId);
                 if (linked?.SchemaVersion >= 2)
                     throw new AutomationException(AutomationErrorCodes.NotSupported,
                         "A linked multi-clip project cannot be merged. Use mode=file to import its rendered video.");
@@ -104,7 +113,7 @@ internal sealed class StudioTimelineAutomation(
                 {
                     if (!StringComparer.OrdinalIgnoreCase.Equals(resolved, resolveImportPath(path))
                         || identity != StudioMediaFileIdentity.Capture(resolved) || LinkedProjectId() != linkedId
-                        || (linkedId is not null && AutomationStudioTimeline.Revision(ReadProject(linkedId, store, editorFor(linkedId))) != linkedRevision))
+                        || (linkedId is not null && AutomationStudioTimeline.Revision(ReadLinked(linkedId)) != linkedRevision))
                         throw TimelineConflict("The Library source changed while importing.");
                 };
             }
@@ -131,8 +140,14 @@ internal sealed class StudioTimelineAutomation(
                 throw TimelineConflict("The Studio editor opened or closed while preparing the edit.");
             if (editor is null) return TimelineEditResult(Commit(proposal));
             var result = editor.CommitTimelineChange(lease!, proposal, Commit, prepared.ImportedClips.FirstOrDefault()?.Id);
-            if (!result.Succeeded || result.Manifest is null)
-                throw TimelineConflict(result.Message ?? "The Studio editor changed while preparing the edit.");
+            if (!result.Succeeded)
+            {
+                if (result.Manifest is not null)
+                    throw new AutomationException(AutomationErrorCodes.Internal, result.Message);
+                throw EditorFailure(result.Failure, result.Message);
+            }
+            if (result.Manifest is null)
+                throw new InvalidOperationException("The Studio editor did not return the saved timeline.");
             return TimelineEditResult(result.Manifest);
         }
         catch (Exception ex) when (ex is StudioProjectStaleException or StudioMediaFileChangedException)
@@ -151,6 +166,16 @@ internal sealed class StudioTimelineAutomation(
     }
 
     private static AutomationException TimelineConflict(string message) => new(AutomationErrorCodes.Conflict, message);
+
+    private static AutomationException EditorFailure(StudioTimelineChangeFailure failure, string message) =>
+        new(failure switch
+        {
+            StudioTimelineChangeFailure.NotReady => AutomationErrorCodes.Busy,
+            StudioTimelineChangeFailure.StaleDisk or StudioTimelineChangeFailure.StaleLease
+                or StudioTimelineChangeFailure.Closed or StudioTimelineChangeFailure.WrongProject => AutomationErrorCodes.Conflict,
+            StudioTimelineChangeFailure.Invalid => AutomationErrorCodes.InvalidParams,
+            _ => AutomationErrorCodes.Internal,
+        }, message);
 
     private static JsonObject TimelineEditResult(StudioProject project) =>
         new() { ["project"] = JsonNode.Parse(StudioProjectJson.WriteProject(project)), ["revision"] = AutomationStudioTimeline.Revision(project) };

@@ -194,6 +194,55 @@ public sealed class StudioTimelineAutomationTests : IDisposable
 
     public sealed class StudioTimelineOpenEditorAutomationTests : StudioViewModelTestBase
     {
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task LinkedImportUsesCurrentCaptionAndRefusesAChangeDuringStaging(bool changeDuringStaging)
+        {
+            var destination = CreateProject(camera: false);
+            var source = CreateProject(p => p with
+            {
+                Captions = new() { Cues = [new() { Id = "cue", Start = 0, End = 0.25, Text = "Saved" }] },
+            }, camera: false);
+            Directory.CreateDirectory(VideosFolder);
+            var export = Path.Combine(VideosFolder, "linked-export.mp4");
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "Fixtures", "Timeline", "flat.mp4"), export);
+            File.Copy(export, Projects.GetPaths(source).ScreenPath, overwrite: true);
+            Projects.RecordExport(source, export);
+            var editor = await OpenAsync(source);
+            try
+            {
+                editor.SelectCaptionRow(0);
+                editor.SetPendingCaptionText("Typed before import");
+                var checks = 0;
+                var service = new StudioTimelineAutomation(Projects, id => id == source ? editor : null, path => path, _ =>
+                {
+                    if (++checks == 2 && changeDuringStaging)
+                        editor.SetPendingCaptionText("Changed while importing");
+                });
+                var project = Projects.Load(destination);
+                var lane = AutomationStudioTimeline.Describe(project, Projects.GetPaths(project));
+                var args = new JsonObject
+                {
+                    ["projectId"] = destination, ["path"] = export,
+                    ["expectedModifiedAt"] = lane["modifiedAt"]!.DeepClone(), ["expectedRevision"] = lane["revision"]!.DeepClone(),
+                };
+                var import = service.ExecuteAsync(new("studio.timeline.import", "test", "test", args), null, TestContext.Current.CancellationToken);
+                if (changeDuringStaging)
+                {
+                    Assert.Equal("conflict", (await Assert.ThrowsAsync<AutomationException>(() => import)).Code);
+                    Assert.Null(Projects.Load(destination).Timeline);
+                }
+                else
+                {
+                    await import;
+                    var added = Projects.Load(destination).Timeline!.Clips[1];
+                    Assert.Equal("Typed before import", Assert.Single(added.Captions!.Cues).Text);
+                }
+            }
+            finally { await CloseAsync(editor); }
+        }
+
         [Fact]
         public async Task ImportIntoOpenEditorUsesOneUndoStepAndRedoRestoresOwnedMedia()
         {

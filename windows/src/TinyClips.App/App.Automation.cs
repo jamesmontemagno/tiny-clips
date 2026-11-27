@@ -312,7 +312,6 @@ public partial class App : IAutomationAppActions
         var selection = windowArea is not null && monitor is not null
             ? new TargetSelection(target, region, monitor, WindowArea: windowArea)
             : new TargetSelection(target, region, ResolveMonitorForTarget(target));
-        _timelineRecordingError = null;
         await BeginCaptureAsync(
             type,
             abortIfRecording: true,
