@@ -1258,7 +1258,7 @@ struct ScreenshotEditorView: View {
             }
 
             if viewModel.showsAnyStyleControls {
-                Section("Style") {
+                Section(viewModel.editableSelectionIndex == nil ? "Tool defaults" : "Selection style") {
                     styleControls
                         .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
                 }
@@ -2397,6 +2397,7 @@ struct ScreenshotEditorView: View {
 
     private func handleEscape(textFieldHasFocus: Bool) -> Bool {
         guard !isSaving else { return true }
+        if !textFieldHasFocus && viewModel.cancelAnnotationDrag() { return true }
 
         switch ScreenshotEditorEscapeAction.resolve(
             isEditingTextAnnotation: viewModel.textEditPosition != nil,

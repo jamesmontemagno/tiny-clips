@@ -317,10 +317,11 @@ final class ScreenshotRedactionTests: XCTestCase {
         var output = try XCTUnwrap(editor.renderFinalImage(includesExportDecorations: false))
         XCTAssertEqual(try luminance(output, x: 200, y: 100), 0, accuracy: 0.001)
 
-        editor.selectedTool = .move
-        editor.selectedAnnotationIndex = 0
+        XCTAssertEqual(editor.selectedTool, .blur)
+        XCTAssertEqual(editor.selectedAnnotationIndex, 0)
         XCTAssertEqual(editor.selectedRedactionStrength(), .solid)
         XCTAssertTrue(editor.updateSelectedRedactionStrength(.heavy))
+        XCTAssertEqual(editor.redactionStrength, .solid)
         XCTAssertFalse(editor.annotations[0].isOpaqueRedaction)
         output = try XCTUnwrap(editor.renderFinalImage(includesExportDecorations: false))
         XCTAssertGreaterThan(try luminance(output, x: 200, y: 100), 0.1)
@@ -579,17 +580,22 @@ final class ScreenshotRedactionTests: XCTestCase {
     }
 
     @MainActor
-    func testChoosingEmojiAfterPlacementChangesTheDefaultNotThePlacedSticker() throws {
+    func testChoosingEmojiAfterPlacementChangesOnlyThePlacedSticker() throws {
         let (editor, cleanup) = try makeEditor()
         defer { cleanup() }
+        let key = "screenshotEditor.recentEmoji"
+        let savedRecent = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(savedRecent, forKey: key) }
         editor.selectedTool = .emoji
         editor.selectedEmoji = "😀"
         editor.placeEmojiAnnotation(at: CGPoint(x: 0.5, y: 0.5))
-
         editor.chooseEmoji("🥳")
-
-        XCTAssertEqual(editor.annotations[0].text, "😀")
-        XCTAssertEqual(editor.selectedEmoji, "🥳")
+        XCTAssertEqual(editor.selectedEmojiValue(), "🥳")
+        XCTAssertEqual(editor.selectedEmoji, "😀")
+        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: key)?.first, "😀")
+        let elsewhere = CGPoint(x: 0.8, y: 0.8)
+        editor.handleDragEnd(start: elsewhere, end: elsewhere)
+        XCTAssertEqual(editor.annotations.map(\.text), ["🥳", "😀"])
     }
 
     @MainActor

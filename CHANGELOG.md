@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 - Placing an emoji in the macOS screenshot editor no longer selects it, since only **Move** shows a selection; use **Move** to adjust it.
 
 ### Changed
+- The screenshot editor selects each new annotation without switching tools. Adjust it right away, or draw elsewhere to add the next one. Styling the selected annotation leaves the tool's defaults unchanged.
 - The macOS screenshot editor can now change the color, fill, and stroke width of a selected rectangle, circle, arrow, line, or pencil stroke, with undo. Stroke width is a 1–40 px slider measured in image pixels, like Windows; the starting width scales with the capture so large screenshots keep their previous look.
 - macOS screenshot pencil strokes are now smooth, tapered ink: the line follows the pointer more steadily, thins slightly when drawn quickly, tapers at both ends, and keeps an even color when translucent.
 - macOS Screenshot arrows and lines now have a **Fill** (the body's color), a **Size** (its thickness), and an optional outline: a **Stroke color** and **Stroke** width (none by default) placed by **Stroke position**, which starts at **Outside** for arrows and lines. For shapes, the color control is now named **Stroke color** and sits directly above the **Stroke** width.

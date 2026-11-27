@@ -19,6 +19,17 @@ private enum AnnotationResizeHandle {
     case bottomRight
 }
 
+private enum AnnotationDragTarget {
+    case body, rotation, start, end, bend
+    case corner(AnnotationResizeHandle)
+}
+
+private enum CanvasDrag {
+    case edit(Int, AnnotationDragTarget)
+    case tool(EditTool)
+    case ignored
+}
+
 @MainActor
 class ScreenshotEditorViewModel: ObservableObject {
     let sourceURL: URL
@@ -31,8 +42,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var selectedTool: EditTool = .move {
         didSet {
             guard oldValue != selectedTool else { return }
-            // Only Move shows a selection, so it never lingers hidden behind another tool, where
-            // style edits meant for the new tool would quietly change the old element instead.
+            cancelAnnotationDrag()
             selectedAnnotationIndex = nil
             // The crop selection belongs to the Crop tool for the same reason.
             if oldValue == .crop {
@@ -125,12 +135,9 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var dragOriginalFontSize: CGFloat = 0
     private var dragOriginalTextBoxStyle: TextBoxStyle = .plain
     private var dragOriginalRotation: CGFloat = 0
-    private var isDraggingAnnotation = false
-    private var isRotatingAnnotation = false
-    private var isDraggingEndpoint = false // true = dragging arrowhead/line end
-    private var isDraggingStartpoint = false // true = dragging arrow tail/line start
-    private var isDraggingBend = false // true = dragging an arrow's bend handle
-    private var activeResizeHandle: AnnotationResizeHandle?
+    private var canvasDrag: CanvasDrag?
+    private var crossedDragThreshold = false
+    private var wasDirtyBeforeDrag = false
     private var cropDragMode: CropDragMode?
     private var cropDragOriginalRect: CGRect = .zero
     private var undoStack: [EditorCanvasState] = []
@@ -273,14 +280,6 @@ class ScreenshotEditorViewModel: ObservableObject {
         sensitiveTextStatus = "Applied \(approved.count) opaque redactions. Undo is available. Review the image before sharing."
     }
 
-    // Convert point in overlay-local space to 0..1 normalized coordinate
-    func normalizePoint(_ point: CGPoint, imageSize: CGSize) -> CGPoint {
-        CGPoint(
-            x: max(0, min(1, point.x / imageSize.width)),
-            y: max(0, min(1, point.y / imageSize.height))
-        )
-    }
-
     // Convert normalized rect to screen rect
     func scaledRect(_ rect: CGRect, imageSize: CGSize, origin: CGPoint) -> CGRect {
         CGRect(
@@ -405,65 +404,35 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     // Find which annotation is at a normalized point
     func annotationIndex(at point: CGPoint) -> Int? {
-        // Search in reverse draw order so the topmost visible annotation is picked first
-        for i in annotations.drawOrderIndices.reversed() {
-            let ann = annotations[i]
-            if ann.tool == .pencil {
-                if let bounds = pencilBounds(for: ann), bounds.insetBy(dx: -0.02, dy: -0.02).contains(point) {
-                    return i
-                }
-            } else {
-                let hitRect: CGRect
-                if ann.tool == .arrow {
-                        // Curves are measured in pixels, where the bend is defined.
-                        let size = hitTestImageSize
-                        let line = linePoints(for: ann)
-                        let distance = ArrowGeometry.distance(
-                            from: CGPoint(x: point.x * size.width, y: point.y * size.height),
-                            start: CGPoint(x: line.start.x * size.width, y: line.start.y * size.height),
-                            end: CGPoint(x: line.end.x * size.width, y: line.end.y * size.height),
-                            bend: ann.arrow.bend
-                        )
-                        if distance <= 0.02 * size.width || drawnOutlineContains(ann, point: point) {
-                            return i
-                        }
-                        continue
-                } else if ann.tool == .line {
-                        let line = linePoints(for: ann)
-                        if distanceToSegment(from: point, start: line.start, end: line.end) <= 0.02 || drawnOutlineContains(ann, point: point) {
-                            return i
-                        }
-                        continue
-                } else if ann.tool == .emoji || ann.isRotated {
-                    let pixelSize = hitTestImageSize
-                    let pixelPoint = CGPoint(x: point.x * pixelSize.width, y: point.y * pixelSize.height)
-                    let padding: CGFloat
-                    switch ann.tool {
-                    case .emoji: padding = emojiHitPaddingPixels
-                    case .text: padding = pixelSize.width * 0.03
-                    default: padding = pixelSize.width * 0.01
-                    }
-                    if RotatableAnnotationGeometry.contains(
-                        pixelPoint,
-                        rect: ann.tool == .text ? normalizedTextDecoratedRect(for: ann) : ann.rect,
-                        rotation: ann.rotation,
-                        in: pixelSize,
-                        padding: padding
-                    ) {
-                        return i
-                    }
-                    continue
-                } else if ann.tool == .text {
-                    hitRect = normalizedTextDecoratedRect(for: ann).insetBy(dx: -0.01, dy: -0.01)
-                } else {
-                    hitRect = ann.rect.insetBy(dx: -0.01, dy: -0.01)
-                }
-                if hitRect.contains(point) {
-                    return i
-                }
-            }
+        annotations.drawOrderIndices.reversed().first { contains(point, in: annotations[$0]) }
+    }
+
+    private func contains(_ point: CGPoint, in ann: ScreenshotAnnotation) -> Bool {
+        if ann.tool == .pencil {
+            return pencilBounds(for: ann)?.insetBy(dx: -0.02, dy: -0.02).contains(point) == true
         }
-        return nil
+        let size = hitTestImageSize
+        let pixelPoint = scaledPoint(point, imageSize: size, origin: .zero)
+        if ann.tool == .arrow {
+            let line = scaledLinePoints(for: ann, imageSize: size, origin: .zero)
+            let distance = ArrowGeometry.distance(from: pixelPoint, start: line.start, end: line.end, bend: ann.arrow.bend)
+            return distance <= 0.02 * size.width || drawnOutlineContains(ann, point: point)
+        }
+        if ann.tool == .line {
+            let line = linePoints(for: ann)
+            return distanceToSegment(from: point, start: line.start, end: line.end) <= 0.02 || drawnOutlineContains(ann, point: point)
+        }
+        let rect = ann.tool == .text ? normalizedTextDecoratedRect(for: ann) : ann.rect
+        if ann.tool == .emoji || ann.isRotated {
+            let padding: CGFloat
+            switch ann.tool {
+            case .emoji: padding = emojiHitPaddingPixels
+            case .text: padding = size.width * 0.03
+            default: padding = size.width * 0.01
+            }
+            return RotatableAnnotationGeometry.contains(pixelPoint, rect: rect, rotation: ann.rotation, in: size, padding: padding)
+        }
+        return rect.insetBy(dx: -0.01, dy: -0.01).contains(point)
     }
 
     /// Whether a normalized `point` lands on an arrow's or line's drawn shape (a thick shaft, a
@@ -505,7 +474,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     func selectedAnnotationRect(imageSize: CGSize, origin: CGPoint) -> CGRect? {
-        guard let idx = selectedAnnotationIndex, idx < annotations.count else { return nil }
+        guard let idx = editableSelectionIndex else { return nil }
         let ann = annotations[idx]
         let normRect: CGRect
         if ann.tool == .pencil, let bounds = pencilBounds(for: ann) {
@@ -559,28 +528,21 @@ class ScreenshotEditorViewModel: ObservableObject {
         max(4, hitTestImageSize.width * 0.005)
     }
 
-    private var handleHitThresholdPixels: CGFloat {
-        max(10, hitTestImageSize.width * 0.02)
+    var editableSelectionIndex: Int? {
+        guard selectedTool != .crop, selectedTool != .background, !isEditingText,
+              let index = selectedAnnotationIndex, annotations.indices.contains(index) else { return nil }
+        return index
     }
 
     func selectedEmojiValue() -> String? {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index),
-              annotations[index].tool == .emoji else {
-            return nil
-        }
-        return annotations[index].text
+        selectedIndex(using: { $0 == .emoji }).map { annotations[$0].text }
     }
 
     /// Picks `emoji` for new stickers, or swaps the glyph on the selected sticker.
     func chooseEmoji(_ emoji: String) {
-        selectedEmoji = emoji
-        rememberRecentEmoji(emoji)
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index),
-              annotations[index].tool == .emoji else {
+        guard let index = selectedIndex(using: { $0 == .emoji }) else {
+            selectedEmoji = emoji
+            rememberRecentEmoji(emoji)
             return
         }
         guard annotations[index].text != emoji else { return }
@@ -590,38 +552,24 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     func selectedAnnotationRotationDegrees() -> Double? {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index),
-              annotations[index].tool.storesRotation else {
-            return nil
+        selectedIndex(using: \.storesRotation).map {
+            Double(RotatableAnnotationGeometry.normalizedAngle(annotations[$0].rotation) * 180 / .pi)
         }
-        return Double(RotatableAnnotationGeometry.normalizedAngle(annotations[index].rotation) * 180 / .pi)
     }
 
     var showsRotationControl: Bool {
-        selectedTool == .move && selectedAnnotationRotationDegrees() != nil
+        selectedIndex(using: \.storesRotation) != nil
     }
 
     /// Captures one undo step before a slider drag starts changing the rotation live.
     func beginSelectedAnnotationRotationEdit() {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index),
-              annotations[index].tool.storesRotation else {
-            return
-        }
+        guard showsRotationControl else { return }
         recordHistory()
     }
 
     @discardableResult
     func updateSelectedAnnotationRotationDegrees(_ degrees: Double, recordsHistory: Bool = true) -> Bool {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index),
-              annotations[index].tool.storesRotation else {
-            return false
-        }
+        guard let index = selectedIndex(using: \.storesRotation) else { return false }
         let radians = RotatableAnnotationGeometry.normalizedAngle(CGFloat(degrees) * .pi / 180)
         guard abs(annotations[index].rotation - radians) > 0.0001 else { return false }
         if recordsHistory {
@@ -641,8 +589,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return }
         let side = EmojiAnnotationMath.defaultSidePixels(forImageSize: imagePixelSize)
         let rect = EmojiAnnotationMath.normalizedRect(centeredAt: position, sidePixels: side, imageSize: imagePixelSize)
-        recordHistory()
-        annotations.append(ScreenshotAnnotation(
+        commitAnnotation(ScreenshotAnnotation(
             tool: .emoji,
             rect: rect,
             color: selectedColor,
@@ -651,7 +598,6 @@ class ScreenshotEditorViewModel: ObservableObject {
             points: []
         ))
         rememberRecentEmoji(selectedEmoji)
-        markDirty()
     }
 
     private func rememberRecentEmoji(_ emoji: String) {
@@ -666,12 +612,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     var inspectorTool: EditTool {
-        if selectedTool == .move,
-           let index = selectedAnnotationIndex,
-           annotations.indices.contains(index) {
-            return annotations[index].tool
-        }
-        return selectedTool
+        editableSelectionIndex.map { annotations[$0].tool } ?? selectedTool
     }
 
     func applyBackgroundPreset(_ preset: ExportBackgroundPreset) {
@@ -1078,10 +1019,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     private func selectedIndex(using uses: (EditTool) -> Bool) -> Int? {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index),
-              uses(annotations[index].tool) else {
+        guard let index = editableSelectionIndex, uses(annotations[index].tool) else {
             return nil
         }
         return index
@@ -1198,127 +1136,117 @@ class ScreenshotEditorViewModel: ObservableObject {
         didRecordArrowShapeAdjustment = false
     }
 
+    // Resolve ownership once, at the press. Crossing another annotation or dragging a handle
+    // away from its original hit area must never turn an edit into a new drawing (or vice versa).
+    private func dragOwner(at point: CGPoint, displaySize: CGSize) -> CanvasDrag {
+        guard textEditPosition == nil else { return .ignored }
+        let isInsideImage = (0...1).contains(point.x) && (0...1).contains(point.y)
+        if let index = editableSelectionIndex {
+            let annotation = annotations[index]
+            if let handle = handleTarget(at: point, for: annotation, displaySize: displaySize, selected: true) {
+                return .edit(index, handle)
+            }
+            if selectedTool != .move, isInsideImage, contains(point, in: annotation) {
+                return .edit(index, .body)
+            }
+        }
+        guard isInsideImage else { return .ignored }
+        if selectedTool == .move {
+            guard let index = annotationIndex(at: point) else { return .tool(.move) }
+            return .edit(index, handleTarget(at: point, for: annotations[index], displaySize: displaySize, selected: false) ?? .body)
+        }
+        return .tool(selectedTool)
+    }
+
+    private func finishTap(at point: CGPoint, displaySize: CGSize) {
+        guard textEditPosition == nil else { return }
+        if case .ignored = canvasDrag { return }
+        guard (0...1).contains(point.x), (0...1).contains(point.y) else { return }
+        if selectedTool == .move {
+            selectedAnnotationIndex = annotationIndex(at: point)
+            return
+        }
+        guard case .tool(let tool) = canvasDrag else { return }
+        switch tool {
+        case .text:
+            textEditPosition = point
+            textEditValue = ""
+            isEditingText = true
+        case .number: placeNumberAnnotation(at: point)
+        case .emoji: placeEmojiAnnotation(at: point)
+        case .crop: handleCropTap(at: point, displaySize: displaySize)
+        default: break
+        }
+    }
+
+    private func beginEditingAnnotation(at index: Int) {
+        beginDragHistory()
+        wasDirtyBeforeDrag = hasPendingChanges
+        selectedAnnotationIndex = index
+        let annotation = annotations[index]
+        dragOriginalAnnotationRect = annotation.rect
+        dragOriginalRect = rotationFrame(for: annotation)?.rect ?? annotation.rect
+        dragOriginalPoints = annotation.points
+        if (annotation.tool == .arrow || annotation.tool == .line) && dragOriginalPoints.count < 2 {
+            let line = linePoints(for: annotation)
+            dragOriginalPoints = [line.start, line.end]
+        }
+        dragOriginalFontSize = annotation.fontSize
+        dragOriginalTextBoxStyle = annotation.textBoxStyle
+        dragOriginalRotation = annotation.rotation
+    }
+
     func handleDrag(start: CGPoint, current: CGPoint, isAspectLocked: Bool = false, displaySize: CGSize = .zero) {
-        switch selectedTool {
-        case .move:
-            if !isDraggingAnnotation && !isDraggingEndpoint && !isDraggingStartpoint && !isDraggingBend && !isRotatingAnnotation && activeResizeHandle == nil {
-                // First drag event — find what we hit
-                let selectedIndex = selectedAnnotationIndex.flatMap { (index: Int) -> Int? in
-                    guard annotations.indices.contains(index) else { return nil }
-                    let annotation = annotations[index]
-                    let hitsHandle = resizeHandle(at: start, for: annotation) != nil
-                        || isRotationHandle(at: start, for: annotation)
-                    return hitsHandle ? index : nil
-                }
-                if let idx = selectedIndex ?? annotationIndex(at: start) {
-                    beginDragHistory()
-                    let wasSelected = selectedAnnotationIndex == idx
-                    selectedAnnotationIndex = idx
-                    let annotation = annotations[idx]
-                    dragOriginalAnnotationRect = annotation.rect
-                    if annotation.tool == .pencil {
-                        dragOriginalRect = pencilBounds(for: annotation) ?? annotation.rect
-                    } else if annotation.tool == .text {
-                        dragOriginalRect = normalizedTextDecoratedRect(for: annotation)
-                    } else {
-                        dragOriginalRect = annotation.rect
-                    }
-                    dragOriginalPoints = annotations[idx].points
-                    dragOriginalFontSize = annotations[idx].fontSize
-                    dragOriginalTextBoxStyle = annotations[idx].textBoxStyle
-                    dragOriginalRotation = annotations[idx].rotation
-
-                    let ann = annotations[idx]
-                    if ann.tool == .arrow || ann.tool == .line {
-                        if dragOriginalPoints.count < 2 {
-                            let line = linePoints(for: ann)
-                            dragOriginalPoints = [line.start, line.end]
-                        }
-                        // Check if near the head (end) or tail (start) endpoint
-                        let line = linePoints(for: ann)
-                        let endPt = line.end
-                        let startPt = line.start
-                        let distToEnd = hypot(start.x - endPt.x, start.y - endPt.y)
-                        let distToStart = hypot(start.x - startPt.x, start.y - startPt.y)
-                        let threshold: CGFloat = 0.04
-                        // The bend handle is only shown on a selected arrow, and it is grabbed
-                        // within a few screen points so the rest of the arrow still moves it.
-                        var distToBend = CGFloat.greatestFiniteMagnitude
-                        var isOnBendHandle = false
-                        if wasSelected, ann.tool == .arrow {
-                            let handle = arrowHandle(for: ann)
-                            distToBend = hypot(start.x - handle.x, start.y - handle.y)
-                            isOnBendHandle = hypot(
-                                (start.x - handle.x) * displaySize.width,
-                                (start.y - handle.y) * displaySize.height
-                            ) <= 8
-                        }
-
-                        if isOnBendHandle && distToBend < min(distToEnd, distToStart) {
-                            isDraggingBend = true
-                        } else if distToEnd < threshold && distToEnd <= distToStart {
-                            isDraggingEndpoint = true
-                        } else if distToStart < threshold && distToStart < distToEnd {
-                            isDraggingStartpoint = true
-                        } else {
-                            isDraggingAnnotation = true
-                        }
-                    } else if isRotationHandle(at: start, for: ann) {
-                        isRotatingAnnotation = true
-                    } else if let handle = resizeHandle(at: start, for: ann) {
-                        activeResizeHandle = handle
-                    } else {
-                        isDraggingAnnotation = true
-                    }
+        if canvasDrag == nil {
+            canvasDrag = dragOwner(at: start, displaySize: displaySize)
+        }
+        if !crossedDragThreshold {
+            let size = displaySize.width > 0 && displaySize.height > 0 ? displaySize : hitTestImageSize
+            guard hypot((current.x - start.x) * size.width, (current.y - start.y) * size.height) >= 1 else { return }
+            crossedDragThreshold = true
+            if case .edit(let index, _) = canvasDrag { beginEditingAnnotation(at: index) }
+            if case .tool(.move) = canvasDrag { selectedAnnotationIndex = nil }
+        }
+        switch canvasDrag {
+        case .edit(let index, let target):
+            guard annotations.indices.contains(index), current != start || didChangePendingDrag else { return }
+            didChangePendingDrag = true
+            let dx = current.x - start.x
+            let dy = current.y - start.y
+            switch target {
+            case .body:
+                moveAnnotation(at: index, dx: max(0, min(1, current.x)) - start.x, dy: max(0, min(1, current.y)) - start.y)
+            case .rotation: rotateAnnotation(at: index, toward: current, snaps: isAspectLocked)
+            case .corner(let handle): resizeAnnotation(at: index, from: handle, to: current)
+            case .bend: bendArrow(at: index, toward: current, displaySize: displaySize)
+            case .start, .end:
+                var line = originalLinePoints()
+                if case .start = target {
+                    line.start = CGPoint(x: line.start.x + dx, y: line.start.y + dy)
                 } else {
-                    selectedAnnotationIndex = nil
+                    line.end = CGPoint(x: line.end.x + dx, y: line.end.y + dy)
                 }
+                var annotation = annotations[index]
+                annotation.points = [line.start, line.end]
+                annotation.rect = directedRect(from: line)
+                annotations[index] = annotation
+                markDirty()
             }
-            if let idx = selectedAnnotationIndex {
-                let dx = current.x - start.x
-                let dy = current.y - start.y
-                if dx != 0 || dy != 0 {
-                    didChangePendingDrag = true
-                }
-                if isRotatingAnnotation {
-                    rotateAnnotation(at: idx, toward: current, snaps: isAspectLocked)
-                } else if let resizeHandle = activeResizeHandle {
-                    resizeAnnotation(at: idx, from: resizeHandle, to: current)
-                } else if isDraggingEndpoint {
-                    // Move just the endpoint (rotate the arrow/line)
-                    var ann = annotations[idx]
-                    let orig = originalLinePoints()
-                    let updated: LinePoints = (
-                        start: orig.start,
-                        end: CGPoint(x: orig.end.x + dx, y: orig.end.y + dy)
-                    )
-                    ann.points = [updated.start, updated.end]
-                    ann.rect = directedRect(from: updated)
-                    annotations[idx] = ann
-                    markDirty()
-                } else if isDraggingBend {
-                    bendArrow(at: idx, toward: current, displaySize: displaySize)
-                } else if isDraggingStartpoint {
-                    // Move the start point (reverse rotate)
-                    var ann = annotations[idx]
-                    let orig = originalLinePoints()
-                    let updated: LinePoints = (
-                        start: CGPoint(x: orig.start.x + dx, y: orig.start.y + dy),
-                        end: orig.end
-                    )
-                    ann.points = [updated.start, updated.end]
-                    ann.rect = directedRect(from: updated)
-                    annotations[idx] = ann
-                    markDirty()
-                } else if isDraggingAnnotation {
-                    moveAnnotation(at: idx, dx: dx, dy: dy)
-                }
-            }
+        case .tool(let tool):
+            let clamped = CGPoint(x: max(0, min(1, current.x)), y: max(0, min(1, current.y)))
+            updateToolDrag(tool, start: start, current: clamped, isAspectLocked: isAspectLocked, displaySize: displaySize)
+        case .ignored, nil: break
+        }
+    }
 
+    private func updateToolDrag(_ tool: EditTool, start: CGPoint, current: CGPoint, isAspectLocked: Bool, displaySize: CGSize) {
+        switch tool {
         case .crop:
             updateCropSelection(start: start, current: current, isAspectLocked: isAspectLocked, displaySize: displaySize)
 
         case .pencil:
+            if pencilPoints.isEmpty { pencilPoints.append(start) }
+            guard current != pencilPoints.last else { return }
             pencilPoints.append(current)
             currentAnnotation = ScreenshotAnnotation(
                 tool: .pencil,
@@ -1329,30 +1257,27 @@ class ScreenshotEditorViewModel: ObservableObject {
                 points: pencilPoints
             )
 
-        case .text, .number, .emoji:
-            break // text/number/emoji use click, not drag
-
-        case .background:
-            break // the Background tool only edits the sidebar's frame settings
+        case .text, .number, .emoji, .background, .move:
+            break
 
         default:
             let rect = makeRect(from: start, to: current, isAspectLocked: isAspectLocked)
             currentAnnotation = ScreenshotAnnotation(
-                tool: selectedTool,
+                tool: tool,
                 rect: rect,
                 color: selectedColor,
                 textColor: numberTextColor,
                 fillColor: selectedFillColor,
                 lineWidth: lineWidth,
                 text: "",
-                points: (selectedTool == .arrow || selectedTool == .line) ? [start, current] : [],
+                points: (tool == .arrow || tool == .line) ? [start, current] : [],
                 redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
-                isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
+                isOpaqueRedaction: tool == .blur && redactionStrength == .solid,
                 arrow: arrowShape,
                 startCap: startCap,
                 endCap: endCap,
                 lineJoin: lineJoin,
-                strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
+                strokeAlignment: tool.usesOutline ? outlineAlignment : strokeAlignment,
                 outlineColor: outlineColor,
                 outlineWidth: outlineWidth
             )
@@ -1360,70 +1285,74 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     func handleDragEnd(start: CGPoint, end: CGPoint, isAspectLocked: Bool = false, displaySize: CGSize = .zero) {
-        switch selectedTool {
-        case .move:
-            isDraggingAnnotation = false
-            isDraggingEndpoint = false
-            isDraggingStartpoint = false
-            isDraggingBend = false
-            isRotatingAnnotation = false
-            activeResizeHandle = nil
+        handleDrag(start: start, current: end, isAspectLocked: isAspectLocked, displaySize: displaySize)
+        defer { canvasDrag = nil; crossedDragThreshold = false }
+        guard crossedDragThreshold else {
+            finishTap(at: start, displaySize: displaySize)
+            return
+        }
+        switch canvasDrag {
+        case .edit:
             commitDragHistory()
-
-        case .crop:
+        case .tool(.crop):
             finishCropSelectionDrag(displaySize: displaySize)
-
-        case .pencil:
-            if pencilPoints.count > 1 {
-                recordHistory()
-                annotations.append(ScreenshotAnnotation(
-                    tool: .pencil,
-                    rect: .zero,
-                    color: selectedColor,
-                    lineWidth: lineWidth,
-                    text: "",
-                    points: pencilPoints
-                ))
-                markDirty()
+        case .tool(.pencil), .tool(.rectangle), .tool(.circle), .tool(.line), .tool(.arrow), .tool(.blur):
+            guard let annotation = currentAnnotation else { return }
+            let w = abs(annotation.rect.width), h = abs(annotation.rect.height)
+            let isLine = annotation.tool == .arrow || annotation.tool == .line
+            let hasExtent = max(w, h) > 0.005 && (isLine || min(w, h) > 0)
+            let shouldCommit = annotation.tool == .pencil ? pencilPoints.count > 1 : hasExtent
+            if shouldCommit {
+                commitAnnotation(annotation)
             }
             pencilPoints = []
             currentAnnotation = nil
-
-        case .text, .number, .emoji:
-            break // handled by SpatialTapGesture
-
-        case .background:
-            break
-
-        default:
-            let rect = makeRect(from: start, to: end, isAspectLocked: isAspectLocked)
-            let w = abs(rect.width)
-            let h = abs(rect.height)
-            if w > 0.005 || h > 0.005 {
-                recordHistory()
-                annotations.append(ScreenshotAnnotation(
-                    tool: selectedTool,
-                    rect: rect,
-                    color: selectedColor,
-                    textColor: numberTextColor,
-                    fillColor: selectedFillColor,
-                    lineWidth: lineWidth,
-                    text: "",
-                    points: (selectedTool == .arrow || selectedTool == .line) ? [start, end] : [],
-                    redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
-                    isOpaqueRedaction: selectedTool == .blur && redactionStrength == .solid,
-                    arrow: arrowShape,
-                    startCap: startCap,
-                    endCap: endCap,
-                    lineJoin: lineJoin,
-                    strokeAlignment: selectedTool.usesOutline ? outlineAlignment : strokeAlignment,
-                    outlineColor: outlineColor,
-                    outlineWidth: outlineWidth
-                ))
-                markDirty()
-            }
-            currentAnnotation = nil
+        default: break
         }
+    }
+
+    private func commitAnnotation(_ annotation: ScreenshotAnnotation) {
+        recordHistory()
+        annotations.append(annotation)
+        selectedAnnotationIndex = annotations.count - 1
+        markDirty()
+    }
+
+    /// Escape or a tool change cancels the draft without letting the same press draw on release.
+    @discardableResult
+    func cancelAnnotationDrag() -> Bool {
+        guard let drag = canvasDrag else { return false }
+        switch drag {
+        case .edit(let index, _):
+            if didChangePendingDrag, let original = pendingDragHistoryState?.annotations[index],
+               annotations.indices.contains(index), annotations[index].id == original.id {
+                annotations[index] = original
+                hasPendingChanges = wasDirtyBeforeDrag
+            }
+            pendingDragHistoryState = nil
+            didChangePendingDrag = false
+        case .tool(.crop): return false
+        case .tool:
+            if currentAnnotation != nil { currentAnnotation = nil }
+            pencilPoints = []
+        case .ignored: return false
+        }
+        canvasDrag = .ignored
+        return true
+    }
+
+    func finishCancelledGesture() {
+        if case .tool(.crop) = canvasDrag {
+            if cropDragMode != nil {
+                cropRect = cropDragOriginalRect.isEmpty ? nil : cropDragOriginalRect
+                cropDragMode = nil
+                isAdjustingCropSelection = false
+            }
+        } else {
+            cancelAnnotationDrag()
+        }
+        canvasDrag = nil
+        crossedDragThreshold = false
     }
 
     private func moveAnnotation(at index: Int, dx: CGFloat, dy: CGFloat) {
@@ -1450,47 +1379,35 @@ class ScreenshotEditorViewModel: ObservableObject {
         markDirty()
     }
 
-    private func resizeHandle(at point: CGPoint, for annotation: ScreenshotAnnotation) -> AnnotationResizeHandle? {
-        guard annotation.tool != .arrow, annotation.tool != .line else { return nil }
-        if annotation.tool == .emoji || annotation.isRotated {
-            return rotatedResizeHandle(at: point, for: annotation)
-        }
-        let bounds: CGRect?
-        if annotation.tool == .pencil {
-            bounds = pencilBounds(for: annotation)
-        } else if annotation.tool == .text {
-            bounds = normalizedTextDecoratedRect(for: annotation)
-        } else {
-            bounds = annotation.rect
-        }
-        guard let bounds else { return nil }
-        let threshold: CGFloat = 0.025
-        let handles: [(AnnotationResizeHandle, CGPoint)] = [
-            (.topLeft, CGPoint(x: bounds.minX, y: bounds.minY)),
-            (.topRight, CGPoint(x: bounds.maxX, y: bounds.minY)),
-            (.bottomLeft, CGPoint(x: bounds.minX, y: bounds.maxY)),
-            (.bottomRight, CGPoint(x: bounds.maxX, y: bounds.maxY)),
-        ]
-        return handles.min { hypot(point.x - $0.1.x, point.y - $0.1.y) < hypot(point.x - $1.1.x, point.y - $1.1.y) }
-            .flatMap { hypot(point.x - $0.1.x, point.y - $0.1.y) <= threshold ? $0.0 : nil }
-    }
-
-    /// Corner handle lookup for annotations whose frame follows their rotation.
-    private func rotatedResizeHandle(at point: CGPoint, for annotation: ScreenshotAnnotation) -> AnnotationResizeHandle? {
-        let size = hitTestImageSize
-        let pixelPoint = CGPoint(x: point.x * size.width, y: point.y * size.height)
-        let frame = annotation.tool == .text ? normalizedTextDecoratedRect(for: annotation) : annotation.rect
-        let corners = RotatableAnnotationGeometry.corners(of: frame, rotation: annotation.rotation, in: size)
-        let handles: [AnnotationResizeHandle] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
-        var best: (handle: AnnotationResizeHandle, distance: CGFloat)?
-        for (handle, corner) in zip(handles, corners) {
-            let distance = hypot(pixelPoint.x - corner.x, pixelPoint.y - corner.y)
-            if best == nil || distance < best!.distance {
-                best = (handle, distance)
+    private func handleTarget(at point: CGPoint, for annotation: ScreenshotAnnotation, displaySize: CGSize, selected: Bool) -> AnnotationDragTarget? {
+        // The grips and rotation offset are drawn in screen points, not source pixels.
+        let size = displaySize.width > 0 && displaySize.height > 0 ? displaySize : hitTestImageSize
+        let location = scaledPoint(point, imageSize: size, origin: .zero)
+        func distance(to p: CGPoint) -> CGFloat { hypot(p.x - location.x, p.y - location.y) }
+        if annotation.tool == .arrow || annotation.tool == .line {
+            let line = scaledLinePoints(for: annotation, imageSize: size, origin: .zero)
+            let head = distance(to: line.end), tail = distance(to: line.start)
+            if selected, annotation.tool == .arrow {
+                let bend = distance(to: ArrowGeometry.handle(start: line.start, end: line.end, bend: annotation.arrow.bend))
+                if bend <= 8 && bend < min(head, tail) { return .bend }
             }
+            guard min(head, tail) <= 8 else { return nil }
+            return head <= tail ? .end : .start
         }
-        guard let best, best.distance <= handleHitThresholdPixels else { return nil }
-        return best.handle
+        let frame = rotationFrame(for: annotation)
+        if let frame, distance(to: RotatableAnnotationGeometry.rotationHandle(for: frame.rect, rotation: frame.rotation, in: size)) <= 9 {
+            return .rotation
+        }
+        let rect = frame?.rect ?? annotation.rect
+        let corners = RotatableAnnotationGeometry.corners(of: rect, rotation: frame?.rotation ?? 0, in: size)
+        let handles: [AnnotationResizeHandle] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
+        guard let closest = corners.indices.min(by: { distance(to: corners[$0]) < distance(to: corners[$1]) }),
+              distance(to: corners[closest]) <= 7 else { return nil }
+        // Even when zoomed far out, the middle of a small badge or sticker is a move target.
+        if selected, distance(to: RotatableAnnotationGeometry.center(of: rect, in: size)) < distance(to: corners[closest]) {
+            return nil
+        }
+        return .corner(handles[closest])
     }
 
     /// Bounds and angle the rotation grip is anchored to. Pencil strokes use their point bounds
@@ -1505,14 +1422,6 @@ class ScreenshotEditorViewModel: ObservableObject {
             annotation.tool == .text ? normalizedTextDecoratedRect(for: annotation) : annotation.rect,
             annotation.rotation
         )
-    }
-
-    private func isRotationHandle(at point: CGPoint, for annotation: ScreenshotAnnotation) -> Bool {
-        guard let frame = rotationFrame(for: annotation) else { return false }
-        let size = hitTestImageSize
-        let pixelPoint = CGPoint(x: point.x * size.width, y: point.y * size.height)
-        let handle = RotatableAnnotationGeometry.rotationHandle(for: frame.rect, rotation: frame.rotation, in: size)
-        return hypot(pixelPoint.x - handle.x, pixelPoint.y - handle.y) <= handleHitThresholdPixels
     }
 
     /// Points the annotation's rotation grip at `point`; Shift snaps to 15° steps.
@@ -1680,6 +1589,7 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     func undo() {
         guard let previousState = undoStack.popLast() else { return }
+        cancelAnnotationDrag()
         redoStack.append(canvasState())
         restoreCanvasState(previousState)
         updateHistoryAvailability()
@@ -1688,6 +1598,7 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     func redo() {
         guard let nextState = redoStack.popLast() else { return }
+        cancelAnnotationDrag()
         undoStack.append(canvasState())
         restoreCanvasState(nextState)
         updateHistoryAvailability()
@@ -1697,6 +1608,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     func clearAnnotations() {
         guard !annotations.isEmpty else { return }
 
+        cancelAnnotationDrag()
         recordHistory()
         annotations.removeAll()
         selectedAnnotationIndex = nil
@@ -1707,18 +1619,13 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     var canDeleteSelectedAnnotation: Bool {
-        guard selectedTool == .move, let index = selectedAnnotationIndex else { return false }
-        return annotations.indices.contains(index)
+        editableSelectionIndex != nil
     }
 
     @discardableResult
     func deleteSelectedAnnotation() -> Bool {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index) else {
-            return false
-        }
-
+        guard let index = editableSelectionIndex else { return false }
+        cancelAnnotationDrag()
         recordHistory()
         annotations.remove(at: index)
         selectedAnnotationIndex = nil
@@ -1769,6 +1676,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     // MARK: - Crop selection
 
     func clearCropSelection() {
+        if case .tool(.crop) = canvasDrag { canvasDrag = .ignored }
         cropDragMode = nil
         cropDragOriginalRect = .zero
         if cropRect != nil {
@@ -2050,19 +1958,6 @@ class ScreenshotEditorViewModel: ObservableObject {
         )
     }
 
-    /// An arrow's bend handle, normalized like its endpoints. The bend is defined in pixels, so
-    /// the handle is found there and mapped back.
-    private func arrowHandle(for annotation: ScreenshotAnnotation) -> CGPoint {
-        let size = hitTestImageSize
-        let line = linePoints(for: annotation)
-        let handle = ArrowGeometry.handle(
-            start: CGPoint(x: line.start.x * size.width, y: line.start.y * size.height),
-            end: CGPoint(x: line.end.x * size.width, y: line.end.y * size.height),
-            bend: annotation.arrow.bend
-        )
-        return CGPoint(x: handle.x / size.width, y: handle.y / size.height)
-    }
-
     /// Bends the arrow so its curve passes nearest `point`, snapping straight within a few
     /// screen points of the chord.
     private func bendArrow(at index: Int, toward point: CGPoint, displaySize: CGSize) {
@@ -2121,8 +2016,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         let normFontHeight = textFontSize / 500.0 // approximate normalized height
         let textWidth = max(0.05, CGFloat(textEditValue.count) * normFontHeight * 0.6)
         let rect = CGRect(x: pos.x, y: pos.y - normFontHeight / 2, width: textWidth, height: normFontHeight)
-        recordHistory()
-        annotations.append(ScreenshotAnnotation(
+        commitAnnotation(ScreenshotAnnotation(
             tool: .text,
             rect: rect,
             color: selectedColor,
@@ -2139,10 +2033,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
             arrow: arrowShape
         ))
-        markDirty()
-        textEditPosition = nil
-        textEditValue = ""
-        isEditingText = false
+        cancelTextAnnotation()
     }
 
     func cancelTextAnnotation() {
@@ -2162,8 +2053,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             width: normW,
             height: normH
         )
-        recordHistory()
-        annotations.append(ScreenshotAnnotation(
+        commitAnnotation(ScreenshotAnnotation(
             tool: .number,
             rect: rect,
             color: selectedColor,
@@ -2174,7 +2064,6 @@ class ScreenshotEditorViewModel: ObservableObject {
             redactionBlurPreset: redactionStrength.blurPreset ?? .medium,
             arrow: arrowShape
         ))
-        markDirty()
         nextNumberLabel += 1
     }
 
@@ -2820,40 +2709,19 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     private var selectedAnnotationIsText: Bool {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index) else {
-            return false
-        }
-        return annotations[index].tool == .text
+        selectedIndex(using: { $0 == .text }) != nil
     }
 
     private var selectedAnnotationIsNumber: Bool {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index) else {
-            return false
-        }
-        return annotations[index].tool == .number
+        selectedIndex(using: { $0 == .number }) != nil
     }
 
     private var selectedAnnotationIsBlur: Bool {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index) else {
-            return false
-        }
-        return annotations[index].tool == .blur
+        selectedIndex(using: { $0 == .blur }) != nil
     }
 
     private var selectedShapeIndex: Int? {
-        guard selectedTool == .move,
-              let index = selectedAnnotationIndex,
-              annotations.indices.contains(index),
-              [.rectangle, .circle, .arrow, .line, .pencil].contains(annotations[index].tool) else {
-            return nil
-        }
-        return index
+        selectedIndex(using: { [.rectangle, .circle, .arrow, .line, .pencil].contains($0) })
     }
 
     private var selectedFillableShapeIndex: Int? {
