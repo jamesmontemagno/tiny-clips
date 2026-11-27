@@ -67,6 +67,10 @@ These commands disable code signing for build and unit-test checks. For manual r
 
 **Suggested first Windows slice:** fix the type-name collision above, then run the equivalent of the Mac batch-import/reopen and preview/export boundary tests through the native Windows store, editor and renderer before wiring the other entry points. Use the Mac implementations above as behavior references, not UI or AVFoundation ports.
 
+**Windows foundation in progress:** the control/model collision is fixed. The Core timeline map now validates playable clips, maps join timing and incoming-clip selection, and refuses destructive splits, trims and last-clip removal. Windows currently refuses v2 editor, export and portable-folder operations rather than silently treating the legacy root as the whole project; Agent editing and rendering also refuse v2. These guards must be replaced as the remaining store, history, rendering, UI and Agent work is implemented. No batch-import, decoded boundary, or Windows accessibility proof has been completed.
+
+On the Windows pickup host, the focused Studio tests passed, as did the x64, ARM64 and Store app builds. The full Core suite reported seven screenshot decoding failures outside the changed Studio code; their baseline has not been verified. App tests passed with CsWinRT1032 warnings in unchanged test files.
+
 ## Release checks (on the respective hosts)
 
 - **Mac:** repeat both builds and the full tests above. Use a disposable project to assemble at least three clips via recording, file import and Library; change a join, reorder, split, trim, undo/redo, reopen and export. Repeat the editing flow with keyboard and VoiceOver; exercise a cancelled take and a failed import.

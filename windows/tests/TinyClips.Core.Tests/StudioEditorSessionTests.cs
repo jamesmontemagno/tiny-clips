@@ -57,6 +57,20 @@ public sealed class StudioEditorSessionTests : StudioEditorSessionTestBase
     }
 
     [Fact]
+    public async Task Load_MultiClipProjectDoesNotOpenTheLegacyPreview()
+    {
+        var id = CreateProject();
+        Projects.Save(StudioTimelineEditing.ToTimelineProject(Projects.Load(id)));
+
+        var session = await OpenAsync(id);
+
+        Assert.Equal(StudioEditorLoadState.Unavailable, session.State);
+        Assert.Contains("Multi-clip", session.UnavailableMessage);
+        Assert.Empty(Previews.Requests);
+        Assert.False(session.CanExport);
+    }
+
+    [Fact]
     public async Task Load_WithoutTheScreenFile_IsUnavailableAndOpensNoPreview()
     {
         var id = CreateProject(writeScreenFile: false, name: "Moved away");

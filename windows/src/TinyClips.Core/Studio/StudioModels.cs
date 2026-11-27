@@ -207,6 +207,15 @@ public enum StudioMediaSourceKind
     FlatVideo,
 }
 
+[JsonConverter(typeof(StudioClipTransitionJsonConverter))]
+public enum StudioClipTransition
+{
+    Cut,
+    FadeThroughBlack,
+    FadeThroughWhite,
+    CrossDissolve,
+}
+
 public sealed record StudioMediaSource
 {
     public string Id { get; init; } = string.Empty;
@@ -232,6 +241,8 @@ public sealed record StudioTimelineClip
     public string Name { get; init; } = string.Empty;
     public double SourceStart { get; init; }
     public double SourceEnd { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public StudioClipTransition TransitionIn { get; init; }
     public StudioEdits Edits { get; init; } = new();
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public StudioScreenStyle? Screen { get; init; }

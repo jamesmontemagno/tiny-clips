@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Windows now refuses to edit, render, or copy multi-clip Studio projects until timeline support is available, rather than silently using only their legacy single-source data.
 - Screenshot recovery Save As preserves an existing destination if encoding fails or is canceled.
 - Saved screenshots no longer retain an extra recovery pixel buffer for the lifetime of their editor.
 - Rectangle, ellipse, arrow, line, and Draw controls in the Windows screenshot editor now expose direct stroke-opacity sliders; fill and badge opacity sliders sit directly below their related size controls.

@@ -114,4 +114,142 @@ public sealed class StudioTimelineEditingTests
         Assert.Equal(90, project.MediaSources!.Single(source => source.Id == "flat-source").Sources.Screen.RotationDegrees);
         Assert.Equal("flat-clip", map.SourcePositionAt(6)!.Value.ClipId);
     }
+
+    [Fact]
+    public void EditsRefuseRemovingTheLastClipAndUnplayableRanges()
+    {
+        var clip = new StudioTimelineClip
+        {
+            Id = "clip",
+            SourceId = "source",
+            SourceEnd = 10,
+            Edits = new StudioEdits
+            {
+                Cuts = [new StudioTimeRange { Start = 3, End = 7 }],
+            },
+        };
+        var timeline = new StudioTimeline { Clips = [clip] };
+
+        Assert.Null(StudioTimelineEditing.Remove(timeline, clip.Id));
+        Assert.Null(StudioTimelineEditing.Split(timeline, clip.Id, 5));
+        Assert.NotNull(StudioTimelineEditing.Split(timeline, clip.Id, 3));
+        Assert.Null(StudioTimelineEditing.Trim(timeline, clip.Id, 3, 7));
+        Assert.NotNull(StudioTimelineEditing.Split(timeline, clip.Id, 8));
+    }
+
+    [Theory]
+    [InlineData(StudioClipTransition.Cut, 4, 2, null, null)]
+    [InlineData(StudioClipTransition.FadeThroughBlack, 4, 2, 1.75, 2.25)]
+    [InlineData(StudioClipTransition.FadeThroughWhite, 4, 2, 1.75, 2.25)]
+    [InlineData(StudioClipTransition.CrossDissolve, 3.5, 1.5, 1.5, 2.0)]
+    public void JoinMappingMatchesTheProjectClock(
+        StudioClipTransition transition, double duration, double incomingStart, double? joinStart, double? joinEnd)
+    {
+        var sources = new[]
+        {
+            Source("a", 2),
+            Source("b", 2),
+        };
+        var timeline = new StudioTimeline
+        {
+            Clips =
+            [
+                new StudioTimelineClip { Id = "first", SourceId = "a", SourceEnd = 2 },
+                new StudioTimelineClip { Id = "second", SourceId = "b", SourceEnd = 2, TransitionIn = transition },
+            ],
+        };
+        var map = new StudioTimelineMap(timeline, sources);
+
+        Assert.Equal(duration, map.Duration, 6);
+        Assert.Equal(incomingStart, map.Clips[1].ProjectStart, 6);
+        Assert.Equal(joinStart, map.Clips[1].Entry?.Start);
+        Assert.Equal(joinEnd, map.Clips[1].Entry?.End);
+        Assert.Equal("second", map.SourcePositionAt(incomingStart)!.Value.ClipId);
+        if (transition == StudioClipTransition.CrossDissolve)
+        {
+            Assert.Equal("first", map.SourcePositionAt(incomingStart, "first")!.Value.ClipId);
+        }
+        Assert.Equal(2, map.SourcePositionAt(duration)!.Value.SourceTime, 6);
+    }
+
+    [Fact]
+    public void ShortClipsLimitJoinsAndSplitResetsIncomingTransition()
+    {
+        var timeline = new StudioTimeline
+        {
+            Clips =
+            [
+                new StudioTimelineClip { Id = "first", SourceId = "a", SourceEnd = 0.4 },
+                new StudioTimelineClip { Id = "second", SourceId = "b", SourceEnd = 0.2, TransitionIn = StudioClipTransition.CrossDissolve },
+            ],
+        };
+        var sources = new[] { Source("a", 0.4), Source("b", 0.2) };
+        var map = new StudioTimelineMap(timeline, sources);
+        Assert.Equal(0.5, map.Duration, 6);
+        Assert.Equal(0.3, map.Clips[1].ProjectStart, 6);
+
+        var split = StudioTimelineEditing.Split(timeline, "second", 0.1)!;
+        Assert.Equal(StudioClipTransition.CrossDissolve, split.Clips[1].TransitionIn);
+        Assert.Equal(StudioClipTransition.Cut, split.Clips[2].TransitionIn);
+    }
+
+    [Fact]
+    public void InsertAtPlayheadSplitsOnlyInsideAClip()
+    {
+        var sources = new[] { Source("a", 10), Source("b", 1) };
+        var timeline = new StudioTimeline { Clips = [new StudioTimelineClip { Id = "first", SourceId = "a", SourceEnd = 10 }] };
+        var incoming = new StudioTimelineClip { Id = "inserted", SourceId = "b", SourceEnd = 1 };
+
+        var result = StudioTimelineEditing.InsertAtProjectTime(timeline, incoming, 5, sources);
+        Assert.Equal(3, result.Clips.Length);
+        Assert.Equal(new[] { "first", "inserted" }, result.Clips.Take(2).Select(clip => clip.Id));
+        Assert.Equal(5, result.Clips[2].SourceStart);
+        Assert.Equal(2, StudioTimelineEditing.InsertAtProjectTime(timeline, incoming, 0, sources).Clips.Length);
+        Assert.Equal(2, StudioTimelineEditing.InsertAtProjectTime(timeline, incoming, 10, sources).Clips.Length);
+        Assert.Throws<StudioProjectInvalidException>(() => StudioTimelineEditing.InsertAtProjectTime(timeline, incoming, 11, sources));
+    }
+
+    [Fact]
+    public void ReadAndWriteRejectUnplayableTimelineAndDuplicateIds()
+    {
+        var project = StudioTimelineEditing.ToTimelineProject(StudioProjectJson.ReadProject("""
+            { "id": "p", "sources": { "screen": { "width": 1, "height": 1, "duration": 10 } } }
+            """));
+        var clip = project.Timeline!.Clips[0];
+        var invalid = project with
+        {
+            Timeline = project.Timeline with
+            {
+                Clips = [clip with { Edits = new StudioEdits { Cuts = [new StudioTimeRange { Start = 0, End = 10 }] } }],
+            },
+        };
+        Assert.Throws<StudioProjectInvalidException>(() => StudioProjectJson.WriteProject(invalid));
+        Assert.Throws<StudioProjectInvalidException>(() => StudioProjectJson.ReadProject(
+            StudioProjectJson.WriteProject(project).Replace("\"cuts\": []", "\"cuts\": [{ \"start\": 0, \"end\": 10 }]")));
+        Assert.Throws<StudioProjectInvalidException>(() => new StudioTimelineMap(
+            project.Timeline with { Clips = [clip, clip] }, project.MediaSources!));
+    }
+
+    [Theory]
+    [InlineData("crossDissolve", StudioClipTransition.CrossDissolve)]
+    [InlineData("fadeThroughBlack", StudioClipTransition.FadeThroughBlack)]
+    [InlineData("fadeThroughWhite", StudioClipTransition.FadeThroughWhite)]
+    [InlineData("future", StudioClipTransition.Cut)]
+    public void TransitionRoundTripsWithUnknownValuesDefaultingToCut(string value, StudioClipTransition expected)
+    {
+        var project = StudioTimelineEditing.ToTimelineProject(StudioProjectJson.ReadProject("""
+            { "id": "p", "sources": { "screen": { "width": 1, "height": 1, "duration": 10 } } }
+            """));
+        var json = StudioProjectJson.WriteProject(project).Replace("\"sourceStart\": 0", $"\"transitionIn\": \"{value}\", \"sourceStart\": 0");
+        var read = StudioProjectJson.ReadProject(json);
+        Assert.Equal(expected, read.Timeline!.Clips[0].TransitionIn);
+        Assert.Equal(expected, StudioProjectJson.ReadProject(StudioProjectJson.WriteProject(read)).Timeline!.Clips[0].TransitionIn);
+    }
+
+    private static StudioMediaSource Source(string id, double duration) => new()
+    {
+        Id = id,
+        Kind = StudioMediaSourceKind.NativeRecording,
+        Sources = new StudioSources { Screen = new StudioScreenSource { Width = 1, Height = 1, Duration = duration } },
+    };
 }

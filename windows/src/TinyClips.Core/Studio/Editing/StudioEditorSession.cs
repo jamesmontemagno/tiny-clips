@@ -269,6 +269,10 @@ public sealed partial class StudioEditorSession
         try
         {
             var opened = _store.MarkOpened(ProjectId);
+            if (opened.SchemaVersion >= 2)
+            {
+                throw new NotSupportedException("Multi-clip Studio projects cannot yet be edited on Windows.");
+            }
             paths = _store.GetPaths(opened);
             model = new StudioEditorModel(opened);
         }

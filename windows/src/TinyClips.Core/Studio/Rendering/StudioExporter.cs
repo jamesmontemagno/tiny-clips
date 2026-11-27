@@ -105,6 +105,7 @@ public sealed class StudioExporter
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+        RefuseUnsupportedTimeline(project);
 
         var job = new StudioExportJob(project, events, paths, outputPath, options ?? new StudioExportOptions(), progress, cancellationToken) { Fault = Fault, PersonFinderFactory = PersonFinderFactory };
         return StudioWorker.Run("Tiny Clips Studio export", job.Run, cancellationToken);
@@ -128,9 +129,18 @@ public sealed class StudioExporter
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentException.ThrowIfNullOrWhiteSpace(posterPath);
+        RefuseUnsupportedTimeline(project);
 
         var job = new StudioPosterJob(project, events, paths, posterPath, maxLongSide, outputTimeSeconds, cancellationToken) { PersonFinderFactory = PersonFinderFactory };
         return StudioWorker.Run("Tiny Clips Studio poster", job.Run, cancellationToken);
+    }
+
+    private static void RefuseUnsupportedTimeline(StudioProject project)
+    {
+        if (project.SchemaVersion >= 2)
+        {
+            throw new NotSupportedException("Multi-clip Studio projects cannot yet be rendered on Windows.");
+        }
     }
 }
 

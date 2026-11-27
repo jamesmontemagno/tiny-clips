@@ -70,6 +70,20 @@ public sealed class StudioExportArgumentTests : IDisposable
     }
 
     [Fact]
+    public void MultiClipProjectsAreNotRenderedAsTheirLegacySingleSource()
+    {
+        var exporter = new StudioExporter();
+        var project = StudioTimelineEditing.ToTimelineProject(Project());
+        var paths = Paths();
+        var output = Path.Combine(_folder, "out.mp4");
+        File.WriteAllText(output, "existing");
+
+        Assert.Throws<NotSupportedException>(() => { _ = exporter.ExportAsync(project, _events, paths, output, cancellationToken: Token); });
+        Assert.Throws<NotSupportedException>(() => { _ = exporter.WritePosterAsync(project, _events, paths, paths.PosterPath, 640, 0, Token); });
+        Assert.Equal("existing", File.ReadAllText(output));
+    }
+
+    [Fact]
     public async Task ExportAsync_FailsWhenTheOutputFolderDoesNotExist()
     {
         CreateSources();

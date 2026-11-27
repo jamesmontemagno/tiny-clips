@@ -52,7 +52,12 @@ public static class StudioProjectJson
                 ModifiedAt = defaults.HasModifiedAt ? project.ModifiedAt : DateTimeOffset.UnixEpoch,
                 LastOpenedAt = defaults.HasLastOpenedAt ? project.LastOpenedAt : DateTimeOffset.UnixEpoch,
             };
-            return ApplyDefaults(project, json);
+            project = ApplyDefaults(project, json);
+            if (project.SchemaVersion >= 2)
+            {
+                _ = new StudioTimelineMap(project.Timeline!, project.MediaSources!);
+            }
+            return project;
         }
         catch (JsonException ex)
         {
@@ -63,7 +68,12 @@ public static class StudioProjectJson
     public static string WriteProject(StudioProject project)
     {
         ArgumentNullException.ThrowIfNull(project);
-        return JsonSerializer.Serialize(project, StudioJsonContext.Default.StudioProject);
+        var json = JsonSerializer.Serialize(project, StudioJsonContext.Default.StudioProject);
+        if (project.SchemaVersion >= 2)
+        {
+            _ = ReadProject(json);
+        }
+        return json;
     }
 
     public static StudioEvents ReadEvents(string json)
@@ -436,9 +446,7 @@ public static class StudioProjectJson
             },
             Sources = sources with { Screen = screenSource, Camera = cameraSource, Events = eventsFile },
             MediaSources = HasNonNull(root, "mediaSources") ? NonNullItems(project.MediaSources) : null,
-            Timeline = project.Timeline is { } timeline
-                ? timeline with { Clips = HasNonNull(root, "timeline", "clips") ? NonNullItems(timeline.Clips) : [] }
-                : null,
+            Timeline = NormalizeTimeline(project.Timeline, root),
             Canvas = canvas,
             Screen = screenStyle,
             Camera = cameraStyle,
@@ -449,6 +457,32 @@ public static class StudioProjectJson
             Overlays = overlays,
             Captions = NormalizeCaptions(project.Captions),
             Exports = NormalizeExports(project.Exports, root),
+        };
+    }
+
+    private static StudioTimeline? NormalizeTimeline(StudioTimeline? timeline, JsonElement root)
+    {
+        if (timeline is null)
+        {
+            return null;
+        }
+
+        var clips = NonNullItems(timeline.Clips);
+        if (!root.TryGetProperty("timeline", out var timelineElement)
+            || timelineElement.ValueKind != JsonValueKind.Object
+            || !timelineElement.TryGetProperty("clips", out var clipsElement)
+            || clipsElement.ValueKind != JsonValueKind.Array)
+        {
+            return timeline with { Clips = clips };
+        }
+
+        var elements = NonNullArrayElements(clipsElement);
+        return timeline with
+        {
+            Clips = clips.Select((clip, index) => clip with
+            {
+                Edits = NormalizeEdits(clip.Edits, elements[index]),
+            }).ToArray(),
         };
     }
 
@@ -1224,6 +1258,26 @@ internal sealed class StudioMediaSourceKindJsonConverter : StudioEnumJsonConvert
     };
     protected override string Write(StudioMediaSourceKind value) =>
         value == StudioMediaSourceKind.NativeRecording ? "nativeRecording" : "flatVideo";
+}
+
+internal sealed class StudioClipTransitionJsonConverter : StudioEnumJsonConverter<StudioClipTransition>
+{
+    protected override StudioClipTransition DefaultValue => StudioClipTransition.Cut;
+    protected override StudioClipTransition? ReadValue(string value) => value switch
+    {
+        "cut" => StudioClipTransition.Cut,
+        "fadeThroughBlack" => StudioClipTransition.FadeThroughBlack,
+        "fadeThroughWhite" => StudioClipTransition.FadeThroughWhite,
+        "crossDissolve" => StudioClipTransition.CrossDissolve,
+        _ => null,
+    };
+    protected override string Write(StudioClipTransition value) => value switch
+    {
+        StudioClipTransition.FadeThroughBlack => "fadeThroughBlack",
+        StudioClipTransition.FadeThroughWhite => "fadeThroughWhite",
+        StudioClipTransition.CrossDissolve => "crossDissolve",
+        _ => "cut",
+    };
 }
 
 internal sealed class StudioAnnotationAttachJsonConverter : StudioEnumJsonConverter<StudioAnnotationAttach>

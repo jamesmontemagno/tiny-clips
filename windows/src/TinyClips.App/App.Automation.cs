@@ -494,7 +494,7 @@ public partial class App : IAutomationAppActions
             case "studio.project.get":
             {
                 var projectId = RequiredStudioString(parameters, "projectId");
-                var project = ReadAutomationProject(projectId, store);
+                var project = ReadAutomationProject(projectId, store, allowTimeline: true);
                 return new JsonObject
                 {
                     ["project"] = ProjectNode(project),
@@ -1002,12 +1002,13 @@ public partial class App : IAutomationAppActions
         return new JsonObject { ["findings"] = items, ["summary"] = StudioCaptionQuality.GetSummary(findings) };
     }
 
-    private StudioProject ReadAutomationProject(string projectId, IStudioProjectStore store)
+    private StudioProject ReadAutomationProject(string projectId, IStudioProjectStore store, bool allowTimeline = false)
     {
         if (StudioWindows().FindOpenViewModel(projectId) is { } viewModel)
         {
-            return viewModel.Project
+            var openProject = viewModel.Project
                 ?? throw new AutomationException(AutomationErrorCodes.Busy, "The Studio project is not ready for agent control.");
+            return CheckAutomationTimeline(openProject, allowTimeline);
         }
 
         if (!store.Exists(projectId))
@@ -1017,12 +1018,23 @@ public partial class App : IAutomationAppActions
 
         try
         {
-            return store.Load(projectId);
+            return CheckAutomationTimeline(store.Load(projectId), allowTimeline);
         }
         catch (DirectoryNotFoundException)
         {
             throw new AutomationException(AutomationErrorCodes.NotFound, $"No Studio project with ID {projectId}.");
         }
+    }
+
+    private static StudioProject CheckAutomationTimeline(StudioProject project, bool allowTimeline)
+    {
+        if (!allowTimeline && project.SchemaVersion >= 2)
+        {
+            throw new AutomationException(AutomationErrorCodes.NotSupported,
+                "Multi-clip Studio projects are not yet supported by Windows Studio.");
+        }
+
+        return project;
     }
 
     private static JsonNode ProjectNode(StudioProject project) =>

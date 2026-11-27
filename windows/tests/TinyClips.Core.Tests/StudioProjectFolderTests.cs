@@ -154,6 +154,25 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
     // Saving a folder
 
     [Fact]
+    public void MultiClipProjectsAreNotCopiedAsIncompleteFolders()
+    {
+        var id = MakeProject(camera: false);
+        var project = StudioTimelineEditing.ToTimelineProject(Store.Load(id));
+        Store.Save(project);
+        var folder = Path.Combine(Outside, "Copy");
+
+        Assert.Throws<NotSupportedException>(() => Save(id, folder));
+        Assert.False(Directory.Exists(folder));
+
+        Directory.CreateDirectory(folder);
+        var manifest = Path.Combine(folder, "Copy.tinyclips");
+        File.WriteAllText(manifest, StudioProjectJson.WriteProject(project));
+        File.WriteAllText(Path.Combine(folder, "screen.mp4"), "screen");
+        Assert.Throws<NotSupportedException>(() => Open(manifest));
+        Assert.Equal("screen", File.ReadAllText(Path.Combine(folder, "screen.mp4")));
+    }
+
+    [Fact]
     public void AFolderHasTheRecordingsAndAProjectFileNamedAfterIt()
     {
         var id = MakeProject(camera: true, events: true, poster: true);

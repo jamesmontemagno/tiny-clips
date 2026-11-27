@@ -81,6 +81,10 @@ public sealed partial class StudioProjectStore
     internal static FolderSnapshot PlanFolderSnapshot(IStudioProjectStore store, string projectId)
     {
         var project = store.Load(projectId);
+        if (project.SchemaVersion >= 2)
+        {
+            throw new NotSupportedException("Multi-clip Studio projects cannot yet be saved as folders on Windows.");
+        }
         var paths = store.GetPaths(project);
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var files = new List<(string Source, string Name)>();
@@ -138,6 +142,10 @@ public sealed partial class StudioProjectStore
 
         var file = StudioProjectFolder.FindProjectFile(path);
         var project = StudioProjectFolder.ReadProjectFile(file);
+        if (project.SchemaVersion >= 2)
+        {
+            throw new NotSupportedException("Multi-clip Studio project folders cannot yet be opened on Windows.");
+        }
         if (project.Sources.Screen.External)
         {
             throw StudioProjectFolderException.ExternalSource();

@@ -17,6 +17,7 @@ using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
 using Windows.UI.Core;
 using ActivatedHandler = Windows.Foundation.TypedEventHandler<object, Microsoft.UI.Xaml.WindowActivatedEventArgs>;
+using StudioTimelineControl = TinyClips.App.Controls.Studio.StudioTimeline;
 using VirtualKey = Windows.System.VirtualKey;
 
 namespace TinyClips.App.Views.Studio;
@@ -43,7 +44,7 @@ public sealed partial class StudioWindow : Window
     private readonly IStudioProjectHost _projects;
     private readonly WindowChromeController _chromeController;
     private readonly StudioInspector _inspector;
-    private readonly StudioTimeline _timeline;
+    private readonly StudioTimelineControl _timeline;
     private readonly Action<StudioWindow, Task> _onClosed;
     private FrameworkElement? _previewView;
     private Task? _teardown;
@@ -94,7 +95,7 @@ public sealed partial class StudioWindow : Window
 
         _inspector = new StudioInspector(viewModel);
         InspectorHost.Child = _inspector;
-        _timeline = new StudioTimeline(viewModel);
+        _timeline = new StudioTimelineControl(viewModel);
         TimelineHost.Child = _timeline;
         CanvasHost.Children.Add(new StudioPreviewOverlay(viewModel));
 
