@@ -173,6 +173,27 @@ public sealed class ScreenshotExportTests
     }
 
     [Fact]
+    public void CaptureSnapshot_PreservesPointerAppearanceAfterFurtherEdits()
+    {
+        var appearance = PointerAppearance.Default with
+        {
+            Style = PointerStyle.Hand,
+            Fill = Color.FromArgb(120, 10, 20, 30),
+            Stroke = Color.FromArgb(180, 40, 50, 60),
+            StrokeWidth = 3,
+            Opacity = 0.6,
+            Shadow = new PointerShadow(true, 0.4, 8, -3, 5),
+        };
+        var annotation = new ScreenshotAnnotation { Tool = EditTool.Pointer, Pointer = appearance, Rotation = 30 };
+
+        var snapshot = annotation.CaptureSnapshot();
+        annotation.Pointer = PointerAppearance.Default;
+
+        Assert.Equal(appearance, snapshot.Pointer);
+        Assert.True(snapshot.IsRotated);
+    }
+
+    [Fact]
     public void TextBoxStyle_DecoratesClampsAndScalesBounds()
     {
         var style = new TextBoxStyle(

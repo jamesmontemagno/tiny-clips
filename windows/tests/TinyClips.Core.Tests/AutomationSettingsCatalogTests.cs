@@ -91,6 +91,7 @@ public sealed class AutomationSettingsCatalogTests
 
         AssertInvalid(() => catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("Select")));
         AssertInvalid(() => catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("counter")));
+        AssertInvalid(() => catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("pointer")));
         Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
     }
 

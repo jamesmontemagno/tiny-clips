@@ -527,6 +527,7 @@ struct ScreenshotEditorView: View {
     @State private var currentSaveURL: URL
     @State private var zoomScale: CGFloat = 1
     @State private var isStrokeAdvancedExpanded = false
+    @State private var isPointerShadowExpanded = false
     /// Set when Custom is chosen while the values still match a preset, so the picker stays on
     /// Custom while the sliders are adjusted.
     @State private var isChoosingCustomArrow = false
@@ -1419,8 +1420,83 @@ struct ScreenshotEditorView: View {
         return "\(Int(size.width)) × \(Int(size.height)) px"
     }
 
+    private func pointerBinding<Value>(_ keyPath: WritableKeyPath<PointerAppearance, Value>) -> Binding<Value> {
+        Binding(
+            get: { viewModel.pointerForInspector()[keyPath: keyPath] },
+            set: { value in
+                var pointer = viewModel.pointerForInspector()
+                pointer[keyPath: keyPath] = value
+                viewModel.updatePointer(pointer)
+            }
+        )
+    }
+
+    private func pointerColorOpacityBinding(_ keyPath: WritableKeyPath<PointerAppearance, Color>) -> Binding<CGFloat> {
+        let color = pointerBinding(keyPath)
+        return Binding(
+            get: { AnnotationColorOpacity.percent(for: color.wrappedValue) },
+            set: { color.wrappedValue = AnnotationColorOpacity.applying($0, to: color.wrappedValue) }
+        )
+    }
+
+    private func pointerSlider(
+        _ label: String,
+        value: Binding<CGFloat>,
+        range: ClosedRange<CGFloat>,
+        suffix: String,
+        multiplier: CGFloat = 1
+    ) -> some View {
+        LabeledContent(label) {
+            HStack {
+                Slider(value: value, in: range, onEditingChanged: viewModel.setAdjustingPointer)
+                    .accessibilityLabel(label)
+                    .accessibilityValue("\(Int((value.wrappedValue * multiplier).rounded()))\(multiplier == 100 ? "%" : suffix)")
+                Text("\(Int((value.wrappedValue * multiplier).rounded()))\(multiplier == 100 ? "%" : suffix)")
+                    .font(.caption.monospacedDigit())
+            }
+        }
+    }
+
     private var styleControls: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if inspectorTool == .pointer {
+                Picker("Pointer", selection: pointerBinding(\.style)) {
+                    ForEach(PointerAnnotationStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                SwatchColorPicker(label: "Fill", color: pointerBinding(\.fill), supportsOpacity: true, allowsTransparent: true)
+                opacitySlider("Fill opacity", value: pointerColorOpacityBinding(\.fill), onEditingChanged: viewModel.setAdjustingPointer)
+                SwatchColorPicker(label: "Stroke", color: pointerBinding(\.stroke), supportsOpacity: true, allowsTransparent: true)
+                opacitySlider("Stroke opacity", value: pointerColorOpacityBinding(\.stroke), onEditingChanged: viewModel.setAdjustingPointer)
+                pointerSlider("Stroke width", value: pointerBinding(\.strokeWidth), range: 0...20, suffix: "px")
+                pointerSlider("Opacity", value: pointerBinding(\.opacity), range: 0...1, suffix: "", multiplier: 100)
+
+                DisclosureGroup("Drop shadow", isExpanded: $isPointerShadowExpanded) {
+                    Toggle("Show shadow", isOn: pointerBinding(\.shadow.enabled))
+                    if viewModel.pointerForInspector().shadow.enabled {
+                        pointerSlider("Shadow opacity", value: pointerBinding(\.shadow.opacity), range: 0...1, suffix: "", multiplier: 100)
+                        pointerSlider("Blur", value: pointerBinding(\.shadow.blur), range: 0...40, suffix: "px")
+                        pointerSlider("Horizontal offset", value: pointerBinding(\.shadow.offsetX), range: -40...40, suffix: "px")
+                        pointerSlider("Vertical offset", value: pointerBinding(\.shadow.offsetY), range: -40...40, suffix: "px")
+                    }
+                }
+                if viewModel.selectedTool == .pointer {
+                    Button("Place pointer at center") { viewModel.placePointerAtCenter() }
+                        .accessibilityHint("Adds a pointer at the center and selects it for adjustment.")
+                } else {
+                    HStack {
+                        Button("Left") { viewModel.adjustSelectedPointer(dx: -1) }
+                        Button("Right") { viewModel.adjustSelectedPointer(dx: 1) }
+                        Button("Up") { viewModel.adjustSelectedPointer(dy: -1) }
+                        Button("Down") { viewModel.adjustSelectedPointer(dy: 1) }
+                    }
+                    HStack {
+                        Button("Smaller") { viewModel.adjustSelectedPointer(scale: 0.9) }
+                        Button("Larger") { viewModel.adjustSelectedPointer(scale: 1.1) }
+                    }
+                }
+            }
             if viewModel.showsArrowStyleControl {
                 segmentedPicker("Arrow", selection: arrowPresetBinding, options: ArrowPreset.allCases, label: \.label)
             }

@@ -473,6 +473,8 @@ struct ScreenshotEditorCanvasView: View {
                                     viewModel.placeNumberAnnotation(at: normalized)
                                 } else if viewModel.selectedTool == .emoji {
                                     viewModel.placeEmojiAnnotation(at: normalized)
+                                } else if viewModel.selectedTool == .pointer {
+                                    viewModel.placePointerAnnotation(at: normalized)
                                 } else if viewModel.selectedTool == .crop {
                                     viewModel.handleCropTap(at: normalized, displaySize: imageSize)
                                 } else if viewModel.selectedTool == .move {
@@ -518,6 +520,8 @@ struct ScreenshotEditorCanvasView: View {
             return "Use the Background section in the sidebar to add padding, a background, and a frame."
         case .emoji:
             return "Click to place the selected emoji."
+        case .pointer:
+            return "Click to place the pointer tip."
         case .crop:
             return "Drag to select the area to keep, or move to the Crop selection element to position it with the arrow keys or VoiceOver actions. Press Return to apply the crop."
         default:
@@ -686,6 +690,29 @@ struct ScreenshotEditorCanvasView: View {
             let glyph = Text(annotation.text)
                 .font(.system(size: EmojiAnnotationMath.glyphFontSize(forSide: scaledRect.height)))
             rotated.draw(glyph, at: .zero, anchor: .center)
+
+        case .pointer:
+            let (rotated, rect) = rotatedDrawing(context, annotation: annotation, scaledRect: scaledRect)
+            let pointer = annotation.pointer
+            let path = Path(PointerGeometry.path(for: pointer.style, in: rect))
+            var group = rotated
+            group.opacity = Double(pointer.opacity)
+            group.drawLayer { shadowLayer in
+                if pointer.shadow.enabled {
+                    shadowLayer.addFilter(.shadow(
+                        color: .black.opacity(Double(pointer.shadow.opacity)),
+                        radius: pointer.shadow.blur * pixelScale,
+                        x: pointer.shadow.offsetX * pixelScale,
+                        y: pointer.shadow.offsetY * pixelScale
+                    ))
+                }
+                shadowLayer.drawLayer { body in
+                    body.fill(path, with: .color(pointer.fill))
+                    if pointer.strokeWidth > 0 {
+                        body.stroke(path, with: .color(pointer.stroke), lineWidth: pointer.strokeWidth * pixelScale)
+                    }
+                }
+            }
 
         case .text, .crop, .move, .background:
             break

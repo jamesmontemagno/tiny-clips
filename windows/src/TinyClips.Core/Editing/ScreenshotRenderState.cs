@@ -19,6 +19,7 @@ public enum EditTool
     Counter,
     Emoji,
     Redact,
+    Pointer,
 }
 
 public enum RedactionLevel
@@ -197,7 +198,7 @@ public readonly record struct TextBoxStyle(
 public static class EditToolExtensions
 {
     public static bool SupportsRotation(this EditTool tool) =>
-        tool is EditTool.Emoji or EditTool.Text or EditTool.Rectangle or EditTool.Ellipse or EditTool.Pen;
+        tool is EditTool.Emoji or EditTool.Text or EditTool.Rectangle or EditTool.Ellipse or EditTool.Pen or EditTool.Pointer;
 
     public static bool StoresRotation(this EditTool tool) => tool.SupportsRotation() && tool != EditTool.Pen;
 
@@ -210,13 +211,15 @@ public static class EditToolExtensions
     };
 
     /// <summary>Every tool's <see cref="SettingId"/>, in toolbar order.</summary>
-    public static IReadOnlyList<string> SettingIds { get; } = [.. Enum.GetValues<EditTool>().Select(SettingId)];
+    // Pointer is not an available Windows tool until its editor and renderer are implemented.
+    public static IReadOnlyList<string> SettingIds { get; } =
+        [.. Enum.GetValues<EditTool>().Where(tool => tool != EditTool.Pointer).Select(SettingId)];
 
     public static bool TryParseSettingId(string? id, out EditTool tool)
     {
         foreach (var candidate in Enum.GetValues<EditTool>())
         {
-            if (string.Equals(candidate.SettingId(), id, StringComparison.Ordinal))
+            if (candidate != EditTool.Pointer && string.Equals(candidate.SettingId(), id, StringComparison.Ordinal))
             {
                 tool = candidate;
                 return true;
@@ -261,6 +264,7 @@ public class ScreenshotAnnotation
     /// and can add an outline in this color; a width of 0 draws none.</summary>
     public Color OutlineColor { get; set; } = Color.FromArgb(255, 0, 0, 0);
     public double OutlineWidth { get; set; }
+    public PointerAppearance Pointer { get; set; } = PointerAppearance.Default;
 
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 
@@ -268,7 +272,8 @@ public class ScreenshotAnnotation
         Tool, Bounds, Color, FillColor, Thickness, Text, Number, SizeScale,
         Redaction, RedactStyle, Arrow, Points.ToImmutableArray(), TextColor,
         FontSize, FontFamily, Bold, Italic, Underline, Strikethrough, TextBoxStyle, Rotation,
-        StartCap, EndCap, LineJoin, StrokeAlignment, OutlineColor, OutlineWidth);
+        StartCap, EndCap, LineJoin, StrokeAlignment, OutlineColor, OutlineWidth,
+        Tool == EditTool.Pointer ? Pointer : null);
 }
 
 /// <summary>Immutable image-pixel annotation data; deliberately excludes live XAML previews.</summary>
@@ -299,7 +304,8 @@ public sealed record AnnotationSnapshot(
     StrokeJoin LineJoin = AnnotationStroke.DefaultJoin,
     StrokeAlignment StrokeAlignment = StrokeAlignment.Center,
     Color OutlineColor = default,
-    double OutlineWidth = 0)
+    double OutlineWidth = 0,
+    PointerAppearance? Pointer = null)
 {
     public bool IsRotated => Tool.StoresRotation() && Math.Abs(Rotation) > 0.001;
 }

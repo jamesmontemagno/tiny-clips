@@ -1997,6 +1997,7 @@ internal sealed class EditorController : IDisposable
         annotation.StrokeAlignment = snapshot.StrokeAlignment;
         annotation.OutlineColor = snapshot.OutlineColor;
         annotation.OutlineWidth = snapshot.OutlineWidth;
+        annotation.Pointer = snapshot.Pointer ?? PointerAppearance.Default;
     }
 
     // -- Crop -------------------------------------------------------------------------------

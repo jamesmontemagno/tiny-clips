@@ -66,6 +66,70 @@ final class ScreenshotEditorViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testPointerPlacementKeepsHotspotAtTheImageEdgeAndUndoRestoresAppearance() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        editor.selectedTool = .pointer
+        editor.pointerDefault.style = .hand
+        editor.placePointerAnnotation(at: CGPoint(x: 0, y: 0))
+        let placed = try XCTUnwrap(editor.annotations.first)
+        let hotspot = PointerGeometry.hotspot(for: .hand)
+        XCTAssertEqual((placed.rect.minX + placed.rect.width * hotspot.x) * 400, 0, accuracy: 1e-8)
+        XCTAssertEqual((placed.rect.minY + placed.rect.height * hotspot.y) * 200, 0, accuracy: 1e-8)
+        XCTAssertNil(editor.selectedAnnotationIndex)
+
+        editor.selectedTool = .move
+        editor.selectedAnnotationIndex = 0
+        editor.setAdjustingPointer(true)
+        var appearance = editor.pointerForInspector()
+        appearance.opacity = 0.6
+        editor.updatePointer(appearance)
+        appearance.opacity = 0.3
+        editor.updatePointer(appearance)
+        editor.setAdjustingPointer(false)
+        editor.undo()
+        XCTAssertEqual(editor.annotations[0].pointer, placed.pointer)
+        editor.redo()
+        XCTAssertEqual(editor.annotations[0].pointer.opacity, 0.3, accuracy: 1e-8)
+        XCTAssertEqual(editor.pointerDefault.opacity, 1)
+    }
+
+    @MainActor
+    func testPointerExportCompositesOpacityAndShadow() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        var appearance = PointerAppearance()
+        appearance.fill = Color(red: 1, green: 0, blue: 0)
+        appearance.strokeWidth = 0
+        appearance.shadow.enabled = false
+        appearance.opacity = 0.5
+        editor.annotations = [ScreenshotAnnotation(
+            tool: .pointer,
+            rect: CGRect(x: 0.25, y: 0.25, width: 0.2, height: 0.4),
+            color: .white, lineWidth: 0, text: "", points: [], pointer: appearance
+        )]
+        let withoutShadow = try XCTUnwrap(editor.renderFinalImage(includesExportDecorations: false))
+        let fill = try XCTUnwrap(withoutShadow.colorAt(x: 120, y: 75)?.usingColorSpace(.sRGB))
+        XCTAssertGreaterThan(fill.redComponent, 0.95)
+        XCTAssertEqual(fill.greenComponent, 0.5, accuracy: 0.08)
+
+        appearance.shadow = PointerShadow(enabled: true, opacity: 1, blur: 0, offsetX: 15, offsetY: 15)
+        editor.annotations[0].pointer = appearance
+        let withShadow = try XCTUnwrap(editor.renderFinalImage(includesExportDecorations: false))
+        var changedPixels = 0
+        for y in 50..<155 {
+            for x in 100..<200 {
+                let before = try XCTUnwrap(withoutShadow.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+                let after = try XCTUnwrap(withShadow.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+                if before.redComponent - after.redComponent > 0.2 {
+                    changedPixels += 1
+                }
+            }
+        }
+        XCTAssertGreaterThan(changedPixels, 100)
+    }
+
+    @MainActor
     func testPlacedTextCanBeResizedFromTheInspector() throws {
         let (editor, cleanup) = try makeEditor()
         defer { cleanup() }

@@ -182,6 +182,7 @@ enum EditTool: String, CaseIterable {
     case number = "number.circle.fill"
     case emoji = "face.smiling"
     case blur = "eye.slash"
+    case pointer = "cursorarrow"
 
     var label: String {
         switch self {
@@ -197,6 +198,7 @@ enum EditTool: String, CaseIterable {
         case .number: return "Number"
         case .emoji: return "Emoji"
         case .blur: return "Redact"
+        case .pointer: return "Pointer"
         }
     }
 
@@ -204,7 +206,7 @@ enum EditTool: String, CaseIterable {
     /// points in place, so they don't store an angle; see `storesRotation`.
     var supportsRotation: Bool {
         switch self {
-        case .emoji, .text, .rectangle, .circle, .pencil: return true
+        case .emoji, .text, .rectangle, .circle, .pencil, .pointer: return true
         case .move, .background, .crop, .arrow, .line, .number, .blur: return false
         }
     }
@@ -225,6 +227,7 @@ enum EditTool: String, CaseIterable {
         case .number: return "number"
         case .emoji: return "emoji"
         case .blur: return "redact"
+        case .pointer: return "pointer"
         }
     }
 
@@ -381,6 +384,104 @@ enum StrokeJoin: String, CaseIterable, Identifiable {
     }
 }
 
+enum PointerAnnotationStyle: String, CaseIterable, Identifiable {
+    case arrow
+    case hand
+    case text
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .arrow: return "Arrow"
+        case .hand: return "Pointing hand"
+        case .text: return "Text I-beam"
+        }
+    }
+}
+
+struct PointerShadow: Equatable {
+    var enabled = true
+    var opacity: CGFloat = 0.35
+    var blur: CGFloat = 4
+    var offsetX: CGFloat = 2
+    var offsetY: CGFloat = 2
+}
+
+struct PointerAppearance: Equatable {
+    var style: PointerAnnotationStyle = .arrow
+    var fill: Color = .white
+    var stroke: Color = .black
+    var strokeWidth: CGFloat = 2
+    var opacity: CGFloat = 1
+    var shadow = PointerShadow()
+}
+
+enum PointerGeometry {
+    static func hotspot(for style: PointerAnnotationStyle) -> CGPoint {
+        switch style {
+        case .arrow: return CGPoint(x: 0.08, y: 0.04)
+        case .hand: return CGPoint(x: 0.36, y: 0.04)
+        case .text: return CGPoint(x: 0.5, y: 0.5)
+        }
+    }
+
+    static func outline(for style: PointerAnnotationStyle) -> [CGPoint] {
+        switch style {
+        case .arrow:
+            return [
+                CGPoint(x: 0.08, y: 0.04), CGPoint(x: 0.08, y: 0.84),
+                CGPoint(x: 0.29, y: 0.64), CGPoint(x: 0.45, y: 0.96),
+                CGPoint(x: 0.59, y: 0.89), CGPoint(x: 0.42, y: 0.58),
+                CGPoint(x: 0.72, y: 0.58),
+            ]
+        case .hand:
+            return [
+                CGPoint(x: 0.36, y: 0.04), CGPoint(x: 0.46, y: 0.04),
+                CGPoint(x: 0.46, y: 0.40), CGPoint(x: 0.55, y: 0.36),
+                CGPoint(x: 0.63, y: 0.40), CGPoint(x: 0.70, y: 0.38),
+                CGPoint(x: 0.81, y: 0.45), CGPoint(x: 0.81, y: 0.72),
+                CGPoint(x: 0.70, y: 0.96), CGPoint(x: 0.35, y: 0.96),
+                CGPoint(x: 0.25, y: 0.74), CGPoint(x: 0.12, y: 0.62),
+                CGPoint(x: 0.13, y: 0.52), CGPoint(x: 0.20, y: 0.48),
+                CGPoint(x: 0.36, y: 0.61),
+            ]
+        case .text:
+            return [
+                CGPoint(x: 0.24, y: 0.04), CGPoint(x: 0.76, y: 0.04),
+                CGPoint(x: 0.76, y: 0.16), CGPoint(x: 0.58, y: 0.16),
+                CGPoint(x: 0.58, y: 0.84), CGPoint(x: 0.76, y: 0.84),
+                CGPoint(x: 0.76, y: 0.96), CGPoint(x: 0.24, y: 0.96),
+                CGPoint(x: 0.24, y: 0.84), CGPoint(x: 0.42, y: 0.84),
+                CGPoint(x: 0.42, y: 0.16), CGPoint(x: 0.24, y: 0.16),
+            ]
+        }
+    }
+
+    static func fittedRect(in bounds: CGRect) -> CGRect {
+        let side = min(bounds.width, bounds.height)
+        return CGRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
+    }
+
+    static func rect(placing hotspot: CGPoint, style: PointerAnnotationStyle, side: CGFloat) -> CGRect {
+        let anchor = self.hotspot(for: style)
+        return CGRect(x: hotspot.x - anchor.x * side, y: hotspot.y - anchor.y * side, width: side, height: side)
+    }
+
+    static func path(for style: PointerAnnotationStyle, in bounds: CGRect, flipped: Bool = false) -> CGPath {
+        let rect = fittedRect(in: bounds)
+        let points = outline(for: style)
+        let path = CGMutablePath()
+        for (index, point) in points.enumerated() {
+            let mapped = CGPoint(x: rect.minX + point.x * rect.width,
+                                 y: rect.minY + (flipped ? 1 - point.y : point.y) * rect.height)
+            if index == 0 { path.move(to: mapped) } else { path.addLine(to: mapped) }
+        }
+        path.closeSubpath()
+        return path
+    }
+}
+
 struct ScreenshotAnnotation: Identifiable {
     let id = UUID()
     let tool: EditTool
@@ -408,6 +509,7 @@ struct ScreenshotAnnotation: Identifiable {
     /// Arrows and lines only: an outline around the body; a width of 0 draws none.
     var outlineColor: Color = .black
     var outlineWidth: CGFloat = 0
+    var pointer = PointerAppearance()
     /// Clockwise rotation in radians around the center of `rect` for tools where `tool.storesRotation`.
     var rotation: CGFloat = 0
 

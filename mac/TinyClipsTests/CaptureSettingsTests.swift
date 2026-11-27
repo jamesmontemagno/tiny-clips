@@ -400,11 +400,14 @@ final class CaptureSettingsTests: XCTestCase {
     func testScreenshotEditorDefaultToolStoresSharedNamesAndFallsBackToBackground() {
         // Windows and Agent Control use the same names.
         XCTAssertEqual(EditTool.allCases.map(\.settingID), [
-            "move", "background", "crop", "rectangle", "ellipse", "arrow", "line", "pen", "text", "number", "emoji", "redact"
+            "move", "background", "crop", "rectangle", "ellipse", "arrow", "line", "pen", "text", "number", "emoji", "redact", "pointer"
         ])
         let settings = CaptureSettings(defaults: defaults, performMigrations: false)
         settings.screenshotEditorDefaultEditTool = .pencil
         XCTAssertEqual(defaults.string(forKey: CaptureSettings.screenshotEditorDefaultToolKey), "pen")
+        settings.screenshotEditorDefaultEditTool = .pointer
+        XCTAssertEqual(defaults.string(forKey: CaptureSettings.screenshotEditorDefaultToolKey), "pointer")
+        XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .pointer)
 
         defaults.set("not-a-tool", forKey: CaptureSettings.screenshotEditorDefaultToolKey)
         XCTAssertEqual(CaptureSettings(defaults: defaults, performMigrations: false).screenshotEditorDefaultEditTool, .background)
