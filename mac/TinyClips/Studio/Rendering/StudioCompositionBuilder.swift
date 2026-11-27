@@ -8,6 +8,12 @@ import Foundation
 struct StudioCompositionSoundTrack {
     var trackID: CMPersistentTrackID
     var indexInFile: Int
+    struct ClipVolume {
+        let range: CMTimeRange
+        let state: StudioRenderState
+        let trackCount: Int
+    }
+    var clipVolumes: [ClipVolume] = []
 }
 
 struct StudioCompositionBuildResult {
@@ -24,13 +30,24 @@ struct StudioCompositionBuildResult {
     /// How many sound tracks the screen file has, which is what the project's list of them is
     /// matched against.
     var soundTrackCountInFile = 0
+    var clips: [StudioClipRenderContext] = []
+
+    func trackGains(for project: StudioProject) -> [[Double]] {
+        let single = StudioSound.trackGains(project: project, trackCount: soundTrackCountInFile)
+        return soundTracks.map { track in
+            if clips.isEmpty { return [single[track.indexInFile]] }
+            return track.clipVolumes.map {
+                StudioSound.trackGains(project: $0.state.read().project, trackCount: $0.trackCount)[track.indexInFile]
+            }
+        }
+    }
 
     /// The mix that plays each sound track at the gain the project gives it (section 7 of the
     /// project format). Nil when every track plays as recorded, which needs no mix: a player
     /// plays all of them together as they are.
     func audioMix(for project: StudioProject) -> AVAudioMix? {
-        let gains = StudioSound.trackGains(project: project, trackCount: soundTrackCountInFile)
-        guard gains.contains(where: { $0 != 1 }) else { return nil }
+        let gains = trackGains(for: project)
+        guard gains.joined().contains(where: { $0 != 1 }) else { return nil }
         return mix(gains: gains)
     }
 
@@ -39,18 +56,25 @@ struct StudioCompositionBuildResult {
     /// one that has any mix adds them together into one. A video with the computer's sound and
     /// the microphone as two tracks plays without the voice wherever only the first is played.
     func exportAudioMix(for project: StudioProject) -> AVAudioMix? {
-        let gains = StudioSound.trackGains(project: project, trackCount: soundTrackCountInFile)
-        guard StudioSound.exportIsMixed(trackGains: gains, soundTracksInVideo: soundTracks.count) else { return nil }
+        let gains = trackGains(for: project)
+        guard StudioSound.exportIsMixed(trackGains: Array(gains.joined()), soundTracksInVideo: soundTracks.count) else { return nil }
         return mix(gains: gains)
     }
 
-    private func mix(gains: [Double]) -> AVAudioMix {
+    private func mix(gains: [[Double]]) -> AVAudioMix {
         let mix = AVMutableAudioMix()
-        mix.inputParameters = soundTracks.compactMap { soundTrack -> AVAudioMixInputParameters? in
-            guard gains.indices.contains(soundTrack.indexInFile) else { return nil }
+        mix.inputParameters = zip(soundTracks, gains).map { soundTrack, volumes in
             let parameters = AVMutableAudioMixInputParameters()
             parameters.trackID = soundTrack.trackID
-            parameters.setVolume(Float(gains[soundTrack.indexInFile]), at: .zero)
+            if soundTrack.clipVolumes.isEmpty {
+                parameters.setVolume(Float(volumes[0]), at: .zero)
+            } else {
+                // Two level points can interpolate. A plain cut keeps each clip's gain
+                // constant right up to the next boundary.
+                for (volume, clip) in zip(volumes, soundTrack.clipVolumes) {
+                    parameters.setVolumeRamp(fromStartVolume: Float(volume), toEndVolume: Float(volume), timeRange: clip.range)
+                }
+            }
             return parameters
         }
         return mix
@@ -63,6 +87,7 @@ enum StudioCompositionBuilder {
         case screenCompositionTrackCreationFailed
         case cameraCompositionTrackCreationFailed
         case cameraVideoTrackMissing(URL)
+        case timelineTrackCreationFailed
         case emptyTimeline
         case unsupportedInstruction
         case outputBufferUnavailable
@@ -77,6 +102,8 @@ enum StudioCompositionBuilder {
                 return "Could not create the Studio camera composition track."
             case let .cameraVideoTrackMissing(url):
                 return "Studio camera video track is missing or invalid: \(url.lastPathComponent)."
+            case .timelineTrackCreationFailed:
+                return "Could not create a media track for the Studio timeline."
             case .emptyTimeline:
                 return "Nothing is left to show after trimming."
             case .unsupportedInstruction:
@@ -97,6 +124,9 @@ enum StudioCompositionBuilder {
         let state = renderState ?? StudioRenderState(project: project, events: events)
         _ = state.update(project: project, events: events)
 
+        if project.schemaVersion == 2 {
+            return try await buildTimeline(project, paths: paths, renderSize: renderSize, state: state)
+        }
         let timeMap = StudioTimeMap(sourceDuration: project.sources.screen.duration, edits: project.edits)
         let composition = AVMutableComposition()
         let screenAsset = AVURLAsset(url: paths.screenURL)
@@ -383,11 +413,231 @@ enum StudioCompositionBuilder {
 
     private static func frameDuration(project: StudioProject, track: AVAssetTrack) async throws -> CMTime {
         let nominalFrameRate = try await track.load(.nominalFrameRate)
-        let frameRate = project.sources.screen.frameRate.isFinite && project.sources.screen.frameRate > 0
-            ? project.sources.screen.frameRate
-            : Double(nominalFrameRate > 0 ? nominalFrameRate : 30)
+        return frameDuration(configured: project.sources.screen.frameRate, fallback: Double(nominalFrameRate > 0 ? nominalFrameRate : 30))
+    }
+
+    private static func frameDuration(configured: Double, fallback: Double = 30) -> CMTime {
+        let frameRate = configured.isFinite && configured > 0 ? configured : fallback
         // Clamped so a damaged project file cannot ask for an impossible rate.
         let framesPerSecond = min(240, max(1, frameRate.rounded(.up)))
         return CMTime(value: 1, timescale: CMTimeScale(framesPerSecond))
+    }
+}
+
+// MARK: - Sequential clip lane
+
+extension StudioCompositionBuilder {
+    private struct MediaTrack {
+        let url: URL
+        let id: CMPersistentTrackID
+        let range: CMTimeRange
+
+        init(_ track: AVAssetTrack, url: URL) async throws {
+            self.url = url
+            id = track.trackID
+            range = try await track.load(.timeRange)
+        }
+    }
+
+    /// Only track metadata is needed to make edit lists. The player/reader opens the source
+    /// media for the active segments; neither a player nor a decoder is kept for every clip.
+    private struct TimelineMedia {
+        let screen: MediaTrack
+        let transform: CGAffineTransform
+        let displaySize: CGSize
+        let camera: MediaTrack?
+        let sound: [MediaTrack]
+        let events: StudioEvents
+
+        init(source: StudioMediaSource, directory: URL) async throws {
+            func file(_ name: String) throws -> URL {
+                let url = directory.appendingPathComponent(try StudioJSON.requirePlainFileName(name, "mediaSources file"))
+                guard url.resolvingSymlinksInPath().deletingLastPathComponent().standardizedFileURL.path
+                        == directory.resolvingSymlinksInPath().standardizedFileURL.path else {
+                    throw StudioProjectError.invalidProject("A timeline source is outside the project folder")
+                }
+                return url
+            }
+            let url = try file(source.sources.screen.file)
+            let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+            guard let video = try await asset.loadTracks(withMediaType: .video).first else {
+                throw Error.screenVideoTrackMissing(url)
+            }
+            screen = try await MediaTrack(video, url: url)
+            guard screen.range.isValid, screen.range.duration > .zero else { throw Error.screenVideoTrackMissing(url) }
+            transform = try await video.load(.preferredTransform)
+            let size = try await video.load(.naturalSize)
+            displaySize = CGRect(origin: .zero, size: size).applying(transform).standardized.size
+            guard displaySize.width.isFinite, displaySize.width >= 1,
+                  displaySize.height.isFinite, displaySize.height >= 1 else { throw Error.screenVideoTrackMissing(url) }
+
+            var audio: [MediaTrack] = []
+            for track in try await asset.loadTracks(withMediaType: .audio) {
+                audio.append(try await MediaTrack(track, url: url))
+            }
+            sound = audio
+            if let name = source.sources.camera?.file {
+                let url = try file(name)
+                let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+                guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+                    throw Error.cameraVideoTrackMissing(url)
+                }
+                camera = try await MediaTrack(track, url: url)
+            } else {
+                camera = nil
+            }
+            if let name = source.sources.events {
+                let url = try file(name)
+                events = try StudioJSON.makeDecoder().decode(StudioEvents.self, from: Data(contentsOf: url))
+            } else {
+                events = StudioEvents()
+            }
+        }
+    }
+
+    /// One reusable composition track. Unlike stretching a whole single-recording composition,
+    /// an absolute edit list never moves a preceding clip. Empty segments are silence/absent
+    /// camera, never a freeze of the previous clip. Commit once per track.
+    private struct LaneTrack {
+        let track: AVMutableCompositionTrack
+        var segments: [AVCompositionTrackSegment] = []
+        var volumes: [StudioCompositionSoundTrack.ClipVolume] = []
+
+        init(in composition: AVMutableComposition, type: AVMediaType) throws {
+            guard let track = composition.addMutableTrack(withMediaType: type, preferredTrackID: kCMPersistentTrackID_Invalid)
+            else { throw Error.timelineTrackCreationFailed }
+            self.track = track
+        }
+
+        mutating func append(_ media: MediaTrack, source: CMTimeRange, target: CMTimeRange) {
+            guard target.duration > .zero, source.duration > .zero else { return }
+            let end = segments.last?.timeMapping.target.end ?? .zero
+            if end < target.start {
+                segments.append(AVCompositionTrackSegment(timeRange: CMTimeRange(start: end, end: target.start)))
+            }
+            segments.append(AVCompositionTrackSegment(url: media.url, trackID: media.id,
+                                                      sourceTimeRange: source, targetTimeRange: target))
+        }
+
+        func commit() throws {
+            try track.validateSegments(segments)
+            track.segments = segments
+        }
+    }
+
+    private static func buildTimeline(_ project: StudioProject, paths: StudioProjectPaths,
+                                      renderSize: CGSize, state: StudioRenderState) async throws -> StudioCompositionBuildResult {
+        guard let sources = project.mediaSources, let timeline = project.timeline, !timeline.clips.isEmpty else {
+            throw Error.emptyTimeline
+        }
+        let map = try StudioTimelineMap(timeline: timeline, sources: sources)
+        let registry = Dictionary(sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let composition = AVMutableComposition()
+        var screen = try LaneTrack(in: composition, type: .video)
+        var camera: LaneTrack?
+        var sounds: [Int: LaneTrack] = [:]
+        var mediaByID: [String: TimelineMedia] = [:]
+        var contexts: [StudioClipRenderContext] = []
+        var instructions: [StudioVideoCompositionInstruction] = []
+        func time(_ seconds: Double) -> CMTime { CMTime(seconds: seconds, preferredTimescale: speedTimescale) }
+
+        for (clip, span) in zip(timeline.clips, map.clips) {
+            try Task.checkCancellation()
+            guard let source = registry[clip.sourceId] else { throw Error.emptyTimeline }
+            let media: TimelineMedia
+            if let cached = mediaByID[source.id] {
+                media = cached
+            } else {
+                media = try await TimelineMedia(source: source, directory: paths.projectDirectory)
+                mediaByID[source.id] = media
+            }
+            let context = StudioClipRenderContext(project: project, clip: clip, source: source,
+                                                 displaySize: media.displaySize, events: media.events)
+            contexts.append(context)
+            let start = time(span.projectStart)
+            let range = CMTimeRange(start: start, end: time(span.projectEnd))
+            guard range.duration > .zero else { continue }
+            var usedSound = Set<Int>()
+            var elapsed = 0.0
+            for piece in span.timeMap.pieces {
+                var cameraID: CMPersistentTrackID?
+                let interval = CMTimeRange(start: CMTime(seconds: piece.start, preferredTimescale: 600_000_000),
+                                           end: CMTime(seconds: piece.end, preferredTimescale: 600_000_000))
+                // Round absolute boundaries on one clock, not the durations of individual
+                // segments. Splits, gaps and mixed source clocks cannot accumulate lane drift.
+                func output(_ sourceTime: CMTime) -> CMTime {
+                    let offset: Double
+                    if sourceTime == interval.start { offset = 0 }
+                    else if sourceTime == interval.end { offset = piece.outputDuration }
+                    else { offset = (sourceTime.seconds - piece.start) / piece.rate }
+                    return time(span.projectStart + (elapsed + offset))
+                }
+                func target(_ part: CMTimeRange) -> CMTimeRange {
+                    CMTimeRange(start: output(part.start), end: output(part.end))
+                }
+                let pieceRange = target(interval)
+                guard pieceRange.duration > .zero else {
+                    elapsed += piece.outputDuration
+                    continue
+                }
+
+                // Sparse native captures hold the first/last screen frame over missing video,
+                // just as in v1. Camera and audio only play where their own media exists.
+                let picture = media.screen.range
+                let instant = min(CMTime(value: 1, timescale: 600), picture.duration)
+                for part in divided(interval, at: [picture.start, picture.end]) {
+                    var samples = part
+                    if part.end <= picture.start { samples = CMTimeRange(start: picture.start, duration: instant) }
+                    if part.start >= picture.end { samples = CMTimeRange(start: picture.end - instant, duration: instant) }
+                    screen.append(media.screen, source: samples, target: target(part))
+                }
+                if let feed = media.camera {
+                    let offset = time(source.sources.camera?.startOffset ?? 0)
+                    let available = CMTimeRange(start: feed.range.start + offset, duration: feed.range.duration)
+                    let overlap = interval.intersection(available)
+                    if overlap.duration > .zero, target(overlap).duration > .zero {
+                        if camera == nil { camera = try LaneTrack(in: composition, type: .video) }
+                        camera?.append(feed, source: CMTimeRange(start: overlap.start - offset, duration: overlap.duration),
+                                       target: target(overlap))
+                        cameraID = camera?.track.trackID
+                    }
+                }
+                if piece.rate == 1, !(clip.audio ?? project.audio).muted {
+                    for (index, track) in media.sound.enumerated() {
+                        let overlap = interval.intersection(track.range)
+                        guard overlap.duration > .zero, target(overlap).duration > .zero else { continue }
+                        if sounds[index] == nil { sounds[index] = try LaneTrack(in: composition, type: .audio) }
+                        sounds[index]?.append(track, source: overlap, target: target(overlap))
+                        if usedSound.insert(index).inserted {
+                            sounds[index]?.volumes.append(.init(range: range, state: context.state, trackCount: media.sound.count))
+                        }
+                    }
+                }
+                instructions.append(StudioVideoCompositionInstruction(
+                    timeRange: pieceRange, screenTrackID: screen.track.trackID, cameraTrackID: cameraID,
+                    renderSize: renderSize, renderState: context.state, projectDirectory: paths.projectDirectory,
+                    screenTransform: media.transform, piece: piece, clipOutputStart: elapsed
+                ))
+                elapsed += piece.outputDuration
+            }
+        }
+        guard !instructions.isEmpty else { throw Error.emptyTimeline }
+        try screen.commit()
+        try camera?.commit()
+        let soundTracks = try sounds.sorted(by: { $0.key < $1.key }).map { index, lane in
+            try lane.commit()
+            return StudioCompositionSoundTrack(trackID: lane.track.trackID, indexInFile: index, clipVolumes: lane.volumes)
+        }
+        let video = AVMutableVideoComposition()
+        // Canvas and cadence belong to the destination, not the first or selected lane clip.
+        video.renderSize = renderSize
+        video.frameDuration = frameDuration(configured: project.sources.screen.frameRate)
+        video.customVideoCompositorClass = StudioCompositor.self
+        video.instructions = instructions
+        return StudioCompositionBuildResult(
+            composition: composition, videoComposition: video, renderState: state, duration: time(map.duration),
+            screenTrackID: screen.track.trackID, cameraTrackID: camera?.track.trackID,
+            soundTracks: soundTracks, clips: contexts
+        )
     }
 }

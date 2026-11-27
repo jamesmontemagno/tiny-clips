@@ -14,6 +14,7 @@ public class ContractTests
         foreach (var command in contract.Commands)
         {
             Assert.True(contract.Scopes.ContainsKey(command.Scope), $"{command.Name} uses unknown scope {command.Scope}");
+            Assert.All(command.AdditionalScopes, scope => Assert.True(contract.Scopes.ContainsKey(scope)));
             Assert.Matches("^[a-z]+(?:\\.[a-zA-Z]+)+$", command.Name);
             Assert.Matches("^[a-zA-Z0-9_-]{1,64}$", Contract.ToolName(command.Name));
             Assert.Equal(command, contract.FromToolName(Contract.ToolName(command.Name)));

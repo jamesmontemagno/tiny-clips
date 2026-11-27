@@ -73,6 +73,35 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task TimelineRecordingRequiresRecordAndEditAndForwardsTarget()
+    {
+        Assert.DoesNotContain(McpServer.ListTools("windows"), t => t.Name.StartsWith("tinyclips_studio_timeline_", StringComparison.Ordinal));
+        Assert.False(McpServer.ListTools("macos").Single(t => t.Name == "tinyclips_studio_timeline_remove").Annotations!.DestructiveHint);
+        if (OperatingSystem.IsWindows()) return;
+        await using var app = new FakeApp();
+        await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>
+        {
+            var args = new Dictionary<string, object?>
+            {
+                ["projectId"] = "p", ["expectedModifiedAt"] = "now", ["expectedRevision"] = "rev",
+                ["projectTime"] = 2.5, ["microphone"] = false, ["camera"] = false, ["mode"] = "screen"
+            };
+            foreach (var scope in new[] { "edit", "record" })
+            {
+                app.Clients["t"] = [scope];
+                var denied = await client.CallToolAsync("tinyclips_studio_timeline_record", args, cancellationToken: token);
+                Assert.True(denied.IsError);
+                Assert.Equal("missing_scope", (string?)Body(denied)["error"]!["code"]);
+            }
+            app.Clients["t"] = ["edit", "record"];
+            var accepted = await client.CallToolAsync("tinyclips_studio_timeline_record", args, cancellationToken: token);
+            Assert.False(accepted.IsError);
+            Assert.Equal(2.5, (double?)Body(accepted)["params"]!["projectTime"]);
+            Assert.False((bool?)Body(accepted)["params"]!["camera"]);
+        });
+    }
+
+    [Fact]
     public async Task ProjectCopyToolForwardsArgumentsAndRequiresExportScope()
     {
         if (OperatingSystem.IsWindows()) return;

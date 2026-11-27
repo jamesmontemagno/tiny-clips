@@ -1,5 +1,32 @@
 import Foundation
 
+extension StudioTimelineClip {
+    /// A single-source view for the existing inspectors and compositor. Never persist this as the manifest.
+    func resolvedProject(in project: StudioProject, source: StudioMediaSource) -> StudioProject {
+        var local = project
+        local.schemaVersion = 1
+        local.timeline = nil
+        local.mediaSources = nil
+        local.sources = source.sources
+        local.edits = boundedEdits
+        local.screen = screen ?? project.screen
+        local.camera = camera ?? project.camera
+        local.scenes = scenes ?? project.scenes
+        local.zooms = zooms ?? project.zooms
+        local.audio = audio ?? project.audio
+        local.overlays = overlays ?? project.overlays
+        local.captions = captions ?? project.captions
+        return local
+    }
+
+    var boundedEdits: StudioEdits {
+        var result = edits
+        result.trimStart = max(sourceStart, edits.trimStart)
+        result.trimEnd = min(sourceEnd, edits.trimEnd ?? sourceEnd)
+        return result
+    }
+}
+
 struct StudioTimelineMap: Equatable, Sendable {
     struct Clip: Equatable, Sendable {
         var id: String
@@ -17,7 +44,15 @@ struct StudioTimelineMap: Equatable, Sendable {
     init(timeline: StudioTimeline, sources: [StudioMediaSource]) throws {
         var mapped: [Clip] = []
         var projectStart = 0.0
-        let sourcesByID = Dictionary(sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let sourceIDs = Set(sources.map(\.id))
+        let clipIDs = Set(timeline.clips.map(\.id))
+        guard !timeline.clips.isEmpty, sourceIDs.count == sources.count, clipIDs.count == timeline.clips.count,
+              sourceIDs.isDisjoint(with: clipIDs),
+              sourceIDs.union(clipIDs).allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
+              sources.allSatisfy({ $0.kind != .flatVideo || ($0.sources.camera == nil && $0.sources.events == nil) }) else {
+            throw StudioProjectError.invalidProject("A timeline requires at least one clip, distinct IDs, and valid source layers.")
+        }
+        let sourcesByID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
         for clip in timeline.clips {
             guard clip.sourceStart.isFinite,
                   clip.sourceEnd.isFinite,
@@ -30,14 +65,14 @@ struct StudioTimelineMap: Equatable, Sendable {
             guard sourceDuration.isFinite, clip.sourceEnd <= sourceDuration else {
                 throw StudioProjectError.invalidProject("Timeline clip source range exceeds its source duration")
             }
-            var edits = clip.edits
-            edits.trimStart = max(clip.sourceStart, edits.trimStart)
-            edits.trimEnd = min(clip.sourceEnd, edits.trimEnd ?? clip.sourceEnd)
-            let timeMap = StudioTimeMap(sourceDuration: sourceDuration, edits: edits)
+            let timeMap = StudioTimeMap(sourceDuration: sourceDuration, edits: clip.boundedEdits)
             guard timeMap.outputDuration > 0 else {
                 throw StudioProjectError.invalidProject("Timeline clip has no playable duration")
             }
             let projectEnd = projectStart + timeMap.outputDuration
+            guard projectEnd.isFinite, projectEnd > projectStart else {
+                throw StudioProjectError.invalidProject("Clip duration cannot be represented on the project timeline.")
+            }
             mapped.append(Clip(
                 id: clip.id,
                 sourceId: clip.sourceId,
@@ -112,6 +147,31 @@ enum StudioTimelineEditing {
         return updated
     }
 
+    /// The incoming source is already in `sources`. Inserting inside a clip divides it in the same edit.
+    static func insert(_ clip: StudioTimelineClip, atProjectTime time: Double, in timeline: StudioTimeline,
+                       sources: [StudioMediaSource]) throws -> StudioTimeline {
+        let map = try StudioTimelineMap(timeline: timeline, sources: sources)
+        guard time.isFinite, time >= 0, time <= map.duration else {
+            throw StudioProjectError.invalidProject("Choose an insertion point inside the project.")
+        }
+        var result = timeline
+        var index = result.clips.count
+        if let target = map.clips.firstIndex(where: { time < $0.projectEnd }) {
+            index = target
+            if time > map.clips[target].projectStart {
+                guard let position = map.sourcePosition(atProjectTime: time),
+                      let split = splitClip(id: position.clipID, at: position.sourceTime, in: result) else {
+                    throw StudioProjectError.invalidProject("The clip cannot be split at this position.")
+                }
+                result = split
+                index += 1
+            }
+        }
+        result.clips.insert(clip, at: index)
+        _ = try StudioTimelineMap(timeline: result, sources: sources)
+        return result
+    }
+
     static func moveClip(id: String, to index: Int, in timeline: StudioTimeline) -> StudioTimeline? {
         guard let oldIndex = timeline.clips.firstIndex(where: { $0.id == id }) else { return nil }
         var updated = timeline
@@ -121,7 +181,7 @@ enum StudioTimelineEditing {
     }
 
     static func removeClip(id: String, from timeline: StudioTimeline) -> StudioTimeline? {
-        guard timeline.clips.contains(where: { $0.id == id }) else { return nil }
+        guard timeline.clips.count > 1, timeline.clips.contains(where: { $0.id == id }) else { return nil }
         var updated = timeline
         updated.clips.removeAll { $0.id == id }
         return updated
@@ -137,13 +197,15 @@ enum StudioTimelineEditing {
         updated.clips[index].sourceStart = start
         updated.clips[index].sourceEnd = end
         updated.clips[index].edits = clippedEdits(clip.edits, start: start, end: end)
+        guard hasPlayableTime(updated.clips[index]) else { return nil }
         return updated
     }
 
     static func splitClip(id: String, at sourceTime: Double, in timeline: StudioTimeline) -> StudioTimeline? {
         guard let index = timeline.clips.firstIndex(where: { $0.id == id }) else { return nil }
         let clip = timeline.clips[index]
-        guard sourceTime.isFinite, sourceTime > clip.sourceStart, sourceTime < clip.sourceEnd else { return nil }
+        guard sourceTime.isFinite, sourceTime > clip.sourceStart, sourceTime < clip.sourceEnd,
+              !clip.edits.cuts.contains(where: { sourceTime > $0.start && sourceTime < $0.end }) else { return nil }
 
         var left = clip
         left.sourceEnd = sourceTime
@@ -153,10 +215,15 @@ enum StudioTimelineEditing {
         right.id = UUID().uuidString.lowercased()
         right.sourceStart = sourceTime
         right.edits = clippedEdits(clip.edits, start: sourceTime, end: clip.sourceEnd)
+        guard hasPlayableTime(left), hasPlayableTime(right) else { return nil }
 
         var updated = timeline
         updated.clips.replaceSubrange(index...index, with: [left, right])
         return updated
+    }
+
+    private static func hasPlayableTime(_ clip: StudioTimelineClip) -> Bool {
+        StudioTimeMap(sourceDuration: clip.sourceEnd, edits: clip.boundedEdits).outputDuration > 0
     }
 
     private static func clippedEdits(_ edits: StudioEdits, start: Double, end: Double) -> StudioEdits {

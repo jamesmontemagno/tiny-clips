@@ -69,12 +69,16 @@ internal static class Cli
                     return Success;
                 }
                 case "commands":
-                    await PrintAsync(env, new JsonArray(Contract.Current.CommandsForPlatform(Contract.CurrentPlatform).Select(c => (JsonNode)new JsonObject
+                    await PrintAsync(env, new JsonArray(Contract.Current.CommandsForPlatform(Contract.CurrentPlatform).Select(c =>
                     {
-                        ["name"] = c.Name,
-                        ["scope"] = c.Scope,
-                        ["description"] = c.Description,
-                        ["inputSchema"] = Contract.InputSchema(c),
+                        var item = new JsonObject
+                        {
+                            ["name"] = c.Name, ["scope"] = c.Scope, ["description"] = c.Description,
+                            ["inputSchema"] = Contract.InputSchema(c),
+                        };
+                        if (c.AdditionalScopes.Count > 0)
+                            item["additionalScopes"] = new JsonArray(c.AdditionalScopes.Select(s => (JsonNode)s).ToArray());
+                        return (JsonNode)item;
                     }).ToArray()));
                     return Success;
                 case "mcp":

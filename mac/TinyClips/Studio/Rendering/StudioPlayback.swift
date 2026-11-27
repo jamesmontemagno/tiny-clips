@@ -17,7 +17,7 @@ final class StudioPlayback {
     private var currentBuild: StudioCompositionBuildResult?
 
     // The gains the player item's sound was last mixed with, in the order of the file's tracks.
-    private var mixedTrackGains: [Double] = []
+    private var mixedTrackGains: [[Double]] = []
 
     init(
         project: StudioProject,
@@ -48,7 +48,7 @@ final class StudioPlayback {
 
         let item = AVPlayerItem(asset: build.composition)
         item.videoComposition = build.videoComposition
-        mixedTrackGains = StudioSound.trackGains(project: project, trackCount: build.soundTrackCountInFile)
+        mixedTrackGains = build.trackGains(for: project)
         item.audioMix = build.audioMix(for: project)
         player.replaceCurrentItem(with: item)
         return item
@@ -76,6 +76,9 @@ final class StudioPlayback {
         let sizeChanged = renderSize != nil && self.renderSize != currentBuild?.videoComposition.renderSize
 
         guard oldSignature != newSignature || paths != nil || sizeChanged || player.currentItem == nil else {
+            if let contexts = currentBuild?.clips, let clips = project.timeline?.clips {
+                for (context, clip) in zip(contexts, clips) { context.update(project: project, clip: clip) }
+            }
             forceRedraw()
             if let item = player.currentItem {
                 remixSoundIfNeeded(of: item)
@@ -90,7 +93,7 @@ final class StudioPlayback {
     /// otherwise, so that edits to the picture never touch the sound.
     private func remixSoundIfNeeded(of item: AVPlayerItem) {
         guard let build = currentBuild else { return }
-        let gains = StudioSound.trackGains(project: project, trackCount: build.soundTrackCountInFile)
+        let gains = build.trackGains(for: project)
         guard gains != mixedTrackGains else { return }
         mixedTrackGains = gains
         item.audioMix = build.audioMix(for: project)

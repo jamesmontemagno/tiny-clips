@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 2,
+  "id": "render-test",
+  "sources": { "screen": { "file": "not-used.mp4", "width": 96, "height": 64, "frameRate": 30, "duration": 99 } },
+  "canvas": { "padding": 0, "background": { "style": "none" } },
+  "screen": { "cornerRadius": 0, "shadow": 0 },
+  "audio": { "muted": true },
+  "mediaSources": [
+    {
+      "id": "recording", "kind": "nativeRecording",
+      "sources": {
+        "screen": { "file": "native.mp4", "width": 64, "height": 48, "frameRate": 24, "duration": 1, "audioTracks": ["microphone"] },
+        "camera": { "file": "native.mp4", "width": 64, "height": 48, "duration": 1, "startOffset": 0.125 },
+        "events": "recording-events.json"
+      }
+    },
+    {
+      "id": "import", "kind": "flatVideo",
+      "sources": { "screen": { "file": "flat.mp4", "width": 64, "height": 32, "rotationDegrees": 270, "frameRate": 60, "duration": 1 } }
+    }
+  ],
+  "timeline": { "clips": [
+    {
+      "id": "native", "sourceId": "recording", "sourceStart": 0, "sourceEnd": 1,
+      "edits": { "cuts": [{ "start": 0.25, "end": 0.5 }], "speed": [{ "start": 0.5, "end": 1, "rate": 2 }] },
+      "scenes": [{ "start": 0, "layout": "camera" }],
+      "audio": { "microphoneVolume": 0.75 }
+    },
+    {
+      "id": "rotated", "sourceId": "import", "sourceStart": 0.25, "sourceEnd": 0.75,
+      "audio": { "volume": 0.25 },
+      "overlays": { "captions": { "enabled": true } },
+      "captions": { "cues": [{ "id": "cue", "start": 0.25, "end": 0.5, "text": "Second" }] }
+    }
+  ] }
+}

@@ -219,36 +219,11 @@ struct StudioProject: Codable, Equatable, Sendable {
         captions = try container.decodeIfPresent(StudioCaptions.self, forKey: StudioJSONKey("captions")) ?? StudioCaptions()
         exports = try container.decodeCompactArray("exports", default: [])
         extra = try StudioJSON.decodeExtra(from: container, excluding: Self.knownKeys)
-        if schemaVersion >= 2 {
-            guard let mediaSources, !mediaSources.isEmpty, let timeline, !timeline.clips.isEmpty else {
-                throw StudioProjectError.invalidProject("Schema version 2 requires mediaSources and timeline.clips")
-            }
-            let sourceIDs = Set(mediaSources.map(\.id))
-            let sourceDurations = Dictionary(mediaSources.map { ($0.id, $0.sources.screen.duration) }, uniquingKeysWith: { first, _ in first })
-            let clipIDs = timeline.clips.map(\.id)
-            let clipIDSet = Set(clipIDs)
-            guard sourceIDs.count == mediaSources.count,
-                  mediaSources.allSatisfy({ !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
-                  mediaSources.allSatisfy({
-                      $0.kind != .flatVideo || ($0.sources.camera == nil && $0.sources.events == nil)
-                  }),
-                  clipIDSet.count == clipIDs.count,
-                  sourceIDs.isDisjoint(with: clipIDSet),
-                  timeline.clips.allSatisfy({
-                      !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          && sourceIDs.contains($0.sourceId)
-                          && $0.sourceStart.isFinite
-                          && $0.sourceEnd.isFinite
-                          && $0.sourceStart >= 0
-                          && $0.sourceEnd > $0.sourceStart
-                          && $0.sourceEnd <= (sourceDurations[$0.sourceId] ?? 0)
-                  }) else {
-                throw StudioProjectError.invalidProject("Schema version 2 timeline contains duplicate IDs or an invalid source range")
-            }
-        }
+        try validateTimeline()
     }
 
     func encode(to encoder: Encoder) throws {
+        try validateTimeline()
         var container = encoder.container(keyedBy: StudioJSONKey.self)
         try StudioJSON.encodeExtra(extra, to: &container)
         try container.encode(schemaVersion, forKey: StudioJSONKey("schemaVersion"))
@@ -272,6 +247,14 @@ struct StudioProject: Codable, Equatable, Sendable {
         try container.encode(overlays, forKey: StudioJSONKey("overlays"))
         try container.encode(captions, forKey: StudioJSONKey("captions"))
         try container.encode(exports, forKey: StudioJSONKey("exports"))
+    }
+
+    private func validateTimeline() throws {
+        guard schemaVersion >= 2 else { return }
+        guard let mediaSources, let timeline else {
+            throw StudioProjectError.invalidProject("Schema version 2 requires mediaSources and timeline.clips")
+        }
+        _ = try StudioTimelineMap(timeline: timeline, sources: mediaSources)
     }
 
     private static let knownKeys: Set<String> = [

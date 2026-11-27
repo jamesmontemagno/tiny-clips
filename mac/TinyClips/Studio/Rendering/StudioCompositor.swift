@@ -26,6 +26,8 @@ final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstr
     let renderState: StudioRenderState
     let projectDirectory: URL
     let screenTransform: CGAffineTransform
+    let piece: StudioTimePiece?
+    let clipOutputStart: Double
 
     init(
         timeRange: CMTimeRange,
@@ -34,7 +36,9 @@ final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstr
         renderSize: CGSize,
         renderState: StudioRenderState,
         projectDirectory: URL,
-        screenTransform: CGAffineTransform = .identity
+        screenTransform: CGAffineTransform = .identity,
+        piece: StudioTimePiece? = nil,
+        clipOutputStart: Double = 0
     ) {
         self.timeRange = timeRange
         self.screenTrackID = screenTrackID
@@ -43,12 +47,26 @@ final class StudioVideoCompositionInstruction: NSObject, AVVideoCompositionInstr
         self.renderState = renderState
         self.projectDirectory = projectDirectory
         self.screenTransform = screenTransform
+        self.piece = piece
+        self.clipOutputStart = clipOutputStart
         var trackIDs: [NSValue] = [NSNumber(value: screenTrackID)]
         if let cameraTrackID {
             trackIDs.append(NSNumber(value: cameraTrackID))
         }
         requiredSourceTrackIDs = trackIDs
         super.init()
+    }
+
+    func position(at time: CMTime, map: StudioTimeMap) -> (source: Double, clipOutput: Double) {
+        let elapsed = (time - timeRange.start).seconds
+        if let piece {
+            // The same CMTime endpoints that selected the decoded media select its overlays.
+            // At a cut, don't turn a rounded tick back into the end of the previous piece.
+            let progress = min(1, max(0, elapsed / timeRange.duration.seconds))
+            return (piece.start + (piece.end - piece.start) * progress,
+                    clipOutputStart + piece.outputDuration * progress)
+        }
+        return (map.outputToSource(elapsed), elapsed)
     }
 }
 
@@ -153,26 +171,29 @@ private final class StudioCompositorImageCache: @unchecked Sendable {
 /// masks can trail the picture a little.
 private final class StudioPersonSegmenter: @unchecked Sendable {
     private let lock = NSLock()
-    private let sequenceHandler = VNSequenceRequestHandler()
-    private lazy var request: VNGeneratePersonSegmentationRequest = {
-        let request = VNGeneratePersonSegmentationRequest()
-        request.qualityLevel = .balanced
-        request.outputPixelFormat = kCVPixelFormatType_OneComponent8
-        return request
-    }()
+    private weak var lastClip: StudioRenderState?
+    private var sequence: (handler: VNSequenceRequestHandler, request: VNGeneratePersonSegmentationRequest)?
 
     /// A mask the size of the frame, with the red channel full where a person is. Vision gives
     /// one number for each point, and Core Image reads such a picture as red alone, so the mask
     /// is for the filters that go by red. Nil when Vision cannot make one.
-    func mask(for pixelBuffer: CVPixelBuffer) -> CIImage? {
+    func mask(for pixelBuffer: CVPixelBuffer, in clip: StudioRenderState) -> CIImage? {
         lock.lock()
         defer { lock.unlock() }
+        if lastClip !== clip {
+            let request = VNGeneratePersonSegmentationRequest()
+            request.qualityLevel = .balanced
+            request.outputPixelFormat = kCVPixelFormatType_OneComponent8
+            sequence = (VNSequenceRequestHandler(), request)
+            lastClip = clip
+        }
+        guard let sequence else { return nil }
         do {
-            try sequenceHandler.perform([request], on: pixelBuffer)
+            try sequence.handler.perform([sequence.request], on: pixelBuffer)
         } catch {
             return nil
         }
-        guard let maskBuffer = request.results?.first?.pixelBuffer else { return nil }
+        guard let maskBuffer = sequence.request.results?.first?.pixelBuffer else { return nil }
         let mask = CIImage(cvPixelBuffer: maskBuffer)
         let width = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
         let height = CGFloat(CVPixelBufferGetHeight(pixelBuffer))
@@ -235,7 +256,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
 
         let renderSize = instruction.renderSize
         let snapshot = instruction.renderState.read()
-        let sourceTime = snapshot.timeMap.outputToSource(request.compositionTime.seconds)
+        let (sourceTime, localTime) = instruction.position(at: request.compositionTime, map: snapshot.timeMap)
         let frame = StudioLayoutResolver.resolve(
             project: snapshot.project,
             time: sourceTime,
@@ -330,7 +351,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
             var cameraSource = CIImage(cvPixelBuffer: cameraBuffer)
             var showsPeopleOnly = false
             let cutout = snapshot.project.camera.cutout
-            if cutout != .none, let personMask = personSegmenter.mask(for: cameraBuffer) {
+            if cutout != .none, let personMask = personSegmenter.mask(for: cameraBuffer, in: instruction.renderState) {
                 if cutout == .blur {
                     cameraSource = blurringAllButPeople(in: cameraSource, mask: personMask)
                 } else {
@@ -399,7 +420,7 @@ final class StudioCompositor: NSObject, AVVideoCompositing {
         }
 
         // On the canvas, over everything, and in no layer that fades (section 15.4).
-        if let index = StudioCaptionResolver.index(in: snapshot.captions, at: request.compositionTime.seconds),
+        if let index = StudioCaptionResolver.index(in: snapshot.captions, at: localTime),
            let caption = captionLayer(snapshot.captions[index].text, project: snapshot.project, renderSize: renderSize) {
             output = caption.composited(over: output)
         }

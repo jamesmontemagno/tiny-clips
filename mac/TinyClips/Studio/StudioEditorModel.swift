@@ -63,6 +63,10 @@ enum StudioClosePrompt: Equatable {
 /// The parts of a project the editor changes. Undo, redo, and "changed since export" work on this
 /// value, so they never touch the project's bookkeeping (exports, dates, name, sources).
 struct StudioEditableState: Equatable, Sendable {
+    var schemaVersion: Int
+    var timelineSources: StudioSources?
+    var mediaSources: [StudioMediaSource]?
+    var timeline: StudioTimeline?
     var canvas: StudioCanvas
     var screen: StudioScreenStyle
     var camera: StudioCameraStyle
@@ -74,6 +78,10 @@ struct StudioEditableState: Equatable, Sendable {
     var captions: StudioCaptions
 
     init(project: StudioProject) {
+        schemaVersion = project.schemaVersion
+        timelineSources = project.schemaVersion >= 2 ? project.sources : nil
+        mediaSources = project.mediaSources
+        timeline = project.timeline
         canvas = project.canvas
         screen = project.screen
         camera = project.camera
@@ -87,6 +95,10 @@ struct StudioEditableState: Equatable, Sendable {
 
     func applied(to project: StudioProject) -> StudioProject {
         var copy = project
+        copy.schemaVersion = schemaVersion
+        if let timelineSources { copy.sources = timelineSources }
+        copy.mediaSources = mediaSources
+        copy.timeline = timeline
         copy.canvas = canvas
         copy.screen = screen
         copy.camera = camera
@@ -365,7 +377,44 @@ struct StudioEditorModel: Equatable, Sendable {
 
     static let maximumUndoDepth = 100
 
-    private(set) var project: StudioProject
+    private(set) var manifest: StudioProject
+    private var preferredClipID: String?
+
+    var selectedClip: StudioTimelineClip? {
+        guard manifest.schemaVersion >= 2, let clips = manifest.timeline?.clips else { return nil }
+        return clips.first { $0.id == preferredClipID } ?? clips.first
+    }
+
+    mutating func selectClip(id: String) {
+        preferredClipID = id
+        typingInAnnotation = nil
+        choosingColorInAnnotation = nil
+    }
+
+    /// The inspector edits one source in source time. The manifest, not this projection,
+    /// owns project defaults, history, persistence and export.
+    private(set) var project: StudioProject {
+        get {
+            guard let clip = selectedClip, let source = manifest.mediaSources?.first(where: { $0.id == clip.sourceId })
+            else { return manifest }
+            return clip.resolvedProject(in: manifest, source: source)
+        }
+        set {
+            guard var clip = selectedClip, let index = manifest.timeline?.clips.firstIndex(where: { $0.id == clip.id })
+            else { manifest = newValue; return }
+            let before = project
+            manifest.canvas = newValue.canvas
+            if newValue.screen != before.screen { clip.screen = newValue.screen }
+            if newValue.camera != before.camera { clip.camera = newValue.camera }
+            if newValue.scenes != before.scenes { clip.scenes = newValue.scenes }
+            if newValue.zooms != before.zooms { clip.zooms = newValue.zooms }
+            if newValue.edits != before.edits { clip.edits = newValue.edits }
+            if newValue.audio != before.audio { clip.audio = newValue.audio }
+            if newValue.overlays != before.overlays { clip.overlays = newValue.overlays }
+            if newValue.captions != before.captions { clip.captions = newValue.captions }
+            manifest.timeline?.clips[index] = clip
+        }
+    }
 
     /// Where the playhead is, in source time, as the owner last said. It picks the current scene.
     /// It is not part of what undo restores.
@@ -383,19 +432,21 @@ struct StudioEditorModel: Equatable, Sendable {
     private var exportedState: StudioEditableState?
 
     init(project: StudioProject) {
-        self.project = project
-        ensureScene()
-        normalizeStoredScenes()
-        normalizeStoredCuts()
-        normalizeStoredSpeed()
-        normalizeTrim()
-        sortStoredZooms()
-        exportedState = project.exports.isEmpty ? nil : StudioEditableState(project: self.project)
+        manifest = project
+        if project.schemaVersion < 2 {
+            ensureScene()
+            normalizeStoredScenes()
+            normalizeStoredCuts()
+            normalizeStoredSpeed()
+            normalizeTrim()
+            sortStoredZooms()
+        }
+        exportedState = project.exports.isEmpty ? nil : editableState
     }
 
     // MARK: - State
 
-    var editableState: StudioEditableState { StudioEditableState(project: project) }
+    var editableState: StudioEditableState { StudioEditableState(project: manifest) }
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
     var isGroupingEdits: Bool { groupedSnapshot != nil }
@@ -447,6 +498,7 @@ struct StudioEditorModel: Equatable, Sendable {
     /// muting then never rebuild the player; the transport applies them instead (see
     /// `playbackStart(from:)` and `isAtPlaybackEnd(_:)`), and export uses the real project.
     var previewProject: StudioProject {
+        if manifest.schemaVersion >= 2 { return manifest }
         var copy = project
         copy.edits = StudioEdits()
         copy.audio.muted = false
@@ -517,7 +569,7 @@ struct StudioEditorModel: Equatable, Sendable {
     mutating func cancelEditingGroup() {
         guard let snapshot = groupedSnapshot else { return }
         groupedSnapshot = nil
-        project = snapshot.applied(to: project)
+        manifest = snapshot.applied(to: manifest)
     }
 
     /// Puts back an earlier state, such as the one last saved to the project folder. It is one
@@ -528,7 +580,7 @@ struct StudioEditorModel: Equatable, Sendable {
         commitEditingGroup()
         let current = editableState
         guard state != current else { return }
-        project = state.applied(to: project)
+        manifest = state.applied(to: manifest)
         pushUndo(current)
     }
 
@@ -542,7 +594,7 @@ struct StudioEditorModel: Equatable, Sendable {
         commitEditingGroup()
         if let previous = undoStack.popLast() {
             redoStack.append(editableState)
-            project = previous.applied(to: project)
+            manifest = previous.applied(to: manifest)
         }
         if wasGrouping {
             beginEditingGroup()
@@ -558,7 +610,7 @@ struct StudioEditorModel: Equatable, Sendable {
         commitEditingGroup()
         if let next = redoStack.popLast() {
             undoStack.append(editableState)
-            project = next.applied(to: project)
+            manifest = next.applied(to: manifest)
         }
         if wasGrouping {
             beginEditingGroup()
@@ -1132,18 +1184,8 @@ struct StudioEditorModel: Equatable, Sendable {
 
     /// Applies the editable fields from a validated automation project as one undoable edit.
     mutating func applyAutomationProject(_ updated: StudioProject) {
-        guard updated.id == project.id else { return }
-        mutate {
-            $0.canvas = updated.canvas
-            $0.screen = updated.screen
-            $0.camera = updated.camera
-            $0.scenes = updated.scenes
-            $0.zooms = updated.zooms
-            $0.edits = updated.edits
-            $0.audio = updated.audio
-            $0.overlays = updated.overlays
-            $0.captions = updated.captions
-        }
+        guard updated.id == manifest.id else { return }
+        restore(StudioEditableState(project: updated))
     }
 
     // MARK: - Cuts
@@ -1797,16 +1839,16 @@ struct StudioEditorModel: Equatable, Sendable {
 
     mutating func adoptOwnedScreen(from saved: StudioProject) {
         guard saved.id == project.id, project.sources.screen.external, !saved.sources.screen.external else { return }
-        project.sources.screen = saved.sources.screen
+        manifest.sources.screen = saved.sources.screen
     }
 
     /// Takes the fields the store or other windows own from the saved project, leaving edits alone.
     mutating func refreshBookkeeping(from saved: StudioProject) {
-        project.exports = saved.exports
-        project.modifiedAt = saved.modifiedAt
-        project.lastOpenedAt = saved.lastOpenedAt
-        project.keepSources = saved.keepSources
-        project.name = saved.name
+        manifest.exports = saved.exports
+        manifest.modifiedAt = saved.modifiedAt
+        manifest.lastOpenedAt = saved.lastOpenedAt
+        manifest.keepSources = saved.keepSources
+        manifest.name = saved.name
     }
 
     // MARK: - Geometry

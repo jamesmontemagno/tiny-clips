@@ -34,7 +34,8 @@ enum AutomationPolicy {
         if pairingCommands.contains(command) { return .allow }
         guard let clientScopes else { return .deny(.unauthorized) }
         guard let definition = contract.command(named: command) else { return .deny(.unknownCommand) }
-        guard clientScopes.contains(definition.scope) else { return .deny(.missingScope) }
-        return contract.isSensitive(scope: definition.scope) ? .approve : .allow
+        let required = [definition.scope] + (definition.additionalScopes ?? [])
+        guard Set(required).isSubset(of: clientScopes) else { return .deny(.missingScope) }
+        return required.contains(where: contract.isSensitive(scope:)) ? .approve : .allow
     }
 }

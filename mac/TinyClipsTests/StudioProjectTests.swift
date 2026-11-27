@@ -607,6 +607,86 @@ final class StudioProjectTests: XCTestCase {
         XCTAssertNil(try secondStore.findProjectID(exportedPath: "D:\\Moved.mp4"))
     }
 
+    @MainActor
+    func testSegmentFinalizesNativeLayersOnlyAfterEventsCanBeSaved() async throws {
+        let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
+        let coordinator = try StudioRecordingCoordinator(
+            store: store, captureRegion: CaptureRegion(sourceRect: CGRect(x: 0, y: 0, width: 64, height: 48),
+                                                       displayID: 1, scaleFactor: 1),
+            captureKind: .region, initialCameraCorner: .topRight, clickVisualsEnabled: true, frameRate: 24
+        )
+        defer { coordinator.deleteUnfinishedProject() }
+        let fm = FileManager.default
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/StudioRendering/native.mp4")
+        let cameraURL = try XCTUnwrap(coordinator.cameraURL)
+        try fm.copyItem(at: fixture, to: coordinator.screenURL)
+        try fm.copyItem(at: fixture, to: cameraURL)
+        func finish() async throws -> StudioProject {
+            try await coordinator.completeRecording(
+                screenURL: coordinator.screenURL, cameraURL: cameraURL,
+                screenFirstSampleTime: nil, cameraFirstSampleTime: nil,
+                recordedAudioTracks: [.microphone], mouseClicks: [], cameraCornerChanges: [],
+                clickOverlayStyle: .init(colorHex: "#FFFFFF", size: 10, strokeWidth: 2, opacity: 1, duration: 0.5),
+                branding: false, appVersion: "test", look: nil, requiresCompleteLayers: true
+            )
+        }
+        try fm.createDirectory(at: coordinator.paths.eventsURL, withIntermediateDirectories: false)
+        do {
+            _ = try await finish()
+            XCTFail("An incomplete take must not be offered for insertion")
+        } catch {
+            XCTAssertFalse(fm.fileExists(atPath: coordinator.paths.projectJSONURL.path))
+        }
+        try fm.removeItem(at: coordinator.paths.eventsURL)
+        let project = try await finish()
+        XCTAssertEqual(project.sources.screen.audioTracks, ["microphone"])
+        XCTAssertNotNil(project.sources.camera)
+        XCTAssertNotNil(project.sources.events)
+        XCTAssertEqual(try store.load(id: project.id), project)
+        XCTAssertEqual(try store.loadEvents(id: project.id).capture.kind, .region)
+    }
+
+    @MainActor
+    func testLibraryChooserUsesCurrentRecordingEditsButDoesNotMergeAnOpenTimeline() async throws {
+        let store = StudioProjectStore(rootURL: directoryURL)
+        let url = directoryURL.appendingPathComponent("Example.mp4")
+        _ = try store.completeRecording(id: validID, request: creationRequest())
+        var live = try store.recordExport(id: validID, path: url.path)
+        let savedTrim = live.edits.trimStart
+        live.edits.trimStart = 1.5
+        let chosen = try await StudioLibraryVideoSelection.resolve(url: url, store: store) { id in
+            XCTAssertEqual(id, self.validID)
+            return live
+        }
+        XCTAssertEqual(chosen.recording, live)
+        XCTAssertEqual(chosen.url, url)
+        XCTAssertEqual(try store.load(id: validID).edits.trimStart, savedTrim)
+
+        live.schemaVersion = 2
+        live.timeline = StudioTimeline(clips: [
+            StudioTimelineClip(id: "first", sourceId: "s", sourceStart: 0, sourceEnd: 2),
+            StudioTimelineClip(id: "second", sourceId: "s", sourceStart: 3, sourceEnd: 5)
+        ])
+        let assembled = try await StudioLibraryVideoSelection.resolve(url: url, store: store) { _ in live }
+        XCTAssertNil(assembled.recording)
+        XCTAssertEqual(assembled.url, url)
+    }
+
+    func testLibraryVideoChooserListsOnlyMatchingRegularNonemptyVideosWithoutMovingThem() throws {
+        let saved = directoryURL.appendingPathComponent("TinyClips example.MP4")
+        let other = directoryURL.appendingPathComponent("Other.mp4")
+        for url in [saved, other, directoryURL.appendingPathComponent("TinyClips screenshot.png")] {
+            try Data([1]).write(to: url)
+        }
+        try Data().write(to: directoryURL.appendingPathComponent("TinyClips empty.mp4"))
+        try FileManager.default.createDirectory(at: directoryURL.appendingPathComponent("TinyClips folder.mp4"), withIntermediateDirectories: false)
+        XCTAssertEqual(try ClipsLibraryVideoChooser.videos(in: directoryURL, onlyTinyClips: true).map(\.url.standardizedFileURL),
+                       [saved.standardizedFileURL])
+        XCTAssertEqual(Set(try ClipsLibraryVideoChooser.videos(in: directoryURL, onlyTinyClips: false).map(\.url.standardizedFileURL)),
+                       [saved.standardizedFileURL, other.standardizedFileURL])
+    }
+
     func testExportedPathIndexListsEveryLinkUnderItsComparisonKey() throws {
         let store = StudioProjectStore(rootURL: directoryURL, now: { self.fixedDate })
         XCTAssertTrue(try store.exportedPathIndex().isEmpty)
@@ -1811,6 +1891,33 @@ final class StudioProjectTests: XCTestCase {
         let moved = try XCTUnwrap(StudioTimelineEditing.moveClip(id: split.clips[0].id, to: 1, in: split))
         XCTAssertEqual(moved.clips.map(\.id), split.clips.reversed().map(\.id))
         XCTAssertEqual(StudioTimelineEditing.removeClip(id: moved.clips[0].id, from: moved)?.clips.count, 1)
+    }
+
+    func testTimelineInsertionWithinSpeedEditIsOnePersistableSplitAndBoundaryInsertionIsNotASplit() throws {
+        var project = StudioTimelineEditing.timelineProject(from: try decodeProject("""
+        {"id":"\(validID)","sources":{"screen":{"width":1920,"height":1080,"duration":10}},
+         "edits":{"cuts":[{"start":2,"end":4}],"speed":[{"start":4,"end":8,"rate":2}]}}
+        """))
+        let lane = try XCTUnwrap(project.timeline)
+        let sources = try XCTUnwrap(project.mediaSources)
+        var added = lane.clips[0]
+        added.id = "new"
+        let inserted = try StudioTimelineEditing.insert(added, atProjectTime: 3, in: lane, sources: sources)
+        XCTAssertEqual(inserted.clips.map(\.sourceStart), [0, 0, 6])
+        XCTAssertEqual(inserted.clips.map(\.sourceEnd), [6, 10, 10])
+        XCTAssertEqual(inserted.clips[1].id, added.id)
+        project.timeline = inserted
+        XCTAssertEqual(try StudioJSON.makeDecoder().decode(StudioProject.self, from: StudioJSON.makeEncoder().encode(project)).timeline, inserted)
+        var boundaryClip = added
+        boundaryClip.id = "boundary"
+        let atCut = try StudioTimelineEditing.insert(boundaryClip, atProjectTime: 3, in: inserted, sources: sources)
+        XCTAssertEqual(atCut.clips.map(\.id), [inserted.clips[0].id, "boundary", "new", inserted.clips[2].id])
+        XCTAssertThrowsError(try StudioTimelineEditing.insert(added, atProjectTime: 3, in: inserted, sources: sources))
+        XCTAssertNil(StudioTimelineEditing.splitClip(id: lane.clips[0].id, at: 3, in: lane))
+        XCTAssertNil(StudioTimelineEditing.trimClip(id: lane.clips[0].id, toStart: 2, end: 4, in: lane))
+        XCTAssertNil(StudioTimelineEditing.removeClip(id: lane.clips[0].id, from: lane))
+        project.timeline?.clips[0].edits.cuts = [StudioTimeRange(start: 0, end: 10)]
+        XCTAssertThrowsError(try StudioJSON.makeDecoder().decode(StudioProject.self, from: StudioJSON.makeEncoder().encode(project)))
     }
 
     // MARK: - Helpers

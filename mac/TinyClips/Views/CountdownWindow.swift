@@ -3,20 +3,23 @@ import SwiftUI
 
 class CountdownWindow: NSPanel {
     private var completion: (() -> Void)?
+    private var onCancel: (() -> Void)?
+    private var localEscapeMonitor: Any?
+    private var globalEscapeMonitor: Any?
     private var countdownTimer: Timer?
     private let countdownState: CountdownState
-    private let hostingView: NSHostingView<CountdownView>
     private var remaining: Int
     private var didComplete = false
 
-    init(duration: Int, completion: @escaping () -> Void) {
+    init(duration: Int, onCancel: (() -> Void)? = nil, completion: @escaping () -> Void) {
         let initialRemaining = max(1, duration)
         self.remaining = initialRemaining
         self.countdownState = CountdownState(remaining: initialRemaining)
-        self.hostingView = NSHostingView(rootView: CountdownView(state: countdownState))
+        self.onCancel = onCancel
         self.completion = completion
+        let size = NSSize(width: 120, height: onCancel == nil ? 120 : 152)
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 120, height: 120),
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -28,7 +31,11 @@ class CountdownWindow: NSPanel {
         self.hasShadow = true
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        hostingView.frame = NSRect(x: 0, y: 0, width: 120, height: 120)
+        let hostingView = NSHostingView(rootView: CountdownView(
+            state: countdownState,
+            cancel: onCancel == nil ? nil : { [weak self] in self?.requestCancel() }
+        ))
+        hostingView.frame = NSRect(origin: .zero, size: size)
         self.contentView = hostingView
         updateDisplay()
     }
@@ -46,6 +53,16 @@ class CountdownWindow: NSPanel {
             animator().alphaValue = 1
         }
         startCountdown()
+        if onCancel != nil {
+            localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.keyCode == 53 else { return event }
+                self?.requestCancel()
+                return nil
+            }
+            globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if event.keyCode == 53 { self?.requestCancel() }
+            }
+        }
     }
 
     private func startCountdown() {
@@ -63,6 +80,8 @@ class CountdownWindow: NSPanel {
                     self.didComplete = true
                     let completion = self.completion
                     self.completion = nil
+                    self.onCancel = nil
+                    self.removeEscapeMonitors()
                     self.orderOut(nil)
                     completion?()
                 }
@@ -76,11 +95,26 @@ class CountdownWindow: NSPanel {
         countdownState.remaining = remaining
     }
 
+    private func requestCancel() {
+        guard !didComplete, let callback = onCancel else { return }
+        cancel()
+        callback()
+    }
+
+    private func removeEscapeMonitors() {
+        if let localEscapeMonitor { NSEvent.removeMonitor(localEscapeMonitor) }
+        if let globalEscapeMonitor { NSEvent.removeMonitor(globalEscapeMonitor) }
+        localEscapeMonitor = nil
+        globalEscapeMonitor = nil
+    }
+
     func cancel() {
         didComplete = true
         countdownTimer?.invalidate()
         countdownTimer = nil
         completion = nil
+        onCancel = nil
+        removeEscapeMonitors()
         orderOut(nil)
     }
 }
@@ -95,10 +129,23 @@ private final class CountdownState: ObservableObject {
 
 private struct CountdownView: View {
     @ObservedObject var state: CountdownState
+    var cancel: (() -> Void)?
 
     var body: some View {
         let remaining = state.remaining
 
+        VStack(spacing: 0) {
+            countdown(remaining)
+            if let cancel {
+                Button("Cancel", action: cancel)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityLabel("Cancel segment recording")
+                    .frame(height: 32)
+            }
+        }
+    }
+
+    private func countdown(_ remaining: Int) -> some View {
         ZStack {
             Circle()
                 .fill(.black.opacity(0.75))

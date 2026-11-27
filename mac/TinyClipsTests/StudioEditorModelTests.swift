@@ -3227,6 +3227,35 @@ final class StudioEditorModelTests: XCTestCase {
         return project
     }
 
+    func testTimelineHistoryPreservesInheritedDefaultsAndSelectionIsNotAnEdit() throws {
+        let legacy = makeProject()
+        var editor = StudioEditorModel(project: legacy)
+        let original = editor.editableState
+        var upgraded = StudioTimelineEditing.timelineProject(from: editor.manifest)
+        var second = try XCTUnwrap(upgraded.timeline?.clips.first)
+        second.id = "second"
+        second.audio = nil
+        upgraded.timeline?.clips.append(second)
+        editor.applyAutomationProject(upgraded)
+        editor.selectClip(id: second.id)
+        XCTAssertEqual(editor.editableState, StudioEditableState(project: upgraded))
+        editor.setMuted(true)
+        XCTAssertTrue(editor.project.audio.muted)
+        XCTAssertFalse(editor.manifest.audio.muted)
+        XCTAssertEqual(editor.manifest.timeline?.clips[0].audio, upgraded.audio)
+        editor.undo()
+        XCTAssertEqual(editor.manifest, upgraded)
+        XCTAssertNil(editor.selectedClip?.audio)
+        editor.undo()
+        XCTAssertEqual(editor.editableState, original)
+        XCTAssertNil(editor.manifest.timeline)
+        editor.redo()
+        editor.redo()
+        XCTAssertEqual(editor.selectedClip?.id, second.id)
+        XCTAssertTrue(editor.project.audio.muted)
+        XCTAssertEqual(editor.previewProject, editor.manifest)
+    }
+
     private func makeProject(duration: Double = 10, camera: Bool = true) -> StudioProject {
         StudioProject(
             id: "3f0013cf-ba10-4453-af91-792b7882dae6",

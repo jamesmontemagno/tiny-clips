@@ -221,14 +221,24 @@ struct StudioExportOptionsModel: Equatable, Sendable {
 
     init(project: StudioProject, isHEVC: Bool, saved: StudioExportChoice) {
         let natural = StudioCanvasMath.naturalCanvas(project: project)
-        let timeMap = StudioTimeMap(sourceDuration: project.sources.screen.duration, edits: project.edits)
+        let duration: Double
+        let hasSound: Bool
+        if project.schemaVersion >= 2, let timeline = project.timeline {
+            duration = timeline.clips.reduce(0) { total, clip in
+                total + StudioTimeMap(sourceDuration: clip.sourceEnd, edits: clip.boundedEdits).outputDuration
+            }
+            hasSound = timeline.clips.contains { !($0.audio ?? project.audio).muted }
+        } else {
+            duration = StudioTimeMap(sourceDuration: project.sources.screen.duration, edits: project.edits).outputDuration
+            hasSound = !project.audio.muted
+        }
         self.init(
             naturalWidth: natural.width,
             naturalHeight: natural.height,
             framesPerSecond: project.sources.screen.frameRate,
             isHEVC: isHEVC,
-            duration: timeMap.outputDuration,
-            hasSound: !project.audio.muted,
+            duration: duration,
+            hasSound: hasSound,
             saved: saved
         )
     }

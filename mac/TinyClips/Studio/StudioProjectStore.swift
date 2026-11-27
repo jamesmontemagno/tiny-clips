@@ -1,5 +1,7 @@
+import AVFoundation
 import Darwin
 import Foundation
+import ImageIO
 
 // MARK: - Store Types
 
@@ -179,16 +181,20 @@ enum StudioProjectFolderError: Error, Equatable, LocalizedError {
     /// What was chosen is not a `.tinyclips` file, or a folder with exactly one in it.
     case notAProjectFile
 
+    case staleEdit
+
     var errorDescription: String? {
         switch self {
         case .externalSource:
-            return "This project is built around a video that is kept somewhere else, so it cannot be saved as a folder."
+            return "A portable project must keep its media in the project folder. Import the missing video and save a new copy."
         case .missingFile(let name):
             return "\(name) is not in the project's folder. A .tinyclips file opens only next to the recordings it was saved with."
         case .destinationExists:
             return "There is already something with that name, and it is not a saved Tiny Clips project. Choose another name."
         case .notAProjectFile:
             return "Choose a .tinyclips file, or the folder that holds one."
+        case .staleEdit:
+            return "The project changed before this edit could be saved. Reopen it and try again."
         }
     }
 }
@@ -300,6 +306,44 @@ struct StudioProjectListing: Equatable, Sendable {
     var unreadable: [StudioUnreadableProject] = []
 }
 
+/// A prepared edit owns only its newly installed, uniquely named files. Once accepted by the
+/// editor those files belong to the project, even while an undo removes them from the manifest.
+class StudioPreparedTimelineBase: @unchecked Sendable {
+    let base: StudioProject
+    private let lock = NSLock()
+    private var finish: ((_ rollback: Bool) -> Void)?
+
+    fileprivate init(base: StudioProject, finish: @escaping (Bool) -> Void) {
+        self.base = base
+        self.finish = finish
+    }
+
+    func finalize() { complete(rollback: false) }
+    func rollback() { complete(rollback: true) }
+
+    private func complete(rollback: Bool) {
+        let action = lock.withLock {
+            defer { finish = nil }
+            return finish
+        }
+        action?(rollback)
+    }
+
+    deinit { rollback() }
+}
+
+final class StudioPreparedTimelineImport: StudioPreparedTimelineBase, @unchecked Sendable {
+    let source: StudioMediaSource
+    let clip: StudioTimelineClip
+
+    fileprivate init(base: StudioProject, source: StudioMediaSource, clip: StudioTimelineClip,
+                     finish: @escaping (Bool) -> Void) {
+        self.source = source
+        self.clip = clip
+        super.init(base: base, finish: finish)
+    }
+}
+
 // MARK: - Store
 
 final class StudioProjectStore {
@@ -314,6 +358,8 @@ final class StudioProjectStore {
 
     /// Projects open in an editor at this moment. Read and changed only with `lock` held.
     private var idsInUse: Set<String> = []
+    /// A closed draft or a linked source can be in use by one or more in-flight imports.
+    private var timelineImportUses: [UUID: Set<String>] = [:]
 
     init(
         rootURL: URL? = nil,
@@ -391,6 +437,24 @@ final class StudioProjectStore {
     func save(_ project: StudioProject) throws -> StudioProject {
         try withLock {
             try saveUnlocked(project, updatingModifiedAt: true)
+        }
+    }
+
+    /// A prepared edit to a closed project must not overwrite a newer save or bypass an
+    /// editor that opened during preparation.
+    func save(_ project: StudioProject, replacing expected: StudioProject) throws -> StudioProject? {
+        try withLock {
+            guard project.id == expected.id, !idsInUse.contains(project.id),
+                  try loadUnlocked(id: project.id) == expected else { return nil }
+            return try saveUnlocked(project, updatingModifiedAt: true)
+        }
+    }
+
+    func saveEdits(_ state: StudioEditableState, id: String, expected: StudioEditableState) throws -> StudioProject {
+        try withLock {
+            let live = try loadUnlocked(id: id)
+            guard StudioEditableState(project: live) == expected else { throw StudioProjectFolderError.staleEdit }
+            return try saveUnlocked(state.applied(to: live), updatingModifiedAt: true)
         }
     }
 
@@ -882,6 +946,296 @@ final class StudioProjectStore {
         return best
     }
 
+    // MARK: - Timeline media
+
+    func prepareTimelineBase(destination: StudioProject) async throws -> StudioPreparedTimelineBase {
+        let (base, finish) = try await stageTimelineEdit(destination) { base, _ in base }
+        return StudioPreparedTimelineBase(base: base, finish: finish)
+    }
+
+    /// `destination` and `recording` are editor snapshots, not necessarily what's on disk.
+    /// Passing a linked single-recording project imports its layers, never its rendered export.
+    func prepareTimelineImport(destination: StudioProject, videoURL: URL, recording: StudioProject? = nil,
+                               expectedVideo: StudioVideoSourceIdentity? = nil)
+        async throws -> StudioPreparedTimelineImport {
+        if let recording, recording.schemaVersion != 1 {
+            throw StudioProjectError.invalidProject("Choose a single recording or import its exported video instead.")
+        }
+        let ((base, source, clip), finish) = try await stageTimelineEdit(destination, recordingID: recording?.id) { base, staging in
+            let (source, clip) = try await self.stageTimelineSource(videoURL: videoURL, recording: recording,
+                                                                    destination: base, staging: staging, expected: expectedVideo)
+            _ = try StudioTimelineMap(timeline: StudioTimeline(clips: [clip]), sources: [source])
+            return (base, source, clip)
+        }
+        return StudioPreparedTimelineImport(base: base, source: source, clip: clip, finish: finish)
+    }
+
+    private func stageTimelineEdit<T>(_ destination: StudioProject, recordingID: String? = nil,
+                                      prepare: (StudioProject, URL) async throws -> T) async throws -> (T, (Bool) -> Void) {
+        try Task.checkCancellation()
+        let token = UUID()
+        withLock { timelineImportUses[token] = Set([destination.id, recordingID].compactMap { $0 }) }
+        var handedOff = false
+        defer { if !handedOff { withLock { timelineImportUses[token] = nil } } }
+        let directory = try paths(for: destination).projectDirectory
+        guard try directory.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false,
+              try isPlainFile(directory.appendingPathComponent("project.json")) else {
+            throw StudioProjectFolderError.notAProjectFile
+        }
+        let staging = directory.appendingPathComponent(".import-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? fileManager.removeItem(at: staging) }
+
+        let base = try await upgradedTimelineBase(destination, staging: staging)
+        guard let timeline = base.timeline, let registry = base.mediaSources else { throw StudioProjectFolderError.notAProjectFile }
+        _ = try StudioTimelineMap(timeline: timeline, sources: registry)
+        _ = try folderAssets(for: base, in: directory, staging: staging)
+        let value = try await prepare(base, staging)
+        let names = try fileManager.contentsOfDirectory(atPath: staging.path)
+        let versions = try withLock {
+            try Task.checkCancellation()
+            var installed: [URL] = []
+            do {
+                for name in names {
+                    let file = directory.appendingPathComponent(name)
+                    try fileManager.moveItem(at: staging.appendingPathComponent(name), to: file)
+                    installed.append(file)
+                }
+                try Task.checkCancellation()
+                return try installed.map { ($0, try videoSourceIdentity(at: $0)) }
+            } catch {
+                for file in installed { try? fileManager.removeItem(at: file) }
+                throw error
+            }
+        }
+        handedOff = true
+        return (value, { rollback in
+            self.withLock {
+                defer { self.timelineImportUses[token] = nil }
+                // Be conservative if a newer manifest already adopted a file or is unreadable.
+                guard rollback, !versions.isEmpty, let current = try? self.loadUnlocked(id: destination.id) else { return }
+                let inUse = Set(self.ownedFiles(current).map { $0.lowercased() })
+                for (file, version) in versions where !inUse.contains(file.lastPathComponent.lowercased()) {
+                    guard (try? self.isPlainFile(file)) == true, (try? self.videoSourceIdentity(at: file)) == version else { continue }
+                    try? self.fileManager.removeItem(at: file)
+                }
+            }
+        })
+    }
+
+    private func upgradedTimelineBase(_ destination: StudioProject, staging: URL) async throws -> StudioProject {
+        var base = StudioTimelineEditing.timelineProject(from: destination)
+        if destination.schemaVersion == 1 {
+            let flat = isKnownFlat(destination)
+            var sources = destination.sources
+            if flat {
+                let original = try paths(for: destination).screenURL
+                if sources.screen.external {
+                    sources.screen = try await stageScreen(original, in: staging, metadata: sources.screen, flat: true,
+                                                           expected: sourceIdentity(for: destination))
+                } else {
+                    guard (try? isPlainFile(original)) == true else { throw StudioProjectFolderError.missingFile(sources.screen.file) }
+                    sources.screen = try await Self.measuredScreen(at: original, metadata: sources.screen, flat: true)
+                }
+                sources.camera = nil
+                sources.events = nil
+                sources.extra["mediaKind"] = .string("flatVideo")
+                base.timeline?.clips[0].sourceEnd = sources.screen.duration
+            } else {
+                sources.events = try eventsName(in: destination)
+            }
+            base.sources = sources
+            // V1 used display dimensions as its canvas anchor. The registry needs coded
+            // dimensions and rotation, but conversion (and undo back to v1) must not resize it.
+            base.sources.screen = destination.sources.screen
+            base.sources.screen.file = sources.screen.file
+            base.sources.screen.external = false
+            base.mediaSources?[0].sources = sources
+            base.mediaSources?[0].kind = flat ? .flatVideo : .nativeRecording
+        }
+        return base
+    }
+
+    private func stageTimelineSource(videoURL: URL, recording: StudioProject?, destination: StudioProject, staging: URL,
+                                     expected: StudioVideoSourceIdentity?)
+        async throws -> (StudioMediaSource, StudioTimelineClip) {
+        let sourceID = UUID().uuidString.lowercased()
+        let clipID = UUID().uuidString.lowercased()
+        var source: StudioMediaSource
+        var clip: StudioTimelineClip
+        if let recording {
+            let paths = try paths(for: recording)
+            let flat = isKnownFlat(recording)
+            guard try paths.projectDirectory.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false else {
+                throw StudioProjectFolderError.notAProjectFile
+            }
+            var sources = recording.sources
+            sources.screen = try await stageScreen(paths.screenURL, in: staging, metadata: sources.screen, flat: flat,
+                                                   expected: sources.screen.external ? sourceIdentity(for: recording) : nil)
+            sources.camera = nil
+            sources.events = nil
+            if !flat, var camera = recording.sources.camera, let url = paths.cameraURL {
+                let file = try stageFile(url, in: staging)
+                let measured = try await Self.probeVideo(at: file)
+                camera.file = file.lastPathComponent
+                camera.width = measured.width
+                camera.height = measured.height
+                camera.duration = measured.duration
+                sources.camera = camera
+            }
+            if !flat, let name = try eventsName(in: recording) {
+                let file = try stageFile(paths.projectDirectory.appendingPathComponent(name), in: staging)
+                _ = try StudioJSON.makeDecoder().decode(StudioEvents.self, from: Data(contentsOf: file))
+                sources.events = file.lastPathComponent
+            }
+            source = StudioMediaSource(id: sourceID, kind: flat ? .flatVideo : .nativeRecording, sources: sources)
+            if let image = validBackgroundImage(recording.canvas.background.image) {
+                let file = try stageFile(paths.projectDirectory.appendingPathComponent(image), in: staging)
+                guard let imageSource = CGImageSourceCreateWithURL(file as CFURL, nil),
+                      CGImageSourceCreateThumbnailAtIndex(imageSource, 0, [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 16
+                      ] as CFDictionary) != nil else {
+                    throw StudioProjectError.invalidProject("The recording's background image could not be read.")
+                }
+                // The canvas is project-wide. Keep the recording's referenced image without
+                // replacing the destination's canvas or changing its preview at a cut.
+                source.extra[Self.recordingBackgroundImage] = .string(file.lastPathComponent)
+            }
+            var snapshot = recording
+            snapshot.sources = sources
+            // Snapshot every v1 clip-local layer with the same conversion used for the first clip.
+            guard var converted = StudioTimelineEditing.timelineProject(from: snapshot).timeline?.clips.first else {
+                throw StudioProjectFolderError.notAProjectFile
+            }
+            converted.id = clipID
+            converted.sourceId = sourceID
+            clip = converted
+        } else {
+            let screen = try await stageScreen(videoURL, in: staging, metadata: nil, flat: true, expected: expected)
+            source = StudioMediaSource(id: sourceID, kind: .flatVideo, sources: StudioSources(screen: screen))
+            var style = destination.screen
+            style.crop = nil
+            clip = StudioTimelineClip(id: clipID, sourceId: sourceID, name: videoURL.deletingPathExtension().lastPathComponent,
+                                      sourceStart: 0, sourceEnd: screen.duration, screen: style,
+                                      scenes: [StudioScene(layout: .screen)], zooms: [], audio: StudioAudio(),
+                                      overlays: StudioOverlays(branding: destination.overlays.branding), captions: StudioCaptions())
+        }
+
+        return (source, clip)
+    }
+
+    private static let recordingBackgroundImage = "recordingBackgroundImage"
+
+    func isKnownFlat(_ project: StudioProject) -> Bool {
+        guard Self.isValidProjectID(project.id), project.schemaVersion == 1 else { return false }
+        return project.sources.screen.external || project.sources.extra["mediaKind"] == .string("flatVideo")
+            || sourceIdentity(for: project) != nil
+    }
+
+    private func eventsName(in project: StudioProject) throws -> String? {
+        let paths = try paths(for: project)
+        guard fileManager.fileExists(atPath: paths.eventsURL.path) else {
+            // Old capture manifests name the optional default file even when there are no events.
+            if let name = project.sources.events, name != "events.json" { throw StudioProjectFolderError.missingFile(name) }
+            return nil
+        }
+        return paths.eventsURL.lastPathComponent
+    }
+
+    private func stageFile(_ url: URL, in staging: URL, external: Bool = false, expected: StudioVideoSourceIdentity? = nil) throws -> URL {
+        try Task.checkCancellation()
+        guard url.isFileURL else { throw CocoaError(.fileReadUnsupportedScheme) }
+        let input = external ? url.resolvingSymlinksInPath() : url
+        guard (try? isPlainFile(input)) == true else { throw StudioProjectFolderError.missingFile(url.lastPathComponent) }
+        if !external { try Self.validateAssetName(url.lastPathComponent) }
+        let identity = try videoSourceIdentity(at: url)
+        if let expected, !expected.matches(identity) { throw CocoaError(.fileReadUnknown) }
+        let ext = url.pathExtension.lowercased()
+        let safeExtension = ext.count <= 12 && ext.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+            && ext != Self.projectFileExtension
+        let output = staging.appendingPathComponent("media-\(UUID().uuidString.lowercased())")
+            .appendingPathExtension(safeExtension && !ext.isEmpty ? ext : "bin")
+        if expected != nil {
+            try copyAuthorizedFile(input, to: output, version: identity)
+        } else {
+            try fileManager.copyItem(at: input, to: output)
+        }
+        guard try isPlainFile(output), try videoSourceIdentity(at: url) == identity else { throw CocoaError(.fileReadUnknown) }
+        try Task.checkCancellation()
+        return output
+    }
+
+    /// A path (including a symlink target) can change between preflight and copy. When the
+    /// caller authorized a specific Library file, verify and read the same open descriptor.
+    private func copyAuthorizedFile(_ input: URL, to output: URL, version: StudioVideoSourceIdentity) throws {
+        let fd = Darwin.open(input.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
+        guard fd >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        let reader = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        var before = stat()
+        guard fstat(fd, &before) == 0, before.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
+              before.st_ino == version.fileNumber, UInt64(truncatingIfNeeded: before.st_dev) == version.volume,
+              before.st_size >= 0, UInt64(before.st_size) == version.size else { throw CocoaError(.fileReadUnknown) }
+
+        // APFS can make a private copy immediately. Across volumes stream in cancellable chunks.
+        if fclonefileat(fd, AT_FDCWD, output.path, 0) != 0 {
+            let target = Darwin.open(output.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
+            guard target >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+            let writer = FileHandle(fileDescriptor: target, closeOnDealloc: true)
+            while let data = try reader.read(upToCount: 1024 * 1024), !data.isEmpty {
+                try Task.checkCancellation()
+                try writer.write(contentsOf: data)
+            }
+            try writer.close()
+        }
+        var after = stat()
+        guard fstat(fd, &after) == 0, after.st_ctimespec.tv_sec == before.st_ctimespec.tv_sec,
+              after.st_ctimespec.tv_nsec == before.st_ctimespec.tv_nsec else { throw CocoaError(.fileReadUnknown) }
+        try reader.close()
+    }
+
+    private func stageScreen(_ input: URL, in staging: URL, metadata: StudioScreenSource?, flat: Bool,
+                             expected: StudioVideoSourceIdentity? = nil)
+        async throws -> StudioScreenSource {
+        let file = try stageFile(input, in: staging, external: metadata?.external ?? true, expected: expected)
+        return try await Self.measuredScreen(at: file, metadata: metadata, flat: flat)
+    }
+
+    private static func measuredScreen(at file: URL, metadata: StudioScreenSource?, flat: Bool) async throws -> StudioScreenSource {
+        var screen = try await probeVideo(at: file)
+        screen.audioTracks = metadata?.audioTracks
+        screen.extra = metadata?.extra ?? [:]
+        // Capture manifests know the recorder's target rate even for a variable-rate screen.
+        if !flat, let rate = metadata?.frameRate, rate.isFinite, rate > 0 { screen.frameRate = rate }
+        return screen
+    }
+
+    private static func probeVideo(at url: URL) async throws -> StudioScreenSource {
+        let asset = AVURLAsset(url: url, options: [
+            AVURLAssetReferenceRestrictionsKey: AVAssetReferenceRestrictions.forbidAll.rawValue,
+            AVURLAssetPreferPreciseDurationAndTimingKey: true
+        ])
+        let (playable, composable, duration) = try await asset.load(.isPlayable, .isComposable, .duration)
+        guard playable, composable, duration.seconds.isFinite, duration.seconds > 0,
+              let track = try await asset.loadTracks(withMediaType: .video).first else {
+            throw StudioProjectError.invalidProject("Choose a playable video file.")
+        }
+        let (size, transform, rate) = try await track.load(.naturalSize, .preferredTransform, .nominalFrameRate)
+        guard let width = Int(exactly: size.width.rounded()), width > 0,
+              let height = Int(exactly: size.height.rounded()), height > 0 else {
+            throw StudioProjectError.invalidProject("The video has no usable picture.")
+        }
+        // A plausible header isn't enough: make sure the local decoder can actually read a frame.
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.maximumSize = CGSize(width: 32, height: 32)
+        _ = try await generator.image(at: .zero)
+        try Task.checkCancellation()
+        let angle = (atan2(transform.b, transform.a) * 180 / .pi).rounded()
+        return StudioScreenSource(file: url.lastPathComponent, width: width, height: height,
+                                  frameRate: rate.isFinite && rate > 0 ? Double(rate) : 30,
+                                  duration: duration.seconds, rotationDegrees: (angle + 360).truncatingRemainder(dividingBy: 360))
+    }
+
     func loadEvents(id: String) throws -> StudioEvents {
         try withLock {
             let url = try pathsUnlocked(forID: id).eventsURL
@@ -903,7 +1257,7 @@ final class StudioProjectStore {
     @discardableResult
     func cleanup(options: StudioCleanupOptions = StudioCleanupOptions(), inUseProjectIDs: Set<String> = []) throws -> [String] {
         try withLock {
-            let inUse = Set(inUseProjectIDs.filter(Self.isValidProjectID))
+            let inUse = Set(inUseProjectIDs.filter(Self.isValidProjectID)).union(timelineImportUses.values.flatMap { $0 })
             var candidateIDs = StudioCleanupPolicy.plan(
                 summaries: try listSummariesUnlocked(),
                 currentDate: now(),
@@ -999,11 +1353,61 @@ final class StudioProjectStore {
         return "screen." + (plain ? ext : "mp4")
     }
 
+    /// One inventory for Save As, linked Save, opening a portable folder, and ownership checks.
+    /// Include the entire registry, not just today's clips: another edit can reuse a source.
+    private func assetNames(_ project: StudioProject) -> (required: Set<String>, optional: Set<String>) {
+        var required: Set<String> = [project.sources.screen.file]
+        var optional: Set<String> = [project.sources.events ?? "events.json", "poster.jpg"]
+        if let camera = project.sources.camera { required.insert(camera.file) }
+        if let image = validBackgroundImage(project.canvas.background.image) {
+            if project.schemaVersion == 1 { optional.insert(image) } else { required.insert(image) }
+        }
+        for media in project.mediaSources ?? [] {
+            required.insert(media.sources.screen.file)
+            if let camera = media.sources.camera { required.insert(camera.file) }
+            if let events = media.sources.events { required.insert(events) }
+            if case .string(let image) = media.extra[Self.recordingBackgroundImage] { required.insert(image) }
+        }
+        return (required, optional.subtracting(required))
+    }
+
     private func ownedFiles(_ project: StudioProject) -> Set<String> {
-        var names: Set<String> = [project.sources.screen.file, project.sources.events ?? "events.json", "poster.jpg"]
-        if let camera = project.sources.camera { names.insert(camera.file) }
-        if let image = validBackgroundImage(project.canvas.background.image) { names.insert(image) }
-        return names
+        let (required, optional) = assetNames(project)
+        return required.union(optional)
+    }
+
+    private static func validateAssetName(_ name: String) throws {
+        _ = try StudioJSON.requirePlainFileName(name, "project asset")
+        guard !name.contains("\0"), name.lowercased() != "project.json",
+              name.lowercased() != "saved-project.json", name.lowercased() != Self.sourceRecord,
+              (name as NSString).pathExtension.lowercased() != Self.projectFileExtension else {
+            throw StudioProjectFolderError.destinationExists
+        }
+    }
+
+    private func folderAssets(for project: StudioProject, in directory: URL, externalScreen: URL? = nil, staging: URL? = nil)
+        throws -> [(source: URL, name: String)] {
+        guard !project.sources.screen.external, !(project.mediaSources ?? []).contains(where: { $0.sources.screen.external })
+        else { throw StudioProjectFolderError.externalSource }
+        let (required, optional) = assetNames(project)
+        var result: [(source: URL, name: String)] = []
+        var seen = Set<String>()
+        for name in required.union(optional).sorted() {
+            try Self.validateAssetName(name)
+            guard seen.insert(name.lowercased()).inserted else { throw StudioProjectFolderError.destinationExists }
+            let url: URL
+            if let externalScreen, name == project.sources.screen.file {
+                url = externalScreen.resolvingSymlinksInPath()
+            } else if let staged = staging?.appendingPathComponent(name), fileManager.fileExists(atPath: staged.path) {
+                url = staged
+            } else {
+                url = directory.appendingPathComponent(name)
+            }
+            if !fileManager.fileExists(atPath: url.path), !required.contains(name) { continue }
+            guard (try? isPlainFile(url)) == true else { throw StudioProjectFolderError.missingFile(name) }
+            result.append((url, name))
+        }
+        return result
     }
 
     func savedProjectAssets(at file: URL) throws -> [URL] {
@@ -1046,11 +1450,20 @@ final class StudioProjectStore {
             try fileManager.moveItem(at: stagedProject, to: staging.appendingPathComponent(projectFile.lastPathComponent))
             let names = try fileManager.contentsOfDirectory(atPath: staging.path)
                 .filter { $0 != projectFile.lastPathComponent } + [projectFile.lastPathComponent]
+            var reusable = Set<String>()
             for name in names {
                 let destination = folder.appendingPathComponent(name)
                 if fileManager.fileExists(atPath: destination.path) {
                     let plain = try isPlainFile(destination)
-                    if !owned.contains(name) || !plain { throw StudioProjectFolderError.destinationExists }
+                    guard plain else { throw StudioProjectFolderError.destinationExists }
+                    if !owned.contains(name) {
+                        // Undo can leave an immutable import beside a linked save. Redo may
+                        // reference the same bytes again, but must never overwrite this file.
+                        guard name.hasPrefix("media-"),
+                              fileManager.contentsEqual(atPath: destination.path, andPath: staging.appendingPathComponent(name).path)
+                        else { throw StudioProjectFolderError.destinationExists }
+                        reusable.insert(name)
+                    }
                 }
             }
 
@@ -1061,6 +1474,12 @@ final class StudioProjectStore {
             try fileManager.createDirectory(at: backups, withIntermediateDirectories: false)
             for name in names {
                 let destination = folder.appendingPathComponent(name)
+                if reusable.contains(name) {
+                    guard try isPlainFile(destination),
+                          fileManager.contentsEqual(atPath: destination.path, andPath: staging.appendingPathComponent(name).path)
+                    else { throw StudioProjectFolderError.destinationExists }
+                    continue
+                }
                 if owned.contains(name) && fileManager.fileExists(atPath: destination.path) {
                     try fileManager.moveItem(at: destination, to: backups.appendingPathComponent(name))
                     moved.append(name)
@@ -1117,40 +1536,16 @@ final class StudioProjectStore {
         let (files, data): ([(source: URL, name: String)], Data) = try withLock {
             var project = try loadUnlocked(id: id)
             let paths = try pathsUnlocked(for: project)
-
-            var files: [(source: URL, name: String)] = []
-            func contains(_ name: String) -> Bool {
-                files.contains { $0.name.caseInsensitiveCompare(name) == .orderedSame }
-            }
-            func require(_ url: URL, as name: String? = nil) throws {
-                guard fileManager.fileExists(atPath: url.path) else {
-                    throw StudioProjectFolderError.missingFile(url.lastPathComponent)
-                }
-                files.append((url, name ?? url.lastPathComponent))
-            }
-            func includeIfPresent(_ url: URL) {
-                if fileManager.fileExists(atPath: url.path), !contains(url.lastPathComponent) {
-                    files.append((url, url.lastPathComponent))
-                }
-            }
+            var external: URL?
+            // The local import receipt doesn't travel. Keep this v1 recording's provenance
+            // when the external flag is cleared, so a later timeline edit doesn't invent layers.
+            if isKnownFlat(project) { project.sources.extra["mediaKind"] = .string("flatVideo") }
             if project.sources.screen.external {
-                // A video opened from elsewhere is copied in, so the folder holds everything.
-                let name = Self.copiedScreenFileName(for: paths.screenURL)
-                try require(paths.screenURL.resolvingSymlinksInPath(), as: name)
-                project.sources.screen.file = name
+                external = paths.screenURL
+                project.sources.screen.file = Self.copiedScreenFileName(for: paths.screenURL)
                 project.sources.screen.external = false
-            } else {
-                try require(paths.screenURL)
             }
-            if let cameraURL = paths.cameraURL {
-                try require(cameraURL)
-            }
-            includeIfPresent(paths.eventsURL)
-            if let image = validBackgroundImage(project.canvas.background.image) {
-                includeIfPresent(paths.projectDirectory.appendingPathComponent(image))
-            }
-            includeIfPresent(paths.posterURL)
-
+            let files = try folderAssets(for: project, in: paths.projectDirectory, externalScreen: external)
             // Where a video was exported to is a path on this computer, with its user's name in
             // it, and means nothing on another one.
             project.exports = []
@@ -1160,7 +1555,9 @@ final class StudioProjectStore {
         // Filled where it will stay, or beside what it replaces and then put in its place.
         func fill(_ target: URL) throws {
             for file in files {
-                try fileManager.copyItem(at: file.source, to: target.appendingPathComponent(file.name))
+                let copy = target.appendingPathComponent(file.name)
+                try fileManager.copyItem(at: file.source, to: copy)
+                guard try isPlainFile(copy) else { throw StudioProjectFolderError.missingFile(file.name) }
             }
             // Written last: a folder with its `.tinyclips` file in it is a whole copy. The file
             // has the name the folder will have.
@@ -1234,52 +1631,22 @@ final class StudioProjectStore {
     /// opening the same file twice makes two projects, and it starts as a draft: it has exported
     /// nothing on this computer, whatever its file says.
     func importProjectFolder(projectFile: URL) throws -> StudioProject {
+        guard (try? isPlainFile(projectFile)) == true else { throw StudioProjectFolderError.notAProjectFile }
         let size = (try fileManager.attributesOfItem(atPath: projectFile.path)[.size] as? NSNumber)?.intValue ?? 0
         guard size <= Self.largestProjectFile else { throw StudioProjectFolderError.notAProjectFile }
         let data = try Data(contentsOf: projectFile)
         var project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: data)
-        guard !project.sources.screen.external else { throw StudioProjectFolderError.externalSource }
-
-        // Only plain names are followed, so a file cannot name something outside its folder.
         let folder = projectFile.deletingLastPathComponent()
-        var names: [String] = []
-        func require(_ name: String, _ property: String) throws {
-            let plain = try StudioJSON.requirePlainFileName(name, property)
-            guard fileManager.fileExists(atPath: folder.appendingPathComponent(plain).path) else {
-                throw StudioProjectFolderError.missingFile(plain)
-            }
-            names.append(plain)
-        }
-        func includeIfPresent(_ name: String) {
-            guard StudioJSON.isPlainFileName(name), !names.contains(name),
-                  fileManager.fileExists(atPath: folder.appendingPathComponent(name).path)
-            else { return }
-            names.append(name)
-        }
-        try require(project.sources.screen.file, "sources.screen.file")
-        if let camera = project.sources.camera {
-            try require(camera.file, "sources.camera.file")
-        }
-        // A name that is not plain makes the project invalid here as it does in the store, where
-        // such a project could not be opened afterwards.
-        if let events = project.sources.events {
-            _ = try StudioJSON.requirePlainFileName(events, "sources.events")
-        }
-        includeIfPresent(project.sources.events ?? "events.json")
-        if let image = project.canvas.background.image {
-            includeIfPresent(image)
-        }
-        includeIfPresent("poster.jpg")
+        let files = try folderAssets(for: project, in: folder)
 
         // The new folder has no `project.json` until the files are in it. Cleanup takes such a
         // folder for a recording that is still being made, and leaves it alone for a day.
         let paths = try beginRecording()
         do {
-            for name in names {
-                try fileManager.copyItem(
-                    at: folder.appendingPathComponent(name),
-                    to: paths.projectDirectory.appendingPathComponent(name)
-                )
+            for file in files {
+                let copy = paths.projectDirectory.appendingPathComponent(file.name)
+                try fileManager.copyItem(at: file.source, to: copy)
+                guard try isPlainFile(copy) else { throw StudioProjectFolderError.missingFile(file.name) }
             }
             project.id = paths.id
             project.exports = []

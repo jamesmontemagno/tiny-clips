@@ -25,6 +25,17 @@ struct StudioRenderSnapshot: Sendable {
 }
 
 struct StudioTimelineSignature: Equatable, Sendable {
+    struct Clip: Equatable, Sendable {
+        let id: String
+        let sourceID: String
+        let start: Double
+        let end: Double
+        let edits: StudioEdits
+        let muted: Bool
+    }
+
+    var clips: [Clip]?
+    var registry: [StudioMediaSource]?
     var screenFile: String
     var cameraFile: String?
     var screenDuration: Double
@@ -35,6 +46,13 @@ struct StudioTimelineSignature: Equatable, Sendable {
     var frameRate: Double
 
     init(project: StudioProject) {
+        if project.schemaVersion == 2 {
+            registry = project.mediaSources
+            clips = project.timeline?.clips.map {
+                Clip(id: $0.id, sourceID: $0.sourceId, start: $0.sourceStart, end: $0.sourceEnd,
+                     edits: $0.edits, muted: ($0.audio ?? project.audio).muted)
+            }
+        }
         screenFile = project.sources.screen.file
         cameraFile = project.sources.camera?.file
         screenDuration = project.sources.screen.duration
@@ -43,6 +61,34 @@ struct StudioTimelineSignature: Equatable, Sendable {
         edits = project.edits
         audioMuted = project.audio.muted
         frameRate = project.sources.screen.frameRate
+    }
+}
+
+/// A v2 instruction feeds the existing single-recording resolver a source-local view. This
+/// projection is never persisted. In particular, the registered dimensions remain coded
+/// dimensions on disk; layout uses the displayed dimensions after the file's transform.
+struct StudioClipRenderContext {
+    let source: StudioMediaSource
+    let displaySize: CGSize
+    let state: StudioRenderState
+
+    init(project: StudioProject, clip: StudioTimelineClip, source: StudioMediaSource,
+         displaySize: CGSize, events: StudioEvents) {
+        self.source = source
+        self.displaySize = displaySize
+        state = StudioRenderState(project: Self.projection(project, clip, source, displaySize), events: events)
+    }
+
+    func update(project: StudioProject, clip: StudioTimelineClip) {
+        state.update(project: Self.projection(project, clip, source, displaySize))
+    }
+
+    private static func projection(_ project: StudioProject, _ clip: StudioTimelineClip,
+                                   _ source: StudioMediaSource, _ displaySize: CGSize) -> StudioProject {
+        var local = clip.resolvedProject(in: project, source: source)
+        local.sources.screen.width = Int(displaySize.width.rounded())
+        local.sources.screen.height = Int(displaySize.height.rounded())
+        return local
     }
 }
 

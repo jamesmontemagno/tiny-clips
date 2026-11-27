@@ -603,6 +603,16 @@ private enum ActiveRecordingRequest {
     case gif(target: CaptureTarget, mouseClicksEnabled: Bool)
 }
 
+private enum StudioSegmentReceiver {
+    case editor(CheckedContinuation<StudioProject?, Error>)
+    case automation(validate: @MainActor () throws -> Void, attach: @MainActor (String) async throws -> Void)
+
+    @MainActor
+    func validateStart() throws {
+        if case .automation(let validate, _) = self { try validate() }
+    }
+}
+
 @MainActor
 class CaptureManager: ObservableObject {
     static weak var current: CaptureManager?
@@ -652,7 +662,9 @@ class CaptureManager: ObservableObject {
     }
 
     var isCaptureActionInProgress: Bool {
-        isOCRInFlight
+        studioSegmentReceiver != nil
+            || isDiscardingRecording
+            || isOCRInFlight
             || isCapturePreparationInProgress
             || isScreenshotCaptureInProgress
             || isRecordingSetupInProgress
@@ -669,6 +681,7 @@ class CaptureManager: ObservableObject {
     // MARK: - Automation state
 
     var isCountdownActive: Bool { countdownWindow != nil }
+    var isStudioSegmentCountdown: Bool { studioSegmentReceiver != nil && isCountdownActive }
 
     /// True while a stopped recording is still being finalized and saved.
     var isFinalizingRecording: Bool { isStoppingRecording }
@@ -765,6 +778,7 @@ class CaptureManager: ObservableObject {
     private var isStoppingScrollingCapture = false
     private var processingIndicatorShownAt: Date?
     private var isStoppingRecording = false
+    @Published private var isDiscardingRecording = false
     private var stopRecordingTask: Task<Void, Never>?
     private var videoAutoStopTask: Task<Void, Never>?
     private var recordingSessionCounter: UInt64 = 0
@@ -781,6 +795,10 @@ class CaptureManager: ObservableObject {
     private var activeMouseClickCaptureType: CaptureType?
     private var activeMouseClickCaptureEnabledOverride: Bool?
     private var studioRecordingCoordinator: StudioRecordingCoordinator?
+    /// Reserved from target selection until every recorder has stopped. Other captures must not
+    /// replace this request while a panel is handing off to the next step.
+    @Published private var studioSegmentReceiver: StudioSegmentReceiver?
+    private var studioSegmentInputError: Error?
     private var activeWebcamOverlaySelection: StartRecordingPanel.WebcamSelection?
     private var webcamPositionEvents: [BrandingOverlayProcessor.WebcamPositionEvent] = []
     private let hotKeyManager = HotKeyManager()
@@ -1032,9 +1050,8 @@ class CaptureManager: ObservableObject {
     }
 
     private func showScreenshotPicker(cursorScreen: NSScreen? = nil) {
-        if screenshotPickerPanel != nil {
-            return
-        }
+        // A previous editor's close callback may request its picker during a new Studio take.
+        guard screenshotPickerPanel == nil, studioSegmentReceiver == nil else { return }
         dismissRecordingPicker()
         let settings = CaptureSettings.shared
         let panel = CapturePickerPanel(
@@ -2152,6 +2169,35 @@ class CaptureManager: ObservableObject {
     /// and the camera are kept as separate layers and the Studio editor opens when it ends.
     func startVideoRecording(forStudio: Bool = false) {
         guard !isCaptureActionInProgress else { return }
+        setUpVideoRecording(forStudio: forStudio)
+    }
+
+    /// Uses the interactive Studio setup, but returns the take instead of opening another editor.
+    func recordStudioSegment() async throws -> StudioProject? {
+        guard !isAnyCaptureInProgress, !isCaptureWorkActive else {
+            throw StudioEditorInputError("Finish the current capture before recording another segment.")
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            studioSegmentReceiver = .editor(continuation)
+            setUpVideoRecording(forStudio: true)
+        }
+    }
+
+    private func finishStudioSegment(_ result: Result<StudioProject?, Error>) {
+        guard let receiver = studioSegmentReceiver else { return }
+        studioSegmentReceiver = nil
+        studioSegmentInputError = nil
+        switch receiver {
+        case .editor(let continuation):
+            continuation.resume(with: result)
+        case .automation:
+            if case .failure(let error) = result {
+                automationRecordingError = error as? AutomationError ?? AutomationError(.internal, error.localizedDescription)
+            }
+        }
+    }
+
+    private func setUpVideoRecording(forStudio: Bool) {
         activeRecordingWasStartedByAutomation = false
         pendingVideoIsForStudio = forStudio
 
@@ -2159,12 +2205,21 @@ class CaptureManager: ObservableObject {
         let cursorScreen = screenUnderMouseCursor()
         Task {
             defer { isCapturePreparationInProgress = false }
-            guard await prepareForNewCaptureRequest() else { return }
-            guard await PermissionManager.shared.checkPermission() else { return }
-            guard !isOCRInFlight else { return }
+            guard await prepareForNewCaptureRequest() else {
+                finishStudioSegment(.failure(StudioEditorInputError("Finish the current capture and try again.")))
+                return
+            }
+            guard await PermissionManager.shared.checkPermission() else {
+                finishStudioSegment(.failure(StudioEditorInputError("Allow Screen Recording in System Settings, then try again.")))
+                return
+            }
+            guard !isOCRInFlight else {
+                finishStudioSegment(.failure(StudioEditorInputError("Finish the current text capture and try again.")))
+                return
+            }
             let settings = CaptureSettings.shared
             if settings.shouldShowCapturePicker(for: .video) {
-                showRecordingPicker(for: .video, cursorScreen: cursorScreen)
+                showRecordingPicker(for: .video, cursorScreen: cursorScreen, forSegment: studioSegmentReceiver != nil)
             } else {
                 await performRecordingSetup(
                     type: .video,
@@ -2182,16 +2237,22 @@ class CaptureManager: ObservableObject {
     func startAutomationVideoRecording(
         forStudio: Bool,
         target: CaptureTarget,
-        devices: AutomationRecordingDevices
+        devices: AutomationRecordingDevices,
+        validateStart: @escaping @MainActor () throws -> Void = {},
+        onStudioSegment: (@MainActor (String) async throws -> Void)? = nil
     ) async throws {
-        guard !isCaptureActionInProgress else {
+        guard !isCaptureActionInProgress, onStudioSegment == nil || !isAnyCaptureInProgress else {
             throw AutomationError(.busy, "Tiny Clips is already capturing or recording.")
+        }
+        if onStudioSegment != nil, !forStudio {
+            throw AutomationError(.invalidParams, "Recording a timeline segment requires Studio recording.")
         }
         isCapturePreparationInProgress = true
         defer { isCapturePreparationInProgress = false }
         guard await prepareForNewCaptureRequest() else {
             throw AutomationError(.busy, "Tiny Clips is already capturing or recording.")
         }
+        try validateStart()
         guard PermissionManager.shared.hasScreenRecordingPermission() else {
             throw AutomationError(.permissionRequired, "Screen Recording permission is not granted.")
         }
@@ -2218,6 +2279,7 @@ class CaptureManager: ObservableObject {
             ? settings.selectedWebcamID
             : ""
         activeRecordingWasStartedByAutomation = true
+        studioSegmentReceiver = onStudioSegment.map { .automation(validate: validateStart, attach: $0) }
         beginVideoRecording(
             target: target,
             systemAudio: settings.recordAudio,
@@ -2341,6 +2403,7 @@ class CaptureManager: ObservableObject {
                 let isStudioRecording = studioModeEnabled
                 let studioCoordinator: StudioRecordingCoordinator?
                 do {
+                    try self.studioSegmentReceiver?.validateStart()
                     try automationDevices?.requireCurrentAuthorization()
                     if isStudioRecording {
                         studioCoordinator = try StudioRecordingCoordinator(
@@ -2359,7 +2422,11 @@ class CaptureManager: ObservableObject {
                             ?? AutomationError(.internal, error.localizedDescription)
                     }
                     self.activeRecordingWasStartedByAutomation = false
-                    SaveService.shared.showError("Video recording could not start: \(error.localizedDescription)")
+                    if self.studioSegmentReceiver != nil {
+                        self.finishStudioSegment(.failure(error))
+                    } else {
+                        SaveService.shared.showError("Video recording could not start: \(error.localizedDescription)")
+                    }
                     // Nothing is being recorded, so the outline of the region must not stay up.
                     self.dismissRegionIndicator()
                     return
@@ -2384,8 +2451,8 @@ class CaptureManager: ObservableObject {
 
                 let recorder = VideoRecorder()
                 let webcamRecorder = WebcamRecorder()
+                let sessionID = self.nextRecordingSessionID()
                 do {
-                    let sessionID = self.nextRecordingSessionID()
                     self.activeRecordingSessionID = sessionID
                     self.didShowVideoCodecFallbackNotice = false
                     self.debugRecordingLifecycle("Starting video session \(sessionID)")
@@ -2421,6 +2488,9 @@ class CaptureManager: ObservableObject {
                             if automationDevices != nil, captureManager?.activeRecordingSessionID == sessionID {
                                 captureManager?.automationRecordingError = AutomationError(.internal, message)
                             }
+                            if captureManager?.studioSegmentReceiver != nil, captureManager?.activeRecordingSessionID == sessionID {
+                                captureManager?.studioSegmentInputError = StudioEditorInputError("The microphone recording failed: \(message)")
+                            }
                             SaveService.shared.showError("Microphone error: \(message)")
                         }
                     }
@@ -2434,8 +2504,11 @@ class CaptureManager: ObservableObject {
                             captureManager?.activeWebcamName = name.isEmpty ? nil : name
                         }
                     }
-                    webcamRecorder.onWebcamError = { message in
-                        DispatchQueue.main.async {
+                    webcamRecorder.onWebcamError = { [weak captureManager] message in
+                        DispatchQueue.main.async { [weak captureManager] in
+                            if captureManager?.studioSegmentReceiver != nil, captureManager?.activeRecordingSessionID == sessionID {
+                                captureManager?.studioSegmentInputError = StudioEditorInputError("The camera recording failed: \(message)")
+                            }
                             SaveService.shared.showError("Webcam error: \(message)")
                         }
                     }
@@ -2487,6 +2560,7 @@ class CaptureManager: ObservableObject {
                           self.videoRecorder === recorder else {
                         return
                     }
+                    try self.studioSegmentReceiver?.validateStart()
                     try automationDevices?.requireCurrentAuthorization()
                     try await recorder.start(
                         target: target,
@@ -2549,6 +2623,9 @@ class CaptureManager: ObservableObject {
                                 self.automationRecordingError = error as? AutomationError
                                     ?? AutomationError(.internal, error.localizedDescription)
                             }
+                            if self.studioSegmentReceiver != nil {
+                                self.studioSegmentInputError = error
+                            }
                             SaveService.shared.showError("Webcam recording was not started: \(error.localizedDescription). Screen recording will continue without webcam.")
                         }
                     }
@@ -2559,14 +2636,14 @@ class CaptureManager: ObservableObject {
                     self.showStopPanel()
                     self.scheduleVideoAutoStopIfNeeded(timeLimitMinutes: timeLimitMinutes, sessionID: sessionID)
                 } catch {
+                    // A stop, discard or restart already owns cleanup for this recorder.
+                    guard self.activeRecordingSessionID == sessionID else { return }
                     if automationDevices != nil {
                         self.automationRecordingError = error as? AutomationError
                             ?? AutomationError(.internal, error.localizedDescription)
                     }
                     self.endIdleSleepAssertion()
-                    studioCoordinator?.deleteUnfinishedProject()
-                    await recorder.cancel()
-                    await webcamRecorder.cancel()
+                    self.isRecordingSetupInProgress = true
                     self.cancelVideoAutoStopTask()
                     _ = self.stopMouseClickMonitoring()
                     self.activeMouseClickCaptureEnabledOverride = nil
@@ -2585,7 +2662,14 @@ class CaptureManager: ObservableObject {
                     self.activeWebcamOverlaySelection = nil
                     self.webcamPositionEvents = []
                     self.debugRecordingLifecycle("Video session failed to start: \(error.localizedDescription)")
-                    SaveService.shared.showError("Video recording failed: \(error.localizedDescription)")
+                    await recorder.cancel()
+                    await webcamRecorder.cancel()
+                    studioCoordinator?.deleteUnfinishedProject()
+                    if self.studioSegmentReceiver != nil {
+                        self.finishStudioSegment(.failure(error))
+                    } else {
+                        SaveService.shared.showError("Video recording failed: \(error.localizedDescription)")
+                    }
                 }
             }
         }
@@ -2724,6 +2808,11 @@ class CaptureManager: ObservableObject {
         dismissStopPanel()
         dismissTeleprompter()
         resetRecordingAudioStatus()
+        if studioSegmentReceiver != nil, studioSegmentInputError == nil,
+           case .video(_, _, _, _, let webcam, _, _, _, _) = activeRecordingRequest,
+           webcam.enabled && webcamRecorder == nil {
+            studioSegmentInputError = StudioEditorInputError("Recording stopped before the camera was ready.")
+        }
         isRecording = false
         isRecordingPaused = false
         activeRecordingRequest = nil
@@ -2773,6 +2862,7 @@ class CaptureManager: ObservableObject {
     func togglePauseRecording(forAutomation: Bool = false) throws {
         guard isRecording else { return }
         if isRecordingPaused {
+            try studioSegmentReceiver?.validateStart()
             _ = try authorizedContinuationDevices(forAutomation: forAutomation)
             if automationRecordingError?.code == .permissionRequired { automationRecordingError = nil }
             videoRecorder?.resume()
@@ -2802,9 +2892,12 @@ class CaptureManager: ObservableObject {
     }
 
     func restartRecording(forAutomation: Bool = false) async throws {
-        guard isRecording, let request = activeRecordingRequest else { return }
+        guard isRecording, !isDiscardingRecording, let request = activeRecordingRequest else { return }
+        try studioSegmentReceiver?.validateStart()
         let devices = try authorizedContinuationDevices(forAutomation: forAutomation)
         let draggedWebcamSelection = activeWebcamOverlaySelection
+        isDiscardingRecording = true
+        defer { isDiscardingRecording = false }
         await discardRecording(clearActiveRequest: false)
         if forAutomation {
             activeRecordingWasStartedByAutomation = true
@@ -2836,7 +2929,18 @@ class CaptureManager: ObservableObject {
     }
 
     func discardRecording() {
+        if isStudioSegmentCountdown {
+            countdownWindow?.cancel()
+            countdownWindow = nil
+            dismissRegionIndicator()
+            finishStudioSegment(.success(nil))
+            return
+        }
+        guard isRecording, !isDiscardingRecording, let sessionID = activeRecordingSessionID else { return }
+        isDiscardingRecording = true
         Task {
+            defer { isDiscardingRecording = false }
+            guard activeRecordingSessionID == sessionID else { return }
             await discardRecording(clearActiveRequest: true)
         }
     }
@@ -2877,6 +2981,11 @@ class CaptureManager: ObservableObject {
         await webcam?.cancel()
         await writer?.cancel()
         studioCoordinator?.deleteUnfinishedProject()
+        if clearActiveRequest {
+            finishStudioSegment(.success(nil))
+        } else {
+            studioSegmentInputError = nil
+        }
     }
 
     private func stopRecordingFlow(stoppingSessionID: UInt64?, streamFailureMessage: String? = nil) async {
@@ -2934,7 +3043,8 @@ class CaptureManager: ObservableObject {
         // Snapshot video settings before any suspension so that overlay output URL
         // selection and downstream trimmer/save decisions stay consistent even if
         // the user changes preferences while export is in progress.
-        let videoShowTrimmer = streamFailureMessage == nil
+        let isStudioSegment = studioSegmentReceiver != nil
+        let videoShowTrimmer = !isStudioSegment && streamFailureMessage == nil
             && !activeRecordingWasStartedByAutomation
             && CaptureSettings.shared.showTrimmer
         let videoShouldSaveImmediately = streamFailureMessage != nil || !videoShowTrimmer || CaptureSettings.shared.saveImmediatelyVideo
@@ -2951,7 +3061,11 @@ class CaptureManager: ObservableObject {
 
         var savedVideoURL: URL?
         var savedWebcamURL: URL?
-        var completedStudioProjectID: String?
+        var completedStudioProject: StudioProject?
+        var segmentError = studioSegmentInputError
+        if let streamFailureMessage {
+            segmentError = StudioEditorInputError("Screen capture stopped unexpectedly. Check Screen Recording permission and try again. \(streamFailureMessage)")
+        }
         var partialOutputSaveError: String?
         var noPartialFramesWereCaptured = false
 
@@ -2988,7 +3102,9 @@ class CaptureManager: ObservableObject {
                     status: studioCoordinatorAtStop == nil ? "Applying overlays..." : "Saving Studio project..."
                 )
             } catch {
-                if streamFailureMessage == nil {
+                if isStudioSegment {
+                    if segmentError == nil { segmentError = error }
+                } else if streamFailureMessage == nil {
                     SaveService.shared.showError("Video save failed: \(error.localizedDescription)")
                 } else if let captureError = error as? CaptureError, case .noFrames = captureError {
                     noPartialFramesWereCaptured = true
@@ -3121,7 +3237,11 @@ class CaptureManager: ObservableObject {
             do {
                 savedWebcamURL = try await recorder.stop()
             } catch {
-                SaveService.shared.showError("Webcam save failed: \(error.localizedDescription). The Studio project will have the screen only.")
+                if isStudioSegment {
+                    segmentError = StudioEditorInputError("The camera recording could not be saved: \(error.localizedDescription)")
+                } else {
+                    SaveService.shared.showError("Webcam save failed: \(error.localizedDescription). The Studio project will have the screen only.")
+                }
             }
 
             if webcamRecorder === recorder {
@@ -3135,7 +3255,7 @@ class CaptureManager: ObservableObject {
             if let studioScreenURL = savedVideoURL {
                 do {
                     updateProcessingProgress(0.75, status: "Saving Studio project...")
-                    completedStudioProjectID = try await studioCoordinatorAtStop.completeRecording(
+                    completedStudioProject = try await studioCoordinatorAtStop.completeRecording(
                         screenURL: studioScreenURL,
                         cameraURL: savedWebcamURL,
                         screenFirstSampleTime: videoRecorderAtStop?.firstScreenSampleTime,
@@ -3146,8 +3266,21 @@ class CaptureManager: ObservableObject {
                         clickOverlayStyle: videoOverlayStyle,
                         branding: showBrandingOverlay,
                         appVersion: Self.appVersionString(),
-                        look: CaptureSettings.shared.studioDefaultLook
+                        look: CaptureSettings.shared.studioDefaultLook,
+                        requiresCompleteLayers: isStudioSegment
                     )
+                } catch where isStudioSegment {
+                    // The caller needs the native take, never a flattened substitute. Preserve the
+                    // separate recordings in place if a project or its event file could not be saved.
+                    studioCoordinatorAtStop.leaveUnfinishedProject()
+                    let recovery: String
+                    if case .editor = studioSegmentReceiver {
+                        recovery = "The source recordings are kept for a day at \(studioCoordinatorAtStop.paths.projectDirectory.path)."
+                    } else {
+                        recovery = "The source recordings are kept in Studio storage for a day."
+                    }
+                    segmentError = StudioEditorInputError("The Studio recording could not be saved: \(error.localizedDescription) \(recovery)")
+                    savedVideoURL = nil
                 } catch {
                     // Keep the screen recording as an ordinary video instead of losing it with the project.
                     let rescueURL = videoShouldSaveImmediately
@@ -3195,7 +3328,7 @@ class CaptureManager: ObservableObject {
             }
         }
 
-        if let completedStudioProjectID {
+        if let completedStudioProject {
             CaptureAnalyticsStore.shared.recordCapture(.video)
             if let savedVideoURL {
                 lastVideoRecordingArtifacts = VideoRecordingArtifacts(
@@ -3205,10 +3338,14 @@ class CaptureManager: ObservableObject {
             } else {
                 lastVideoRecordingArtifacts = nil
             }
-            openStudio(
-                projectID: completedStudioProjectID,
-                reopenPickerAfterClose: shouldReturnToPickerAfterRecording
-            )
+            if isStudioSegment {
+                NotificationCenter.default.post(name: .studioProjectsDidChange, object: nil)
+            } else {
+                openStudio(
+                    projectID: completedStudioProject.id,
+                    reopenPickerAfterClose: shouldReturnToPickerAfterRecording
+                )
+            }
         } else if let savedVideoURL {
             CaptureAnalyticsStore.shared.recordCapture(.video)
             lastVideoRecordingArtifacts = VideoRecordingArtifacts(
@@ -3372,7 +3509,7 @@ class CaptureManager: ObservableObject {
         // AVAssetWriter for the same file.
         // The processing indicator is dismissed here, after trimmer/save calls,
         // so there is no blank gap between the indicator closing and the trimmer appearing.
-        if completedStudioProjectID == nil, let savedVideoURL {
+        if !isStudioSegment, completedStudioProject == nil, let savedVideoURL {
             if videoShowTrimmer {
                 if videoShouldSaveImmediately {
                     SaveService.shared.handleSavedFile(url: savedVideoURL, type: .video)
@@ -3390,6 +3527,31 @@ class CaptureManager: ObservableObject {
         }
 
         dismissProcessingIndicator()
+
+        if isStudioSegment {
+            if let segmentError {
+                let recovery = completedStudioProject == nil ? "" : " The partial take is available in Studio drafts."
+                let reason = segmentError.localizedDescription + recovery
+                if let error = segmentError as? AutomationError {
+                    finishStudioSegment(.failure(AutomationError(error.code, reason)))
+                } else {
+                    finishStudioSegment(.failure(StudioEditorInputError(reason)))
+                }
+            } else if let completedStudioProject {
+                do {
+                    if case .automation(_, let attach) = studioSegmentReceiver {
+                        try await attach(completedStudioProject.id)
+                    }
+                    finishStudioSegment(.success(completedStudioProject))
+                } catch {
+                    let code = (error as? AutomationError)?.code ?? .internal
+                    finishStudioSegment(.failure(AutomationError(code, "\(error.localizedDescription) The recording was kept as a Studio draft.")))
+                }
+            } else {
+                finishStudioSegment(.failure(StudioEditorInputError("No recording was saved. Check available disk space and try again.")))
+            }
+            return
+        }
 
         if let streamFailureMessage {
             let didSavePartialOutput = savedVideoURL != nil || savedGifURL != nil
@@ -3738,6 +3900,7 @@ class CaptureManager: ObservableObject {
                 self?.pendingVideoTimeLimitMinutes = CaptureSettings.shared.videoRecordingTimeLimitMinutes
                 self?.dismissStartPanel()
                 self?.dismissRegionIndicator()
+                self?.finishStudioSegment(.success(nil))
                 self?.scheduleStoreReviewWhenCaptureIsIdle()
             }
         )
@@ -3985,7 +4148,10 @@ class CaptureManager: ObservableObject {
             action()
             return
         }
-        let window = CountdownWindow(duration: duration) { [weak self] in
+        let onCancel: (() -> Void)? = studioSegmentReceiver == nil ? nil : { [weak self] in
+            self?.discardRecording()
+        }
+        let window = CountdownWindow(duration: duration, onCancel: onCancel) { [weak self] in
             self?.countdownWindow = nil
             action()
         }
@@ -4063,7 +4229,8 @@ class CaptureManager: ObservableObject {
         return window.selectedTopic
     }
 
-    private func showRecordingPicker(for type: CaptureType, cursorScreen: NSScreen? = nil) {
+    private func showRecordingPicker(for type: CaptureType, cursorScreen: NSScreen? = nil, forSegment: Bool = false) {
+        guard studioSegmentReceiver == nil || forSegment else { return }
         dismissScreenshotPicker()
         dismissRecordingPicker()
 
@@ -4112,6 +4279,7 @@ class CaptureManager: ObservableObject {
             },
             onCancel: { [weak self] in
                 self?.dismissRecordingPicker()
+                self?.finishStudioSegment(.success(nil))
                 self?.scheduleStoreReviewWhenCaptureIsIdle()
             }
         )
@@ -4147,7 +4315,9 @@ class CaptureManager: ObservableObject {
         }
 
         guard let target = await chooseCaptureTarget(for: mode, cursorScreen: cursorScreen) else {
-            if shouldReturnToPicker {
+            if studioSegmentReceiver != nil {
+                finishStudioSegment(.success(nil))
+            } else if shouldReturnToPicker {
                 showRecordingPicker(for: type, cursorScreen: cursorScreen)
             }
             return
@@ -4155,7 +4325,7 @@ class CaptureManager: ObservableObject {
 
         pendingRecordingTarget = target
         pendingRecordingType = type
-        shouldReturnToPickerAfterRecording = shouldReturnToPicker
+        shouldReturnToPickerAfterRecording = shouldReturnToPicker && studioSegmentReceiver == nil
         pendingRecordingCountdownEnabled = countdownEnabled
         pendingRecordingCountdownDuration = countdownDuration
         pendingVideoTimeLimitMinutes = videoTimeLimitMinutes

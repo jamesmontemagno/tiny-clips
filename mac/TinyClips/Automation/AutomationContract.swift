@@ -30,6 +30,7 @@ struct AutomationContract: Decodable {
     struct Command: Decodable {
         var name: String
         var scope: String
+        var additionalScopes: [String]?
         var description: String
         var params: [String: Param]
     }

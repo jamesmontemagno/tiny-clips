@@ -29,7 +29,10 @@ internal sealed class CliEnvironment
             return seconds == 0 ? Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(seconds);
         }
 
-        return command is "studio.export" or "studio.project.saveCopy" or "editor.trim" or "studio.captions.generate" ? MediaRequestTimeout : RequestTimeout;
+        // A first clip edit can also copy the legacy project's external original.
+        return command is "studio.export" or "studio.project.saveCopy" or "editor.trim" or "studio.captions.generate"
+            or "studio.timeline.import" or "studio.timeline.insert" or "studio.timeline.split" or "studio.timeline.trim"
+            ? MediaRequestTimeout : RequestTimeout;
     }
 
     public string Home =>

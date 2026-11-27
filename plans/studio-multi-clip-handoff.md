@@ -1,10 +1,32 @@
-# Studio multi-clip timeline: Mac pickup and remaining work
+# Studio multi-clip timeline: macOS implementation and Windows pickup
 
-The [draft PR](https://github.com/jamesmontemagno/tiny-clips/pull/691) implements the **project model**, not the editor workflow in [#591](https://github.com/jamesmontemagno/tiny-clips/issues/591). At `899e5cf`, Swift and C# both have explicit v1-to-v2 conversion, stable source/clip IDs, source-to-output time mapping, and append/insert/move/split/trim/remove primitives. Opening a v1 project does not opt it into v2. Neither editor uses those primitives to assemble or render a movie yet.
+The [draft PR](https://github.com/jamesmontemagno/tiny-clips/pull/691) started with the shared v2 model at `899e5cf`. The macOS editor now uses that model for assembly, playback, export, portable saves and Agent Control. **Windows still has the model only.** Keep [#591](https://github.com/jamesmontemagno/tiny-clips/issues/591) open for the Windows implementation and cross-platform proof.
 
-## First on your Mac: establish a baseline
+## Decisions to carry to Windows
 
-From a local clone of `jamesmontemagno/tiny-clips`, run the following in zsh or bash. Use full Xcode; the [macOS CI job](../.github/workflows/build.yml) uses Xcode 26.2. The Linux session cross-compiled Windows Core and its test assembly but could not run the native tests or build either Mac scheme. Check the [PR checks](https://github.com/jamesmontemagno/tiny-clips/pull/691/checks) for native results.
+- Keep at least one playable clip. Removing the last clip, trimming away all playable time, or splitting inside a removed range is refused. A split keeps the left ID and all source-local layers; it does not copy media.
+- Append by default. **Insert at Playhead** splits the active clip only if the position is inside it; an exact cut inserts at the boundary. A timeline drop indicates and uses the nearest clip edge. A multi-file picker/drop preserves the supplied order and is **one transaction and one undo step**; a bad or cancelled item leaves the previous edit intact.
+- The primary strip and transport are in project time. Existing detail lanes and inspectors are in the active clip's source time. Selection and edits pause playback; during playback the inspector follows the active clip across cuts. Keep project canvas size and frame rate stable, and do not offer native camera or click layers on ordinary videos.
+- The store stages copies and probes media before changing the manifest. Snapshot a linked single recording, not its export. Adopt a v1 destination's external original before conversion. Undo/removal never deletes a source. The capture flow retains the destination editor and uses ordinary capture permission and cancellation handling.
+- The shared [`studio.timeline.*` contract](../docs/agent-integration.md#assemble-a-studio-timeline-macos) and CLI/MCP support are in this PR. Implement the Windows handlers against these commands, not new names. Discovery is read-only even on v1; recheck access and the expected revision at commit, including *after* a recording finishes. Use the open editor's history.
+
+## macOS code and test map
+
+| Responsibility | Implementation | Regression coverage |
+|---|---|---|
+| Validation, split/insert and source/project time | `StudioTimelineEditing`, `StudioProject` | `StudioProjectTests`, `StudioFixtureTests` |
+| Owned imports, transactional saves, portable folders | `StudioProjectStore` | `StudioProjectFolderTests` (real media, stale edits, rollback, originals removed) |
+| Selection, history and input | `StudioEditorModel`, `StudioViewModel`, `StudioViews`, `StudioWindow`, `ClipsManagerWindow`, `CaptureManager` | `StudioEditorModelTests`, `StudioProjectFolderTests`, `StudioCaptureEventsTests` |
+| Preview and export | `StudioCompositionBuilder`, `StudioCompositor`, `StudioPlayback`, `StudioExporter` | `StudioTimelineRenderingTests`, with native and rotated flat test cards under `mac/TinyClipsTests/Fixtures/StudioRendering/` |
+| Agent access | `AutomationCommandRouter`, shared command/policy catalog and Studio skills | Mac `AutomationPolicyTests` and `agent/tests/TinyClips.Cli.Tests` |
+
+**Verified on macOS (Apple Silicon, Xcode 27.2):** the direct and Mac App Store Debug builds succeeded. The full Mac suite had 856 passes, one skip and no failures. It exercised atomic batch insertion, undo/redo, reopening with originals removed, and decoded video and audio across cuts. The CLI/MCP suite had 108 passes and two Windows-only skips; all three packaged-tool smoke tests passed.
+
+**Not exercised manually:** live permissioned recording back into the editor, keyboard and VoiceOver operation of the complete flow, or moving a saved project between Mac and Windows. These remain release checks below, not claims about what the automated suite covers.
+
+## Reproduce the macOS checks
+
+From a local clone, use full Xcode and run the following in zsh or bash. Skip the checkout command if already in the PR worktree.
 
 ```sh
 gh pr checkout 691
@@ -23,18 +45,18 @@ These commands disable code signing for build and unit-test checks. For manual r
 
 **Known Windows build blocker at `899e5cf`:** [x64, ARM64 and Store CI](https://github.com/jamesmontemagno/tiny-clips/actions/runs/45870277698) reported `CS0104` at `StudioWindow.xaml.cs:46`: `StudioTimeline` refers to both the WinUI control and the new Core model. Qualify or alias the control where the view uses it, then rebuild all three targets. The Core test job was skipped, not passed.
 
-## Implementation order
+## Windows implementation order
 
 | Step | Where to start | Done when |
 |---|---|---|
-| 1. Make edit results safe to persist | `StudioTimelineEditing.swift`, `StudioTimelineEditing.cs`, the two project readers, and [format section 16](../docs/studio-project-format.md#16-multi-clip-projects-v2). Exercise removal of the last clip, a split inside a cut, trim leaving no playable time, duplicate IDs, and missing source references. Define refusal or empty-lane semantics consistently; currently the readers require a nonempty lane but removal can return an empty one. | Both readers and editors accept or reject the same shared cases. Every accepted edit survives save/reload. Opening a v1 project still leaves its version, editability and output intact. |
-| 2. Make projects own imported media | Extend the Mac and Windows `StudioProjectStore` folder save/import paths. Stage and probe source files before committing the manifest. Copy an ordinary video as a flat source; for a Library export linked to a single-recording project, snapshot the current editable recording, camera, events, edits and referenced assets instead of importing the export. Include an external v1 original when converting a flat destination. | Move the originals away: the destination still resolves every source, including after portable Save As. Missing, malformed or unsupported media, insufficient disk space and cancellation leave the old manifest and timeline untouched. Removal/cleanup never deletes originals or media needed by undo, drafts or an open project. |
-| 3. Connect the model to editor history | Mac: `StudioEditorModel` and `Views/Studio/StudioViewModel.swift`. Windows: `StudioEditorModel` and `Studio/Editing/StudioEditorSession`. Put the lane and source registry in the undoable state, separate from export bookkeeping; resolve selection by clip ID and the playhead in project time. Route a successful import or timeline edit through one transaction. | Each edit undoes/redoes in one step, autosaves and reopens in order. Reorder/split do not retime source-local captions, scenes, zooms, annotations, audio or capture events. A stale revision cannot overwrite a newer edit. |
-| 4. Share timing between preview and export | Mac: `Studio/Rendering/StudioCompositionBuilder`, `StudioPlayback`, `StudioExporter`. Windows: `Studio/Preview` and `Studio/Rendering`. Resolve the active clip, its source time and its style from the same map; keep one project canvas and output frame rate. Fit rotated/mixed-size sources without stretching. Keep scene transitions inside their clip and load decoders only for active/adjacent clips. | Seek/play and export just before, at and after a cut. Compare frames, audio and caption timing for a native clip with camera offset, a rotated flat clip and a different-rate clip. No previous clip's camera, events, or sound leaks across the cut. |
-| 5. Add the Studio entry points | Start on Mac in `Views/Studio`, `CaptureManager` and the Clips Library; mirror in the Windows Studio views, view models and capture service. Add file picker, file drop, Library and **Record another segment** to the existing project. Append by default, offer **Insert at playhead**, and show the legal boundary a timeline drop will use. Reuse capture setup and permissions. | Successful capture returns to the same editor at the requested position. Cancellation/failure preserves unsaved work and selection; errors say how to recover. Clip actions work without dragging, have accessible names, and expose only the layers the source has. |
-| 6. Expose the same operations through Agent Control | Extend `shared/automation/commands.json`, policy fixtures, both app handlers, CLI/MCP and the Studio/recording Skills. Provide source/clip discovery, import, targeted recording and lane edits using stable IDs. Recheck the expected revision at commit, including after recording; use the open editor's undo path. | A paired agent assembles, edits and exports without driving the UI. Test stale revisions, invalid paths and denied scopes. Keep record/edit/export permissions, platform consent, Store restrictions and auditing; removing a clip is not permission to delete a source. Update the agent integration guide and changelogs with the shipped behavior. |
+| 1. Match edit validation | `StudioTimelineEditing.cs` and `StudioJson.cs`; apply the refusal rules above on read and before save. | Duplicate IDs, unknown sources, empty clips and invalid splits are rejected. Opening v1 does not convert it. |
+| 2. Own imported media | Windows `StudioProjectStore`: stage, probe and copy the source before changing the manifest. Include a flat destination's external original. Include native layers, referenced assets and the source's current edits in a linked import. | Save As, move the originals, reopen. A bad second file, disk error or cancellation leaves the original project and all user files intact. |
+| 3. Connect history | `StudioEditorModel` and `Studio/Editing/StudioEditorSession`: put the lane and registry, not export bookkeeping or selection, in history. | Each edit undoes/redoes in one step, survives reopening and cannot overwrite a stale revision. |
+| 4. Render the lane | `Studio/Preview` and `Studio/Rendering`: share active clip, source time and style resolution; use one project canvas/frame rate and scope decoder use to active/adjacent clips. | Compare frame, audio and caption timing before, at and after cuts with camera offset, rotation and speed changes. |
+| 5. Wire editor inputs | Studio views, Library and capture service: file picker/drop, Library snapshot and **Record another segment**. | Success returns to the same editor; cancellation preserves selection/edits. Keyboard and Narrator can perform every lane operation. |
+| 6. Enable Windows Agent Control | Implement and advertise the existing shared commands only when the Windows handlers support them. Recheck scopes, OS consent, approval and revision after staging/recording. | A paired client assembles, edits and exports without driving the UI. Update capability metadata, policy tests and docs when enabling Windows. |
 
-**Suggested first vertical slice:** after the baseline, get one file-picker import into an existing Mac project through steps 1-4: copy it, append it, undo/redo, close/reopen, and export across the cut. This exercises the store, history and renderer together before adding the other entry points.
+**Suggested first Windows slice:** fix the type-name collision above, then run the equivalent of the Mac batch-import/reopen and preview/export boundary tests through the native Windows store, editor and renderer before wiring the other entry points. Use the Mac implementations above as behavior references, not UI or AVFoundation ports.
 
 ## Release checks (on the respective hosts)
 

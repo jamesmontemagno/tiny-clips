@@ -1327,4 +1327,8 @@ A `TimelineClip` contains `{ "id", "sourceId", "name", "sourceStart", "sourceEnd
 
 The project canvas and default look stay stable across all clips. A source of a different size or orientation is fitted into that canvas; it must not stretch the picture or change export dimensions at a clip boundary. Per-clip style/layer values override defaults only for that clip. Export and preview must use the same mapping and cut/speed rules.
 
+When converting a flat v1 destination, preserve the root `sources.screen` display dimensions and output frame rate used for its canvas. The registry entry describes the actual file (coded dimensions and rotation); both can point to the same owned copy. macOS records `mediaSources[].recordingBackgroundImage` as a plain project-relative filename when it snapshots a recording with a custom background asset. Include that asset in portable saves without replacing the destination's project-wide background. Keep media referenced by the registry even if its last clip is removed: undo or a later insertion may still need it.
+
 `shared/studio/fixtures/timeline/` contains cross-platform v2 examples. v1 fixtures and behavior remain unchanged; events files continue to use their existing event schema version independently of the project version.
+
+Agents discover a lane through [`studio.timeline.get`](agent-integration.md#assemble-a-studio-timeline-macos), not by patching `mediaSources` or `timeline` JSON. Discovery may present stable clip/source IDs for a v1 project without writing a v2 manifest. Mutations require the current revision; inserting an imported or recorded clip inside another clip splits and inserts as one edit. A lane removal keeps the source registry and never removes the final clip.

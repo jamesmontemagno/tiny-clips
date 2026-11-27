@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Root
 
@@ -77,6 +78,7 @@ private struct StudioUnavailableView: View {
 
 private struct StudioEditorView: View {
     @ObservedObject var viewModel: StudioViewModel
+    @State private var isDroppingVideo = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -85,6 +87,18 @@ private struct StudioEditorView: View {
             HStack(spacing: 0) {
                 StudioPreviewView(viewModel: viewModel)
                     .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay {
+                        if isDroppingVideo {
+                            Label("Append to timeline", systemImage: "plus")
+                                .padding(10)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .onDrop(of: [.fileURL], isTargeted: $isDroppingVideo) { providers in
+                        guard viewModel.canAssemble else { return false }
+                        return StudioClipDrop.receiveFiles(providers) { viewModel.addClip(.dropped($0), at: nil) }
+                    }
                 Divider()
                 StudioInspectorView(viewModel: viewModel)
             }
@@ -92,14 +106,18 @@ private struct StudioEditorView: View {
             StudioTimelineView(viewModel: viewModel)
         }
         .disabled(viewModel.isExporting || viewModel.isBusy)
-        .overlay {
-            if viewModel.isExporting {
-                StudioExportOverlay(progress: viewModel.exportProgress) {
-                    viewModel.cancelExport()
-                }
-            } else if let message = viewModel.busyMessage {
-                StudioBusyOverlay(message: message)
-            }
+        .overlay { overlayContent }
+        .alert("Studio could not update the timeline", isPresented: Binding(
+            get: { viewModel.assemblyError != nil },
+            set: { if !$0 { viewModel.assemblyError = nil } }
+        )) { Button("OK", role: .cancel) {} } message: { Text(viewModel.assemblyError ?? "") }
+    }
+
+    @ViewBuilder private var overlayContent: some View {
+        if viewModel.isExporting {
+            StudioExportOverlay(progress: viewModel.exportProgress) { viewModel.cancelExport() }
+        } else if let message = viewModel.busyMessage {
+            StudioBusyOverlay(message: message, showsCancel: viewModel.canCancelAssembly) { viewModel.cancelAssembly() }
         }
     }
 }
@@ -548,9 +566,11 @@ private struct StudioInspectorView: View {
                 onEditingChanged: { gestureChanged($0) }
             )
         }
-        Toggle("Click highlights", isOn: clickRingsBinding)
-            .toggleStyle(.checkbox)
-            .help("Draws a ring where each mouse click happened")
+        if !viewModel.isFlatTimelineClip {
+            Toggle("Click highlights", isOn: clickRingsBinding)
+                .toggleStyle(.checkbox)
+                .help("Draws a ring where each mouse click happened")
+        }
         cropGroup(
             name: "Screen crop",
             isOpen: $isScreenCropOpen,
@@ -1457,6 +1477,7 @@ private struct StudioTimelineView: View {
 
     var body: some View {
         VStack(spacing: 10) {
+            StudioClipStrip(viewModel: viewModel)
             HStack(spacing: 10) {
                 Button {
                     viewModel.togglePlayback()
@@ -1568,6 +1589,188 @@ private struct StudioTimelineView: View {
 
     private func isLaneShown(_ lane: StudioTimelineLane) -> Bool {
         viewModel.project.map(lane.isShown(in:)) ?? false
+    }
+}
+
+private struct StudioClipStrip: View {
+    @ObservedObject var viewModel: StudioViewModel
+    @State private var dropBoundary: Int?
+
+    private struct Item: Identifiable {
+        let id: String
+        let name: String
+        let start: Double
+        let end: Double
+    }
+
+    private var items: [Item] {
+        if let clips = viewModel.manifest?.timeline?.clips, let map = viewModel.timelineMap {
+            return zip(clips, map.clips).enumerated().map { index, pair in
+                Item(id: pair.0.id, name: pair.0.name.isEmpty ? "Clip \(index + 1)" : pair.0.name,
+                     start: pair.1.projectStart, end: pair.1.projectEnd)
+            }
+        }
+        return [Item(id: viewModel.projectID, name: viewModel.clipName, start: 0,
+                     end: viewModel.editor?.outputDuration ?? 0)]
+    }
+
+    var body: some View {
+        let clips = items
+        let total = clips.last?.end ?? 0
+        VStack(spacing: 4) {
+            HStack(spacing: 8) {
+                Menu {
+                    inputButtons(at: nil)
+                    Menu("Insert at Playhead") { inputButtons(at: viewModel.projectPlayhead) }
+                } label: {
+                    Label("Add Clip", systemImage: "plus")
+                }
+                .fixedSize()
+                .disabled(!viewModel.canAssemble)
+                GeometryReader { geometry in
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 3) {
+                            ForEach(Array(clips.enumerated()), id: \.element.id) { index, clip in
+                                let fraction = (clip.end - clip.start) / max(0.001, total)
+                                let width = max(88, fraction * max(1, geometry.size.width - CGFloat(clips.count - 1) * 3))
+                                let selected = clip.id == viewModel.selectedClipID || viewModel.timelineMap == nil
+                                Button {
+                                    viewModel.selectTimelineClip(clip.id)
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Text("\(index + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                        Text(clip.name).lineLimit(1).truncationMode(.tail)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .frame(width: width, height: 28)
+                                    .background(selected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.1),
+                                                in: RoundedRectangle(cornerRadius: 4))
+                                    .overlay { if selected { RoundedRectangle(cornerRadius: 4).strokeBorder(Color.accentColor) } }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Clip \(index + 1) of \(clips.count): \(clip.name)")
+                                .accessibilityAddTraits(selected ? .isSelected : [])
+                                .accessibilityValue("\(StudioEditorModel.formattedTime(clip.end - clip.start)) duration")
+                                .contextMenu { clipCommands(id: clip.id, index: index, count: clips.count) }
+                                .onDrag {
+                                    let provider = NSItemProvider()
+                                    provider.registerDataRepresentation(forTypeIdentifier: StudioClipDrop.clipType.identifier,
+                                                                        visibility: .ownProcess) { reply in
+                                        reply(Data(clip.id.utf8), nil)
+                                        return nil
+                                    }
+                                    return provider
+                                }
+                                .onDrop(of: [.fileURL, StudioClipDrop.clipType], delegate: StudioClipDrop(
+                                    index: index, width: width, boundary: $dropBoundary,
+                                    insertFiles: { urls, boundary in
+                                        viewModel.addClip(.dropped(urls), at: boundary < clips.count ? clips[boundary].start : total)
+                                    }, move: { id, boundary in
+                                        guard let from = clips.firstIndex(where: { $0.id == id }) else { return }
+                                        viewModel.moveTimelineClip(id, to: boundary > from ? boundary - 1 : boundary)
+                                    }))
+                                .overlay(alignment: dropBoundary == index ? .leading : .trailing) {
+                                    if dropBoundary == index || (index == clips.count - 1 && dropBoundary == clips.count) {
+                                        Rectangle().fill(Color.accentColor).frame(width: 3).allowsHitTesting(false)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }.frame(height: 36)
+                Menu {
+                    let index = clips.firstIndex { $0.id == viewModel.selectedClipID } ?? 0
+                    clipCommands(id: clips[index].id, index: index, count: clips.count)
+                } label: { Image(systemName: "ellipsis.circle") }
+                .fixedSize()
+                .accessibilityLabel("Selected clip actions")
+            }
+            if viewModel.timelineMap != nil, total > 0 {
+                HStack {
+                    Text("Project").font(.caption).foregroundStyle(.secondary)
+                    Slider(value: Binding(get: { viewModel.projectPlayhead }, set: { viewModel.scrubProject(to: $0) }),
+                           in: 0...total)
+                        .controlSize(.small)
+                        .accessibilityLabel("Project playhead")
+                        .accessibilityValue(viewModel.timeText)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func inputButtons(at time: Double?) -> some View {
+        Button("Add Video File…", systemImage: "film") { viewModel.addClip(.file, at: time) }
+        Button("Choose from Clips Library…", systemImage: "photo.on.rectangle") { viewModel.addClip(.library, at: time) }
+        Button("Record Another Segment…", systemImage: "record.circle") { viewModel.addClip(.recording, at: time) }
+    }
+
+    @ViewBuilder private func clipCommands(id: String, index: Int, count: Int) -> some View {
+        let active = viewModel.selectedClipID == id || viewModel.timelineMap == nil
+        Button("Split Clip at Playhead") { viewModel.splitTimelineClip() }.disabled(!active || !viewModel.canSplitTimelineClip)
+        Button("Trim Clip Start to Playhead") { viewModel.setTrimStartAtPlayhead() }.disabled(!active)
+        Button("Trim Clip End to Playhead") { viewModel.setTrimEndAtPlayhead() }.disabled(!active)
+        Divider()
+        Button("Move Earlier") { viewModel.moveTimelineClip(id, to: index - 1) }.disabled(index == 0)
+        Button("Move Later") { viewModel.moveTimelineClip(id, to: index + 1) }.disabled(index + 1 >= count)
+        Button("Remove from Timeline") { viewModel.removeTimelineClip(id) }.disabled(count == 1)
+    }
+}
+
+private struct StudioClipDrop: DropDelegate {
+    static let clipType = UTType(exportedAs: "app.tinyclips.studio.timeline-clip")
+    let index: Int
+    let width: CGFloat
+    @Binding var boundary: Int?
+    let insertFiles: @MainActor ([URL], Int) -> Void
+    let move: @MainActor (String, Int) -> Void
+
+    private func boundary(at info: DropInfo) -> Int { index + (info.location.x < width / 2 ? 0 : 1) }
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.fileURL, Self.clipType]) }
+    func dropEntered(info: DropInfo) { boundary = boundary(at: info) }
+    func dropExited(info: DropInfo) { boundary = nil }
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        boundary = boundary(at: info)
+        return DropProposal(operation: info.hasItemsConforming(to: [.fileURL]) ? .copy : .move)
+    }
+    func performDrop(info: DropInfo) -> Bool {
+        let target = boundary(at: info)
+        defer { boundary = nil }
+        let files = info.itemProviders(for: [.fileURL])
+        if !files.isEmpty {
+            return Self.receiveFiles(files) { insertFiles($0, target) }
+        } else if let clip = info.itemProviders(for: [Self.clipType]).first {
+            let reorder = move
+            _ = clip.loadDataRepresentation(forTypeIdentifier: Self.clipType.identifier) { data, _ in
+                guard let data, let id = String(data: data, encoding: .utf8) else { return }
+                Task { @MainActor in reorder(id, target) }
+            }
+        } else { return false }
+        return true
+    }
+
+    static func receiveFiles(_ files: [NSItemProvider], add: @escaping @MainActor ([URL]) -> Void) -> Bool {
+        guard !files.isEmpty else { return false }
+        Task { @MainActor in
+            do {
+                var urls: [URL] = []
+                for file in files {
+                    let url: URL = try await withCheckedThrowingContinuation { continuation in
+                        _ = file.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, error in
+                            if let data, let url = URL(dataRepresentation: data, relativeTo: nil), url.isFileURL {
+                                continuation.resume(returning: url)
+                            } else {
+                                continuation.resume(throwing: error ?? StudioProjectError.invalidProject("Drop local video files to add them to Studio."))
+                            }
+                        }
+                    }
+                    urls.append(url)
+                }
+                add(urls)
+            } catch { SaveService.shared.showError(error.localizedDescription) }
+        }
+        return true
     }
 }
 
@@ -1715,10 +1918,11 @@ private struct StudioTrimBar: View {
 
 // MARK: - Busy Overlay
 
-/// Shown over the editor while the project is copied to a folder. The copy cannot be stopped
-/// half way, so there is nothing to press.
+/// Saving a folder completes atomically; staged clip imports can also be cancelled.
 private struct StudioBusyOverlay: View {
     let message: String
+    let showsCancel: Bool
+    let cancel: () -> Void
 
     var body: some View {
         ZStack {
@@ -1729,10 +1933,11 @@ private struct StudioBusyOverlay: View {
                     .accessibilityHidden(true)
                 Text(message)
                     .font(.headline)
+                if showsCancel { Button("Cancel", action: cancel) }
             }
             .padding(24)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
         }
     }
 }
