@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    UI automation regression tests for output resolution and simultaneous screenshot editors.
+    UI automation regression tests for annotation selection, output resolution and simultaneous screenshot editors.
 
 .DESCRIPTION
     Drives the already-running Tiny Clips app by PID. It opens a screenshot editor, adds an
@@ -192,6 +192,80 @@ Test-UI "Removing padding restores scaled output-resolution metadata" {
     Assert-OutputResolution $scaledOutputResolution | Out-Null
 }
 
+Test-UI "Rectangle gestures edit only their starting target and keep the drawing defaults" {
+    Invoke-UI invoke "Fit screenshot to viewport" @firstTarget
+    try {
+        Invoke-UI invoke "EditorToolRectangle" @firstTarget
+        Invoke-UI set-value "EditorStrokeSlider" 4 @firstTarget
+        $canvas = @((Invoke-UI search "OverlayCanvas" @firstTarget --json | ConvertFrom-Json).matches |
+            Where-Object automationId -eq "OverlayCanvas")
+        if ($canvas.Count -ne 1) { throw "Expected one annotation canvas." }
+        function PointAt([double]$x, [double]$y) {
+            "$([Math]::Round($canvas[0].x + $canvas[0].width * $x)),$([Math]::Round($canvas[0].y + $canvas[0].height * $y))"
+        }
+        function Assert-StrokeWidth([int]$width) {
+            # WinUI exposes the numeric value in the slider's header, not its ValuePattern.
+            Invoke-UI wait-for "Stroke — $width px" --type Text --root "EditorStrokeSlider" @firstTarget -t 3000
+        }
+
+        Invoke-UI drag (PointAt .20 .25) (PointAt .40 .45) @firstTarget # A
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+        Invoke-UI wait-for "EditorToolRectangle" @firstTarget --value On -t 3000
+        Invoke-UI set-value "EditorStrokeSlider" 15 @firstTarget
+        Invoke-UI drag (PointAt .40 .45) (PointAt .52 .63) @firstTarget # resize A
+        Invoke-UI drag (PointAt .48 .56) (PointAt .64 .56) @firstTarget # move from the expanded body
+
+        # A click outside is too small to commit. A drag across A's body creates B.
+        Invoke-UI click --at (PointAt .12 .52) @firstTarget
+        Assert-StrokeWidth 15
+        Invoke-UI drag (PointAt .12 .52) (PointAt .60 .67) @firstTarget
+        Assert-StrokeWidth 4
+        Invoke-UI set-value "EditorStrokeSlider" 23 @firstTarget
+
+        # Start C on old A, outside B. Delete C immediately, not A or B.
+        Invoke-UI drag (PointAt .57 .36) (PointAt .78 .46) @firstTarget
+        Assert-StrokeWidth 4
+        Invoke-UI send-keys "delete" @firstTarget --via send-input
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
+
+        # Read back both items by picking them where they should now be. The first
+        # probe is outside A's original bounds and beyond B, so both grips and move matter.
+        Invoke-UI invoke "EditorToolSelect" @firstTarget
+        Invoke-UI click --at (PointAt .64 .49) @firstTarget
+        Assert-StrokeWidth 15
+        Invoke-UI invoke "EditorDeleteButton" @firstTarget
+        Invoke-UI click --at (PointAt .26 .62) @firstTarget
+        Assert-StrokeWidth 23
+        Invoke-UI invoke "EditorDeleteButton" @firstTarget
+    }
+    finally {
+        # The next editor's zoom-persistence test expects actual-size mode.
+        Invoke-UI invoke "ScreenshotEditorNativeSizeButton" @firstTarget
+    }
+}
+
+Test-UI "Editing a new emoji changes the sticker, not the next sticker" {
+    Invoke-UI invoke "EditorToolEmoji" @firstTarget
+    Invoke-UI set-value "EditorCustomEmojiBox" "🚀" @firstTarget
+    Invoke-UI click "Screenshot annotation canvas" @firstTarget
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+    Invoke-UI set-value "EditorCustomEmojiBox" "📌" @firstTarget
+    Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 📌" -t 3000
+
+    # Re-arming the tool clears selection. Its next placement may start right on the old sticker.
+    Invoke-UI invoke "EditorToolEmoji" @firstTarget
+    Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 🚀" -t 3000
+    Invoke-UI click "Screenshot annotation canvas" @firstTarget
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+    Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 🚀" -t 3000
+    Invoke-UI invoke "EditorUndoButton" @firstTarget
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
+    Invoke-UI invoke "EditorToolSelect" @firstTarget
+    Invoke-UI click "Screenshot annotation canvas" @firstTarget
+    Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 📌" -t 3000
+    Invoke-UI invoke "EditorDeleteButton" @firstTarget
+}
+
 Test-UI "Select text tool in first editor" {
     winapp ui invoke "EditorToolText" @firstTarget
 }
@@ -199,20 +273,34 @@ Test-UI "Open text annotation dialog" {
     winapp ui click "Screenshot annotation canvas" @firstTarget
     winapp ui wait-for "TextDialogEntry" -a $AppPid -t 5000
 }
+Test-UI "Canceled text entry creates no selection" {
+    Invoke-UI invoke "Cancel" -a $AppPid
+    Invoke-UI wait-for "TextDialogEntry" -a $AppPid --gone -t 3000
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
+    Invoke-UI click "Screenshot annotation canvas" @firstTarget
+    Invoke-UI wait-for "TextDialogEntry" -a $AppPid -t 5000
+}
 Test-UI "Add unsaved annotation to first editor" {
     winapp ui set-value "TextDialogEntry" "multi-editor regression" -a $AppPid
     winapp ui invoke "OK" -a $AppPid
     winapp ui wait-for "TextDialogEntry" -a $AppPid --gone -t 5000
 }
 
-Test-UI "Editing enables Undo and Reset without enabling Delete" {
+Test-UI "Committed text is selected with Undo, Reset and Delete enabled; Text stays active" {
     Invoke-UI wait-for "EditorUndoButton" @firstTarget -p IsEnabled --value True -t 3000 | Out-Null
     Invoke-UI wait-for "EditorResetButton" @firstTarget -p IsEnabled --value True -t 3000 | Out-Null
-    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000 | Out-Null
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000 | Out-Null
+    Invoke-UI wait-for "EditorToolText" @firstTarget --value On -t 3000 | Out-Null
+    Invoke-UI click "multi-editor regression" @firstTarget --double
+    Invoke-UI wait-for "TextDialogEntry" -a $AppPid --value "multi-editor regression" -t 3000
+    Invoke-UI invoke "Cancel" -a $AppPid
+    Invoke-UI wait-for "TextDialogEntry" -a $AppPid --gone -t 3000
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
 }
 
 Test-UI "Delete is enabled only for a selected annotation" {
     Invoke-UI invoke "EditorToolSelect" @firstTarget
+    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000 | Out-Null
     Invoke-UI click "multi-editor regression" @firstTarget
     Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000 | Out-Null
     Invoke-UI invoke "EditorToolText" @firstTarget

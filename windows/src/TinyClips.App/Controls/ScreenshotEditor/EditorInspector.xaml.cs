@@ -431,8 +431,7 @@ public sealed partial class EditorInspector : UserControl
         _inspectorInitializing = false;
     }
 
-    // While the Select tool is active, reveal the property controls for the chosen annotation
-    // and load its current values so the user can tweak color, size, font, etc.
+    // A selected item owns the inspector even while its drawing tool stays active.
     private void ShowForSelection(Annotation ann)
     {
         _inspectorInitializing = true;
@@ -460,7 +459,7 @@ public sealed partial class EditorInspector : UserControl
         TextSection.Visibility = isText ? Visibility.Visible : Visibility.Collapsed;
         CounterSection.Visibility = isCounter ? Visibility.Visible : Visibility.Collapsed;
         RedactSection.Visibility = isRedact ? Visibility.Visible : Visibility.Collapsed;
-        SensitiveTextSection.Visibility = Visibility.Collapsed;
+        SensitiveTextSection.Visibility = _controller.Tool == EditTool.Redact ? Visibility.Visible : Visibility.Collapsed;
         EmojiSection.Visibility = isEmoji ? Visibility.Visible : Visibility.Collapsed;
         BackgroundSection.Visibility = Visibility.Collapsed;
         var isRotatable = ann.Tool.StoresRotation();
@@ -568,7 +567,7 @@ public sealed partial class EditorInspector : UserControl
         }
 
         _controller.SetStrokeOpacity(e.NewValue / 100);
-        SyncPrimaryFillOpacity(_controller.StrokeColor);
+        SyncPrimaryFillOpacity(_controller.SelectedAnnotation?.Color ?? _controller.StrokeColor);
         UpdateInspectorHeaders();
     }
 
@@ -580,7 +579,7 @@ public sealed partial class EditorInspector : UserControl
         }
 
         _controller.SetStrokeOpacity(e.NewValue / 100);
-        SyncPrimaryFillOpacity(_controller.StrokeColor);
+        SyncPrimaryFillOpacity(_controller.SelectedAnnotation?.Color ?? _controller.StrokeColor);
         UpdateInspectorHeaders();
     }
 
@@ -812,14 +811,6 @@ public sealed partial class EditorInspector : UserControl
         }
 
         _controller.SetFillColor(color);
-        if (color.A == 0)
-        {
-            FillCheck.IsChecked = false;
-        }
-        else
-        {
-            FillCheck.IsChecked = true;
-        }
         SyncFillOpacityControls();
         UpdateInspectorHeaders();
     }

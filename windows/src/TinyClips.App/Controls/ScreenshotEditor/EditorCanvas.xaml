@@ -57,7 +57,7 @@
                 </Canvas>
                 <Canvas
                     x:Name="OverlayCanvas"
-                    AutomationProperties.HelpText="Select an annotation, drag inside it to move, drag a corner handle to resize, drag the grip above it to rotate, or hold Space and drag to pan."
+                    AutomationProperties.HelpText="New annotations are selected. Drag the selection or its handles to adjust it. Start elsewhere to add another, or use Select to pick an older annotation. Hold Space and drag to pan."
                     AutomationProperties.Name="Screenshot annotation canvas"
                     Background="Transparent"
                     DoubleTapped="OnOverlayDoubleTapped"
