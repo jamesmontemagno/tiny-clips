@@ -74,6 +74,8 @@ final class ScreenshotEditorViewModelTests: XCTestCase {
         editor.placePointerAnnotation(at: CGPoint(x: 0, y: 0))
         let placed = try XCTUnwrap(editor.annotations.first)
         let hotspot = PointerGeometry.hotspot(for: .hand)
+        XCTAssertEqual(placed.rect.width * 400, 50, accuracy: 1e-8)
+        XCTAssertEqual(placed.rect.height * 200, 50, accuracy: 1e-8)
         XCTAssertEqual((placed.rect.minX + placed.rect.width * hotspot.x) * 400, 0, accuracy: 1e-8)
         XCTAssertEqual((placed.rect.minY + placed.rect.height * hotspot.y) * 200, 0, accuracy: 1e-8)
         XCTAssertNil(editor.selectedAnnotationIndex)
@@ -92,6 +94,53 @@ final class ScreenshotEditorViewModelTests: XCTestCase {
         editor.redo()
         XCTAssertEqual(editor.annotations[0].pointer.opacity, 0.3, accuracy: 1e-8)
         XCTAssertEqual(editor.pointerDefault.opacity, 1)
+    }
+
+    @MainActor
+    func testPointerSizeSliderResizesAtRotatedTipInOneUndoWithoutChangingPlacementSize() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        editor.selectedTool = .pointer
+        editor.setPointerSize(80)
+        XCTAssertFalse(editor.canUndo)
+        XCTAssertFalse(editor.hasUnsavedChanges)
+        editor.placePointerAtCenter()
+        XCTAssertEqual(editor.pointerSizeForInspector, 80, accuracy: 1e-8)
+        XCTAssertTrue(editor.updateSelectedAnnotationRotationDegrees(90))
+        let original = editor.annotations[0].rect
+
+        editor.setAdjustingPointer(true)
+        editor.setPointerSize(100)
+        editor.setPointerSize(120)
+        editor.setAdjustingPointer(false)
+        let resized = editor.annotations[0].rect
+        XCTAssertEqual(resized.width * 400, 120, accuracy: 1e-8)
+        XCTAssertEqual(resized.height * 200, 120, accuracy: 1e-8)
+        // After a clockwise quarter-turn, the arrow tip is 96% across and 8% down.
+        XCTAssertEqual(resized.minX + 0.96 * resized.width, original.minX + 0.96 * original.width, accuracy: 1e-8)
+        XCTAssertEqual(resized.minY + 0.08 * resized.height, original.minY + 0.08 * original.height, accuracy: 1e-8)
+        editor.undo()
+        XCTAssertEqual(editor.annotations[0].rect, original)
+        editor.redo()
+        XCTAssertEqual(editor.annotations[0].rect, resized)
+
+        editor.selectedTool = .pointer
+        editor.placePointerAtCenter()
+        XCTAssertEqual(editor.annotations.count, 2)
+        XCTAssertEqual(editor.pointerSizeForInspector, 80, accuracy: 1e-8)
+    }
+
+    @MainActor
+    func testPointerSizeIsLimitedByTheShortSideOfASmallImage() throws {
+        let (editor, cleanup) = try makeEditor(width: 32, height: 100)
+        defer { cleanup() }
+        editor.selectedTool = .pointer
+        editor.placePointerAtCenter()
+        XCTAssertEqual(editor.pointerSizeForInspector, 32, accuracy: 1e-8)
+        editor.setPointerSize(1)
+        XCTAssertEqual(editor.pointerSizeForInspector, 16, accuracy: 1e-8)
+        editor.setPointerSize(60)
+        XCTAssertEqual(editor.pointerSizeForInspector, 32, accuracy: 1e-8)
     }
 
     @MainActor
@@ -242,16 +291,16 @@ final class ScreenshotEditorViewModelTests: XCTestCase {
     // MARK: - Helpers
 
     @MainActor
-    private func makeEditor() throws -> (ScreenshotEditorViewModel, () -> Void) {
+    private func makeEditor(width: Int = 400, height: Int = 200) throws -> (ScreenshotEditorViewModel, () -> Void) {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScreenshotEditorViewModelTests-\(UUID().uuidString).png")
         let context = try XCTUnwrap(CGContext(
-            data: nil, width: 400, height: 200, bitsPerComponent: 8, bytesPerRow: 0,
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
             space: XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ))
         context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
-        context.fill(CGRect(x: 0, y: 0, width: 400, height: 200))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         let bitmap = try NSBitmapImageRep(cgImage: XCTUnwrap(context.makeImage()))
         try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: url)
         let editor = ScreenshotEditorViewModel(url: url)

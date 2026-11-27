@@ -418,6 +418,8 @@ struct PointerAppearance: Equatable {
 }
 
 enum PointerGeometry {
+    static let defaultSidePixels: CGFloat = 50
+
     static func hotspot(for style: PointerAnnotationStyle) -> CGPoint {
         switch style {
         case .arrow: return CGPoint(x: 0.08, y: 0.04)
@@ -466,6 +468,14 @@ enum PointerGeometry {
     static func rect(placing hotspot: CGPoint, style: PointerAnnotationStyle, side: CGFloat) -> CGRect {
         let anchor = self.hotspot(for: style)
         return CGRect(x: hotspot.x - anchor.x * side, y: hotspot.y - anchor.y * side, width: side, height: side)
+    }
+
+    /// Resizes the fitted square in image pixels without moving the visible tip.
+    static func resizedRect(_ bounds: CGRect, style: PointerAnnotationStyle, rotation: CGFloat, side: CGFloat) -> CGRect {
+        let square = fittedRect(in: bounds)
+        let anchor = RotatableAnnotationGeometry.rotate(hotspot(for: style), around: CGPoint(x: 0.5, y: 0.5), by: rotation)
+        let delta = square.width - side
+        return CGRect(x: square.minX + anchor.x * delta, y: square.minY + anchor.y * delta, width: side, height: side)
     }
 
     static func path(for style: PointerAnnotationStyle, in bounds: CGRect, flipped: Bool = false) -> CGPath {
@@ -653,9 +663,13 @@ enum EmojiAnnotationMath {
         clampSidePixels(imageSize.width * emojiDefaultSideRatio, imageSize: imageSize)
     }
 
-    static func clampSidePixels(_ side: CGFloat, imageSize: CGSize) -> CGFloat {
+    static func sideRange(forImageSize imageSize: CGSize) -> ClosedRange<CGFloat> {
         let maximum = max(emojiMinimumSidePixels, min(imageSize.width, imageSize.height) * emojiMaximumSideRatio)
-        return min(max(side, emojiMinimumSidePixels), maximum)
+        return emojiMinimumSidePixels...maximum
+    }
+
+    static func clampSidePixels(_ side: CGFloat, imageSize: CGSize) -> CGFloat {
+        side.clamped(to: sideRange(forImageSize: imageSize))
     }
 
     /// Normalized rect for a square sticker of `sidePixels` centered on a normalized point.

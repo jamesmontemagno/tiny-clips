@@ -94,6 +94,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     @Published var outlineAlignment: StrokeAlignment = .outside
     @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
     @Published var pointerDefault = PointerAppearance()
+    @Published private var defaultPointerSize = PointerGeometry.defaultSidePixels
     @Published var recentEmoji: [String] = []
     @Published var backgroundStyle: ExportBackgroundStyle = .transparent
     @Published var backgroundColor: Color = Color(red: 0.96, green: 0.96, blue: 0.98)
@@ -657,27 +658,63 @@ class ScreenshotEditorViewModel: ObservableObject {
         markDirty()
     }
 
-    func pointerForInspector() -> PointerAppearance {
+    private var selectedPointerIndex: Int? {
         guard selectedTool == .move, let index = selectedAnnotationIndex,
-              annotations.indices.contains(index), annotations[index].tool == .pointer else {
-            return pointerDefault
+              annotations.indices.contains(index), annotations[index].tool == .pointer else { return nil }
+        return index
+    }
+
+    var pointerSizeRange: ClosedRange<CGFloat> {
+        EmojiAnnotationMath.sideRange(forImageSize: imagePixelSize)
+    }
+
+    var pointerSizeForInspector: CGFloat {
+        guard let index = selectedPointerIndex else { return newPointerSize }
+        let bounds = RotatableAnnotationGeometry.scaledRect(annotations[index].rect, in: imagePixelSize)
+        return PointerGeometry.fittedRect(in: bounds).width
+    }
+
+    private var newPointerSize: CGFloat {
+        EmojiAnnotationMath.clampSidePixels(defaultPointerSize, imageSize: imagePixelSize)
+    }
+
+    func setPointerSize(_ value: CGFloat) {
+        guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return }
+        let side = EmojiAnnotationMath.clampSidePixels(value.rounded(), imageSize: imagePixelSize)
+        guard let index = selectedPointerIndex else {
+            defaultPointerSize = side
+            return
         }
+        guard abs(side - pointerSizeForInspector) > 0.0001 else { return }
+        let annotation = annotations[index]
+        let bounds = RotatableAnnotationGeometry.scaledRect(annotation.rect, in: imagePixelSize)
+        let resized = PointerGeometry.resizedRect(bounds, style: annotation.pointer.style, rotation: annotation.rotation, side: side)
+        recordPointerAdjustment()
+        annotations[index].rect = normalizedPointerRect(resized)
+        markDirty()
+    }
+
+    func pointerForInspector() -> PointerAppearance {
+        guard let index = selectedPointerIndex else { return pointerDefault }
         return annotations[index].pointer
     }
 
     func updatePointer(_ pointer: PointerAppearance) {
-        guard selectedTool == .move, let index = selectedAnnotationIndex,
-              annotations.indices.contains(index), annotations[index].tool == .pointer else {
+        guard let index = selectedPointerIndex else {
             pointerDefault = pointer
             return
         }
         guard annotations[index].pointer != pointer else { return }
+        recordPointerAdjustment()
+        annotations[index].pointer = pointer
+        markDirty()
+    }
+
+    private func recordPointerAdjustment() {
         if !isAdjustingPointer || !didRecordPointerAdjustment {
             recordHistory()
             didRecordPointerAdjustment = isAdjustingPointer
         }
-        annotations[index].pointer = pointer
-        markDirty()
     }
 
     func setAdjustingPointer(_ adjusting: Bool) {
@@ -687,14 +724,12 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     func placePointerAnnotation(at position: CGPoint) {
         guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return }
-        let side = EmojiAnnotationMath.defaultSidePixels(forImageSize: imagePixelSize)
         let pixelPosition = CGPoint(x: position.x * imagePixelSize.width, y: position.y * imagePixelSize.height)
-        let rect = PointerGeometry.rect(placing: pixelPosition, style: pointerDefault.style, side: side)
+        let rect = PointerGeometry.rect(placing: pixelPosition, style: pointerDefault.style, side: newPointerSize)
         recordHistory()
         annotations.append(ScreenshotAnnotation(
             tool: .pointer,
-            rect: CGRect(x: rect.minX / imagePixelSize.width, y: rect.minY / imagePixelSize.height,
-                         width: rect.width / imagePixelSize.width, height: rect.height / imagePixelSize.height),
+            rect: normalizedPointerRect(rect),
             color: .white,
             lineWidth: 0,
             text: "",
@@ -711,21 +746,9 @@ class ScreenshotEditorViewModel: ObservableObject {
         selectedAnnotationIndex = annotations.count - 1
     }
 
-    func adjustSelectedPointer(dx: CGFloat = 0, dy: CGFloat = 0, scale: CGFloat = 1) {
-        guard selectedTool == .move, let index = selectedAnnotationIndex,
-              annotations.indices.contains(index), annotations[index].tool == .pointer,
-              imagePixelSize.width > 0, imagePixelSize.height > 0 else { return }
-        recordHistory()
-        var rect = annotations[index].rect
-        rect.origin.x += dx / imagePixelSize.width
-        rect.origin.y += dy / imagePixelSize.height
-        if scale != 1 {
-            let width = max(4 / imagePixelSize.width, rect.width * scale)
-            let height = max(4 / imagePixelSize.height, rect.height * scale)
-            rect = CGRect(x: rect.midX - width / 2, y: rect.midY - height / 2, width: width, height: height)
-        }
-        annotations[index].rect = rect
-        markDirty()
+    private func normalizedPointerRect(_ rect: CGRect) -> CGRect {
+        CGRect(x: rect.minX / imagePixelSize.width, y: rect.minY / imagePixelSize.height,
+               width: rect.width / imagePixelSize.width, height: rect.height / imagePixelSize.height)
     }
 
     private func rememberRecentEmoji(_ emoji: String) {

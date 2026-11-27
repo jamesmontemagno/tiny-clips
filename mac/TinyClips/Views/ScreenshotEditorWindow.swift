@@ -1426,14 +1426,13 @@ struct ScreenshotEditorView: View {
         _ label: String,
         value: Binding<CGFloat>,
         range: ClosedRange<CGFloat>,
-        suffix: String,
-        multiplier: CGFloat = 1
+        suffix: String
     ) -> some View {
         annotationSlider(
             label,
             value: value,
             range: range,
-            displayValue: "\(Int((value.wrappedValue * multiplier).rounded()))\(multiplier == 100 ? "%" : suffix)",
+            displayValue: "\(Int(value.wrappedValue.rounded()))\(suffix)",
             onEditingChanged: viewModel.setAdjustingPointer
         )
     }
@@ -1464,28 +1463,23 @@ struct ScreenshotEditorView: View {
         VStack(alignment: .leading, spacing: 10) {
             if inspectorTool == .pointer {
                 segmentedPicker("Pointer style", selection: pointerBinding(\.style), options: PointerAnnotationStyle.allCases, label: \.label)
+                let range = viewModel.pointerSizeRange
+                if range.lowerBound < range.upperBound {
+                    pointerSlider("Size", value: Binding(get: { viewModel.pointerSizeForInspector }, set: viewModel.setPointerSize),
+                                  range: range, suffix: " px")
+                } else {
+                    LabeledContent("Size", value: "\(Int(range.lowerBound)) px")
+                }
                 SwatchColorPicker(label: "Fill", color: pointerBinding(\.fill), supportsOpacity: true, allowsTransparent: true)
                 pointerSlider("Fill opacity", value: pointerColorOpacityBinding(\.fill), range: AnnotationColorOpacity.percentRange, suffix: "%")
                 SwatchColorPicker(label: "Stroke", color: pointerBinding(\.stroke), supportsOpacity: true, allowsTransparent: true)
                 pointerSlider("Stroke opacity", value: pointerColorOpacityBinding(\.stroke), range: AnnotationColorOpacity.percentRange, suffix: "%")
                 pointerSlider("Stroke width", value: pointerBinding(\.strokeWidth), range: 0...20, suffix: "px")
-                pointerSlider("Opacity", value: pointerBinding(\.opacity), range: 0...1, suffix: "", multiplier: 100)
 
                 Toggle("Drop shadow", isOn: pointerBinding(\.shadow.enabled))
                 if viewModel.selectedTool == .pointer {
                     Button("Place pointer at center") { viewModel.placePointerAtCenter() }
                         .accessibilityHint("Adds a pointer at the center and selects it for adjustment.")
-                } else {
-                    HStack {
-                        Button("Left") { viewModel.adjustSelectedPointer(dx: -1) }
-                        Button("Right") { viewModel.adjustSelectedPointer(dx: 1) }
-                        Button("Up") { viewModel.adjustSelectedPointer(dy: -1) }
-                        Button("Down") { viewModel.adjustSelectedPointer(dy: 1) }
-                    }
-                    HStack {
-                        Button("Smaller") { viewModel.adjustSelectedPointer(scale: 0.9) }
-                        Button("Larger") { viewModel.adjustSelectedPointer(scale: 1.1) }
-                    }
                 }
             }
             if viewModel.showsArrowStyleControl {
