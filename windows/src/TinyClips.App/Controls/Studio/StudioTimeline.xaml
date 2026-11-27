@@ -133,6 +133,12 @@
         </Grid>
 
         <!--
+            The clips of the project in the order they play, in project time. The lanes under it
+            are in the source time of the clip that is selected here.
+        -->
+        <Border x:Name="ClipStripHost" />
+
+        <!--
             The scenes, the zooms, the cuts, the speed changes, the annotations and the trim, one
             above the other on the same time scale. A lane shows only with something on it
             (StudioTimelineLanes), so the first one of a kind is added with the buttons, the keys

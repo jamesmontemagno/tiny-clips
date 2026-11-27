@@ -22,12 +22,17 @@ public sealed partial class StudioTimeline : UserControl
         CutLaneHost.Child = new StudioCutLane(viewModel);
         SpeedLaneHost.Child = new StudioSpeedLane(viewModel);
         AnnotationLaneHost.Child = new StudioAnnotationLane(viewModel);
+        ClipStrip = new StudioClipStripView(viewModel);
+        ClipStripHost.Child = ClipStrip;
         StudioGlyphRow.Attach(TransportRow);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
     public StudioViewModel ViewModel { get; }
+
+    /// <summary>The clips of the project, which the window brings videos into.</summary>
+    internal StudioClipStripView ClipStrip { get; }
 
     /// <summary>Puts keyboard focus on Play, where Space and the arrow keys are closest to hand.</summary>
     public bool FocusPlayButton() => PlayPauseButton.Focus(FocusState.Programmatic);
