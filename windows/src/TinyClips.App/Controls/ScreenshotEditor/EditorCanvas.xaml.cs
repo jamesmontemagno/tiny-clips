@@ -841,19 +841,18 @@ public sealed partial class EditorCanvas : UserControl
             {
                 var grid = new Grid { IsHitTestVisible = false };
                 MakeRotatable(grid);
-                var shadowBrush = new SolidColorBrush();
                 var fill = new SolidColorBrush();
                 var stroke = new SolidColorBrush();
                 grid.Children.Add(new Polygon
                 {
-                    Fill = shadowBrush,
-                    Stroke = shadowBrush,
+                    Fill = new SolidColorBrush(),
+                    Stroke = new SolidColorBrush(),
                     StrokeLineJoin = PenLineJoin.Round,
                     RenderTransform = new TranslateTransform(),
                 });
                 grid.Children.Add(new Polygon { Fill = fill, Stroke = stroke, StrokeLineJoin = PenLineJoin.Round });
                 OverlayCanvas.Children.Add(grid);
-                return new AnnotationVisual { Primary = grid, FillBrush = fill, StrokeBrush = stroke, TextBrush = shadowBrush };
+                return new AnnotationVisual { Primary = grid, FillBrush = fill, StrokeBrush = stroke };
             }
             default:
                 throw new ArgumentOutOfRangeException(nameof(ann), ann.Tool, "Unsupported annotation tool.");
@@ -1062,9 +1061,10 @@ public sealed partial class EditorCanvas : UserControl
                 shadowPoints.Add(p);
             }
             shadowShape.Points = shadowPoints;
-            visual.TextBrush!.Color = Color.FromArgb((byte)Math.Round(Math.Clamp(shadow.Opacity, 0, 1) * 255), 0, 0, 0);
-            shadowShape.StrokeThickness = (pointer.StrokeWidth + shadow.Blur * 0.5) * scale;
-            shadowShape.Opacity = shadow.Blur > 0 ? 0.75 : 1;
+            ((SolidColorBrush)shadowShape.Fill).Color = Color.FromArgb(pointer.Fill.A, 0, 0, 0);
+            ((SolidColorBrush)shadowShape.Stroke).Color = Color.FromArgb(pointer.Stroke.A, 0, 0, 0);
+            shadowShape.StrokeThickness = pointer.StrokeWidth > 0 ? (pointer.StrokeWidth + shadow.Blur * 0.5) * scale : 0;
+            shadowShape.Opacity = Math.Clamp(shadow.Opacity, 0, 1) * (shadow.Blur > 0 ? 0.75 : 1);
             var radians = -ann.Rotation * Math.PI / 180.0;
             var dx = shadow.OffsetX * scale;
             var dy = shadow.OffsetY * scale;

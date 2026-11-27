@@ -144,6 +144,26 @@ final class ScreenshotEditorViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testPointerCornerDragStaysWithinInspectorSizeLimits() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        editor.pointerDefault.style = .text
+        editor.placePointerAtCenter()
+        let rect = editor.annotations[0].rect
+        let corner = CGPoint(x: rect.maxX, y: rect.maxY)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+
+        editor.handleDrag(start: corner, current: center)
+        XCTAssertEqual(editor.pointerSizeForInspector, 16, accuracy: 1e-8)
+        let farCorner = CGPoint(x: 1, y: 1)
+        editor.handleDrag(start: corner, current: farCorner)
+        editor.handleDragEnd(start: corner, end: farCorner)
+        XCTAssertEqual(editor.pointerSizeForInspector, 200, accuracy: 1e-8)
+        XCTAssertEqual(editor.annotations[0].rect.midX, center.x, accuracy: 1e-8)
+        XCTAssertEqual(editor.annotations[0].rect.midY, center.y, accuracy: 1e-8)
+    }
+
+    @MainActor
     func testPointerExportCompositesOpacityAndShadow() throws {
         let (editor, cleanup) = try makeEditor()
         defer { cleanup() }

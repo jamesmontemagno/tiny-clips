@@ -1655,7 +1655,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         let draggedDistance = hypot(pixelPoint.x - center.x, pixelPoint.y - center.y)
         let normalizedCenter = CGPoint(x: dragOriginalRect.midX, y: dragOriginalRect.midY)
 
-        if annotation.tool == .emoji {
+        if annotation.tool == .emoji || annotation.tool == .pointer {
             let originalSide = dragOriginalRect.width * size.width
             let side = EmojiAnnotationMath.clampSidePixels(originalSide * (draggedDistance / originalDistance), imageSize: size)
             annotation.rect = EmojiAnnotationMath.normalizedRect(centeredAt: normalizedCenter, sidePixels: side, imageSize: size)
