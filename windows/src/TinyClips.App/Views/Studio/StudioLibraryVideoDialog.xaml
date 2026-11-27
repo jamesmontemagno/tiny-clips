@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentDialog
+    x:Class="TinyClips.App.Views.Studio.StudioLibraryVideoDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TinyClips.App.Views.Studio"
+    Title="Add from Clips Library"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    IsPrimaryButtonEnabled="False"
+    PrimaryButtonText="Add clip"
+    Style="{StaticResource DefaultContentDialogStyle}">
+
+    <Grid MinWidth="460" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBox
+            x:Name="FilterBox"
+            AutomationProperties.AutomationId="StudioLibraryVideoFilter"
+            AutomationProperties.Name="Filter videos"
+            PlaceholderText="Filter videos"
+            TextChanged="OnFilterChanged" />
+
+        <ListView
+            x:Name="VideoList"
+            Grid.Row="1"
+            MaxHeight="340"
+            AutomationProperties.AutomationId="StudioLibraryVideoList"
+            AutomationProperties.Name="Videos in the Clips Library"
+            DoubleTapped="OnVideoDoubleTapped"
+            SelectionChanged="OnSelectionChanged"
+            SelectionMode="Single">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:StudioLibraryVideoItem">
+                    <Grid Padding="0,6" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="80" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            Width="80"
+                            Height="45"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            CornerRadius="4">
+                            <Image Source="{x:Bind ThumbnailLazy, Mode=OneWay}" Stretch="UniformToFill" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock
+                                Style="{StaticResource BodyStrongTextBlockStyle}"
+                                Text="{x:Bind Name}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind Details}" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <TextBlock
+            x:Name="EmptyText"
+            Grid.Row="1"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            TextWrapping="Wrap"
+            Visibility="Collapsed" />
+    </Grid>
+</ContentDialog>

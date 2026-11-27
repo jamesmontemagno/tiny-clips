@@ -201,11 +201,24 @@ public sealed partial class StudioViewModel
     /// Brings videos into the timeline in the order given, as one transaction and one undo step.
     /// Nothing changes where one cannot be used. Says what came of it. Cancellation is not an error.
     /// </summary>
-    public async Task<StudioTimelineChangeOutcome> AddClipsAsync(
+    public Task<StudioTimelineChangeOutcome> AddClipsAsync(
         IReadOnlyList<StudioTimelineImport> imports,
+        StudioClipPlacement placement,
+        CancellationToken cancellationToken = default) =>
+        AddClipsAsync(_ => Task.FromResult(imports), placement, cancellationToken);
+
+    /// <summary>
+    /// Like the overload that takes the videos, for videos that are chosen or recorded first: the
+    /// editor counts as adding from when this is called, so a second add cannot start while the
+    /// first is choosing. <paramref name="acquire"/> returns nothing when nothing was chosen,
+    /// which is not an error; what it throws for a file it cannot read is shown in the editor.
+    /// </summary>
+    public async Task<StudioTimelineChangeOutcome> AddClipsAsync(
+        Func<CancellationToken, Task<IReadOnlyList<StudioTimelineImport>>> acquire,
         StudioClipPlacement placement,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(acquire);
         if (_isAddingClips)
         {
             return new StudioTimelineChangeOutcome(
@@ -219,6 +232,31 @@ public sealed partial class StudioViewModel
         OnPropertyChanged(nameof(IsAddingClips));
         try
         {
+            IReadOnlyList<StudioTimelineImport> imports;
+            try
+            {
+                imports = await acquire(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return new StudioTimelineChangeOutcome(StudioTimelineChangeFailure.Canceled, "Adding was cancelled.", null);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+                or NotSupportedException)
+            {
+                // What the window and the store throw for the user is already a sentence.
+                var message = ex is InvalidOperationException
+                    ? ex.Message
+                    : $"Studio could not add this to the timeline: {ex.Message}";
+                ShowError(message);
+                return new StudioTimelineChangeOutcome(StudioTimelineChangeFailure.MediaFailed, message, null);
+            }
+
+            if (imports.Count == 0)
+            {
+                return new StudioTimelineChangeOutcome(StudioTimelineChangeFailure.Canceled, "Nothing was chosen.", null);
+            }
+
             var outcome = await _session.AddClipsAsync(imports, placement, cancellationToken);
             if (outcome.Succeeded)
             {
