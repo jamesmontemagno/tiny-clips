@@ -22,7 +22,11 @@ The [draft PR](https://github.com/jamesmontemagno/tiny-clips/pull/691) started w
 
 **Verified on macOS (Apple Silicon, Xcode 27.2):** the direct and Mac App Store Debug builds succeeded. The full Mac suite had 856 passes, one skip and no failures. It exercised atomic batch insertion, undo/redo, reopening with originals removed, and decoded video and audio across cuts. The CLI/MCP suite had 108 passes and two Windows-only skips; all three packaged-tool smoke tests passed.
 
-**Not exercised manually:** live permissioned recording back into the editor, keyboard and VoiceOver operation of the complete flow, or moving a saved project between Mac and Windows. These remain release checks below, not claims about what the automated suite covers.
+**Exercised by hand on macOS (signed Debug build, synthetic clips):** a project was opened from a Library clip, then extended with a multi-select file import (one undo), a Library clip inserted at the playhead (split and insert undo together), a portrait clip (fitted inside 1920 × 1080) and Record Another Segment. A cancelled take left the project unchanged; a finished take was appended and selected. Split, trim start/end, move earlier/later and remove worked from the clip actions menu. Zoom, cut, speed and arrow, text, rectangle and redaction annotations stayed with their own clips through playback, close and reopen, and export. Export produced 9.48 s for a 9.4 s project with every edit present.
+
+**Manual observations, none blocking:** the preview shifts vertically at clip boundaries because the number of detail lanes changes; overlapping annotation labels draw over each other in one lane; a recorded take also remains as its own Studio draft; and ⌘A does nothing in text fields because the app has no Edit → Select All. That last one predates this work: `ScreenshotEditorScene` replaces the `.pasteboard` command group app-wide.
+
+**Not exercised manually:** keyboard-only and VoiceOver operation of the complete flow, or moving a saved project between Mac and Windows. These remain release checks below, not claims about what the automated suite covers.
 
 ## Reproduce the macOS checks
 
