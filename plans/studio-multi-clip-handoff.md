@@ -1,6 +1,6 @@
-# Studio multi-clip timeline: macOS implementation and Windows pickup
+# Studio multi-clip timeline: implementation and release checks
 
-The [draft PR](https://github.com/jamesmontemagno/tiny-clips/pull/691) started with the shared v2 model at `899e5cf`. The macOS editor now uses that model for assembly, playback, export, portable saves and Agent Control. **Windows still has the model only.** Keep [#591](https://github.com/jamesmontemagno/tiny-clips/issues/591) open for the Windows implementation and cross-platform proof.
+The [draft PR](https://github.com/jamesmontemagno/tiny-clips/pull/691) started with the shared v2 model at `899e5cf`. The macOS editor uses that model for assembly, playback, export, portable saves and Agent Control. Windows shares the file format and Agent contract, with native implementations for media storage and rendering. Keep [#591](https://github.com/jamesmontemagno/tiny-clips/issues/591) open for the release checks below.
 
 ## Decisions to carry to Windows
 
@@ -52,9 +52,7 @@ For a fast loop, add `-only-testing:TinyClipsTests/StudioFixtureTests -only-test
 
 These commands disable code signing for build and unit-test checks. For manual recording, open `mac/TinyClips.xcodeproj` in Xcode, run the `TinyClips` scheme with your normal local signing setup, and grant the capture permissions the app requests.
 
-**Known Windows build blocker at `899e5cf`:** [x64, ARM64 and Store CI](https://github.com/jamesmontemagno/tiny-clips/actions/runs/45870277698) reported `CS0104` at `StudioWindow.xaml.cs:46`: `StudioTimeline` refers to both the WinUI control and the new Core model. Qualify or alias the control where the view uses it, then rebuild all three targets. The Core test job was skipped, not passed.
-
-## Windows implementation order
+## Windows implementation and acceptance criteria
 
 | Step | Where to start | Done when |
 |---|---|---|
@@ -65,11 +63,9 @@ These commands disable code signing for build and unit-test checks. For manual r
 | 5. Wire editor inputs | Studio views, Library and capture service: file picker/drop, Library snapshot and **Record another segment**. | Success returns to the same editor; cancellation preserves selection/edits. Keyboard and Narrator can perform every lane operation. |
 | 6. Enable Windows Agent Control | Implement and advertise the existing shared commands only when the Windows handlers support them. Recheck scopes, OS consent, approval and revision after staging/recording. | A paired client assembles, edits and exports without driving the UI. Update capability metadata, policy tests and docs when enabling Windows. |
 
-**Suggested first Windows slice:** fix the type-name collision above, then run the equivalent of the Mac batch-import/reopen and preview/export boundary tests through the native Windows store, editor and renderer before wiring the other entry points. Use the Mac implementations above as behavior references, not UI or AVFoundation ports.
+**Windows store:** `StudioTimelineMediaStoreTests` covers staging, v1 conversion, rollback, stale revisions, linked recording snapshots, and reopening a portable copy after moving or deleting the originals. Unused sources stay in the registry and in portable copies.
 
-**Windows foundation in progress:** the control/model collision is fixed. The Core timeline map now validates playable clips, maps join timing and incoming-clip selection, and refuses destructive splits, trims and last-clip removal. Windows currently refuses v2 editor, export and portable-folder operations rather than silently treating the legacy root as the whole project; Agent editing and rendering also refuse v2. These guards must be replaced as the remaining store, history, rendering, UI and Agent work is implemented. No batch-import, decoded boundary, or Windows accessibility proof has been completed.
-
-On the Windows pickup host, the focused Studio tests passed, as did the x64, ARM64 and Store app builds. The full Core suite reported seven screenshot decoding failures outside the changed Studio code; their baseline has not been verified. App tests passed with CsWinRT1032 warnings in unchanged test files.
+**Windows renderer:** run `dotnet run --project windows\tools\StudioRenderCheck\StudioRenderCheck.csproj -c Debug -p:Platform=x64 -- --only timeline`. On Windows, all seven checks passed, including decoded video and audio, posters and live preview across the four joins; the Mac camera-offset and portrait cards; software rendering; and cancellation without replacing the destination. Two two-second clips produced 4.0 seconds for cuts and color fades and 3.5 seconds for a dissolve. The generated signal correlated at 1.0000 for each join. This is not a physical Mac-to-Windows transfer or a listening test.
 
 ## Release checks (on the respective hosts)
 

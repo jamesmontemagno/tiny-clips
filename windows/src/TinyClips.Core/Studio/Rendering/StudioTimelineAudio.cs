@@ -6,7 +6,6 @@ namespace TinyClips.Core.Studio.Rendering;
 internal sealed class StudioTimelineAudio : IStudioPcmSource, IDisposable
 {
     private const int BlockSamples = 2048;
-    private readonly StudioTimelineMap _map;
     private readonly Entry[] _entries;
     private readonly Dictionary<string, Reader> _readers = [];
     private readonly double[] _mix = new double[BlockSamples * 2];
@@ -16,10 +15,10 @@ internal sealed class StudioTimelineAudio : IStudioPcmSource, IDisposable
 
     public StudioTimelineAudio(StudioProject project, StudioProjectPaths paths, CancellationToken cancellationToken)
     {
-        _map = StudioTimelineProjection.Map(project);
+        var map = StudioTimelineProjection.Map(project);
         _cancellationToken = cancellationToken;
         var entries = new List<Entry>();
-        foreach (var clip in _map.Clips)
+        foreach (var clip in map.Clips)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var local = StudioTimelineProjection.ProjectForClip(project, clip.ClipId);
@@ -33,7 +32,7 @@ internal sealed class StudioTimelineAudio : IStudioPcmSource, IDisposable
             entries.Add(new(clip, local, path, ranges));
         }
         _entries = entries.ToArray();
-        TotalSamples = StudioRenderingMath.SecondsToSamples(_map.Duration, Format.SampleRate);
+        TotalSamples = StudioRenderingMath.SecondsToSamples(map.Duration, Format.SampleRate);
     }
 
     public StudioAudioFormat Format { get; } = new(48000, 2);
@@ -73,13 +72,13 @@ internal sealed class StudioTimelineAudio : IStudioPcmSource, IDisposable
                     _readers.Add(entry.Clip.ClipId, reader);
                 }
                 var sourceStart = range.SourceStartSample + from - range.OutputStartSample;
+                var volume = StudioSound.Volume(entry.Project.Audio);
                 reader.Mix(sourceStart, checked((int)(to - from)), (samples, sourceOffset) =>
                 {
                     var projectStart = from + sourceOffset;
                     for (var i = 0; i < samples.Length / 2; i++)
                     {
-                        var gain = StudioSound.Volume(entry.Project.Audio) *
-                            StudioTimelineFrame.Gain(_map, entry.Clip, (projectStart + i) / (double)Format.SampleRate);
+                        var gain = volume * StudioTimelineFrame.Gain(entry.Clip, (projectStart + i) / (double)Format.SampleRate);
                         var destination = checked((int)((projectStart + i - _cursor) * 2));
                         _mix[destination] += samples[i * 2] * gain;
                         _mix[destination + 1] += samples[i * 2 + 1] * gain;

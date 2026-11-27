@@ -13,7 +13,7 @@ internal sealed record StudioTimelineFrame(StudioTimelineLayer[] Layers, double 
         }
         var layers = active.Select(clip => new StudioTimelineLayer(clip,
             clip.TimeMap.OutputToSource(Math.Clamp(time - clip.ProjectStart, 0, clip.TimeMap.OutputDuration)),
-            Gain(map, clip, time))).ToArray();
+            Gain(clip, time))).ToArray();
         foreach (var clip in map.Clips)
         {
             if (clip.Entry is { Kind: StudioClipTransition.FadeThroughBlack or StudioClipTransition.FadeThroughWhite } join
@@ -28,17 +28,15 @@ internal sealed record StudioTimelineFrame(StudioTimelineLayer[] Layers, double 
         return new(layers, 0, false);
     }
 
-    public static double Gain(StudioTimelineMap map, StudioTimelineMapClip clip, double time)
+    public static double Gain(StudioTimelineMapClip clip, double time)
     {
         if (clip.Entry is { Kind: StudioClipTransition.CrossDissolve } entry && time < entry.End)
         {
             return Math.Clamp((time - entry.Start) / (entry.End - entry.Start), 0, 1);
         }
-        for (var i = 1; i < map.Clips.Count; i++)
+        if (clip.Exit is { Kind: StudioClipTransition.CrossDissolve } exit && time >= exit.Start)
         {
-            if (map.Clips[i - 1].ClipId == clip.ClipId
-                && map.Clips[i].Entry is { Kind: StudioClipTransition.CrossDissolve } exit && time >= exit.Start)
-                return Math.Clamp((exit.End - time) / (exit.End - exit.Start), 0, 1);
+            return Math.Clamp((exit.End - time) / (exit.End - exit.Start), 0, 1);
         }
         return 1;
     }

@@ -10,7 +10,10 @@ public sealed record StudioTimelineMapClip(
     double ProjectStart,
     double ProjectEnd,
     StudioTimeMap TimeMap,
-    StudioTimelineJoin? Entry);
+    StudioTimelineJoin? Entry)
+{
+    internal StudioTimelineJoin? Exit { get; init; }
+}
 
 public sealed class StudioTimelineMap
 {
@@ -68,6 +71,7 @@ public sealed class StudioTimelineMap
                     clip.TransitionIn,
                     projectStart - length,
                     clip.TransitionIn == StudioClipTransition.CrossDissolve ? projectStart : projectStart + length);
+                clips[^1] = previous with { Exit = entry };
                 if (clip.TransitionIn == StudioClipTransition.CrossDissolve)
                 {
                     projectStart = entry.Start;
