@@ -25,6 +25,23 @@ public sealed partial class StudioEditorSession
     public bool CanCopyAnnotation => CanUseAnnotationClipboard && SelectedAnnotation is { } annotation
         && StudioAnnotationClipboard.IsSupportedKind(annotation.Kind);
 
+    /// <summary>Paste feedback resolves the committed annotation at its mapped destination start,
+    /// not the inspector's unknown-kind hint or an unmapped source playhead inside a cut.</summary>
+    public bool IsSelectedAnnotationVisibleAtStart
+    {
+        get
+        {
+            if (Model is not { } model || SelectedAnnotationIndex is not { } index || SelectedAnnotation is not { } annotation)
+            {
+                return false;
+            }
+            var project = model.Project;
+            var canvas = StudioCanvasMath.NaturalSize(project);
+            var frame = StudioLayoutResolver.Resolve(project, _events, annotation.Start, canvas.Width, canvas.Height);
+            return StudioAnnotationGeometry.TryResolve(annotation, index, frame, annotation.Start, canvas.Width, canvas.Height, out _);
+        }
+    }
+
     public byte[] CopySelectedAnnotation()
     {
         if (!CanCopyAnnotation || SelectedAnnotationIndex is not { } index || Model is not { } model)

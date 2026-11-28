@@ -28,7 +28,7 @@ final class StudioAnnotationTests: XCTestCase {
             fields[key] = value
             XCTAssertThrowsError(try StudioAnnotationTransfer.decode(StudioJSON.makeEncoder().encode(fields)))
         }
-        for (key, value) in [("kind", StudioJSONValue.string("future")), ("attach", .string("other")), ("scale", .number(100)), ("x", .bool(true)), ("shadow", .string("true"))] {
+        for (key, value) in [("kind", StudioJSONValue.string("future")), ("attach", .string("other")), ("end", .number(0)), ("x", .bool(true)), ("shadow", .string("true"))] {
             var fields = input
             guard case .object(var annotation) = fields["annotation"] else { return XCTFail("Missing annotation") }
             annotation[key] = value
@@ -37,6 +37,14 @@ final class StudioAnnotationTests: XCTestCase {
         }
         XCTAssertThrowsError(try StudioAnnotationTransfer.decode(Data(repeating: 32, count: StudioAnnotationTransfer.maximumBytes + 1)))
         XCTAssertThrowsError(try StudioAnnotationTransfer.decode(Data("plain text".utf8)))
+    }
+
+    func testClipboardPreservesValuesTheRendererClamps() throws {
+        let annotation = StudioAnnotation(start: -1, end: 5, x: 2, offsetX: -4, scale: 4, width: 3, shapeFillOpacity: 2)
+        let transfer = StudioAnnotationTransfer(annotation: annotation, outputDurationSeconds: 3)
+        XCTAssertEqual(try StudioAnnotationTransfer.decode(transfer.encoded()), transfer)
+        let editor = model([annotation])
+        XCTAssertEqual(try editor.annotationTransfer(at: 0).annotation, annotation)
     }
 
     func testPastePreservesPlaybackDurationAcrossCutsAndSpeed() throws {

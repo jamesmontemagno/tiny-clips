@@ -63,17 +63,16 @@ public sealed class StudioAnnotationClipboardTests
     [InlineData("redactLevel", "\"future\"")]
     [InlineData("text", "5")]
     [InlineData("shadow", "\"true\"")]
-    [InlineData("x", "1.01")]
-    [InlineData("y", "-0.01")]
-    [InlineData("offsetX", "-1.01")]
-    [InlineData("offsetY", "1.01")]
-    [InlineData("scale", "0.49")]
-    [InlineData("scale", "3.01")]
-    [InlineData("width", "-0.01")]
-    [InlineData("height", "1.01")]
-    [InlineData("cornerRadius", "0.51")]
-    [InlineData("shapeFillOpacity", "-0.01")]
-    [InlineData("start", "-1")]
+    [InlineData("x", "\"1.01\"")]
+    [InlineData("y", "\"-0.01\"")]
+    [InlineData("offsetX", "\"-1.01\"")]
+    [InlineData("offsetY", "\"1.01\"")]
+    [InlineData("scale", "\"0.49\"")]
+    [InlineData("width", "\"-0.01\"")]
+    [InlineData("height", "\"1.01\"")]
+    [InlineData("cornerRadius", "\"0.51\"")]
+    [InlineData("shapeFillOpacity", "\"-0.01\"")]
+    [InlineData("start", "\"-1\"")]
     [InlineData("end", "1")]
     [InlineData("rotation", "\"NaN\"")]
     public void InvalidFieldsAreExplicitErrors(string field, string json)
@@ -125,6 +124,48 @@ public sealed class StudioAnnotationClipboardTests
         };
         var decoded = StudioAnnotationClipboard.Decode(StudioAnnotationClipboard.Encode(transfer with { Annotation = annotation }));
         Assert.Equal((0d, 0d, 1080d), (decoded.Annotation.Width, decoded.Annotation.Height, decoded.Annotation.Rotation));
+    }
+
+    [Fact]
+    public void OutOfRangeGeometryAndNegativeSourceStartRoundtripExactly()
+    {
+        var node = JsonNode.Parse(FixtureBytes())!;
+        foreach (var (field, value) in new Dictionary<string, double>
+        {
+            ["start"] = -5, ["x"] = -2, ["y"] = 3, ["offsetX"] = -4, ["offsetY"] = 5,
+            ["scale"] = 7, ["rotation"] = -1080, ["width"] = -0.2, ["height"] = 2,
+            ["cornerRadius"] = 3, ["shapeFillOpacity"] = 4,
+        })
+        {
+            node["annotation"]![field] = value;
+        }
+        var bytes = Encoding.UTF8.GetBytes(node.ToJsonString());
+        var decoded = StudioAnnotationClipboard.Decode(bytes);
+        using var expected = JsonDocument.Parse(bytes);
+        using var actual = JsonDocument.Parse(StudioAnnotationClipboard.Encode(decoded));
+        Assert.True(JsonElement.DeepEquals(expected.RootElement, actual.RootElement));
+        Assert.Equal(-5, decoded.Annotation.Start);
+    }
+
+    [Theory]
+    [InlineData("start")]
+    [InlineData("end")]
+    [InlineData("x")]
+    [InlineData("y")]
+    [InlineData("offsetX")]
+    [InlineData("offsetY")]
+    [InlineData("scale")]
+    [InlineData("rotation")]
+    [InlineData("width")]
+    [InlineData("height")]
+    [InlineData("cornerRadius")]
+    [InlineData("shapeFillOpacity")]
+    public void EveryAnnotationNumberMustStillBeFinite(string field)
+    {
+        var node = JsonNode.Parse(FixtureBytes())!;
+        node["annotation"]![field] = null;
+        var json = node.ToJsonString().Replace($"\"{field}\":null", $"\"{field}\":1e999", StringComparison.Ordinal);
+        Assert.Throws<InvalidDataException>(() => StudioAnnotationClipboard.Decode(Encoding.UTF8.GetBytes(json)));
     }
 
     [Theory]

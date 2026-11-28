@@ -59,6 +59,28 @@ public sealed class StudioAnnotationTransferModelTests
     }
 
     [Fact]
+    public void CopyAndPastePreserveSavedOutOfRangeGeometryAndNegativeSourceStart()
+    {
+        var annotation = StudioAnnotationClipboardTests.Fixture().Annotation with
+        {
+            Start = -5, X = -2, Y = 3, OffsetX = -4, OffsetY = 5, Scale = 7,
+            Rotation = -1080, Width = -0.2, Height = 2, CornerRadius = 3, ShapeFillOpacity = 4,
+        };
+        var source = Model(annotations: [annotation]);
+        var transfer = source.CopyAnnotation(0);
+        Assert.Equal(-5, transfer.Annotation.Start);
+        Assert.Equal(9, transfer.OutputDurationSeconds);
+        Assert.False(source.CanUndo);
+        var destination = Model();
+        Assert.True(destination.PasteAnnotation(transfer, 4).Changed);
+        var pasted = Assert.Single(destination.Project.Overlays.Annotations);
+        var restored = pasted with { Id = annotation.Id, Start = annotation.Start, End = annotation.End };
+        using var expected = JsonDocument.Parse(StudioAnnotationClipboard.Encode(transfer));
+        using var actual = JsonDocument.Parse(StudioAnnotationClipboard.Encode(transfer with { Annotation = restored }));
+        Assert.True(JsonElement.DeepEquals(expected.RootElement, actual.RootElement));
+    }
+
+    [Fact]
     public void RejectedTimelineMutationCannotClaimTheExistingLastIdAsAPaste()
     {
         var transfer = StudioAnnotationClipboardTests.Fixture();

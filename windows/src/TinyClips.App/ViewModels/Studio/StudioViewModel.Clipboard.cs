@@ -131,9 +131,9 @@ public sealed partial class StudioViewModel
             var result = _session.PasteAnnotation(intent, transfer);
             if (result.Changed)
             {
-                SetAnnotationClipboardStatus(IsAnnotationNotDrawn
-                    ? "Annotation pasted. It is not drawn at this playhead; check its attachment and visibility."
-                    : "Annotation pasted.");
+                SetAnnotationClipboardStatus(_session.IsSelectedAnnotationVisibleAtStart
+                    ? "Annotation pasted."
+                    : "Annotation pasted. It is not drawn at this playhead; check its attachment and visibility.");
             }
             else
             {

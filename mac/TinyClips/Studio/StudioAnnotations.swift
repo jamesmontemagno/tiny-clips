@@ -1087,16 +1087,8 @@ struct StudioAnnotationTransfer: Codable, Equatable, Sendable {
             guard case .number(let value) = annotation[key], value.isFinite else { throw StudioAnnotationTransferError.invalid }
             numbers[key] = value
         }
-        guard let start = numbers["start"], let end = numbers["end"], start >= 0, end > start else {
+        guard let start = numbers["start"], let end = numbers["end"], end > start else {
             throw StudioAnnotationTransferError.invalid
-        }
-        let ranges: [String: ClosedRange<Double>] = [
-            "x": 0...1, "y": 0...1, "offsetX": -1...1, "offsetY": -1...1,
-            "width": 0...1, "height": 0...1, "cornerRadius": 0...0.5,
-            "shapeFillOpacity": 0...1, "scale": 0.5...3,
-        ]
-        for (key, range) in ranges {
-            guard let value = numbers[key], range.contains(value) else { throw StudioAnnotationTransferError.invalid }
         }
         do { return try StudioJSON.makeDecoder().decode(Self.self, from: data) }
         catch { throw StudioAnnotationTransferError.invalid }

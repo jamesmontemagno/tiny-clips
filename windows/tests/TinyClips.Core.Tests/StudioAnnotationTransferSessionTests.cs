@@ -5,6 +5,38 @@ namespace TinyClips.Core.Tests;
 
 public sealed class StudioAnnotationTransferSessionTests : StudioEditorSessionTestBase
 {
+    [Theory]
+    [InlineData(StudioAnnotationAttach.Screen, false)]
+    [InlineData(StudioAnnotationAttach.Frame, true)]
+    public async Task PasteVisibilityResolvesCameraOnlyLayoutWithoutChangingAttachment(StudioAnnotationAttach attach, bool isVisible)
+    {
+        var id = CreateProject(camera: true);
+        Projects.Save(Projects.Load(id) with { Scenes = [new StudioScene { Start = 0, Layout = StudioLayout.Camera }] });
+        var session = await OpenAsync(id);
+        var transfer = StudioAnnotationClipboardTests.Fixture();
+        transfer = transfer with { Annotation = transfer.Annotation with { Attach = attach } };
+        Assert.True(session.PasteAnnotation(session.CaptureAnnotationPasteIntent()!, transfer).Changed);
+        Assert.Equal(attach, session.SelectedAnnotation!.Attach);
+        Assert.Equal(isVisible, session.IsSelectedAnnotationVisibleAtStart);
+    }
+
+    [Fact]
+    public async Task PasteVisibilitySamplesMappedKeptStartRatherThanSourcePlayheadInsideCut()
+    {
+        var id = CreateProject(camera: true);
+        Projects.Save(Projects.Load(id) with
+        {
+            Scenes = [new StudioScene { Start = 0, Layout = StudioLayout.Screen }, new StudioScene { Start = 4, Layout = StudioLayout.Camera }],
+            Edits = new StudioEdits { Cuts = [new() { Start = 2, End = 4 }] },
+        });
+        var session = await OpenAsync(id);
+        session.Scrub(3);
+        Assert.True(session.PasteAnnotation(session.CaptureAnnotationPasteIntent()!, StudioAnnotationClipboardTests.Fixture()).Changed);
+        Assert.Equal(4, session.SelectedAnnotation!.Start);
+        Assert.Equal(3, session.Playhead);
+        Assert.False(session.IsSelectedAnnotationVisibleAtStart);
+    }
+
     [Fact]
     public async Task PasteIsOneSelectedUndoStep_AutosavesReopensAndPortableSavePreservesIt()
     {

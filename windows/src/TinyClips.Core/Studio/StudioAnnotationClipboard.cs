@@ -111,19 +111,16 @@ public static class StudioAnnotationClipboard
         }
 
         var start = Number(annotation, "start");
-        if (start < 0 || Number(annotation, "end") <= start)
+        if (Number(annotation, "end") <= start)
         {
             throw Invalid("Invalid annotation time range.");
         }
-        foreach (var field in new[] { "x", "y", "width", "height", "shapeFillOpacity" })
+        // Project geometry is clamped by rendering, not by storage or clipboard interchange.
+        // Preserve finite saved values exactly, even outside the editor controls' ranges.
+        foreach (var field in new[] { "x", "y", "width", "height", "shapeFillOpacity", "offsetX", "offsetY", "scale", "cornerRadius", "rotation" })
         {
-            Range(annotation, field, 0, 1);
+            _ = Number(annotation, field);
         }
-        Range(annotation, "offsetX", -1, 1);
-        Range(annotation, "offsetY", -1, 1);
-        Range(annotation, "scale", 0.5, 3);
-        Range(annotation, "cornerRadius", 0, 0.5);
-        _ = Number(annotation, "rotation");
     }
 
     private static void RequireObject(JsonElement element)
@@ -150,15 +147,6 @@ public static class StudioAnnotationClipboard
         var value = Required(element, name);
         return value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number) && double.IsFinite(number)
             ? number : throw Invalid($"Invalid annotation number: {name}.");
-    }
-
-    private static void Range(JsonElement element, string name, double minimum, double maximum)
-    {
-        var value = Number(element, name);
-        if (value < minimum || value > maximum)
-        {
-            throw Invalid($"Annotation field out of range: {name}.");
-        }
     }
 
     private static void Choice(JsonElement element, string name, string[] choices)

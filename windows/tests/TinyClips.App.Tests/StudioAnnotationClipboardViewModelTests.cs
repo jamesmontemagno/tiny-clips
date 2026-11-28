@@ -110,7 +110,7 @@ public sealed class StudioAnnotationClipboardViewModelTests : StudioViewModelTes
     }
 
     [Fact]
-    public async Task ScreenAttachmentIsPreservedOnCameraOnlyDestinationWithExistingVisibilityFeedback()
+    public async Task ScreenAttachmentIsPreservedOnCameraOnlyDestinationWithResolvedVisibilityFeedback()
     {
         var model = await OpenAsync(CreateProject(project => project with
         {
@@ -119,8 +119,9 @@ public sealed class StudioAnnotationClipboardViewModelTests : StudioViewModelTes
         model.AttachAnnotationClipboard(new TestClipboard { Payload = Payload() });
         await model.PasteAnnotationAsync();
         Assert.Equal(StudioAnnotationAttach.Screen, Assert.Single(model.Annotations).Attach);
-        Assert.True(model.IsAnnotationNotDrawn);
-        Assert.Contains("not drawn", model.AnnotationClipboardStatus);
+        const string status = "Annotation pasted. It is not drawn at this playhead; check its attachment and visibility.";
+        Assert.Equal(status, model.AnnotationClipboardStatus);
+        Assert.Contains(status, Announcements);
         await CloseAsync(model);
     }
 
