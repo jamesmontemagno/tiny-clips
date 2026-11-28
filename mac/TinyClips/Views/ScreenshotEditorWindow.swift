@@ -32,6 +32,8 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
     let onReturn: () -> Bool
     /// Called for an unmodified Delete outside text input; returns whether it was handled.
     let onDelete: () -> Bool
+    /// Called for a secondary click inside the viewport; returns whether it cleared a selection.
+    let onRightClick: () -> Bool
     /// Called for an unmodified Esc unless a sheet, popover, or input method needs it. The argument
     /// says whether a text field has focus. Returns whether Esc was acted on; when it was not, the
     /// focused text field just gives up focus.
@@ -45,6 +47,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             onPan: onPan,
             onReturn: onReturn,
             onDelete: onDelete,
+            onRightClick: onRightClick,
             onEscape: onEscape
         )
     }
@@ -65,6 +68,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         context.coordinator.onPan = onPan
         context.coordinator.onReturn = onReturn
         context.coordinator.onDelete = onDelete
+        context.coordinator.onRightClick = onRightClick
         context.coordinator.onEscape = onEscape
         if let view = nsView as? ScreenshotEditorViewportMonitorView {
             view.onBackingScaleChange = onBackingScaleChange
@@ -81,6 +85,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         var onPan: (CGSize) -> Void
         var onReturn: () -> Bool
         var onDelete: () -> Bool
+        var onRightClick: () -> Bool
         var onEscape: (Bool) -> Bool
 
         private weak var monitoredView: NSView?
@@ -95,6 +100,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             onPan: @escaping (CGSize) -> Void,
             onReturn: @escaping () -> Bool,
             onDelete: @escaping () -> Bool,
+            onRightClick: @escaping () -> Bool,
             onEscape: @escaping (Bool) -> Bool
         ) {
             self.isEnabled = isEnabled
@@ -102,15 +108,18 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             self.onPan = onPan
             self.onReturn = onReturn
             self.onDelete = onDelete
+            self.onRightClick = onRightClick
             self.onEscape = onEscape
         }
 
         func install(for view: NSView) {
             monitoredView = view
             eventMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.scrollWheel, .magnify, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
+                matching: [.scrollWheel, .magnify, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown]
             ) { [weak self] event in
-                self?.handle(event) ?? event
+                guard let self else { return event }
+                if self.handleSecondaryClick(event) { return nil }
+                return self.handle(event) ?? event
             }
             resignActiveObserver = NotificationCenter.default.addObserver(
                 forName: NSApplication.didResignActiveNotification,
@@ -207,6 +216,16 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             default:
                 return event
             }
+        }
+
+        private func handleSecondaryClick(_ event: NSEvent) -> Bool {
+            guard event.type == .rightMouseDown || (event.type == .leftMouseDown && event.modifierFlags.contains(.control)),
+                  let view = monitoredView,
+                  event.window === view.window,
+                  contains(event, in: view) else {
+                return false
+            }
+            return onRightClick()
         }
 
         /// SwiftUI's `onExitCommand` only fires while one of the editor's controls has keyboard
@@ -1010,6 +1029,7 @@ struct ScreenshotEditorView: View {
                             onPan: panCanvas,
                             onReturn: applyCropFromKeyboard,
                             onDelete: viewModel.deleteSelectedAnnotation,
+                            onRightClick: viewModel.clearAnnotationSelection,
                             onEscape: handleEscape,
                             onBackingScaleChange: updateBackingScaleFactor
                         )

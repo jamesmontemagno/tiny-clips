@@ -287,6 +287,53 @@ final class ScreenshotEditorViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testClearingSelectionRestoresDefaultsWithoutChangingTheAnnotation() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        let size = CGSize(width: 400, height: 200)
+        editor.selectedTool = .rectangle
+        editor.handleDragEnd(start: CGPoint(x: 0.1, y: 0.1), end: CGPoint(x: 0.4, y: 0.4), displaySize: size)
+        XCTAssertTrue(editor.updateSelectedShapeColor(.blue))
+        let first = try XCTUnwrap(editor.annotations.first)
+        editor.markSaved()
+
+        XCTAssertTrue(editor.clearAnnotationSelection())
+
+        XCTAssertNil(editor.selectedAnnotationIndex)
+        XCTAssertEqual(editor.selectedTool, .rectangle)
+        XCTAssertEqual(editor.annotations.count, 1)
+        XCTAssertEqual(editor.annotations[0].id, first.id)
+        XCTAssertEqual(editor.annotations[0].color, .blue)
+        XCTAssertFalse(editor.hasUnsavedChanges)
+        XCTAssertFalse(editor.updateSelectedShapeColor(.green))
+        XCTAssertFalse(editor.clearAnnotationSelection())
+
+        editor.selectedColor = .green
+        editor.handleDragEnd(start: CGPoint(x: 0.6, y: 0.1), end: CGPoint(x: 0.8, y: 0.3), displaySize: size)
+        XCTAssertEqual(editor.annotations.map(\.color), [.blue, .green])
+        XCTAssertEqual(editor.selectedAnnotationIndex, 1)
+    }
+
+    @MainActor
+    func testClearingSelectionDoesNotInterruptAnActiveDrag() throws {
+        let (editor, cleanup) = try makeEditor()
+        defer { cleanup() }
+        let size = CGSize(width: 400, height: 200)
+        editor.selectedTool = .rectangle
+        editor.handleDragEnd(start: CGPoint(x: 0.1, y: 0.1), end: CGPoint(x: 0.4, y: 0.4), displaySize: size)
+        let originalRect = editor.annotations[0].rect
+        editor.markSaved()
+        editor.handleDrag(start: CGPoint(x: 0.25, y: 0.25), current: CGPoint(x: 0.3, y: 0.3), displaySize: size)
+        XCTAssertFalse(editor.clearAnnotationSelection())
+        XCTAssertEqual(editor.selectedAnnotationIndex, 0)
+        editor.finishCancelledGesture()
+        XCTAssertEqual(editor.annotations[0].rect, originalRect)
+        XCTAssertFalse(editor.hasUnsavedChanges)
+        XCTAssertTrue(editor.clearAnnotationSelection())
+        XCTAssertNil(editor.selectedAnnotationIndex)
+    }
+
+    @MainActor
     func testNewEllipseCornerAndRotationGripsUseDisplayedCoordinates() throws {
         let (editor, cleanup) = try makeEditor()
         defer { cleanup() }
@@ -376,6 +423,9 @@ final class ScreenshotEditorViewModelTests: XCTestCase {
         XCTAssertTrue(editor.isEditingText)
         XCTAssertFalse(editor.canDeleteSelectedAnnotation)
         editor.textEditValue = "Discard"
+        XCTAssertFalse(editor.clearAnnotationSelection())
+        XCTAssertEqual(editor.selectedAnnotationIndex, 0)
+        XCTAssertEqual(editor.textEditValue, "Discard")
         editor.cancelTextAnnotation()
         editor.handleDragEnd(start: other, end: other)
         editor.commitTextAnnotation()

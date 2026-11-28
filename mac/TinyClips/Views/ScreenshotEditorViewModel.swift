@@ -538,6 +538,13 @@ class ScreenshotEditorViewModel: ObservableObject {
         return index
     }
 
+    @discardableResult
+    func clearAnnotationSelection() -> Bool {
+        guard canvasDrag == nil, editableSelectionIndex != nil else { return false }
+        selectedAnnotationIndex = nil
+        return true
+    }
+
     func selectedEmojiValue() -> String? {
         selectedIndex(using: { $0 == .emoji }).map { annotations[$0].text }
     }

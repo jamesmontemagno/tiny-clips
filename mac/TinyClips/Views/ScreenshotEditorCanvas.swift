@@ -489,6 +489,11 @@ struct ScreenshotEditorCanvasView: View {
                     .accessibilityLabel("Screenshot annotation canvas")
                     .accessibilityValue(viewModel.editableSelectionIndex.map { "\(viewModel.annotations[$0].tool.label) selected" } ?? "")
                     .accessibilityHint(canvasAccessibilityHint)
+                    .accessibilityActions {
+                        if viewModel.editableSelectionIndex != nil {
+                            Button("Clear annotation selection") { _ = viewModel.clearAnnotationSelection() }
+                        }
+                    }
             }
         }
     }
@@ -500,7 +505,7 @@ struct ScreenshotEditorCanvasView: View {
     private var canvasAccessibilityHint: String {
         switch viewModel.selectedTool {
         case .move:
-            return "Select an annotation, drag inside it to move, drag a corner handle to resize, or drag the rotation grip above it to rotate."
+            return "Select an annotation, drag inside it to move, drag a corner handle to resize, or drag the rotation grip above it to rotate. Right-click to clear the selection."
         case .background:
             return "Use the Background section in the sidebar to add padding, a background, and a frame."
         case .crop:
@@ -508,7 +513,7 @@ struct ScreenshotEditorCanvasView: View {
         default:
             let placement = [.emoji, .number, .text, .pointer].contains(viewModel.selectedTool) ? "Click" : "Drag"
             if viewModel.editableSelectionIndex != nil {
-                return "Drag the selected annotation or its handles to adjust it. \(placement) elsewhere to add another. Use Move to select an older annotation."
+                return "Drag the selected annotation or its handles to adjust it. Right-click to deselect and change tool defaults. \(placement) elsewhere to add another. Use Move to select an older annotation."
             }
             return "\(placement) to add an annotation. It will be selected for editing."
         }

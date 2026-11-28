@@ -142,6 +142,13 @@ if (-not $first) {
 }
 $firstTarget = @("-w", "$($first.hwnd)")
 
+function Get-CanvasPoint([double]$x, [double]$y) {
+    $canvas = @((Invoke-UI search "OverlayCanvas" @firstTarget --json | ConvertFrom-Json).matches |
+        Where-Object automationId -eq "OverlayCanvas")
+    if ($canvas.Count -ne 1) { throw "Expected one annotation canvas." }
+    "$([Math]::Round($canvas[0].x + $canvas[0].width * $x)),$([Math]::Round($canvas[0].y + $canvas[0].height * $y))"
+}
+
 Test-UI "Clean editor keeps edit commands disabled" {
     Invoke-UI wait-for "EditorUndoButton" @firstTarget -p IsEnabled --value False -t 3000 | Out-Null
     Invoke-UI wait-for "EditorResetButton" @firstTarget -p IsEnabled --value False -t 3000 | Out-Null
@@ -215,16 +222,21 @@ Test-UI "Rectangle gestures edit only their starting target and keep the drawing
         Invoke-UI drag (PointAt .40 .45) (PointAt .52 .63) @firstTarget # resize A
         Invoke-UI drag (PointAt .48 .56) (PointAt .64 .56) @firstTarget # move from the expanded body
 
-        # A click outside is too small to commit. A drag across A's body creates B.
+        # A left click outside is too small to commit and leaves A selected.
         Invoke-UI click --at (PointAt .12 .52) @firstTarget
         Assert-StrokeWidth 15
-        Invoke-UI drag (PointAt .12 .52) (PointAt .60 .67) @firstTarget
+        # Right-click clears A and shows the tool's defaults without editing A.
+        Invoke-UI click --at (PointAt .12 .52) @firstTarget --right
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
         Assert-StrokeWidth 4
+        Invoke-UI set-value "EditorStrokeSlider" 9 @firstTarget
+        Invoke-UI drag (PointAt .12 .52) (PointAt .60 .67) @firstTarget
+        Assert-StrokeWidth 9
         Invoke-UI set-value "EditorStrokeSlider" 23 @firstTarget
 
         # Start C on old A, outside B. Delete C immediately, not A or B.
         Invoke-UI drag (PointAt .57 .36) (PointAt .78 .46) @firstTarget
-        Assert-StrokeWidth 4
+        Assert-StrokeWidth 9
         Invoke-UI send-keys "delete" @firstTarget --via send-input
         Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
 
@@ -245,25 +257,67 @@ Test-UI "Rectangle gestures edit only their starting target and keep the drawing
 }
 
 Test-UI "Editing a new emoji changes the sticker, not the next sticker" {
-    Invoke-UI invoke "EditorToolEmoji" @firstTarget
-    Invoke-UI set-value "EditorCustomEmojiBox" "🚀" @firstTarget
-    Invoke-UI click "Screenshot annotation canvas" @firstTarget
-    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
-    Invoke-UI set-value "EditorCustomEmojiBox" "📌" @firstTarget
-    Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 📌" -t 3000
+    Invoke-UI invoke "Fit screenshot to viewport" @firstTarget
+    try {
+        Invoke-UI invoke "EditorToolEmoji" @firstTarget
+        Invoke-UI set-value "EditorCustomEmojiBox" "🚀" @firstTarget
+        $firstPoint = Get-CanvasPoint .25 .3
+        $awayPoint = Get-CanvasPoint .75 .7
+        Invoke-UI click --at $firstPoint @firstTarget
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+        Invoke-UI set-value "EditorCustomEmojiBox" "📌" @firstTarget
+        Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 📌" -t 3000
 
-    # Re-arming the tool clears selection. Its next placement may start right on the old sticker.
-    Invoke-UI invoke "EditorToolEmoji" @firstTarget
-    Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 🚀" -t 3000
-    Invoke-UI click "Screenshot annotation canvas" @firstTarget
-    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
-    Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 🚀" -t 3000
-    Invoke-UI invoke "EditorUndoButton" @firstTarget
-    Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
-    Invoke-UI invoke "EditorToolSelect" @firstTarget
-    Invoke-UI click "Screenshot annotation canvas" @firstTarget
-    Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 📌" -t 3000
-    Invoke-UI invoke "EditorDeleteButton" @firstTarget
+        # Left-click elsewhere still places the next emoji without first clearing selection.
+        Invoke-UI click --at $awayPoint @firstTarget
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+        Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 🚀" -t 3000
+        Invoke-UI click --at $awayPoint @firstTarget --right
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
+        Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 🚀" -t 3000
+        Invoke-UI click --at $awayPoint @firstTarget --right
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
+        Invoke-UI set-value "EditorCustomEmojiBox" "🎉" @firstTarget
+        Invoke-UI click --at $awayPoint @firstTarget
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+        Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 🎉" -t 3000
+        Invoke-UI invoke "EditorUndoButton" @firstTarget
+        Invoke-UI invoke "EditorUndoButton" @firstTarget
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
+        Invoke-UI invoke "EditorToolSelect" @firstTarget
+        Invoke-UI click --at $firstPoint @firstTarget
+        Invoke-UI wait-for "EditorSelectedEmoji" @firstTarget -p Name --value "Selected emoji 📌" -t 3000
+        Invoke-UI invoke "EditorDeleteButton" @firstTarget
+    }
+    finally {
+        Invoke-UI invoke "ScreenshotEditorNativeSizeButton" @firstTarget
+    }
+}
+
+Test-UI "Right-click deselects a badge or pointer without changing left-click placement" {
+    Invoke-UI invoke "Fit screenshot to viewport" @firstTarget
+    try {
+        $firstPoint = Get-CanvasPoint .25 .3
+        $awayPoint = Get-CanvasPoint .75 .7
+        foreach ($tool in @("EditorToolCounter", "EditorToolPointer")) {
+            Invoke-UI invoke $tool @firstTarget
+            Invoke-UI click --at $firstPoint @firstTarget
+            Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+            Invoke-UI click --at $awayPoint @firstTarget
+            Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+            Invoke-UI click --at $awayPoint @firstTarget --right
+            Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
+            Invoke-UI click --at $awayPoint @firstTarget
+            Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+            Invoke-UI invoke "EditorUndoButton" @firstTarget
+            Invoke-UI invoke "EditorUndoButton" @firstTarget
+            Invoke-UI invoke "EditorUndoButton" @firstTarget
+            Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
+        }
+    }
+    finally {
+        Invoke-UI invoke "ScreenshotEditorNativeSizeButton" @firstTarget
+    }
 }
 
 Test-UI "Select text tool in first editor" {
@@ -296,6 +350,28 @@ Test-UI "Committed text is selected with Undo, Reset and Delete enabled; Text st
     Invoke-UI invoke "Cancel" -a $AppPid
     Invoke-UI wait-for "TextDialogEntry" -a $AppPid --gone -t 3000
     Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+}
+
+Test-UI "Right-click deselects text without changing left-click placement" {
+    Invoke-UI invoke "Fit screenshot to viewport" @firstTarget
+    try {
+        $awayPoint = Get-CanvasPoint .2 .25
+        Invoke-UI click --at $awayPoint @firstTarget
+        Invoke-UI wait-for "TextDialogEntry" -a $AppPid -t 3000
+        Invoke-UI invoke "Cancel" -a $AppPid
+        Invoke-UI wait-for "TextDialogEntry" -a $AppPid --gone -t 3000
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value True -t 3000
+        Invoke-UI click --at $awayPoint @firstTarget --right
+        Invoke-UI wait-for "EditorDeleteButton" @firstTarget -p IsEnabled --value False -t 3000
+        Invoke-UI wait-for "TextDialogEntry" -a $AppPid --gone -t 3000
+        Invoke-UI click --at $awayPoint @firstTarget
+        Invoke-UI wait-for "TextDialogEntry" -a $AppPid -t 3000
+        Invoke-UI invoke "Cancel" -a $AppPid
+        Invoke-UI wait-for "TextDialogEntry" -a $AppPid --gone -t 3000
+    }
+    finally {
+        Invoke-UI invoke "ScreenshotEditorNativeSizeButton" @firstTarget
+    }
 }
 
 Test-UI "Delete is enabled only for a selected annotation" {

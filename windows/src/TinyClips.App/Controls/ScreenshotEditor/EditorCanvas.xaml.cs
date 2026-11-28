@@ -147,9 +147,17 @@ public sealed partial class EditorCanvas : UserControl
         _nativeSizeSelected = settings.ScreenshotEditorNativeSize;
         NativeSizeToggleButton.IsChecked = _nativeSizeSelected;
         _controller.ImageChanged += OnControllerImageChanged;
-        _controller.AnnotationsStructureChanged += (_, _) => FullRebuild();
+        _controller.AnnotationsStructureChanged += (_, _) =>
+        {
+            FullRebuild();
+            UpdateHint();
+        };
         _controller.AnnotationVisualInvalidated += OnControllerAnnotationVisualInvalidated;
-        _controller.SelectionChanged += (_, ann) => PositionMarquee(ann);
+        _controller.SelectionChanged += (_, ann) =>
+        {
+            PositionMarquee(ann);
+            UpdateHint();
+        };
         _controller.ToolChanged += OnControllerToolChanged;
         _controller.ActiveAnnotationDiscarded += OnControllerActiveAnnotationDiscarded;
         _controller.BackgroundChanged += OnControllerBackgroundChanged;
@@ -312,6 +320,24 @@ public sealed partial class EditorCanvas : UserControl
     {
         FinishPointerInteraction();
         ClearCropSelection();
+        UpdateHint();
+    }
+
+    private void UpdateHint()
+    {
+        var tool = _controller.Tool;
+        if (_controller.SelectedAnnotation is not null)
+        {
+            HintText.Text = tool switch
+            {
+                EditTool.Select => "Drag the selection or its handles to adjust it. Right-click to clear the selection.",
+                EditTool.Text => "Drag the selection to move it; double-click text to edit. Right-click for tool defaults.",
+                EditTool.Counter or EditTool.Emoji or EditTool.Pointer => "Drag the selection to adjust it. Right-click for defaults, or click elsewhere to add another.",
+                _ => "Drag the selection or its handles to adjust it. Right-click for defaults, or draw elsewhere.",
+            };
+            return;
+        }
+
         HintText.Text = tool switch
         {
             EditTool.Crop => "Drag to select an area, then choose Apply crop.",
@@ -1565,6 +1591,21 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
+        var pointerPoint = e.GetCurrentPoint(OverlayCanvas);
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse)
+        {
+            if (pointerPoint.Properties.IsRightButtonPressed)
+            {
+                if (_controller.SelectedAnnotation is not null)
+                {
+                    _controller.Select(null);
+                    e.Handled = true;
+                }
+                return;
+            }
+            if (!pointerPoint.Properties.IsLeftButtonPressed) return;
+        }
+
         OverlayCanvas.Focus(FocusState.Pointer);
 
         if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch)
@@ -1583,7 +1624,7 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
-        var p = e.GetCurrentPoint(OverlayCanvas).Position;
+        var p = pointerPoint.Position;
         var tool = _controller.Tool;
 
         if (tool == EditTool.Crop)
