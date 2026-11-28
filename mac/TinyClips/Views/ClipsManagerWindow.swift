@@ -343,6 +343,20 @@ final class ClipMetadataStore {
 
 // MARK: - Clips View Model
 
+/// Asks the Clips Library to show one Studio project, from outside the window.
+@MainActor
+final class StudioLibraryReveal: ObservableObject {
+    static let shared = StudioLibraryReveal()
+
+    /// The name of the project to search for in the Studio list, until the Library shows it.
+    @Published var pendingName: String?
+
+    func show(projectName: String) {
+        pendingName = projectName
+        _ = AutomationWindowOpener.shared.open(id: "clips-manager", title: "Clips Library")
+    }
+}
+
 @MainActor
 final class StudioLibraryProjects: ObservableObject {
     @Published private(set) var listing = StudioProjectListing()
@@ -1225,6 +1239,7 @@ private struct ClipsManagerContentView: View {
     @State private var showBatchDeleteConfirmation = false
     @State private var showStudio = false
     @State private var studioSearch = ""
+    @ObservedObject private var studioReveal = StudioLibraryReveal.shared
 
     private enum SidebarSelection: Hashable {
         case collection(ClipsViewModel.SmartCollection)
@@ -1396,7 +1411,9 @@ private struct ClipsManagerContentView: View {
         .onAppear {
             viewModel.applyStatePreferences()
             viewModel.load()
+            revealPendingStudioProject()
         }
+        .onChange(of: studioReveal.pendingName) { _, _ in revealPendingStudioProject() }
         .onReceive(NotificationCenter.default.publisher(for: .studioProjectsDidChange).receive(on: DispatchQueue.main)) { _ in
             if showStudio { studioLibrary.refresh() }
         }
@@ -1559,7 +1576,7 @@ private struct ClipsManagerContentView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(project.libraryName)
-                                Text("\(project.exportMissing ? "Export missing" : (project.isDraft ? "Draft" : "Project")) · \(project.lastUsedAt.formatted(date: .abbreviated, time: .shortened))")
+                                Text("\(project.libraryKind) · \(project.lastUsedAt.formatted(date: .abbreviated, time: .shortened))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 if !project.sourceExists {
@@ -1571,7 +1588,8 @@ private struct ClipsManagerContentView: View {
                                 StudioWindowRegistry.shared.open(projectID: project.id)
                             }
                             .accessibilityLabel("Open \(project.libraryName), \(project.lastUsedAt.formatted(date: .abbreviated, time: .shortened)), in Studio")
-                            studioRowActions(id: project.id, name: project.libraryName, date: project.lastUsedAt)
+                            studioRowActions(id: project.id, name: project.libraryName, date: project.lastUsedAt,
+                                             deletionNote: project.takeDeletionNote)
                         }
                     }
                     ForEach(unreadable, id: \.id) { project in
@@ -1594,8 +1612,16 @@ private struct ClipsManagerContentView: View {
         .padding()
     }
 
+    private func revealPendingStudioProject() {
+        guard let name = studioReveal.pendingName else { return }
+        studioReveal.pendingName = nil
+        studioLibrary.refresh(invalidate: true)
+        showStudio = true
+        studioSearch = name
+    }
+
     @ViewBuilder
-    private func studioRowActions(id: String, name: String, date: Date) -> some View {
+    private func studioRowActions(id: String, name: String, date: Date, deletionNote: String? = nil) -> some View {
         let label = "\(name), \(date.formatted(date: .abbreviated, time: .shortened))"
         Button {
             do { try StudioMaintenance.openLibraryFolder(id: id) }
@@ -1609,6 +1635,7 @@ private struct ClipsManagerContentView: View {
             alert.alertStyle = .warning
             alert.messageText = "Delete “\(name)”?"
             alert.informativeText = "The recording and edits in Tiny Clips Studio will be permanently deleted. Exported videos and separately saved project folders are kept."
+                + (deletionNote.map { " " + $0 } ?? "")
             let cancel = alert.addButton(withTitle: "Cancel")
             alert.addButton(withTitle: "Delete")
             alert.layout()

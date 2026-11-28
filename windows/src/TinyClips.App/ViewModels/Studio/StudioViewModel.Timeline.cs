@@ -275,6 +275,56 @@ public sealed partial class StudioViewModel
         }
     }
 
+    /// <summary>
+    /// Asks the window to show a Studio project in the Clips Library. The name is what the
+    /// Library is searched for, or empty to list every project.
+    /// </summary>
+    public event EventHandler<StudioTakeReference>? ShowInLibraryRequested;
+
+    /// <summary>
+    /// The take draft a clip was recorded as with Record another segment, while that draft is
+    /// still in the Library. The project keeps its own copy either way, and the draft is only read.
+    /// </summary>
+    public string? GetOriginalTakeId(string clipId)
+    {
+        if (Project is not { } project || StudioTakeLinkage.TakeProjectIdForClip(project, clipId) is not { } takeId)
+        {
+            return null;
+        }
+
+        try
+        {
+            return _store.Exists(takeId) ? takeId : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Shows the clip's original take draft in the Clips Library, as Show in Library does after recording it.</summary>
+    public async Task ShowOriginalTakeAsync(string clipId)
+    {
+        if (GetOriginalTakeId(clipId) is not { } takeId)
+        {
+            return;
+        }
+
+        string search;
+        try
+        {
+            search = StudioTakeLinkage.LibraryName((await Task.Run(() => _store.Load(takeId))).Name);
+        }
+        catch (Exception ex)
+        {
+            // The Library still lists it, and shows why it cannot be read.
+            System.Diagnostics.Debug.WriteLine($"Studio could not read the original take {takeId}: {ex.Message}");
+            search = string.Empty;
+        }
+
+        ShowInLibraryRequested?.Invoke(this, new StudioTakeReference(takeId, search));
+    }
+
     private void RaiseTimelineChanged()
     {
         InvalidateClipStrip();

@@ -40,11 +40,15 @@ public sealed record StudioMediaFileIdentity
     }
 }
 
-/// <summary>Recording is a single-recording editor snapshot; its layers are used instead of VideoPath's export.</summary>
+/// <summary>
+/// Recording is a single-recording editor snapshot; its layers are used instead of VideoPath's export.
+/// IsRecordedTake marks a Record another segment take, whose imported source names the take draft as takeProjectId.
+/// </summary>
 public sealed record StudioTimelineImport(
     string VideoPath,
     StudioProject? Recording = null,
-    StudioMediaFileIdentity? ExpectedVideoIdentity = null);
+    StudioMediaFileIdentity? ExpectedVideoIdentity = null,
+    bool IsRecordedTake = false);
 
 public interface IStudioTimelineMediaStore
 {

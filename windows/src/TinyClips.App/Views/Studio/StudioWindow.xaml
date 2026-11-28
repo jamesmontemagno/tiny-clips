@@ -336,16 +336,40 @@
                     collapsed while closed, because its margin would leave a gap under the header.
                     The name is for a screen reader that comes across the bar later.
                 -->
-                <InfoBar
-                    x:Name="ErrorBar"
-                    Grid.Row="1"
-                    Margin="16,8,16,0"
-                    AutomationProperties.AutomationId="StudioErrorBar"
-                    AutomationProperties.Name="Error"
-                    IsOpen="{x:Bind ViewModel.HasError, Mode=TwoWay}"
-                    Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-                    Severity="Error"
-                    Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}" />
+                <StackPanel Grid.Row="1">
+                    <InfoBar
+                        x:Name="ErrorBar"
+                        Margin="16,8,16,0"
+                        AutomationProperties.AutomationId="StudioErrorBar"
+                        AutomationProperties.Name="Error"
+                        IsOpen="{x:Bind ViewModel.HasError, Mode=TwoWay}"
+                        Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                        Severity="Error"
+                        Visibility="{x:Bind ViewModel.HasError, Mode=OneWay}" />
+
+                    <!--
+                        Said once a recorded take is on the timeline: the take is also a draft of its
+                        own in the Library. It goes away by itself, but not while the pointer or the
+                        keyboard focus is on it. It is read out when it opens.
+                    -->
+                    <InfoBar
+                        x:Name="TakeNoticeBar"
+                        Margin="16,8,16,0"
+                        AutomationProperties.AutomationId="StudioTakeNoticeBar"
+                        AutomationProperties.Name="Recorded take"
+                        Closed="OnTakeNoticeClosed"
+                        IsOpen="False"
+                        Severity="Informational"
+                        Visibility="Collapsed">
+                        <InfoBar.ActionButton>
+                            <Button
+                                AutomationProperties.AutomationId="StudioTakeNoticeShowInLibrary"
+                                AutomationProperties.HelpText="Opens the Clips Library at the take's draft."
+                                Click="OnShowTakeInLibrary"
+                                Content="Show in Library" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                </StackPanel>
 
                 <!--
                     Preview and inspector. The inspector has room for the four layout choices

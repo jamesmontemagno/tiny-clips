@@ -78,6 +78,45 @@ public sealed class StudioTimelineMediaStoreTests : StudioProjectFolderTestBase
     }
 
     [Fact]
+    public async Task OnlyARecordedTakeIsLinkedToItsDraftAndTheLinkIsReadBack()
+    {
+        var store = FakeStore();
+        var destination = Store.Load(MakeProject(camera: false));
+        var take = Store.Load(MakeProject(camera: false));
+        var imported = Store.Load(MakeProject(camera: false));
+        using var prepared = await store.StageTimelineAsync(destination,
+            [new(Store.GetPaths(take).ScreenPath, take, IsRecordedTake: true), new(Store.GetPaths(imported).ScreenPath, imported)], Token);
+        prepared.Commit(prepared.ProposedProject, Token);
+
+        // Read back from disk: the link survives the round trip, and the take's own manifest is untouched.
+        var saved = new StudioProjectStore(StoreRoot, Time).Load(destination.Id);
+        Assert.Equal(take.Id, StudioTakeLinkage.TakeProjectId(saved.MediaSources![1]));
+        Assert.Null(StudioTakeLinkage.TakeProjectId(saved.MediaSources[2]));
+        Assert.Null(StudioTakeLinkage.TakeProjectId(saved.MediaSources[0]));
+        Assert.Equal(StudioProjectJson.WriteProject(take), StudioProjectJson.WriteProject(Store.Load(take.Id)));
+
+        var summaries = store.ListSummaries().ToDictionary(summary => summary.Id);
+        Assert.Equal(destination.Id, summaries[take.Id].TakeOf!.ProjectId);
+        Assert.Null(summaries[imported.Id].TakeOf);
+        Assert.Null(summaries[destination.Id].TakeOf);
+        Assert.Equal(1, summaries[destination.Id].TakeCount);
+
+        var timeline = TinyClips.Core.Automation.AutomationStudioTimeline.Describe(saved, store.GetPaths(saved))["sources"]!.AsArray();
+        Assert.Equal(take.Id, timeline[1]!["takeProjectId"]!.GetValue<string>());
+        Assert.False(timeline[2]!.AsObject().ContainsKey("takeProjectId"));
+        var listed = TinyClips.Core.Automation.StudioProjectAutomationListing.Create(store.ListLibraryProjects(), 100)["projects"]!.AsArray();
+        var listedTake = listed.Single(project => project!["projectId"]!.GetValue<string>() == take.Id)!;
+        Assert.Equal(destination.Id, listedTake["takeOf"]!["projectId"]!.GetValue<string>());
+        Assert.Equal(destination.Name, listedTake["takeOf"]!["name"]!.GetValue<string>());
+        Assert.False(listed.Single(project => project!["projectId"]!.GetValue<string>() == imported.Id)!.AsObject().ContainsKey("takeOf"));
+
+        // Nothing is deleted with it; the take simply stops being linked.
+        store.Delete(destination.Id);
+        Assert.Null(store.ListSummaries().Single(summary => summary.Id == take.Id).TakeOf);
+        Assert.True(store.Exists(imported.Id));
+    }
+
+    [Fact]
     public async Task EmptyBatchAdoptsV1ExternalOriginalWithoutChangingCanvasAndFrameRate()
     {
         var path = Video("Portrait");

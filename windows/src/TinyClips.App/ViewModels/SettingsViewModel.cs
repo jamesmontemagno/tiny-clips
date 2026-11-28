@@ -1230,9 +1230,14 @@ public sealed partial class SettingsViewModel : ObservableObject
                 summary.Name,
                 $"{summary.CreatedAt.ToLocalTime():g}, {FormatFileSize(summary.SizeBytes)}",
                 _studioTracker?.IsOpen(summary.Id) == true,
-                note: summary.ExportMissing ? StudioDraftItem.ExportMissingNote : string.Empty,
+                note: string.Join(" ", new[]
+                {
+                    summary.ExportMissing ? StudioDraftItem.ExportMissingNote : null,
+                    StudioTakeLinkage.DraftNote(summary),
+                }.OfType<string>()),
                 canOpen: true,
-                canSaveRecording: withRecording.Contains(summary.Id)))
+                canSaveRecording: withRecording.Contains(summary.Id),
+                deleteNote: StudioTakeLinkage.DeleteNote(summary)))
             .Concat(unreadable
                 .OrderByDescending(project => project.CreatedAt)
                 .Select(project => new StudioDraftItem(

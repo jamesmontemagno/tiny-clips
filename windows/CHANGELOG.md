@@ -7,6 +7,7 @@ own `CHANGELOG.md` at the repository root.
 
 ### Added
 - The screenshot editor has a **Pointer** tool (**P**) for arrow, hand, and I-beam pointers. New pointers are 50 px; use **Size** before placement or on a selected pointer; resizing with the slider keeps the tip on its target. Fill and stroke have separate opacity controls, and a drop shadow is optional. Click to place a pointer or choose **Place pointer at center**. The four-arrow **Select / Move** tool (**V**) lets you drag it on the canvas. Pointer can also be the default editor tool.
+- A take recorded with Studio's **Record another segment** now explains the separate draft it leaves in the Library: a notice with **Show in Library** appears after the take is added, the Library labels it "Take for “Project”" and Settings drafts note where it was recorded, delete confirmations say what each side keeps, and the clip menu has **Show original take**. Nothing is deleted automatically. Agents can read the link as `takeProjectId` in `studio.timeline.get` and `takeOf` in `studio.projects.list`.
 
 ### Fixed
 - Multi-track Studio audio applies clip volume and dissolve gains before clamping samples, preventing premature distortion in preview and export.

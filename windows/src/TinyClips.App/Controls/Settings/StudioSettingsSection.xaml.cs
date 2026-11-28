@@ -200,7 +200,9 @@ public sealed partial class StudioSettingsSection : UserControl, ISettingsSectio
         var confirmation = new ContentDialog
         {
             Title = "Delete this draft?",
-            Content = $"\"{draft.Name}\" and its recordings will be removed. This cannot be undone.",
+            Content = draft.DeleteNote is { } note
+                ? $"\"{draft.Name}\" and its recordings will be removed. This cannot be undone. {note}"
+                : $"\"{draft.Name}\" and its recordings will be removed. This cannot be undone.",
             PrimaryButtonText = "Delete",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,

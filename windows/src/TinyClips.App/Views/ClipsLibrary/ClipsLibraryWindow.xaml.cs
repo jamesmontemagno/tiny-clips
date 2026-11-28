@@ -41,6 +41,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
     private readonly StudioProjectTracker _studioTracker;
     private readonly object _studioNavigationTag = new();
     private StudioLibraryRow[]? _studioRows;
+    private string? _pendingStudioProjectId;
     private bool _showStudio;
     private bool _closed;
     private bool _syncingSelection;
@@ -328,12 +329,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
 
         if (args.SelectedItem is NavigationViewItem item && ReferenceEquals(item.Tag, _studioNavigationTag))
         {
-            var entering = !_showStudio;
-            _showStudio = true;
-            LibraryContent.Visibility = Visibility.Collapsed;
-            StudioContent.Visibility = Visibility.Visible;
-            UpdateSubtitle();
-            RefreshStudioProjects(invalidate: entering);
+            ShowStudioSection();
         }
         else if (args.SelectedItem is NavigationViewItem { Tag: NavigationEntryViewModel entry })
         {
@@ -343,6 +339,31 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
             UpdateSubtitle();
             ViewModel.SelectedNavigationEntry = entry;
         }
+    }
+
+    private void ShowStudioSection()
+    {
+        var entering = !_showStudio;
+        _showStudio = true;
+        LibraryContent.Visibility = Visibility.Collapsed;
+        StudioContent.Visibility = Visibility.Visible;
+        UpdateSubtitle();
+        RefreshStudioProjects(invalidate: entering);
+    }
+
+    /// <summary>
+    /// Shows Studio projects searched to one project, such as a recorded take, and moves the
+    /// keyboard focus to its row once it is listed.
+    /// </summary>
+    internal void ShowStudioProject(string projectId, string name)
+    {
+        if (_closed) return;
+        _pendingStudioProjectId = projectId;
+        StudioSearch.Text = name;
+        var entering = !_showStudio;
+        ShowStudioSection();
+        if (!entering) RefreshStudioProjects();
+        SyncNavigationSelection();
     }
 
     private void OnPaneToggleRequested(TitleBar sender, object args) => NavView.IsPaneOpen = !NavView.IsPaneOpen;
@@ -428,6 +449,24 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
         StudioStatus.Text = matches.Length > 0 ? "" : query.Length == 0
             ? "No Studio projects yet."
             : "No Studio projects match your search.";
+        FocusPendingStudioProject(matches);
+    }
+
+    private void FocusPendingStudioProject(StudioLibraryRow[] matches)
+    {
+        if (_pendingStudioProjectId is not { } id
+            || matches.FirstOrDefault(row => string.Equals(row.ProjectId, id, StringComparison.Ordinal)) is not { } row)
+        {
+            return;
+        }
+
+        _pendingStudioProjectId = null;
+        StudioProjectRows.ScrollIntoView(row);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_closed && StudioProjectRows.ContainerFromItem(row) is ListViewItem container)
+                container.Focus(FocusState.Programmatic);
+        });
     }
 
     private void OnStudioRowContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
@@ -469,7 +508,7 @@ public sealed partial class ClipsLibraryWindow : Window, IClipsLibraryInteractio
                     settings.ConfirmDelete,
                     () => ConfirmAsync(
                         StudioProjectFolderText.GetDeleteTitle(row.Name),
-                        StudioProjectFolderText.DeleteMessage,
+                        row.DeleteNote is { } note ? $"{StudioProjectFolderText.DeleteMessage} {note}" : StudioProjectFolderText.DeleteMessage,
                         "Delete",
                         destructive: true)) ||
                 _closed)

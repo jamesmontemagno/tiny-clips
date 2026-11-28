@@ -338,7 +338,7 @@ public sealed class StudioWindowService : IStudioProjectHost
             }
 
             var draft = await Task.Run(() => _store.Load(draftId), cancellationToken);
-            return new StudioTimelineImport(_store.GetPaths(draft).ScreenPath, draft);
+            return new StudioTimelineImport(_store.GetPaths(draft).ScreenPath, draft, IsRecordedTake: true);
         }
         finally
         {

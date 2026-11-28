@@ -282,6 +282,18 @@ struct StudioMediaSource: Codable, Equatable, Sendable {
         self.extra = extra
     }
 
+    static let takeProjectIDKey = "takeProjectId"
+
+    /// The Studio draft this source was recorded as, for a take added with Record Another Segment.
+    /// The draft stays in the Library on its own; this source holds a copy of its media.
+    var takeProjectID: String? {
+        get {
+            guard case .string(let id)? = extra[Self.takeProjectIDKey], StudioProjectStore.isValidProjectID(id) else { return nil }
+            return id
+        }
+        set { extra[Self.takeProjectIDKey] = newValue.map { .string($0) } }
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: StudioJSONKey.self)
         guard let id = try container.decodeIfPresent(String.self, forKey: StudioJSONKey("id")) else {

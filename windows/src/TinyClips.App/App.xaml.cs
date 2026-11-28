@@ -4792,6 +4792,13 @@ public partial class App : Application
         ActivateWindowToForeground(_clipsManagerWindow);
     }
 
+    /// <summary>Opens the Clips Library at its Studio projects, searched to one project such as a recorded take.</summary>
+    internal void ShowStudioProjectInLibrary(string projectId, string name)
+    {
+        OpenClipsManagerWindow();
+        _clipsManagerWindow?.ShowStudioProject(projectId, name);
+    }
+
     /// <summary>
     /// Opens a clip from the Clips Library in its appropriate editor or trimmer.
     /// Called by <see cref="ClipsLibraryWindow"/> when the user opens a clip.

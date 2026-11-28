@@ -77,6 +77,8 @@ struct StudioSettingsSection: View {
         let canOpen: Bool
         let canSaveRecording: Bool
 
+        /// Added to the delete confirmation for a take or a project that has takes.
+        var deletionNote: String? = nil
         /// What VoiceOver calls the row in the names of its buttons. Two recordings can have one
         /// name, and every project that cannot be read has the same one, so the date is in it.
         var spokenName: String { "\(name), \(detail)" }
@@ -253,9 +255,10 @@ struct StudioSettingsSection: View {
                     id: project.id,
                     name: displayName(project),
                     detail: detailText(createdAt: project.createdAt, bytes: project.sizeOnDisk),
-                    note: project.exportMissing ? Self.exportMissingNote : nil,
+                    note: Self.draftNote(for: project),
                     canOpen: true,
-                    canSaveRecording: project.sourceExists && !project.isFlat
+                    canSaveRecording: project.sourceExists && !project.isFlat,
+                    deletionNote: project.takeDeletionNote
                 )
             }
         let unreadable = studioProjects.unreadableProjects
@@ -271,6 +274,14 @@ struct StudioSettingsSection: View {
                 )
             }
         return drafts + unreadable
+    }
+
+    private static func draftNote(for project: StudioProjectSummary) -> String? {
+        let notes = [
+            project.exportMissing ? exportMissingNote : nil,
+            project.takeOf.map { "Recorded for “\($0.libraryName)”, which keeps its own copy." },
+        ].compactMap { $0 }
+        return notes.isEmpty ? nil : notes.joined(separator: " ")
     }
 
     private var projectCount: Int {
@@ -361,6 +372,7 @@ struct StudioSettingsSection: View {
         alert.alertStyle = .warning
         alert.messageText = "Delete this draft?"
         alert.informativeText = "\"\(row.name)\" and its recordings will be removed. This cannot be undone."
+            + (row.deletionNote.map { " " + $0 } ?? "")
         // Use standard button contrast; destructive styling can hide Delete in dark mode.
         // Cancel comes first so Return never deletes a recording.
         let cancelButton = alert.addButton(withTitle: "Cancel")

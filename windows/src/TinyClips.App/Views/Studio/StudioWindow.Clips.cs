@@ -36,7 +36,22 @@ public sealed partial class StudioWindow
 
         try
         {
-            await ViewModel.AddClipsAsync(token => AcquireClipsAsync(request, token), request.Placement, _clipsLifetime.Token);
+            StudioProject? take = null;
+            var outcome = await ViewModel.AddClipsAsync(
+                async token =>
+                {
+                    var imports = await AcquireClipsAsync(request, token);
+                    take = imports.FirstOrDefault(import => import.IsRecordedTake)?.Recording;
+                    return imports;
+                },
+                request.Placement,
+                _clipsLifetime.Token);
+
+            // Only once the take is on the timeline: not when it was cancelled, failed or came too late.
+            if (outcome.Succeeded && take is not null)
+            {
+                ShowTakeNotice(take);
+            }
         }
         catch (ObjectDisposedException)
         {
