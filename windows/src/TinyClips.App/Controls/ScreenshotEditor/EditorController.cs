@@ -244,6 +244,11 @@ internal sealed class EditorController : IDisposable
 
     public string EmojiDefault { get; private set; } = EmojiAnnotationMath.DefaultEmoji;
 
+    /// <summary>Appearance for the next pointer placed; lasts for this editor session.</summary>
+    public PointerAppearance PointerDefault { get; private set; } = PointerAppearance.Default;
+
+    private double? _pointerSizeOverride;
+
     // Shared across editor windows for the lifetime of the process so the "Recent" row survives
     // closing and reopening the editor.
     private static List<string> s_recentEmoji = new();
@@ -298,6 +303,9 @@ internal sealed class EditorController : IDisposable
 
     /// <summary>The default emoji (or the selected sticker's emoji) changed via <see cref="SetEmoji"/>.</summary>
     public event EventHandler<string>? EmojiChanged;
+
+    /// <summary>Raised when the pointer appearance shown in the inspector changes.</summary>
+    public event EventHandler<PointerAppearance>? PointerAppearanceChanged;
 
     /// <summary>
     /// Raised when an in-progress (not yet committed) annotation is discarded without being
@@ -466,54 +474,8 @@ internal sealed class EditorController : IDisposable
         SelectionChanged?.Invoke(this, annotation);
     }
 
-    public Annotation? HitTest(Point pixelPoint)
-    {
-        for (var i = _annotations.Count - 1; i >= 0; i--)
-        {
-            var ann = _annotations[i];
-            if (ann.Tool == EditTool.Emoji || ann.IsRotated)
-            {
-                if (RotatableAnnotationGeometry.Contains(
-                        new PointD(pixelPoint.X, pixelPoint.Y),
-                        ToRectD(InteractionBounds(ann)),
-                        ann.Rotation,
-                        padding: ann.Thickness + 6))
-                {
-                    return ann;
-                }
-                continue;
-            }
-
-            var pad = ann.Thickness + ann.OutlineWidth + 6;
-            if (ann.Tool == EditTool.Arrow)
-            {
-                // A curved arrow is hit along its curve, not anywhere in the box around it.
-                var (start, end) = Segment(ann);
-                var point = new PointD(pixelPoint.X, pixelPoint.Y);
-                if (ArrowGeometry.DistanceToCurve(point, ToPoint(start), ToPoint(end), ann.Arrow.Bend) <= pad)
-                {
-                    return ann;
-                }
-                // The head and wide shaft ends reach past the curve's pad.
-                var outline = ArrowGeometry.Build(
-                    ToPoint(start), ToPoint(end), ann.Thickness, ann.Arrow, ann.StartCap, ann.LineJoin);
-                var reach = ann.StrokeAlignment == StrokeAlignment.Inside ? 0 : ann.OutlineWidth;
-                if (ArrowGeometry.OutlineContains(outline.Points, point, reach + 6))
-                {
-                    return ann;
-                }
-                continue;
-            }
-
-            var b = InteractionBounds(ann);
-            var inflated = new Rect(b.X - pad, b.Y - pad, b.Width + pad * 2, b.Height + pad * 2);
-            if (inflated.Contains(pixelPoint))
-            {
-                return ann;
-            }
-        }
-        return null;
-    }
+    public Annotation? HitTest(EditTool tool, Point pixelPoint) =>
+        ScreenshotAnnotationHitTest.FindBody(tool, _annotations, SelectedAnnotation, pixelPoint);
 
     internal static RectD ToRectD(Rect rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
 
@@ -540,14 +502,15 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
-        StrokeColor = color;
         if (SelectedAnnotation is not null)
         {
             SelectedAnnotation.Color = color;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, SelectedAnnotation);
+            return;
         }
-        else if (Tool == EditTool.Text)
+        StrokeColor = color;
+        if (Tool == EditTool.Text)
         {
             if (TextBoxStyleDefault.Preset != TextBoxPreset.Plain)
             {
@@ -559,31 +522,35 @@ internal sealed class EditorController : IDisposable
 
     public void SetStrokeOpacity(double opacity)
     {
-        var source = Tool == EditTool.Select && SelectedAnnotation is { } selected
-            ? selected.Color
-            : StrokeColor;
+        var source = SelectedAnnotation?.Color ?? StrokeColor;
         SetStrokeColor(AnnotationColorMath.WithOpacity(source, opacity));
     }
 
     public void SetNumberColor(Color color)
     {
-        NumberTextColor = color;
         if (SelectedAnnotation is { Tool: EditTool.Counter } ann)
         {
             ann.TextColor = color;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
+        else
+        {
+            NumberTextColor = color;
+        }
     }
 
     public void SetStrokeThickness(double thickness)
     {
-        StrokeThickness = thickness;
         if (SelectedAnnotation is { Tool: not EditTool.Counter and not EditTool.Text } ann)
         {
             ann.Thickness = thickness;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            StrokeThickness = thickness;
         }
     }
 
@@ -616,6 +583,12 @@ internal sealed class EditorController : IDisposable
         _pendingBendUndo = ann.CaptureSnapshot();
     }
 
+    public void EndArrowBend()
+    {
+        _pendingBendAnnotation = null;
+        _pendingBendUndo = null;
+    }
+
     /// <summary>
     /// Bends an arrow so its curve passes nearest <paramref name="pixelPoint"/>. Within
     /// <paramref name="snapPixels"/> of the straight line it snaps straight.
@@ -641,8 +614,7 @@ internal sealed class EditorController : IDisposable
             // One Undo restores the shape from before this drag.
             ClearTextStyleUndo();
             _textStyleUndo.Push(new TextStyleUndoEntry(ann, before));
-            _pendingBendUndo = null;
-            _pendingBendAnnotation = null;
+            EndArrowBend();
         }
         ann.Arrow = ann.Arrow with { Bend = bend };
         MarkDirty();
@@ -747,72 +719,36 @@ internal sealed class EditorController : IDisposable
 
     public void SetFillEnabled(bool enabled)
     {
-        FillEnabled = enabled;
-        if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann)
-        {
-            ann.FillColor = enabled ? FillColor : Colors.Transparent;
-            MarkDirty();
-            AnnotationVisualInvalidated?.Invoke(this, ann);
-        }
+        if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse })
+            SetFillColor(enabled ? CurrentFillColor() : Colors.Transparent);
+        else
+            FillEnabled = enabled;
     }
 
-    /// <summary>Returns true when the fill color represents "None" (alpha 0), matching the swatch behavior.</summary>
+    private Color CurrentFillColor() =>
+        SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann
+            ? ann.FillColor.A > 0 ? ann.FillColor : ann.LastVisibleFill ?? FillColor
+            : FillColor;
+
     public void SetFillColor(Color color)
     {
-        if (color.A == 0)
-        {
-            FillEnabled = false;
-            if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } cleared)
-            {
-                cleared.FillColor = Colors.Transparent;
-                MarkDirty();
-                AnnotationVisualInvalidated?.Invoke(this, cleared);
-            }
-            return;
-        }
-
-        FillColor = color;
-        FillEnabled = true;
         if (SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann)
         {
-            ann.FillColor = color;
+            if (ann.FillColor.A > 0) ann.LastVisibleFill = ann.FillColor;
+            ann.FillColor = color.A > 0 ? color : Colors.Transparent;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            FillEnabled = color.A > 0;
+            if (FillEnabled) FillColor = color;
         }
     }
 
     public void SetFillOpacity(double opacity)
     {
-        opacity = Math.Clamp(opacity, 0, 1);
-        var selected = SelectedAnnotation is { Tool: EditTool.Rectangle or EditTool.Ellipse } ann
-            ? ann
-            : null;
-        var source = selected is { FillColor.A: > 0 } ? selected.FillColor : FillColor;
-
-        if (opacity <= 0)
-        {
-            FillEnabled = false;
-            // Keep a remembered RGB color and previous nonzero alpha for the next slider move.
-            var rememberedAlpha = FillColor.A > 0 ? FillColor.A : (byte)255;
-            FillColor = Color.FromArgb(rememberedAlpha, source.R, source.G, source.B);
-            if (selected is not null)
-            {
-                selected.FillColor = Colors.Transparent;
-                MarkDirty();
-                AnnotationVisualInvalidated?.Invoke(this, selected);
-            }
-            return;
-        }
-
-        var updated = AnnotationColorMath.WithOpacity(source, opacity);
-        FillColor = updated;
-        FillEnabled = true;
-        if (selected is not null)
-        {
-            selected.FillColor = updated;
-            MarkDirty();
-            AnnotationVisualInvalidated?.Invoke(this, selected);
-        }
+        SetFillColor(AnnotationColorMath.WithOpacity(CurrentFillColor(), opacity));
     }
 
     public void SetFontFamily(string font)
@@ -849,7 +785,6 @@ internal sealed class EditorController : IDisposable
 
     public void SetNumberSize(double scale)
     {
-        NumberScale = scale;
         if (SelectedAnnotation is { Tool: EditTool.Counter } ann)
         {
             ann.SizeScale = scale;
@@ -859,11 +794,14 @@ internal sealed class EditorController : IDisposable
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
+        else
+        {
+            NumberScale = scale;
+        }
     }
 
     public void SetRedactionLevel(RedactionLevel level)
     {
-        RedactionLevelDefault = level;
         if (SelectedAnnotation is { Tool: EditTool.Redact } ann)
         {
             ann.Redaction = level;
@@ -871,17 +809,24 @@ internal sealed class EditorController : IDisposable
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
         }
+        else
+        {
+            RedactionLevelDefault = level;
+        }
     }
 
     public void SetRedactionStyle(RedactionStyle style)
     {
-        RedactionStyleDefault = style;
         if (SelectedAnnotation is { Tool: EditTool.Redact } ann)
         {
             ann.RedactStyle = style;
             ann.RedactPreview = null;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, ann);
+        }
+        else
+        {
+            RedactionStyleDefault = style;
         }
     }
 
@@ -982,7 +927,7 @@ internal sealed class EditorController : IDisposable
 
     public void BeginSelectedTextStyleEdit()
     {
-        _textStyleEditGroupActive = SelectedAnnotation is { Tool: EditTool.Text };
+        _textStyleEditGroupActive = SelectedAnnotation is { Tool: EditTool.Text or EditTool.Pointer };
         _textStyleEditGroupRecorded = false;
     }
 
@@ -1024,13 +969,19 @@ internal sealed class EditorController : IDisposable
             return;
         }
 
-        EmojiDefault = emoji;
         s_recentEmoji = EmojiAnnotationMath.PushRecent(s_recentEmoji, emoji);
-        if (SelectedAnnotation is { Tool: EditTool.Emoji } ann && ann.Text != emoji)
+        if (SelectedAnnotation is { Tool: EditTool.Emoji } ann)
         {
-            ann.Text = emoji;
-            MarkDirty();
-            AnnotationVisualInvalidated?.Invoke(this, ann);
+            if (ann.Text != emoji)
+            {
+                ann.Text = emoji;
+                MarkDirty();
+                AnnotationVisualInvalidated?.Invoke(this, ann);
+            }
+        }
+        else
+        {
+            EmojiDefault = emoji;
         }
         EmojiChanged?.Invoke(this, emoji);
     }
@@ -1108,7 +1059,6 @@ internal sealed class EditorController : IDisposable
 
     public Annotation AddEmojiAnnotation(Point pixelCenter)
     {
-        ClearTextStyleUndo();
         var imageWidth = _bitmap?.PixelWidth ?? 1000;
         var imageHeight = _bitmap?.PixelHeight ?? 1000;
         var side = EmojiAnnotationMath.DefaultSidePixels(imageWidth, imageHeight);
@@ -1122,11 +1072,97 @@ internal sealed class EditorController : IDisposable
             Bounds = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height),
         };
         s_recentEmoji = EmojiAnnotationMath.PushRecent(s_recentEmoji, EmojiDefault);
-        _annotations.Add(ann);
-        MarkDirty();
-        AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+        CommitManualAnnotation(ann);
         EmojiChanged?.Invoke(this, EmojiDefault);
         return ann;
+    }
+
+    // -- Pointer annotations -----------------------------------------------------------------
+
+    /// <summary>The selected pointer's appearance, or the default for the next one.</summary>
+    public PointerAppearance PointerForInspector =>
+        SelectedAnnotation is { Tool: EditTool.Pointer } ann ? ann.Pointer : PointerDefault;
+
+    public double MaximumPointerSize => EmojiAnnotationMath.MaximumSidePixels(
+        _bitmap?.PixelWidth ?? 1000, _bitmap?.PixelHeight ?? 1000);
+
+    private double DefaultPointerSize => Math.Min(
+        _pointerSizeOverride ?? PointerGeometry.DefaultSidePixels, MaximumPointerSize);
+
+    public double PointerSizeForInspector =>
+        SelectedAnnotation is { Tool: EditTool.Pointer } ann ? ann.Bounds.Width : DefaultPointerSize;
+
+    /// <summary>Edits the selected pointer, or the default when no pointer is selected.</summary>
+    public void SetPointerAppearance(Func<PointerAppearance, PointerAppearance> change)
+    {
+        if (SelectedAnnotation is { Tool: EditTool.Pointer } ann)
+        {
+            var updated = change(ann.Pointer);
+            if (updated == ann.Pointer)
+            {
+                return;
+            }
+            RecordTextStyleUndo(ann);
+            ann.Pointer = updated;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+            PointerAppearanceChanged?.Invoke(this, updated);
+            return;
+        }
+
+        var next = change(PointerDefault);
+        if (next == PointerDefault)
+        {
+            return;
+        }
+        PointerDefault = next;
+        PointerAppearanceChanged?.Invoke(this, next);
+    }
+
+    /// <summary>Places a pointer so its hotspot lands on <paramref name="pixelHotspot"/>.</summary>
+    public Annotation AddPointerAnnotation(Point pixelHotspot)
+    {
+        var bounds = PointerGeometry.Place(new PointD(pixelHotspot.X, pixelHotspot.Y), PointerDefault.Style, DefaultPointerSize);
+        var ann = new Annotation
+        {
+            Tool = EditTool.Pointer,
+            Color = PointerDefault.Stroke,
+            Thickness = 0,
+            Pointer = PointerDefault,
+            Bounds = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height),
+        };
+        CommitManualAnnotation(ann);
+        return ann;
+    }
+
+    /// <summary>Keyboard alternative to clicking: places a pointer at the image center and selects it.</summary>
+    public Annotation? PlacePointerAtCenter()
+    {
+        if (_bitmap is null)
+        {
+            return null;
+        }
+        return AddPointerAnnotation(new Point(_bitmap.PixelWidth / 2.0, _bitmap.PixelHeight / 2.0));
+    }
+
+    public void SetPointerSize(double side)
+    {
+        side = Math.Clamp(side, EmojiAnnotationMath.MinimumSidePixels, MaximumPointerSize);
+        if (SelectedAnnotation is not { Tool: EditTool.Pointer } ann)
+        {
+            _pointerSizeOverride = side;
+            return;
+        }
+        if (side == ann.Bounds.Width)
+        {
+            return;
+        }
+
+        RecordTextStyleUndo(ann);
+        var bounds = PointerGeometry.ResizeAtHotspot(ToRectD(ann.Bounds), ann.Pointer.Style, ann.Rotation, side);
+        ann.Bounds = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        MarkDirty();
+        AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
     // -- Background / export ---------------------------------------------------------------
@@ -1528,18 +1564,22 @@ internal sealed class EditorController : IDisposable
         }
 
         var b = ann.Bounds;
-        var significant = ann.Tool == EditTool.Pen
-            ? ann.Points.Count > 1
-            : Math.Abs(b.Width) > 3 || Math.Abs(b.Height) > 3;
+        var significant = ann.Tool switch
+        {
+            EditTool.Pen => ann.Points.Any(p => p != ann.Points[0]),
+            EditTool.Line or EditTool.Arrow => b.Width > 3 || b.Height > 3,
+            _ => b.Width > 0 && b.Height > 0 && (b.Width > 3 || b.Height > 3),
+        };
 
         ActiveAnnotation = null;
 
         if (significant)
         {
-            ClearTextStyleUndo();
-            _annotations.Add(ann);
-            MarkDirty();
-            AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+            CommitManualAnnotation(ann);
+        }
+        else
+        {
+            ActiveAnnotationDiscarded?.Invoke(this, ann);
         }
     }
 
@@ -1564,7 +1604,6 @@ internal sealed class EditorController : IDisposable
 
     public Annotation AddCounterAnnotation(Point pixelCenter)
     {
-        ClearTextStyleUndo();
         var radius = CounterRadius(NumberScale);
         var ann = new Annotation
         {
@@ -1576,9 +1615,7 @@ internal sealed class EditorController : IDisposable
             Number = _counterValue++,
             Bounds = new Rect(pixelCenter.X - radius, pixelCenter.Y - radius, radius * 2, radius * 2),
         };
-        _annotations.Add(ann);
-        MarkDirty();
-        AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+        CommitManualAnnotation(ann);
         return ann;
     }
 
@@ -1586,7 +1623,6 @@ internal sealed class EditorController : IDisposable
         Point pixelPoint, string text, string fontFamily, double fontSize, Color color,
         bool bold, bool italic, bool underline, bool strikethrough, TextBoxStyle textBoxStyle)
     {
-        ClearTextStyleUndo();
         var ann = new Annotation
         {
             Tool = EditTool.Text,
@@ -1603,10 +1639,17 @@ internal sealed class EditorController : IDisposable
             Bounds = new Rect(pixelPoint.X, pixelPoint.Y, 0, 0),
         };
         UpdateTextBounds(ann);
+        CommitManualAnnotation(ann);
+        return ann;
+    }
+
+    private void CommitManualAnnotation(Annotation ann)
+    {
+        ClearTextStyleUndo();
         _annotations.Add(ann);
+        Select(ann);
         MarkDirty();
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
-        return ann;
     }
 
     /// <summary>Updates an existing text annotation, or removes it if the new text is blank.</summary>
@@ -1640,6 +1683,7 @@ internal sealed class EditorController : IDisposable
         UpdateTextBounds(ann);
         MarkDirty();
         AnnotationVisualInvalidated?.Invoke(this, ann);
+        if (ReferenceEquals(SelectedAnnotation, ann)) Select(ann); // Reload edited text styles in the inspector.
     }
 
     public void MoveAnnotationBy(Annotation ann, double dx, double dy)
@@ -1665,7 +1709,7 @@ internal sealed class EditorController : IDisposable
         Point pixelPoint)
     {
         ClearTextStyleUndo();
-        if (ann.Tool == EditTool.Emoji || ann.IsRotated)
+        if (ann.Tool is EditTool.Emoji or EditTool.Pointer || ann.IsRotated)
         {
             ResizeRotatedAboutCenter(
                 ann,
@@ -1802,6 +1846,7 @@ internal sealed class EditorController : IDisposable
         switch (ann.Tool)
         {
             case EditTool.Emoji:
+            case EditTool.Pointer:
             {
                 var imageWidth = _bitmap?.PixelWidth ?? 1000;
                 var imageHeight = _bitmap?.PixelHeight ?? 1000;
@@ -1927,7 +1972,7 @@ internal sealed class EditorController : IDisposable
             }
 
             RestoreAnnotation(entry.Annotation, entry.Snapshot);
-            SelectedAnnotation = Tool == EditTool.Select ? entry.Annotation : null;
+            if (Tool == EditTool.Select) SelectedAnnotation = entry.Annotation;
             MarkDirty();
             AnnotationVisualInvalidated?.Invoke(this, entry.Annotation);
             SelectionChanged?.Invoke(this, SelectedAnnotation);
@@ -1997,6 +2042,7 @@ internal sealed class EditorController : IDisposable
         annotation.StrokeAlignment = snapshot.StrokeAlignment;
         annotation.OutlineColor = snapshot.OutlineColor;
         annotation.OutlineWidth = snapshot.OutlineWidth;
+        annotation.Pointer = snapshot.Pointer ?? PointerAppearance.Default;
     }
 
     // -- Crop -------------------------------------------------------------------------------
@@ -2668,6 +2714,12 @@ internal sealed class EditorController : IDisposable
 
     private static void DrawAnnotationToSession(CanvasDrawingSession ds, AnnotationSnapshot ann)
     {
+        if (ann.Tool == EditTool.Pointer)
+        {
+            DrawPointer(ds, ann);
+            return;
+        }
+
         var color = ann.Color;
         var thickness = (float)ann.Thickness;
 
@@ -2691,6 +2743,59 @@ internal sealed class EditorController : IDisposable
         {
             ds.Transform = previousTransform;
         }
+    }
+
+    /// <summary>Builds a pointer outline fitted into <paramref name="bounds"/>.</summary>
+    internal static CanvasGeometry PointerOutlineGeometry(ICanvasResourceCreator resources, PointerStyle style, Rect bounds)
+    {
+        var fit = PointerGeometry.Fit(ToRectD(bounds));
+        var points = PointerGeometry.Outline(style)
+            .Select(p => new Vector2((float)(fit.X + p.X * fit.Width), (float)(fit.Y + p.Y * fit.Height)))
+            .ToArray();
+        return CanvasGeometry.CreatePolygon(resources, points);
+    }
+
+    // The pointer draws fill then stroke into one layer so opacity applies to the whole cursor,
+    // and its shadow offset stays screen-aligned when rotated, matching the macOS export.
+    private static void DrawPointer(CanvasDrawingSession ds, AnnotationSnapshot ann)
+    {
+        var pointer = ann.Pointer ?? PointerAppearance.Default;
+        var bounds = NormalizedBounds(ann);
+        if (bounds.Width <= 0 || bounds.Height <= 0 || pointer.Opacity <= 0)
+        {
+            return;
+        }
+
+        using var body = new CanvasCommandList(ds.Device);
+        using (var bodySession = body.CreateDrawingSession())
+        {
+            if (ann.IsRotated)
+            {
+                var center = new Vector2((float)(bounds.X + bounds.Width / 2), (float)(bounds.Y + bounds.Height / 2));
+                bodySession.Transform = Matrix3x2.CreateRotation((float)(ann.Rotation * Math.PI / 180.0), center);
+            }
+            using var outline = PointerOutlineGeometry(ds, pointer.Style, bounds);
+            bodySession.FillGeometry(outline, pointer.Fill);
+            if (pointer.StrokeWidth > 0 && pointer.Stroke.A > 0)
+            {
+                using var strokeStyle = new CanvasStrokeStyle { LineJoin = CanvasLineJoin.Round };
+                bodySession.DrawGeometry(outline, pointer.Stroke, (float)pointer.StrokeWidth, strokeStyle);
+            }
+        }
+
+        using var layer = ds.CreateLayer((float)Math.Clamp(pointer.Opacity, 0, 1));
+        var shadow = pointer.Shadow;
+        if (shadow.Enabled && shadow.Opacity > 0)
+        {
+            using var effect = new ShadowEffect
+            {
+                Source = body,
+                BlurAmount = (float)Math.Max(0, shadow.Blur / 2),
+                ShadowColor = Color.FromArgb((byte)Math.Round(Math.Clamp(shadow.Opacity, 0, 1) * 255), 0, 0, 0),
+            };
+            ds.DrawImage(effect, new Vector2((float)shadow.OffsetX, (float)shadow.OffsetY));
+        }
+        ds.DrawImage(body);
     }
 
     private static void DrawAnnotationCore(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)
@@ -2997,21 +3102,11 @@ internal sealed class EditorController : IDisposable
 
     private static Vector2 ToVector2(PointD p) => new((float)p.X, (float)p.Y);
 
-    public static Rect NormalizedBounds(Annotation ann) => NormalizeBounds(ann.Bounds);
+    public static Rect NormalizedBounds(Annotation ann) => ScreenshotAnnotationHitTest.NormalizeBounds(ann.Bounds);
 
-    private static Rect NormalizedBounds(AnnotationSnapshot ann) => NormalizeBounds(ann.Bounds);
+    private static Rect NormalizedBounds(AnnotationSnapshot ann) => ScreenshotAnnotationHitTest.NormalizeBounds(ann.Bounds);
 
-    public static Rect InteractionBounds(Annotation ann) =>
-        ann.Tool == EditTool.Text
-            ? ann.TextBoxStyle.DecoratedBounds(NormalizedBounds(ann))
-            : NormalizedBounds(ann);
-
-    private static Rect NormalizeBounds(Rect b)
-    {
-        var x = b.Width < 0 ? b.X + b.Width : b.X;
-        var y = b.Height < 0 ? b.Y + b.Height : b.Y;
-        return new Rect(x, y, Math.Abs(b.Width), Math.Abs(b.Height));
-    }
+    public static Rect InteractionBounds(Annotation ann) => ScreenshotAnnotationHitTest.InteractionBounds(ann);
 
     // Freehand strokes track their path in Points but not in Bounds; recompute the bounding box
     // (padded by half the stroke width) so hit-testing and the selection marquee cover the whole
@@ -3083,15 +3178,7 @@ internal sealed class EditorController : IDisposable
         }
     }
 
-    public static (Vector2 Start, Vector2 End) Segment(Annotation ann)
-    {
-        if (ann.Points.Count >= 2)
-        {
-            return (ann.Points[0], ann.Points[^1]);
-        }
-        var s = new Vector2((float)ann.Bounds.X, (float)ann.Bounds.Y);
-        return (s, s);
-    }
+    public static (Vector2 Start, Vector2 End) Segment(Annotation ann) => ScreenshotAnnotationHitTest.Segment(ann);
 
     private static (Vector2 Start, Vector2 End) Segment(AnnotationSnapshot ann)
     {

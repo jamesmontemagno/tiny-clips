@@ -423,6 +423,22 @@ final class AutomationCaptureTargetsTests: XCTestCase {
         XCTAssertEqual(annotations[3].fontSize, 20 * 800 / 1800, accuracy: 0.001)
     }
 
+    func testParsesPointerDefaultsAndOverrides() throws {
+        let annotations = try AutomationAnnotations.parse([
+            ["type": "pointer", "bounds": ["x": 40, "y": 20, "width": 24, "height": 36]],
+            ["type": "pointer", "bounds": ["x": 100, "y": 20, "width": 30, "height": 30],
+             "pointerStyle": "hand", "lineWidth": 4, "opacity": 0.5, "shadow": false],
+        ] as [Any], imagePixelSize: imageSize)
+
+        XCTAssertEqual(annotations.map(\.tool), [.pointer, .pointer])
+        XCTAssertEqual(annotations[0].rect, CGRect(x: 0.1, y: 0.1, width: 0.06, height: 0.18))
+        XCTAssertEqual(annotations[0].pointer, PointerAppearance())
+        XCTAssertEqual(annotations[1].pointer.style, .hand)
+        XCTAssertEqual(annotations[1].pointer.strokeWidth, 4)
+        XCTAssertEqual(annotations[1].pointer.opacity, 0.5)
+        XCTAssertFalse(annotations[1].pointer.shadow.enabled)
+    }
+
     func testRejectsMalformedAnnotations() {
         let bounds: [String: Any] = ["x": 0, "y": 0, "width": 10, "height": 10]
         let invalid: [Any] = [
@@ -445,6 +461,13 @@ final class AutomationCaptureTargetsTests: XCTestCase {
             [["type": "emoji", "bounds": bounds, "emoji": "ab"]],
             [["type": "redact", "bounds": bounds, "redactionStyle": "smudge"]],
             [["type": "rectangle", "bounds": bounds, "redactionLevel": "light"]],
+            [["type": "pointer", "bounds": ["x": 0, "y": 0, "width": 0, "height": 10]]],
+            [["type": "pointer", "bounds": bounds, "pointerStyle": "crosshair"]],
+            [["type": "pointer", "bounds": bounds, "opacity": 1.5]],
+            [["type": "pointer", "bounds": bounds, "shadow": 1]],
+            [["type": "pointer", "bounds": bounds, "text": "a"]],
+            [["type": "rectangle", "bounds": bounds, "pointerStyle": "hand"]],
+            [["type": "rectangle", "bounds": bounds, "shadow": true]],
         ]
         for (index, annotations) in invalid.enumerated() {
             XCTAssertThrowsError(try AutomationAnnotations.parse(annotations, imagePixelSize: imageSize), "case \(index)") { error in

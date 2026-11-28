@@ -187,7 +187,7 @@ private struct GuideWindowView: View {
             sectionCard(title: "From capture to explanation", icon: "pencil.tip.crop.circle") {
                 steps([
                     "Enable the screenshot editor in Settings, or reopen an image from Recent Captures or Clips Library. You can also open a PNG, JPEG, or WebP file with Tiny Clips.",
-                    "Choose an arrow, shape, line, freehand drawing, text, numbered badge, or emoji. Drag on the canvas, then select an annotation to move or resize it.",
+                    "Add an arrow, shape, line, freehand stroke, text, numbered badge, or emoji. Drag the new annotation or its handles to adjust it. Click or drag elsewhere to add another with the same tool. Right-click the canvas to deselect and change tool defaults. Use Move to select an older annotation.",
                     "Crop away distractions. Use Undo to step back, and zoom or pan to work on small details.",
                     "Review the finished image, then copy or save it. Save a separate copy when you want to keep the original."
                 ])

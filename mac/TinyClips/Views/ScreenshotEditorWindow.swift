@@ -32,6 +32,8 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
     let onReturn: () -> Bool
     /// Called for an unmodified Delete outside text input; returns whether it was handled.
     let onDelete: () -> Bool
+    /// Called for a secondary click inside the viewport; returns whether it cleared a selection.
+    let onRightClick: () -> Bool
     /// Called for an unmodified Esc unless a sheet, popover, or input method needs it. The argument
     /// says whether a text field has focus. Returns whether Esc was acted on; when it was not, the
     /// focused text field just gives up focus.
@@ -45,6 +47,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             onPan: onPan,
             onReturn: onReturn,
             onDelete: onDelete,
+            onRightClick: onRightClick,
             onEscape: onEscape
         )
     }
@@ -65,6 +68,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         context.coordinator.onPan = onPan
         context.coordinator.onReturn = onReturn
         context.coordinator.onDelete = onDelete
+        context.coordinator.onRightClick = onRightClick
         context.coordinator.onEscape = onEscape
         if let view = nsView as? ScreenshotEditorViewportMonitorView {
             view.onBackingScaleChange = onBackingScaleChange
@@ -81,6 +85,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
         var onPan: (CGSize) -> Void
         var onReturn: () -> Bool
         var onDelete: () -> Bool
+        var onRightClick: () -> Bool
         var onEscape: (Bool) -> Bool
 
         private weak var monitoredView: NSView?
@@ -95,6 +100,7 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             onPan: @escaping (CGSize) -> Void,
             onReturn: @escaping () -> Bool,
             onDelete: @escaping () -> Bool,
+            onRightClick: @escaping () -> Bool,
             onEscape: @escaping (Bool) -> Bool
         ) {
             self.isEnabled = isEnabled
@@ -102,15 +108,18 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             self.onPan = onPan
             self.onReturn = onReturn
             self.onDelete = onDelete
+            self.onRightClick = onRightClick
             self.onEscape = onEscape
         }
 
         func install(for view: NSView) {
             monitoredView = view
             eventMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.scrollWheel, .magnify, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
+                matching: [.scrollWheel, .magnify, .keyDown, .keyUp, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown]
             ) { [weak self] event in
-                self?.handle(event) ?? event
+                guard let self else { return event }
+                if self.handleSecondaryClick(event) { return nil }
+                return self.handle(event) ?? event
             }
             resignActiveObserver = NotificationCenter.default.addObserver(
                 forName: NSApplication.didResignActiveNotification,
@@ -207,6 +216,16 @@ struct ScreenshotEditorViewportEventMonitor: NSViewRepresentable {
             default:
                 return event
             }
+        }
+
+        private func handleSecondaryClick(_ event: NSEvent) -> Bool {
+            guard event.type == .rightMouseDown || (event.type == .leftMouseDown && event.modifierFlags.contains(.control)),
+                  let view = monitoredView,
+                  event.window === view.window,
+                  contains(event, in: view) else {
+                return false
+            }
+            return onRightClick()
         }
 
         /// SwiftUI's `onExitCommand` only fires while one of the editor's controls has keyboard
@@ -831,21 +850,13 @@ struct ScreenshotEditorView: View {
                 arrowShapeBinding.wrappedValue = shape
             }
         )
-        return LabeledContent(title) {
-            HStack(spacing: 8) {
-                Slider(
-                    value: percent,
-                    in: (range.lowerBound * 100)...(range.upperBound * 100),
-                    step: 1,
-                    onEditingChanged: { viewModel.setAdjustingSelectedArrowShape($0) }
-                )
-                Text("\(Int(percent.wrappedValue))%")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .frame(width: 42, alignment: .trailing)
-            }
-        }
-        .accessibilityElement(children: .combine)
+        return annotationSlider(
+            title,
+            value: percent,
+            range: (range.lowerBound * 100)...(range.upperBound * 100),
+            displayValue: "\(Int(percent.wrappedValue))%",
+            onEditingChanged: viewModel.setAdjustingSelectedArrowShape
+        )
     }
 
     /// A short list of choices as segments, titled above so they fit the inspector's width.
@@ -985,21 +996,13 @@ struct ScreenshotEditorView: View {
         value: Binding<CGFloat>,
         onEditingChanged: @escaping (Bool) -> Void
     ) -> some View {
-        LabeledContent(title) {
-            HStack(spacing: 8) {
-                Slider(
-                    value: value,
-                    in: AnnotationColorOpacity.percentRange,
-                    step: 1,
-                    onEditingChanged: onEditingChanged
-                )
-                Text("\(Int(value.wrappedValue))%")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .frame(width: 38, alignment: .trailing)
-            }
-        }
-        .accessibilityElement(children: .combine)
+        annotationSlider(
+            title,
+            value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = $0.rounded() }),
+            range: AnnotationColorOpacity.percentRange,
+            displayValue: "\(Int(value.wrappedValue))%",
+            onEditingChanged: onEditingChanged
+        )
     }
 
     var body: some View {
@@ -1026,6 +1029,7 @@ struct ScreenshotEditorView: View {
                             onPan: panCanvas,
                             onReturn: applyCropFromKeyboard,
                             onDelete: viewModel.deleteSelectedAnnotation,
+                            onRightClick: viewModel.clearAnnotationSelection,
                             onEscape: handleEscape,
                             onBackingScaleChange: updateBackingScaleFactor
                         )
@@ -1258,7 +1262,7 @@ struct ScreenshotEditorView: View {
             }
 
             if viewModel.showsAnyStyleControls {
-                Section("Style") {
+                Section(viewModel.editableSelectionIndex == nil ? "Tool defaults" : "Selection style") {
                     styleControls
                         .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 4, trailing: 4))
                 }
@@ -1419,8 +1423,85 @@ struct ScreenshotEditorView: View {
         return "\(Int(size.width)) × \(Int(size.height)) px"
     }
 
+    private func pointerBinding<Value>(_ keyPath: WritableKeyPath<PointerAppearance, Value>) -> Binding<Value> {
+        Binding(
+            get: { viewModel.pointerForInspector()[keyPath: keyPath] },
+            set: { value in
+                var pointer = viewModel.pointerForInspector()
+                pointer[keyPath: keyPath] = value
+                viewModel.updatePointer(pointer)
+            }
+        )
+    }
+
+    private func pointerColorOpacityBinding(_ keyPath: WritableKeyPath<PointerAppearance, Color>) -> Binding<CGFloat> {
+        let color = pointerBinding(keyPath)
+        return Binding(
+            get: { AnnotationColorOpacity.percent(for: color.wrappedValue) },
+            set: { color.wrappedValue = AnnotationColorOpacity.applying($0, to: color.wrappedValue) }
+        )
+    }
+
+    private func pointerSlider(
+        _ label: String,
+        value: Binding<CGFloat>,
+        range: ClosedRange<CGFloat>,
+        suffix: String
+    ) -> some View {
+        annotationSlider(
+            label,
+            value: value,
+            range: range,
+            displayValue: "\(Int(value.wrappedValue.rounded()))\(suffix)",
+            onEditingChanged: viewModel.setAdjustingPointer
+        )
+    }
+
+    private func annotationSlider(
+        _ title: String,
+        value: Binding<CGFloat>,
+        range: ClosedRange<CGFloat>,
+        displayValue: String,
+        onEditingChanged: @escaping (Bool) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .accessibilityHidden(true)
+                Spacer()
+                Text(displayValue)
+                    .font(.caption.monospacedDigit())
+                    .accessibilityHidden(true)
+            }
+            Slider(value: value, in: range, onEditingChanged: onEditingChanged)
+                .accessibilityLabel(title)
+                .accessibilityValue(displayValue)
+        }
+    }
+
     private var styleControls: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if inspectorTool == .pointer {
+                segmentedPicker("Pointer style", selection: pointerBinding(\.style), options: PointerAnnotationStyle.allCases, label: \.label)
+                let range = viewModel.pointerSizeRange
+                if range.lowerBound < range.upperBound {
+                    pointerSlider("Size", value: Binding(get: { viewModel.pointerSizeForInspector }, set: viewModel.setPointerSize),
+                                  range: range, suffix: " px")
+                } else {
+                    LabeledContent("Size", value: "\(Int(range.lowerBound)) px")
+                }
+                SwatchColorPicker(label: "Fill", color: pointerBinding(\.fill), supportsOpacity: true, allowsTransparent: true)
+                pointerSlider("Fill opacity", value: pointerColorOpacityBinding(\.fill), range: AnnotationColorOpacity.percentRange, suffix: "%")
+                SwatchColorPicker(label: "Stroke", color: pointerBinding(\.stroke), supportsOpacity: true, allowsTransparent: true)
+                pointerSlider("Stroke opacity", value: pointerColorOpacityBinding(\.stroke), range: AnnotationColorOpacity.percentRange, suffix: "%")
+                pointerSlider("Stroke width", value: pointerBinding(\.strokeWidth), range: 0...20, suffix: "px")
+
+                Toggle("Drop shadow", isOn: pointerBinding(\.shadow.enabled))
+                if viewModel.selectedTool == .pointer {
+                    Button("Place pointer at center") { viewModel.placePointerAtCenter() }
+                        .accessibilityHint("Adds a pointer at the center and selects it for adjustment.")
+                }
+            }
             if viewModel.showsArrowStyleControl {
                 segmentedPicker("Arrow", selection: arrowPresetBinding, options: ArrowPreset.allCases, label: \.label)
             }
@@ -1489,20 +1570,13 @@ struct ScreenshotEditorView: View {
                     }
                 }
 
-                LabeledContent("Size") {
-                    HStack(spacing: 8) {
-                        Slider(
-                            value: textFontSizeBinding,
-                            in: ScreenshotEditorViewModel.textFontSizeRange,
-                            onEditingChanged: handleTextSliderEditing
-                        )
-                        Text("\(Int(textFontSizeBinding.wrappedValue)) pt")
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 38, alignment: .trailing)
-                    }
-                }
-                .accessibilityElement(children: .combine)
+                annotationSlider(
+                    "Size",
+                    value: textFontSizeBinding,
+                    range: ScreenshotEditorViewModel.textFontSizeRange,
+                    displayValue: "\(Int(textFontSizeBinding.wrappedValue)) pt",
+                    onEditingChanged: handleTextSliderEditing
+                )
 
                 HStack(spacing: 8) {
                     TextStyleToggleButton(title: "Bold", systemImage: "bold", isOn: textBoldBinding)
@@ -1534,50 +1608,27 @@ struct ScreenshotEditorView: View {
                     allowsTransparent: true
                 )
 
-                LabeledContent("Border width") {
-                    HStack(spacing: 8) {
-                        Slider(
-                            value: textBoxBorderWidthBinding,
-                            in: TextBoxStyle.borderWidthRange,
-                            onEditingChanged: handleTextSliderEditing
-                        )
-                        Text("\(Int(textBoxBorderWidthBinding.wrappedValue)) px")
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 38, alignment: .trailing)
-                    }
-                }
-                .accessibilityElement(children: .combine)
-
-                LabeledContent("Padding") {
-                    HStack(spacing: 8) {
-                        Slider(
-                            value: textBoxPaddingBinding,
-                            in: TextBoxStyle.paddingRange,
-                            onEditingChanged: handleTextSliderEditing
-                        )
-                        Text("\(Int(textBoxPaddingBinding.wrappedValue)) px")
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 38, alignment: .trailing)
-                    }
-                }
-                .accessibilityElement(children: .combine)
-
-                LabeledContent("Corner radius") {
-                    HStack(spacing: 8) {
-                        Slider(
-                            value: textBoxCornerRadiusBinding,
-                            in: TextBoxStyle.cornerRadiusRange,
-                            onEditingChanged: handleTextSliderEditing
-                        )
-                        Text("\(Int(textBoxCornerRadiusBinding.wrappedValue)) px")
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 38, alignment: .trailing)
-                    }
-                }
-                .accessibilityElement(children: .combine)
+                annotationSlider(
+                    "Border width",
+                    value: textBoxBorderWidthBinding,
+                    range: TextBoxStyle.borderWidthRange,
+                    displayValue: "\(Int(textBoxBorderWidthBinding.wrappedValue)) px",
+                    onEditingChanged: handleTextSliderEditing
+                )
+                annotationSlider(
+                    "Padding",
+                    value: textBoxPaddingBinding,
+                    range: TextBoxStyle.paddingRange,
+                    displayValue: "\(Int(textBoxPaddingBinding.wrappedValue)) px",
+                    onEditingChanged: handleTextSliderEditing
+                )
+                annotationSlider(
+                    "Corner radius",
+                    value: textBoxCornerRadiusBinding,
+                    range: TextBoxStyle.cornerRadiusRange,
+                    displayValue: "\(Int(textBoxCornerRadiusBinding.wrappedValue)) px",
+                    onEditingChanged: handleTextSliderEditing
+                )
             }
 
             if viewModel.showsLineWidthControl, let primaryColorLabel {
@@ -1592,41 +1643,25 @@ struct ScreenshotEditorView: View {
             }
 
             if viewModel.showsLineWidthControl {
-                LabeledContent(viewModel.showsOutlineControls ? "Size" : "Stroke") {
-                    HStack(spacing: 8) {
-                        Slider(
-                            value: lineWidthBinding,
-                            in: AnnotationStrokeMath.widthRange,
-                            step: 1,
-                            onEditingChanged: { viewModel.setAdjustingSelectedLineWidth($0) }
-                        )
-                        Text("\(Int(lineWidthBinding.wrappedValue)) px")
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 38, alignment: .trailing)
-                    }
-                }
-                .accessibilityElement(children: .combine)
+                annotationSlider(
+                    viewModel.showsOutlineControls ? "Size" : "Stroke",
+                    value: lineWidthBinding,
+                    range: AnnotationStrokeMath.widthRange,
+                    displayValue: "\(Int(lineWidthBinding.wrappedValue)) px",
+                    onEditingChanged: viewModel.setAdjustingSelectedLineWidth
+                )
             }
 
             if viewModel.showsOutlineControls {
                 SwatchColorPicker(label: "Stroke color", color: outlineColorBinding, supportsOpacity: true)
 
-                LabeledContent("Stroke") {
-                    HStack(spacing: 8) {
-                        Slider(
-                            value: outlineWidthBinding,
-                            in: 0...20,
-                            step: 1,
-                            onEditingChanged: { viewModel.setAdjustingSelectedLineWidth($0) }
-                        )
-                        Text(outlineWidthBinding.wrappedValue > 0 ? "\(Int(outlineWidthBinding.wrappedValue)) px" : "None")
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 38, alignment: .trailing)
-                    }
-                }
-                .accessibilityElement(children: .combine)
+                annotationSlider(
+                    "Stroke",
+                    value: outlineWidthBinding,
+                    range: 0...20,
+                    displayValue: outlineWidthBinding.wrappedValue > 0 ? "\(Int(outlineWidthBinding.wrappedValue)) px" : "None",
+                    onEditingChanged: viewModel.setAdjustingSelectedLineWidth
+                )
             }
 
             if viewModel.showsStrokeAlignmentControl {
@@ -1746,28 +1781,31 @@ struct ScreenshotEditorView: View {
             }
 
             if viewModel.showsRotationControl, let rotationDegrees = viewModel.selectedAnnotationRotationDegrees() {
-                HStack(spacing: 8) {
-                    Slider(value: rotationBinding, in: -180...180, step: 1) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
                         Text("Rotation")
-                    } onEditingChanged: { isEditing in
+                            .accessibilityHidden(true)
+                        Spacer()
+                        Text("\(Int(rotationDegrees.rounded()))°")
+                            .font(.caption.monospacedDigit())
+                            .accessibilityHidden(true)
+                        Button {
+                            viewModel.resetSelectedAnnotationRotation()
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(abs(rotationDegrees) < 0.5)
+                        .help("Reset rotation")
+                        .accessibilityLabel("Reset rotation")
+                    }
+                    Slider(value: rotationBinding, in: -180...180, onEditingChanged: { isEditing in
                         if isEditing {
                             viewModel.beginSelectedAnnotationRotationEdit()
                         }
-                    }
+                    })
                     .accessibilityLabel("Rotation")
                     .accessibilityValue("\(Int(rotationDegrees.rounded())) degrees")
-                    Text("\(Int(rotationDegrees.rounded()))°")
-                        .font(.caption.monospacedDigit())
-                        .frame(width: 36, alignment: .trailing)
-                    Button {
-                        viewModel.resetSelectedAnnotationRotation()
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(abs(rotationDegrees) < 0.5)
-                    .help("Reset rotation")
-                    .accessibilityLabel("Reset rotation")
                 }
             }
 
@@ -1789,7 +1827,7 @@ struct ScreenshotEditorView: View {
     private var rotationBinding: Binding<Double> {
         Binding(
             get: { viewModel.selectedAnnotationRotationDegrees() ?? 0 },
-            set: { viewModel.updateSelectedAnnotationRotationDegrees($0, recordsHistory: false) }
+            set: { viewModel.updateSelectedAnnotationRotationDegrees($0.rounded(), recordsHistory: false) }
         )
     }
     private var backgroundControls: some View {
@@ -2397,6 +2435,7 @@ struct ScreenshotEditorView: View {
 
     private func handleEscape(textFieldHasFocus: Bool) -> Bool {
         guard !isSaving else { return true }
+        if !textFieldHasFocus && viewModel.cancelAnnotationDrag() { return true }
 
         switch ScreenshotEditorEscapeAction.resolve(
             isEditingTextAnnotation: viewModel.textEditPosition != nil,

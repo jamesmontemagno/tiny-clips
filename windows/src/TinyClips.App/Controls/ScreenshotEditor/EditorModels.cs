@@ -19,6 +19,9 @@ internal enum AnnotationResizeHandle
 /// </summary>
 internal sealed class Annotation : ScreenshotAnnotation
 {
+    // Inspector-only memory for toggling this shape's fill off and back on.
+    public Color? LastVisibleFill { get; set; }
+
     // Cached blurred preview for redaction annotations (invalidated on move / level change).
     public SoftwareBitmapSource? RedactPreview { get; set; }
     public Rect RedactPreviewBounds { get; set; }

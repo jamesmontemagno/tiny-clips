@@ -120,6 +120,7 @@ struct ScreenshotEditorCanvasView: View {
     let panOffset: CGSize
 
     @State private var cropHover: CropDragMode?
+    @GestureState private var isPointerDown = false
 
     var body: some View {
         let exportLayout = viewModel.displayLayout(
@@ -338,10 +339,7 @@ struct ScreenshotEditorCanvasView: View {
                     .position(x: screenPos.x, y: screenPos.y)
                 }
 
-                // Selection highlight for move tool
-                if viewModel.selectedTool == .move,
-                   let idx = viewModel.selectedAnnotationIndex,
-                   idx < viewModel.annotations.count {
+                if let idx = viewModel.editableSelectionIndex {
                     let ann = viewModel.annotations[idx]
 
                     // Show endpoint handles for arrows and lines
@@ -440,51 +438,36 @@ struct ScreenshotEditorCanvasView: View {
                     }
                 }
 
-                // Interaction overlay — gestures must be before .position()
-                // so coordinates are in the overlay's local space (0..imageSize)
+                // A rotation grip or corner can extend beyond the image; keep gesture coordinates
+                // in the fixed viewport even as the selected annotation moves.
                 Color.clear
-                    .contentShape(Rectangle())
-                    .frame(width: imageSize.width, height: imageSize.height)
-                    .allowsHitTesting(viewModel.textEditPosition == nil)
+                    .frame(width: containerSize.width, height: containerSize.height)
+                    .contentShape(Path(viewModel.editableSelectionIndex == nil
+                        ? CGRect(origin: origin, size: imageSize)
+                        : CGRect(origin: .zero, size: containerSize)))
+                    .allowsHitTesting(viewModel.textEditPosition == nil && imageSize.width > 0 && imageSize.height > 0)
                     .gesture(
-                        DragGesture(minimumDistance: 1)
+                        DragGesture(minimumDistance: 0)
+                            .updating($isPointerDown) { _, down, _ in down = true }
                             .onChanged { value in
-                                let normalizedStart = viewModel.normalizePoint(value.startLocation, imageSize: imageSize)
-                                let normalizedCurrent = viewModel.normalizePoint(value.location, imageSize: imageSize)
-                                let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
-                                viewModel.handleDrag(start: normalizedStart, current: normalizedCurrent, isAspectLocked: isShiftPressed, displaySize: imageSize)
+                                viewModel.handleDrag(
+                                    start: normalized(value.startLocation, origin: origin, size: imageSize),
+                                    current: normalized(value.location, origin: origin, size: imageSize),
+                                    isAspectLocked: NSEvent.modifierFlags.contains(.shift), displaySize: imageSize
+                                )
                             }
                             .onEnded { value in
-                                let normalizedStart = viewModel.normalizePoint(value.startLocation, imageSize: imageSize)
-                                let normalizedEnd = viewModel.normalizePoint(value.location, imageSize: imageSize)
-                                let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
-                                viewModel.handleDragEnd(start: normalizedStart, end: normalizedEnd, isAspectLocked: isShiftPressed, displaySize: imageSize)
+                                viewModel.handleDragEnd(
+                                    start: normalized(value.startLocation, origin: origin, size: imageSize),
+                                    end: normalized(value.location, origin: origin, size: imageSize),
+                                    isAspectLocked: NSEvent.modifierFlags.contains(.shift), displaySize: imageSize
+                                )
                             }
                     )
-                    .simultaneousGesture(
-                        SpatialTapGesture()
-                            .onEnded { value in
-                                let normalized = viewModel.normalizePoint(value.location, imageSize: imageSize)
-                                if viewModel.selectedTool == .text && viewModel.textEditPosition == nil {
-                                    viewModel.textEditPosition = normalized
-                                    viewModel.textEditValue = ""
-                                    viewModel.isEditingText = true
-                                } else if viewModel.selectedTool == .number {
-                                    viewModel.placeNumberAnnotation(at: normalized)
-                                } else if viewModel.selectedTool == .emoji {
-                                    viewModel.placeEmojiAnnotation(at: normalized)
-                                } else if viewModel.selectedTool == .crop {
-                                    viewModel.handleCropTap(at: normalized, displaySize: imageSize)
-                                } else if viewModel.selectedTool == .move {
-                                    // Tap to select/deselect annotations
-                                    if let idx = viewModel.annotationIndex(at: normalized) {
-                                        viewModel.selectedAnnotationIndex = idx
-                                    } else {
-                                        viewModel.selectedAnnotationIndex = nil
-                                    }
-                                }
-                            }
-                    )
+                    .onChange(of: isPointerDown) { _, down in
+                        if !down { viewModel.finishCancelledGesture() }
+                    }
+                    .onDisappear { viewModel.finishCancelledGesture() }
                     .onContinuousHover { phase in
                         guard viewModel.selectedTool == .crop else {
                             if cropHover != nil { cropHover = nil }
@@ -493,7 +476,7 @@ struct ScreenshotEditorCanvasView: View {
                         switch phase {
                         case .active(let location):
                             let hover = viewModel.cropInteraction(
-                                at: viewModel.normalizePoint(location, imageSize: imageSize),
+                                at: normalized(location, origin: origin, size: imageSize),
                                 displaySize: imageSize
                             )
                             if cropHover != hover { cropHover = hover }
@@ -504,24 +487,35 @@ struct ScreenshotEditorCanvasView: View {
                     .pointerStyle(cropPointerStyle)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Screenshot annotation canvas")
+                    .accessibilityValue(viewModel.editableSelectionIndex.map { "\(viewModel.annotations[$0].tool.label) selected" } ?? "")
                     .accessibilityHint(canvasAccessibilityHint)
-                    .position(x: origin.x + imageSize.width / 2, y: origin.y + imageSize.height / 2)
+                    .accessibilityActions {
+                        if viewModel.editableSelectionIndex != nil {
+                            Button("Clear annotation selection") { _ = viewModel.clearAnnotationSelection() }
+                        }
+                    }
             }
         }
+    }
+
+    private func normalized(_ location: CGPoint, origin: CGPoint, size: CGSize) -> CGPoint {
+        CGPoint(x: (location.x - origin.x) / size.width, y: (location.y - origin.y) / size.height)
     }
 
     private var canvasAccessibilityHint: String {
         switch viewModel.selectedTool {
         case .move:
-            return "Select an annotation, drag inside it to move, drag a corner handle to resize, or drag the rotation grip above it to rotate."
+            return "Select an annotation, drag inside it to move, drag a corner handle to resize, or drag the rotation grip above it to rotate. Right-click to clear the selection."
         case .background:
             return "Use the Background section in the sidebar to add padding, a background, and a frame."
-        case .emoji:
-            return "Click to place the selected emoji."
         case .crop:
             return "Drag to select the area to keep, or move to the Crop selection element to position it with the arrow keys or VoiceOver actions. Press Return to apply the crop."
         default:
-            return "Use the selected tool to edit the screenshot."
+            let placement = [.emoji, .number, .text, .pointer].contains(viewModel.selectedTool) ? "Click" : "Drag"
+            if viewModel.editableSelectionIndex != nil {
+                return "Drag the selected annotation or its handles to adjust it. Right-click to deselect and change tool defaults. \(placement) elsewhere to add another. Use Move to select an older annotation."
+            }
+            return "\(placement) to add an annotation. It will be selected for editing."
         }
     }
 
@@ -686,6 +680,29 @@ struct ScreenshotEditorCanvasView: View {
             let glyph = Text(annotation.text)
                 .font(.system(size: EmojiAnnotationMath.glyphFontSize(forSide: scaledRect.height)))
             rotated.draw(glyph, at: .zero, anchor: .center)
+
+        case .pointer:
+            let (rotated, rect) = rotatedDrawing(context, annotation: annotation, scaledRect: scaledRect)
+            let pointer = annotation.pointer
+            let path = Path(PointerGeometry.path(for: pointer.style, in: rect))
+            var group = rotated
+            group.opacity = Double(pointer.opacity)
+            group.drawLayer { shadowLayer in
+                if pointer.shadow.enabled {
+                    shadowLayer.addFilter(.shadow(
+                        color: .black.opacity(Double(pointer.shadow.opacity)),
+                        radius: pointer.shadow.blur * pixelScale,
+                        x: pointer.shadow.offsetX * pixelScale,
+                        y: pointer.shadow.offsetY * pixelScale
+                    ))
+                }
+                shadowLayer.drawLayer { body in
+                    body.fill(path, with: .color(pointer.fill))
+                    if pointer.strokeWidth > 0 {
+                        body.stroke(path, with: .color(pointer.stroke), lineWidth: pointer.strokeWidth * pixelScale)
+                    }
+                }
+            }
 
         case .text, .crop, .move, .background:
             break

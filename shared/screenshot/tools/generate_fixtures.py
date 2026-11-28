@@ -22,7 +22,8 @@ ARROW_DIR = FIXTURES / "arrow"
 ALIGNMENT_DIR = FIXTURES / "alignment"
 LINE_DIR = FIXTURES / "line"
 PEN_DIR = FIXTURES / "pen"
-FIXTURE_DIRS = [ARROW_DIR, ALIGNMENT_DIR, LINE_DIR, PEN_DIR]
+POINTER_DIR = FIXTURES / "pointer"
+FIXTURE_DIRS = [ARROW_DIR, ALIGNMENT_DIR, LINE_DIR, PEN_DIR, POINTER_DIR]
 
 # Arrow geometry. Points are y-down; widths are in source-image pixels and `scale` is the
 # caller's units per image pixel. An arrow is one filled outline: a tapered shaft along a
@@ -662,6 +663,26 @@ def generated_files():
         files[Path("line") / filename] = fixture
     for filename, fixture in generate_alignments().items():
         files[Path("alignment") / filename] = fixture
+    files[Path("pointer") / "pointer.json"] = {
+        "description": "Pointer silhouettes and hotspots in unit-square, top-left image coordinates.",
+        "cases": [
+            {"style": "arrow", "hotspot": point(0.08, 0.04), "outline": [
+                point(0.08, 0.04), point(0.08, 0.84), point(0.29, 0.64), point(0.45, 0.96),
+                point(0.59, 0.89), point(0.42, 0.58), point(0.72, 0.58),
+            ]},
+            {"style": "hand", "hotspot": point(0.36, 0.04), "outline": [
+                point(0.36, 0.04), point(0.46, 0.04), point(0.46, 0.40), point(0.55, 0.36),
+                point(0.63, 0.40), point(0.70, 0.38), point(0.81, 0.45), point(0.81, 0.72),
+                point(0.70, 0.96), point(0.35, 0.96), point(0.25, 0.74), point(0.12, 0.62),
+                point(0.13, 0.52), point(0.20, 0.48), point(0.36, 0.61),
+            ]},
+            {"style": "text", "hotspot": point(0.5, 0.5), "outline": [
+                point(0.24, 0.04), point(0.76, 0.04), point(0.76, 0.16), point(0.58, 0.16),
+                point(0.58, 0.84), point(0.76, 0.84), point(0.76, 0.96), point(0.24, 0.96),
+                point(0.24, 0.84), point(0.42, 0.84), point(0.42, 0.16), point(0.24, 0.16),
+            ]},
+        ],
+    }
     return files
 
 
@@ -671,7 +692,8 @@ def json_text(value):
 
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json_text(value), encoding="utf-8", newline="\n")
+    with path.open("w", encoding="utf-8", newline="\n") as output:
+        output.write(json_text(value))
 
 
 def check_files(files):

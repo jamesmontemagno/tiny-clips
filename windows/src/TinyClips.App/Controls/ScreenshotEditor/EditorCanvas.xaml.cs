@@ -133,7 +133,7 @@ public sealed partial class EditorCanvas : UserControl
         }
         if (!pressed && _panning)
         {
-            CancelLocalInteraction();
+            FinishPointerInteraction();
         }
     }
 
@@ -147,14 +147,22 @@ public sealed partial class EditorCanvas : UserControl
         _nativeSizeSelected = settings.ScreenshotEditorNativeSize;
         NativeSizeToggleButton.IsChecked = _nativeSizeSelected;
         _controller.ImageChanged += OnControllerImageChanged;
-        _controller.AnnotationsStructureChanged += (_, _) => FullRebuild();
+        _controller.AnnotationsStructureChanged += (_, _) =>
+        {
+            FullRebuild();
+            UpdateHint();
+        };
         _controller.AnnotationVisualInvalidated += OnControllerAnnotationVisualInvalidated;
-        _controller.SelectionChanged += (_, ann) => PositionMarquee(ann);
+        _controller.SelectionChanged += (_, ann) =>
+        {
+            PositionMarquee(ann);
+            UpdateHint();
+        };
         _controller.ToolChanged += OnControllerToolChanged;
         _controller.ActiveAnnotationDiscarded += OnControllerActiveAnnotationDiscarded;
         _controller.BackgroundChanged += OnControllerBackgroundChanged;
 
-        // Sync the hint text to the controller's initial tool (Select).
+        // Sync the hint text to the controller's initial tool.
         OnControllerToolChanged(this, _controller.Tool);
     }
 
@@ -241,15 +249,12 @@ public sealed partial class EditorCanvas : UserControl
     public void CancelActiveInteraction()
     {
         _controller.CancelActiveAnnotation();
-        CancelLocalInteraction();
+        FinishPointerInteraction();
     }
 
-    /// <summary>Resets this canvas's own pointer-interaction bookkeeping (capture, drag/move
-    /// flags) when an interaction is interrupted rather than released normally — e.g. a tool
-    /// hotkey fires mid-drag. The controller has already discarded any in-progress annotation (see
-    /// <see cref="EditorController.SetTool"/> / <see cref="OnControllerActiveAnnotationDiscarded"/>);
-    /// this only needs to undo this control's own state for whichever interaction was in flight.</summary>
-    private void CancelLocalInteraction()
+    /// <summary>Release capture and settle the canvas side of a gesture, whether it completed
+    /// or was interrupted. Only a normal release may commit a drawing preview.</summary>
+    private void FinishPointerInteraction()
     {
         if (_capturedPointer is { } pointer)
         {
@@ -264,9 +269,11 @@ public sealed partial class EditorCanvas : UserControl
 
         _dragging = false;
         _panning = false;
+        var resized = _resizingAnnotation;
         _resizingAnnotation = null;
         _resizeHandle = null;
         _endpointAnnotation = null;
+        if (_bendAnnotation is not null) _controller.EndArrowBend();
         _bendAnnotation = null;
         _rotatingAnnotation = null;
 
@@ -274,23 +281,24 @@ public sealed partial class EditorCanvas : UserControl
         _movingAnnotation = null;
         if (moved is { Tool: EditTool.Redact } && Contains(_controller.Annotations, moved))
         {
-            // Mirrors OnPointerReleased: a moved redact block only shows the lightweight
-            // placeholder while dragging; re-blur it now that the move has been interrupted.
+            // A moved redact block only shows a placeholder while dragging; re-blur it now.
             // Guarded on list membership because Undo/Delete cancel the interaction (see
             // ScreenshotEditorWindow) before removing the annotation — if it's already gone,
             // UpdateVisual must not resurrect a visual for it.
             UpdateVisual(moved);
         }
+        if (resized is { Tool: EditTool.Text or EditTool.Counter } && ReferenceEquals(resized, _controller.SelectedAnnotation))
+        {
+            // Handle resizing changes the font/box or badge size shown in the inspector.
+            _controller.Select(resized);
+        }
     }
 
     private void OnOverlayPointerCaptureLost(object sender, PointerRoutedEventArgs e)
     {
-        if (_capturedPointer is null)
+        if (_capturedPointer?.PointerId != e.Pointer.PointerId)
         {
-            // This control released capture itself (OnPointerReleased or CancelLocalInteraction
-            // already nulled the field before calling ReleasePointerCapture) — that expected,
-            // synchronous PointerCaptureLost has nothing left to clean up. Bailing out here is
-            // what avoids double cleanup / recursion between the explicit release and this event.
+            // Either we released capture ourselves or this isn't our gesture's pointer.
             return;
         }
 
@@ -304,22 +312,41 @@ public sealed partial class EditorCanvas : UserControl
     {
         // PointerCanceled (e.g. touch/pen input becoming unavailable mid-gesture) doesn't always
         // guarantee a PointerCaptureLost follows, so cancel the interaction directly here too;
-        // CancelActiveInteraction/CancelLocalInteraction are idempotent when nothing is in flight.
-        CancelActiveInteraction();
+        // Ignore other pointers (e.g. a touch contact while dragging with the pen).
+        if (_capturedPointer?.PointerId == e.Pointer.PointerId) CancelActiveInteraction();
     }
 
     private void OnControllerToolChanged(object? sender, EditTool tool)
     {
-        CancelLocalInteraction();
+        FinishPointerInteraction();
         ClearCropSelection();
+        UpdateHint();
+    }
+
+    private void UpdateHint()
+    {
+        var tool = _controller.Tool;
+        if (_controller.SelectedAnnotation is not null)
+        {
+            HintText.Text = tool switch
+            {
+                EditTool.Select => "Drag the selection or its handles to adjust it. Right-click to clear the selection.",
+                EditTool.Text => "Drag the selection to move it; double-click text to edit. Right-click for tool defaults.",
+                EditTool.Counter or EditTool.Emoji or EditTool.Pointer => "Drag the selection to adjust it. Right-click for defaults, or click elsewhere to add another.",
+                _ => "Drag the selection or its handles to adjust it. Right-click for defaults, or draw elsewhere.",
+            };
+            return;
+        }
+
         HintText.Text = tool switch
         {
             EditTool.Crop => "Drag to select an area, then choose Apply crop.",
             EditTool.Select => "Click an annotation to select it; drag inside to move, drag a handle to resize, or drag the grip above it to rotate. Del removes it.",
             EditTool.Background => "Use the Background panel to add padding, a background, and a frame.",
-            EditTool.Text => "Click where you want text to open the editor; double-click text to edit it.",
-            EditTool.Counter => "Click to drop a numbered badge.",
-            EditTool.Emoji => "Pick an emoji in the panel, then click to place it. Use Select to move, resize, or rotate it.",
+            EditTool.Text => "Click to add text. Double-click the selected text to edit it.",
+            EditTool.Counter => "Click to add a badge. Drag the selected badge to move it, or click elsewhere for the next number.",
+            EditTool.Emoji => "Click to place an emoji. Drag it or its handles to adjust it; click elsewhere to place another.",
+            EditTool.Pointer => "Click where the pointer should point. Drag it or its handles to adjust it; click elsewhere to place another.",
             EditTool.Pen => "Drag to draw freehand.",
             EditTool.Redact => "Drag over content to redact it.",
             EditTool.Rectangle or EditTool.Ellipse => "Drag to draw. Hold Shift for a perfect shape.",
@@ -836,6 +863,23 @@ public sealed partial class EditorCanvas : UserControl
                 OverlayCanvas.Children.Add(grid);
                 return new AnnotationVisual { Primary = grid };
             }
+            case EditTool.Pointer:
+            {
+                var grid = new Grid { IsHitTestVisible = false };
+                MakeRotatable(grid);
+                var fill = new SolidColorBrush();
+                var stroke = new SolidColorBrush();
+                grid.Children.Add(new Polygon
+                {
+                    Fill = new SolidColorBrush(),
+                    Stroke = new SolidColorBrush(),
+                    StrokeLineJoin = PenLineJoin.Round,
+                    RenderTransform = new TranslateTransform(),
+                });
+                grid.Children.Add(new Polygon { Fill = fill, Stroke = stroke, StrokeLineJoin = PenLineJoin.Round });
+                OverlayCanvas.Children.Add(grid);
+                return new AnnotationVisual { Primary = grid, FillBrush = fill, StrokeBrush = stroke };
+            }
             default:
                 throw new ArgumentOutOfRangeException(nameof(ann), ann.Tool, "Unsupported annotation tool.");
         }
@@ -996,7 +1040,67 @@ public sealed partial class EditorCanvas : UserControl
             case EditTool.Emoji:
                 PositionEmoji(ann, visual, scale, offX, offY);
                 break;
+            case EditTool.Pointer:
+                PositionPointer(ann, visual, scale, offX, offY);
+                break;
         }
+    }
+
+    // XAML shapes cannot blur, so the preview shows the shadow as a soft-edged silhouette; the
+    // export draws the real blurred shadow. The offset is counter-rotated so it stays
+    // screen-aligned like the export's.
+    private static void PositionPointer(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)
+    {
+        var b = EditorController.NormalizedBounds(ann);
+        var tl = ToCanvas(new Point(b.X, b.Y), scale, offX, offY);
+        var width = b.Width * scale;
+        var height = b.Height * scale;
+        var pointer = ann.Pointer;
+        var grid = (Grid)visual.Primary;
+        grid.Width = width;
+        grid.Height = height;
+        grid.Opacity = Math.Clamp(pointer.Opacity, 0, 1);
+        ApplyRotation(grid, ann.Rotation);
+
+        var fit = PointerGeometry.Fit(new RectD(0, 0, width, height));
+        var points = new PointCollection();
+        foreach (var p in PointerGeometry.Outline(pointer.Style))
+        {
+            points.Add(new Point(fit.X + p.X * fit.Width, fit.Y + p.Y * fit.Height));
+        }
+
+        var body = (Polygon)grid.Children[1];
+        body.Points = points;
+        visual.FillBrush!.Color = pointer.Fill;
+        visual.StrokeBrush!.Color = pointer.Stroke;
+        body.StrokeThickness = pointer.StrokeWidth * scale;
+
+        var shadowShape = (Polygon)grid.Children[0];
+        var shadow = pointer.Shadow;
+        var showsShadow = shadow.Enabled && shadow.Opacity > 0;
+        shadowShape.Visibility = showsShadow ? Visibility.Visible : Visibility.Collapsed;
+        if (showsShadow)
+        {
+            var shadowPoints = new PointCollection();
+            foreach (var p in points)
+            {
+                shadowPoints.Add(p);
+            }
+            shadowShape.Points = shadowPoints;
+            ((SolidColorBrush)shadowShape.Fill).Color = Color.FromArgb(pointer.Fill.A, 0, 0, 0);
+            ((SolidColorBrush)shadowShape.Stroke).Color = Color.FromArgb(pointer.Stroke.A, 0, 0, 0);
+            shadowShape.StrokeThickness = pointer.StrokeWidth > 0 ? (pointer.StrokeWidth + shadow.Blur * 0.5) * scale : 0;
+            shadowShape.Opacity = Math.Clamp(shadow.Opacity, 0, 1) * (shadow.Blur > 0 ? 0.75 : 1);
+            var radians = -ann.Rotation * Math.PI / 180.0;
+            var dx = shadow.OffsetX * scale;
+            var dy = shadow.OffsetY * scale;
+            var translate = (TranslateTransform)shadowShape.RenderTransform;
+            translate.X = dx * Math.Cos(radians) - dy * Math.Sin(radians);
+            translate.Y = dx * Math.Sin(radians) + dy * Math.Cos(radians);
+        }
+
+        Canvas.SetLeft(grid, tl.X);
+        Canvas.SetTop(grid, tl.Y);
     }
 
     private static void PositionEmoji(Annotation ann, AnnotationVisual visual, double scale, double offX, double offY)
@@ -1336,7 +1440,7 @@ public sealed partial class EditorCanvas : UserControl
         }
         var (scale, offX, offY) = HostLayout();
 
-        if (ann.Tool == EditTool.Emoji || ann.IsRotated)
+        if (ann.Tool is EditTool.Emoji or EditTool.Pointer || ann.IsRotated)
         {
             var (stickerBounds, _) = CanvasStickerGeometry(EditorController.InteractionBounds(ann), scale, offX, offY);
             var corners = RotatableAnnotationGeometry.Corners(stickerBounds, ann.Rotation);
@@ -1437,11 +1541,69 @@ public sealed partial class EditorCanvas : UserControl
 
     // -- Pointer input -------------------------------------------------------------------------
 
+    private void CaptureInteraction(Pointer pointer)
+    {
+        if (OverlayCanvas.CapturePointer(pointer)) _capturedPointer = pointer;
+        else CancelActiveInteraction();
+    }
+
+    private bool TryBeginAnnotationEdit(Point p, Point pixel)
+    {
+        if (_controller.SelectedAnnotation is { } selected)
+        {
+            if (IsRotationHandleAt(p, selected))
+            {
+                _rotatingAnnotation = selected;
+                _resizeOriginalBounds = EditorController.InteractionBounds(selected);
+                _resizeOriginalPoints = new List<Vector2>(selected.Points);
+                return true;
+            }
+            if (ResizeHandleAt(p, selected) is { } handle)
+            {
+                _resizingAnnotation = selected;
+                _movingAnnotation = selected;
+                _resizeHandle = handle;
+                _resizeOriginalBounds = EditorController.InteractionBounds(selected);
+                _resizeOriginalPoints = new List<Vector2>(selected.Points);
+                _resizeOriginalFontSize = selected.FontSize;
+                _resizeOriginalSizeScale = selected.SizeScale;
+                _resizeOriginalTextBoxStyle = selected.TextBoxStyle;
+                return true;
+            }
+            if (TryBeginEndpointDrag(p, selected, allowBend: true)) return true;
+        }
+
+        var hit = _controller.HitTest(_controller.Tool, pixel);
+        if (_controller.Tool == EditTool.Select) _controller.Select(hit);
+        if (hit is null) return false;
+        if (_controller.Tool == EditTool.Select && TryBeginEndpointDrag(p, hit, allowBend: false)) return true;
+
+        _movingAnnotation = hit;
+        var origin = _controller.PixelToCanvas(new Point(hit.Bounds.X, hit.Bounds.Y), ImageHost.ActualWidth, ImageHost.ActualHeight);
+        _moveOffset = new Point(p.X - origin.X, p.Y - origin.Y);
+        return true;
+    }
+
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (_controller.Bitmap is null)
+        if (_controller.Bitmap is null || _capturedPointer is not null)
         {
             return;
+        }
+
+        var pointerPoint = e.GetCurrentPoint(OverlayCanvas);
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse)
+        {
+            if (pointerPoint.Properties.IsRightButtonPressed)
+            {
+                if (_controller.SelectedAnnotation is not null)
+                {
+                    _controller.Select(null);
+                    e.Handled = true;
+                }
+                return;
+            }
+            if (!pointerPoint.Properties.IsLeftButtonPressed) return;
         }
 
         OverlayCanvas.Focus(FocusState.Pointer);
@@ -1457,13 +1619,12 @@ public sealed partial class EditorCanvas : UserControl
             _panStart = e.GetCurrentPoint(ViewportScrollView).Position;
             _panStartHorizontalOffset = ViewportScrollView.HorizontalOffset;
             _panStartVerticalOffset = ViewportScrollView.VerticalOffset;
-            OverlayCanvas.CapturePointer(e.Pointer);
-            _capturedPointer = e.Pointer;
+            CaptureInteraction(e.Pointer);
             e.Handled = true;
             return;
         }
 
-        var p = e.GetCurrentPoint(OverlayCanvas).Position;
+        var p = pointerPoint.Position;
         var tool = _controller.Tool;
 
         if (tool == EditTool.Crop)
@@ -1475,63 +1636,21 @@ public sealed partial class EditorCanvas : UserControl
             SelectionRect.Width = 0;
             SelectionRect.Height = 0;
             SelectionRect.Visibility = Visibility.Visible;
-            OverlayCanvas.CapturePointer(e.Pointer);
-            _capturedPointer = e.Pointer;
+            CaptureInteraction(e.Pointer);
             return;
         }
 
-        if (tool == EditTool.Select)
+        if (tool == EditTool.Background) return;
+
+        // Decide once, on press. Subsequent moves act only on this captured gesture,
+        // even if a drawing stroke later crosses the selected annotation or one of its handles.
+        var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
+        if (TryBeginAnnotationEdit(p, pixel))
         {
-            if (_controller.SelectedAnnotation is { } selected)
-            {
-                if (IsRotationHandleAt(p, selected))
-                {
-                    _rotatingAnnotation = selected;
-                    _resizeOriginalBounds = EditorController.InteractionBounds(selected);
-                    _resizeOriginalPoints = new List<Vector2>(selected.Points);
-                    OverlayCanvas.CapturePointer(e.Pointer);
-                    _capturedPointer = e.Pointer;
-                    return;
-                }
-                if (ResizeHandleAt(p, selected) is { } handle)
-                {
-                    _resizingAnnotation = selected;
-                    _movingAnnotation = selected;
-                    _resizeHandle = handle;
-                    _resizeOriginalBounds = EditorController.InteractionBounds(selected);
-                    _resizeOriginalPoints = new List<Vector2>(selected.Points);
-                    _resizeOriginalFontSize = selected.FontSize;
-                    _resizeOriginalSizeScale = selected.SizeScale;
-                    _resizeOriginalTextBoxStyle = selected.TextBoxStyle;
-                    OverlayCanvas.CapturePointer(e.Pointer);
-                    _capturedPointer = e.Pointer;
-                    return;
-                }
-                if (TryBeginEndpointDrag(p, selected, allowBend: true))
-                {
-                    OverlayCanvas.CapturePointer(e.Pointer);
-                    _capturedPointer = e.Pointer;
-                    return;
-                }
-            }
-            var hit = _controller.HitTest(_controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight));
-            _controller.Select(hit);
-            if (hit is not null)
-            {
-                if (TryBeginEndpointDrag(p, hit, allowBend: false))
-                {
-                    OverlayCanvas.CapturePointer(e.Pointer);
-                    _capturedPointer = e.Pointer;
-                    return;
-                }
-                _movingAnnotation = hit;
-                var origin = _controller.PixelToCanvas(new Point(hit.Bounds.X, hit.Bounds.Y), ImageHost.ActualWidth, ImageHost.ActualHeight);
-                _moveOffset = new Point(p.X - origin.X, p.Y - origin.Y);
-                OverlayCanvas.CapturePointer(e.Pointer);
-                _capturedPointer = e.Pointer;
-            }
+            CaptureInteraction(e.Pointer);
             return;
         }
+        if (tool == EditTool.Select) return;
 
         if (tool == EditTool.Text)
         {
@@ -1541,35 +1660,32 @@ public sealed partial class EditorCanvas : UserControl
 
         if (tool == EditTool.Counter)
         {
-            var center = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
-            _controller.AddCounterAnnotation(center);
+            _controller.AddCounterAnnotation(pixel);
             return;
         }
 
         if (tool == EditTool.Emoji)
         {
-            var center = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
-            _controller.AddEmojiAnnotation(center);
+            _controller.AddEmojiAnnotation(pixel);
             return;
         }
 
-        if (tool == EditTool.Background)
+        if (tool == EditTool.Pointer)
         {
+            _controller.AddPointerAnnotation(pixel);
             return;
         }
 
         // Shape / line / arrow / pen / redact: begin a drag.
         _dragging = true;
         _dragStart = p;
-        var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
         _controller.BeginAnnotation(tool, pixel);
-        OverlayCanvas.CapturePointer(e.Pointer);
-        _capturedPointer = e.Pointer;
+        CaptureInteraction(e.Pointer);
     }
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (_controller.Bitmap is null)
+        if (_controller.Bitmap is null || _capturedPointer?.PointerId != e.Pointer.PointerId)
         {
             return;
         }
@@ -1599,7 +1715,7 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
-        if (tool == EditTool.Select && _rotatingAnnotation is not null)
+        if (_rotatingAnnotation is not null)
         {
             var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
             _controller.RotateAnnotationToward(
@@ -1611,7 +1727,7 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
-        if (tool == EditTool.Select && _movingAnnotation is not null)
+        if (_movingAnnotation is not null)
         {
             if (_resizingAnnotation is not null && _resizeHandle is { } handle)
             {
@@ -1634,7 +1750,7 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
-        if (tool == EditTool.Select && _bendAnnotation is not null)
+        if (_bendAnnotation is not null)
         {
             var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
             var (scale, _, _) = HostLayout();
@@ -1643,7 +1759,7 @@ public sealed partial class EditorCanvas : UserControl
             return;
         }
 
-        if (tool == EditTool.Select && _endpointAnnotation is not null)
+        if (_endpointAnnotation is not null)
         {
             var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
             _controller.MoveAnnotationEndpoint(_endpointAnnotation, _movingStartEndpoint, pixel);
@@ -1660,60 +1776,19 @@ public sealed partial class EditorCanvas : UserControl
 
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        // Null the field before releasing capture — see the matching comment in
-        // CancelLocalInteraction: ReleasePointerCapture synchronously raises PointerCaptureLost,
-        // and OnOverlayPointerCaptureLost uses this field being null to recognize "we just
-        // released capture ourselves" and skip its own (redundant, and here actively wrong —
-        // this method already committed/settled the interaction) cleanup pass.
-        _capturedPointer = null;
-        OverlayCanvas.ReleasePointerCapture(e.Pointer);
+        if (_capturedPointer?.PointerId != e.Pointer.PointerId) return;
+        var wasDragging = _dragging;
+        if (_panning) e.Handled = true;
+        FinishPointerInteraction();
+        if (!wasDragging) return;
 
-        if (_panning)
+        if (_controller.Tool == EditTool.Crop)
         {
-            _panning = false;
-            e.Handled = true;
-            return;
-        }
-
-        var tool = _controller.Tool;
-
-        if (tool == EditTool.Crop && _dragging)
-        {
-            _dragging = false;
             CropSelectionAvailabilityChanged?.Invoke(this, SelectionRect.Width > 4 && SelectionRect.Height > 4);
-            return;
         }
-
-        if (tool == EditTool.Select)
+        else
         {
-            var moved = _movingAnnotation;
-            _movingAnnotation = null;
-            _resizingAnnotation = null;
-            _resizeHandle = null;
-            _endpointAnnotation = null;
-            _bendAnnotation = null;
-            _rotatingAnnotation = null;
-            // A moved redact block only shows the lightweight placeholder while dragging (see
-            // UpdateVisual); re-blur it now that the drag has settled. Guarded on list
-            // membership in case the annotation was deleted/undone mid-drag — Undo/Delete cancel
-            // the interaction first (see ScreenshotEditorWindow), but this stays defensive.
-            if (moved is { Tool: EditTool.Redact } && Contains(_controller.Annotations, moved))
-            {
-                UpdateVisual(moved);
-            }
-            return;
-        }
-
-        if (_dragging && _controller.ActiveAnnotation is not null)
-        {
-            _dragging = false;
-            var justActive = _controller.ActiveAnnotation;
             _controller.CommitActiveAnnotation();
-            if (_controller.ActiveAnnotation is null && !Contains(_controller.Annotations, justActive))
-            {
-                // Drag was too small to commit (e.g. a click-sized rectangle) — drop its preview visual.
-                RemoveVisual(justActive);
-            }
         }
     }
 
@@ -1738,9 +1813,16 @@ public sealed partial class EditorCanvas : UserControl
 
         var p = e.GetPosition(OverlayCanvas);
         var pixel = _controller.CanvasToPixel(p, ImageHost.ActualWidth, ImageHost.ActualHeight);
-        if (_controller.HitTest(pixel) is { Tool: EditTool.Text } textAnn)
+        // Crop and Background keep their existing text double-click shortcut. Drawing
+        // tools must not open the edit dialog for older text under a placement gesture.
+        var tool = _controller.Tool;
+        var pickTool = tool is EditTool.Crop or EditTool.Background ? EditTool.Select : tool;
+        if (_controller.HitTest(pickTool, pixel) is { Tool: EditTool.Text } textAnn)
         {
-            _controller.Select(_controller.Tool == EditTool.Select ? textAnn : null);
+            // The second press may still have capture when WinUI recognizes the double tap.
+            // Settle that move before the dialog takes focus; keep the text selected.
+            if (_movingAnnotation is not null) FinishPointerInteraction();
+            if (tool == EditTool.Select) _controller.Select(textAnn);
             EditTextAnnotation(textAnn);
         }
     }
