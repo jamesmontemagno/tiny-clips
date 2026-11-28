@@ -312,7 +312,9 @@ not the package version, when replacing the highlights.
   start a cut at the playhead, `R` play the two seconds from the playhead twice as fast, `A` arrow,
   `C` callout, `T` text, `H` rectangle, `E` ellipse, `B` redaction, `M` emoji at the playhead,
   `Delete` or `Backspace` remove the selected zoom, cut, speed change, or annotation, `Ctrl+D`
-  duplicate the selected annotation, `1`–`4` layout of the scene the playhead is in,
+  duplicate the selected annotation, `Ctrl+C` copy one selected annotation, `Ctrl+V` paste an
+  annotation at the displayed playhead (also available as **Copy** / **Paste** in **Annotate**,
+  even with an empty annotation list), `1`–`4` layout of the scene the playhead is in,
   `Ctrl+Z`/`Ctrl+Y` (or `Ctrl+Shift+Z`) undo and redo, `Ctrl+E` export, `Ctrl+O` open a saved project, `Ctrl+S` save
   this project, `Ctrl+Shift+S` save the project as a new name/location (if assigned to Stop recording,
   that global shortcut takes priority only while recording), `Esc` stop an export or a save, and otherwise close
@@ -323,6 +325,11 @@ not the package version, when replacing the highlights.
   the first and the last; on the scene lane, `Delete` removes the scene the playhead is in.
   While something is being dragged, the keys that change the project do nothing; `Space` and
   the arrow keys still work.
+  Text-entry controls retain native text copy/paste. Annotation clipboard actions are UI-only,
+  not Agent API commands, and are unavailable during playback, dragging, export, or project save.
+  Paste preserves position, size, attachment, style, and edited playback duration, clamping to
+  the selected clip's edited end without moving the start earlier. Each paste appends a fresh,
+  selected annotation in one undo step. Duplicate keeps its original timing and small nudge.
   The Camera panel has a **Camera background** choice: keep, blur, or remove what is behind you. The
   people are found on this PC with the MediaPipe Selfie Segmentation model, which ships with the
   app under the Apache License 2.0 (**Settings › About › Third-party notices**).

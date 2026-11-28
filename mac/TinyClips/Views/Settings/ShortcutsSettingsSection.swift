@@ -73,6 +73,7 @@ struct ShortcutsSettingsSection: View {
             fixedShortcutRow(label: "Layouts", iconName: "rectangle.3.group", keys: "1 / 2 / 3 / 4")
             fixedShortcutRow(label: "Open / save / Save As / export", iconName: "square.and.arrow.up", keys: "⌘O / ⌘S / ⇧⌘S / ⌘E")
             fixedShortcutRow(label: "Undo / redo / duplicate / delete", iconName: "arrow.uturn.backward", keys: "⌘Z / ⇧⌘Z / ⌘D / Delete")
+            fixedShortcutRow(label: "Copy / paste annotation", iconName: "doc.on.clipboard", keys: "⌘C / ⌘V")
         }
 
         SettingsFormSection(

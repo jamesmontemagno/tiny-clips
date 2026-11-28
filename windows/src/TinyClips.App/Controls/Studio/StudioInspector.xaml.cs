@@ -1149,6 +1149,22 @@ public sealed partial class StudioInspector : UserControl
         }
     }
 
+    private async void OnCopyAnnotationClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is { } viewModel)
+        {
+            await viewModel.CopyAnnotationAsync();
+        }
+    }
+
+    private async void OnPasteAnnotationClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is { } viewModel)
+        {
+            await viewModel.PasteAnnotationAsync();
+        }
+    }
+
     private void OnNextAnnotationClick(object sender, RoutedEventArgs e)
     {
         var focus = StudioFocus.StateOf(sender);

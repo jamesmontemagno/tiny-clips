@@ -46,6 +46,61 @@ public sealed partial class StudioEditorModel
     /// <summary>Whether the recording has room for an annotation.</summary>
     public bool CanAddAnnotation => SourceDuration >= MinimumAnnotationDuration;
 
+    /// <summary>Copies by value without editing; duration belongs to this clip's edited output.</summary>
+    public StudioAnnotationTransfer CopyAnnotation(int index)
+    {
+        if (!HasAnnotation(index))
+        {
+            throw new InvalidDataException("Select an annotation to copy.");
+        }
+
+        var annotation = Project.Overlays.Annotations[index];
+        var map = TimeMap;
+        var transfer = new StudioAnnotationTransfer(annotation, map.SourceToOutput(annotation.End) - map.SourceToOutput(annotation.Start));
+        // Roundtrip validates and detaches extension data from the source project.
+        return StudioAnnotationClipboard.Decode(StudioAnnotationClipboard.Encode(transfer));
+    }
+
+    /// <summary>Appends at edited output time, retaining geometry and attachment without Duplicate's nudge.</summary>
+    public StudioAnnotationEditResult PasteAnnotation(StudioAnnotationTransfer transfer, double displayedSourceTime)
+    {
+        // The public pure entry point never accepts a tolerant/default annotation either.
+        transfer = StudioAnnotationClipboard.Decode(StudioAnnotationClipboard.Encode(transfer));
+        if (!double.IsFinite(displayedSourceTime))
+        {
+            return new(false, null);
+        }
+        var map = TimeMap;
+        var startOutput = map.SourceToOutput(ClampPlayhead(displayedSourceTime));
+        var endOutput = Math.Min(startOutput + transfer.OutputDurationSeconds, map.OutputDuration);
+        var start = map.OutputToSource(startOutput);
+        var end = map.OutputToSource(endOutput);
+        // OutputToSource chooses the following kept edge at a cut. An END must choose the
+        // preceding edge instead, so a paste ending at that boundary never spans the cut.
+        double cumulative = 0;
+        foreach (var piece in map.Pieces)
+        {
+            cumulative += piece.OutputDuration;
+            if (Math.Abs(endOutput - cumulative) <= 1e-9)
+            {
+                end = piece.End;
+                break;
+            }
+        }
+        if (endOutput <= startOutput || end - start < MinimumAnnotationDuration - 1e-9)
+        {
+            return new(false, null);
+        }
+        var annotation = transfer.Annotation with { Id = Guid.NewGuid().ToString("D"), Start = start, End = end };
+        Mutate(project => WithAnnotations(project, [.. project.Overlays.Annotations, annotation]));
+        var index = Project.Overlays.Annotations.Length - 1;
+        if (index < 0 || Project.Overlays.Annotations[index].Id != annotation.Id)
+        {
+            throw new InvalidOperationException("The annotation could not be committed. Paste again when the editor is idle.");
+        }
+        return new(true, index);
+    }
+
     /// <summary>
     /// Adds an annotation at <paramref name="sourceTime"/>, on top of the others, lasting
     /// <see cref="NewAnnotationDuration"/> or up to the end of the recording. Text is fixed to the

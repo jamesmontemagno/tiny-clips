@@ -602,6 +602,7 @@ public sealed partial class StudioEditorSession
     {
         if (IsEditable)
         {
+            _annotationPasteGeneration++;
             Model?.BeginEditingGroup();
         }
     }
@@ -2245,6 +2246,11 @@ public sealed partial class StudioEditorSession
 
     private void RaiseChanged(StudioEditorChanges changes)
     {
+        if ((changes & (StudioEditorChanges.Project | StudioEditorChanges.Playback | StudioEditorChanges.State
+            | StudioEditorChanges.Export | StudioEditorChanges.ProjectFolder | StudioEditorChanges.Captions)) != 0)
+        {
+            _annotationPasteGeneration++;
+        }
         // Whatever moved the playhead or changed the scenes, a different current scene is said once.
         var sceneIndex = CurrentSceneIndex;
         if (sceneIndex != _raisedSceneIndex)

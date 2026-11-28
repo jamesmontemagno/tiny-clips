@@ -42,6 +42,7 @@ internal sealed partial class WindowChecks
         AddingAnnotations();
         AnnotationTransformControls();
         AnnotationsAProjectAlreadyHolds();
+        AnnotationClipboardActions();
     }
 
     private void AnnotationTransformControls()

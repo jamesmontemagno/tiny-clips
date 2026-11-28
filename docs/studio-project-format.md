@@ -205,6 +205,16 @@ A crop is **valid** when `x >= 0`, `y >= 0`, `width >= 0.05`, `height >= 0.05`, 
 | `textColor` | string | `""` | | `#RRGGBB` in place of the style's text color, in the same way. An arrow does not use it |
 | `scale` | number | 1 | 0.5 to 3 | What `size` is multiplied by |
 
+### Studio annotation clipboard interchange
+
+Studio's **Copy Annotation** / **Paste Annotation** controls (Command-C/V on macOS, Ctrl-C/V on Windows outside text fields) transfer one selected annotation between clips, projects, and open windows. This does not change the project schema or convert v1 projects to v2. The custom clipboard type on both platforms is `com.tinyclips.studio.annotation.v1`; plain text is not treated as annotation JSON.
+
+The UTF-8 JSON envelope is `{ "version": 1, "annotation": <Annotation>, "outputDurationSeconds": <number> }`, bounded to 1 MiB. It contains the complete Annotation fields above, preserving extension properties but no source paths/media. Version 1 accepts known annotation kinds and enum values, finite numeric values within the documented clamps, nonnegative `start`, `end > start`, and positive finite `outputDurationSeconds`. Missing required fields, unsupported types, and malformed custom data fail explicitly without editing a project.
+
+Copy computes the remaining playback duration through the selected clip's section 7 time map: `sourceToOutput(end) - sourceToOutput(start)`. Paste starts on the destination playhead's displayed kept frame and preserves that duration in destination output time, clamping to the clip's edited end before converting back to source seconds. A range ending exactly at a cut keeps the preceding kept edge. If the minimum editable annotation duration cannot fit, Paste reports no room instead of moving earlier. Joins retain their normal clip-local blending behavior.
+
+Paste preserves normalized geometry and screen/frame attachment exactly, generates a fresh ID, and appends on top as one undoable edit. It never nudges or converts screen attachment when the destination lacks a visible screen. Existing not-drawn rules still apply. Duplicate remains a separate operation with its original timing and positional nudge. Clipboard access is UI-only; cross-device clipboard synchronization is not guaranteed.
+
 ### Captions
 
 | Property | Type | Default | Notes |

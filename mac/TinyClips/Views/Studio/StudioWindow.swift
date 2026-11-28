@@ -469,6 +469,8 @@ enum StudioMenuCommands {
         menu.addItem(menuItem("Add Ellipse", action: "studioAddEllipse:"))
         menu.addItem(menuItem("Add Redaction", action: "studioAddRedaction:"))
         menu.addItem(menuItem("Add Emoji", action: "studioAddEmoji:"))
+        menu.addItem(menuItem("Copy Annotation", action: "studioCopyAnnotation:"))
+        menu.addItem(menuItem("Paste Annotation", action: "studioPasteAnnotation:"))
         let duplicateItem = menuItem("Duplicate Annotation", action: "studioDuplicateAnnotation:")
         duplicateItem.keyEquivalent = "d"
         duplicateItem.keyEquivalentModifierMask = [.command]
@@ -648,6 +650,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioAddRedaction(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.redact) }
     @objc func studioAddEmoji(_ sender: Any?) { viewModel.addAnnotationAtPlayhead(kind: StudioAnnotationKind.emoji) }
     @objc func studioDuplicateAnnotation(_ sender: Any?) { viewModel.duplicateSelectedAnnotation() }
+    @objc func studioCopyAnnotation(_ sender: Any?) { viewModel.copySelectedAnnotation() }
+    @objc func studioPasteAnnotation(_ sender: Any?) { viewModel.pasteAnnotation() }
+    @objc func copy(_ sender: Any?) { viewModel.copySelectedAnnotation() }
+    @objc func paste(_ sender: Any?) { viewModel.pasteAnnotation() }
     @objc func studioDeleteAnnotation(_ sender: Any?) { viewModel.removeSelectedAnnotation() }
     @objc func studioPreviousAnnotation(_ sender: Any?) { viewModel.showPreviousAnnotation() }
     @objc func studioNextAnnotation(_ sender: Any?) { viewModel.showNextAnnotation() }
@@ -669,6 +675,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         }
 
         switch action {
+        case #selector(studioCopyAnnotation(_:)), #selector(copy(_:)):
+            return viewModel.canCopySelectedAnnotation && attachedSheet == nil
+        case #selector(studioPasteAnnotation(_:)), #selector(paste(_:)):
+            return viewModel.canPasteAnnotation && attachedSheet == nil
         case #selector(studioOpenProject(_:)),
             #selector(studioOpenRecent(_:)):
             return !viewModel.isBusy
@@ -824,6 +834,13 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = event.charactersIgnoringModifiers?.lowercased()
 
+        if (key == "c" || key == "v"), modifiers == [.command] {
+            if !isMouseButtonHeld && !event.isARepeat {
+                if key == "c" { viewModel.copySelectedAnnotation() }
+                else if viewModel.canPasteAnnotation { viewModel.pasteAnnotation() }
+            }
+            return true
+        }
         if key == "s", modifiers == [.command] || modifiers == [.command, .shift] {
             if !isMouseButtonHeld && !event.isARepeat {
                 viewModel.saveProjectFolder(saveAs: modifiers.contains(.shift))

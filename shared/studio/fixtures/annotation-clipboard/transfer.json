@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "outputDurationSeconds": 3,
+  "annotation": {
+    "id": "copied-source",
+    "kind": "redact",
+    "attach": "screen",
+    "start": 1,
+    "end": 9,
+    "x": 0.25,
+    "y": 0.75,
+    "offsetX": -0.1,
+    "offsetY": 0.2,
+    "text": "",
+    "style": "dark",
+    "size": "large",
+    "fill": "#123456",
+    "textColor": "#FFFFFF",
+    "scale": 1.5,
+    "rotation": 45,
+    "width": 0.3,
+    "height": 0.2,
+    "cornerRadius": 0.02,
+    "shapeFill": "#ABCDEF",
+    "shapeFillOpacity": 0.6,
+    "redactStyle": "solid",
+    "redactLevel": "heavy",
+    "shadow": true,
+    "futureField": { "keep": true }
+  }
+}

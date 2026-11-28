@@ -442,6 +442,9 @@
                     <controls:SettingsCard Header="Undo / redo / duplicate / delete">
                         <TextBlock FontFamily="Consolas" Text="Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z / Ctrl+D / Delete" TextWrapping="Wrap" />
                     </controls:SettingsCard>
+                    <controls:SettingsCard Header="Copy / paste annotation (text fields keep native copy / paste)">
+                        <TextBlock FontFamily="Consolas" Text="Ctrl+C / Ctrl+V" TextWrapping="Wrap" />
+                    </controls:SettingsCard>
                 </controls:SettingsExpander.Items>
             </controls:SettingsExpander>
 
