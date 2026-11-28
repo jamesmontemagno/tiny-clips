@@ -5,6 +5,28 @@ import XCTest
 final class ScreenshotFixtureTests: XCTestCase {
     private let tolerance: CGFloat = 1e-6
 
+    func testSharedPointerFixtures() throws {
+        let file = fixtureURL("pointer", "pointer.json")
+        let fixture = try JSONDecoder().decode(PointerFixture.self, from: Data(contentsOf: file))
+        XCTAssertEqual(fixture.cases.count, PointerAnnotationStyle.allCases.count)
+        for item in fixture.cases {
+            let style = try XCTUnwrap(PointerAnnotationStyle(rawValue: item.style))
+            assertPoint(PointerGeometry.hotspot(for: style), item.hotspot, "\(item.style) hotspot")
+            let actual = PointerGeometry.outline(for: style)
+            XCTAssertEqual(actual.count, item.outline.count)
+            for (index, pair) in zip(actual, item.outline).enumerated() {
+                assertPoint(pair.0, pair.1, "\(item.style) point \(index)")
+            }
+            let position = CGPoint(x: 0, y: 0)
+            let placed = PointerGeometry.rect(placing: position, style: style, side: 40)
+            let hotspot = PointerGeometry.hotspot(for: style)
+            XCTAssertEqual(placed.minX + hotspot.x * placed.width, position.x, accuracy: tolerance)
+            XCTAssertEqual(placed.minY + hotspot.y * placed.height, position.y, accuracy: tolerance)
+        }
+        XCTAssertEqual(PointerGeometry.fittedRect(in: CGRect(x: 10, y: 20, width: 80, height: 40)),
+                       CGRect(x: 30, y: 20, width: 40, height: 40))
+    }
+
     func testSharedArrowFixtures() throws {
         let files = try fixtureFiles(in: "arrow").filter { $0.lastPathComponent != "handle.json" }
         XCTAssertFalse(files.isEmpty, "Expected shared screenshot arrow fixtures")
@@ -181,6 +203,15 @@ final class ScreenshotFixtureTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+    }
+
+    private struct PointerFixture: Decodable {
+        struct Case: Decodable {
+            let style: String
+            let hotspot: FixturePoint
+            let outline: [FixturePoint]
+        }
+        let cases: [Case]
     }
 
     private struct FixturePoint: Decodable {

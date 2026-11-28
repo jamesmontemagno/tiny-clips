@@ -61,6 +61,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         EditTool.Text,
         EditTool.Counter,
         EditTool.Emoji,
+        EditTool.Pointer,
         EditTool.Redact,
     ];
     private bool _loading;

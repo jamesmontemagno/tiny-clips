@@ -15,6 +15,7 @@ public sealed class ScreenshotAnnotationHitTestTests
     [InlineData(EditTool.Text)]
     [InlineData(EditTool.Counter)]
     [InlineData(EditTool.Emoji)]
+    [InlineData(EditTool.Pointer)]
     [InlineData(EditTool.Redact)]
     public void DrawingToolHitsOnlyItsSelection(EditTool tool)
     {

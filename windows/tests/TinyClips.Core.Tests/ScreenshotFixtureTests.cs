@@ -8,6 +8,43 @@ public sealed class ScreenshotFixtureTests
     private const double Tolerance = 1e-6;
 
     [Fact]
+    public void SharedPointerFixturesMatchWindowsImplementation()
+    {
+        var cases = Cases("pointer", "pointer.json").ToArray();
+        Assert.Equal(Enum.GetValues<PointerStyle>().Length, cases.Length);
+        foreach (var (label, testCase) in cases)
+        {
+            var style = Enum.Parse<PointerStyle>(testCase.GetProperty("style").GetString()!, ignoreCase: true);
+            AssertPoint(testCase.GetProperty("hotspot"), PointerGeometry.Hotspot(style), $"{label} hotspot");
+            var expected = testCase.GetProperty("outline").EnumerateArray().ToArray();
+            var actual = PointerGeometry.Outline(style);
+            Assert.Equal(expected.Length, actual.Count);
+            for (var i = 0; i < expected.Length; i++)
+            {
+                AssertPoint(expected[i], actual[i], $"{label} point {i}");
+            }
+            var anchor = PointerGeometry.Hotspot(style);
+            var placed = PointerGeometry.Place(new PointD(0, 0), style, 40);
+            Assert.Equal(0, placed.X + anchor.X * placed.Width, 6);
+            Assert.Equal(0, placed.Y + anchor.Y * placed.Height, 6);
+        }
+        Assert.Equal(new RectD(30, 20, 40, 40), PointerGeometry.Fit(new RectD(10, 20, 80, 40)));
+    }
+
+    [Theory]
+    [InlineData(PointerStyle.Arrow, 90, 10.8, 48.4)]
+    [InlineData(PointerStyle.Hand, 0, 22.8, 49.2)]
+    [InlineData(PointerStyle.Text, -45, 20, 40)]
+    public void ResizingPointerKeepsItsVisibleHotspot(PointerStyle style, double rotation, double x, double y)
+    {
+        var resized = PointerGeometry.ResizeAtHotspot(new RectD(30, 50, 40, 40), style, rotation, 60);
+        Assert.Equal(x, resized.X, 6);
+        Assert.Equal(y, resized.Y, 6);
+        Assert.Equal(60, resized.Width);
+        Assert.Equal(60, resized.Height);
+    }
+
+    [Fact]
     public void SharedArrowFixturesMatchWindowsImplementation()
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "ScreenshotFixtures", "arrow");

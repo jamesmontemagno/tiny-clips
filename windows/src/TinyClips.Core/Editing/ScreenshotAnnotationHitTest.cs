@@ -27,7 +27,7 @@ public static class ScreenshotAnnotationHitTest
     {
         var b = InteractionBounds(ann);
         var point = new PointD(pixel.X, pixel.Y);
-        if (ann.Tool == EditTool.Emoji || ann.IsRotated)
+        if (ann.Tool is EditTool.Emoji or EditTool.Pointer || ann.IsRotated)
         {
             return RotatableAnnotationGeometry.Contains(point, new RectD(b.X, b.Y, b.Width, b.Height),
                 ann.Rotation, padding: ann.Thickness + 6);

@@ -5,6 +5,9 @@ own `CHANGELOG.md` at the repository root.
 
 ## [Unreleased]
 
+### Added
+- The screenshot editor has a **Pointer** tool (**P**) for arrow, hand, and I-beam pointers. New pointers are 50 px; use **Size** before placement or on a selected pointer; resizing with the slider keeps the tip on its target. Fill and stroke have separate opacity controls, and a drop shadow is optional. Click to place a pointer or choose **Place pointer at center**. The four-arrow **Select / Move** tool (**V**) lets you drag it on the canvas. Pointer can also be the default editor tool.
+
 ### Fixed
 - Screenshot recovery Save As preserves an existing destination if encoding fails or is canceled.
 - Saved screenshots no longer retain an extra recovery pixel buffer for the lifetime of their editor.

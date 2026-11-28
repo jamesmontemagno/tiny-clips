@@ -454,6 +454,107 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!--  Pointer (item order matches PointerStyle)  -->
+                <StackPanel x:Name="PointerSection" Spacing="8" Visibility="Collapsed">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Style" />
+                        <studio:StudioSegmented
+                            x:Name="PointerStyleChoice"
+                            HorizontalAlignment="Stretch"
+                            studio:StudioSegmentedChoice.KeepsLatestChoice="True"
+                            AutomationProperties.AutomationId="EditorPointerStyleChoice"
+                            AutomationProperties.Name="Pointer style"
+                            SelectionChanged="OnPointerStyleChanged">
+                            <controls:SegmentedItem Content="Arrow" />
+                            <controls:SegmentedItem Content="Hand" />
+                            <controls:SegmentedItem Content="I-beam" />
+                        </studio:StudioSegmented>
+                    </StackPanel>
+                    <Slider
+                        x:Name="PointerSizeSlider"
+                        AutomationProperties.AutomationId="EditorPointerSizeSlider"
+                        AutomationProperties.Name="Pointer size in pixels"
+                        Header="Size"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnPointerSizeChanged" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Fill" />
+                    <local:SwatchColorPicker
+                        x:Name="PointerFillColorPicker"
+                        AutomationProperties.AutomationId="EditorPointerFillColorButton"
+                        AutomationProperties.Name="Pointer fill color"
+                        AllowTransparent="True"
+                        ColorChanged="OnPointerFillColorChanged"
+                        IsAlphaEnabled="True" />
+                    <Slider
+                        x:Name="PointerFillOpacitySlider"
+                        AutomationProperties.AutomationId="EditorPointerFillOpacitySlider"
+                        AutomationProperties.Name="Fill opacity"
+                        Header="Fill opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnPointerSliderChanged" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Stroke" />
+                    <local:SwatchColorPicker
+                        x:Name="PointerStrokeColorPicker"
+                        AutomationProperties.AutomationId="EditorPointerStrokeColorButton"
+                        AutomationProperties.Name="Pointer stroke color"
+                        AllowTransparent="True"
+                        ColorChanged="OnPointerStrokeColorChanged"
+                        IsAlphaEnabled="True" />
+                    <Slider
+                        x:Name="PointerStrokeOpacitySlider"
+                        AutomationProperties.AutomationId="EditorPointerStrokeOpacitySlider"
+                        AutomationProperties.Name="Stroke opacity"
+                        Header="Stroke opacity"
+                        Maximum="100"
+                        Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnPointerSliderChanged" />
+                    <Slider
+                        x:Name="PointerStrokeWidthSlider"
+                        AutomationProperties.AutomationId="EditorPointerStrokeWidthSlider"
+                        AutomationProperties.Name="Stroke width"
+                        Header="Stroke width"
+                        Maximum="20"
+                        Minimum="0"
+                        PointerCaptureLost="OnTextStyleSliderPointerCaptureLost"
+                        PointerPressed="OnTextStyleSliderPointerPressed"
+                        PointerReleased="OnTextStyleSliderPointerReleased"
+                        StepFrequency="1"
+                        ValueChanged="OnPointerSliderChanged" />
+                    <CheckBox
+                        x:Name="PointerShadowCheck"
+                        AutomationProperties.AutomationId="EditorPointerShadowCheck"
+                        AutomationProperties.Name="Drop shadow"
+                        Checked="OnPointerShadowToggled"
+                        Content="Drop shadow"
+                        Unchecked="OnPointerShadowToggled" />
+                    <Button
+                        x:Name="PointerPlaceAtCenterButton"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.AutomationId="EditorPointerPlaceAtCenter"
+                        AutomationProperties.HelpText="Adds a pointer at the center and selects it for adjustment."
+                        AutomationProperties.Name="Place pointer at center"
+                        Click="OnPointerPlaceAtCenterClick"
+                        Content="Place pointer at center" />
+                </StackPanel>
+
                 <!--  Rotation (selected rotatable annotation)  -->
                 <StackPanel x:Name="RotationSection" Spacing="2" Visibility="Collapsed">
                     <Slider

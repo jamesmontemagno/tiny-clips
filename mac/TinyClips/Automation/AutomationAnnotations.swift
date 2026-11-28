@@ -11,6 +11,7 @@ enum AutomationAnnotations {
     private static let allowedKeys: Set<String> = [
         "type", "bounds", "points", "text", "color", "textColor", "fillColor",
         "lineWidth", "fontSize", "redactionLevel", "redactionStyle", "emoji",
+        "pointerStyle", "opacity", "shadow",
     ]
 
     /// Validates every annotation against `imagePixelSize` and returns editor annotations in
@@ -60,8 +61,9 @@ enum AutomationAnnotations {
         case "number": tool = .number
         case "emoji": tool = .emoji
         case "redact": tool = .blur
+        case "pointer": tool = .pointer
         default:
-            throw fail("type must be rectangle, ellipse, arrow, line, pen, text, number, emoji, or redact.")
+            throw fail("type must be rectangle, ellipse, arrow, line, pen, text, number, emoji, redact, or pointer.")
         }
 
         let bounds = try parseBounds(object["bounds"], imagePixelSize: size, label: label)
@@ -172,6 +174,39 @@ enum AutomationAnnotations {
             }
         } else if level != nil || style != nil {
             throw fail("redactionLevel and redactionStyle are only used by redact.")
+        }
+
+        if tool == .pointer {
+            if object["textColor"] != nil { throw fail("textColor is not used by pointer.") }
+            var pointer = PointerAppearance()
+            if let name = try optionalString(object["pointerStyle"], key: "pointerStyle", label: label) {
+                guard let pointerStyle = PointerAnnotationStyle(rawValue: name) else {
+                    throw fail("pointerStyle must be arrow, hand, or text.")
+                }
+                pointer.style = pointerStyle
+            }
+            if let fill = try parseColor(object["fillColor"], key: "fillColor", label: label) { pointer.fill = fill }
+            if let stroke = try parseColor(object["color"], key: "color", label: label) { pointer.stroke = stroke }
+            if object["lineWidth"] != nil { pointer.strokeWidth = lineWidth }
+            if object["opacity"] != nil {
+                guard let value = AutomationValue.double(object["opacity"]), value.isFinite, value >= 0, value <= 1 else {
+                    throw fail("opacity must be a number from 0 to 1.")
+                }
+                pointer.opacity = CGFloat(value)
+            }
+            if let shadow = object["shadow"] {
+                guard let enabled = shadow as? Bool, CFGetTypeID(shadow as CFTypeRef) == CFBooleanGetTypeID() else {
+                    throw fail("shadow must be true or false.")
+                }
+                pointer.shadow.enabled = enabled
+            }
+            annotation.color = .white
+            annotation.fillColor = .clear
+            annotation.lineWidth = 0
+            annotation.points = []
+            annotation.pointer = pointer
+        } else if object["pointerStyle"] != nil || object["opacity"] != nil || object["shadow"] != nil {
+            throw fail("pointerStyle, opacity, and shadow are only used by pointer.")
         }
         return annotation
     }
