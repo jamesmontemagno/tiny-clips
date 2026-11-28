@@ -62,6 +62,147 @@ struct ClipItem: Identifiable {
 
     var filePath: String { url.path }
     var id: String { filePath }
+
+    static func files(in directory: URL, extensions: Set<String>, onlyTinyClips: Bool) throws -> [URL] {
+        let keys: Set<URLResourceKey> = [.creationDateKey, .fileSizeKey, .isRegularFileKey]
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: Array(keys), options: .skipsHiddenFiles
+        )
+        return contents.filter { url in
+            guard extensions.contains(url.pathExtension.lowercased()),
+                  !onlyTinyClips || url.lastPathComponent.hasPrefix("TinyClips "),
+                  let values = try? url.resourceValues(forKeys: keys) else { return false }
+            return values.isRegularFile == true && (values.fileSize ?? 0) > 0
+        }
+    }
+}
+
+// MARK: - Read-only video chooser
+
+enum ClipsLibraryVideoChooser {
+    /// Deliberately does not run the Library's archive job, which would move the files being chosen.
+    static func videos(in directory: URL, onlyTinyClips: Bool) throws -> [ClipItem] {
+        try ClipItem.files(in: directory, extensions: ["mp4"], onlyTinyClips: onlyTinyClips).compactMap(ClipItem.init)
+    }
+
+    @MainActor
+    static func choose(attachedTo parent: NSWindow) async -> URL? {
+        let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 390),
+                             styleMask: [.titled], backing: .buffered, defer: false)
+        sheet.title = "Add from Clips Library"
+        sheet.isReleasedWhenClosed = false
+        var selection: URL?
+        var didEnd = false
+        sheet.contentView = NSHostingView(rootView: LibraryVideoChooserView { [weak parent, weak sheet] url in
+            guard !didEnd, let parent, let sheet, parent.attachedSheet === sheet else { return }
+            didEnd = true
+            selection = url
+            parent.endSheet(sheet, returnCode: url == nil ? .cancel : .OK)
+        })
+        let closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification,
+                                                             object: parent, queue: .main) { [weak parent, weak sheet] _ in
+            MainActor.assumeIsolated {
+                guard let parent, let sheet, parent.attachedSheet === sheet else { return }
+                parent.endSheet(sheet, returnCode: .cancel)
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(closing) }
+        let response = await withCheckedContinuation { continuation in
+            parent.beginSheet(sheet) { continuation.resume(returning: $0) }
+        }
+        return response == .OK ? selection : nil
+    }
+}
+
+private struct LibraryVideoChooserView: View {
+    let finish: (URL?) -> Void
+    @State private var videos: [ClipItem]?
+    @State private var names: [String: String] = [:]
+    @State private var errorMessage: String?
+    @State private var query = ""
+    @State private var selectedID: String?
+
+    private func name(for item: ClipItem) -> String {
+        guard let name = names[item.id], !name.isEmpty else { return item.url.lastPathComponent }
+        return name
+    }
+
+    private var results: [ClipItem] {
+        (videos ?? []).filter {
+            query.isEmpty || name(for: $0).localizedStandardContains(query) || $0.url.lastPathComponent.localizedStandardContains(query)
+        }
+    }
+
+    var body: some View {
+        let matches = results
+        let selection = matches.first { $0.id == selectedID }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Add from Clips Library").font(.headline)
+            TextField("Search videos", text: $query)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Search library videos")
+            List(matches, selection: $selectedID) { item in
+                HStack {
+                    Image(systemName: "film").foregroundStyle(.secondary).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(name(for: item)).lineLimit(1)
+                        Text("\(item.date.formatted(date: .abbreviated, time: .shortened)) · \(item.formattedSize)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .tag(item.id)
+                .help(item.url.path)
+            }
+            .accessibilityLabel("Library videos")
+            .overlay {
+                if videos == nil {
+                    ProgressView("Loading videos…")
+                } else if matches.isEmpty {
+                    ContentUnavailableView(
+                        query.isEmpty ? "No library videos" : "No matching videos",
+                        systemImage: "film",
+                        description: Text(query.isEmpty ? "Record a video or add a video file from Studio." : "Try a different name.")
+                    )
+                }
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.callout).foregroundStyle(.secondary)
+            }
+            Text("Videos linked to a single recording keep their Studio edits. Other videos use the exported picture and sound.")
+                .font(.callout).foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel") { finish(nil) }.keyboardShortcut(.cancelAction)
+                Button("Add Video") { if let selection { finish(selection.url) } }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(selection == nil)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 480, minHeight: 360)
+        .task {
+            let directories = SaveService.shared.captureLibraryDirectories()
+            let onlyTinyClips = CaptureSettings.shared.clipsManagerIgnoreNonTinyClipsFiles
+            names = ClipMetadataStore.shared.metadataMap().compactMapValues(\.displayName)
+            let (items, problems) = await Task.detached(priority: .userInitiated) {
+                var items: [ClipItem] = []
+                var problems: [String] = []
+                for directory in directories {
+                    do {
+                        items += try ClipsLibraryVideoChooser.videos(in: directory, onlyTinyClips: onlyTinyClips)
+                    } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                        continue // A capture directory may not have been created yet.
+                    } catch {
+                        problems.append("Couldn’t read \(directory.lastPathComponent): \(error.localizedDescription)")
+                    }
+                }
+                return (items.sorted { $0.date == $1.date ? $0.id < $1.id : $0.date > $1.date }, problems)
+            }.value
+            guard !Task.isCancelled else { return }
+            videos = items
+            errorMessage = problems.isEmpty ? nil : problems.joined(separator: "\n")
+        }
+    }
 }
 
 // MARK: - Metadata
@@ -515,33 +656,14 @@ private class ClipsViewModel: ObservableObject {
     }
 
     private func clipDirectories() -> [URL] {
-        let types: [CaptureType] = [.screenshot, .video, .gif]
-        var seen = Set<String>()
-        return types
-            .map { SaveService.shared.outputDirectoryURL(for: $0) }
-            .filter { seen.insert($0.standardizedFileURL.path).inserted }
+        SaveService.shared.captureLibraryDirectories()
     }
 
     private func filesInDirectory(_ dir: URL) -> [URL] {
-        let settings = CaptureSettings.shared
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: dir,
-            includingPropertiesForKeys: [.creationDateKey, .fileSizeKey, .isRegularFileKey],
-            options: .skipsHiddenFiles
-        ) else { return [] }
-        return contents.filter {
-            let values = try? $0.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            let isRegularFile = values?.isRegularFile ?? false
-            let fileSize = values?.fileSize ?? 0
-            let ext = $0.pathExtension.lowercased()
-            guard isRegularFile,
-                  fileSize > 0,
-                  ["png", "jpg", "jpeg", "webp", "mp4", "gif"].contains(ext) else { return false }
-            if settings.clipsManagerIgnoreNonTinyClipsFiles {
-                return $0.lastPathComponent.hasPrefix("TinyClips ")
-            }
-            return true
-        }
+        (try? ClipItem.files(
+            in: dir, extensions: ["png", "jpg", "jpeg", "webp", "mp4", "gif"],
+            onlyTinyClips: CaptureSettings.shared.clipsManagerIgnoreNonTinyClipsFiles
+        )) ?? []
     }
 
     func archiveOldClipsNow() {

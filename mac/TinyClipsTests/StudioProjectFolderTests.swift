@@ -400,11 +400,11 @@ final class StudioProjectFolderTests: XCTestCase {
         let file = folder.appendingPathComponent("Later.tinyclips")
         let text = try String(contentsOf: file, encoding: .utf8)
         XCTAssertTrue(text.contains("\"schemaVersion\" : 1"))
-        try text.replacingOccurrences(of: "\"schemaVersion\" : 1", with: "\"schemaVersion\" : 2")
+        try text.replacingOccurrences(of: "\"schemaVersion\" : 1", with: "\"schemaVersion\" : 3")
             .write(to: file, atomically: true, encoding: .utf8)
 
         XCTAssertThrowsError(try store.importProjectFolder(projectFile: file)) { error in
-            XCTAssertEqual(error as? StudioProjectError, .unsupportedVersion(2))
+            XCTAssertEqual(error as? StudioProjectError, .unsupportedVersion(3))
         }
         XCTAssertEqual(try names(in: storeURL), [id])
     }
@@ -789,7 +789,373 @@ final class StudioProjectFolderTests: XCTestCase {
         }
     }
 
+    // MARK: - Timeline imports
+
+    @MainActor
+    func testDetailHeightFollowsTimelineEditsAndUndoButNotClipSelection() async throws {
+        let url = outsideURL.appendingPathComponent("Clip.mp4")
+        let second = outsideURL.appendingPathComponent("Second.mp4")
+        try copyMovieFixture("native.mp4", to: url)
+        try copyMovieFixture("flat.mp4", to: second)
+        let project = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: url, width: 64, height: 48, duration: 1, appVersion: "test"
+        ))
+        let vm = StudioViewModel(projectID: project.id, store: store)
+        await vm.load()
+        defer { vm.tearDown() }
+        vm.addZoomAtPlayhead()
+        await vm.addClip(.dropped([second]), at: nil)?.value
+        let firstID = try XCTUnwrap(vm.manifest?.timeline?.clips.first?.id)
+        XCTAssertTrue(vm.zooms.isEmpty)
+        XCTAssertEqual(vm.minimumTimelineDetailHeight, 66)
+        vm.selectTimelineClip(firstID)
+        XCTAssertFalse(vm.zooms.isEmpty)
+        XCTAssertEqual(vm.minimumTimelineDetailHeight, 66)
+        vm.removeTimelineClip(firstID)
+        XCTAssertNil(vm.minimumTimelineDetailHeight)
+        vm.undo()
+        XCTAssertEqual(vm.minimumTimelineDetailHeight, 66)
+    }
+
+    @MainActor
+    func testEditorBatchInsertIsAtomicUndoableAndReopensAfterRemovingOriginals() async throws {
+        let original = outsideURL.appendingPathComponent("Original.mp4")
+        let first = outsideURL.appendingPathComponent("First.mp4")
+        let second = outsideURL.appendingPathComponent("Second.mp4")
+        try copyMovieFixture("native.mp4", to: original)
+        try copyMovieFixture("flat.mp4", to: first)
+        try copyMovieFixture("native.mp4", to: second)
+        let project = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: original, width: 64, height: 48, duration: 1, appVersion: "test"
+        ))
+        let vm = StudioViewModel(projectID: project.id, store: store)
+        await vm.load()
+        XCTAssertEqual(vm.state, .ready)
+        let before = try store.load(id: project.id)
+        let paths = try store.paths(for: before)
+        let files = try names(in: paths.projectDirectory)
+        await vm.addClip(.dropped([first, outsideURL.appendingPathComponent("Missing.mp4")]), at: 0.5)?.value
+        XCTAssertNotNil(vm.assemblyError)
+        XCTAssertEqual(try store.load(id: project.id), before)
+        XCTAssertEqual(try names(in: paths.projectDirectory), files)
+        XCTAssertFalse(vm.canUndo)
+
+        await vm.addClip(.dropped([first, second]), at: 0.5)?.value
+        XCTAssertNil(vm.assemblyError)
+        let saved = try store.load(id: project.id)
+        let lane = try XCTUnwrap(saved.timeline)
+        XCTAssertEqual(lane.clips.count, 4)
+        XCTAssertEqual(Array(lane.clips[1...2].map(\.name)), ["First", "Second"])
+        XCTAssertEqual(vm.selectedClipID, lane.clips[1].id)
+        XCTAssertEqual(vm.projectPlayhead, 0.5, accuracy: 0.001)
+        XCTAssertEqual(vm.timelineMap?.duration ?? 0, 3, accuracy: 0.001)
+        vm.undo()
+        XCTAssertFalse(vm.canUndo)
+        XCTAssertNil(vm.manifest?.timeline)
+        vm.redo()
+        vm.saveBeforeQuitting()
+        for file in [original, first, second] { try fileManager.removeItem(at: file) }
+        vm.tearDown()
+
+        let reopened = StudioViewModel(projectID: project.id, store: store)
+        await reopened.load()
+        XCTAssertEqual(reopened.state, .ready)
+        XCTAssertEqual(reopened.manifest?.timeline, lane)
+        reopened.scrubProject(to: 1.5)
+        XCTAssertEqual(reopened.selectedClipID, lane.clips[2].id)
+        XCTAssertEqual(reopened.playhead, 0, accuracy: 0.001)
+        reopened.stepFrame(by: -1)
+        XCTAssertEqual(reopened.selectedClipID, lane.clips[1].id)
+        reopened.tearDown()
+    }
+
+    @MainActor
+    func testLinkedTimelineImportSnapshotsPendingCaptionWithoutEditingTheSource() async throws {
+        let sourceVideo = outsideURL.appendingPathComponent("Source.mp4")
+        let export = outsideURL.appendingPathComponent("Export.mp4")
+        let destinationVideo = outsideURL.appendingPathComponent("Destination.mp4")
+        for url in [sourceVideo, export, destinationVideo] {
+            try copyMovieFixture("flat.mp4", to: url)
+        }
+        var source = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: sourceVideo, width: 32, height: 64, duration: 1, appVersion: "test"
+        ))
+        source.captions.cues = [StudioCaptionCue(start: 0, end: 0.5, text: "Saved")]
+        source = try store.save(source)
+        _ = try store.recordExport(id: source.id, path: export.path)
+        let destination = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: destinationVideo, width: 32, height: 64, duration: 1, appVersion: "test"
+        ))
+
+        let viewModel = StudioViewModel(projectID: source.id, store: store)
+        await viewModel.load()
+        defer { viewModel.tearDown() }
+        XCTAssertEqual(viewModel.state, .ready)
+        viewModel.selectCaption(at: 0)
+        viewModel.setPendingCaptionText("Typed before import")
+
+        let selection = try await StudioLibraryVideoSelection.resolve(url: export, store: store) { linkedID in
+            XCTAssertEqual(linkedID, source.id)
+            return viewModel.timelineImportSnapshot()
+        }
+        let prepared = try await store.prepareTimelineImport(
+            destination: destination, videoURL: export, recording: selection.recording
+        )
+        defer { prepared.rollback() }
+
+        XCTAssertEqual(prepared.clip.captions?.cues.first?.text, "Typed before import")
+        XCTAssertEqual(viewModel.manifest?.captions.cues.first?.text, "Saved")
+        XCTAssertFalse(viewModel.canUndo)
+        XCTAssertEqual(try store.load(id: source.id).captions.cues.first?.text, "Saved")
+
+        viewModel.commitCaptionText()
+        XCTAssertEqual(viewModel.manifest?.captions.cues.first?.text, "Typed before import")
+        XCTAssertTrue(viewModel.canUndo)
+    }
+
+    func testTimelineImportOwnsBothFlatVideosAcrossUndoRedoAndLinkedSave() async throws {
+        let original = outsideURL.appendingPathComponent("Original.mp4")
+        let second = outsideURL.appendingPathComponent("Second.mp4")
+        try copyMovieFixture("flat.mp4", to: original)
+        try fileManager.copyItem(at: original, to: second)
+        var destination = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: original, width: 32, height: 64, duration: 1, appVersion: "test"
+        ))
+        let diskState = StudioEditableState(project: destination)
+        destination.edits.trimStart = 0.25 // Not autosaved yet.
+        destination.overlays.branding = true
+        let paths = try store.paths(for: destination)
+        let oldManifest = try Data(contentsOf: paths.projectJSONURL)
+        let authorized = try store.videoSourceIdentity(at: second)
+        let prepared = try await store.prepareTimelineImport(destination: destination, videoURL: second, expectedVideo: authorized)
+        XCTAssertEqual(try Data(contentsOf: paths.projectJSONURL), oldManifest)
+        XCTAssertEqual(prepared.base.timeline?.clips.first?.edits, destination.edits)
+        XCTAssertEqual(prepared.base.mediaSources?.first?.kind, .flatVideo)
+        XCTAssertEqual(prepared.base.mediaSources?.first?.sources.screen.file, prepared.base.sources.screen.file)
+        XCTAssertEqual(prepared.base.sources.screen.width, destination.sources.screen.width)
+        XCTAssertEqual(prepared.base.sources.screen.height, destination.sources.screen.height)
+        XCTAssertEqual(prepared.base.sources.screen.frameRate, destination.sources.screen.frameRate)
+        XCTAssertEqual(prepared.base.mediaSources?.first?.sources.screen.width, 64)
+        XCTAssertFalse(prepared.base.sources.screen.external)
+        XCTAssertEqual(prepared.source.sources.screen.width, 64)
+        XCTAssertEqual(prepared.source.sources.screen.height, 32)
+        XCTAssertEqual(prepared.source.sources.screen.rotationDegrees, 270)
+        XCTAssertEqual(prepared.source.sources.screen.frameRate, 60, accuracy: 0.1)
+        XCTAssertEqual(prepared.clip.sourceEnd, 1, accuracy: 0.001)
+        XCTAssertNil(prepared.source.sources.events)
+        XCTAssertNil(prepared.source.sources.camera)
+        XCTAssertEqual(prepared.clip.overlays?.branding, true)
+        let updated = assembled(prepared)
+        let export = outsideURL.appendingPathComponent("Existing export.mp4")
+        _ = try store.recordExport(id: destination.id, path: export.path)
+        let saved = try store.saveEdits(StudioEditableState(project: updated), id: destination.id, expected: diskState)
+        prepared.finalize()
+        prepared.rollback() // A late cancellation cannot take back an accepted transaction.
+        XCTAssertEqual(saved.exports.map(\.path), [export.path])
+        XCTAssertThrowsError(try store.saveEdits(diskState, id: destination.id, expected: diskState)) {
+            XCTAssertEqual($0 as? StudioProjectFolderError, .staleEdit)
+        }
+        try fileManager.removeItem(at: original)
+        try fileManager.removeItem(at: second)
+        let folder = outsideURL.appendingPathComponent("Portable")
+        let file = folder.appendingPathComponent("Portable.tinyclips")
+        try store.exportProjectFolder(id: saved.id, to: folder)
+        let updatedState = StudioEditableState(project: updated)
+        let undone = try store.saveEdits(diskState, id: saved.id, expected: updatedState)
+        XCTAssertEqual(undone.schemaVersion, 1)
+        XCTAssertFalse(undone.sources.screen.external)
+        XCTAssertEqual(undone.sources.screen.width, 32)
+        XCTAssertEqual(undone.sources.screen.height, 64)
+        try store.updateSavedProject(id: saved.id, projectFile: file)
+        _ = try store.saveEdits(updatedState, id: saved.id, expected: diskState)
+        try store.updateSavedProject(id: saved.id, projectFile: file)
+        let imported = try store.importProjectFolder(projectFile: file)
+        XCTAssertEqual(imported.mediaSources, saved.mediaSources)
+        XCTAssertEqual(imported.timeline, saved.timeline)
+        let importedFolder = try store.paths(for: imported).projectDirectory
+        for media in try XCTUnwrap(imported.mediaSources) {
+            XCTAssertTrue(fileManager.fileExists(atPath: importedFolder.appendingPathComponent(media.sources.screen.file).path))
+        }
+    }
+
+    func testNativeSnapshotCopiesReferencedLayersAndAssetsInsteadOfTheExport() async throws {
+        let destination = try store.load(id: makeProject(camera: false))
+        var recording = try store.load(id: makeProject(camera: true, events: true))
+        let paths = try store.paths(for: recording)
+        let movie = outsideURL.appendingPathComponent("Footage.mp4")
+        try copyMovieFixture("native.mp4", to: movie)
+        recording.sources.screen.file = "unedited.mp4"
+        recording.sources.camera?.file = "bubble.mp4"
+        recording.sources.camera?.startOffset = 0.125
+        recording.sources.screen.audioTracks = ["microphone"]
+        let screen = paths.projectDirectory.appendingPathComponent("unedited.mp4")
+        let camera = paths.projectDirectory.appendingPathComponent("bubble.mp4")
+        try fileManager.copyItem(at: movie, to: screen)
+        try fileManager.copyItem(at: movie, to: camera)
+        recording.edits.cuts = [StudioTimeRange(start: 0.5, end: 1)]
+        recording.zooms = [StudioZoom(start: 0, end: 0.25, scale: 2)]
+        recording.audio.volume = 0.75
+        recording.canvas.background.image = "custom.png"
+        let imageBytes = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNQj+kCAAG7AQ4tijP4AAAAAElFTkSuQmCC"))
+        try imageBytes.write(to: paths.projectDirectory.appendingPathComponent("custom.png"))
+        let originalManifest = try Data(contentsOf: paths.projectJSONURL)
+        let prepared = try await store.prepareTimelineImport(
+            destination: destination, videoURL: outsideURL.appendingPathComponent("missing-export.mp4"), recording: recording
+        )
+        XCTAssertEqual(prepared.source.kind, .nativeRecording)
+        XCTAssertEqual(prepared.source.sources.camera?.startOffset, 0.125)
+        XCTAssertEqual(prepared.source.sources.screen.audioTracks, ["microphone"])
+        XCTAssertEqual(prepared.clip.edits, recording.edits)
+        XCTAssertEqual(prepared.clip.zooms, recording.zooms)
+        XCTAssertEqual(prepared.clip.audio, recording.audio)
+        XCTAssertEqual(prepared.base.canvas, destination.canvas)
+        XCTAssertEqual(try Data(contentsOf: paths.projectJSONURL), originalManifest)
+        let bytes = try Data(contentsOf: movie)
+        XCTAssertEqual(try Data(contentsOf: screen), bytes)
+        XCTAssertEqual(try Data(contentsOf: camera), bytes)
+        let saved = try store.save(assembled(prepared))
+        prepared.finalize()
+        try store.delete(id: recording.id)
+        let folder = outsideURL.appendingPathComponent("Snapshot")
+        try store.exportProjectFolder(id: saved.id, to: folder)
+        let file = folder.appendingPathComponent("Snapshot.tinyclips")
+        let imported = try store.importProjectFolder(projectFile: file)
+        let directory = try store.paths(for: imported).projectDirectory
+        let media = try XCTUnwrap(imported.mediaSources?.last)
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent(media.sources.screen.file)), bytes)
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent(try XCTUnwrap(media.sources.camera?.file))), bytes)
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent(try XCTUnwrap(media.sources.events))), Data("{}".utf8))
+        guard case .string(let image) = media.extra["recordingBackgroundImage"] else { return XCTFail("Missing background asset") }
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent(image)), imageBytes)
+        let previous = try names(in: storeURL)
+        try fileManager.removeItem(at: folder.appendingPathComponent(image))
+        XCTAssertThrowsError(try store.importProjectFolder(projectFile: file))
+        try fileManager.createSymbolicLink(at: folder.appendingPathComponent(image), withDestinationURL: movie)
+        XCTAssertThrowsError(try store.importProjectFolder(projectFile: file))
+        XCTAssertEqual(try names(in: storeURL), previous)
+    }
+
+    func testFailedOrAbandonedPreparationLeavesManifestOriginalAndOtherImportsAlone() async throws {
+        let original = outsideURL.appendingPathComponent("External.mp4")
+        try copyMovieFixture("flat.mp4", to: original)
+        let destination = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: original, width: 32, height: 64, duration: 1, appVersion: "test"
+        ))
+        let paths = try store.paths(for: destination)
+        let before = try names(in: paths.projectDirectory)
+        let manifest = try Data(contentsOf: paths.projectJSONURL)
+        let bytes = try Data(contentsOf: original)
+        let bad = outsideURL.appendingPathComponent("Bad.mov")
+        try Data("not video".utf8).write(to: bad)
+        do {
+            _ = try await store.prepareTimelineImport(destination: destination, videoURL: bad)
+            XCTFail("Accepted a malformed movie")
+        } catch {}
+        XCTAssertEqual(try names(in: paths.projectDirectory), before)
+        let keep = try await store.prepareTimelineBase(destination: destination)
+        let withFirst = try names(in: paths.projectDirectory)
+        let abandon = try await store.prepareTimelineImport(destination: destination, videoURL: original)
+        abandon.rollback()
+        XCTAssertEqual(try names(in: paths.projectDirectory), withFirst)
+        keep.rollback()
+        XCTAssertEqual(try names(in: paths.projectDirectory), before)
+        XCTAssertEqual(try Data(contentsOf: paths.projectJSONURL), manifest)
+        XCTAssertEqual(try Data(contentsOf: original), bytes)
+    }
+
+    func testClosedProjectEditRefusesANewEditorOrStaleManifest() throws {
+        let before = try store.load(id: makeProject(camera: false))
+        var edit = before
+        edit.audio.muted = true
+        store.beginUse(id: before.id)
+        XCTAssertNil(try store.save(edit, replacing: before))
+        store.endUse(id: before.id)
+        _ = try store.recordExport(id: before.id, path: outsideURL.appendingPathComponent("Export.mp4").path)
+        XCTAssertNil(try store.save(edit, replacing: before))
+        let current = try store.load(id: before.id)
+        XCTAssertFalse(current.audio.muted)
+        XCTAssertEqual(current.exports.count, 1)
+    }
+
+    func testPreparingAnAuthorizedVideoRejectsAReplacementAtTheSamePath() async throws {
+        let destination = try store.load(id: makeProject(camera: false))
+        let selected = outsideURL.appendingPathComponent("Library.mp4")
+        try copyMovieFixture("flat.mp4", to: selected)
+        let authorized = try store.videoSourceIdentity(at: selected)
+        try fileManager.moveItem(at: selected, to: outsideURL.appendingPathComponent("Previous.mp4"))
+        try copyMovieFixture("native.mp4", to: selected)
+        let paths = try store.paths(for: destination)
+        let before = try names(in: paths.projectDirectory)
+        do {
+            _ = try await store.prepareTimelineImport(destination: destination, videoURL: selected, expectedVideo: authorized)
+            XCTFail("Attached a file other than the authorized Library video")
+        } catch {
+            XCTAssertEqual((error as? CocoaError)?.code, .fileReadUnknown)
+        }
+        XCTAssertEqual(try names(in: paths.projectDirectory), before)
+        XCTAssertEqual(try store.load(id: destination.id), destination)
+    }
+
+    func testInterruptingSecondCopyRollsBackExternalAdoptionAndPartialMedia() async throws {
+        let original = outsideURL.appendingPathComponent("First.mp4")
+        let incoming = outsideURL.appendingPathComponent("Incoming.mp4")
+        try copyMovieFixture("flat.mp4", to: original)
+        try copyMovieFixture("native.mp4", to: incoming)
+        let destination = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: original, width: 32, height: 64, duration: 1, appVersion: "test"
+        ))
+        let paths = try store.paths(for: destination)
+        let before = try names(in: paths.projectDirectory)
+        let manifest = try Data(contentsOf: paths.projectJSONURL)
+        for cancel in [false, true] {
+            let manager = InterruptedCopyManager(file: incoming.lastPathComponent, cancel: cancel)
+            let interrupted = StudioProjectStore(rootURL: storeURL, fileManager: manager)
+            let task = Task { try await interrupted.prepareTimelineImport(destination: destination, videoURL: incoming) }
+            do {
+                _ = try await task.value
+                XCTFail("Interrupted import succeeded")
+            } catch {
+                if cancel { XCTAssertTrue(error is CancellationError) }
+                else { XCTAssertEqual((error as? CocoaError)?.code, .fileWriteOutOfSpace) }
+            }
+            XCTAssertEqual(try Data(contentsOf: paths.projectJSONURL), manifest)
+            XCTAssertEqual(try names(in: paths.projectDirectory), before)
+            XCTAssertTrue(fileManager.fileExists(atPath: original.path))
+            XCTAssertTrue(fileManager.fileExists(atPath: incoming.path))
+        }
+    }
+
     // MARK: - Helpers
+
+    private final class InterruptedCopyManager: FileManager, @unchecked Sendable {
+        let file: String
+        let cancel: Bool
+
+        init(file: String, cancel: Bool) {
+            self.file = file
+            self.cancel = cancel
+            super.init()
+        }
+
+        override func copyItem(at source: URL, to destination: URL) throws {
+            try super.copyItem(at: source, to: destination)
+            guard source.lastPathComponent == file else { return }
+            if cancel { withUnsafeCurrentTask { $0?.cancel() } } else { throw CocoaError(.fileWriteOutOfSpace) }
+        }
+    }
+
+    private func assembled(_ prepared: StudioPreparedTimelineImport) -> StudioProject {
+        var project = prepared.base
+        project.mediaSources?.append(prepared.source)
+        project.timeline?.clips.append(prepared.clip)
+        return project
+    }
+
+    private func copyMovieFixture(_ name: String, to url: URL) throws {
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/StudioRendering").appendingPathComponent(name)
+        try fileManager.copyItem(at: fixture, to: url)
+    }
 
     private func makeProject(camera: Bool, events: Bool = false, poster: Bool = false) throws -> String {
         let paths = try store.beginRecording()

@@ -104,4 +104,32 @@ final class StudioInspectorPanelTests: XCTestCase {
         cutOnly.edits.cuts = [StudioTimeRange(start: 3, end: 4)]
         XCTAssertEqual(StudioTimelineLane.shown(in: cutOnly), [.cut])
     }
+
+    func testMultiClipHeightUsesTallestResolvedClipNotTheUnionOfLanes() throws {
+        var project = laneProject(camera: false)
+        project.zooms = [StudioZoom(start: 1, end: 2)]
+        XCTAssertNil(StudioTimelineLane.minimumStackHeight(in: project))
+        project = StudioTimelineEditing.timelineProject(from: project)
+        XCTAssertNil(StudioTimelineLane.minimumStackHeight(in: project))
+
+        var a = try XCTUnwrap(project.timeline?.clips.first)
+        a.zooms = nil // Inherits the project's zoom.
+        a.edits.cuts = [StudioTimeRange(start: 3, end: 4)]
+        var b = a
+        b.id = "clip-b"
+        b.zooms = []
+        b.edits = StudioEdits()
+        b.overlays = StudioOverlays(annotations: [StudioAnnotation(end: 1)])
+        project.timeline = StudioTimeline(clips: [b, a])
+        // A: trim + zoom + cut; B: trim + annotation.
+        XCTAssertEqual(StudioTimelineLane.minimumStackHeight(in: project), 92)
+
+        a.zooms = []
+        a.edits = StudioEdits()
+        project.timeline = StudioTimeline(clips: [a, b])
+        XCTAssertEqual(StudioTimelineLane.minimumStackHeight(in: project), 62)
+        b.overlays = StudioOverlays()
+        project.timeline = StudioTimeline(clips: [a, b])
+        XCTAssertEqual(StudioTimelineLane.minimumStackHeight(in: project), 36)
+    }
 }

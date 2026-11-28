@@ -18,6 +18,32 @@ enum StudioVideoOpenError: LocalizedError {
     var errorDescription: String? { "The file has no readable video." }
 }
 
+struct StudioEditorInputError: LocalizedError {
+    var errorDescription: String? { message }
+    private let message: String
+    init(_ message: String) { self.message = message }
+}
+
+struct StudioLibraryVideoSelection {
+    let url: URL
+    let recording: StudioProject?
+
+    @MainActor
+    static func resolve(
+        url: URL, store: StudioProjectStore = .shared,
+        openManifest: (String) throws -> StudioProject?
+    ) async throws -> Self {
+        let stored = try await Task.detached(priority: .userInitiated) { () throws -> StudioProject? in
+            guard let id = try store.findProjectID(exportedPath: url.path) else { return nil }
+            return try store.load(id: id)
+        }.value
+        guard let stored else { return Self(url: url, recording: nil) }
+        let current = try openManifest(stored.id) ?? stored
+        // This action imports a single editable recording, not an entire timeline.
+        return Self(url: url, recording: current.timeline == nil ? current : nil)
+    }
+}
+
 enum StudioVideoFile {
     #if APPSTORE
     static let needsOwnedSource = true
@@ -36,6 +62,7 @@ final class StudioWindowRegistry {
     static let shared = StudioWindowRegistry()
 
     private var windows: [String: StudioWindow] = [:]
+    private var editorHiddenForRecording: StudioWindow?
     /// Run once when a project's window closes. Set for a window opened straight after a recording.
     private var closeHandlers: [String: @MainActor () -> Void] = [:]
 
@@ -46,6 +73,47 @@ final class StudioWindowRegistry {
 
     func automationViewModel(forProjectID id: String) -> StudioViewModel? {
         windows[id]?.automationViewModel
+    }
+
+    func recordSegment(forProjectID id: String) async throws -> StudioProject? {
+        try Task.checkCancellation()
+        guard let window = windows[id], let manager = CaptureManager.current else {
+            throw StudioEditorInputError("Open the destination Studio project before recording a segment.")
+        }
+        guard editorHiddenForRecording == nil, !manager.isAnyCaptureInProgress else {
+            throw StudioEditorInputError("Finish the current capture before recording another segment.")
+        }
+        window.automationViewModel.pause()
+        // Ordering out, not closing, retains the project, selection and undo stack. The registry
+        // continues protecting the working folder from cleanup throughout capture and finalization.
+        editorHiddenForRecording = window
+        window.orderOut(nil)
+        defer {
+            editorHiddenForRecording = nil
+            if windows[id] === window { WindowPresenter.shared.present(window) }
+        }
+        let take = try await manager.recordStudioSegment()
+        try Task.checkCancellation()
+        guard windows[id] === window else { throw CancellationError() }
+        return take
+    }
+
+    func chooseLibraryVideo(forProjectID id: String) async throws -> StudioLibraryVideoSelection? {
+        try Task.checkCancellation()
+        guard let window = windows[id], window.attachedSheet == nil else {
+            throw StudioEditorInputError("Finish the current Studio dialog before choosing a video.")
+        }
+        guard let url = await ClipsLibraryVideoChooser.choose(attachedTo: window) else { return nil }
+        try Task.checkCancellation()
+        let selection = try await StudioLibraryVideoSelection.resolve(url: url) { linkedID in
+            guard let model = automationViewModel(forProjectID: linkedID) else { return nil }
+            guard let current = model.timelineImportSnapshot() else {
+                throw StudioEditorInputError("The linked Studio project is not ready. Wait for it to load and try again.")
+            }
+            return current
+        }
+        guard windows[id] === window else { throw CancellationError() }
+        return selection
     }
 
     var hasOpenWindows: Bool {
@@ -204,7 +272,8 @@ final class StudioWindowRegistry {
         }
 
         // Shown on the next run loop turn so it does not fight menu tracking or a closing panel.
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard self?.editorHiddenForRecording !== window else { return }
             WindowPresenter.shared.present(window)
         }
     }
@@ -357,6 +426,9 @@ enum StudioMenuCommands {
         menu.addItem(.separator())
         menu.addItem(menuItem("Undo", action: "studioUndo:"))
         menu.addItem(menuItem("Redo", action: "studioRedo:"))
+        menu.addItem(.separator())
+        menu.addItem(menuItem("Add Video…", action: "studioAddVideo:"))
+        menu.addItem(menuItem("Split Clip", action: "studioSplitClip:"))
         menu.addItem(.separator())
         menu.addItem(menuItem("Play/Pause", action: "studioTogglePlayback:"))
         menu.addItem(menuItem("Previous Frame", action: "studioPreviousFrame:"))
@@ -540,6 +612,8 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
     @objc func studioExport(_ sender: Any?) { viewModel.export() }
     @objc func studioUndo(_ sender: Any?) { viewModel.undo() }
     @objc func studioRedo(_ sender: Any?) { viewModel.redo() }
+    @objc func studioAddVideo(_ sender: Any?) { viewModel.addClip(.file, at: nil) }
+    @objc func studioSplitClip(_ sender: Any?) { viewModel.splitTimelineClip() }
     @objc func studioTogglePlayback(_ sender: Any?) { viewModel.togglePlayback() }
     @objc func studioPreviousFrame(_ sender: Any?) { viewModel.stepFrame(by: -1) }
     @objc func studioNextFrame(_ sender: Any?) { viewModel.stepFrame(by: 1) }
@@ -608,6 +682,10 @@ final class StudioWindow: NSWindow, NSWindowDelegate {
             return viewModel.canUndo
         case #selector(studioRedo(_:)):
             return viewModel.canRedo
+        case #selector(studioAddVideo(_:)):
+            return viewModel.canAssemble
+        case #selector(studioSplitClip(_:)):
+            return viewModel.canSplitTimelineClip
         case #selector(studioTogglePlayback(_:)),
             #selector(studioPreviousFrame(_:)),
             #selector(studioNextFrame(_:)),

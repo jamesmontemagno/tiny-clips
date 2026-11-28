@@ -33,6 +33,7 @@ public sealed partial class StudioViewModel : ObservableObject
     private static readonly string[] PlaybackPropertyNames =
     [
         nameof(Playhead),
+        nameof(ProjectPlayhead),
         nameof(IsPlaying),
         nameof(PlayPauseGlyph),
         nameof(PlayPauseLabel),
@@ -710,6 +711,13 @@ public sealed partial class StudioViewModel : ObservableObject
 
     private void OnSessionChanged(object? sender, StudioEditorChangedEventArgs e)
     {
+        if (e.Includes(StudioEditorChanges.State)
+            || e.Includes(StudioEditorChanges.Project)
+            || e.Includes(StudioEditorChanges.Selection))
+        {
+            InvalidateClipStrip();
+        }
+
         if (e.Includes(StudioEditorChanges.State) || e.Includes(StudioEditorChanges.Project))
         {
             ClearDefaultLookStatusIfEdited();
@@ -727,6 +735,7 @@ public sealed partial class StudioViewModel : ObservableObject
             if (e.Includes(StudioEditorChanges.Selection))
             {
                 RaiseSelectionChanged();
+                RaiseTimelineChanged();
             }
 
             // The playhead has come into another scene: by a seek, or by playing.
@@ -770,6 +779,12 @@ public sealed partial class StudioViewModel : ObservableObject
             {
                 Raise(ProjectFolderPropertyNames);
             }
+        }
+
+        // The preview was opened again, or let go of: its view is bound again by the window.
+        if (e.Includes(StudioEditorChanges.Preview))
+        {
+            OnPropertyChanged(nameof(Preview));
         }
 
         if (_session.State != _lastState)

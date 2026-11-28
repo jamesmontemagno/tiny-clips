@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using TinyClips.App.Models.Studio;
 using TinyClips.App.ViewModels.Studio;
 using TinyClips.App.Views.Studio;
+using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
@@ -45,6 +46,26 @@ public interface IStudioProjectHost
 
     /// <summary>Asks where to write captions. Null when nowhere was chosen.</summary>
     Task<string?> ChooseCaptionExportFileAsync(Window owner, string folder, string filename, StudioCaptionFormat format);
+
+    /// <summary>Asks for the MP4 or MOV videos to add to a timeline. Empty when none was chosen.</summary>
+    Task<IReadOnlyList<string>> ChooseVideoFilesAsync(Window owner);
+
+    /// <summary>
+    /// Asks for a video of the Clips Library to add to the timeline of <paramref name="destination"/>.
+    /// Null when none was chosen. A video that was exported from a single recording brings that
+    /// recording's layers and edits with it; any other is a video of its own. Fails with a
+    /// sentence for the user when the choice cannot be used.
+    /// </summary>
+    Task<StudioTimelineImport?> ChooseLibraryVideoAsync(Window owner, StudioViewModel destination, CancellationToken cancellationToken);
+
+    /// <summary>Whether another recording can be made for a timeline now, which it cannot while a capture is under way.</summary>
+    bool CanRecordSegment { get; }
+
+    /// <summary>
+    /// Puts the editor away, records a take with the app's own capture flow, and brings the editor
+    /// back. Null when the take was cancelled. The take stays in the Studio drafts either way.
+    /// </summary>
+    Task<StudioTimelineImport?> RecordSegmentAsync(Window owner, StudioViewModel destination, CancellationToken cancellationToken);
 
     /// <summary>Whether Export asks for a resolution and quality, or uses the saved ones.</summary>
     bool AsksForExportOptions { get; }
@@ -178,6 +199,157 @@ public sealed class StudioWindowService : IStudioProjectHost
         ChooseExportFile(owner, folder, filename);
 
     Task<string?> IStudioProjectHost.ChooseCaptionFileAsync(Window owner) => PickCaptionFileAsync(owner);
+
+    Task<IReadOnlyList<string>> IStudioProjectHost.ChooseVideoFilesAsync(Window owner) => ChooseVideoFiles(owner);
+
+    bool IStudioProjectHost.CanRecordSegment => _editorHiddenForRecording is null && CanRecordStudioSegment();
+
+    /// <summary>
+    /// How videos are asked for: the system's open picker, owned by the window that asks. Returns
+    /// the paths in the order the picker gives them, none when nothing was chosen.
+    /// </summary>
+    public Func<Window, Task<IReadOnlyList<string>>> ChooseVideoFiles { get; set; } = PickVideoFilesAsync;
+
+    /// <summary>
+    /// How a video of the Clips Library is asked for, owned by the window that asks. Returns the
+    /// entry that was chosen, or null when none was. The app answers with the Clips Library's videos.
+    /// </summary>
+    public Func<Window, Task<ClipEntry?>> ChooseLibraryVideo { get; set; } = static _ => Task.FromResult<ClipEntry?>(null);
+
+    /// <summary>Whether a take can be recorded for a timeline now: nothing else is being captured.</summary>
+    public Func<bool> CanRecordStudioSegment { get; set; } = static () => false;
+
+    /// <summary>
+    /// Records one take as the app records a Studio video, and returns the id of the draft it made,
+    /// or null when it was cancelled or discarded. Throws with a sentence for the user when the take
+    /// cannot be made.
+    /// </summary>
+    public Func<CancellationToken, Task<string?>> RecordStudioSegment { get; set; } =
+        static _ => throw new InvalidOperationException("Recording another segment is not available.");
+
+    // The editor that is put away while its take is recorded. Its project is open all the while.
+    private StudioWindow? _editorHiddenForRecording;
+
+    private static async Task<IReadOnlyList<string>> PickVideoFilesAsync(Window owner)
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.VideosLibrary,
+            ViewMode = PickerViewMode.Thumbnail,
+        };
+        foreach (var extension in ActivatedFile.VideoExtensions)
+        {
+            picker.FileTypeFilter.Add(extension);
+        }
+
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(owner));
+        var files = await picker.PickMultipleFilesAsync();
+        return files.Select(static file => file.Path).ToArray();
+    }
+
+    /// <summary>
+    /// What a chosen or dropped video is as an import: the file with what it was when it was chosen,
+    /// so a file that is changed or swapped before it is copied is refused. Reads the files, so it
+    /// runs off the UI thread.
+    /// </summary>
+    internal static Task<IReadOnlyList<StudioTimelineImport>> CaptureFileImportsAsync(
+        IEnumerable<string> paths,
+        CancellationToken cancellationToken)
+    {
+        var batch = paths.ToArray();
+        return Task.Run<IReadOnlyList<StudioTimelineImport>>(
+            () => batch
+                .Select(path =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return new StudioTimelineImport(path, null, StudioMediaFileIdentity.Capture(path));
+                })
+                .ToArray(),
+            cancellationToken);
+    }
+
+    async Task<StudioTimelineImport?> IStudioProjectHost.ChooseLibraryVideoAsync(
+        Window owner,
+        StudioViewModel destination,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (await ChooseLibraryVideo(owner) is not { } entry)
+        {
+            return null;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = entry.Path;
+        var linkedId = await Task.Run(() => _store.FindProjectIdByExportPath(path), cancellationToken);
+
+        // A video exported from a recording comes in with the recording's own layers, as it was
+        // last edited: the open editor has the newest edits (including caption text still being
+        // typed), the store the saved ones. The project being added to is not a recording to add
+        // to itself, and a timeline is not one recording.
+        StudioProject? recording = null;
+        if (linkedId is not null && !string.Equals(linkedId, destination.ProjectId, StringComparison.Ordinal))
+        {
+            var current = FindOpenViewModel(linkedId) is { } open
+                ? open.SnapshotForTimelineImport() ?? throw new InvalidOperationException(
+                    "The linked Studio project is not ready. Wait for it to load and try again.")
+                : await Task.Run(() => _store.Load(linkedId), cancellationToken);
+            recording = current.SchemaVersion == 1 ? current : null;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var identity = await Task.Run(() => StudioMediaFileIdentity.Capture(path), cancellationToken);
+        return new StudioTimelineImport(path, recording, identity);
+    }
+
+    async Task<StudioTimelineImport?> IStudioProjectHost.RecordSegmentAsync(
+        Window owner,
+        StudioViewModel destination,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_windows.TryGetValue(destination.ProjectId, out var window) || !ReferenceEquals(window, owner))
+        {
+            throw new InvalidOperationException("Open the destination Studio project before recording a segment.");
+        }
+
+        if (_editorHiddenForRecording is not null || !CanRecordStudioSegment())
+        {
+            throw new InvalidOperationException("Finish the current capture before recording another segment.");
+        }
+
+        // Hiding, not closing, keeps the project, the selection and the undo history. The project
+        // stays open, so cleanup leaves its folder alone throughout the take.
+        destination.Pause();
+        _editorHiddenForRecording = window;
+        window.AppWindow.Hide();
+        try
+        {
+            var draftId = await RecordStudioSegment(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_windows.TryGetValue(destination.ProjectId, out var current) || !ReferenceEquals(current, window))
+            {
+                throw new OperationCanceledException();
+            }
+
+            if (draftId is null)
+            {
+                return null;
+            }
+
+            var draft = await Task.Run(() => _store.Load(draftId), cancellationToken);
+            return new StudioTimelineImport(_store.GetPaths(draft).ScreenPath, draft);
+        }
+        finally
+        {
+            _editorHiddenForRecording = null;
+            if (_windows.TryGetValue(destination.ProjectId, out var current) && ReferenceEquals(current, window))
+            {
+                window.AppWindow.Show();
+                ActivateWindow(window);
+            }
+        }
+    }
 
     Task<string?> IStudioProjectHost.ChooseCaptionExportFileAsync(Window owner, string folder, string filename, StudioCaptionFormat format) =>
         PickCaptionExportFileAsync(owner, folder, filename, format);

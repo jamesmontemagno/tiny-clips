@@ -60,7 +60,7 @@ internal static class McpServer
             tools.Add(new Tool
             {
                 Name = Contract.ToolName(command.Name),
-                Description = $"{command.Description} (scope: {command.Scope}{(sensitive ? "; asks the user to approve in Tiny Clips" : "")})",
+                Description = $"{command.Description} (scope: {string.Join(", ", new[] { command.Scope }.Concat(command.AdditionalScopes))}{(sensitive ? "; asks the user to approve in Tiny Clips" : "")})",
                 InputSchema = JsonSerializer.SerializeToElement(Contract.InputSchema(command)),
                 Annotations = new ToolAnnotations
                 {

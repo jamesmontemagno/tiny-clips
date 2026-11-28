@@ -187,8 +187,9 @@ internal sealed class StudioVideoSource : IDisposable
             using var nativeType = reader.GetNativeMediaType(SourceReaderIndex.FirstVideoStream, 0);
             var rotation = StudioMediaFoundation.TryGetUInt32(nativeType, MediaTypeAttributeKeys.VideoRotation) ?? 0;
             _ = StudioVideoOrientation.Transform(1, 1, (int)rotation);
-            // Keep stored pixel orientation through the video processor; the renderer applies it.
-            type.Set(MediaTypeAttributeKeys.VideoRotation, rotation);
+            // The advanced video processor returns upright pixels (and swaps their dimensions
+            // for a sideways track), even when its requested output rotation is zero.
+            type.Set(MediaTypeAttributeKeys.VideoRotation, 0u);
 
             // A decoder that pads its frames (HEVC decodes 1080 lines into 1088) says where the
             // picture is with an aperture. Left to choose, the reader converts into a frame of
@@ -205,7 +206,7 @@ internal sealed class StudioVideoSource : IDisposable
             var source = new StudioVideoSource(reader, graphics, description, deviceManager is not null)
             {
                 KeepsFrameTimes = keepsFrameTimes,
-                RotationDegrees = (int)rotation,
+                RotationDegrees = 0,
             };
             source.ReadCurrentType();
             source.DurationTicks = ReadDuration(reader);

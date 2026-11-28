@@ -167,6 +167,41 @@
       "decision": "missing_scope"
     },
     {
+      "name": "reading a timeline does not grant clip removal",
+      "enabled": true,
+      "scopes": ["read"],
+      "command": "studio.timeline.remove",
+      "decision": "missing_scope"
+    },
+    {
+      "name": "clip removal is an edit not a source deletion",
+      "enabled": true,
+      "scopes": ["edit"],
+      "command": "studio.timeline.remove",
+      "decision": "allow"
+    },
+    {
+      "name": "timeline recording requires recording permission",
+      "enabled": true,
+      "scopes": ["edit"],
+      "command": "studio.timeline.record",
+      "decision": "missing_scope"
+    },
+    {
+      "name": "recording permission alone cannot edit the destination",
+      "enabled": true,
+      "scopes": ["record"],
+      "command": "studio.timeline.record",
+      "decision": "missing_scope"
+    },
+    {
+      "name": "record and edit can append a take",
+      "enabled": true,
+      "scopes": ["record", "edit"],
+      "command": "studio.timeline.record",
+      "decision": "allow"
+    },
+    {
       "name": "unknown command",
       "enabled": true,
       "scopes": [

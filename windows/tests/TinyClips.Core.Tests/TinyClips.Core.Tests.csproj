@@ -27,6 +27,7 @@
   <ItemGroup>
     <Content Include="..\..\..\shared\studio\fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" LinkBase="StudioFixtures" />
     <Content Include="..\..\..\shared\studio\fixtures\**\*.tinyclips" CopyToOutputDirectory="PreserveNewest" LinkBase="StudioFixtures" />
+    <Content Include="..\..\..\mac\TinyClipsTests\Fixtures\StudioRendering\*.mp4" CopyToOutputDirectory="PreserveNewest" LinkBase="StudioMediaFixtures" />
     <Content Include="..\..\..\shared\automation\fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" LinkBase="AutomationFixtures" />
     <Content Include="..\..\..\shared\screenshot\fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" LinkBase="ScreenshotFixtures" />
   </ItemGroup>

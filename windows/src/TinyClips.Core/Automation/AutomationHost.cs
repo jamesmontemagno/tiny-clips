@@ -180,16 +180,16 @@ public sealed class AutomationHost
                 return Fail(id, command, client, AutomationErrorCodes.AutomationDisabled, MessageFor(AutomationErrorCodes.AutomationDisabled, command, client), approved);
             }
 
-            if (!ClientIsAuthorized(client, request.Token))
+            var liveClient = _clients.FindByToken(request.Token);
+            if (liveClient?.Id != client.Id)
             {
                 return Fail(id, command, client, AutomationErrorCodes.Unauthorized, MessageFor(AutomationErrorCodes.Unauthorized, command, client), approved);
             }
 
-            // Scopes can be edited in Settings while an approval prompt is open.
-            if (approved is not null
-                && _policy.Decide(true, _clients.FindByToken(request.Token)?.Scopes, command).Kind == AutomationDecisionKind.Deny)
+            // Grants can change in Settings after the initial check (including during approval).
+            if (definition.MissingScope(liveClient.Scopes) is not null)
             {
-                return Fail(id, command, client, AutomationErrorCodes.MissingScope, MessageFor(AutomationErrorCodes.MissingScope, command, client), approved);
+                return Fail(id, command, liveClient, AutomationErrorCodes.MissingScope, MessageFor(AutomationErrorCodes.MissingScope, command, liveClient), approved);
             }
 
             requestLifetime.Token.ThrowIfCancellationRequested();
@@ -420,6 +420,17 @@ public sealed class AutomationHost
     {
         parameters = new JsonObject();
         error = string.Empty;
+        if (definition.Name.StartsWith("studio.timeline.", StringComparison.Ordinal) && supplied is not null)
+        {
+            foreach (var (key, value) in supplied)
+            {
+                if (!definition.Parameters.ContainsKey(key) || value is null)
+                {
+                    error = $"Unknown or null timeline parameter: {key}.";
+                    return false;
+                }
+            }
+        }
         if (definition.Name == "app.open" && supplied?.ContainsKey("guideTopic") == true)
         {
             if (supplied["guideTopic"] is null)
@@ -488,7 +499,7 @@ public sealed class AutomationHost
         AutomationErrorCodes.Unauthorized => "Missing, unknown, or revoked client token. Pair again with session.pair.",
         AutomationErrorCodes.UnknownCommand => $"{command} is not a Tiny Clips command.",
         AutomationErrorCodes.MissingScope when _contract.TryGetCommand(command, out var d) =>
-            $"This client was not granted the {d.Scope} scope.",
+            $"This client was not granted the {d.MissingScope(client?.Scopes ?? [])} scope.",
         _ => _contract.Errors.TryGetValue(code, out var description) ? description : code,
     };
 

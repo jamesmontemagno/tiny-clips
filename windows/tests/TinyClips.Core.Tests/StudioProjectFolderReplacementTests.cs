@@ -213,7 +213,7 @@ public sealed class StudioProjectFolderReplacementTests : StudioProjectFolderTes
                 File.WriteAllText(file, "hello");
                 break;
             case "later":
-                EditProjectFile(file, project => project["schemaVersion"] = 2);
+                EditProjectFile(file, project => project["schemaVersion"] = 3);
                 break;
             default:
                 EditProjectFile(file, project => project["sources"]!["screen"]!["file"] = "../screen.mp4");

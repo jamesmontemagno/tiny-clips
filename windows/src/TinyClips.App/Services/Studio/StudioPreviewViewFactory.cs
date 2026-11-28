@@ -14,7 +14,7 @@ public sealed class StudioPreviewViewFactory : IStudioPreviewViewFactory
     public FrameworkElement Create(IStudioPreview preview)
     {
         ArgumentNullException.ThrowIfNull(preview);
-        if (preview is not StudioPreviewEngine engine)
+        if (preview is not IStudioSurfacePreview engine)
         {
             throw new InvalidOperationException("The preview is of a kind this window cannot show.");
         }

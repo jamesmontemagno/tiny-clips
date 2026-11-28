@@ -73,6 +73,40 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task TimelineRecordingRequiresRecordAndEditAndForwardsTarget()
+    {
+        var commands = new[] { "get", "import", "insert", "move", "record", "remove", "split", "transition", "trim" };
+        foreach (var platform in new[] { "macos", "windows" })
+        {
+            const string prefix = "tinyclips_studio_timeline_";
+            var tools = McpServer.ListTools(platform).Where(t => t.Name.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+            Assert.Equal(commands, tools.Select(t => t.Name[prefix.Length..]).Order(StringComparer.Ordinal));
+            Assert.False(tools.Single(t => t.Name == prefix + "remove").Annotations!.DestructiveHint);
+        }
+        await using var app = new FakeApp();
+        await WithClientAsync(app.Environment(new StringWriter(), new StringWriter(), token: "t"), null, async (client, token) =>
+        {
+            var args = new Dictionary<string, object?>
+            {
+                ["projectId"] = "p", ["expectedModifiedAt"] = "now", ["expectedRevision"] = "rev",
+                ["projectTime"] = 2.5, ["microphone"] = false, ["camera"] = false, ["mode"] = "screen"
+            };
+            foreach (var scope in new[] { "edit", "record" })
+            {
+                app.Clients["t"] = [scope];
+                var denied = await client.CallToolAsync("tinyclips_studio_timeline_record", args, cancellationToken: token);
+                Assert.True(denied.IsError);
+                Assert.Equal("missing_scope", (string?)Body(denied)["error"]!["code"]);
+            }
+            app.Clients["t"] = ["edit", "record"];
+            var accepted = await client.CallToolAsync("tinyclips_studio_timeline_record", args, cancellationToken: token);
+            Assert.False(accepted.IsError);
+            Assert.Equal(2.5, (double?)Body(accepted)["params"]!["projectTime"]);
+            Assert.False((bool?)Body(accepted)["params"]!["camera"]);
+        });
+    }
+
+    [Fact]
     public async Task ProjectCopyToolForwardsArgumentsAndRequiresExportScope()
     {
         if (OperatingSystem.IsWindows()) return;

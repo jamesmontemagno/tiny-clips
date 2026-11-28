@@ -532,7 +532,7 @@ internal sealed partial class WindowChecks
         string[] timeline =
         [
             "StudioPlayPauseButton", "StudioPreviousFrameButton", "StudioNextFrameButton", "StudioAddZoomButton", "StudioAddCutButton", "StudioAddSpeedButton", "StudioStartHereButton", "StudioEndHereButton",
-            .. LanesShown(editor), "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
+            .. ClipStripStops(editor), .. LanesShown(editor), "StudioTrimStart", "StudioTrimEnd", "StudioPlayhead",
         ];
         var at = order.IndexOf(section[0]);
         var sectionTogether = at >= 0 && order.Skip(at).Take(section.Length).SequenceEqual(section);
@@ -542,7 +542,7 @@ internal sealed partial class WindowChecks
         var timelineTogether = row >= 0 && order.Skip(row).Take(timeline.Length).SequenceEqual(timeline);
         var blocks = order.Where(id => id.StartsWith("StudioCut_", StringComparison.Ordinal)).ToArray();
         _report.Check(
-            "the keyboard focus, moved from stop to stop with each panel on show in turn, goes through the Cut panel from Previous cut to Delete cut with nothing between them, after the Zoom panel and before Mute; the timeline of a recording without a camera is the transport row, the zoom lane, the cut lane, the speed lane and the trim bar; the cut lane is one stop, and no single cut is one",
+            "the keyboard focus, moved from stop to stop with each panel on show in turn, goes through the Cut panel from Previous cut to Delete cut with nothing between them, after the Zoom panel and before Mute; the timeline of a recording without a camera is the transport row, the clip strip's stops, the zoom lane, the cut lane, the speed lane and the trim bar; the cut lane is one stop, and no single cut is one",
             sectionTogether && afterZoom && beforeMute && timelineTogether && blocks.Length == 0,
             sectionTogether && afterZoom && beforeMute && timelineTogether && blocks.Length == 0
                 ? $"{order.Count} stops, saved as {Path.GetFileName(path)}: {string.Join(", ", order.Select(id => id.Replace("Studio", string.Empty, StringComparison.Ordinal)))}"

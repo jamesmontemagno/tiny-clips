@@ -322,13 +322,13 @@ public sealed class StudioProjectJsonTests
     {
         var ex = Assert.Throws<StudioUnsupportedSchemaVersionException>(() => StudioProjectJson.ReadProject("""
             {
-              "schemaVersion": 2,
+              "schemaVersion": 3,
               "id": "p",
               "sources": { "screen": { "width": 1, "height": 1, "duration": 1 } }
             }
             """));
 
-        Assert.Equal(2, ex.SchemaVersion);
+        Assert.Equal(3, ex.SchemaVersion);
     }
 
     [Fact]

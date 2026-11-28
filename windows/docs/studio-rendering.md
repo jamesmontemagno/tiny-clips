@@ -3,6 +3,26 @@
 `TinyClips.Core.Studio.Rendering` draws Studio frames and exports projects. It follows sections 6.5
 to 6.9 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineSpike` measured.
 
+## Multi-clip projects
+
+V2 export and posters use the sequential timeline, not the legacy root recording. The root
+canvas and frame rate stay fixed while `StudioTimelineProjection` resolves source-local clip
+edits, style, camera, events, captions and overlays. Registry media and backgrounds must be
+owned regular filenames, not external files, links or folders.
+
+`StudioTimelineRenderer` shares its decoded composition with live preview. A cut switches
+readers; a dissolve retains two until the overlap ends. Complete clip pictures, including
+redactions, are blended on the GPU. Black and white fades do not overlap time or change sound;
+dissolves shorten the project by their overlap and linearly crossfade both picture and sound.
+`StudioTimelineAudio` uses 48 kHz stereo, honors per-clip volume/mute and native system/microphone
+track gains, and keeps speed-changed stretches silent. Export presets estimate the full lane
+duration and whether any resolved clip is unmuted.
+
+The same encoder fallback, atomic output placement and cancellation path serves both versions.
+`StudioRenderCheck --only timeline` verifies decoded frames/sound, posters, live preview,
+source-local effects, the Mac rotation/camera fixtures, software rendering and cancellation.
+No additional Agent commands are required: callers of the existing exporter receive v2 support.
+
 ## The pieces
 
 - `StudioGraphicsDevice`: one Direct3D 11 device (graphics hardware, or WARP where there is none),
@@ -30,8 +50,8 @@ to 6.9 of `docs/studio-project-format.md` and what `windows/spikes/StudioEngineS
 2. The source readers get the device manager and deliver RGB32 textures, which the renderer wraps
    without a copy (on WARP they decode to memory and frames are uploaded). Their frame rate
    conversion is off (`MF_XVP_DISABLE_FRC`): it moves a recording's frames onto an even grid.
-   Source frames retain their stored orientation. Rotation metadata travels with each frame;
-   the renderer rotates the screen brush before cropping and scaling, for both preview and export.
+   The advanced video processor returns upright pixels, including swapped dimensions for a
+   sideways track. The decoder does not ask the scene renderer to rotate these pixels again.
 3. Output frame `i` shows the source at the middle of its duration, `(i + 0.5) / fps` through the
    `StudioTimeMap`, and the camera at that time minus `startOffset`. A source frame shows from the
    instant it starts until the next starts. A reader seeks only backwards or over a second ahead.

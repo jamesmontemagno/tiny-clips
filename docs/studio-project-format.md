@@ -1,4 +1,4 @@
-# Tiny Clips Studio project format (v1)
+# Tiny Clips Studio project format (v1 and v2)
 
 This is the contract between the macOS and Windows implementations of Tiny Clips Studio: the files a project is made of, every field in them, and the math that turns a project into a frame layout. The design it serves is in [plans/video-studio-plan.md](../plans/video-studio-plan.md).
 
@@ -48,7 +48,7 @@ Defaults apply when a property is missing. Clamps are applied when the value is 
 
 | Property | Type | Default | Notes |
 |---|---|---|---|
-| `schemaVersion` | int | 1 | |
+| `schemaVersion` | int | 1 | Version 1 is the existing single-source format. Version 2 adds `mediaSources` and `timeline`; readers must refuse versions above the highest project version they support. |
 | `id` | string | | Lowercase UUID |
 | `name` | string | `""` | Display name |
 | `createdAt`, `modifiedAt`, `lastOpenedAt` | timestamp | | |
@@ -800,7 +800,7 @@ With `audio.muted` the video has no sound at all, whatever the three volumes are
 
 Both editors have one **Volume** slider for `audio.volume`, from 0% to 100%, under Mute, and it is switched off while Mute is on. The macOS editor also has **System audio** and **Microphone**, for `audio.systemVolume` and `audio.microphoneVolume`, when the recording has those tracks apart. A reader from before `audio.volume` keeps it as a property it does not recognize (section 2) and plays and exports the sound as recorded.
 
-The macOS recorder writes the computer's sound and the microphone as two tracks and lists them, the computer's first. The Windows recorder mixes them into one track while recording and lists nothing, so there `audio.systemVolume` and `audio.microphoneVolume` change nothing and `audio.volume` is the only volume there is. The Windows preview and exporter read the first sound track of the file only, at `audio.volume`, and do not apply the other two volumes yet; a project where that makes a difference cannot be recorded on Windows, but one saved as a folder on a Mac can be opened there (section 14), and until Windows adds the tracks together it plays and exports without its microphone.
+The macOS recorder writes the computer's sound and the microphone as two tracks and lists them, the computer's first. The Windows recorder mixes them into one track while recording and lists nothing, so there `audio.systemVolume` and `audio.microphoneVolume` change nothing and `audio.volume` is the only volume there is. When a recording from a Mac is used on a v2 timeline, Windows preview and export mix its sound tracks at their labeled gains before applying clip volume and the incoming or outgoing dissolve. Do not rely on separate-track gains in the Windows v1 playback or export path.
 
 ## 8. Zoom suggestions
 
@@ -1306,3 +1306,39 @@ A summary names the findings by count, in the order of the table, joined by `, `
 **Generating** replaces `captions.cues` with what speech recognition heard, and sets `captions.language` to the language it heard, or null if it does not say, as one undoable edit. Other properties of `captions` stay. A cue's times, and those of its `words`, are source time, so generating listens to the whole recording, including what is cut, muted, or trimmed away, and an edit made while it runs is kept. Recognition breaks its cues at word boundaries, at most 84 characters long, and then the safe fixes of section 15.6 are made. A recording in which nothing is heard is an error and leaves the captions as they were, and so does stopping.
 
 The speech recognition is the platform's own, so two platforms need not make the same cues from the same sound.
+
+## 16. Multi-clip projects (v2)
+
+Version 2 adds one ordered primary video lane. Joins default to cuts; only an explicit cross-dissolve overlaps adjacent clips. A v1 reader refuses a v2 project rather than opening a partial edit. Current readers leave v1 projects in v1 when opening them; converting one to the v2 representation is an explicit edit, not an open-time migration.
+
+The existing root `sources`, `screen`, `camera`, `scenes`, `zooms`, `edits`, `audio`, `overlays`, and `captions` remain required-compatible fields. They are the legacy single-source view and are not the authority for a v2 timeline. V2 adds:
+
+| Property | Type | Notes |
+|---|---|---|
+| `mediaSources` | `MediaSource[]` | Non-empty source registry. IDs are stable and unique within the project. |
+| `timeline` | `Timeline` | The ordered primary lane. |
+| `timeline.clips` | `TimelineClip[]` | Non-empty and ordered as played. Each clip and each source has a stable, project-unique ID. |
+
+A `MediaSource` is `{ "id", "kind", "sources" }`. `kind` is `nativeRecording` or `flatVideo`; `sources` uses the existing `Sources` shape (screen file metadata, optional camera media, optional events file). Media source file names follow section 1 and are copied into the destination project when imported. `sources.screen.rotationDegrees` is optional and defaults to 0; it records clockwise display rotation metadata in degrees without changing the coded dimensions. A flat video does not have recoverable camera, cursor, click, or recording-event data.
+
+A `TimelineClip` contains `{ "id", "sourceId", "name", "sourceStart", "sourceEnd", "edits" }` and may include clip-specific `screen`, `camera`, `scenes`, `zooms`, `audio`, `overlays`, and `captions`. These optional fields use the matching v1 shapes and defaults. Missing clip-specific fields inherit the corresponding project-level default. A native source keeps its separate camera, audio track description, and events in its source registry entry; edits and user-visible native layers remain in the clip payload. A split creates a new clip ID, keeps the same source, and preserves each side's applicable native layers and edits. It does not duplicate or delete media.
+
+`sourceStart`, `sourceEnd`, and all times inside the clip's `edits` and native layers are source time for the referenced media. The clip's selected source interval is half-open `[sourceStart, sourceEnd)`. Its `edits.trimStart` and `edits.trimEnd` are clamped to that interval; cuts and speed ranges are interpreted by section 7. A clip with no playable time is invalid. An annotation, including one attached to the canvas (`frame`), belongs to that clip. Splitting through a visible annotation keeps it on both halves in source time; this does not create a project-wide overlay.
+
+`timeline.clips[].transitionIn` is an optional string on the **incoming** clip. It moves with that clip and is ignored while first. A split keeps it on the left half and makes a cut into the right half. New and duplicated clips start with a cut. For adjacent clips with edited output lengths `A` and `B`, Studio renders:
+
+| Value | Picture and sound | Placement |
+|---|---|---|
+| `cut` (default, also for missing/null/unknown) | Switch directly to the incoming clip. | The incoming clip starts at the outgoing clip's end. |
+| `fadeThroughBlack`, `fadeThroughWhite` | Fade the finished outgoing picture linearly to the named color, then from that color into the finished incoming picture. Audio is unchanged. | Same as a cut; each half of the fade lasts `min(0.25, A/2, B/2)` output seconds. The color is solid at the join. |
+| `crossDissolve` | Play both clips' edited pictures and sound simultaneously, linearly blending from outgoing to incoming. Composite each clip's own camera, redactions, annotations and captions **before** blending. | The incoming clip starts `min(0.5, A/2, B/2)` seconds before the outgoing clip ends. Subtract this overlap once from the total duration. |
+
+Project time is the clip's project start plus its section-7 time map. At the incoming clip's start, including the start of a dissolve, project transport and insertion target the incoming clip; clip-local editing can still address either visible source. The project end maps to the final clip's final source time. Trimming, reordering, and changing speed recalculate join bounds. No middle clip ever needs both neighbors on screen at once.
+
+The project canvas and default look stay stable across all clips. A source of a different size or orientation is fitted into that canvas; it must not stretch the picture or change export dimensions at a clip boundary. Per-clip style/layer values override defaults only for that clip. Export and preview must use the same mapping and cut/speed rules.
+
+When converting a flat v1 destination, preserve the root `sources.screen` display dimensions and output frame rate used for its canvas. The registry entry describes the actual file (coded dimensions and rotation); both can point to the same owned copy. Both apps record `mediaSources[].recordingBackgroundImage` as a plain project-relative filename when they snapshot a recording with a custom background asset. Include that asset in portable saves without replacing the destination's project-wide background. Keep media referenced by the registry even if its last clip is removed: undo or a later insertion may still need it.
+
+`shared/studio/fixtures/timeline/` contains cross-platform v2 examples. v1 fixtures and behavior remain unchanged; events files continue to use their existing event schema version independently of the project version.
+
+Agents discover a lane through [`studio.timeline.get`](agent-integration.md#assemble-a-studio-timeline), not by patching `mediaSources` or `timeline` JSON. Discovery may present stable clip/source IDs for a v1 project without writing a v2 manifest. Mutations require the current revision; inserting an imported or recorded clip inside another clip splits and inserts as one edit. A lane removal keeps the source registry and never removes the final clip.

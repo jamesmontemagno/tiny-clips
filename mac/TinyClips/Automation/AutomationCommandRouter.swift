@@ -18,13 +18,17 @@ final class AutomationCommandRouter {
         "library.delete", "library.upload", "studio.projects.list", "studio.project.open", "studio.project.get", "studio.project.saveCopy",
         "studio.project.openFolder", "studio.project.delete",
         "studio.project.edit", "studio.zoom.suggest", "studio.export.options", "studio.export",
+        "studio.timeline.get", "studio.timeline.import", "studio.timeline.insert", "studio.timeline.move",
+        "studio.timeline.split", "studio.timeline.trim", "studio.timeline.transition", "studio.timeline.remove", "studio.timeline.record",
         "studio.captions.check", "studio.captions.import", "studio.captions.fix", "studio.captions.export",
     ]).union(StudioAppleSpeech.isAvailable ? ["studio.captions.models", "studio.captions.generate"] : [])
 
     private unowned let controller: AutomationController
+    private let studioStore: StudioProjectStore
 
-    init(controller: AutomationController) {
+    init(controller: AutomationController, studioStore: StudioProjectStore = .shared) {
         self.controller = controller
+        self.studioStore = studioStore
     }
 
     private func captureManager() throws -> CaptureManager {
@@ -37,7 +41,8 @@ final class AutomationCommandRouter {
     func execute(
         command: String,
         params: [String: Any],
-        validateAccess: () throws -> Void = { try Task.checkCancellation() }
+        clientName: String? = nil,
+        validateAccess: @escaping @MainActor () throws -> Void = { try Task.checkCancellation() }
     ) async throws -> [String: Any] {
         switch command {
         case "app.status": return try appStatus()
@@ -99,6 +104,15 @@ final class AutomationCommandRouter {
                 throw AutomationError(.invalidParams, message)
             }
         case "studio.project.get": return try getStudioProject(params)
+        case "studio.timeline.get", "studio.timeline.import", "studio.timeline.insert", "studio.timeline.move",
+             "studio.timeline.split", "studio.timeline.trim", "studio.timeline.transition", "studio.timeline.remove", "studio.timeline.record":
+            do {
+                return try await studioTimeline(command, params, clientName: clientName, validateAccess: validateAccess)
+            } catch StudioProjectError.invalidProject(let message) {
+                throw AutomationError(.invalidParams, message)
+            } catch StudioProjectFolderError.missingFile(let name) {
+                throw AutomationError(.notFound, "Studio source file \(name) is missing.")
+            }
         case "studio.project.edit": return try editStudioProject(params)
         case "studio.project.saveCopy":
             try validateAccess()
@@ -490,7 +504,11 @@ final class AutomationCommandRouter {
         return response
     }
 
-    private func startVideo(_ params: [String: Any]) async throws -> [String: Any] {
+    private func startVideo(
+        _ params: [String: Any],
+        validateStart: @escaping @MainActor () throws -> Void = {},
+        onStudioSegment: (@MainActor (String) async throws -> Void)? = nil
+    ) async throws -> [String: Any] {
         var studio = false
         if let value = params["studio"] {
             guard let bool = AutomationValue.bool(value) else {
@@ -514,7 +532,9 @@ final class AutomationCommandRouter {
             allowWindowArea: true
         )
         let target = try await manager.resolveAutomationCaptureTarget(targetRequest)
-        try await manager.startAutomationVideoRecording(forStudio: studio, target: target, devices: devices)
+        try validateStart()
+        try await manager.startAutomationVideoRecording(forStudio: studio, target: target, devices: devices,
+                                                        validateStart: validateStart, onStudioSegment: onStudioSegment)
         var result: [String: Any] = ["started": true, "studio": studio]
         if let selection = target.windowAreaSelection {
             result["windowArea"] = AutomationCaptureTargets.windowAreaJSON(selection)
@@ -590,7 +610,7 @@ final class AutomationCommandRouter {
 
     private func discard() throws -> [String: Any] {
         let manager = try captureManager()
-        try requireRecording(manager)
+        if !manager.isStudioSegmentCountdown { try requireRecording(manager) }
         manager.discardRecording()
         return ["discarded": true]
     }
@@ -680,16 +700,25 @@ final class AutomationCommandRouter {
     // MARK: - Studio
 
     private func studioProject(_ id: String) throws -> StudioProject {
-        let store = StudioProjectStore.shared
-        guard store.exists(id: id) else {
+        guard studioStore.exists(id: id) else {
             throw AutomationError(.notFound, "No Studio project with ID \(id).")
         }
-        return try store.load(id: id)
+        return try studioStore.load(id: id)
     }
 
     private func currentStudioProject(_ id: String) throws -> StudioProject {
         if let viewModel = StudioWindowRegistry.shared.automationViewModel(forProjectID: id) {
             guard let project = viewModel.automationProjectSnapshot() else {
+                throw AutomationError(.busy, "The Studio project is not ready for agent control.")
+            }
+            return project
+        }
+        return try studioProject(id)
+    }
+
+    private func currentStudioTimelineImportSource(_ id: String) throws -> StudioProject {
+        if let viewModel = StudioWindowRegistry.shared.automationViewModel(forProjectID: id) {
+            guard let project = viewModel.timelineImportSnapshot() else {
                 throw AutomationError(.busy, "The Studio project is not ready for agent control.")
             }
             return project
@@ -830,6 +859,9 @@ final class AutomationCommandRouter {
         }
 
         let updated: StudioProject
+        if current.schemaVersion >= 2 && Set(patch.keys) != ["canvas"] {
+            throw AutomationError(.notSupported, "Only the project canvas can be patched globally on a multi-clip project; other fields are clip-local.")
+        }
         do {
             updated = try applyingStudioPatch(patch, to: current)
         } catch {
@@ -845,14 +877,16 @@ final class AutomationCommandRouter {
     /// Saves an edit: through the undo history of an open editor, and directly otherwise.
     private func saveStudioEdit(_ updated: StudioProject, replacing current: StudioProject) throws -> StudioProject {
         guard let viewModel = StudioWindowRegistry.shared.automationViewModel(forProjectID: current.id) else {
-            return try StudioProjectStore.shared.save(updated)
+            guard let saved = try studioStore.save(updated, replacing: current) else {
+                throw AutomationError(.conflict, "The Studio project changed while applying the edit. Read it again.")
+            }
+            return saved
         }
-        guard viewModel.applyAutomationProject(updated, expectedModifiedAt: current.modifiedAt),
-              let latest = viewModel.automationProjectSnapshot()
-        else {
+        guard viewModel.applyAutomationProject(updated, expectedModifiedAt: current.modifiedAt) else {
             throw AutomationError(.conflict, "The Studio project changed or became unavailable while applying the edit.")
         }
-        return latest
+        // A successful commit owns staged files, even if the editor has started refreshing its preview.
+        return viewModel.manifest ?? updated
     }
 
     /// The project an edit is to change, when it is still the one the agent read.
@@ -878,6 +912,7 @@ final class AutomationCommandRouter {
     private func checkStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
         let id = try Self.requiredString(params, "projectId")
         let project = try currentStudioProject(id)
+        try Self.requireSingleSource(project)
         var result = Self.captionFindingsObject(
             StudioCaptionQuality.check(project.captions.cues, sourceDuration: project.sources.screen.duration)
         )
@@ -898,6 +933,7 @@ final class AutomationCommandRouter {
     private func importStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
         let id = try Self.requiredString(params, "projectId")
         let current = try checkedStudioProject(params, id: id)
+        try Self.requireSingleSource(current)
         let contents = StudioCaptionFiles.read(
             try Self.requiredString(params, "text"),
             timing: try Self.captionTiming(params),
@@ -944,6 +980,7 @@ final class AutomationCommandRouter {
         }
         let id = try Self.requiredString(params, "projectId")
         let current = try checkedStudioProject(params, id: id)
+        try Self.requireSingleSource(current)
         if let model = params["model"] as? String, model != StudioAppleSpeech.modelID {
             throw AutomationError(.invalidParams, "On a Mac, captions are generated with \(StudioAppleSpeech.modelID), and not \(model).")
         }
@@ -977,6 +1014,7 @@ final class AutomationCommandRouter {
         // open editor's, with what is being typed in it, or else the saved project.
         StudioWindowRegistry.shared.automationViewModel(forProjectID: id)?.commitCaptionText()
         let latest = try currentStudioProject(id)
+        try Self.requireSingleSource(latest)
         var updated = latest
         updated.captions.language = heard.language
         updated.captions.cues = heard.cues.inTimeOrder()
@@ -993,6 +1031,7 @@ final class AutomationCommandRouter {
     private func fixStudioCaptions(_ params: [String: Any]) throws -> [String: Any] {
         let id = try Self.requiredString(params, "projectId")
         let current = try checkedStudioProject(params, id: id)
+        try Self.requireSingleSource(current)
         let duration = current.sources.screen.duration
         let fixes = StudioCaptionQuality.fix(current.captions.cues, sourceDuration: duration)
         var saved = current
@@ -1026,7 +1065,9 @@ final class AutomationCommandRouter {
         }
 
         StudioWindowRegistry.shared.automationViewModel(forProjectID: id)?.commitCaptionText()
-        let captions = StudioCaptionResolver.resolve(project: try currentStudioProject(id))
+        let project = try currentStudioProject(id)
+        try Self.requireSingleSource(project)
+        let captions = StudioCaptionResolver.resolve(project: project)
         guard !captions.isEmpty else {
             throw AutomationError(.invalidParams, "This video has no captions to export.")
         }
@@ -1041,6 +1082,7 @@ final class AutomationCommandRouter {
     private func suggestStudioZooms(_ params: [String: Any]) throws -> [String: Any] {
         let id = try Self.requiredString(params, "projectId")
         let project = try currentStudioProject(id)
+        try Self.requireSingleSource(project)
         let events = try StudioProjectStore.shared.loadEvents(id: id)
         let suggestions = StudioLayoutResolver.suggestZooms(project: project, events: events)
         return [
@@ -1075,7 +1117,8 @@ final class AutomationCommandRouter {
         let id = try Self.requiredString(params, "projectId")
         let project = try currentStudioProject(id)
         let isHEVC = CaptureSettings.shared.videoCodec == .hevc
-        let options = StudioExportOptionsModel(project: project, isHEVC: isHEVC, saved: try Self.studioExportChoice(params))
+        let options = try StudioExportOptionsModel(project: project, timelineMap: StudioTimelineMap(project: project),
+                                                   isHEVC: isHEVC, saved: Self.studioExportChoice(params))
         return [
             "projectId": id,
             "resolution": options.choice.resolution.rawValue,
@@ -1271,6 +1314,269 @@ final class AutomationCommandRouter {
             throw AutomationError(.invalidParams, "\(key) is required.")
         }
         return value
+    }
+}
+
+// MARK: - Studio primary lane
+
+extension AutomationCommandRouter {
+    private static func requireSingleSource(_ project: StudioProject) throws {
+        guard project.schemaVersion < 2 else {
+            throw AutomationError(.notSupported, "This command works on a single recording, not a multi-clip timeline.")
+        }
+    }
+
+    private func studioTimeline(
+        _ command: String, _ params: [String: Any], clientName: String?,
+        validateAccess: @escaping @MainActor () throws -> Void
+    ) async throws -> [String: Any] {
+        guard let spec = AutomationContract.bundled?.command(named: command) else {
+            throw AutomationError(.notSupported)
+        }
+        if let unknown = params.keys.first(where: { spec.params[$0] == nil }) {
+            throw AutomationError(.invalidParams, "Unknown parameter \(unknown).")
+        }
+        let id = try Self.requiredString(params, "projectId")
+        if command == "studio.timeline.get" {
+            let current = try currentStudioProject(id)
+            return try describeTimeline(current)
+        }
+        let current = try checkedStudioProject(params, id: id)
+        let time = try Self.requestedProjectTime(params, in: current)
+        func revalidate() throws {
+            try validateAccess()
+            _ = try checkedStudioProject(params, id: id)
+        }
+
+        switch command {
+        case "studio.timeline.record":
+            var capture = params.filter { !["projectId", "expectedModifiedAt", "expectedRevision", "projectTime"].contains($0.key) }
+            capture["studio"] = true
+            let audit = controller.auditLog
+            var result = try await startVideo(capture, validateStart: revalidate) { recordingID in
+                do {
+                    _ = try await self.attachStudioTake(recordingID, params: params, validateAccess: validateAccess)
+                    audit.record(client: clientName, command: command, outcome: "ok", detail: "Inserted take into \(id)")
+                } catch {
+                    let code = (error as? AutomationError)?.code ?? .internal
+                    audit.record(client: clientName, command: command, outcome: code.rawValue,
+                                 detail: "Take \(recordingID) was not inserted into \(id)")
+                    throw AutomationError(code, "\(error.localizedDescription) The finished take was kept as Studio draft \(recordingID).")
+                }
+            }
+            result["projectId"] = id
+            return result
+
+        case "studio.timeline.import":
+            let path = try Self.requiredString(params, "path")
+            guard let mode = (params["mode"] ?? "library") as? String, ["library", "file"].contains(mode) else {
+                throw AutomationError(.invalidParams, "Import mode must be library or file.")
+            }
+            func importURL() throws -> URL {
+                try Self.studioImportURL(path: path, directories: libraryDirectories(),
+                                         recentPaths: RecentCaptureStore.shared.items.map(\.path))
+            }
+            let url = try importURL()
+            let store = studioStore
+            let identity = try store.videoSourceIdentity(at: url)
+            guard try importURL() == url else { throw AutomationError(.conflict, "The import path changed.") }
+            func sourceID() throws -> String? {
+                guard mode == "library" else { return nil }
+                let libraryPath = URL(fileURLWithPath: path).standardizedFileURL.path
+                // A user's configured Library folder may itself be a symlink. Keep the path
+                // used for the export link, but copy only from the authorized canonical URL.
+                if libraryPath != url.path, let linked = try store.findProjectID(exportedPath: libraryPath) { return linked }
+                return try store.findProjectID(exportedPath: url.path)
+            }
+            let linkedID = try sourceID()
+            let linked = try linkedID.map { try currentStudioTimelineImportSource($0) }
+            if let linked, linked.schemaVersion != 1 {
+                throw AutomationError(.notSupported, "A linked multi-clip project cannot be merged. Use mode=file only to import the rendered video.")
+            }
+            let saved = try await insertStudioMedia(url, recording: linked, into: current, at: time, expectedVideo: identity) {
+                try revalidate()
+                guard try importURL() == url, try store.videoSourceIdentity(at: url) == identity, try sourceID() == linkedID,
+                      try linkedID.map({ try self.currentStudioTimelineImportSource($0) }) == linked else {
+                    throw AutomationError(.conflict, "The Library source changed while importing. Read it again.")
+                }
+            }
+            return try timelineEditResult(saved)
+
+        default:
+            let preview = StudioTimelineEditing.timelineProject(from: current)
+            var updated = try Self.editLane(command, params: params, project: preview, time: time)
+            // Reject an invalid or no-op edit before copying a legacy project's external original.
+            guard updated != preview else { return try timelineEditResult(current) }
+            var migrated: StudioPreparedTimelineBase?
+            if current.schemaVersion < 2 {
+                let prepared = try await studioStore.prepareTimelineBase(destination: current)
+                updated = try Self.editLane(command, params: params, project: prepared.base, time: time)
+                migrated = prepared
+            }
+            try revalidate()
+            let saved = try saveStudioEdit(updated, replacing: current)
+            migrated?.finalize()
+            return try timelineEditResult(saved)
+        }
+    }
+
+    /// The capture may finish long after the caller's start request returned. Both checks use
+    /// that request's tokens and live grants, not the client (or user) who stopped the recording.
+    func attachStudioTake(_ recordingID: String, params: [String: Any],
+                          validateAccess: () throws -> Void) async throws -> StudioProject {
+        let id = try Self.requiredString(params, "projectId")
+        func checked() throws -> StudioProject {
+            try validateAccess()
+            return try checkedStudioProject(params, id: id)
+        }
+        let current = try checked()
+        let recording = try currentStudioProject(recordingID)
+        return try await insertStudioMedia(studioStore.paths(for: recording).screenURL, recording: recording,
+                                           into: current, at: Self.requestedProjectTime(params, in: current)) {
+            _ = try checked()
+        }
+    }
+
+    /// Discovery projects v1 into a stable lane for inspection, but never saves the projection.
+    private func describeTimeline(_ project: StudioProject) throws -> [String: Any] {
+        var base = StudioTimelineEditing.timelineProject(from: project)
+        let store = studioStore
+        if project.schemaVersion < 2 {
+            if store.isKnownFlat(project) {
+                base.mediaSources?[0].kind = .flatVideo
+                base.mediaSources?[0].sources.camera = nil
+                base.mediaSources?[0].sources.events = nil
+            } else {
+                let url = try store.paths(for: project).eventsURL
+                base.mediaSources?[0].sources.events = FileManager.default.fileExists(atPath: url.path) ? url.lastPathComponent : nil
+            }
+        }
+        guard let lane = base.timeline, let sources = base.mediaSources else { throw AutomationError(.invalidParams) }
+        let map = try StudioTimelineMap(timeline: lane, sources: sources)
+        let clips: [[String: Any]] = zip(lane.clips, map.clips).map { clip, range in
+            var item: [String: Any] = ["clipId": clip.id, "sourceId": clip.sourceId, "name": clip.name,
+                                       "sourceStart": clip.sourceStart, "sourceEnd": clip.sourceEnd,
+                                       "projectStart": range.projectStart, "projectEnd": range.projectEnd,
+                                       "transitionIn": clip.transitionIn.rawValue]
+            if let entry = range.entry {
+                item["transitionStart"] = entry.start
+                item["transitionEnd"] = entry.end
+            }
+            return item
+        }
+        let media: [[String: Any]] = sources.map { source in
+            var item: [String: Any] = ["sourceId": source.id, "kind": source.kind.rawValue, "duration": source.sources.screen.duration,
+                                       "width": source.sources.screen.width, "height": source.sources.screen.height,
+                                       "hasCamera": source.sources.camera != nil, "hasEvents": source.sources.events != nil]
+            item["audioTracks"] = source.sources.screen.audioTracks
+            return item
+        }
+        return ["projectId": project.id, "modifiedAt": StudioJSON.timestampString(from: project.modifiedAt),
+                "revision": try studioProjectRevision(project), "clips": clips, "sources": media, "duration": map.duration]
+    }
+
+    static func studioImportURL(path: String, directories: [URL], recentPaths: [String]) throws -> URL {
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        guard (path as NSString).isAbsolutePath, StudioVideoFile.supports(url) else {
+            throw AutomationError(.invalidParams, "path must be an absolute MP4 or MOV path in a capture folder or the Library.")
+        }
+        let resolved = url.resolvingSymlinksInPath()
+        let parent = resolved.deletingLastPathComponent().path
+        let inFolder = directories.contains { $0.standardizedFileURL.resolvingSymlinksInPath().path == parent }
+        let isRecent = recentPaths.contains { URL(fileURLWithPath: $0).standardizedFileURL == url }
+        guard inFolder || isRecent,
+              let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+              values.isRegularFile == true, values.isSymbolicLink == false else {
+            throw AutomationError(.notFound, "Choose a regular video directly in a configured capture folder or from the Clips Library.")
+        }
+        return resolved
+    }
+
+    private static func requestedProjectTime(_ params: [String: Any], in project: StudioProject) throws -> Double? {
+        guard params["projectTime"] != nil else { return nil }
+        let base = StudioTimelineEditing.timelineProject(from: project)
+        guard let lane = base.timeline, let sources = base.mediaSources,
+              let time = AutomationValue.double(params["projectTime"]), time.isFinite, time >= 0,
+              time <= (try StudioTimelineMap(timeline: lane, sources: sources)).duration else {
+            throw AutomationError(.invalidParams, "projectTime must be a position in the edited project, in seconds.")
+        }
+        return time
+    }
+
+    private func insertStudioMedia(_ url: URL, recording: StudioProject?, into current: StudioProject, at time: Double?,
+                                   expectedVideo: StudioVideoSourceIdentity? = nil,
+                                   revalidate: () throws -> Void) async throws -> StudioProject {
+        let prepared = try await studioStore.prepareTimelineImport(destination: current, videoURL: url,
+                                                                   recording: recording, expectedVideo: expectedVideo)
+        var updated = prepared.base
+        guard let lane = updated.timeline, var sources = updated.mediaSources else { throw AutomationError(.invalidParams) }
+        sources.append(prepared.source)
+        updated.mediaSources = sources
+        updated.timeline = try Self.inserting(prepared.clip, into: lane, sources: sources, at: time)
+        try revalidate()
+        let saved = try saveStudioEdit(updated, replacing: current)
+        prepared.finalize()
+        return saved
+    }
+
+    private static func inserting(_ clip: StudioTimelineClip, into lane: StudioTimeline, sources: [StudioMediaSource],
+                                  at time: Double?) throws -> StudioTimeline {
+        if let time {
+            return try StudioTimelineEditing.insert(clip, atProjectTime: time, in: lane, sources: sources)
+        }
+        return StudioTimelineEditing.append(clip, to: lane)
+    }
+
+    static func editLane(_ command: String, params: [String: Any], project: StudioProject, time: Double?) throws -> StudioProject {
+        let id = try requiredString(params, "clipId")
+        guard let lane = project.timeline, let sources = project.mediaSources,
+              let clip = lane.clips.first(where: { $0.id == id }) else {
+            throw AutomationError(.notFound, "No timeline clip with ID \(id).")
+        }
+        let updated: StudioTimeline?
+        switch command {
+        case "studio.timeline.insert":
+            var copy = clip
+            copy.id = UUID().uuidString.lowercased()
+            copy.transitionIn = .cut
+            updated = try inserting(copy, into: lane, sources: sources, at: time)
+        case "studio.timeline.move":
+            guard let index = AutomationValue.int(params["index"]), lane.clips.indices.contains(index) else {
+                throw AutomationError(.invalidParams, "index must be the clip's zero-based final position.")
+            }
+            updated = StudioTimelineEditing.moveClip(id: id, to: index, in: lane)
+        case "studio.timeline.split":
+            guard let sourceTime = AutomationValue.double(params["sourceTime"]) else {
+                throw AutomationError(.invalidParams, "sourceTime must be a position inside the clip, in source seconds.")
+            }
+            updated = StudioTimelineEditing.splitClip(id: id, at: sourceTime, in: lane)
+        case "studio.timeline.trim":
+            guard let start = AutomationValue.double(params["sourceStart"]), let end = AutomationValue.double(params["sourceEnd"]) else {
+                throw AutomationError(.invalidParams, "Supply sourceStart and sourceEnd in source seconds.")
+            }
+            updated = StudioTimelineEditing.trimClip(id: id, toStart: start, end: end, in: lane)
+        case "studio.timeline.transition":
+            guard let name = params["kind"] as? String, let kind = StudioClipTransition(rawValue: name) else {
+                throw AutomationError(.invalidParams, "Choose cut, fadeThroughBlack, fadeThroughWhite, or crossDissolve.")
+            }
+            guard let changed = StudioTimelineEditing.setTransition(kind, before: id, in: lane) else {
+                throw AutomationError(.invalidParams, "Choose a clip with a preceding clip.")
+            }
+            updated = changed
+        case "studio.timeline.remove":
+            guard lane.clips.count > 1 else { throw AutomationError(.invalidParams, "The final clip cannot be removed.") }
+            updated = StudioTimelineEditing.removeClip(id: id, from: lane)
+        default: throw AutomationError(.notSupported)
+        }
+        guard let updated else { throw AutomationError(.invalidParams, "The edit must leave playable clips inside their source ranges.") }
+        _ = try StudioTimelineMap(timeline: updated, sources: sources)
+        var result = project
+        result.timeline = updated
+        return result
+    }
+
+    private func timelineEditResult(_ project: StudioProject) throws -> [String: Any] {
+        ["project": try studioProjectObject(project), "revision": try studioProjectRevision(project)]
     }
 }
 

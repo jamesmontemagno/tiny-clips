@@ -15,8 +15,10 @@ using TinyClips.Core.Models;
 using TinyClips.Core.Services;
 using TinyClips.Core.Studio;
 using TinyClips.Core.Studio.Editing;
+using TinyClips.Core.Studio.Preview;
 using Windows.UI.Core;
 using ActivatedHandler = Windows.Foundation.TypedEventHandler<object, Microsoft.UI.Xaml.WindowActivatedEventArgs>;
+using StudioTimelineControl = TinyClips.App.Controls.Studio.StudioTimeline;
 using VirtualKey = Windows.System.VirtualKey;
 
 namespace TinyClips.App.Views.Studio;
@@ -43,9 +45,10 @@ public sealed partial class StudioWindow : Window
     private readonly IStudioProjectHost _projects;
     private readonly WindowChromeController _chromeController;
     private readonly StudioInspector _inspector;
-    private readonly StudioTimeline _timeline;
+    private readonly StudioTimelineControl _timeline;
     private readonly Action<StudioWindow, Task> _onClosed;
     private FrameworkElement? _previewView;
+    private IStudioPreview? _boundPreview;
     private Task? _teardown;
     private FocusRequest _focusRequest;
     private bool _isActive;
@@ -94,9 +97,10 @@ public sealed partial class StudioWindow : Window
 
         _inspector = new StudioInspector(viewModel);
         InspectorHost.Child = _inspector;
-        _timeline = new StudioTimeline(viewModel);
+        _timeline = new StudioTimelineControl(viewModel);
         TimelineHost.Child = _timeline;
         CanvasHost.Children.Add(new StudioPreviewOverlay(viewModel));
+        ConnectClipStrip();
 
         // The message bar reads its message out when it opens, but only when it already has an
         // automation peer, which it otherwise gets when a screen reader happens to look at it.
@@ -328,6 +332,7 @@ public sealed partial class StudioWindow : Window
         try
         {
             _previewView = _previewViews.Create(preview);
+            _boundPreview = preview;
 
             // Under the overlay that holds the camera handle.
             CanvasHost.Children.Insert(0, _previewView);
@@ -335,6 +340,7 @@ public sealed partial class StudioWindow : Window
         catch (Exception ex)
         {
             _previewView = null;
+            _boundPreview = null;
             ViewModel.ShowError($"The preview could not be shown: {ex.Message}");
         }
     }
@@ -342,6 +348,7 @@ public sealed partial class StudioWindow : Window
     /// <summary>The preview element leaves the tree before the preview it draws is disposed.</summary>
     private void DetachPreviewView()
     {
+        _boundPreview = null;
         if (_previewView is { } view)
         {
             _previewView = null;
@@ -363,6 +370,17 @@ public sealed partial class StudioWindow : Window
         if (e.PropertyName == nameof(StudioViewModel.RecentProjects))
         {
             FillOpenRecent();
+        }
+
+        // The project crossed between a single recording and a timeline, which replaces the
+        // preview: the view that drew the old one is taken out first, as it is not disposed
+        // under a view, and the new one is bound when it exists.
+        if (e.PropertyName == nameof(StudioViewModel.Preview)
+            && ViewModel.IsReady
+            && !ReferenceEquals(_boundPreview, ViewModel.Preview))
+        {
+            DetachPreviewView();
+            AttachPreviewView();
         }
 
         var isBusy = ViewModel.IsExporting || ViewModel.IsSavingProject;
@@ -916,6 +934,9 @@ public sealed partial class StudioWindow : Window
         ViewModel.ChooseExportOptions = null;
         _exportOptionsFlyout?.Hide();
         _exportOptionsAnswer?.TrySetResult(false);
+        _timeline.ClipStrip.AddRequested -= OnClipAddRequested;
+        _timeline.ClipStrip.CanRecordSegment = null;
+        _clipsLifetime.Cancel();
         ViewModel.DeleteProjectRequested -= OnDeleteProjectRequested;
         ViewModel.ProjectSaved -= OnProjectSaved;
 

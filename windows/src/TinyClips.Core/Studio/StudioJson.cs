@@ -25,8 +25,8 @@ public sealed class StudioProjectInvalidException : Exception
 
 public sealed class StudioUnsupportedSchemaVersionException : Exception
 {
-    public StudioUnsupportedSchemaVersionException(int schemaVersion)
-        : base($"Studio project schema version {schemaVersion} is newer than supported version {StudioProject.CurrentSchemaVersion}.")
+    public StudioUnsupportedSchemaVersionException(int schemaVersion, int supportedVersion = StudioProject.SupportedSchemaVersion)
+        : base($"Studio schema version {schemaVersion} is newer than supported version {supportedVersion}.")
     {
         SchemaVersion = schemaVersion;
     }
@@ -52,7 +52,12 @@ public static class StudioProjectJson
                 ModifiedAt = defaults.HasModifiedAt ? project.ModifiedAt : DateTimeOffset.UnixEpoch,
                 LastOpenedAt = defaults.HasLastOpenedAt ? project.LastOpenedAt : DateTimeOffset.UnixEpoch,
             };
-            return ApplyDefaults(project, json);
+            project = ApplyDefaults(project, json);
+            if (project.SchemaVersion >= 2)
+            {
+                _ = new StudioTimelineMap(project.Timeline!, project.MediaSources!);
+            }
+            return project;
         }
         catch (JsonException ex)
         {
@@ -63,13 +68,18 @@ public static class StudioProjectJson
     public static string WriteProject(StudioProject project)
     {
         ArgumentNullException.ThrowIfNull(project);
-        return JsonSerializer.Serialize(project, StudioJsonContext.Default.StudioProject);
+        var json = JsonSerializer.Serialize(project, StudioJsonContext.Default.StudioProject);
+        if (project.SchemaVersion >= 2)
+        {
+            _ = ReadProject(json);
+        }
+        return json;
     }
 
     public static StudioEvents ReadEvents(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
-        ValidateSchemaVersion(json, allowMissingSchemaVersion: true);
+        ValidateSchemaVersion(json, allowMissingSchemaVersion: true, StudioProject.CurrentSchemaVersion);
 
         try
         {
@@ -98,7 +108,7 @@ public static class StudioProjectJson
         }
 
         var hasSchemaVersion = HasNonNull(root, "schemaVersion");
-        ValidateSchemaVersion(root, allowMissingSchemaVersion: true);
+        ValidateSchemaVersion(root, allowMissingSchemaVersion: true, StudioProject.SupportedSchemaVersion);
         RequireString(root, "id", "id");
         RequireObject(root, "sources", "sources");
         var sources = root.GetProperty("sources");
@@ -120,6 +130,12 @@ public static class StudioProjectJson
             RequireNonNegativeFiniteNumber(camera, "duration", "sources.camera.duration");
         }
 
+        if (hasSchemaVersion && root.GetProperty("schemaVersion").ValueKind == JsonValueKind.Number
+            && root.GetProperty("schemaVersion").GetInt32() >= 2)
+        {
+            ValidateV2Timeline(root);
+        }
+
         return new ProjectJsonDefaults(
             hasSchemaVersion,
             HasNonNull(root, "createdAt"),
@@ -127,13 +143,143 @@ public static class StudioProjectJson
             HasNonNull(root, "lastOpenedAt"));
     }
 
-    private static void ValidateSchemaVersion(string json, bool allowMissingSchemaVersion)
+    private static void ValidateV2Timeline(JsonElement root)
     {
-        using var document = JsonDocument.Parse(json);
-        ValidateSchemaVersion(document.RootElement, allowMissingSchemaVersion);
+        if (!root.TryGetProperty("mediaSources", out var mediaSources)
+            || mediaSources.ValueKind != JsonValueKind.Array
+            || mediaSources.GetArrayLength() == 0)
+        {
+            throw new StudioProjectInvalidException("Schema version 2 requires a non-empty mediaSources array.");
+        }
+
+        var sourceDurations = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var source in mediaSources.EnumerateArray())
+        {
+            if (source.ValueKind == JsonValueKind.Null)
+            {
+                continue;
+            }
+
+            RequireString(source, "id", "mediaSources[].id");
+            var id = source.GetProperty("id").GetString()!;
+            if (!sourceDurations.TryAdd(id, 0))
+            {
+                throw new StudioProjectInvalidException("Schema version 2 media source IDs must be unique.");
+            }
+
+            if (!source.TryGetProperty("kind", out var kind)
+                || kind.ValueKind != JsonValueKind.String
+                || kind.GetString() is not ("nativeRecording" or "flatVideo"))
+            {
+                throw new StudioProjectInvalidException("Schema version 2 mediaSources[].kind must be nativeRecording or flatVideo.");
+            }
+
+            RequireObject(source, "sources", "mediaSources[].sources");
+            var sourceFiles = source.GetProperty("sources");
+            RequireObject(sourceFiles, "screen", "mediaSources[].sources.screen");
+            var screen = sourceFiles.GetProperty("screen");
+            RequirePositiveInt(screen, "width", "mediaSources[].sources.screen.width");
+            RequirePositiveInt(screen, "height", "mediaSources[].sources.screen.height");
+            RequireNonNegativeFiniteNumber(screen, "duration", "mediaSources[].sources.screen.duration");
+            var screenFile = screen.TryGetProperty("file", out var fileProperty) && fileProperty.ValueKind == JsonValueKind.String
+                ? fileProperty.GetString() ?? "screen.mp4"
+                : "screen.mp4";
+            var external = screen.TryGetProperty("external", out var externalProperty)
+                && externalProperty.ValueKind == JsonValueKind.True;
+            ValidateSourceFileName(screenFile, "mediaSources[].sources.screen.file", allowExternal: external);
+            if (screen.TryGetProperty("rotationDegrees", out var rotation)
+                && (rotation.ValueKind != JsonValueKind.Number || !rotation.TryGetDouble(out var degrees) || !double.IsFinite(degrees)))
+            {
+                throw new StudioProjectInvalidException("mediaSources[].sources.screen.rotationDegrees must be a finite number.");
+            }
+
+            if (sourceFiles.TryGetProperty("camera", out var camera) && camera.ValueKind != JsonValueKind.Null)
+            {
+                RequirePositiveInt(camera, "width", "mediaSources[].sources.camera.width");
+                RequirePositiveInt(camera, "height", "mediaSources[].sources.camera.height");
+                RequireNonNegativeFiniteNumber(camera, "duration", "mediaSources[].sources.camera.duration");
+                var cameraFile = camera.TryGetProperty("file", out var cameraFileProperty)
+                    && cameraFileProperty.ValueKind == JsonValueKind.String
+                    ? cameraFileProperty.GetString() ?? "camera.mp4"
+                    : "camera.mp4";
+                ValidateSourceFileName(cameraFile, "mediaSources[].sources.camera.file", allowExternal: false);
+            }
+
+            if (sourceFiles.TryGetProperty("events", out var events) && events.ValueKind == JsonValueKind.String)
+            {
+                ValidateSourceFileName(events.GetString() ?? string.Empty, "mediaSources[].sources.events", allowExternal: false);
+            }
+
+            if (kind.GetString() == "flatVideo"
+                && ((sourceFiles.TryGetProperty("camera", out var flatCamera) && flatCamera.ValueKind != JsonValueKind.Null)
+                    || (sourceFiles.TryGetProperty("events", out var flatEvents) && flatEvents.ValueKind != JsonValueKind.Null)))
+            {
+                throw new StudioProjectInvalidException("A flat video media source cannot claim native camera or event data.");
+            }
+
+            sourceDurations[id] = screen.GetProperty("duration").GetDouble();
+        }
+        if (sourceDurations.Count == 0)
+        {
+            throw new StudioProjectInvalidException("Schema version 2 requires at least one non-null media source.");
+        }
+
+        if (!root.TryGetProperty("timeline", out var timeline) || timeline.ValueKind != JsonValueKind.Object
+            || !timeline.TryGetProperty("clips", out var clips) || clips.ValueKind != JsonValueKind.Array
+            || clips.GetArrayLength() == 0)
+        {
+            throw new StudioProjectInvalidException("Schema version 2 requires a non-empty timeline.clips array.");
+        }
+
+        var clipIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var clip in clips.EnumerateArray())
+        {
+            if (clip.ValueKind == JsonValueKind.Null)
+            {
+                continue;
+            }
+
+            RequireString(clip, "id", "timeline.clips[].id");
+            RequireString(clip, "sourceId", "timeline.clips[].sourceId");
+            var clipId = clip.GetProperty("id").GetString()!;
+            var sourceId = clip.GetProperty("sourceId").GetString()!;
+            if (!clipIds.Add(clipId))
+            {
+                throw new StudioProjectInvalidException("Schema version 2 timeline clip IDs must be unique.");
+            }
+
+            if (sourceDurations.ContainsKey(clipId))
+            {
+                throw new StudioProjectInvalidException("Schema version 2 source and clip IDs must be unique across the project.");
+            }
+
+            if (!sourceDurations.TryGetValue(sourceId, out var duration))
+            {
+                throw new StudioProjectInvalidException($"Timeline clip references unknown media source '{sourceId}'.");
+            }
+
+            RequireNonNegativeFiniteNumber(clip, "sourceStart", "timeline.clips[].sourceStart");
+            RequireNonNegativeFiniteNumber(clip, "sourceEnd", "timeline.clips[].sourceEnd");
+            var start = clip.GetProperty("sourceStart").GetDouble();
+            var end = clip.GetProperty("sourceEnd").GetDouble();
+            if (end <= start || end > duration)
+            {
+                throw new StudioProjectInvalidException("Timeline clip source range must be non-empty and within its media source.");
+            }
+        }
+        if (clipIds.Count == 0)
+        {
+            throw new StudioProjectInvalidException("Schema version 2 requires at least one non-null timeline clip.");
+        }
     }
 
-    private static void ValidateSchemaVersion(JsonElement root, bool allowMissingSchemaVersion)
+    private static void ValidateSchemaVersion(string json, bool allowMissingSchemaVersion, int supportedVersion)
+    {
+        using var document = JsonDocument.Parse(json);
+        ValidateSchemaVersion(document.RootElement, allowMissingSchemaVersion, supportedVersion);
+    }
+
+    private static void ValidateSchemaVersion(JsonElement root, bool allowMissingSchemaVersion, int supportedVersion)
     {
         if (!root.TryGetProperty("schemaVersion", out var schemaVersion))
         {
@@ -155,9 +301,9 @@ public static class StudioProjectJson
             throw new StudioProjectInvalidException("Property schemaVersion must be an integer.");
         }
 
-        if (value > StudioProject.CurrentSchemaVersion)
+        if (value > supportedVersion)
         {
-            throw new StudioUnsupportedSchemaVersionException(value);
+            throw new StudioUnsupportedSchemaVersionException(value, supportedVersion);
         }
     }
 
@@ -299,6 +445,8 @@ public static class StudioProjectJson
                 Version = HasNonNull(root, "app", "version") ? app.Version : defaultProject.App.Version,
             },
             Sources = sources with { Screen = screenSource, Camera = cameraSource, Events = eventsFile },
+            MediaSources = HasNonNull(root, "mediaSources") ? NonNullItems(project.MediaSources) : null,
+            Timeline = NormalizeTimeline(project.Timeline, root),
             Canvas = canvas,
             Screen = screenStyle,
             Camera = cameraStyle,
@@ -309,6 +457,56 @@ public static class StudioProjectJson
             Overlays = overlays,
             Captions = NormalizeCaptions(project.Captions),
             Exports = NormalizeExports(project.Exports, root),
+        };
+    }
+
+    private static StudioTimeline? NormalizeTimeline(StudioTimeline? timeline, JsonElement root)
+    {
+        if (timeline is null)
+        {
+            return null;
+        }
+
+        var clips = NonNullItems(timeline.Clips);
+        if (!root.TryGetProperty("timeline", out var timelineElement)
+            || timelineElement.ValueKind != JsonValueKind.Object
+            || !timelineElement.TryGetProperty("clips", out var clipsElement)
+            || clipsElement.ValueKind != JsonValueKind.Array)
+        {
+            return timeline with { Clips = clips };
+        }
+
+        var elements = NonNullArrayElements(clipsElement);
+        return timeline with
+        {
+            Clips = clips.Select((clip, index) =>
+            {
+                var element = elements[index];
+                // Clip payloads use v1 shapes, including defaults inside present optional fields.
+                // Keep absent fields null so the projection can inherit project-level defaults.
+                var local = ApplyDefaults(new StudioProject
+                {
+                    Screen = clip.Screen ?? new(),
+                    Camera = clip.Camera ?? new(),
+                    Scenes = clip.Scenes ?? [],
+                    Zooms = clip.Zooms ?? [],
+                    Edits = clip.Edits,
+                    Audio = clip.Audio ?? new(),
+                    Overlays = clip.Overlays ?? new(),
+                    Captions = clip.Captions ?? new(),
+                }, element.GetRawText());
+                return clip with
+                {
+                    Edits = local.Edits,
+                    Screen = HasNonNull(element, "screen") ? local.Screen : null,
+                    Camera = HasNonNull(element, "camera") ? local.Camera : null,
+                    Scenes = HasNonNull(element, "scenes") ? local.Scenes : null,
+                    Zooms = HasNonNull(element, "zooms") ? local.Zooms : null,
+                    Audio = HasNonNull(element, "audio") ? local.Audio : null,
+                    Overlays = HasNonNull(element, "overlays") ? local.Overlays : null,
+                    Captions = HasNonNull(element, "captions") ? local.Captions : null,
+                };
+            }).ToArray(),
         };
     }
 
@@ -1070,6 +1268,39 @@ internal sealed class StudioCaptureKindJsonConverter : StudioEnumJsonConverter<S
         StudioCaptureKind.Region => "region",
         StudioCaptureKind.Window => "window",
         _ => "display",
+    };
+}
+
+internal sealed class StudioMediaSourceKindJsonConverter : StudioEnumJsonConverter<StudioMediaSourceKind>
+{
+    protected override StudioMediaSourceKind DefaultValue => StudioMediaSourceKind.FlatVideo;
+    protected override StudioMediaSourceKind? ReadValue(string value) => value switch
+    {
+        "nativeRecording" => StudioMediaSourceKind.NativeRecording,
+        "flatVideo" => StudioMediaSourceKind.FlatVideo,
+        _ => null,
+    };
+    protected override string Write(StudioMediaSourceKind value) =>
+        value == StudioMediaSourceKind.NativeRecording ? "nativeRecording" : "flatVideo";
+}
+
+internal sealed class StudioClipTransitionJsonConverter : StudioEnumJsonConverter<StudioClipTransition>
+{
+    protected override StudioClipTransition DefaultValue => StudioClipTransition.Cut;
+    protected override StudioClipTransition? ReadValue(string value) => value switch
+    {
+        "cut" => StudioClipTransition.Cut,
+        "fadeThroughBlack" => StudioClipTransition.FadeThroughBlack,
+        "fadeThroughWhite" => StudioClipTransition.FadeThroughWhite,
+        "crossDissolve" => StudioClipTransition.CrossDissolve,
+        _ => null,
+    };
+    protected override string Write(StudioClipTransition value) => value switch
+    {
+        StudioClipTransition.FadeThroughBlack => "fadeThroughBlack",
+        StudioClipTransition.FadeThroughWhite => "fadeThroughWhite",
+        StudioClipTransition.CrossDissolve => "crossDissolve",
+        _ => "cut",
     };
 }
 

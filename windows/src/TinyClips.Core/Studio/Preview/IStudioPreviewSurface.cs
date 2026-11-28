@@ -2,6 +2,13 @@ using Vortice.Direct3D11;
 
 namespace TinyClips.Core.Studio.Preview;
 
+/// <summary>A preview that can draw directly into the editor's existing GPU surface.</summary>
+public interface IStudioSurfacePreview : IStudioPreview
+{
+    void AttachSurface(IStudioPreviewSurface surface);
+    void DetachSurface(IStudioPreviewSurface surface);
+}
+
 /// <summary>
 /// What a <see cref="StudioPreviewEngine"/> draws into: a swap chain shown in a window, or a plain
 /// texture. The engine attaches at most one surface at a time and works without one.

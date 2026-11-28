@@ -61,7 +61,7 @@ struct StudioEvents: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: StudioJSONKey.self)
         schemaVersion = try container.decodeInt("schemaVersion", default: 1)
-        guard schemaVersion <= StudioJSON.supportedSchemaVersion else {
+        guard schemaVersion <= StudioJSON.supportedEventsSchemaVersion else {
             throw StudioProjectError.unsupportedVersion(schemaVersion)
         }
         capture = try container.decodeIfPresent(StudioCaptureInfo.self, forKey: StudioJSONKey("capture")) ?? StudioCaptureInfo()

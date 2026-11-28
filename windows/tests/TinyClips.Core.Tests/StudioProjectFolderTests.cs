@@ -154,6 +154,24 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
     // Saving a folder
 
     [Fact]
+    public void MultiClipFoldersReuseTheLegacySourceWithoutCopyingItTwice()
+    {
+        var id = MakeProject(camera: false, events: true);
+        var project = StudioTimelineEditing.ToTimelineProject(Store.Load(id));
+        Store.Save(project);
+        var folder = Path.Combine(Outside, "Copy");
+
+        Save(id, folder);
+        var manifest = Path.Combine(folder, "Copy.tinyclips");
+        var opened = Open(manifest);
+        Assert.Equal(2, opened.SchemaVersion);
+        Assert.Single(opened.Timeline!.Clips);
+        Assert.Single(opened.MediaSources!);
+        Assert.Equal(["Copy.tinyclips", "events.json", "screen.mp4"], Names(folder));
+        Assert.Equal("screen", File.ReadAllText(Path.Combine(folder, "screen.mp4")));
+    }
+
+    [Fact]
     public void AFolderHasTheRecordingsAndAProjectFileNamedAfterIt()
     {
         var id = MakeProject(camera: true, events: true, poster: true);
@@ -482,11 +500,11 @@ public sealed class StudioProjectFolderTests : StudioProjectFolderTestBase
         var file = Path.Combine(folder, "Later.tinyclips");
         var text = File.ReadAllText(file);
         Assert.Contains("\"schemaVersion\": 1", text);
-        File.WriteAllText(file, text.Replace("\"schemaVersion\": 1", "\"schemaVersion\": 2"));
+        File.WriteAllText(file, text.Replace("\"schemaVersion\": 1", "\"schemaVersion\": 3"));
 
         var refusal = AssertRefused(StudioProjectFolderProblem.NewerVersion, () => Open(file));
 
-        Assert.Equal(2, refusal.SchemaVersion);
+        Assert.Equal(3, refusal.SchemaVersion);
         Assert.Equal([id], Names(StoreRoot));
     }
 

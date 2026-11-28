@@ -194,7 +194,7 @@ does not start that feature or change its settings.
 
 `TINYCLIPS_AUTOMATION_ENDPOINT` selects a single endpoint for the CLI. Without an override, the CLI tries the standard endpoints before sending a request. `TINYCLIPS_AGENT_CONFIG` overrides the pairing configuration file; relative paths are resolved from the CLI's working directory.
 
-The CLI and MCP server wait up to 150 seconds for ordinary requests and two hours for `studio.export` or `editor.trim`. Set `TINYCLIPS_REQUEST_TIMEOUT_SECONDS` in the CLI or MCP server's environment to override the deadline, or set it to `0` for no deadline. Explicit caller cancellation still applies.
+The CLI and MCP server wait up to 150 seconds for ordinary requests and two hours for long media operations: Studio export, portable project copy, caption generation, `editor.trim`, and timeline import/insert/split/trim (the first clip edit may copy an external original). Set `TINYCLIPS_REQUEST_TIMEOUT_SECONDS` in the CLI or MCP server's environment to override the deadline, or set it to `0` for no deadline. Explicit caller cancellation still applies.
 
 Framing is one UTF-8 JSON object per line (`\n`). A connection may send several requests; responses come back in order. On Windows, at most 16 requests may be queued per connection; exceeding that limit closes the connection.
 
@@ -328,6 +328,36 @@ To draw captions into the picture, set `overlays.captions` through `studio.proje
 
 `studio.export` takes an optional `resolution` (`source`, `2160p`, `1440p`, `1080p`, `720p`, or `480p`) and `quality` (`best`, `high`, `standard`, or `small`). A video keeps the shape of its canvas, fits inside the named frame turned to match the canvas, and is never scaled up, so check the `width` and `height` it reports. It also reports the video `codec` it wrote (`h264` or `hevc`): the `videoCodec` setting, except that a Mac without a usable HEVC encoder for that size writes H.264 instead. `source` is the canvas at its own size, which can be larger than 4K; past 4K, the largest size the PC or Mac can encode varies, and a size it cannot encode fails with an error suggesting 4K or smaller. Omitted or null values use the choices last made in Studio's Export popup, which start at `1080p` and `high`; agents can read and set them as the `studioExportResolution` and `studioExportQuality` settings. `studio.export.options` is the read-only view of the same popup: the resolutions offered for a project with their sizes, and each quality's video bitrate and estimated file size at the chosen resolution.
 
+#### Assemble a Studio timeline
+
+Check `session.hello.commands` before using `studio.timeline.*` on macOS or Windows: older app versions may not support assembly. For MCP, replace dots with underscores and prepend `tinyclips_` (for example `tinyclips_studio_timeline_import`).
+
+Run `tinyclips studio.timeline.get projectId=<id>` with `read` scope. Its `clips` are in playback order and have stable `clipId`, `sourceId`, source bounds and `projectStart`/`projectEnd` in edited output seconds. `sources` includes recording vs. flat-video kind, dimensions, duration and available layer metadata. Looking at a single-source project does not upgrade it.
+
+Every mutation takes `projectId`, `expectedModifiedAt` and `expectedRevision`. Use `modifiedAt` and `revision` from `studio.timeline.get` or `project.modifiedAt` and `revision` from the last edit. Edits are atomic and undoable in an open editor. On `conflict`, read the current timeline and reconcile IDs and times; do not blindly retry.
+
+| Command | Additional parameters | Effect |
+|---|---|---|
+| `studio.timeline.import` | `path`, optional `mode`, `projectTime` | Copy a regular MP4/MOV directly in a configured capture folder or returned by `library.list`. Default `mode=library` imports a linked single-recording export with its current edits, camera and events. Linked multi-clip projects cannot be merged. Choose `mode=file` only to import the rendered video as a flat clip, with no separate camera or events. Both modes have the same path restrictions. For files elsewhere, use Studio's file picker. |
+| `studio.timeline.insert` | `clipId`, optional `projectTime` | Duplicate the clip with its edits and a new ID, sharing its source. |
+| `studio.timeline.move` | `clipId`, `index` | Reorder to the zero-based **final** index. |
+| `studio.timeline.split` | `clipId`, `sourceTime` | Split at a playable point in the clip, in **source** seconds. The left clip keeps its ID. |
+| `studio.timeline.trim` | `clipId`, `sourceStart`, `sourceEnd` | Narrow the clip to a playable source interval; source files are unchanged. |
+| `studio.timeline.transition` | `clipId`, `kind` | Set the join **into** this clip from its predecessor: `cut` (default), `fadeThroughBlack`, `fadeThroughWhite`, or `crossDissolve`. The first clip has no join. |
+| `studio.timeline.remove` | `clipId` | Remove a clip, not its source. Refuses the final clip. No discard/delete approval is implied. |
+| `studio.timeline.record` | Optional `projectTime` and the usual recording target and device choices | Record a native segment for the specified destination. Requires **both `record` and `edit`**; the other mutations need `edit` only. |
+
+`projectTime` is in **edited output seconds**. Omit it to append, use the incoming clip's `projectStart` to insert before it, or insert inside a clip to split it and insert in one edit. Clips meet with a cut unless a transition is set. Color fades do not move the clips; a cross-dissolve overlaps their pictures and audio by up to 0.5 seconds. Inside that overlap, insertion targets the incoming clip. Read `studio.timeline.get` again after a join or trim changes timing: each clip includes its stored `transitionIn`, and active effects include `transitionStart` and `transitionEnd` in project seconds.
+
+```sh
+tinyclips call studio.timeline.import --params '{"projectId":"<id>","expectedModifiedAt":"<timestamp>","expectedRevision":"<revision>","path":"/Users/me/Movies/Part 2.mp4","projectTime":5.25}'
+tinyclips call studio.timeline.transition --params '{"projectId":"<id>","expectedModifiedAt":"<latest-timestamp>","expectedRevision":"<latest-revision>","clipId":"<incoming-clip-id>","kind":"crossDissolve"}'
+```
+
+`studio.timeline.record` uses the `recording.startVideo` capture path, saved opt-ins, OS permissions and countdown. `started: true` is not an insertion receipt. Use `recording.status`, `recording.togglePause` and `recording.stop` as usual; restart/discard still require sensitive approval. After stopping, wait for processing to finish, inspect `recording.status.error` and read the timeline again. If access or the destination revision changed, the destination is unchanged and a successfully finalized take remains a separate Studio draft. A successful insert does not delete the original draft.
+
+Global `studio.project.edit` can patch the `canvas` of a v2 timeline, not its legacy single-source mirror. Project-wide zoom suggestions and source-local caption operations (check, import, fix, generate and caption-file export) return `not_supported` for v2 rather than operating on the wrong clip. `studio.export` renders the assembled movie; see [project format §16](studio-project-format.md#16-multi-clip-projects-v2).
+
 ### Policy order
 
 1. `session.hello` is allowed without a token while the listener is available.
@@ -335,7 +365,7 @@ To draw captions into the picture, set `overlays.captions` through `studio.proje
 3. `session.pair` / `session.pairStatus` → allowed without a token.
 4. Missing or unknown token → `unauthorized`.
 5. Command not in the contract → `unknown_command`.
-6. Command scope not granted → `missing_scope`.
+6. Command scope or one of its required `additionalScopes` not granted → `missing_scope`.
 7. Scope is sensitive → ask the user in the app (`approval_denied` if declined); otherwise run.
 
 [`shared/automation/fixtures/policy.json`](../shared/automation/fixtures/policy.json) holds the expected decisions, and both platforms test against it.

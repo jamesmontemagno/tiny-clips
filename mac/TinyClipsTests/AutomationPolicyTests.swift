@@ -106,6 +106,178 @@ final class AutomationPolicyTests: XCTestCase {
         XCTAssertNil(AutomationSetting.named("studioPreviewEnabled"))
     }
 
+    func testRecordingIntoTimelineRequiresBothGrants() throws {
+        let contract = try loadContract()
+        for scope in ["edit", "record"] {
+            XCTAssertEqual(AutomationPolicy.decide(enabled: true, clientScopes: [scope],
+                                                   command: "studio.timeline.record", contract: contract), .deny(.missingScope))
+        }
+        XCTAssertEqual(AutomationPolicy.decide(enabled: true, clientScopes: ["edit", "record"],
+                                               command: "studio.timeline.record", contract: contract), .allow)
+    }
+
+    @MainActor
+    func testTimelineCommitRechecksRevisionAndAuthorization() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = Self.repoRoot.appendingPathComponent("shared/studio/fixtures/timeline/two-clips-native-flat.json")
+        let project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(contentsOf: fixture))
+        let store = StudioProjectStore(rootURL: root, now: { Date(timeIntervalSince1970: 42) })
+        try store.save(project)
+        let controller = AutomationController(contract: try loadContract())
+        let router = AutomationCommandRouter(controller: controller, studioStore: store)
+        let get = try await router.execute(command: "studio.timeline.get", params: ["projectId": project.id])
+        XCTAssertEqual(get["duration"] as? Double, 11)
+        let params: [String: Any] = ["projectId": project.id, "clipId": "flat-clip", "index": 0,
+                                    "expectedModifiedAt": try XCTUnwrap(get["modifiedAt"] as? String),
+                                    "expectedRevision": try XCTUnwrap(get["revision"] as? String)]
+        do {
+            _ = try await router.execute(command: "studio.timeline.move", params: params) {
+                throw AutomationError(.missingScope)
+            }
+            XCTFail("An edit survived revocation.")
+        } catch let error as AutomationError {
+            XCTAssertEqual(error.code, .missingScope)
+        }
+        do {
+            _ = try await router.execute(command: "studio.timeline.move", params: params) {
+                var concurrent = try store.load(id: project.id)
+                concurrent.canvas.padding = 0.123
+                try store.save(concurrent)
+            }
+            XCTFail("An edit survived a same-timestamp concurrent write.")
+        } catch let error as AutomationError {
+            XCTAssertEqual(error.code, .conflict)
+        }
+        let kept = try store.load(id: project.id)
+        XCTAssertEqual(kept.canvas.padding, 0.123)
+        XCTAssertEqual(kept.timeline, project.timeline)
+        let fresh = try await router.execute(command: "studio.timeline.get", params: ["projectId": project.id])
+        var insert = params
+        insert["expectedRevision"] = fresh["revision"]
+        insert["index"] = nil
+        insert["projectTime"] = 2.0
+        _ = try await router.execute(command: "studio.timeline.insert", params: insert)
+        let saved = try store.load(id: project.id)
+        XCTAssertEqual(saved.timeline?.clips.map(\.sourceId), ["native-source", "flat-source", "native-source", "flat-source"])
+        XCTAssertEqual(saved.mediaSources, project.mediaSources)
+    }
+
+    @MainActor
+    func testTransitionCommandChecksTheIncomingClipAndReportsTheNewProjectClock() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = Self.repoRoot.appendingPathComponent("shared/studio/fixtures/timeline/two-clips-native-flat.json")
+        let project = try StudioJSON.makeDecoder().decode(StudioProject.self, from: Data(contentsOf: fixture))
+        let store = StudioProjectStore(rootURL: root)
+        try store.save(project)
+        let controller = AutomationController(contract: try loadContract())
+        let router = AutomationCommandRouter(controller: controller, studioStore: store)
+        let query = ["projectId": project.id]
+        let get = try await router.execute(command: "studio.timeline.get", params: query)
+        let command = "studio.timeline.transition"
+        var params: [String: Any] = ["projectId": project.id, "clipId": "native-clip", "kind": "crossDissolve",
+                                     "expectedRevision": try XCTUnwrap(get["revision"]), "expectedModifiedAt": try XCTUnwrap(get["modifiedAt"])]
+        do {
+            _ = try await router.execute(command: command, params: params)
+            XCTFail("The first clip has no incoming join")
+        } catch let error as AutomationError { XCTAssertEqual(error.code, .invalidParams) }
+        params["clipId"] = "flat-clip"
+        params["kind"] = "unknown"
+        do {
+            _ = try await router.execute(command: command, params: params)
+            XCTFail("An unsupported transition must not be stored")
+        } catch let error as AutomationError { XCTAssertEqual(error.code, .invalidParams) }
+        params["kind"] = "crossDissolve"
+        _ = try await router.execute(command: command, params: params)
+        let result = try await router.execute(command: "studio.timeline.get", params: query)
+        let clip = try XCTUnwrap((result["clips"] as? [[String: Any]])?.last)
+        XCTAssertEqual(clip["transitionIn"] as? String, "crossDissolve")
+        XCTAssertEqual(clip["transitionStart"] as? Double, 5.5)
+        XCTAssertEqual(clip["transitionEnd"] as? Double, 6)
+        XCTAssertEqual(result["duration"] as? Double, 10.5)
+        params["kind"] = "cut"
+        do {
+            _ = try await router.execute(command: command, params: params)
+            XCTFail("A stale command reset the transition")
+        } catch let error as AutomationError { XCTAssertEqual(error.code, .conflict) }
+        params["expectedRevision"] = result["revision"]
+        params["expectedModifiedAt"] = result["modifiedAt"]
+        _ = try await router.execute(command: command, params: params)
+        XCTAssertEqual(try store.load(id: project.id).timeline, project.timeline)
+    }
+
+    @MainActor
+    func testTimelineImportRejectsOutsideFilesAndLinks() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = root.appendingPathComponent("Library")
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let external = root.appendingPathComponent("Outside.mp4")
+        try Data([0]).write(to: external)
+        func allowed(_ url: URL, recent: [String] = []) throws -> URL {
+            try AutomationCommandRouter.studioImportURL(path: url.path, directories: [library], recentPaths: recent)
+        }
+        XCTAssertThrowsError(try allowed(external))
+        XCTAssertEqual(try allowed(external, recent: [external.path]), external.resolvingSymlinksInPath())
+        let link = library.appendingPathComponent("Link.mp4")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: external)
+        XCTAssertThrowsError(try allowed(link, recent: [link.path]))
+    }
+
+    @MainActor
+    func testFinishedTakeRechecksDestinationAfterStagingAndKeepsItsDraft() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = StudioProjectStore(rootURL: root, now: { Date(timeIntervalSince1970: 42) })
+        func makeTake() throws -> StudioProject {
+            let project = StudioProject(id: UUID().uuidString.lowercased(), sources: StudioSources(
+                screen: StudioScreenSource(width: 64, height: 48, frameRate: 24, duration: 1)
+            ))
+            try store.save(project)
+            try FileManager.default.copyItem(
+                at: Self.repoRoot.appendingPathComponent("mac/TinyClipsTests/Fixtures/StudioRendering/native.mp4"),
+                to: store.paths(for: project).screenURL
+            )
+            return try store.load(id: project.id)
+        }
+        let destination = try makeTake(), take = try makeTake()
+        let controller = AutomationController(contract: try loadContract())
+        let router = AutomationCommandRouter(controller: controller, studioStore: store)
+        func request() async throws -> [String: Any] {
+            let get = try await router.execute(command: "studio.timeline.get", params: ["projectId": destination.id])
+            return ["projectId": destination.id, "expectedModifiedAt": try XCTUnwrap(get["modifiedAt"] as? String),
+                    "expectedRevision": try XCTUnwrap(get["revision"] as? String), "projectTime": 0.5]
+        }
+        let original = try await request()
+        let directory = try store.paths(for: destination).projectDirectory
+        let before = try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
+        var checks = 0
+        do {
+            _ = try await router.attachStudioTake(take.id, params: original) {
+                checks += 1
+                if checks == 2 {
+                    var concurrent = destination
+                    concurrent.name = "Renamed while preparing the take"
+                    try store.save(concurrent)
+                }
+            }
+            XCTFail("A stale recording was attached.")
+        } catch let error as AutomationError {
+            XCTAssertEqual(error.code, .conflict)
+        }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted(), before)
+        XCTAssertNil(try store.load(id: destination.id).timeline)
+        XCTAssertEqual(try store.load(id: take.id), take)
+        let fresh = try await request()
+        let saved = try await router.attachStudioTake(take.id, params: fresh, validateAccess: {})
+        XCTAssertEqual(saved.timeline?.clips.count, 3)
+        XCTAssertEqual(saved.timeline?.clips.first?.sourceEnd, 0.5)
+        XCTAssertEqual(saved.timeline?.clips.last?.sourceStart, 0.5)
+        XCTAssertEqual(saved.mediaSources?.count, 2)
+        XCTAssertEqual(try store.load(id: take.id), take)
+    }
+
     @MainActor
     func testScreenshotOutputSettingsRejectDisablingTheLastOutput() throws {
         let suite = "TinyClipsAutomationTests.\(UUID().uuidString)"

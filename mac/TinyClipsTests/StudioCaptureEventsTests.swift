@@ -3,6 +3,22 @@ import XCTest
 
 final class StudioCaptureEventsTests: XCTestCase {
     @MainActor
+    func testSegmentRefusesToReplaceAnInFlightCapture() async throws {
+        let manager = CaptureManager()
+        try await manager.performAutomationCapture {
+            do {
+                _ = try await manager.recordStudioSegment()
+                XCTFail("A segment cannot take ownership of another capture")
+            } catch {
+                XCTAssertTrue(error is StudioEditorInputError)
+            }
+            XCTAssertTrue(manager.isScreenshotCaptureInProgress)
+            XCTAssertFalse(manager.isRecording)
+        }
+        XCTAssertFalse(manager.isAnyCaptureInProgress)
+    }
+
+    @MainActor
     func testEveryCaptureKindStartsCursorSamplingWithClickVisualsDisabled() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -18,6 +18,18 @@ public sealed class StudioAudioMixSourceTests
     }
 
     [Fact]
+    public void WideReadKeepsTheUnclampedSumForTimelineGains()
+    {
+        using var mixer = new StudioAudioMixSource(
+            [new Source((0, [20000, -20000])), new Source((0, [20000, -20000]))],
+            new StudioAudioFormat(48000, 1), 2);
+
+        Assert.True(mixer.TryReadWide(out var start, out var samples));
+        Assert.Equal(0, start);
+        Assert.Equal([40000, -40000], samples.ToArray());
+    }
+
+    [Fact]
     public void KeepsFutureBlocksAcrossReadsAndResetsAllTracksOnSeek()
     {
         using var mixer = new StudioAudioMixSource(

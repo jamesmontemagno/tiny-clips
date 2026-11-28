@@ -241,14 +241,15 @@ final class AutomationController: ObservableObject {
         case "session.pair": return try pair(params: params, contract: contract)
         case "session.pairStatus": return try pairStatus(params: params)
         default:
-            return try await router.execute(command: command, params: params) { [unowned self] in
+            return try await router.execute(command: command, params: params, clientName: client?.name) { [weak self] in
+                guard let self else { throw AutomationError(.automationDisabled) }
                 try Task.checkCancellation()
-                try requireCurrentClient(client)
+                try self.requireCurrentClient(client)
                 let scopes = client.flatMap { current in
-                    clientStore.clients.first { $0.id == current.id }
+                    self.clientStore.clients.first { $0.id == current.id }
                 }.map { Set($0.scopes) }
                 if case .deny(let code) = AutomationPolicy.decide(
-                    enabled: isEnabled, clientScopes: scopes, command: command, contract: contract
+                    enabled: self.isEnabled && self.isRunning, clientScopes: scopes, command: command, contract: contract
                 ) {
                     throw AutomationError(code)
                 }

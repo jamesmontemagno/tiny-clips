@@ -242,7 +242,22 @@ public sealed partial class StudioEditorSession
             return Task.FromResult(new StudioCaptionGenerationResult(StudioCaptionGenerationOutcome.NotStarted));
         }
 
-        var task = GenerateCaptionsCoreAsync(_captionGenerator!, editor.Project, paths, model);
+        // The cues are in the source time of the clip that is heard, whatever the timeline does.
+        var clipId = editor.SelectedClipId;
+        if (clipId is not null)
+        {
+            try
+            {
+                paths = StudioTimelineProjection.PathsForClip(editor.Manifest, paths, clipId);
+            }
+            catch (StudioProjectInvalidException ex)
+            {
+                return Task.FromResult(new StudioCaptionGenerationResult(
+                    StudioCaptionGenerationOutcome.Failed, 0, $"Captions could not be generated: {ex.Message}"));
+            }
+        }
+
+        var task = GenerateCaptionsCoreAsync(_captionGenerator!, editor.Project, paths, model, clipId);
         _captionGeneration = task;
         return task;
     }
@@ -270,7 +285,8 @@ public sealed partial class StudioEditorSession
         IStudioCaptionGenerator generator,
         StudioProject project,
         StudioProjectPaths paths,
-        StudioCaptionModel model)
+        StudioCaptionModel model,
+        string? clipId)
     {
         using var cancellation = new CancellationTokenSource();
         var generation = ++_captionGenerationNumber;
@@ -309,6 +325,10 @@ public sealed partial class StudioEditorSession
                 if (heard.Cues.Length == 0)
                 {
                     result = new StudioCaptionGenerationResult(StudioCaptionGenerationOutcome.NoSpeech, 0, StudioGeneratedCaptions.NoSpeechMessage);
+                }
+                else if (IsEditable && !string.Equals(Model?.SelectedClipId, clipId, StringComparison.Ordinal))
+                {
+                    result = new StudioCaptionGenerationResult(StudioCaptionGenerationOutcome.Failed, 0, "The captions were generated for a clip that is no longer selected. Select it and generate them again.");
                 }
                 else if (IsEditable)
                 {

@@ -323,16 +323,18 @@ struct StudioZoomInspectorSection: View {
                 onEditingChanged: { gestureChanged($0) }
             )
             StudioInspectorSection(title: "Focus") {
-                Picker("Focus", selection: focusModeBinding(zoom: zoom)) {
-                    Text("Fixed Point").tag(StudioZoomFocusMode.point)
-                    Text("Follow Pointer").tag(StudioZoomFocusMode.cursor)
+                if !viewModel.isFlatTimelineClip {
+                    Picker("Focus", selection: focusModeBinding(zoom: zoom)) {
+                        Text("Fixed Point").tag(StudioZoomFocusMode.point)
+                        Text("Follow Pointer").tag(StudioZoomFocusMode.cursor)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityLabel("Focus")
+                    .help("Zoom in on one point, or keep the pointer in view as it moves")
+                    .disabled(!viewModel.hasPointerPositions && zoom.focus.mode == .point)
+                    pointerExplanation
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .accessibilityLabel("Focus")
-                .help("Zoom in on one point, or keep the pointer in view as it moves")
-                .disabled(!viewModel.hasPointerPositions && zoom.focus.mode == .point)
-                pointerExplanation
                 focusControls(index: index)
             }
             timingSection(zoom: zoom)

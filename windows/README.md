@@ -358,6 +358,20 @@ not the package version, when replacing the highlights.
   Saving the project again preserves exported videos and unrelated content beside it.
   While idle, Tiny Clips does not reserve a Stop recording shortcut; `Ctrl+Shift+S` reaches
   Save as in Studio or the foreground app normally.
+- **Multi-clip timelines**: **Add clip** in the clip strip adds video files, a video from the
+  Clips Library, or **Record another segment** (the editor is hidden while the take is recorded
+  and comes back with it). Additions go at the end, or at the playhead with **Insert at
+  playhead**; video files dropped on the strip go where they are dropped. The first addition
+  turns a single recording into a timeline. A Library video exported from a single-recording
+  project brings that recording's camera, events and current edits; other videos are flat
+  clips. Added media is copied into the project, and the originals are never changed. Each
+  join has a transition button: Cut, Fade Through Black, Fade Through White, or
+  Cross-Dissolve. Selecting a clip edits it in the inspectors in its own time, while the
+  playhead and transport follow the whole project. The **Clip** menu splits the selected clip
+  at the playhead, moves it (`Alt+Shift+Left`/`Alt+Shift+Right`) or removes it (`Delete`).
+  Each addition or change is one Undo step, and a choice that cannot be read adds nothing.
+  Paired agents can do the same with the `studio.timeline.*` commands
+  ([`docs/agent-integration.md`](../docs/agent-integration.md)).
 - **Clips Library** offers **Open in Studio…** for a video that was exported from a project, and
   choosing such a video in **Recent captures** opens its project instead of the trimmer. A
   recording kept as a draft is in **Recent captures** too, as "Name — Studio project" with its
@@ -383,6 +397,38 @@ described in [`docs/studio-rendering.md`](docs/studio-rendering.md) and the live
 [`docs/studio-preview.md`](docs/studio-preview.md). Each has a check tool that runs without the
 app, plays no sound and sends no input, and so has the editor window. None runs in CI, and the
 preview and window tools are not in the solution.
+
+### Timeline media transactions
+
+`StudioProjectStore` implements `IStudioTimelineMediaStore` for the v2 format's owned media.
+Call `StageTimelineAsync(destination, imports, cancellationToken)` with the flushed destination
+manifest and an ordered list of `StudioTimelineImport(VideoPath, Recording?, ExpectedVideoIdentity?)`.
+A linked `Recording` is a v1 snapshot, including unsaved source-local edits; its native screen,
+camera, events and background are copied rather than importing its rendered export. A portable
+flat recording marked with `sources.mediaKind = "flatVideo"` remains flat. An empty batch prepares
+conversion only; opening a v1 project never converts it.
+
+The returned `StudioPreparedTimelineEdit` is disposable and exposes `BaseProject`, ordered
+`ImportedSources`/`ImportedClips`, and an appended `ProposedProject`. Build an insertion proposal
+from these if needed, revalidate the live editor and access on its owning thread, then synchronously
+call `Commit(proposal, cancellationToken)`. It returns the saved project only after installing the
+private, probed copies and atomically publishing the manifest against `ExpectedDiskRevision`
+(SHA-256 of the exact pre-staging manifest bytes). Commit is single-use; failure, cancellation,
+or disposal before commit removes the transaction's files. Success retains sources for undo.
+The prepared registry must remain unchanged in the proposal; timeline and clip edits may change.
+
+For an authorized selected input, pass `StudioMediaFileIdentity.Capture(path)` captured during
+preflight. Staging checks its Windows handle identity and copies from that same read-only handle,
+which excludes writers and deletion, then probes the private copy, including a decoded frame.
+Callers must still recheck authorization and editor state after the await. `StudioProjectStaleException`
+and `StudioMediaFileChangedException` signal conflicts; `StudioProjectInvalidException` signals
+invalid media/proposals; `StudioProjectFolderException.Problem` describes missing/unsafe assets.
+I/O errors and `OperationCanceledException` remain distinct. This service does not add or advertise
+Agent commands or bypass their permissions.
+
+V2 Save, Save As and Open include all registry media and `recordingBackgroundImage`, including
+unused sources retained for undo. Project-relative assets cannot escape the folder, be links, or
+use the local `saved-project.json` record. Unrelated files continue to prevent folder replacement.
 
 ```powershell
 # Renderer, exporter and camera recorder. No window; about four minutes.

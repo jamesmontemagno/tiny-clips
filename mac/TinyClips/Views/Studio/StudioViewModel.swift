@@ -7,8 +7,7 @@ import UniformTypeIdentifiers
 
 /// Drives one Studio editor window: the project being edited, the live preview, autosave, and export.
 ///
-/// The preview always plays the whole source recording, so `playhead` is in source time. Trimming
-/// and muting are applied by the transport here and by the exporter, never by rebuilding the player.
+/// Inspectors use `playhead` in selected-source time. A v2 player seeks in assembled project time.
 @MainActor
 final class StudioViewModel: ObservableObject {
     enum LoadState: Equatable {
@@ -96,6 +95,7 @@ final class StudioViewModel: ObservableObject {
     /// What the window is waiting for while the project is copied to a folder, or nil. Nothing
     /// is edited meanwhile.
     @Published private(set) var busyMessage: String?
+    @Published var assemblyError: String?
 
     /// The other projects in the store, the one opened last first, for Open Recent.
     @Published private(set) var recentProjects: [StudioProjectSummary] = []
@@ -110,7 +110,13 @@ final class StudioViewModel: ObservableObject {
     var isWindowInFront: (() -> Bool)?
 
     private let store: StudioProjectStore
-    private var events = StudioEvents()
+    @Published private var events = StudioEvents()
+    private var sourceEventsTask: Task<Void, Never>?
+    private(set) var timelineMap: StudioTimelineMap?
+    private(set) var minimumTimelineDetailHeight: CGFloat?
+    private var diskState: StudioEditableState?
+    private var assemblyTask: Task<Void, Never>?
+    private var generatingClipID: String?
     private var paths: StudioProjectPaths?
     private var pendingPlaybackPaths: StudioProjectPaths?
     private var playback: StudioPlayback?
@@ -195,9 +201,28 @@ final class StudioViewModel: ObservableObject {
     // MARK: - Derived State
 
     var project: StudioProject? { editor?.project }
+    var manifest: StudioProject? { editor?.manifest }
+    var projectPlayhead: Double {
+        if let id = editor?.selectedClip?.id, let time = timelineMap?.projectTime(clipID: id, sourceTime: playhead) {
+            return time
+        }
+        return editor?.outputTime(forSourceTime: playhead) ?? 0
+    }
     func automationProjectSnapshot() -> StudioProject? {
         guard isEditable else { return nil }
-        return project
+        return manifest
+    }
+
+    func timelineImportSnapshot() -> StudioProject? {
+        guard isEditable, let source = manifest else { return nil }
+        guard source.schemaVersion == 1, let text = pendingCaptionText,
+              let index = selectedCaptionIndex else {
+            return source
+        }
+
+        var snapshot = StudioEditorModel(project: source)
+        snapshot.setCaptionText(at: index, to: text)
+        return snapshot.manifest
     }
 
     @discardableResult
@@ -208,19 +233,18 @@ final class StudioViewModel: ObservableObject {
         // conflict: the agent reads the project again.
         let typed = editor?.editableState
         commitCaptionText()
-        guard editor?.editableState == typed, project?.modifiedAt == expectedModifiedAt, saveNow() else { return false }
-        selectedCaptionIndex = nil
-        edit { $0.applyAutomationProject(updated) }
-        guard saveNow() else {
-            undo()
+        guard editor?.editableState == typed, manifest?.modifiedAt == expectedModifiedAt else { return false }
+        do {
+            try commitAssembly(updated, selecting: editor?.selectedClip?.id)
+            return true
+        } catch {
             return false
         }
-        return true
     }
 
     func prepareAutomationExport() -> (StudioProject, StudioEvents)? {
         commitCaptionText()
-        guard isEditable, saveNow(), let project else { return nil }
+        guard isEditable, saveNow(), let project = manifest else { return nil }
         return (project, events)
     }
 
@@ -261,21 +285,21 @@ final class StudioViewModel: ObservableObject {
         if previewSize.width > 0, previewSize.height > 0 {
             return previewSize
         }
-        guard let project else { return CGSize(width: 1280, height: 720) }
+        guard let project = manifest else { return CGSize(width: 1280, height: 720) }
         return Self.renderSize(for: project, longSide: Self.previewLongSide)
     }
 
     /// The size the next export comes to at `resolution`.
     func exportRenderSize(for resolution: StudioExportResolution) -> CGSize {
-        guard let project else { return CGSize(width: 1920, height: 1080) }
+        guard let project = manifest else { return CGSize(width: 1920, height: 1080) }
         let size = StudioExportPresets.size(project: project, resolution: resolution)
         return CGSize(width: size.width, height: size.height)
     }
 
     var timeText: String {
         guard let editor else { return "0:00.0 / 0:00.0" }
-        let position = StudioEditorModel.formattedTime(editor.outputTime(forSourceTime: playhead))
-        return "\(position) / \(StudioEditorModel.formattedTime(editor.outputDuration))"
+        let position = StudioEditorModel.formattedTime(projectPlayhead)
+        return "\(position) / \(StudioEditorModel.formattedTime(timelineMap?.duration ?? editor.outputDuration))"
     }
 
     var zooms: [StudioZoom] { project?.zooms ?? [] }
@@ -307,25 +331,276 @@ final class StudioViewModel: ObservableObject {
 
     // MARK: - Loading
 
+    enum ClipInput {
+        case file, library, recording
+        case dropped([URL])
+    }
+
+    var canAssemble: Bool { isEditable && !isInGesture && !isGeneratingCaptions }
+    var selectedClipID: String? { editor?.selectedClip?.id }
+    var isFlatTimelineClip: Bool {
+        guard let sourceID = editor?.selectedClip?.sourceId else { return false }
+        return manifest?.mediaSources?.first(where: { $0.id == sourceID })?.kind == .flatVideo
+    }
+    var canSplitTimelineClip: Bool {
+        guard canAssemble, let model = editor else { return false }
+        let map = model.timeMap
+        let offset = map.sourceToOutput(playhead)
+        return offset > 0 && offset < map.outputDuration && !map.segments.isEmpty &&
+            map.segments.contains { playhead >= $0.start && playhead <= $0.end }
+    }
+    var canCancelAssembly: Bool { assemblyTask != nil }
+    func cancelAssembly() { assemblyTask?.cancel() }
+
+    func selectTimelineClip(_ id: String) {
+        guard canAssemble, let clip = timelineMap?.clips.first(where: { $0.id == id }) else { return }
+        commitCaptionText()
+        pause()
+        seekProject(to: clip.projectStart)
+    }
+
+    func scrubProject(to seconds: Double) {
+        guard isEditable else { return }
+        commitCaptionText()
+        pause()
+        seekProject(to: seconds)
+    }
+
+    private func seekProject(to seconds: Double, preferring clipID: String? = nil) {
+        guard let timelineMap else { return }
+        let time = min(max(0, seconds), timelineMap.duration)
+        showProjectPosition(time, preferring: clipID)
+        player?.seek(to: CMTime(seconds: time, preferredTimescale: 48_000), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func showProjectPosition(_ time: Double, preferring clipID: String? = nil) {
+        guard let position = timelineMap?.sourcePosition(atProjectTime: time, preferring: clipID) else { return }
+        if selectedClipID != position.clipID {
+            editor?.selectClip(id: position.clipID)
+            clearClipSelection()
+            loadSelectedEvents()
+        }
+        playhead = position.sourceTime
+    }
+
+    private func clearClipSelection() {
+        selectedZoomIndex = nil
+        selectedCutIndex = nil
+        selectedSpeedIndex = nil
+        selectedAnnotationIndex = nil
+        selectedCaptionIndex = nil
+        pendingCaptionText = nil
+        if !StudioInspectorPanel.available(hasCamera: hasCamera).contains(inspectorPanel) { inspectorPanel = .background }
+    }
+
+    private func loadSelectedEvents() {
+        sourceEventsTask?.cancel()
+        events = StudioEvents()
+        guard let project else { return }
+        do {
+            let path = try store.paths(for: project).eventsURL
+            guard project.sources.events != nil || (timelineMap == nil && FileManager.default.fileExists(atPath: path.path))
+            else { return }
+            sourceEventsTask = Task {
+                do {
+                    let loaded = try await Task.detached(priority: .userInitiated) {
+                        try StudioJSON.makeDecoder().decode(StudioEvents.self, from: Data(contentsOf: path))
+                    }.value
+                    if !Task.isCancelled { events = loaded }
+                } catch {
+                    if !Task.isCancelled { SaveService.shared.showError("Studio could not read recording events: \(error.localizedDescription)") }
+                }
+            }
+        } catch {
+            SaveService.shared.showError(error.localizedDescription)
+        }
+    }
+
+    /// `nil` appends. An explicit time is on the output timeline, including cuts and speed edits.
+    @discardableResult
+    func addClip(_ input: ClipInput, at time: Double?) -> Task<Void, Never>? {
+        runAssembly(message: "Adding clip…") { [self] destination in
+            let urls: [URL]
+            let recording: StudioProject?
+            switch input {
+            case .file:
+                let panel = NSOpenPanel()
+                panel.title = "Add Video to Timeline"
+                panel.prompt = "Add Video"
+                panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie]
+                panel.allowsMultipleSelection = true
+                guard panel.runModal() == .OK else { return nil }
+                (urls, recording) = (panel.urls, nil)
+            case .dropped(let selected):
+                (urls, recording) = (selected, nil)
+            case .library:
+                guard let selected = try await StudioWindowRegistry.shared.chooseLibraryVideo(forProjectID: projectID) else { return nil }
+                (urls, recording) = ([selected.url], selected.recording)
+            case .recording:
+                guard let take = try await StudioWindowRegistry.shared.recordSegment(forProjectID: projectID) else { return nil }
+                (urls, recording) = ([try store.paths(for: take).screenURL], take)
+            }
+            var updated = destination
+            var staged: [StudioPreparedTimelineBase] = []
+            var firstID: String?
+            var nextIndex: Int?
+            for url in urls {
+                try Task.checkCancellation()
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                let prepared = try await store.prepareTimelineImport(destination: updated, videoURL: url, recording: recording)
+                staged.append(prepared)
+                updated = prepared.base
+                guard let lane = updated.timeline, var sources = updated.mediaSources else {
+                    throw StudioProjectError.invalidProject("The project has no clip lane.")
+                }
+                sources.append(prepared.source)
+                updated.mediaSources = sources
+                if let nextIndex {
+                    updated.timeline = StudioTimelineEditing.insert(prepared.clip, at: nextIndex, into: lane)
+                } else if let time {
+                    updated.timeline = try StudioTimelineEditing.insert(prepared.clip, atProjectTime: time, in: lane, sources: sources)
+                } else {
+                    updated.timeline = StudioTimelineEditing.append(prepared.clip, to: lane)
+                }
+                if let index = updated.timeline?.clips.firstIndex(where: { $0.id == prepared.clip.id }) { nextIndex = index + 1 }
+                firstID = firstID ?? prepared.clip.id
+            }
+            guard let firstID else { return nil }
+            return (updated, firstID, staged)
+        }
+    }
+
+    func splitTimelineClip() {
+        guard canSplitTimelineClip else { return }
+        let id = selectedClipID
+        let time = playhead
+        runAssembly(message: "Splitting clip…") { [self] destination in
+            let prepared = try await store.prepareTimelineBase(destination: destination)
+            var updated = prepared.base
+            guard let lane = updated.timeline, let id = id ?? lane.clips.first?.id,
+                  let index = lane.clips.firstIndex(where: { $0.id == id }),
+                  let split = StudioTimelineEditing.splitClip(id: id, at: time, in: lane) else {
+                throw StudioProjectError.invalidProject("Move the playhead inside a playable part of the clip.")
+            }
+            updated.timeline = split
+            return (updated, split.clips[index + 1].id, [prepared])
+        }
+    }
+
+    @discardableResult
+    private func runAssembly(message: String, prepare: @escaping (StudioProject) async throws ->
+                             (StudioProject, String, [StudioPreparedTimelineBase])?) -> Task<Void, Never>? {
+        guard canAssemble else { return nil }
+        commitCaptionText()
+        guard let destination = manifest else { return nil }
+        pause()
+        assemblyError = nil
+        busyMessage = message
+        assemblyTask = Task {
+            defer { busyMessage = nil; assemblyTask = nil }
+            do {
+                guard let (updated, selection, prepared) = try await prepare(destination) else { return }
+                try Task.checkCancellation()
+                guard !isTornDown, let editor, editor.editableState == StudioEditableState(project: destination) else {
+                    throw StudioProjectError.invalidProject("The project changed. Try adding the clip again.")
+                }
+                try commitAssembly(updated, selecting: selection)
+                prepared.forEach { $0.finalize() }
+            } catch is CancellationError {
+                return
+            } catch {
+                assemblyError = error.localizedDescription
+            }
+        }
+        return assemblyTask
+    }
+
+    func moveTimelineClip(_ id: String, to index: Int) {
+        commitCaptionText()
+        guard canAssemble, let lane = manifest?.timeline, lane.clips.indices.contains(index),
+              let moved = StudioTimelineEditing.moveClip(id: id, to: index, in: lane) else { return }
+        replaceLane(moved, selecting: id)
+    }
+
+    func setTransition(_ kind: StudioClipTransition, before id: String) {
+        commitCaptionText()
+        guard canAssemble, let lane = manifest?.timeline,
+              let updated = StudioTimelineEditing.setTransition(kind, before: id, in: lane) else { return }
+        replaceLane(updated, selecting: id)
+    }
+
+    func removeTimelineClip(_ id: String) {
+        commitCaptionText()
+        guard canAssemble, let lane = manifest?.timeline, let index = lane.clips.firstIndex(where: { $0.id == id }),
+              let removed = StudioTimelineEditing.removeClip(id: id, from: lane) else { return }
+        replaceLane(removed, selecting: removed.clips[min(index, removed.clips.count - 1)].id)
+    }
+
+    private func replaceLane(_ lane: StudioTimeline, selecting id: String) {
+        guard var updated = manifest else { return }
+        guard lane != updated.timeline else { return }
+        updated.timeline = lane
+        do { try commitAssembly(updated, selecting: id) } catch { SaveService.shared.showError(error.localizedDescription) }
+    }
+
+    private func updateTimeline(_ map: StudioTimelineMap?, for manifest: StudioProject) {
+        timelineMap = map
+        minimumTimelineDetailHeight = StudioTimelineLane.minimumStackHeight(in: manifest)
+    }
+
+    private func commitAssembly(_ updated: StudioProject, selecting id: String?) throws {
+        guard !isTornDown, var model = editor, updated.id == projectID, let diskState else {
+            throw StudioProjectError.invalidProject("Reopen the project and try again.")
+        }
+        let map = try StudioTimelineMap(project: updated)
+        let newPaths = try store.paths(for: updated)
+        let oldID = selectedClipID
+        let oldSource = model.project.sources
+        let oldTime = playhead
+        model.applyAutomationProject(updated)
+        if let id { model.selectClip(id: id) }
+        // Publish only after the manifest is durable. A failed write cannot consume an undo step.
+        let saved = try store.saveEdits(model.editableState, id: projectID, expected: diskState)
+        model.refreshBookkeeping(from: saved)
+        saveTask?.cancel()
+        hasUnsavedEdits = false
+        self.diskState = StudioEditableState(project: saved)
+        pause()
+        editor = model
+        updateTimeline(map, for: model.manifest)
+        if newPaths != paths { paths = newPaths; pendingPlaybackPaths = newPaths }
+        clearClipSelection()
+        if oldID != selectedClipID || oldSource != model.project.sources { loadSelectedEvents() }
+        seek(to: oldID == selectedClipID ? oldTime : model.playbackStart)
+        refreshPreview()
+    }
+
     func load() async {
         guard !isTornDown, state == .loading, editor == nil else { return }
         do {
             let opened = try store.markOpened(id: projectID)
             let openedPaths = try store.paths(for: opened)
             let model = StudioEditorModel(project: opened)
+            try updateTimeline(StudioTimelineMap(project: opened), for: opened)
+            diskState = StudioEditableState(project: opened)
             paths = openedPaths
             editor = model
             projectSaveBaseline = model.editableState
 
-            guard FileManager.default.fileExists(atPath: openedPaths.screenURL.path) else {
+            guard timelineMap != nil || FileManager.default.fileExists(atPath: openedPaths.screenURL.path) else {
                 becomeUnavailable(
                     "The original recording for this project is no longer on this Mac, so it cannot be previewed or exported here."
                 )
                 return
             }
 
-            events = (try? store.loadEvents(id: projectID)) ?? StudioEvents()
-            let size = Self.renderSize(for: model.project, longSide: Self.previewLongSide)
+            if model.selectedClip == nil {
+                events = (try? store.loadEvents(id: projectID)) ?? StudioEvents()
+            } else {
+                loadSelectedEvents()
+            }
+            let size = Self.renderSize(for: opened, longSide: Self.previewLongSide)
             let newPlayback = StudioPlayback(
                 project: model.previewProject,
                 events: events,
@@ -337,7 +612,7 @@ final class StudioViewModel: ObservableObject {
             try await newPlayback.makePlayerItem()
             guard !isTornDown else { return }
 
-            newPlayback.player.isMuted = model.project.audio.muted
+            newPlayback.player.isMuted = timelineMap == nil && model.project.audio.muted
             newPlayback.player.actionAtItemEnd = .pause
             observe(newPlayback.player)
             player = newPlayback.player
@@ -360,6 +635,7 @@ final class StudioViewModel: ObservableObject {
     func adoptOwnedScreen(of project: StudioProject, paths: StudioProjectPaths) {
         guard editor?.project.sources.screen.external == true else { return }
         editor?.adoptOwnedScreen(from: project)
+        diskState = StudioEditableState(project: project)
         self.paths = paths
         pendingPlaybackPaths = paths
         switch state {
@@ -436,6 +712,7 @@ final class StudioViewModel: ObservableObject {
     /// Starts a gesture such as a drag, so everything until `endGesture()` is one undo step.
     func beginGesture() {
         guard isEditable else { return }
+        if timelineMap != nil { pause() }
         isInGesture = true
         editor?.beginEditingGroup()
     }
@@ -445,7 +722,7 @@ final class StudioViewModel: ObservableObject {
         guard isInGesture else { return }
         isInGesture = false
         // A canvas size that waited for the drag to end is applied now.
-        if let project, Self.renderSize(for: project, longSide: Self.previewLongSide) != previewSize {
+        if let project = manifest, Self.renderSize(for: project, longSide: Self.previewLongSide) != previewSize {
             refreshPreview()
         }
     }
@@ -565,7 +842,13 @@ final class StudioViewModel: ObservableObject {
     /// Makes captions from the recording's sound. They replace the ones there are when they are
     /// ready, as one edit, so Undo brings those back.
     func generateCaptions(language: String?) {
-        guard canGenerateCaptions, let project, let paths else { return }
+        guard canGenerateCaptions, let project else { return }
+        let paths: StudioProjectPaths
+        do { paths = try store.paths(for: project) } catch {
+            reportCaptionProblem(error.localizedDescription)
+            return
+        }
+        generatingClipID = editor?.selectedClip?.id
         commitCaptionText()
         dismissCaptionNotice()
         captionLanguageAsked = language
@@ -627,8 +910,8 @@ final class StudioViewModel: ObservableObject {
         case .success(let heard) where heard.cues.isEmpty:
             notice = noSpeechNotice()
         case .success(let heard):
-            guard isEditable else {
-                notice = StudioCaptionNotice(.problem, "The captions could not be put in the project. Try again.")
+            guard isEditable, editor?.selectedClip?.id == generatingClipID else {
+                notice = StudioCaptionNotice(.problem, "The selected clip changed. Select the original clip and generate its captions again.")
                 break
             }
             // What was being typed goes in first, so Undo brings it back with the old captions.
@@ -703,6 +986,7 @@ final class StudioViewModel: ObservableObject {
     }
 
     func setPendingCaptionText(_ text: String) {
+        if timelineMap != nil, isPlaying { pause() }
         pendingCaptionText = text
     }
 
@@ -2202,6 +2486,13 @@ final class StudioViewModel: ObservableObject {
             pause()
             return
         }
+        if let timelineMap {
+            commitCaptionText()
+            if projectPlayhead >= timelineMap.duration - 0.000_001 { seekProject(to: 0) }
+            isPlaying = true
+            play(player, from: playhead)
+            return
+        }
         let start = editor.playbackStart(from: playhead)
         if abs(start - playhead) > editor.frameDuration / 2 {
             seek(to: start)
@@ -2220,6 +2511,10 @@ final class StudioViewModel: ObservableObject {
     func stepFrame(by count: Int) {
         guard isReady, !isExporting, let editor else { return }
         pause()
+        if timelineMap != nil {
+            seekProject(to: projectPlayhead + Double(count) / max(1, editor.manifest.sources.screen.frameRate))
+            return
+        }
         seek(to: playhead + Double(count) * editor.frameDuration)
     }
 
@@ -2227,6 +2522,7 @@ final class StudioViewModel: ObservableObject {
     func stepSeconds(by count: Int) {
         guard isReady, !isExporting, let editor else { return }
         pause()
+        if timelineMap != nil { seekProject(to: projectPlayhead + Double(count)); return }
         seek(to: editor.sourceTime(steppingSeconds: count, from: playhead))
     }
 
@@ -2234,6 +2530,7 @@ final class StudioViewModel: ObservableObject {
     func goToTrimStart() {
         guard isReady, !isExporting, let editor else { return }
         pause()
+        if timelineMap != nil { seekProject(to: 0); return }
         seek(to: editor.playbackStart)
     }
 
@@ -2241,6 +2538,10 @@ final class StudioViewModel: ObservableObject {
     func goToTrimEnd() {
         guard isReady, !isExporting, let editor else { return }
         pause()
+        if let timelineMap {
+            seekProject(to: max(0, timelineMap.duration - 1 / max(1, editor.manifest.sources.screen.frameRate)))
+            return
+        }
         seek(to: editor.lastPlaybackFrame)
     }
 
@@ -2259,10 +2560,11 @@ final class StudioViewModel: ObservableObject {
 
     /// The Export popover's content, starting from the choice last made there.
     func makeExportOptions() -> StudioExportOptionsModel? {
-        guard let project else { return nil }
+        guard let project = manifest else { return nil }
         let settings = CaptureSettings.shared
         return StudioExportOptionsModel(
             project: project,
+            timelineMap: timelineMap,
             isHEVC: settings.videoCodec == .hevc,
             saved: settings.studioExportChoice
         )
@@ -2361,7 +2663,7 @@ final class StudioViewModel: ObservableObject {
         exportProgress = 0
         closesAfterExport = closingAfterward
 
-        let project = editor.project
+        let project = editor.manifest
         let rendered = editor.editableState
         let projectEvents = events
         let projectStore = store
@@ -2693,6 +2995,8 @@ final class StudioViewModel: ObservableObject {
         destinationScope = nil
         saveTask?.cancel()
         previewTask?.cancel()
+        sourceEventsTask?.cancel()
+        assemblyTask?.cancel()
         exportTask?.cancel()
         captionGenerationTask?.cancel()
         rateObservation?.invalidate()
@@ -2712,7 +3016,7 @@ final class StudioViewModel: ObservableObject {
 
         saveNow()
         markLastUsed()
-        if isReady, let project = editor?.project, let paths {
+        if isReady, let project = manifest, let paths {
             let projectEvents = events
             let posterSize = Self.renderSize(for: project, longSide: Self.posterLongSide)
             // The Clips Library thumbnail. It outlives the window on purpose.
@@ -2824,6 +3128,7 @@ final class StudioViewModel: ObservableObject {
 
     private func editAndSelect(_ change: (inout StudioEditorModel) -> SelectionAfterEdit) {
         guard isEditable, var model = editor else { return }
+        if timelineMap != nil, isPlaying { pause() }
         // An edit to the layout changes the scene the playhead is in.
         model.sceneTime = playhead
         let before = model.editableState
@@ -2832,8 +3137,20 @@ final class StudioViewModel: ObservableObject {
         let speedBefore = model.project.edits.speed
         let annotationsBefore = model.project.overlays.annotations
         let selection = change(&model)
-        editor = model
+        let previousClip = editor?.selectedClip?.id
         let isChanged = model.editableState != before
+        if isChanged {
+            do { try updateTimeline(StudioTimelineMap(project: model.manifest), for: model.manifest) } catch {
+                SaveService.shared.showError(error.localizedDescription)
+                return
+            }
+        }
+        editor = model
+        if previousClip != model.selectedClip?.id {
+            clearClipSelection()
+            loadSelectedEvents()
+            seek(to: model.playbackStart)
+        }
 
         // Through an edit that did not say, the selection follows the zoom, the cut, or the speed
         // change it was on.
@@ -2992,7 +3309,7 @@ final class StudioViewModel: ObservableObject {
 
     private func applyPreview(to playback: StudioPlayback) async {
         guard let model = editor else { return }
-        let size = Self.renderSize(for: model.project, longSide: Self.previewLongSide)
+        let size = Self.renderSize(for: model.manifest, longSide: Self.previewLongSide)
         // During a drag the canvas keeps its size. A crop changes the size with every step, and
         // every new size rebuilds the player item. The size is applied when the drag ends.
         let newSize: CGSize? = (size == previewSize || isInGesture) ? nil : size
@@ -3057,8 +3374,9 @@ final class StudioViewModel: ObservableObject {
         saveTask = nil
         guard hasUnsavedEdits, let model = editor else { return true }
         do {
-            let onDisk = try store.load(id: projectID)
-            let saved = try store.save(model.editableState.applied(to: onDisk))
+            guard let diskState else { throw StudioProjectError.invalidProject("Reopen the project before saving edits.") }
+            let saved = try store.saveEdits(model.editableState, id: projectID, expected: diskState)
+            self.diskState = StudioEditableState(project: saved)
             editor?.refreshBookkeeping(from: saved)
             hasUnsavedEdits = false
             return true
@@ -3072,6 +3390,16 @@ final class StudioViewModel: ObservableObject {
 
     private func seek(to sourceTime: Double) {
         guard let editor else { return }
+        if let id = editor.selectedClip?.id, let map = timelineMap, let clip = map.clips.first(where: { $0.id == id }) {
+            var seconds = clip.projectStart + clip.timeMap.sourceToOutput(sourceTime)
+            // A clip-local trim handle must not select (and subsequently edit) its neighbour.
+            // Scrubbing the project lane itself still gives the exact cut to the following clip.
+            if seconds >= clip.projectEnd, clip.projectEnd < map.duration {
+                seconds = max(clip.projectStart, clip.projectEnd - 1 / max(1, editor.manifest.sources.screen.frameRate))
+            }
+            seekProject(to: seconds, preferring: id)
+            return
+        }
         let time = editor.clampedSourceTime(sourceTime)
         playhead = time
         player?.seek(
@@ -3102,6 +3430,11 @@ final class StudioViewModel: ObservableObject {
 
     private func playerDidReach(_ seconds: Double) {
         guard isPlaying, seconds.isFinite, let editor else { return }
+        if let timelineMap {
+            showProjectPosition(seconds)
+            if seconds >= timelineMap.duration { pause() }
+            return
+        }
         if !editor.isAtPlaybackEnd(seconds), let target = editor.cutSkipTarget(at: seconds) {
             // Playback has reached a cut and goes on from its end. The player reports times inside
             // the cut until its seek has landed. Those do not send it there again, and they leave
@@ -3137,14 +3470,14 @@ final class StudioViewModel: ObservableObject {
         isPlaying = false
         let seconds = player.currentTime().seconds
         if seconds.isFinite, let editor {
-            playhead = editor.clampedSourceTime(seconds)
+            if timelineMap != nil { showProjectPosition(seconds) } else { playhead = editor.clampedSourceTime(seconds) }
         }
         applySpeedAndSound(at: playhead)
     }
 
     /// Starts the player at the speed the video has at a source time.
     private func play(_ player: AVPlayer, from sourceTime: Double) {
-        requestedRate = Float(editor?.playbackRate(at: sourceTime) ?? 1)
+        requestedRate = timelineMap == nil ? Float(editor?.playbackRate(at: sourceTime) ?? 1) : 1
         player.rate = requestedRate
         applySpeedAndSound(at: sourceTime)
     }
@@ -3155,6 +3488,10 @@ final class StudioViewModel: ObservableObject {
     /// by this.
     private func applySpeedAndSound(at sourceTime: Double) {
         guard let player, let editor else { return }
+        if timelineMap != nil {
+            player.isMuted = false
+            return
+        }
         let rate = isPlaying ? Float(editor.playbackRate(at: sourceTime)) : 1
         if isPlaying, player.rate != 0, requestedRate != rate {
             requestedRate = rate

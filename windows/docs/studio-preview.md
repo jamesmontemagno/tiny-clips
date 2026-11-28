@@ -1,7 +1,53 @@
 # Studio live preview
 
-The picture in the Studio editor: both clips of a project decoded and drawn live. The contract is
+The picture in the Studio editor: source layers decoded and drawn live. The contract is
 `IStudioPreview`; the design comes from `windows/spikes/StudioEngineSpike/FINDINGS.md`.
+
+## V2 project-clock preview
+
+`StudioPreviewFactory.OpenAsync` selects `StudioTimelinePreview` for v2 projects and the existing
+`StudioPreviewEngine` for v1. Both implement `IStudioSurfacePreview`, so the same
+`StudioPreviewPanel` attaches without another UI surface. `OpenEngineAsync` remains the concrete
+v1 test-tool entry point.
+
+V2 `Position` and `Seek` use project seconds, sampled on the root project's frame grid.
+The engine applies each clip's trims, cuts and speed map; the editor must not apply v1
+source-time skipping or playback-rate commands. Reopen and rebind the preview when conversion
+or undo crosses the v1/v2 boundary. `UpdateProject` accepts v2 timeline/registry edits,
+preserving or clamping project position.
+
+The editor (`StudioEditorSession`) keeps one history over the whole manifest and computes the
+selected clip's source-local project (`StudioTimelineProjection.ProjectForClip`) for the
+inspectors, so they stay in that clip's own time while the transport is in project time
+(`ProjectPlayhead`, `ScrubProject`). It sends the preview the whole v2 manifest, never a clip's
+projection, and reopens it when `SchemaVersion` crosses v1/v2: `StudioViewModel` raises `Preview`
+before the old preview is disposed, and `StudioWindow` detaches and re-attaches the surface on
+that change. A change that adds, splits, moves or removes clips is one undo step; undo and redo
+across a conversion reopen the preview again. Changes that are prepared elsewhere (the picker, a
+drop, the Library, a recorded segment, an agent) go through `BeginTimelineChange` and
+`CommitTimelineChange`, which save what is unsaved, refuse a project that changed on disk, and
+publish the result as that one step. See `windows/src/TinyClips.Core/Studio/Editing/StudioEditorSession.Timeline.cs`.
+
+`StudioTimelineProjection` supplies the editor and renderer's source-local projects, paths and
+events. `StudioTimelineRenderer` decodes the current clip's real screen/camera frames; only a
+dissolve decodes both neighbors. Native events, camera offsets, annotations and captions stay
+local to their clip. Each complete picture is composed before a fade or dissolve is applied.
+The root project remains the authority for output canvas size and frame rate.
+
+Audio uses `StudioTimelineAudio`, also used by export: 48 kHz stereo PCM, clip/track gains,
+silence in non-1x ranges, and linear dissolve ramps. The played audio sample count drives the
+clock when there is sound; otherwise a monotonic clock does. Seeking and pausing stop old
+audio before replacing it, and a revision check prevents late frames from being presented.
+Decoding/device/audio failures raise `Failed`; v2 currently requires reopening after device
+loss rather than attempting v1's automatic device rebuild.
+
+Run `StudioRenderCheck --only timeline` for decoded cut/fade/dissolve, poster, live surface,
+project-clock seek/play/pause/end, native offset/events/rotation, WARP and cancellation checks.
+It uses generated numbered cards and the existing Mac media fixtures, with playback volume
+zero. This does not establish large-project performance, audible output-device quality or
+keyboard/Narrator behavior of the editor.
+
+The remaining sections describe the v1 engine.
 
 ## Pieces
 

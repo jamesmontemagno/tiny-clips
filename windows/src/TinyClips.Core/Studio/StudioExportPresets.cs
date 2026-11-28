@@ -220,8 +220,10 @@ public static class StudioExportPresets
             StudioCanvasMath.NaturalSize(project),
             project.Sources.Screen.FrameRate,
             codec,
-            StudioTimeMap.FromProject(project).OutputDuration,
-            !project.Audio.Muted,
+            StudioTimelineProjection.Duration(project),
+            project.SchemaVersion >= 2
+                ? project.Timeline!.Clips.Any(clip => !(clip.Audio ?? project.Audio).Muted)
+                : !project.Audio.Muted,
             saved);
     }
 

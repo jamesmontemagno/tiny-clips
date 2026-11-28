@@ -199,6 +199,7 @@
 		B40000000000000000000006 /* StudioCanvasMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000006 /* StudioCanvasMath.swift */; };
 		B40000000000000000000007 /* StudioLayoutResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000007 /* StudioLayoutResolver.swift */; };
 		B40000000000000000000008 /* StudioTimeMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000008 /* StudioTimeMap.swift */; };
+		B40000000000000000000009 /* StudioTimelineEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000009 /* StudioTimelineEditing.swift */; };
 		AA00C4A1B0000000000000C2 /* StudioCaptionGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000C1 /* StudioCaptionGeneration.swift */; };
 		AA00C4A1B0000000000000C3 /* StudioCaptionGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00C4A1B0000000000000C1 /* StudioCaptionGeneration.swift */; };
 		B400000000000000000000F2 /* StudioCaptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000000F2 /* StudioCaptions.swift */; };
@@ -220,6 +221,7 @@
 		B50000000000000000000006 /* StudioCanvasMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000006 /* StudioCanvasMath.swift */; };
 		B50000000000000000000007 /* StudioLayoutResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000007 /* StudioLayoutResolver.swift */; };
 		B50000000000000000000008 /* StudioTimeMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000008 /* StudioTimeMap.swift */; };
+		B50000000000000000000009 /* StudioTimelineEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000009 /* StudioTimelineEditing.swift */; };
 		B60000000000000000000001 /* StudioProjectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000001 /* StudioProjectTests.swift */; };
 		B60000000000000000000002 /* StudioLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000002 /* StudioLayoutTests.swift */; };
 		B600000000000000000000F1 /* StudioInspectorPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A500000000000000000000F1 /* StudioInspectorPanelTests.swift */; };
@@ -393,6 +395,7 @@
 		A40000000000000000000006 /* StudioCanvasMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCanvasMath.swift; sourceTree = "<group>"; };
 		A40000000000000000000007 /* StudioLayoutResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioLayoutResolver.swift; sourceTree = "<group>"; };
 		A40000000000000000000008 /* StudioTimeMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioTimeMap.swift; sourceTree = "<group>"; };
+		A40000000000000000000009 /* StudioTimelineEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioTimelineEditing.swift; sourceTree = "<group>"; };
 		AA00C4A1B0000000000000C1 /* StudioCaptionGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionGeneration.swift; sourceTree = "<group>"; };
 		A400000000000000000000F2 /* StudioCaptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptions.swift; sourceTree = "<group>"; };
 		A400000000000000000000F3 /* StudioCaptionQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCaptionQuality.swift; sourceTree = "<group>"; };
@@ -652,6 +655,7 @@
 				A400000000000000000000F7 /* StudioExportPresets.swift */,
 				A40000000000000000000007 /* StudioLayoutResolver.swift */,
 				A40000000000000000000008 /* StudioTimeMap.swift */,
+				A40000000000000000000009 /* StudioTimelineEditing.swift */,
 				A1D0A0000000000000000001 /* StudioAnnotations.swift */,
 				AA00C4A1B0000000000000C1 /* StudioCaptionGeneration.swift */,
 				A400000000000000000000F2 /* StudioCaptions.swift */,
@@ -969,6 +973,7 @@
 				B400000000000000000000F8 /* StudioExportWriteJob.swift in Sources */,
 				B40000000000000000000007 /* StudioLayoutResolver.swift in Sources */,
 				B40000000000000000000008 /* StudioTimeMap.swift in Sources */,
+				B40000000000000000000009 /* StudioTimelineEditing.swift in Sources */,
 				A1D0A0000000000000000002 /* StudioAnnotations.swift in Sources */,
 				AA00C4A1B0000000000000C2 /* StudioCaptionGeneration.swift in Sources */,
 				B400000000000000000000F2 /* StudioCaptions.swift in Sources */,
@@ -1093,6 +1098,7 @@
 				B500000000000000000000F8 /* StudioExportWriteJob.swift in Sources */,
 				B50000000000000000000007 /* StudioLayoutResolver.swift in Sources */,
 				B50000000000000000000008 /* StudioTimeMap.swift in Sources */,
+				B50000000000000000000009 /* StudioTimelineEditing.swift in Sources */,
 				A1D0A0000000000000000003 /* StudioAnnotations.swift in Sources */,
 				AA00C4A1B0000000000000C3 /* StudioCaptionGeneration.swift in Sources */,
 				B500000000000000000000F2 /* StudioCaptions.swift in Sources */,

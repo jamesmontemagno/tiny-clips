@@ -91,9 +91,11 @@ enum StudioExporter {
             throw Error.outputNameTaken(outputURL.lastPathComponent)
         }
 
+        let framesPerSecond = project.schemaVersion == 2
+            ? 1 / build.videoComposition.frameDuration.seconds : project.sources.screen.frameRate
         let codec = try await StudioExportWriteJob.codec(
             renderSize: renderSize,
-            framesPerSecond: project.sources.screen.frameRate,
+            framesPerSecond: framesPerSecond,
             preferred: codec,
             quality: quality
         )
@@ -106,7 +108,7 @@ enum StudioExporter {
             audioMix: build.exportAudioMix(for: project),
             outputURL: renderURL,
             renderSize: renderSize,
-            framesPerSecond: project.sources.screen.frameRate,
+            framesPerSecond: framesPerSecond,
             codec: codec,
             quality: quality,
             onProgress: onProgress
@@ -170,8 +172,17 @@ enum StudioExporter {
             throw Error.nothingToExport
         }
         // Stay a little inside the end, where there is still a frame to draw.
-        let lastFrameTime = max(0, build.duration.seconds - 0.05)
-        let requestedTime = CMTime(seconds: max(0, min(time, lastFrameTime)), preferredTimescale: 600)
+        let requestedTime: CMTime
+        if project.schemaVersion == 2 {
+            let step = build.videoComposition.frameDuration
+            let frameCount = build.duration.convertScale(step.timescale, method: .roundTowardPositiveInfinity).value
+            let last = CMTime(value: max(0, frameCount - 1), timescale: step.timescale)
+            let t = CMTime(seconds: max(0, time), preferredTimescale: 48_000)
+            requestedTime = min(last, t.convertScale(step.timescale, method: .roundTowardNegativeInfinity))
+        } else {
+            let lastFrameTime = max(0, build.duration.seconds - 0.05)
+            requestedTime = CMTime(seconds: max(0, min(time, lastFrameTime)), preferredTimescale: 600)
+        }
         let image = try await cgImage(from: generator, at: requestedTime)
         try? FileManager.default.removeItem(at: posterURL)
         guard let destination = CGImageDestinationCreateWithURL(

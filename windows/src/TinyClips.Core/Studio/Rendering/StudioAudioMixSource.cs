@@ -14,10 +14,10 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
     private readonly short[] _output;
     private long _cursor;
 
-    internal StudioAudioMixSource(IEnumerable<IStudioPcmSource> sources, StudioAudioFormat format, long totalSamples)
+    internal StudioAudioMixSource(IEnumerable<IStudioPcmSource> sources, StudioAudioFormat format, long totalSamples, double[]? gains = null)
     {
         Format = format;
-        _tracks = sources.Select(source => new Track(source)).ToArray();
+        _tracks = sources.Select((source, index) => new Track(source, gains?[index] ?? 1)).ToArray();
         _totalSamples = totalSamples;
         _sum = new int[BlockSamples * format.Channels];
         _output = new short[_sum.Length];
@@ -25,7 +25,8 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
 
     public StudioAudioFormat Format { get; }
 
-    public static StudioAudioMixSource? TryOpen(string path, string description, double duration)
+    public static StudioAudioMixSource? TryOpen(string path, string description, double duration, StudioAudioFormat? requestedFormat = null,
+        StudioScreenSource? screen = null, StudioAudio? audio = null)
     {
         using var reader = MediaFactory.MFCreateSourceReaderFromURL(path, null!);
         var streams = new List<SourceReaderIndex>();
@@ -53,7 +54,7 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
         try
         {
             // A single track retains its format. Multiple tracks use identical PCM for mixing.
-            StudioAudioFormat? format = streams.Count > 1 ? new(48000, 2) : null;
+            StudioAudioFormat? format = requestedFormat ?? (streams.Count > 1 ? new(48000, 2) : null);
             foreach (var stream in streams)
             {
                 var source = StudioAudioSource.TryOpen(path, description, stream, format)
@@ -61,7 +62,20 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
                 sources.Add(source);
                 format = source.Format;
             }
-            return new StudioAudioMixSource(sources, format!, (long)Math.Ceiling(duration * format!.SampleRate));
+            double[]? gains = null;
+            if (screen is not null && audio is not null
+                && screen.ExtensionData.TryGetValue("audioTracks", out var labels)
+                && labels.ValueKind == System.Text.Json.JsonValueKind.Array && labels.GetArrayLength() == streams.Count)
+            {
+                gains = labels.EnumerateArray().Select(label => label.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? label.GetString() switch
+                    {
+                        "system" => StudioSound.Volume(audio.SystemVolume),
+                        "microphone" => StudioSound.Volume(audio.MicrophoneVolume),
+                        _ => 1,
+                    } : 1).ToArray();
+            }
+            return new StudioAudioMixSource(sources, format!, (long)Math.Ceiling(duration * format!.SampleRate), gains);
         }
         catch
         {
@@ -86,8 +100,23 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
 
     public bool TryRead(out long startSample, out ReadOnlySpan<byte> pcm)
     {
-        startSample = _cursor;
         pcm = default;
+        if (!TryReadWide(out startSample, out var samples))
+        {
+            return false;
+        }
+        for (var i = 0; i < samples.Length; i++)
+        {
+            _output[i] = (short)Math.Clamp(samples[i], short.MinValue, short.MaxValue);
+        }
+        pcm = MemoryMarshal.AsBytes(_output.AsSpan(0, samples.Length));
+        return true;
+    }
+
+    internal bool TryReadWide(out long startSample, out ReadOnlySpan<int> samples)
+    {
+        startSample = _cursor;
+        samples = default;
         var count = (int)Math.Min(BlockSamples, _totalSamples - _cursor);
         if (count <= 0)
         {
@@ -121,7 +150,7 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
                 var values = checked((int)((to - from) * Format.Channels));
                 for (var i = 0; i < values; i++)
                 {
-                    _sum[targetOffset + i] += track.Samples[sourceOffset + i];
+                    _sum[targetOffset + i] += (int)Math.Round(track.Samples[sourceOffset + i] * track.Gain);
                 }
                 if (blockEnd >= end)
                 {
@@ -130,12 +159,8 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
                 track.Samples = [];
             }
         }
-        for (var i = 0; i < count * Format.Channels; i++)
-        {
-            _output[i] = (short)Math.Clamp(_sum[i], short.MinValue, short.MaxValue);
-        }
         _cursor = end;
-        pcm = MemoryMarshal.AsBytes(_output.AsSpan(0, count * Format.Channels));
+        samples = _sum.AsSpan(0, count * Format.Channels);
         return true;
     }
 
@@ -147,9 +172,10 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
         }
     }
 
-    private sealed class Track(IStudioPcmSource source)
+    private sealed class Track(IStudioPcmSource source, double gain)
     {
         public IStudioPcmSource Source { get; } = source;
+        public double Gain { get; } = gain;
         public short[] Samples = [];
         public long Start;
         public bool Ended;

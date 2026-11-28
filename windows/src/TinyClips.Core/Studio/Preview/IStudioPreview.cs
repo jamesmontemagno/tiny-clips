@@ -2,11 +2,13 @@ namespace TinyClips.Core.Studio.Preview;
 
 /// <summary>
 /// The live preview of one Studio project: it decodes the recording, draws the scene for the
-/// current project, and shows it. All times are source time in seconds.
+/// current project, and shows it. V1 times are source seconds; v2 times are project seconds.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The preview always plays the whole recording and ignores <see cref="StudioProject.Edits"/>.
+/// A v2 preview owns the timeline, including trims, cuts, speeds, and joins. Its caller must not
+/// apply source-time transport rules. Reopen the preview when converting between v1 and v2.
+/// The v1 preview plays the whole recording and ignores <see cref="StudioProject.Edits"/>.
 /// The caller applies the trim: it decides where playback starts and pauses it at the trim end.
 /// That way moving a trim handle never rebuilds anything here. The caller applies cuts and speed
 /// changes the same way, with <see cref="Seek"/> and <see cref="SetPlaybackRate"/>.

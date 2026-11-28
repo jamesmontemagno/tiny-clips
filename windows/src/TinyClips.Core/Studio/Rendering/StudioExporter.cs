@@ -105,6 +105,7 @@ public sealed class StudioExporter
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+        if (project.SchemaVersion >= 2) _ = StudioTimelineProjection.Map(project);
 
         var job = new StudioExportJob(project, events, paths, outputPath, options ?? new StudioExportOptions(), progress, cancellationToken) { Fault = Fault, PersonFinderFactory = PersonFinderFactory };
         return StudioWorker.Run("Tiny Clips Studio export", job.Run, cancellationToken);
@@ -128,10 +129,12 @@ public sealed class StudioExporter
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentException.ThrowIfNullOrWhiteSpace(posterPath);
+        if (project.SchemaVersion >= 2) _ = StudioTimelineProjection.Map(project);
 
         var job = new StudioPosterJob(project, events, paths, posterPath, maxLongSide, outputTimeSeconds, cancellationToken) { PersonFinderFactory = PersonFinderFactory };
         return StudioWorker.Run("Tiny Clips Studio poster", job.Run, cancellationToken);
     }
+
 }
 
 /// <summary>Runs blocking Media Foundation work on a dedicated multithreaded-apartment thread.</summary>
@@ -168,6 +171,18 @@ internal static class StudioWorker
 /// <summary>Where a project's source files are, whichever way the caller built its paths.</summary>
 internal static class StudioSourceFiles
 {
+    public static void RequireTimeline(StudioProject project, StudioProjectPaths paths)
+    {
+        if (project.Canvas.Background is { Style: StudioBackgroundStyle.Image, Image: { } image })
+            Require(StudioTimelineProjection.OwnedPath(paths.ProjectDirectory, image), "background image");
+        foreach (var clip in StudioTimelineProjection.Map(project).Clips)
+        {
+            var local = StudioTimelineProjection.PathsForClip(project, paths, clip.ClipId);
+            Require(local.ScreenPath, "screen recording");
+            if (local.CameraPath is { } camera) Require(camera, "camera recording");
+        }
+    }
+
     public static string Screen(StudioProject project, StudioProjectPaths paths) =>
         project.Sources.Screen.External ? project.Sources.Screen.File : paths.ScreenPath;
 
@@ -285,10 +300,14 @@ internal sealed class StudioExportJob
 
         var screenPath = StudioSourceFiles.Screen(_project, _paths);
         var cameraPath = StudioSourceFiles.Camera(_project, _paths);
-        StudioSourceFiles.Require(screenPath, "screen recording");
-        if (cameraPath is not null)
+        if (_project.SchemaVersion >= 2)
         {
-            StudioSourceFiles.Require(cameraPath, "camera recording");
+            StudioSourceFiles.RequireTimeline(_project, _paths);
+        }
+        else
+        {
+            StudioSourceFiles.Require(screenPath, "screen recording");
+            if (cameraPath is not null) StudioSourceFiles.Require(cameraPath, "camera recording");
         }
 
         var natural = StudioCanvasMath.NaturalSize(_project);
@@ -399,20 +418,31 @@ internal sealed class StudioExportJob
         StudioVideoSource? screen = null;
         StudioVideoSource? camera = null;
         StudioAudioMixSource? audio = null;
+        StudioTimelineRenderer? timelineRenderer = null;
+        StudioTimelineAudio? timelineAudio = null;
         StudioSinkWriterEncoder? encoder = null;
         ID3D11Texture2D? memoryTarget = null;
         try
         {
-            if (!graphics.IsSoftware)
+            if (!graphics.IsSoftware && _project.SchemaVersion < 2)
             {
                 readerManager = MediaFactory.MFCreateDXGIDeviceManager();
                 readerManager.ResetDevice(graphics.Device).CheckError();
             }
 
-            renderer = new StudioSceneRenderer(graphics.Device, PersonFinderFactory);
-            screen = StudioVideoSource.Open(screenPath, "screen recording", graphics, readerManager);
-            camera = cameraPath is null ? null : StudioVideoSource.Open(cameraPath, "camera recording", graphics, readerManager);
-            audio = _project.Audio.Muted ? null : StudioAudioMixSource.TryOpen(screenPath, "screen recording", _project.Sources.Screen.Duration);
+            if (_project.SchemaVersion >= 2)
+            {
+                timelineRenderer = new StudioTimelineRenderer(_project, _paths, graphics, PersonFinderFactory);
+                timelineAudio = new StudioTimelineAudio(_project, _paths, _cancellationToken);
+            }
+            else
+            {
+                renderer = new StudioSceneRenderer(graphics.Device, PersonFinderFactory);
+                screen = StudioVideoSource.Open(screenPath, "screen recording", graphics, readerManager);
+                camera = cameraPath is null ? null : StudioVideoSource.Open(cameraPath, "camera recording", graphics, readerManager);
+                audio = _project.Audio.Muted ? null : StudioAudioMixSource.TryOpen(screenPath, "screen recording", _project.Sources.Screen.Duration);
+            }
+            var audioFormat = timelineAudio is { HasAudio: true } ? timelineAudio.Format : audio?.Format;
 
             var settings = new StudioVideoEncoderSettings(
                 width,
@@ -424,7 +454,7 @@ internal sealed class StudioExportJob
                 attempt.GpuFrames);
             try
             {
-                encoder = StudioSinkWriterEncoder.Create(temporaryPath, attempt.GpuFrames ? graphics.Device : null, settings, audio?.Format);
+                encoder = StudioSinkWriterEncoder.Create(temporaryPath, attempt.GpuFrames ? graphics.Device : null, settings, audioFormat);
                 if (attempt.GpuFrames)
                 {
                     encoder.CreateFrameAllocator(EncoderPoolInitial, EncoderPoolMax);
@@ -441,8 +471,14 @@ internal sealed class StudioExportJob
             }
 
             StudioAudioPump? pump = null;
-            var audioFormat = audio?.Format;
-            if (audio is not null && audioFormat is not null)
+            if (timelineAudio is { HasAudio: true } && audioFormat is not null)
+            {
+                var samples = StudioRenderingMath.AudioSampleCount(timelineAudio.TotalSamples, plan.Count, rate, audioFormat.SampleRate);
+                var sink = encoder;
+                pump = new StudioAudioPump(timelineAudio, [new StudioAudioSampleRange(0, samples, 0)], audioFormat.BlockAlign,
+                    (pcm, start) => WriteAudio(sink, pcm, start, audioFormat), samples);
+            }
+            else if (audio is not null && audioFormat is not null)
             {
                 var audioPlan = StudioRenderingMath.BuildAudioPlan(_project, audioFormat.SampleRate);
                 var samples = StudioRenderingMath.AudioSampleCount(audioPlan.TotalSamples, plan.Count, rate, audioFormat.SampleRate);
@@ -463,19 +499,19 @@ internal sealed class StudioExportJob
                 pixels = new byte[width * height * 4];
             }
 
-            var layout = StudioLayoutPlan.Create(_project, _events);
+            var layout = timelineRenderer is null ? StudioLayoutPlan.Create(_project, _events) : null;
             var lastProgress = Stopwatch.GetTimestamp();
             for (var index = 0; index < plan.Count; index++)
             {
                 _cancellationToken.ThrowIfCancellationRequested();
                 var sourceTime = plan[index].SourceTimeSeconds;
-                var resolved = layout.Resolve(sourceTime, width, height);
+                var resolved = layout?.Resolve(sourceTime, width, height);
 
                 // The reader's frame stays valid until the next request, which is after the draw.
-                StudioGpuVideoFrame? screenFrame = resolved.Screen is null
+                StudioGpuVideoFrame? screenFrame = resolved?.Screen is null || screen is null
                     ? null
                     : screen.GetFrame(StudioRenderingMath.SecondsToMfTicks(sourceTime), _cancellationToken);
-                StudioGpuVideoFrame? cameraFrame = camera is not null && resolved.Camera is { Visible: true } visible
+                StudioGpuVideoFrame? cameraFrame = camera is not null && resolved?.Camera is { Visible: true } visible
                     ? camera.GetFrame(StudioRenderingMath.SecondsToMfTicks(visible.SourceTime), _cancellationToken)
                     : null;
 
@@ -493,7 +529,10 @@ internal sealed class StudioExportJob
                     {
                         lock (graphics.Gate)
                         {
-                            renderer.Render(Request(sourceTime, width, height, screenFrame, cameraFrame, frame.Texture, resolved));
+                            if (timelineRenderer is not null)
+                                timelineRenderer.Render(plan[index].OutputTimeSeconds, frame.Texture, width, height, _quality, _cancellationToken);
+                            else
+                                renderer!.Render(Request(sourceTime, width, height, screenFrame, cameraFrame, frame.Texture, resolved));
 
                             // Submit before the encoder, which may use its own context, reads the texture.
                             graphics.Context.Flush();
@@ -511,7 +550,10 @@ internal sealed class StudioExportJob
                 {
                     lock (graphics.Gate)
                     {
-                        renderer.Render(Request(sourceTime, width, height, screenFrame, cameraFrame, memoryTarget!, resolved));
+                        if (timelineRenderer is not null)
+                            timelineRenderer.Render(plan[index].OutputTimeSeconds, memoryTarget!, width, height, _quality, _cancellationToken);
+                        else
+                            renderer!.Render(Request(sourceTime, width, height, screenFrame, cameraFrame, memoryTarget!, resolved));
                         graphics.ReadTexture(memoryTarget!, 0, pixels);
                     }
 
@@ -563,11 +605,13 @@ internal sealed class StudioExportJob
             lock (graphics.Gate)
             {
                 renderer?.Dispose();
+                timelineRenderer?.Dispose();
             }
 
             memoryTarget?.Dispose();
             encoder?.Dispose();
             audio?.Dispose();
+            timelineAudio?.Dispose();
             camera?.Dispose();
             screen?.Dispose();
             readerManager?.Dispose();
@@ -581,7 +625,7 @@ internal sealed class StudioExportJob
         StudioGpuVideoFrame? screen,
         StudioGpuVideoFrame? camera,
         ID3D11Texture2D target,
-        StudioResolvedFrame resolved) =>
+        StudioResolvedFrame? resolved) =>
         new(_project, _events, _paths.ProjectDirectory, sourceTime, width, height, screen, camera, target, resolved, _quality);
 
     /// <summary>Waits for a free encoder texture. An offline export waits for the encoder; it never drops a frame.</summary>
@@ -734,7 +778,10 @@ internal sealed class StudioPosterJob
         var posterPath = Path.GetFullPath(_posterPath);
         var screenPath = StudioSourceFiles.Screen(_project, _paths);
         var cameraPath = StudioSourceFiles.Camera(_project, _paths);
-        StudioSourceFiles.Require(screenPath, "screen recording");
+        if (_project.SchemaVersion >= 2)
+            StudioSourceFiles.RequireTimeline(_project, _paths);
+        else
+            StudioSourceFiles.Require(screenPath, "screen recording");
 
         var size = StudioCanvasMath.ExportSize(StudioCanvasMath.NaturalSize(_project), _maxLongSide);
         var width = (int)size.Width;
@@ -749,7 +796,9 @@ internal sealed class StudioPosterJob
         var temporaryPath = StudioRenderingMath.TemporaryOutputPath(posterPath);
         try
         {
-            var pixels = Render(screenPath, cameraPath, sourceTime, width, height);
+            var pixels = _project.SchemaVersion >= 2
+                ? RenderTimeline(plan[index].OutputTimeSeconds, width, height)
+                : Render(screenPath, cameraPath, sourceTime, width, height);
             _cancellationToken.ThrowIfCancellationRequested();
 
             // Encoding happens after the device and its lock are gone.
@@ -768,6 +817,19 @@ internal sealed class StudioPosterJob
             }
 
             throw new StudioExportException($"The preview image could not be made ({StudioMediaFoundation.Describe(ex)}).", ex);
+        }
+    }
+
+    private byte[] RenderTimeline(double time, int width, int height)
+    {
+        using var startup = StudioMediaFoundation.Startup();
+        using var graphics = StudioGraphicsDevice.Create();
+        using var target = graphics.CreateRenderTexture(width, height);
+        lock (graphics.Gate)
+        {
+            using var renderer = new StudioTimelineRenderer(_project, _paths, graphics, PersonFinderFactory);
+            renderer.Render(time, target, width, height, StudioRenderQuality.Export, _cancellationToken);
+            return graphics.ReadTexture(target);
         }
     }
 

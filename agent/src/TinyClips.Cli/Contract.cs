@@ -8,6 +8,7 @@ internal sealed record ParamSpec(string? Type, IReadOnlyList<string>? Enum, Json
 internal sealed record CommandSpec(
     string Name,
     string Scope,
+    IReadOnlyList<string> AdditionalScopes,
     string Description,
     IReadOnlyDictionary<string, ParamSpec> Params,
     IReadOnlyList<string> Platforms);
@@ -35,7 +36,8 @@ internal sealed class Contract
 
     public CommandSpec? Find(string name) => Commands.FirstOrDefault(c => c.Name == name);
 
-    public bool IsSensitive(CommandSpec command) => SensitiveScopes.Contains(command.Scope);
+    public bool IsSensitive(CommandSpec command) =>
+        SensitiveScopes.Contains(command.Scope) || command.AdditionalScopes.Any(SensitiveScopes.Contains);
 
     public static string ToolName(string commandName) => "tinyclips_" + commandName.Replace('.', '_');
 
@@ -68,6 +70,7 @@ internal sealed class Contract
             return new CommandSpec(
                 command["name"]!.GetValue<string>(),
                 command["scope"]!.GetValue<string>(),
+                command["additionalScopes"]?.AsArray().Select(s => s!.GetValue<string>()).ToArray() ?? [],
                 command["description"]!.GetValue<string>(),
                 parameters,
                 command["platforms"]?.AsArray().Select(p => p!.GetValue<string>()).ToArray() ?? []);

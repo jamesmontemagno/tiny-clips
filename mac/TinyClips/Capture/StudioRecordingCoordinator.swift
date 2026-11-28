@@ -95,17 +95,20 @@ final class StudioRecordingCoordinator {
         clickOverlayStyle: MouseClickOverlayStyle,
         branding: Bool,
         appVersion: String,
-        look: StudioLook?
-    ) async throws -> String {
+        look: StudioLook?,
+        requiresCompleteLayers: Bool = false
+    ) async throws -> StudioProject {
         stopCursorSampling()
 
-        var screenInfo = try await Self.mediaInfo(for: screenURL)
+        var screenInfo = try await Self.mediaInfo(for: screenURL, requiresAudioInfo: requiresCompleteLayers)
         screenInfo.frameRate = StudioCaptureEvents.projectFrameRate(
             configured: configuredFrameRate,
             measured: screenInfo.frameRate
         )
         var cameraInfo: StudioCaptureMediaInfo?
-        if let cameraURL, FileManager.default.fileExists(atPath: cameraURL.path) {
+        if requiresCompleteLayers, let cameraURL {
+            cameraInfo = try await Self.mediaInfo(for: cameraURL)
+        } else if let cameraURL, FileManager.default.fileExists(atPath: cameraURL.path) {
             cameraInfo = try? await Self.mediaInfo(for: cameraURL)
             if cameraInfo == nil {
                 // The project will not reference an unreadable camera track, so do not keep it.
@@ -134,13 +137,17 @@ final class StudioRecordingCoordinator {
             cursor: cursor,
             cameraCorners: cameraCorners
         )
+        let audioTracks = StudioCaptureEvents.screenAudioTracks(
+            recorded: recordedAudioTracks,
+            trackCountInFile: screenInfo.audioTrackCount
+        )
+        if requiresCompleteLayers, screenInfo.audioTrackCount > 0, audioTracks == nil {
+            throw StudioEditorInputError("The sound tracks could not be matched to the microphone and system audio inputs.")
+        }
         let request = StudioCaptureEvents.makeProjectCreationRequest(
             name: Self.recordingName(),
             screen: screenInfo,
-            screenAudioTracks: StudioCaptureEvents.screenAudioTracks(
-                recorded: recordedAudioTracks,
-                trackCountInFile: screenInfo.audioTrackCount
-            ),
+            screenAudioTracks: audioTracks,
             camera: cameraInfo,
             cameraStartOffset: cameraStartOffset,
             bubbleAnchor: initialCameraCorner,
@@ -151,19 +158,25 @@ final class StudioRecordingCoordinator {
             cameraCorners: cameraCorners
         )
 
-        _ = try store.completeRecording(id: paths.id, request: request)
+        if requiresCompleteLayers {
+            // Do not publish a successful editable take without its click/cursor data.
+            try store.saveEvents(events, id: paths.id)
+        }
+        let project = try store.completeRecording(id: paths.id, request: request)
         completedProjectID = paths.id
         cursorSamples = []
         // A finished project is a draft, which cleanup never removes by itself.
         StudioMaintenance.recordingDidEnd(projectID: paths.id)
 
-        do {
-            try store.saveEvents(events, id: paths.id)
-        } catch {
-            // Events are optional: the project opens without them, it only loses click and cursor data.
-            NSLog("TinyClips Studio could not save events for project \(paths.id): \(error.localizedDescription)")
+        if !requiresCompleteLayers {
+            do {
+                try store.saveEvents(events, id: paths.id)
+            } catch {
+                // Standalone recordings can still open without pointer events.
+                NSLog("TinyClips Studio could not save events for project \(paths.id): \(error.localizedDescription)")
+            }
         }
-        return paths.id
+        return project
     }
 
     /// Deletes the project folder unless the recording was completed, or was left where it is
@@ -252,7 +265,7 @@ final class StudioRecordingCoordinator {
         )
     }
 
-    private static func mediaInfo(for url: URL) async throws -> StudioCaptureMediaInfo {
+    private static func mediaInfo(for url: URL, requiresAudioInfo: Bool = false) async throws -> StudioCaptureMediaInfo {
         let asset = AVURLAsset(url: url)
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
             throw CaptureError.noFrames
@@ -263,9 +276,13 @@ final class StudioRecordingCoordinator {
         let transformedSize = naturalSize.applying(preferredTransform)
         let duration = try await asset.load(.duration)
         let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
-        // Sound tracks that cannot be listed count as none. The project then does not say what
-        // its sound tracks hold, and they play as recorded.
-        let audioTrackCount = (try? await asset.loadTracks(withMediaType: .audio))?.count ?? 0
+        let audioTrackCount: Int
+        if requiresAudioInfo {
+            audioTrackCount = try await asset.loadTracks(withMediaType: .audio).count
+        } else {
+            // Older standalone captures can play their original sound even without routing labels.
+            audioTrackCount = (try? await asset.loadTracks(withMediaType: .audio))?.count ?? 0
+        }
 
         return StudioCaptureMediaInfo(
             width: max(1, Int(abs(transformedSize.width).rounded())),

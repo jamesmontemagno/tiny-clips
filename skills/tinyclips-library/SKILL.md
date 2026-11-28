@@ -6,6 +6,7 @@ description: Find, open, copy, delete, or upload Tiny Clips captures. Use when t
 # Manage captures
 
 - List: `tinyclips library.list limit=20 kind=all|screenshot|video|gif` (newest first, needs `read`).
+- To add a Library video to an existing Studio project, use `studio.timeline.import` with its returned path and the destination's revision tokens. Keep the default `library` mode to retain a linked recording's editable layers. See the tinyclips-studio Skill.
 - Show in Finder/Explorer: `tinyclips library.reveal path="<file>"`.
 - Open the clips library window: `tinyclips app.open window=library`.
 - macOS screenshot editors: `tinyclips editor.list` (needs `read`) lists open sessions and close-safety reasons. `tinyclips editor.closeAll` (needs `edit`) closes only saved, unchanged screenshots and reports remaining sessions for user review; it never discards work. It excludes Studio/trimmers and is unavailable on Windows.

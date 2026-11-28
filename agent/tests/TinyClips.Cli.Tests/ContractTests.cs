@@ -14,6 +14,7 @@ public class ContractTests
         foreach (var command in contract.Commands)
         {
             Assert.True(contract.Scopes.ContainsKey(command.Scope), $"{command.Name} uses unknown scope {command.Scope}");
+            Assert.All(command.AdditionalScopes, scope => Assert.True(contract.Scopes.ContainsKey(scope)));
             Assert.Matches("^[a-z]+(?:\\.[a-zA-Z]+)+$", command.Name);
             Assert.Matches("^[a-zA-Z0-9_-]{1,64}$", Contract.ToolName(command.Name));
             Assert.Equal(command, contract.FromToolName(Contract.ToolName(command.Name)));
@@ -115,6 +116,27 @@ public class ContractTests
         Assert.Null(command.Params["guideTopic"].Default);
         Assert.Contains(command, Contract.Current.CommandsForPlatform("macos"));
         Assert.Contains(command, Contract.Current.CommandsForPlatform("windows"));
+    }
+
+    [Fact]
+    public void TimelineTransitionsValidateKindsAndTokensOnBothPlatforms()
+    {
+        var contract = Contract.Current;
+        var command = contract.Find("studio.timeline.transition")!;
+        Assert.Equal("edit", command.Scope);
+        Assert.Contains(command, contract.CommandsForPlatform("macos"));
+        Assert.Contains(command, contract.CommandsForPlatform("windows"));
+        var args = new JsonObject { ["projectId"] = "p", ["clipId"] = "b", ["expectedModifiedAt"] = "now", ["expectedRevision"] = "r" };
+        foreach (var kind in new[] { "cut", "fadeThroughBlack", "fadeThroughWhite", "crossDissolve" })
+        {
+            args["kind"] = kind;
+            Assert.Null(Contract.Validate(command, args));
+        }
+        args["kind"] = "unsupported";
+        Assert.NotNull(Contract.Validate(command, args));
+        args["kind"] = "cut";
+        args.Remove("expectedRevision");
+        Assert.NotNull(Contract.Validate(command, args));
     }
 
     [Fact]

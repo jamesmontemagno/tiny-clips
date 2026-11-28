@@ -5,12 +5,17 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- Agent Control can assemble Studio timelines on Windows using the same nine `studio.timeline.*` commands as macOS. Recording into a project requires both `record` and `edit`; a stale edit cannot overwrite the destination.
+- In macOS Studio, choose **Cut**, **Fade Through Black**, **Fade Through White**, or **Cross-Dissolve** between clips. Color fades keep timing unchanged. A dissolve blends picture and sound and shortens the project by up to half a second; short clips use shorter transitions.
+- macOS Studio can assemble a video from files, Clips Library videos, and new recording segments in one timeline. Append clips or insert at the playhead, split, trim, reorder, and undo without changing the originals. Linked recordings retain their editable layers; Save Project As includes the media needed to reopen the edit. Existing single-recording projects stay in v1 until a timeline operation converts them.
 - The macOS screenshot editor can place editable arrow, hand, and I-beam pointers. New pointers default to 50 px. Use **Size** before placement or select a pointer with **Move** to resize it without moving its tip. Fill and stroke have separate opacity controls, and a drop shadow is optional. All annotation sliders sit below their labels without tick marks.
 - Screenshot settings now offer independent save-to-disk, clipboard, and editor outputs. Saving can be turned off for temporary screenshots, which can still be saved explicitly from the editor; at least one output must remain enabled. Temporary images use an app-private folder and are removed after editing or by age-based startup cleanup. Captures count toward statistics and review eligibility only after an output succeeds, and review prompts wait for screenshot recovery to finish.
 - The screenshot picker distinguishes **Window only** from **Window area**. Video/GIF pickers label their existing fixed-area window target **Window area**; visible overlays inside the fixed bounds are included.
 - After 30 combined captures, the Mac App Store build asks once, after a safe editor close, whether to leave a review, send feedback, or dismiss. Apple controls whether its review request appears; a link can open the App Store review page directly. Feedback opens a prefilled GitHub issue for the user to submit. These choices remain UI-only. Eligibility is not evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
 
 ### Fixed
+- The macOS Studio preview and playback controls stay in place when playback or selection moves between clips with different detail lanes.
+- macOS Studio Library imports include caption text still being typed in another open editor without committing or changing that editor's undo history.
 - macOS screenshot editors now close correctly using the close button, Command-W, or Close All.
 - The macOS App Store review prompt now opens at its intended size, with its message and buttons fully visible.
 

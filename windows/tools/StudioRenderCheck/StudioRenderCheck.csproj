@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TinyClips.Core\TinyClips.Core.csproj" />
+    <None Include="..\..\..\mac\TinyClipsTests\Fixtures\StudioRendering\*" Link="TimelineFixture\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

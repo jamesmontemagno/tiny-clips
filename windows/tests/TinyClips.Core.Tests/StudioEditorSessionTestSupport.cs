@@ -28,7 +28,7 @@ public abstract class StudioEditorSessionTestBase : IDisposable
     protected StudioEditorSessionTestBase()
     {
         Time = new ManualTimeProvider(new DateTimeOffset(2026, 10, 3, 12, 0, 0, TimeSpan.Zero));
-        Projects = new StudioProjectStore(Path.Combine(_directory, "Projects"), Time);
+        Projects = new StudioProjectStore(Path.Combine(_directory, "Projects"), Time, _ => new StudioRecordingSourceInfo(1280, 720, 6, 30));
         Store = new RecordingStore(Projects, Log);
         Previews = new FakePreviewFactory(Log);
         Exporter = new FakeExporter(Log);
@@ -110,6 +110,16 @@ public abstract class StudioEditorSessionTestBase : IDisposable
 
     /// <summary>What a session a test creates generates captions with. Without it, it cannot.</summary>
     protected TinyClips.Core.Studio.Transcription.IStudioCaptionGenerator? CaptionGenerator { get; set; }
+
+    /// <summary>A video outside the store, as one a person picks or drops. The fake probe reads every one as six seconds.</summary>
+    protected string CreateVideoFile(string name)
+    {
+        var folder = Path.Combine(_directory, "Incoming");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, name + ".mp4");
+        File.WriteAllText(path, name);
+        return path;
+    }
 
     protected StudioEditorSession CreateSession(string projectId)
     {
@@ -486,9 +496,23 @@ internal sealed class FakeExporter(List<string> log) : IStudioExportService
 }
 
 /// <summary>Passes every call to a real store and writes the ones a session makes to a log.</summary>
-internal sealed class RecordingStore(StudioProjectStore inner, List<string> log) : IStudioProjectStore
+internal sealed class RecordingStore(StudioProjectStore inner, List<string> log) : IStudioProjectStore, IStudioTimelineMediaStore
 {
     public string RootDirectory => inner.RootDirectory;
+
+    /// <summary>Runs after a timeline edit is staged and before the session commits it, to change the world in between.</summary>
+    public Action? Staged { get; set; }
+
+    public async Task<StudioPreparedTimelineEdit> StageTimelineAsync(
+        StudioProject destination,
+        IReadOnlyList<StudioTimelineImport> imports,
+        CancellationToken cancellationToken = default)
+    {
+        log.Add("store.stage");
+        var prepared = await inner.StageTimelineAsync(destination, imports, cancellationToken);
+        Staged?.Invoke();
+        return prepared;
+    }
 
     public StudioProjectPaths BeginRecording() => inner.BeginRecording();
 
@@ -507,10 +531,10 @@ internal sealed class RecordingStore(StudioProjectStore inner, List<string> log)
         return inner.Load(projectId);
     }
 
-    public StudioProject Save(StudioProject project)
+    public StudioProject Save(StudioProject project, StudioEditableState? replacing = null)
     {
         log.Add("store.save");
-        return inner.Save(project);
+        return inner.Save(project, replacing);
     }
 
     public void Delete(string projectId)

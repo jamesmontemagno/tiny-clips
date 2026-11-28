@@ -68,7 +68,7 @@ internal sealed class FakeApp : IAsyncDisposable
         if (scopes is null) return "unauthorized";
         var entry = contract.Find(command);
         if (entry is null) return "unknown_command";
-        if (!scopes.Contains(entry.Scope)) return "missing_scope";
+        if (!scopes.Contains(entry.Scope) || entry.AdditionalScopes.Any(scope => !scopes.Contains(scope))) return "missing_scope";
         return contract.IsSensitive(entry) ? "approve" : "allow";
     }
 

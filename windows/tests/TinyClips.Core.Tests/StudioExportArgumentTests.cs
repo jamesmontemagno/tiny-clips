@@ -70,6 +70,20 @@ public sealed class StudioExportArgumentTests : IDisposable
     }
 
     [Fact]
+    public async Task MultiClipProjectsValidateRegistrySourcesBeforeReplacingOutput()
+    {
+        var exporter = new StudioExporter();
+        var project = StudioTimelineEditing.ToTimelineProject(Project());
+        var paths = Paths();
+        var output = Path.Combine(_folder, "out.mp4");
+        File.WriteAllText(output, "existing");
+
+        await Assert.ThrowsAsync<FileNotFoundException>(() => exporter.ExportAsync(project, _events, paths, output, cancellationToken: Token));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => exporter.WritePosterAsync(project, _events, paths, paths.PosterPath, 640, 0, Token));
+        Assert.Equal("existing", File.ReadAllText(output));
+    }
+
+    [Fact]
     public async Task ExportAsync_FailsWhenTheOutputFolderDoesNotExist()
     {
         CreateSources();

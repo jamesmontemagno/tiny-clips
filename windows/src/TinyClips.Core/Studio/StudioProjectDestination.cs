@@ -212,6 +212,13 @@ public static class StudioProjectDestination
         };
         if (project.Sources.Camera is { } camera) names.Add(camera.File);
         if (project.Canvas.Background.Image is { } image) names.Add(image);
+        foreach (var source in project.MediaSources ?? [])
+        {
+            names.Add(source.Sources.Screen.File);
+            if (source.Sources.Camera is { } sourceCamera) names.Add(sourceCamera.File);
+            if (source.Sources.Events is { } events) names.Add(events);
+            if (StudioProjectMedia.RecordingBackgroundImage(source) is { } background) names.Add(background);
+        }
         return names;
     }
 

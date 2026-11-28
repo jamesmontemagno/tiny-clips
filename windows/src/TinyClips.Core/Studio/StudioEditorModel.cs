@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Text.Json;
 
 namespace TinyClips.Core.Studio;
 
@@ -14,6 +15,10 @@ public sealed class StudioEditableState
 
     private StudioEditableState(StudioProject project)
     {
+        SchemaVersion = project.SchemaVersion;
+        Sources = project.SchemaVersion >= 2 ? project.Sources : null;
+        MediaSources = project.MediaSources;
+        Timeline = project.Timeline;
         Canvas = project.Canvas;
         Screen = project.Screen;
         Camera = project.Camera;
@@ -24,6 +29,15 @@ public sealed class StudioEditableState
         Overlays = project.Overlays;
         Captions = project.Captions;
     }
+
+    public int SchemaVersion { get; }
+
+    /// <summary>The project's own sources, kept only for a timeline project. A single-source project leaves them to the store.</summary>
+    public StudioSources? Sources { get; }
+
+    public StudioMediaSource[]? MediaSources { get; }
+
+    public StudioTimeline? Timeline { get; }
 
     public StudioCanvas Canvas { get; }
 
@@ -55,6 +69,10 @@ public sealed class StudioEditableState
         ArgumentNullException.ThrowIfNull(project);
         return project with
         {
+            SchemaVersion = SchemaVersion,
+            Sources = Sources ?? project.Sources,
+            MediaSources = MediaSources,
+            Timeline = Timeline,
             Canvas = Canvas,
             Screen = Screen,
             Camera = Camera,
@@ -83,8 +101,16 @@ public sealed class StudioEditableState
             return true;
         }
 
+        if (SchemaVersion != other.SchemaVersion)
+        {
+            return false;
+        }
+
         // Cheap and sufficient when nothing was replaced. It is never true for different content.
-        if (Canvas == other.Canvas
+        if (Sources == other.Sources
+            && ReferenceEquals(MediaSources, other.MediaSources)
+            && Timeline == other.Timeline
+            && Canvas == other.Canvas
             && Screen == other.Screen
             && Camera == other.Camera
             && ReferenceEquals(Scenes, other.Scenes)
@@ -100,7 +126,10 @@ public sealed class StudioEditableState
         return string.Equals(ComparisonText, other.ComparisonText, StringComparison.Ordinal);
     }
 
-    private string ComparisonText => _comparisonText ??= StudioProjectJson.WriteProject(ApplyTo(ComparisonShell));
+    // The shell has no valid timeline of its own, so this does not go through WriteProject, which
+    // reads a timeline project back to check it.
+    private string ComparisonText => _comparisonText ??=
+        JsonSerializer.Serialize(ApplyTo(ComparisonShell), StudioJsonContext.Default.StudioProject);
 }
 
 /// <summary>
@@ -263,40 +292,191 @@ public sealed partial class StudioEditorModel
     private readonly List<StudioEditableState> _redoStack = [];
     private StudioEditableState? _groupedSnapshot;
     private StudioEditableState? _exportedState;
+    private string? _selectedClipId;
+    private StudioProject? _projection;
+    private StudioProject? _projectionOf;
+    private string? _projectionClipId;
+    private StudioTimelineMap? _map;
+    private StudioProject? _mapOf;
 
     public StudioEditorModel(StudioProject project)
     {
         ArgumentNullException.ThrowIfNull(project);
-        Project = project;
-        if (Project.Scenes is not { Length: > 0 })
+        Manifest = project;
+        if (project.SchemaVersion >= 2)
         {
+            // Fail here, once, so every later read of the timeline can rely on a valid one.
+            _ = TimelineMap;
+        }
+        else
+        {
+            if (Project.Scenes is not { Length: > 0 })
+            {
+                Project = Project with
+                {
+                    Scenes = [new StudioScene { Start = 0, Layout = HasCamera ? StudioLayout.Bubble : StudioLayout.Screen }],
+                };
+            }
+
             Project = Project with
             {
-                Scenes = [new StudioScene { Start = 0, Layout = HasCamera ? StudioLayout.Bubble : StudioLayout.Screen }],
+                Scenes = NormalizeStoredScenes(Project.Scenes, SourceDuration),
+                Zooms = SortStoredZooms(Project.Zooms),
+                Edits = ClampedEdits(
+                    Project.Edits with
+                    {
+                        Cuts = NormalizeStoredCuts(Project.Edits.Cuts, SourceDuration),
+                        Speed = NormalizeStoredSpeed(Project.Edits.Speed, SourceDuration, keepingNormalRate: true),
+                    },
+                    Project.Edits.TrimStart,
+                    Project.Edits.TrimEnd),
             };
         }
 
-        Project = Project with
-        {
-            Scenes = NormalizeStoredScenes(Project.Scenes, SourceDuration),
-            Zooms = SortStoredZooms(Project.Zooms),
-            Edits = ClampedEdits(
-                Project.Edits with
-                {
-                    Cuts = NormalizeStoredCuts(Project.Edits.Cuts, SourceDuration),
-                    Speed = NormalizeStoredSpeed(Project.Edits.Speed, SourceDuration, keepingNormalRate: true),
-                },
-                Project.Edits.TrimStart,
-                Project.Edits.TrimEnd),
-        };
         _exportedState = project.Exports is { Length: > 0 } ? EditableState : null;
     }
 
+    // The project and the timeline
+
+    /// <summary>
+    /// The whole project: for a timeline, every clip and the registry of sources. This is what is
+    /// saved, exported, and handed to agents.
+    /// </summary>
+    public StudioProject Manifest { get; private set; }
+
+    /// <summary>
+    /// The project the inspectors and lanes edit: the manifest itself for a single recording, and
+    /// for a timeline the selected clip in its own source time. Writing it puts the changes back
+    /// into the manifest, so a selected clip is never mistaken for the whole project.
+    /// </summary>
+    public StudioProject Project
+    {
+        get
+        {
+            if (Manifest.SchemaVersion < 2)
+            {
+                return Manifest;
+            }
+
+            var id = SelectedClip!.Id;
+            if (!ReferenceEquals(_projectionOf, Manifest) || _projectionClipId != id)
+            {
+                _projection = StudioTimelineProjection.ProjectForClip(Manifest, id);
+                _projectionOf = Manifest;
+                _projectionClipId = id;
+            }
+
+            return _projection!;
+        }
+
+        private set => Manifest = ComposeManifest(value);
+    }
+
+    public StudioEditableState EditableState => StudioEditableState.From(Manifest);
+
+    public bool IsTimeline => Manifest.SchemaVersion >= 2;
+
+    /// <summary>The clip the inspectors are editing. Null for a single recording.</summary>
+    public StudioTimelineClip? SelectedClip =>
+        IsTimeline && Manifest.Timeline is { Clips.Length: > 0 } timeline
+            ? timeline.Clips.FirstOrDefault(clip => clip.Id == _selectedClipId) ?? timeline.Clips[0]
+            : null;
+
+    public string? SelectedClipId => SelectedClip?.Id;
+
+    /// <summary>Where each clip sits in project time. Null for a single recording.</summary>
+    public StudioTimelineMap? TimelineMap
+    {
+        get
+        {
+            if (!IsTimeline)
+            {
+                return null;
+            }
+
+            if (!ReferenceEquals(_mapOf, Manifest))
+            {
+                _map = StudioTimelineProjection.Map(Manifest);
+                _mapOf = Manifest;
+            }
+
+            return _map;
+        }
+    }
+
+    /// <summary>The length of the project on its own timeline, with cuts, speed and joins applied.</summary>
+    public double ProjectDuration => TimelineMap?.Duration ?? OutputDuration;
+
+    /// <summary>Whether the selected clip is a flat video: no camera or click layers of its own.</summary>
+    public bool IsFlatClip =>
+        SelectedClip is { } clip
+        && Manifest.MediaSources?.FirstOrDefault(source => source.Id == clip.SourceId)?.Kind == StudioMediaSourceKind.FlatVideo;
+
+    /// <summary>
+    /// Selects the clip the inspectors edit. A selection is not an edit, so it is not in the undo
+    /// history. False when the clip is unknown or already selected.
+    /// </summary>
+    public bool SelectClip(string clipId)
+    {
+        if (!IsTimeline
+            || string.Equals(SelectedClipId, clipId, StringComparison.Ordinal)
+            || Manifest.Timeline!.Clips.All(clip => clip.Id != clipId))
+        {
+            return false;
+        }
+
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
+        _selectedClipId = clipId;
+        return true;
+    }
+
+    /// <summary>Where a time on the project timeline is: the clip, and the time in its recording.</summary>
+    public StudioTimelinePosition? GetSourcePosition(double projectTime, string? preferredClipId = null) =>
+        TimelineMap?.SourcePositionAt(projectTime, preferredClipId);
+
+    /// <summary>The project time of a source time in the selected clip.</summary>
+    public double GetProjectTime(double sourceTime) =>
+        SelectedClipId is { } id && TimelineMap?.ProjectTimeFor(id, sourceTime) is { } time ? time : GetOutputTime(sourceTime);
+
+    // The selected clip's own state goes back into the clip it came from. The canvas belongs to
+    // the project, so it is written to the root.
+    private StudioProject ComposeManifest(StudioProject local)
+    {
+        if (Manifest.SchemaVersion < 2)
+        {
+            return local;
+        }
+
+        var current = Project;
+        if (ReferenceEquals(local, current))
+        {
+            return Manifest;
+        }
+
+        var clip = SelectedClip!;
+        var updated = clip with
+        {
+            Screen = local.Screen != current.Screen ? local.Screen : clip.Screen,
+            Camera = local.Camera != current.Camera ? local.Camera : clip.Camera,
+            Scenes = ReferenceEquals(local.Scenes, current.Scenes) ? clip.Scenes : local.Scenes,
+            Zooms = ReferenceEquals(local.Zooms, current.Zooms) ? clip.Zooms : local.Zooms,
+            Edits = local.Edits != current.Edits ? local.Edits : clip.Edits,
+            Audio = local.Audio != current.Audio ? local.Audio : clip.Audio,
+            Overlays = local.Overlays != current.Overlays ? local.Overlays : clip.Overlays,
+            Captions = local.Captions != current.Captions ? local.Captions : clip.Captions,
+        };
+        var timeline = Manifest.Timeline!;
+        return Manifest with
+        {
+            Canvas = local.Canvas,
+            Timeline = updated == clip
+                ? timeline
+                : timeline with { Clips = timeline.Clips.Select(item => item.Id == clip.Id ? updated : item).ToArray() },
+        };
+    }
+
     // State
-
-    public StudioProject Project { get; private set; }
-
-    public StudioEditableState EditableState => StudioEditableState.From(Project);
 
     public bool CanUndo => _undoStack.Count > 0;
 
@@ -342,13 +522,35 @@ public sealed partial class StudioEditorModel
         }
     }
 
+    /// <summary>
+    /// One frame of the project: what a timeline steps by, at the frame rate the project's own
+    /// canvas has rather than the selected recording's.
+    /// </summary>
+    public double ProjectFrameDuration
+    {
+        get
+        {
+            var frameRate = Manifest.Sources.Screen.FrameRate;
+            return double.IsFinite(frameRate) && frameRate > 0 ? 1 / frameRate : FrameDuration;
+        }
+    }
+
     public StudioTimeMap TimeMap => new(SourceDuration, Project.Edits);
 
     public double OutputDuration => TimeMap.OutputDuration;
 
-    public double TrimStart => Clamp(Project.Edits.TrimStart, 0, SourceDuration);
+    public double TrimStart => Clamp(Project.Edits.TrimStart, TrimBounds.Start, TrimBounds.End);
 
-    public double TrimEnd => Clamp(Project.Edits.TrimEnd ?? SourceDuration, TrimStart, SourceDuration);
+    public double TrimEnd => Clamp(Project.Edits.TrimEnd ?? TrimBounds.End, TrimStart, TrimBounds.End);
+
+    /// <summary>
+    /// The source times a trim can be set between: the whole recording, or the part of it a
+    /// timeline clip uses.
+    /// </summary>
+    public (double Start, double End) TrimBounds =>
+        SelectedClip is { } clip
+            ? (Math.Max(0, clip.SourceStart), Math.Min(SourceDuration, clip.SourceEnd))
+            : (0, SourceDuration);
 
     public double GetSourceTime(double outputTime) => TimeMap.OutputToSource(outputTime);
 
@@ -356,6 +558,16 @@ public sealed partial class StudioEditorModel
 
     public double ClampSourceTime(double sourceTime) =>
         double.IsFinite(sourceTime) ? Clamp(sourceTime, 0, SourceDuration) : 0;
+
+    /// <summary>
+    /// Where the playhead can be: anywhere in the recording, or for a timeline clip only in the
+    /// part of the recording the clip uses.
+    /// </summary>
+    public double ClampPlayhead(double sourceTime)
+    {
+        var time = ClampSourceTime(sourceTime);
+        return IsTimeline ? Clamp(time, TrimBounds.Start, TrimBounds.End) : time;
+    }
 
     /// <summary>
     /// Where playback starts when Play is pressed at <paramref name="sourceTime"/>: the same spot,
@@ -417,7 +629,7 @@ public sealed partial class StudioEditorModel
         }
 
         var current = EditableState;
-        Project = state.ApplyTo(Project);
+        Manifest = state.ApplyTo(Manifest);
         PushUndo(current);
     }
 
@@ -429,7 +641,7 @@ public sealed partial class StudioEditorModel
         }
 
         _groupedSnapshot = null;
-        Project = snapshot.ApplyTo(Project);
+        Manifest = snapshot.ApplyTo(Manifest);
     }
 
     /// <summary>
@@ -448,7 +660,7 @@ public sealed partial class StudioEditorModel
             var previous = _undoStack[^1];
             _undoStack.RemoveAt(_undoStack.Count - 1);
             _redoStack.Add(EditableState);
-            Project = previous.ApplyTo(Project);
+            Manifest = previous.ApplyTo(Manifest);
         }
 
         if (wasGrouping)
@@ -472,7 +684,7 @@ public sealed partial class StudioEditorModel
             var next = _redoStack[^1];
             _redoStack.RemoveAt(_redoStack.Count - 1);
             _undoStack.Add(EditableState);
-            Project = next.ApplyTo(Project);
+            Manifest = next.ApplyTo(Manifest);
         }
 
         if (wasGrouping)
@@ -1161,16 +1373,18 @@ public sealed partial class StudioEditorModel
     /// <summary>Moves the trim start, leaving the end where it is.</summary>
     public void SetTrimStart(double value)
     {
-        var latest = Math.Max(0, TrimEnd - Math.Min(MinimumDuration, SourceDuration));
-        SetTrim(double.IsFinite(value) ? Math.Min(value, latest) : 0, Project.Edits.TrimEnd);
+        var (lower, _) = TrimBounds;
+        var latest = Math.Max(lower, TrimEnd - Math.Min(MinimumDuration, SourceDuration));
+        SetTrim(double.IsFinite(value) ? Math.Min(value, latest) : lower, Project.Edits.TrimEnd);
     }
 
     /// <summary>Moves the trim end, leaving the start where it is.</summary>
     public void SetTrimEnd(double value)
     {
+        var (_, upper) = TrimBounds;
         var start = TrimStart;
-        var earliest = Math.Min(SourceDuration, start + Math.Min(MinimumDuration, SourceDuration));
-        SetTrim(start, double.IsFinite(value) ? Math.Max(value, earliest) : SourceDuration);
+        var earliest = Math.Min(upper, start + Math.Min(MinimumDuration, SourceDuration));
+        SetTrim(start, double.IsFinite(value) ? Math.Max(value, earliest) : upper);
     }
 
     public void SetMuted(bool isMuted) =>
@@ -1225,13 +1439,22 @@ public sealed partial class StudioEditorModel
         _exportedState = exported;
     }
 
-    /// <summary>Replaces editable project fields from a validated agent update as one undo step.</summary>
+    /// <summary>
+    /// Replaces the editable fields from a validated agent update as one undo step. A timeline
+    /// update is the whole manifest: clips, joins and registry travel together with the edit.
+    /// </summary>
     public void ApplyAutomationProject(StudioProject updated)
     {
         ArgumentNullException.ThrowIfNull(updated);
         if (!string.Equals(updated.Id, Project.Id, StringComparison.Ordinal))
         {
             throw new ArgumentException("The update belongs to another Studio project.", nameof(updated));
+        }
+
+        if (IsTimeline || updated.SchemaVersion >= 2)
+        {
+            AdoptManifest(updated);
+            return;
         }
 
         Mutate(project => project with
@@ -1248,11 +1471,56 @@ public sealed partial class StudioEditorModel
         });
     }
 
+    /// <summary>
+    /// Takes the editable parts of <paramref name="updated"/>, a whole project of either kind, as
+    /// one undo step. A selection that is no longer in the timeline moves to the clip that took
+    /// its place. False when it changes nothing.
+    /// </summary>
+    public bool AdoptManifest(StudioProject updated, string? selectClipId = null)
+    {
+        ArgumentNullException.ThrowIfNull(updated);
+        if (!string.Equals(updated.Id, Manifest.Id, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The update belongs to another Studio project.", nameof(updated));
+        }
+
+        if (updated.SchemaVersion >= 2)
+        {
+            _ = StudioTimelineProjection.Map(updated);
+        }
+        else if (IsTimeline)
+        {
+            throw new ArgumentException("A timeline project is updated with its whole timeline.", nameof(updated));
+        }
+
+        _typingInAnnotation = null;
+        _choosingColorInAnnotation = null;
+        var before = EditableState;
+        var previousClip = SelectedClipId;
+        var candidate = StudioEditableState.From(updated);
+        var changed = !before.ContentEquals(candidate);
+        if (changed)
+        {
+            Manifest = candidate.ApplyTo(Manifest);
+            if (_groupedSnapshot is null)
+            {
+                PushUndo(before);
+            }
+        }
+
+        if (selectClipId is not null)
+        {
+            _ = SelectClip(selectClipId);
+        }
+
+        return changed || previousClip != SelectedClipId;
+    }
+
     /// <summary>Takes the fields the store or other windows own from the saved project, leaving edits alone.</summary>
     public void RefreshBookkeeping(StudioProject saved)
     {
         ArgumentNullException.ThrowIfNull(saved);
-        Project = Project with
+        Manifest = Manifest with
         {
             Exports = saved.Exports,
             ModifiedAt = saved.ModifiedAt,
@@ -1392,16 +1660,35 @@ public sealed partial class StudioEditorModel
         _typingInAnnotation = null;
         _choosingColorInAnnotation = null;
         var before = EditableState;
-        var candidate = change(Project);
+        var candidate = ComposeManifest(change(Project));
         if (before.ContentEquals(StudioEditableState.From(candidate)))
         {
             return;
         }
 
-        Project = candidate;
+        // An edit that would leave a clip with nothing to play has no place on a timeline.
+        if (candidate.SchemaVersion >= 2 && !HasValidTimeline(candidate))
+        {
+            return;
+        }
+
+        Manifest = candidate;
         if (_groupedSnapshot is null)
         {
             PushUndo(before);
+        }
+    }
+
+    private static bool HasValidTimeline(StudioProject project)
+    {
+        try
+        {
+            _ = StudioTimelineProjection.Map(project);
+            return true;
+        }
+        catch (StudioProjectInvalidException)
+        {
+            return false;
         }
     }
 
@@ -1533,30 +1820,31 @@ public sealed partial class StudioEditorModel
 
     private StudioEdits ClampedEdits(StudioEdits edits, double trimStart, double? trimEnd)
     {
-        var duration = SourceDuration;
+        var (lower, upper) = TrimBounds;
+        var duration = upper - lower;
         if (!(duration > 0))
         {
-            return edits with { TrimStart = 0, TrimEnd = null };
+            return edits with { TrimStart = lower, TrimEnd = null };
         }
 
         var minimum = Math.Min(MinimumDuration, duration);
-        var startInput = double.IsFinite(trimStart) ? trimStart : 0;
-        var endInput = trimEnd is { } requested && double.IsFinite(requested) ? requested : duration;
-        var start = Clamp(startInput, 0, duration - minimum);
-        var end = Clamp(endInput, minimum, duration);
+        var startInput = double.IsFinite(trimStart) ? trimStart : lower;
+        var endInput = trimEnd is { } requested && double.IsFinite(requested) ? requested : upper;
+        var start = Clamp(startInput, lower, upper - minimum);
+        var end = Clamp(endInput, lower + minimum, upper);
         if (end - start < minimum)
         {
-            if (start + minimum <= duration)
+            if (start + minimum <= upper)
             {
                 end = start + minimum;
             }
             else
             {
-                start = Math.Max(0, end - minimum);
+                start = Math.Max(lower, end - minimum);
             }
         }
 
-        return edits with { TrimStart = start, TrimEnd = Math.Abs(end - duration) < 1e-9 ? null : end };
+        return edits with { TrimStart = start, TrimEnd = Math.Abs(end - upper) < 1e-9 ? null : end };
     }
 
     /// <summary>

@@ -57,6 +57,25 @@ public sealed class StudioEditorSessionTests : StudioEditorSessionTestBase
     }
 
     [Fact]
+    public async Task Load_TimelineProjectOpensTheProjectTimePreviewOverTheWholeManifest()
+    {
+        var id = CreateProject();
+        Projects.Save(StudioTimelineEditing.ToTimelineProject(Projects.Load(id)));
+
+        var session = await OpenAsync(id);
+
+        Assert.Equal(StudioEditorLoadState.Ready, session.State);
+        Assert.True(session.IsTimeline);
+        var request = Assert.Single(Previews.Requests);
+        Assert.Equal(2, request.Project.SchemaVersion);
+        Assert.Equal(Projects.GetPaths(id).ScreenPath, request.Paths.ScreenPath);
+        Assert.Equal(2, session.Manifest!.SchemaVersion);
+        Assert.Equal(session.SelectedClipId, Assert.Single(session.TimelineMap!.Clips).ClipId);
+        Assert.Equal(0, Assert.Single(Preview.Seeks), Precision);
+        Assert.True(session.CanExport);
+    }
+
+    [Fact]
     public async Task Load_WithoutTheScreenFile_IsUnavailableAndOpensNoPreview()
     {
         var id = CreateProject(writeScreenFile: false, name: "Moved away");

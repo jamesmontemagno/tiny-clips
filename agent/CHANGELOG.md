@@ -5,6 +5,8 @@ All notable changes to the Tiny Clips Agent CLI, MCP server, Agent Plugin, and s
 ## Unreleased
 
 ### Added
+- `studio.timeline.transition` sets or clears a join using the incoming clip's ID and the current revision. `studio.timeline.get` reports the transition and its effective time range. The CLI and MCP expose the same choices as Studio.
+- On macOS and Windows, the CLI and MCP can inspect a Studio timeline, import a Library video or recording, duplicate, move, split, trim or remove a clip, and record another take at a project position. Timeline edits use the open editor's undo history and require the revision the agent read. Recording into a project needs both `record` and `edit`.
 - `editor.annotate` accepts `type: "pointer"` for an editable cursor annotation with `pointerStyle` (`arrow`, `hand`, `text`), `fillColor`, stroke `color`, `lineWidth`, `opacity`, and `shadow`. `screenshotEditorDefaultTool` accepts `pointer`.
 - `capture.screenshot`, `recording.startVideo`, and `recording.startGif` support explicit `mode=windowArea` for a fixed, display-clipped screen region matching a window's visible bounds. Results include the resolved display-local rectangle; OCR and scrolling targets remain unchanged. On Windows, a window-area recording start fails with `conflict` if the display changed after the target was resolved. macOS `mode=window` recordings continue to record the window's display region and can include overlays.
 - Added a dedicated Agent CLI changelog and release-note workflow.
