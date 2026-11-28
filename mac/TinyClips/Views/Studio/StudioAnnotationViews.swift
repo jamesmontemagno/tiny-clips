@@ -5,16 +5,33 @@ import SwiftUI
 // MARK: - Annotation Timeline
 
 /// The annotations as blocks along the recording, in source time, lined up with the other timeline
-/// lanes. They may overlap: the selected block is on top, then the later ones, and the panel's list
-/// reaches the ones under them. Pressing a block selects its annotation, dragging it moves it, and
-/// dragging one of its ends changes when it starts or stops.
+/// lanes. They may overlap: the selected block is on top, then the later ones. Blocks that overlap
+/// show one label between them, so no words are painted over others, and a count of how many are
+/// there. Clicking where several overlap lists them to choose from, as the panel's list does.
+/// Pressing a block selects its annotation, dragging it moves it, and dragging one of its ends
+/// changes when it starts or stops.
 struct StudioAnnotationLane: View {
     @ObservedObject var viewModel: StudioViewModel
     @State private var drag: AnnotationDrag?
     @State private var isTrackDragging = false
     @State private var hoveredIndex: Int?
+    @State private var chooser: OverlapChooser?
 
     private static let space = "studioAnnotationLane"
+
+    /// The annotations at a place where several overlap, listed to choose one from.
+    private struct OverlapChooser: Identifiable {
+        let id = UUID()
+        /// Where along the lane the list points from, as a fraction of its width.
+        var anchor: CGFloat
+        var indices: [Int]
+    }
+
+    /// Where a block is drawn along the lane.
+    private struct Placement {
+        var x: CGFloat
+        var width: CGFloat
+    }
 
     private struct AnnotationDrag {
         var index: Int
@@ -33,13 +50,50 @@ struct StudioAnnotationLane: View {
             let width = proxy.size.width
             let usable = max(1, width - StudioTimelineMetrics.edgeInset * 2)
 
+            let placements = placements(width: width, usable: usable, duration: duration)
+
             ZStack(alignment: .topLeading) {
                 track(usable: usable, duration: duration)
-                blocks(width: width, height: proxy.size.height, usable: usable, duration: duration)
+                blocks(placements: placements, width: width, height: proxy.size.height, usable: usable, duration: duration)
                 playheadLine(usable: usable, duration: duration)
             }
             .coordinateSpace(.named(Self.space))
+            .popover(
+                item: $chooser,
+                attachmentAnchor: .point(UnitPoint(x: chooser?.anchor ?? 0.5, y: 0.5)),
+                arrowEdge: .top
+            ) { chooser in
+                StudioAnnotationOverlapList(viewModel: viewModel, indices: chooser.indices) {
+                    self.chooser = nil
+                }
+            }
         }
+    }
+
+    private func placements(width: CGFloat, usable: CGFloat, duration: Double) -> [Placement] {
+        viewModel.annotations.map { annotation in
+            let x0 = xPosition(for: annotation.start, usable: usable, duration: duration)
+            let x1 = xPosition(for: annotation.end, usable: usable, duration: duration)
+            let drawnWidth = max(10, x1 - x0)
+            let x = min(max((x0 + x1) / 2 - drawnWidth / 2, 0), max(0, width - drawnWidth))
+            return Placement(x: x, width: drawnWidth)
+        }
+    }
+
+    private static func ranges(_ placements: [Placement]) -> [(left: Double, width: Double)] {
+        placements.map { (left: Double($0.x), width: Double($0.width)) }
+    }
+
+    /// Lists the annotations at a place along the lane when more than one is there.
+    private func showChooser(at x: CGFloat, placements: [Placement], width: CGFloat) -> Bool {
+        let indices = StudioEditorModel.laneBlocks(
+            at: Double(x),
+            blocks: Self.ranges(placements),
+            selectedIndex: viewModel.selectedAnnotationIndex
+        )
+        guard indices.count > 1, width > 0 else { return false }
+        chooser = OverlapChooser(anchor: min(max(x / width, 0), 1), indices: indices.sorted())
+        return true
     }
 
     private func track(usable: CGFloat, duration: Double) -> some View {
@@ -62,19 +116,32 @@ struct StudioAnnotationLane: View {
             .accessibilityHidden(true)
     }
 
-    private func blocks(width: CGFloat, height: CGFloat, usable: CGFloat, duration: Double) -> some View {
-        ForEach(Array(viewModel.annotations.enumerated()), id: \.offset) { index, annotation in
-            let x0 = xPosition(for: annotation.start, usable: usable, duration: duration)
-            let x1 = xPosition(for: annotation.end, usable: usable, duration: duration)
-            let drawnWidth = max(10, x1 - x0)
-            let x = min(max((x0 + x1) / 2 - drawnWidth / 2, 0), max(0, width - drawnWidth))
+    private func blocks(placements: [Placement], width: CGFloat, height: CGFloat, usable: CGFloat, duration: Double) -> some View {
+        let overlaps = StudioEditorModel.laneOverlaps(
+            blocks: Self.ranges(placements),
+            selectedIndex: viewModel.selectedAnnotationIndex
+        )
+        return ForEach(Array(viewModel.annotations.enumerated()), id: \.offset) { index, annotation in
+            let placement = index < placements.count ? placements[index] : Placement(x: 0, width: 10)
+            let overlap = index < overlaps.count ? overlaps[index] : StudioLaneOverlap(group: index, count: 1, showsLabel: true)
+            let drawnWidth = placement.width
+            let x = placement.x
             let isSelected = viewModel.selectedAnnotationIndex == index
             let blockHeight = max(0, height - 4)
             // A narrow block that is selected has its handles outside its ends, and is that much
             // wider to press.
             let outset = CGFloat(StudioEditorModel.laneHandleOutset(blockWidth: Double(drawnWidth), isSelected: isSelected))
             ZStack {
-                block(index: index, annotation: annotation, width: drawnWidth, height: blockHeight)
+                block(
+                    index: index,
+                    annotation: annotation,
+                    overlap: overlap,
+                    width: drawnWidth,
+                    height: blockHeight,
+                    showOverlaps: {
+                        _ = showChooser(at: x + drawnWidth / 2, placements: placements, width: width)
+                    }
+                )
                 StudioLaneBlockHandles(
                     blockWidth: drawnWidth,
                     height: blockHeight,
@@ -94,11 +161,26 @@ struct StudioAnnotationLane: View {
             }
             .offset(x: x - outset, y: 2)
             .zIndex(isSelected ? Double(viewModel.annotations.count) : Double(index))
-            .gesture(blockGesture(index: index, annotation: annotation, x: x, width: drawnWidth, usable: usable, duration: duration))
+            .gesture(blockGesture(
+                index: index,
+                annotation: annotation,
+                x: x,
+                width: drawnWidth,
+                usable: usable,
+                duration: duration,
+                showChooser: { location in _ = showChooser(at: location, placements: placements, width: width) }
+            ))
         }
     }
 
-    private func block(index: Int, annotation: StudioAnnotation, width: CGFloat, height: CGFloat) -> some View {
+    private func block(
+        index: Int,
+        annotation: StudioAnnotation,
+        overlap: StudioLaneOverlap,
+        width: CGFloat,
+        height: CGFloat,
+        showOverlaps: @escaping () -> Void
+    ) -> some View {
         let isSelected = viewModel.selectedAnnotationIndex == index
         let foreground = isSelected ? Color.black : Color.primary
 
@@ -112,19 +194,29 @@ struct StudioAnnotationLane: View {
             }
             .frame(width: width, height: height)
             .overlay {
-                HStack(spacing: 4) {
-                    if width >= 22 {
-                        Image(systemName: Self.symbol(for: annotation.kind))
+                // Of blocks that overlap, only one shows its mark and its words, with how many
+                // are there, so nothing is drawn over anything else.
+                if overlap.showsLabel {
+                    HStack(spacing: 4) {
+                        if width >= 22 {
+                            Image(systemName: Self.symbol(for: annotation.kind))
+                        }
+                        if width >= (overlap.overlapsOthers ? 84 : 56) {
+                            Text(StudioEditorModel.annotationLabel(annotation))
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                        }
+                        if overlap.overlapsOthers, width >= 44 {
+                            Text("\(overlap.count)")
+                                .font(.caption2.weight(.bold).monospacedDigit())
+                                .padding(.horizontal, 4)
+                                .background(Capsule().fill(foreground.opacity(0.18)))
+                        }
                     }
-                    if width >= 56 {
-                        Text(StudioEditorModel.annotationLabel(annotation))
-                            .font(.caption2.weight(.semibold))
-                            .lineLimit(1)
-                    }
+                    .padding(.horizontal, 8)
+                    .foregroundStyle(foreground)
+                    .allowsHitTesting(false)
                 }
-                .padding(.horizontal, 8)
-                .foregroundStyle(foreground)
-                .allowsHitTesting(false)
             }
             .contentShape(Rectangle())
             .help(
@@ -134,10 +226,19 @@ struct StudioAnnotationLane: View {
             )
             .accessibilityElement()
             .accessibilityLabel(StudioEditorModel.annotationDescription(annotation))
-            .accessibilityValue(isSelected ? "Selected" : "Not selected")
+            .accessibilityValue(
+                [isSelected ? "Selected" : "Not selected", StudioEditorModel.laneOverlapText(count: overlap.count)]
+                    .compactMap { $0 }
+                    .joined(separator: ", ")
+            )
             .accessibilityAddTraits(.isButton)
             .accessibilityAction {
                 _ = viewModel.selectAndShowAnnotation(index)
+            }
+            .accessibilityActions {
+                if overlap.overlapsOthers {
+                    Button("Show overlapping annotations", action: showOverlaps)
+                }
             }
     }
 
@@ -160,7 +261,8 @@ struct StudioAnnotationLane: View {
         x: CGFloat,
         width: CGFloat,
         usable: CGFloat,
-        duration: Double
+        duration: Double,
+        showChooser: @escaping (CGFloat) -> Void
     ) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
             .onChanged { value in
@@ -198,9 +300,12 @@ struct StudioAnnotationLane: View {
                 }
                 drag = current
             }
-            .onEnded { _ in
+            .onEnded { value in
                 if drag?.hasMoved == true {
                     viewModel.endGesture()
+                } else if drag != nil {
+                    // A click where several annotations overlap lists them to choose from.
+                    showChooser(value.location.x)
                 }
                 drag = nil
             }
@@ -223,6 +328,59 @@ struct StudioAnnotationLane: View {
     private func time(at x: CGFloat, usable: CGFloat, duration: Double) -> Double {
         let fraction = Double((x - StudioTimelineMetrics.edgeInset) / usable)
         return min(max(fraction, 0), 1) * duration
+    }
+}
+
+/// The annotations where several overlap on the lane, listed to choose one from. Choosing one
+/// selects it and moves the playhead to where it starts.
+struct StudioAnnotationOverlapList: View {
+    @ObservedObject var viewModel: StudioViewModel
+    let indices: [Int]
+    let dismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(indices.count) annotations here")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 2)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(indices.filter { viewModel.annotations.indices.contains($0) }, id: \.self) { index in
+                row(index: index, annotation: viewModel.annotations[index])
+            }
+        }
+        .padding(8)
+        .frame(minWidth: 220, alignment: .leading)
+    }
+
+    private func row(index: Int, annotation: StudioAnnotation) -> some View {
+        let isSelected = viewModel.selectedAnnotationIndex == index
+        let times = "\(StudioEditorModel.formattedTime(annotation.start)) – \(StudioEditorModel.formattedTime(annotation.end))"
+        return Button {
+            viewModel.selectAndShowAnnotation(index)
+            dismiss()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: StudioAnnotationLane.symbol(for: annotation.kind))
+                    .frame(width: 16)
+                Text(StudioEditorModel.annotationLabel(annotation))
+                    .lineLimit(1)
+                Spacer(minLength: 12)
+                Text(times)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Image(systemName: "checkmark")
+                    .opacity(isSelected ? 1 : 0)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(StudioEditorModel.annotationDescription(annotation))
+        .accessibilityValue(isSelected ? "Selected, \(times)" : times)
     }
 }
 

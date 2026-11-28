@@ -20,7 +20,7 @@
         PointerCaptureLost="OnPointerEnded"
         PointerMoved="OnPointerMoved"
         PointerPressed="OnPointerPressed"
-        PointerReleased="OnPointerEnded"
+        PointerReleased="OnPointerReleased"
         SizeChanged="OnRootSizeChanged">
         <!--  The whole recording, on the time scale of the trim bar under the lanes.  -->
         <Border

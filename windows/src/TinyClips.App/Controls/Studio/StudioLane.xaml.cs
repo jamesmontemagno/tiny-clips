@@ -101,6 +101,9 @@ public abstract partial class StudioLane : UserControl
     internal StudioLaneBlock? SelectedBlock =>
         SelectedIndex is { } index && index >= 0 && index < _blocks.Count ? _blocks[index] : null;
 
+    /// <summary>The blocks that stand for the items, in the items' order.</summary>
+    private protected IReadOnlyList<StudioLaneBlock> BlocksShown => _blocks.GetRange(0, Math.Min(_blocks.Count, ItemCount));
+
     /// <summary>Whether one block is always marked, as the scene the playhead is in is.</summary>
     internal virtual bool IsSelectionRequired => false;
 
@@ -156,6 +159,19 @@ public abstract partial class StudioLane : UserControl
     /// began. Returns the item's place in the list afterwards, or null when it has none.
     /// </summary>
     private protected abstract int? Drag(StudioLanePress press, double seconds);
+
+    /// <summary>
+    /// Called once the blocks have been laid out or another one has been marked: a lane whose
+    /// blocks may overlap shows here how they share the room.
+    /// </summary>
+    private protected virtual void ShowOverlaps(IReadOnlyList<StudioLaneBlock> blocks, int? selectedIndex)
+    {
+    }
+
+    /// <summary>A pointer pressed a block at a place along the lane and let go without dragging it.</summary>
+    private protected virtual void OnClicked(double x)
+    {
+    }
 
     /// <summary>Goes to the item before the marked one, as the Left key does.</summary>
     protected abstract bool ShowPrevious();
@@ -420,6 +436,8 @@ public abstract partial class StudioLane : UserControl
             Canvas.SetTop(block, BlockInset);
             ShowItem(block, index, drawn, index == selected);
         }
+
+        ShowOverlaps(_blocks.GetRange(0, count), selected);
     }
 
     private void ShowSelection()
@@ -428,6 +446,11 @@ public abstract partial class StudioLane : UserControl
         for (var index = 0; index < _blocks.Count; index++)
         {
             _blocks[index].SetSelected(index == selected);
+        }
+
+        if (_items is not null && Root.ActualWidth > 0)
+        {
+            ShowOverlaps(BlocksShown, selected);
         }
     }
 
@@ -465,7 +488,24 @@ public abstract partial class StudioLane : UserControl
         }
     }
 
-    // Letting go, losing the pointer and a cancelled press all end here.
+    // Letting go ends the press, and a press on a block that did not move it is a click.
+    private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isPointerDown || e.Pointer.PointerId != _pointerId)
+        {
+            return;
+        }
+
+        var press = _press;
+        var x = e.GetCurrentPoint(Root).Position.X;
+        ReleasePointer();
+        if (press is { Index: not null, HasMoved: false })
+        {
+            OnClicked(x);
+        }
+    }
+
+    // Losing the pointer and a cancelled press end here.
     private void OnPointerEnded(object sender, PointerRoutedEventArgs e)
     {
         if (_isPointerDown && e.Pointer.PointerId == _pointerId)
