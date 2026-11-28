@@ -1089,7 +1089,6 @@ struct ScreenshotEditorView: View {
                 revealInFinder: openSaveFolder,
                 undo: viewModel.undo,
                 redo: viewModel.redo,
-                copy: viewModel.copyToClipboard,
                 deleteSelectedAnnotation: { viewModel.deleteSelectedAnnotation() },
                 clearAnnotations: { showClearAnnotationsConfirmation = true },
                 applyCrop: applyCrop,
