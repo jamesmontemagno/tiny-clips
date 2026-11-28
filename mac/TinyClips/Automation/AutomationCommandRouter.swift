@@ -173,6 +173,9 @@ final class AutomationCommandRouter {
         if let error = manager.automationRecordingError {
             result["error"] = ["code": error.code.rawValue, "message": error.message]
         }
+        if let take = manager.automationStudioTake {
+            result["studioTake"] = ["takeProjectId": take.takeProjectID, "inserted": take.inserted]
+        }
         if let type = manager.activeRecordingType {
             result["kind"] = type == .gif ? "gif" : "video"
         }
@@ -736,21 +739,21 @@ final class AutomationCommandRouter {
 
     static func studioProjectListResult(from listing: StudioProjectListing, limit: Int) -> [String: Any] {
         var projects: [(id: String, activity: Date, value: [String: Any])] = listing.summaries.map { summary in
-            (
-                id: summary.id,
-                activity: max(summary.createdAt, summary.lastOpenedAt),
-                value: [
-                    "projectId": summary.id,
-                    "name": summary.name,
-                    "createdAt": StudioJSON.timestampString(from: summary.createdAt),
-                    "lastOpenedAt": StudioJSON.timestampString(from: summary.lastOpenedAt),
-                    "isDraft": summary.isDraft,
-                    "isFlat": summary.isFlat,
-                    "keepSources": summary.keepSources,
-                    "sourceExists": summary.sourceExists,
-                    "isReadable": true
-                ]
-            )
+            var value: [String: Any] = [
+                "projectId": summary.id,
+                "name": summary.name,
+                "createdAt": StudioJSON.timestampString(from: summary.createdAt),
+                "lastOpenedAt": StudioJSON.timestampString(from: summary.lastOpenedAt),
+                "isDraft": summary.isDraft,
+                "isFlat": summary.isFlat,
+                "keepSources": summary.keepSources,
+                "sourceExists": summary.sourceExists,
+                "isReadable": true
+            ]
+            if let takeOf = summary.takeOf {
+                value["takeOf"] = ["projectId": takeOf.projectID, "name": takeOf.name]
+            }
+            return (id: summary.id, activity: max(summary.createdAt, summary.lastOpenedAt), value: value)
         }
         projects.append(contentsOf: listing.unreadable.map { project in
             (
@@ -1432,7 +1435,8 @@ extension AutomationCommandRouter {
         let current = try checked()
         let recording = try currentStudioProject(recordingID)
         return try await insertStudioMedia(studioStore.paths(for: recording).screenURL, recording: recording,
-                                           into: current, at: Self.requestedProjectTime(params, in: current)) {
+                                           into: current, at: Self.requestedProjectTime(params, in: current),
+                                           isRecordedTake: true) {
             _ = try checked()
         }
     }
@@ -1469,6 +1473,7 @@ extension AutomationCommandRouter {
                                        "width": source.sources.screen.width, "height": source.sources.screen.height,
                                        "hasCamera": source.sources.camera != nil, "hasEvents": source.sources.events != nil]
             item["audioTracks"] = source.sources.screen.audioTracks
+            item["takeProjectId"] = source.takeProjectID
             return item
         }
         return ["projectId": project.id, "modifiedAt": StudioJSON.timestampString(from: project.modifiedAt),
@@ -1504,10 +1509,11 @@ extension AutomationCommandRouter {
     }
 
     private func insertStudioMedia(_ url: URL, recording: StudioProject?, into current: StudioProject, at time: Double?,
-                                   expectedVideo: StudioVideoSourceIdentity? = nil,
+                                   expectedVideo: StudioVideoSourceIdentity? = nil, isRecordedTake: Bool = false,
                                    revalidate: () throws -> Void) async throws -> StudioProject {
         let prepared = try await studioStore.prepareTimelineImport(destination: current, videoURL: url,
-                                                                   recording: recording, expectedVideo: expectedVideo)
+                                                                   recording: recording, expectedVideo: expectedVideo,
+                                                                   isRecordedTake: isRecordedTake)
         var updated = prepared.base
         guard let lane = updated.timeline, var sources = updated.mediaSources else { throw AutomationError(.invalidParams) }
         sources.append(prepared.source)

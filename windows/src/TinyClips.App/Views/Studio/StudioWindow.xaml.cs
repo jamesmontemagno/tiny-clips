@@ -138,6 +138,7 @@ public sealed partial class StudioWindow : Window
         ViewModel.ChooseExportOptions = ChooseExportOptionsAsync;
         ViewModel.DeleteProjectRequested += OnDeleteProjectRequested;
         ViewModel.ProjectSaved += OnProjectSaved;
+        ViewModel.ShowInLibraryRequested += OnShowInLibraryRequested;
         Activated += OnActivated;
         RootGrid.KeyDown += OnRootKeyDown;
         RootGrid.PreviewKeyDown += OnRootPreviewKeyDown;
@@ -939,6 +940,8 @@ public sealed partial class StudioWindow : Window
         _clipsLifetime.Cancel();
         ViewModel.DeleteProjectRequested -= OnDeleteProjectRequested;
         ViewModel.ProjectSaved -= OnProjectSaved;
+        ViewModel.ShowInLibraryRequested -= OnShowInLibraryRequested;
+        DisconnectTakeNotice();
 
         LetGoOfBindings();
         DetachPreviewView();

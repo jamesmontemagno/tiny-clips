@@ -25,6 +25,7 @@ public partial class App : IAutomationAppActions
     private TrayAgentIndicator? _trayAgentIndicator;
     private bool _agentControlWired;
     private AutomationException? _timelineRecordingError;
+    private AutomationStudioTake? _timelineRecordingTake;
 
     internal AgentControlService AgentControl => Services.GetRequiredService<AgentControlService>();
 
@@ -216,7 +217,7 @@ public partial class App : IAutomationAppActions
         }
 
         var busy = _captureFlowCts is not null || _scrollingPanel is not null || _isExiting;
-        return new("idle", busy, null, Error: _timelineRecordingError);
+        return new("idle", busy, null, Error: _timelineRecordingError, StudioTake: _timelineRecordingTake);
     }
 
     string? IAutomationAppActions.OpenAutomationWindow(string window, string? guideTopic)
@@ -1098,6 +1099,7 @@ public partial class App : IAutomationAppActions
         }
         finally
         {
+            _timelineRecordingTake = new AutomationStudioTake(recordingId, error is null);
             AgentControl.AuditLog.Write(new AutomationAuditEntry
             {
                 Timestamp = DateTimeOffset.UtcNow, Command = request.Command, ClientId = request.ClientId,

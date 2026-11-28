@@ -227,6 +227,13 @@ struct StudioProjectSummary: Equatable, Sendable {
     /// the drafts, and never removed by cleanup.
     var exportMissing: Bool = false
 
+    /// The project a take recorded with Record Another Segment was added to. That project keeps
+    /// its own copy of the take; this draft is independent of it.
+    var takeOf: StudioTakeDestination?
+
+    /// How many of this project's recorded takes are still in the Library as their own drafts.
+    var takeCount: Int = 0
+
     /// Whether cleanup may remove the project: a video exported from it is still where it was
     /// saved, the project is not pinned, it is not built around a video kept elsewhere, and it
     /// says when it was last opened. A project file without that time reads as the start of
@@ -234,6 +241,65 @@ struct StudioProjectSummary: Equatable, Sendable {
     var isRemovableByCleanup: Bool {
         !isDraft && !exportMissing && !keepSources && !isFlat
             && lastOpenedAt != Date(timeIntervalSince1970: 0)
+    }
+}
+
+/// The project a recorded take was added to.
+struct StudioTakeDestination: Equatable, Sendable {
+    var projectID: String
+    var name: String
+
+    var libraryName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Untitled Recording" : trimmed
+    }
+}
+
+extension StudioProjectSummary {
+    /// Links each recorded take to the readable project it was added to. A take used by several
+    /// projects names the one worked on most recently.
+    static func linkingTakes(_ summaries: [StudioProjectSummary], takeIDs: [String: Set<String>]) -> [StudioProjectSummary] {
+        let byID = Dictionary(summaries.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var destinations: [String: StudioProjectSummary] = [:]
+        var counts: [String: Int] = [:]
+        for (destinationID, takes) in takeIDs {
+            guard let destination = byID[destinationID] else { continue }
+            for take in takes where take != destinationID && byID[take] != nil {
+                counts[destinationID, default: 0] += 1
+                if let current = destinations[take],
+                   current.lastUsedAt > destination.lastUsedAt
+                    || (current.lastUsedAt == destination.lastUsedAt && current.id < destination.id) {
+                    continue
+                }
+                destinations[take] = destination
+            }
+        }
+        return summaries.map { summary in
+            var linked = summary
+            linked.takeOf = destinations[summary.id].map { StudioTakeDestination(projectID: $0.id, name: $0.name) }
+            linked.takeCount = counts[summary.id] ?? 0
+            return linked
+        }
+    }
+
+    /// The kind shown beside a project in the Library.
+    var libraryKind: String {
+        if exportMissing { return "Export missing" }
+        guard isDraft else { return "Project" }
+        if let takeOf { return "Take for “\(takeOf.libraryName)”" }
+        return "Draft"
+    }
+
+    /// Added to a delete confirmation, so that deleting either side of a take is understood.
+    var takeDeletionNote: String? {
+        var notes: [String] = []
+        if let takeOf { notes.append("“\(takeOf.libraryName)” keeps its own copy of this take and is not changed.") }
+        switch takeCount {
+        case 0: break
+        case 1: notes.append("Its recorded take stays in the Library as a separate draft.")
+        default: notes.append("Its \(takeCount) recorded takes stay in the Library as separate drafts.")
+        }
+        return notes.isEmpty ? nil : notes.joined(separator: " ")
     }
 }
 
@@ -956,14 +1022,16 @@ final class StudioProjectStore {
     /// `destination` and `recording` are editor snapshots, not necessarily what's on disk.
     /// Passing a linked single-recording project imports its layers, never its rendered export.
     func prepareTimelineImport(destination: StudioProject, videoURL: URL, recording: StudioProject? = nil,
-                               expectedVideo: StudioVideoSourceIdentity? = nil)
+                               expectedVideo: StudioVideoSourceIdentity? = nil, isRecordedTake: Bool = false)
         async throws -> StudioPreparedTimelineImport {
         if let recording, recording.schemaVersion != 1 {
             throw StudioProjectError.invalidProject("Choose a single recording or import its exported video instead.")
         }
         let ((base, source, clip), finish) = try await stageTimelineEdit(destination, recordingID: recording?.id) { base, staging in
-            let (source, clip) = try await self.stageTimelineSource(videoURL: videoURL, recording: recording,
+            var (source, clip) = try await self.stageTimelineSource(videoURL: videoURL, recording: recording,
                                                                     destination: base, staging: staging, expected: expectedVideo)
+            // Only a take recorded for this project is linked back to its draft, never a Library or file import.
+            if isRecordedTake, let recording { source.takeProjectID = recording.id }
             _ = try StudioTimelineMap(timeline: StudioTimeline(clips: [clip]), sources: [source])
             return (base, source, clip)
         }
@@ -1692,7 +1760,7 @@ final class StudioProjectStore {
         return try body()
     }
 
-    private static func isValidProjectID(_ id: String) -> Bool {
+    static func isValidProjectID(_ id: String) -> Bool {
         guard id.count == 36 else { return false }
         for (index, character) in id.enumerated() {
             switch index {
@@ -1846,6 +1914,7 @@ final class StudioProjectStore {
             includingPropertiesForKeys: Array(keys),
             options: [.skipsHiddenFiles]
         )
+        var takeIDs: [String: Set<String>] = [:]
         for directory in contents {
             let values = try directory.resourceValues(forKeys: keys)
             let id = directory.lastPathComponent
@@ -1856,6 +1925,8 @@ final class StudioProjectStore {
             if let project = try? loadUnlocked(id: id) {
                 if includingSummaries {
                     listing.summaries.append(summary(for: project, directory: directory))
+                    let takes = Set((project.mediaSources ?? []).compactMap(\.takeProjectID))
+                    if !takes.isEmpty { takeIDs[project.id] = takes }
                 }
             } else if includingUnreadable {
                 listing.unreadable.append(StudioUnreadableProject(
@@ -1866,6 +1937,7 @@ final class StudioProjectStore {
                 ))
             }
         }
+        if !takeIDs.isEmpty { listing.summaries = StudioProjectSummary.linkingTakes(listing.summaries, takeIDs: takeIDs) }
         listing.summaries.sort { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
         listing.unreadable.sort { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
         return listing

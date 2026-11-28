@@ -99,6 +99,12 @@ private struct StudioEditorView: View {
                         guard viewModel.canAssemble else { return false }
                         return StudioClipDrop.receiveFiles(providers) { viewModel.addClip(.dropped($0), at: nil) }
                     }
+                    .overlay(alignment: .bottom) {
+                        if let notice = viewModel.takeNotice {
+                            StudioTakeNoticeView(notice: notice, viewModel: viewModel)
+                                .padding(12)
+                        }
+                    }
                 Divider()
                 StudioInspectorView(viewModel: viewModel)
             }
@@ -119,6 +125,38 @@ private struct StudioEditorView: View {
         } else if let message = viewModel.busyMessage {
             StudioBusyOverlay(message: message, showsCancel: viewModel.canCancelAssembly) { viewModel.cancelAssembly() }
         }
+    }
+}
+
+/// Says that a take just added to the timeline was also kept as a draft of its own.
+private struct StudioTakeNoticeView: View {
+    let notice: StudioTakeNotice
+    @ObservedObject var viewModel: StudioViewModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(notice.message)
+                .font(.callout)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Show in Library") { viewModel.showTakeInLibrary(notice) }
+                .help("Show the take's draft in the Clips Library. Deleting it there does not change this project.")
+            Button {
+                viewModel.dismissTakeNotice()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: 560)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -1731,6 +1769,10 @@ private struct StudioClipStrip: View {
         Button("Move Earlier") { viewModel.moveTimelineClip(id, to: index - 1) }.disabled(index == 0)
         Button("Move Later") { viewModel.moveTimelineClip(id, to: index + 1) }.disabled(index + 1 >= count)
         Button("Remove from Timeline") { viewModel.removeTimelineClip(id) }.disabled(count == 1)
+        let takeID = viewModel.originalTakeID(forClip: id)
+        Button("Show Original Take") { if let takeID { viewModel.showOriginalTake(takeID) } }
+            .disabled(takeID == nil)
+            .help(takeID == nil ? "This clip was not recorded as a take, or its draft was deleted." : "Show the draft this take was recorded as in the Clips Library.")
     }
 }
 

@@ -2,7 +2,8 @@ using TinyClips.Core.Studio;
 
 namespace TinyClips.App.Views.ClipsLibrary;
 
-public sealed record StudioLibraryRow(string Name, string Detail, string ProjectId, string DatedName, bool CanOpen)
+public sealed record StudioLibraryRow(
+    string Name, string Detail, string ProjectId, string DatedName, bool CanOpen, string? DeleteNote = null)
 {
     public string OpenAutomationName => $"Open {DatedName} in Studio";
     public string FolderAutomationName => $"Open folder for {DatedName}";
@@ -16,9 +17,10 @@ public sealed record StudioLibraryRow(string Name, string Detail, string Project
         {
             var name = project.LibraryName;
             var date = project.LastUsedAt.LocalDateTime.ToString("g");
-            var kind = project.ExportMissing ? "Export missing" : project.IsDraft ? "Draft" : "Project";
+            var kind = StudioTakeLinkage.LibraryKind(project);
             var missing = project.SourceExists ? "" : " · Recording is missing";
-            return new StudioLibraryRow(name, $"{kind} · {date}{missing}", project.Id, $"{name}, {date}", true);
+            return new StudioLibraryRow(name, $"{kind} · {date}{missing}", project.Id, $"{name}, {date}", true,
+                StudioTakeLinkage.DeleteNote(project));
         });
         var unreadable = listing.Unreadable.OrderByDescending(project => project.CreatedAt).Select(project =>
             new StudioLibraryRow("Unreadable Project",

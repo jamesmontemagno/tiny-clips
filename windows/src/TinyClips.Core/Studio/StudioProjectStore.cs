@@ -387,7 +387,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore, IStudioTim
     {
         lock (_sync)
         {
-            var summaries = new List<StudioProjectSummary>();
+            var summaries = new List<(StudioProjectSummary Summary, StudioProject Project)>();
             var unreadable = new List<StudioUnreadableProject>();
             foreach (var folder in EnumerateProjectFolders())
             {
@@ -403,7 +403,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore, IStudioTim
                 {
                     if (includeSummaries)
                     {
-                        summaries.Add(Summary(folder, project));
+                        summaries.Add((Summary(folder, project), project));
                     }
                 }
                 else if (includeUnreadable)
@@ -417,7 +417,7 @@ public sealed partial class StudioProjectStore : IStudioProjectStore, IStudioTim
             }
 
             return new StudioProjectListing(
-                summaries.OrderBy(project => project.CreatedAt).ThenBy(project => project.Id, StringComparer.Ordinal).ToArray(),
+                StudioTakeLinkage.Link(summaries).OrderBy(project => project.CreatedAt).ThenBy(project => project.Id, StringComparer.Ordinal).ToArray(),
                 unreadable.OrderBy(project => project.CreatedAt).ThenBy(project => project.Id, StringComparer.Ordinal).ToArray());
         }
     }
@@ -1071,6 +1071,8 @@ public sealed record StudioProjectPaths(
 /// Whether the recording the project is made around is still there to open: the screen
 /// recording in its folder, or for a project built around a video kept elsewhere, that video.
 /// </param>
+/// <param name="TakeOf">The project this take draft was recorded for with Record another segment, if any.</param>
+/// <param name="TakeCount">How many listed take drafts were recorded for this project.</param>
 public sealed record StudioProjectSummary(
     string Id,
     string Name,
@@ -1082,7 +1084,9 @@ public sealed record StudioProjectSummary(
     long SizeBytes,
     bool ExternalVideoExists = true,
     bool ExportMissing = false,
-    bool SourceExists = true)
+    bool SourceExists = true,
+    StudioTakeReference? TakeOf = null,
+    int TakeCount = 0)
 {
     /// <summary>
     /// Whether cleanup may remove the project: a video exported from it is still where it was

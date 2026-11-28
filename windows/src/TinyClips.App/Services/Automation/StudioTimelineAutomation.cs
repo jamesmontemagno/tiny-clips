@@ -81,7 +81,7 @@ internal sealed class StudioTimelineAutomation(
                 var recording = ReadProject(recordingId, store, editorFor(recordingId));
                 if (recording.SchemaVersion != 1)
                     throw TimelineConflict("The finished recording is no longer a single take.");
-                imports.Add(new StudioTimelineImport(store.GetPaths(recording).ScreenPath, recording));
+                imports.Add(new StudioTimelineImport(store.GetPaths(recording).ScreenPath, recording, IsRecordedTake: true));
                 var takeRevision = AutomationStudioTimeline.Revision(recording);
                 revalidateSource = () =>
                 {

@@ -5,6 +5,15 @@ import UniformTypeIdentifiers
 
 // MARK: - Studio View Model
 
+/// The draft a take recorded with Record Another Segment was also kept as.
+struct StudioTakeNotice: Equatable {
+    let projectID: String
+    let name: String
+
+    var libraryName: String { StudioTakeDestination(projectID: projectID, name: name).libraryName }
+    var message: String { "Take also saved as draft “\(libraryName)” in the Library." }
+}
+
 /// Drives one Studio editor window: the project being edited, the live preview, autosave, and export.
 ///
 /// Inspectors use `playhead` in selected-source time. A v2 player seeks in assembled project time.
@@ -97,6 +106,10 @@ final class StudioViewModel: ObservableObject {
     @Published private(set) var busyMessage: String?
     @Published var assemblyError: String?
 
+    /// Says where a take just recorded with Record Another Segment was also kept, for a while.
+    @Published private(set) var takeNotice: StudioTakeNotice?
+    private var takeNoticeTask: Task<Void, Never>?
+    private var recordedTake: StudioProject?
     /// The other projects in the store, the one opened last first, for Open Recent.
     @Published private(set) var recentProjects: [StudioProjectSummary] = []
 
@@ -334,6 +347,8 @@ final class StudioViewModel: ObservableObject {
     enum ClipInput {
         case file, library, recording
         case dropped([URL])
+
+        var isRecording: Bool { if case .recording = self { true } else { false } }
     }
 
     var canAssemble: Bool { isEditable && !isInGesture && !isGeneratingCaptions }
@@ -439,6 +454,7 @@ final class StudioViewModel: ObservableObject {
             case .recording:
                 guard let take = try await StudioWindowRegistry.shared.recordSegment(forProjectID: projectID) else { return nil }
                 (urls, recording) = ([try store.paths(for: take).screenURL], take)
+                recordedTake = take
             }
             var updated = destination
             var staged: [StudioPreparedTimelineBase] = []
@@ -448,7 +464,8 @@ final class StudioViewModel: ObservableObject {
                 try Task.checkCancellation()
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                let prepared = try await store.prepareTimelineImport(destination: updated, videoURL: url, recording: recording)
+                let prepared = try await store.prepareTimelineImport(destination: updated, videoURL: url, recording: recording,
+                                                                     isRecordedTake: input.isRecording)
                 staged.append(prepared)
                 updated = prepared.base
                 guard let lane = updated.timeline, var sources = updated.mediaSources else {
@@ -498,7 +515,7 @@ final class StudioViewModel: ObservableObject {
         assemblyError = nil
         busyMessage = message
         assemblyTask = Task {
-            defer { busyMessage = nil; assemblyTask = nil }
+            defer { busyMessage = nil; assemblyTask = nil; recordedTake = nil }
             do {
                 guard let (updated, selection, prepared) = try await prepare(destination) else { return }
                 try Task.checkCancellation()
@@ -507,6 +524,7 @@ final class StudioViewModel: ObservableObject {
                 }
                 try commitAssembly(updated, selecting: selection)
                 prepared.forEach { $0.finalize() }
+                if let take = recordedTake { showTakeNotice(for: take) }
             } catch is CancellationError {
                 return
             } catch {
@@ -514,6 +532,45 @@ final class StudioViewModel: ObservableObject {
             }
         }
         return assemblyTask
+    }
+
+    private func showTakeNotice(for take: StudioProject) {
+        let notice = StudioTakeNotice(projectID: take.id, name: take.name)
+        takeNotice = notice
+        AccessibilityAnnouncementService.shared.announce(notice.message, priority: .medium)
+        takeNoticeTask?.cancel()
+        takeNoticeTask = Task {
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard !Task.isCancelled, takeNotice == notice else { return }
+            takeNotice = nil
+        }
+    }
+
+    func dismissTakeNotice() {
+        takeNoticeTask?.cancel()
+        takeNotice = nil
+    }
+
+    /// Shows a take's own draft in the Clips Library.
+    func showTakeInLibrary(_ notice: StudioTakeNotice) {
+        dismissTakeNotice()
+        StudioLibraryReveal.shared.show(projectName: notice.libraryName)
+    }
+
+    /// The draft a clip was recorded as, while it is still in the Library.
+    func originalTakeID(forClip id: String) -> String? {
+        guard let clip = manifest?.timeline?.clips.first(where: { $0.id == id }),
+              let takeID = manifest?.mediaSources?.first(where: { $0.id == clip.sourceId })?.takeProjectID,
+              takeID != projectID, store.exists(id: takeID) else { return nil }
+        return takeID
+    }
+
+    func showOriginalTake(_ takeID: String) {
+        guard let take = try? store.load(id: takeID) else {
+            SaveService.shared.showError("The take's draft is no longer in the Library.")
+            return
+        }
+        showTakeInLibrary(StudioTakeNotice(projectID: take.id, name: take.name))
     }
 
     func moveTimelineClip(_ id: String, to index: Int) {
@@ -2872,25 +2929,47 @@ final class StudioViewModel: ObservableObject {
 
     /// Deletes the whole project, after asking: its recordings and every edit. Videos exported
     /// from it and folders it was saved to are files of the user's own and stay. The window
-    /// closes.
+    /// closes. A take, or a project with takes, also says what the other side keeps, as the
+    /// Library's prompt does; reading that walks every project, so it is done off the main thread.
     func deleteProject() {
-        guard canDeleteProject else { return }
+        guard canDeleteProject, !isAskingToDeleteProject else { return }
         pause()
+        isAskingToDeleteProject = true
 
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Delete “\(clipName)”?"
-        alert.informativeText = "The recording and every edit are removed from Tiny Clips Studio. Videos you exported and folders you saved this project to are not deleted. This cannot be undone."
-        // Keep standard button contrast and make Cancel the safe default.
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Delete Project")
-        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        let store = store
+        let currentID = projectID
+        Task { [weak self] in
+            let note = await Task.detached(priority: .userInitiated) {
+                do {
+                    return try store.listSummaries().first { $0.id == currentID }?.takeDeletionNote
+                } catch {
+                    // The prompt still opens, without the note.
+                    NSLog("Studio could not read the project's takes: %@", error.localizedDescription)
+                    return nil
+                }
+            }.value
+            guard let self else { return }
+            defer { self.isAskingToDeleteProject = false }
+            guard self.canDeleteProject else { return }
 
-        closesAfterExport = false
-        exportTask?.cancel()
-        deletesOnClose = true
-        requestClose?()
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Delete “\(self.clipName)”?"
+            alert.informativeText = "The recording and every edit are removed from Tiny Clips Studio. Videos you exported and folders you saved this project to are not deleted. This cannot be undone."
+                + (note.map { " " + $0 } ?? "")
+            // Keep standard button contrast and make Cancel the safe default.
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Delete Project")
+            guard alert.runModal() == .alertSecondButtonReturn, self.canDeleteProject else { return }
+
+            self.closesAfterExport = false
+            self.exportTask?.cancel()
+            self.deletesOnClose = true
+            self.requestClose?()
+        }
     }
+
+    private var isAskingToDeleteProject = false
 
     /// Asked when the user closes the window. Returns false to keep it open.
     func shouldClose() -> Bool {
@@ -2997,6 +3076,7 @@ final class StudioViewModel: ObservableObject {
         previewTask?.cancel()
         sourceEventsTask?.cancel()
         assemblyTask?.cancel()
+        takeNoticeTask?.cancel()
         exportTask?.cancel()
         captionGenerationTask?.cancel()
         rateObservation?.invalidate()

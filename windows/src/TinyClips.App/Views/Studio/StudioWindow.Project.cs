@@ -344,10 +344,27 @@ public sealed partial class StudioWindow
 
         try
         {
+            // Hold off other prompts while the takes are read.
+            _isPromptOpen = true;
+            string message;
+            try
+            {
+                message = await ViewModel.GetDeleteProjectMessageAsync();
+            }
+            finally
+            {
+                _isPromptOpen = false;
+            }
+
+            if (_isClosed || !ViewModel.CanDeleteProject)
+            {
+                return;
+            }
+
             var dialog = new ContentDialog
             {
                 Title = ViewModel.DeleteProjectTitle,
-                Content = ViewModel.DeleteProjectMessage,
+                Content = message,
                 PrimaryButtonText = "Delete project",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,

@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
 - The screenshot picker distinguishes **Window only** from **Window area**. Video/GIF pickers label their existing fixed-area window target **Window area**; visible overlays inside the fixed bounds are included.
 - After 30 combined captures, the Mac App Store build asks once, after a safe editor close, whether to leave a review, send feedback, or dismiss. Apple controls whether its review request appears; a link can open the App Store review page directly. Feedback opens a prefilled GitHub issue for the user to submit. These choices remain UI-only. Eligibility is not evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
 
+### Changed
+- In macOS Studio, a segment recorded with **Record Another Segment** says that it was also saved as its own draft and offers **Show in Library**. The Library and Settings label that draft **Take for “Project”**, delete confirmations in the Library, Settings and the Studio editor explain that each keeps its own copy, and a clip's **Show Original Take** finds the draft. Nothing is deleted automatically. After an agent records a take, `recording.status` reports it as `studioTake`.
+
 ### Fixed
 - The macOS Studio preview and playback controls stay in place when playback or selection moves between clips with different detail lanes.
 - macOS Studio Library imports include caption text still being typed in another open editor without committing or changing that editor's undo history.

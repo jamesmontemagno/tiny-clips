@@ -3730,6 +3730,7 @@ public partial class App : Application
     private void ActivateRecordingIndicatorForStartedCapture(CaptureType type)
     {
         _timelineRecordingError = null;
+        _timelineRecordingTake = null;
         _recordingStopAnnounced = false;
         _recordingStartedUtc = DateTime.UtcNow;
         _recordingElapsedBeforePause = TimeSpan.Zero;
@@ -4790,6 +4791,13 @@ public partial class App : Application
         }
 
         ActivateWindowToForeground(_clipsManagerWindow);
+    }
+
+    /// <summary>Opens the Clips Library at its Studio projects, searched to one project such as a recorded take.</summary>
+    internal void ShowStudioProjectInLibrary(string projectId, string name)
+    {
+        OpenClipsManagerWindow();
+        _clipsManagerWindow?.ShowStudioProject(projectId, name);
     }
 
     /// <summary>

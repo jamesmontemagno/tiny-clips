@@ -17,18 +17,7 @@ public static class StudioProjectAutomationListing
             .Select(summary => (
                 summary.Id,
                 Activity: summary.LastUsedAt,
-                Value: new JsonObject
-                {
-                    ["projectId"] = summary.Id,
-                    ["name"] = summary.Name,
-                    ["createdAt"] = FormatTimestamp(summary.CreatedAt),
-                    ["lastOpenedAt"] = FormatTimestamp(summary.LastOpenedAt),
-                    ["isDraft"] = summary.IsDraft,
-                    ["isFlat"] = summary.IsFlat,
-                    ["keepSources"] = summary.KeepSources,
-                    ["sourceExists"] = summary.SourceExists,
-                    ["isReadable"] = true,
-                }))
+                Value: Readable(summary)))
             .Concat(listing.Unreadable.Select(project => (
                 project.Id,
                 Activity: project.CreatedAt,
@@ -50,6 +39,28 @@ public static class StudioProjectAutomationListing
         }
 
         return new JsonObject { ["projects"] = result };
+    }
+
+    private static JsonObject Readable(StudioProjectSummary summary)
+    {
+        var value = new JsonObject
+        {
+            ["projectId"] = summary.Id,
+            ["name"] = summary.Name,
+            ["createdAt"] = FormatTimestamp(summary.CreatedAt),
+            ["lastOpenedAt"] = FormatTimestamp(summary.LastOpenedAt),
+            ["isDraft"] = summary.IsDraft,
+            ["isFlat"] = summary.IsFlat,
+            ["keepSources"] = summary.KeepSources,
+            ["sourceExists"] = summary.SourceExists,
+            ["isReadable"] = true,
+        };
+        if (summary.TakeOf is { } owner)
+        {
+            value["takeOf"] = new JsonObject { ["projectId"] = owner.ProjectId, ["name"] = owner.Name };
+        }
+
+        return value;
     }
 
     private static string FormatTimestamp(DateTimeOffset value) =>

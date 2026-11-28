@@ -51,6 +51,10 @@ public static class AutomationStudioTimeline
             {
                 item["audioTracks"] = JsonNode.Parse(tracks.GetRawText());
             }
+            if (StudioTakeLinkage.TakeProjectId(source) is { } take)
+            {
+                item["takeProjectId"] = take;
+            }
             media.Add(item);
         }
         return new JsonObject

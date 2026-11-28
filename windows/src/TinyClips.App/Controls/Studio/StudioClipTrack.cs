@@ -273,6 +273,18 @@ public sealed partial class StudioClipTrack : UserControl
         flyout.Items.Add(later);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
+        // Only a clip recorded with Record another segment has a take draft, and only while it is still in the Library.
+        var originalTake = new MenuFlyoutItem
+        {
+            Text = "Show original take",
+            IsEnabled = _viewModel.GetOriginalTakeId(item.Id) is not null,
+        };
+        AutomationProperties.SetAutomationId(originalTake, "StudioClipShowOriginalTakeItem");
+        AutomationProperties.SetHelpText(originalTake, "Show the draft this clip was recorded as in the Clips Library.");
+        originalTake.Click += (_, _) => _ = _viewModel.ShowOriginalTakeAsync(item.Id);
+        flyout.Items.Add(originalTake);
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
         var remove = new MenuFlyoutItem
         {
             Text = "Remove from timeline",

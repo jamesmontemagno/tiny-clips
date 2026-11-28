@@ -48,6 +48,7 @@ public sealed partial class StudioDraftItem : ObservableObject
     /// <param name="note">Why the row is in the list although it is not a draft like the others, or empty.</param>
     /// <param name="canOpen">Whether Studio can open it. Not one it cannot read.</param>
     /// <param name="canSaveRecording">Whether its screen recording is there to be saved as a video.</param>
+    /// <param name="deleteNote">What deleting it leaves as it is, such as the project a recorded take was added to, or null.</param>
     public StudioDraftItem(
         string id,
         string? name,
@@ -55,7 +56,8 @@ public sealed partial class StudioDraftItem : ObservableObject
         bool isOpen,
         string note = "",
         bool canOpen = true,
-        bool canSaveRecording = false)
+        bool canSaveRecording = false,
+        string? deleteNote = null)
     {
         Id = id;
         Name = StudioEditorText.GetClipName(name);
@@ -64,6 +66,7 @@ public sealed partial class StudioDraftItem : ObservableObject
         Note = note;
         CanOpen = canOpen;
         CanSaveRecording = canSaveRecording;
+        DeleteNote = deleteNote;
     }
 
     public string Id { get; }
@@ -74,6 +77,9 @@ public sealed partial class StudioDraftItem : ObservableObject
     public string Note { get; }
 
     public bool HasNote => Note.Length > 0;
+
+    /// <summary>Added to the delete confirmation: what deleting this draft leaves as it is. Null for most drafts.</summary>
+    public string? DeleteNote { get; }
 
     public bool CanOpen { get; }
 
@@ -150,6 +156,7 @@ public sealed partial class StudioDraftItem : ObservableObject
         string.Equals(Id, other.Id, StringComparison.Ordinal)
         && string.Equals(Name, other.Name, StringComparison.Ordinal)
         && string.Equals(Note, other.Note, StringComparison.Ordinal)
+        && string.Equals(DeleteNote, other.DeleteNote, StringComparison.Ordinal)
         && CanOpen == other.CanOpen
         && CanSaveRecording == other.CanSaveRecording;
 }

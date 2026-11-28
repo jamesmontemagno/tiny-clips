@@ -1035,6 +1035,62 @@ final class StudioProjectFolderTests: XCTestCase {
         XCTAssertEqual(try names(in: storeURL), previous)
     }
 
+    @MainActor
+    func testOnlyARecordedTakeLinksBackToItsDraftWhichStaysAndIsLabelled() async throws {
+        let destination = try store.load(id: makeProject(camera: false))
+        let take = try store.load(id: makeProject(camera: false))
+        let takePaths = try store.paths(for: take)
+        try fileManager.removeItem(at: takePaths.screenURL)
+        try copyMovieFixture("native.mp4", to: takePaths.screenURL)
+
+        let imported = try await store.prepareTimelineImport(destination: destination, videoURL: takePaths.screenURL, recording: take)
+        XCTAssertNil(imported.source.takeProjectID)
+        imported.rollback()
+
+        let recorded = try await store.prepareTimelineImport(destination: destination, videoURL: takePaths.screenURL,
+                                                             recording: take, isRecordedTake: true)
+        XCTAssertEqual(recorded.source.takeProjectID, take.id)
+        let saved = try store.save(assembled(recorded))
+        recorded.finalize()
+        XCTAssertEqual(try store.load(id: saved.id).mediaSources?.last?.takeProjectID, take.id)
+
+        let summaries = try store.listSummaries()
+        let draft = try XCTUnwrap(summaries.first { $0.id == take.id })
+        XCTAssertEqual(draft.takeOf?.projectID, destination.id)
+        XCTAssertTrue(draft.libraryKind.hasPrefix("Take for “"))
+        XCTAssertEqual(summaries.first { $0.id == destination.id }?.takeCount, 1)
+        let listed = AutomationCommandRouter.studioProjectListResult(from: try store.listLibraryProjects(), limit: 100)
+        let entry = try XCTUnwrap((listed["projects"] as? [[String: Any]])?.first { $0["projectId"] as? String == take.id })
+        XCTAssertEqual((entry["takeOf"] as? [String: Any])?["projectId"] as? String, destination.id)
+
+        // Deleting the draft never changes the project that holds its own copy.
+        try store.delete(id: take.id)
+        let after = try store.load(id: saved.id)
+        XCTAssertEqual(after.mediaSources?.count, saved.mediaSources?.count)
+        XCTAssertEqual(try store.listSummaries().first { $0.id == saved.id }?.takeCount, 0)
+    }
+
+    func testTakeLinksIgnoreSelfAndMissingTakesAndNameTheMostRecentProject() {
+        let take = menuSummary("take")
+        let older = menuSummary("older", opened: 10)
+        let newer = menuSummary("newer", opened: 20)
+        let tied = menuSummary("a-tied", opened: 20)
+        let linked = StudioProjectSummary.linkingTakes([take, older, newer], takeIDs: [
+            "older": ["take", "older", "gone"], "newer": ["take"], "gone": ["take"]
+        ])
+        XCTAssertEqual(linked[0].takeOf, StudioTakeDestination(projectID: "newer", name: "newer"))
+        XCTAssertEqual(linked[0].libraryKind, "Take for “newer”")
+        XCTAssertEqual(linked[1].takeCount, 1)
+        XCTAssertNil(linked[1].takeOf)
+        XCTAssertEqual(linked[0].takeDeletionNote, "“newer” keeps its own copy of this take and is not changed.")
+        XCTAssertEqual(linked[2].takeDeletionNote, "Its recorded take stays in the Library as a separate draft.")
+        XCTAssertNil(menuSummary("plain").takeDeletionNote)
+        XCTAssertEqual(menuSummary("plain").libraryKind, "Draft")
+
+        let tie = StudioProjectSummary.linkingTakes([take, newer, tied], takeIDs: ["newer": ["take"], "a-tied": ["take"]])
+        XCTAssertEqual(tie[0].takeOf?.projectID, "a-tied")
+    }
+
     func testFailedOrAbandonedPreparationLeavesManifestOriginalAndOtherImportsAlone() async throws {
         let original = outsideURL.appendingPathComponent("External.mp4")
         try copyMovieFixture("flat.mp4", to: original)

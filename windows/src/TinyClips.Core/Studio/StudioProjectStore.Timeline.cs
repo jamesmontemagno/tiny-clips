@@ -197,6 +197,8 @@ public sealed partial class StudioProjectStore
                 throw new StudioProjectInvalidException("The recording background image cannot be decoded.");
             imported.ExtensionData[StudioProjectMedia.RecordingBackgroundImageKey] = JsonSerializer.SerializeToElement(Path.GetFileName(copied));
         }
+        if (item.IsRecordedTake)
+            imported.ExtensionData[StudioTakeLinkage.TakeProjectIdKey] = JsonSerializer.SerializeToElement(recording.Id);
         var converted = StudioTimelineEditing.ToTimelineProject(recording with { Sources = sources }).Timeline!.Clips[0];
         return (imported, converted with { Id = clipId, SourceId = sourceId });
     }
