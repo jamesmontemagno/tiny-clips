@@ -107,7 +107,7 @@ final class StudioWindowRegistry {
         try Task.checkCancellation()
         let selection = try await StudioLibraryVideoSelection.resolve(url: url) { linkedID in
             guard let model = automationViewModel(forProjectID: linkedID) else { return nil }
-            guard let current = model.manifest else {
+            guard let current = model.timelineImportSnapshot() else {
                 throw StudioEditorInputError("The linked Studio project is not ready. Wait for it to load and try again.")
             }
             return current

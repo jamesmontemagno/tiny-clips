@@ -46,6 +46,7 @@
     <Compile Include="..\..\src\TinyClips.App\Infrastructure\CaptureVisibilityPolicy.cs" Link="CaptureVisibilityPolicy.cs" />
     <!-- When a row of Studio buttons shows the glyphs before their words. -->
     <Compile Include="..\..\src\TinyClips.App\Controls\Studio\StudioGlyphRowLayout.cs" Link="Studio\StudioGlyphRowLayout.cs" />
+    <Compile Include="..\..\src\TinyClips.App\Controls\Studio\StudioTimelineLayout.cs" Link="Studio\StudioTimelineLayout.cs" />
     <!--
       The Studio editor's view model. The one app class it needs that cannot be compiled here,
       the background swatches, which are the screenshot editor's presets, has a stand-in next to

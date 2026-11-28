@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Fixed
+- Multi-clip Studio reserves the tallest actual detail-lane stack across clips, keeping the preview size stable when selection or playback moves between clips.
 - Multi-clip Studio files apply the same defaults to clip-local captions, scenes, audio and overlays as single-recording projects. Rotated videos are no longer rotated twice by the export decoder and compositor.
 - Screenshot recovery Save As preserves an existing destination if encoding fails or is canceled.
 - Saved screenshots no longer retain an extra recovery pixel buffer for the lifetime of their editor.

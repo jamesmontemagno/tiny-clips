@@ -213,6 +213,18 @@ final class StudioViewModel: ObservableObject {
         return manifest
     }
 
+    func timelineImportSnapshot() -> StudioProject? {
+        guard isEditable, let source = manifest else { return nil }
+        guard source.schemaVersion == 1, let text = pendingCaptionText,
+              let index = selectedCaptionIndex else {
+            return source
+        }
+
+        var snapshot = StudioEditorModel(project: source)
+        snapshot.setCaptionText(at: index, to: text)
+        return snapshot.manifest
+    }
+
     @discardableResult
     func applyAutomationProject(_ updated: StudioProject, expectedModifiedAt: Date) -> Bool {
         guard isEditable, !isInGesture else { return false }

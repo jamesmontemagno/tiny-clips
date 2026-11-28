@@ -869,6 +869,50 @@ final class StudioProjectFolderTests: XCTestCase {
         reopened.tearDown()
     }
 
+    @MainActor
+    func testLinkedTimelineImportSnapshotsPendingCaptionWithoutEditingTheSource() async throws {
+        let sourceVideo = outsideURL.appendingPathComponent("Source.mp4")
+        let export = outsideURL.appendingPathComponent("Export.mp4")
+        let destinationVideo = outsideURL.appendingPathComponent("Destination.mp4")
+        for url in [sourceVideo, export, destinationVideo] {
+            try copyMovieFixture("flat.mp4", to: url)
+        }
+        var source = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: sourceVideo, width: 32, height: 64, duration: 1, appVersion: "test"
+        ))
+        source.captions.cues = [StudioCaptionCue(start: 0, end: 0.5, text: "Saved")]
+        source = try store.save(source)
+        _ = try store.recordExport(id: source.id, path: export.path)
+        let destination = try store.getOrCreateFlatProject(request: StudioFlatProjectRequest(
+            videoURL: destinationVideo, width: 32, height: 64, duration: 1, appVersion: "test"
+        ))
+
+        let viewModel = StudioViewModel(projectID: source.id, store: store)
+        await viewModel.load()
+        defer { viewModel.tearDown() }
+        XCTAssertEqual(viewModel.state, .ready)
+        viewModel.selectCaption(at: 0)
+        viewModel.setPendingCaptionText("Typed before import")
+
+        let selection = try await StudioLibraryVideoSelection.resolve(url: export, store: store) { linkedID in
+            XCTAssertEqual(linkedID, source.id)
+            return viewModel.timelineImportSnapshot()
+        }
+        let prepared = try await store.prepareTimelineImport(
+            destination: destination, videoURL: export, recording: selection.recording
+        )
+        defer { prepared.rollback() }
+
+        XCTAssertEqual(prepared.clip.captions?.cues.first?.text, "Typed before import")
+        XCTAssertEqual(viewModel.manifest?.captions.cues.first?.text, "Saved")
+        XCTAssertFalse(viewModel.canUndo)
+        XCTAssertEqual(try store.load(id: source.id).captions.cues.first?.text, "Saved")
+
+        viewModel.commitCaptionText()
+        XCTAssertEqual(viewModel.manifest?.captions.cues.first?.text, "Typed before import")
+        XCTAssertTrue(viewModel.canUndo)
+    }
+
     func testTimelineImportOwnsBothFlatVideosAcrossUndoRedoAndLinkedSave() async throws {
         let original = outsideURL.appendingPathComponent("Original.mp4")
         let second = outsideURL.appendingPathComponent("Second.mp4")

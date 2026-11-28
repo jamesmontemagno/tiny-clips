@@ -716,6 +716,16 @@ final class AutomationCommandRouter {
         return try studioProject(id)
     }
 
+    private func currentStudioTimelineImportSource(_ id: String) throws -> StudioProject {
+        if let viewModel = StudioWindowRegistry.shared.automationViewModel(forProjectID: id) {
+            guard let project = viewModel.timelineImportSnapshot() else {
+                throw AutomationError(.busy, "The Studio project is not ready for agent control.")
+            }
+            return project
+        }
+        return try studioProject(id)
+    }
+
     private func listStudioProjects(_ params: [String: Any]) throws -> [String: Any] {
         let limit = params["limit"] as? Int ?? 20
         guard (1...100).contains(limit) else {
@@ -1379,14 +1389,14 @@ extension AutomationCommandRouter {
                 return try store.findProjectID(exportedPath: url.path)
             }
             let linkedID = try sourceID()
-            let linked = try linkedID.map { try currentStudioProject($0) }
+            let linked = try linkedID.map { try currentStudioTimelineImportSource($0) }
             if let linked, linked.schemaVersion != 1 {
                 throw AutomationError(.notSupported, "A linked multi-clip project cannot be merged. Use mode=file only to import the rendered video.")
             }
             let saved = try await insertStudioMedia(url, recording: linked, into: current, at: time, expectedVideo: identity) {
                 try revalidate()
                 guard try importURL() == url, try store.videoSourceIdentity(at: url) == identity, try sourceID() == linkedID,
-                      try linkedID.map({ try self.currentStudioProject($0) }) == linked else {
+                      try linkedID.map({ try self.currentStudioTimelineImportSource($0) }) == linked else {
                     throw AutomationError(.conflict, "The Library source changed while importing. Read it again.")
                 }
             }

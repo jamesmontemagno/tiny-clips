@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - The macOS Studio preview and playback controls stay in place when playback or selection moves between clips with different detail lanes.
+- macOS Studio Library imports include caption text still being typed in another open editor without committing or changing that editor's undo history.
 - macOS screenshot editors now close correctly using the close button, Command-W, or Close All.
 - The macOS App Store review prompt now opens at its intended size, with its message and buttons fully visible.
 

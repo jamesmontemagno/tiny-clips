@@ -2,6 +2,8 @@ using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TinyClips.App.ViewModels.Studio;
+using TinyClips.Core.Studio;
+using TinyClips.Core.Studio.Editing;
 
 namespace TinyClips.App.Controls.Studio;
 
@@ -54,6 +56,7 @@ public sealed partial class StudioTimeline : UserControl
     {
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         UpdateTrimBar();
+        UpdateMinimumDetailHeight();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e) =>
@@ -64,6 +67,7 @@ public sealed partial class StudioTimeline : UserControl
         if (string.IsNullOrEmpty(e.PropertyName))
         {
             UpdateTrimBar();
+            UpdateMinimumDetailHeight();
         }
         else if (e.PropertyName == nameof(StudioViewModel.PlayheadText))
         {
@@ -86,6 +90,30 @@ public sealed partial class StudioTimeline : UserControl
             ViewModel.TrimStartText,
             ViewModel.TrimEndText,
             ViewModel.PlayheadText);
+
+    private void UpdateMinimumDetailHeight()
+    {
+        DetailLanesStack.MinHeight = ViewModel.Manifest is { } project
+            ? StudioTimelineLayout.MinimumDetailHeight(
+                project,
+                LaneHeight,
+                TrimBar.Height,
+                DetailLanesStack.Spacing)
+            : 0;
+    }
+
+    private double LaneHeight(StudioTimelineLane lane) => lane switch
+    {
+        StudioTimelineLane.Scene => ChildHeight(SceneLaneHost),
+        StudioTimelineLane.Zoom => ChildHeight(ZoomLaneHost),
+        StudioTimelineLane.Cut => ChildHeight(CutLaneHost),
+        StudioTimelineLane.Speed => ChildHeight(SpeedLaneHost),
+        StudioTimelineLane.Annotate => ChildHeight(AnnotationLaneHost),
+        _ => 0,
+    };
+
+    private static double ChildHeight(Border host) =>
+        host.Child is FrameworkElement element ? element.Height : 0;
 
     // A paused playhead goes on to where the new scene has been entered, and no scene can be
     // split again that close to its end. Split is then switched off by what it did. The focus
