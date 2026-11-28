@@ -6,6 +6,7 @@ own `CHANGELOG.md` at the repository root.
 ## [Unreleased]
 
 ### Added
+- Studio's Annotate panel has **Copy** / **Paste** (`Ctrl+C` / `Ctrl+V`) for one annotation across clips, projects, and open Studio windows. Paste preserves geometry, attachment, styles, and edited playback duration, starts at the displayed playhead, clamps to the target clip's edited end, selects a fresh top-layer annotation, and is one undo step. Native text copy/paste and Duplicate are unchanged. Invalid clipboard data, clipboard failures, and stale asynchronous paste destinations are reported without editing.
 - The screenshot editor has a **Pointer** tool (**P**) for arrow, hand, and I-beam pointers. New pointers are 50 px; use **Size** before placement or on a selected pointer; resizing with the slider keeps the tip on its target. Fill and stroke have separate opacity controls, and a drop shadow is optional. Click to place a pointer or choose **Place pointer at center**. The four-arrow **Select / Move** tool (**V**) lets you drag it on the canvas. Pointer can also be the default editor tool.
 
 ### Fixed

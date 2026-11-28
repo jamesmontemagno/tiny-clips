@@ -7,6 +7,7 @@ public enum StudioShortcutKey
     Space,
     A,
     C,
+    V,
     T,
     Left,
     Right,
@@ -81,6 +82,8 @@ public enum StudioShortcutAction
 
     /// <summary>Copies the selected annotation, a little right and down, and selects the copy. Ctrl+D.</summary>
     DuplicateSelectedAnnotation,
+    CopySelectedAnnotation,
+    PasteAnnotation,
     Undo,
     Redo,
     Export,
@@ -159,6 +162,9 @@ public readonly record struct StudioShortcutInput(
 
     /// <summary>Whether an annotation is selected. Delete removes it.</summary>
     public bool HasSelectedAnnotation { get; init; }
+
+    public bool CanCopyAnnotation { get; init; }
+    public bool CanPasteAnnotation { get; init; }
 
     /// <summary>
     /// True when the focused control is a scene on the scene lane. Delete then removes the scene
@@ -292,6 +298,10 @@ public static class StudioShortcuts
 
     private static StudioShortcutAction ResolveControlKey(StudioShortcutInput input) => input.Key switch
     {
+        StudioShortcutKey.C when !input.IsShiftDown && !input.IsRepeat && input.CanCopyAnnotation
+            && !input.IsTypeToSearchFocused => StudioShortcutAction.CopySelectedAnnotation,
+        StudioShortcutKey.V when !input.IsShiftDown && !input.IsRepeat && input.CanPasteAnnotation
+            && !input.IsTypeToSearchFocused => StudioShortcutAction.PasteAnnotation,
         StudioShortcutKey.Z => input.IsShiftDown ? StudioShortcutAction.Redo : StudioShortcutAction.Undo,
         StudioShortcutKey.Y when !input.IsShiftDown => StudioShortcutAction.Redo,
         StudioShortcutKey.E when !input.IsShiftDown && !input.IsRepeat => StudioShortcutAction.Export,

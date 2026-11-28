@@ -46,6 +46,8 @@ final class StudioViewModel: ObservableObject {
 
     /// The annotation the inspector shows, as its place in the project's annotations, or nil.
     @Published private(set) var selectedAnnotationIndex: Int?
+    @Published private(set) var annotationClipboardChangeCount = NSPasteboard.general.changeCount
+    @Published private(set) var annotationClipboardNotice: String?
 
     /// The inspector panel on show. Taking hold of a zoom, a cut, a speed change, a scene, or the
     /// camera shows the panel that edits it.
@@ -2194,6 +2196,100 @@ final class StudioViewModel: ObservableObject {
     }
 
     var canDuplicateSelectedAnnotation: Bool { isEditable && selectedAnnotation != nil }
+
+    private var canUseAnnotationClipboard: Bool {
+        isEditable && !isInGesture && !isChoosingExportOptions && NSEvent.pressedMouseButtons == 0
+    }
+
+    var canCopySelectedAnnotation: Bool {
+        guard canUseAnnotationClipboard, let annotation = selectedAnnotation else { return false }
+        return StudioAnnotationKind.isKnown(annotation.kind)
+    }
+
+    var canPasteAnnotation: Bool {
+        canUseAnnotationClipboard
+            && NSPasteboard.general.availableType(from: [NSPasteboard.PasteboardType(StudioAnnotationTransfer.format)]) != nil
+    }
+
+    func refreshAnnotationClipboard() {
+        let count = NSPasteboard.general.changeCount
+        if annotationClipboardChangeCount != count {
+            annotationClipboardChangeCount = count
+        }
+    }
+
+    func copySelectedAnnotation() {
+        guard canUseAnnotationClipboard, let index = selectedAnnotationIndex, let editor else { return }
+        do {
+            let data = try editor.annotationTransfer(at: index).encoded()
+            let item = NSPasteboardItem()
+            guard item.setData(data, forType: NSPasteboard.PasteboardType(StudioAnnotationTransfer.format)) else {
+                throw StudioAnnotationTransferError.invalid
+            }
+            NSPasteboard.general.clearContents()
+            guard NSPasteboard.general.writeObjects([item]) else {
+                let message = "The clipboard is unavailable. Try copying again."
+                annotationClipboardNotice = message
+                SaveService.shared.showError(message)
+                return
+            }
+            annotationClipboardNotice = "Annotation copied."
+            refreshAnnotationClipboard()
+            announce("Annotation copied.")
+        } catch {
+            annotationClipboardNotice = error.localizedDescription
+            SaveService.shared.showError(error.localizedDescription)
+        }
+    }
+
+    func pasteAnnotation() {
+        guard canUseAnnotationClipboard else { return }
+        do {
+            guard let data = NSPasteboard.general.data(forType: NSPasteboard.PasteboardType(StudioAnnotationTransfer.format)) else {
+                throw StudioAnnotationTransferError.invalid
+            }
+            let transfer = try StudioAnnotationTransfer.decode(data)
+            guard let editor else { return }
+            let displayedTime: Double
+            if let composition = player?.currentItem?.videoComposition {
+                displayedTime = StudioPlayback.frameTime(at: playhead, frameDuration: composition.frameDuration)
+            } else {
+                displayedTime = playhead
+            }
+            let time = editor.annotationPasteStart(at: displayedTime)
+            var failure: Error?
+            var pastedID: String?
+            var result = StudioAnnotationEditResult(changed: false, index: nil)
+            editAndSelect { model in
+                do {
+                    result = try model.pasteAnnotation(transfer, at: time)
+                    pastedID = result.index.map { model.project.overlays.annotations[$0].id }
+                    return .annotation(result.index)
+                } catch {
+                    failure = error
+                    return .follow
+                }
+            }
+            if let failure { throw failure }
+            if result.changed, let pastedID, selectedAnnotation?.id == pastedID {
+                scrub(to: time)
+                let message: String
+                if let annotation = selectedAnnotation, let project, let index = selectedAnnotationIndex {
+                    let canvas = StudioCanvasMath.naturalCanvas(project: project)
+                    let frame = StudioLayoutResolver.resolve(project: project, time: time, canvasWidth: canvas.width, canvasHeight: canvas.height, events: events)
+                    let visible = StudioAnnotationGeometry.resolve(annotation, index: index, frame: frame, time: time, canvasWidth: canvas.width, canvasHeight: canvas.height) != nil
+                    message = visible ? "Annotation pasted." : "Annotation pasted. It is not drawn at this playhead; check its attachment and visibility."
+                } else {
+                    message = "Annotation pasted."
+                }
+                annotationClipboardNotice = message
+                announce(message)
+            }
+        } catch {
+            annotationClipboardNotice = error.localizedDescription
+            SaveService.shared.showError(error.localizedDescription)
+        }
+    }
 
     /// Puts a copy of the selected annotation directly above it, nudged so both show, and selects it.
     func duplicateSelectedAnnotation() {

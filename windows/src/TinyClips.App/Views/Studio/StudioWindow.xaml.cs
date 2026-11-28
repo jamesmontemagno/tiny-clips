@@ -143,6 +143,15 @@ public sealed partial class StudioWindow : Window
         RootGrid.PreviewKeyDown += OnRootPreviewKeyDown;
         AppWindow.Closing += OnAppWindowClosing;
         Closed += OnClosed;
+        ViewModel.CanUseWindowClipboard = () => !_isClosed && !_isPromptOpen;
+        try
+        {
+            ViewModel.AttachAnnotationClipboard(new StudioAnnotationClipboardService());
+        }
+        catch (Exception exception)
+        {
+            ViewModel.ShowError($"Could not access the annotation clipboard: {exception.Message}");
+        }
 
         // Queued, so the window is on screen saying "Opening" before the project is read. When the
         // Studio window service has started the load already, this returns the same task.
@@ -232,6 +241,11 @@ public sealed partial class StudioWindow : Window
     private void OnActivated(object sender, Microsoft.UI.Xaml.WindowActivatedEventArgs args)
     {
         _isActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        if (_isActive && !_isClosed)
+        {
+            // Retry format availability after a transient clipboard lock or another app's copy.
+            ViewModel.RefreshAnnotationClipboard();
+        }
         if (args.WindowActivationState == WindowActivationState.PointerActivated)
         {
             // The click that activated the window says where the focus goes.
@@ -555,7 +569,7 @@ public sealed partial class StudioWindow : Window
             IsShiftDown: isShiftDown,
             IsAltDown: isAltDown,
             IsRepeat: isRepeat,
-            IsTextInputFocused: focused is TextBox or RichEditBox or PasswordBox,
+            IsTextInputFocused: focused is TextBox or RichEditBox or PasswordBox or NumberBox,
             IsReady: ViewModel.IsReady,
             IsExporting: ViewModel.IsExporting)
         {
@@ -570,6 +584,8 @@ public sealed partial class StudioWindow : Window
             HasSelectedCut = ViewModel.HasSelectedCut,
             HasSelectedSpeed = ViewModel.HasSelectedSpeed,
             HasSelectedAnnotation = ViewModel.HasSelectedAnnotation,
+            CanCopyAnnotation = ViewModel.CanCopyAnnotation,
+            CanPasteAnnotation = ViewModel.CanPasteAnnotation,
 
             // With the focus on the scene lane, Delete is about the scene the playhead is in.
             IsSceneFocused = focused is StudioSceneLane,
@@ -611,6 +627,7 @@ public sealed partial class StudioWindow : Window
         VirtualKey.Escape => StudioShortcutKey.Escape,
         VirtualKey.A => StudioShortcutKey.A,
         VirtualKey.C => StudioShortcutKey.C,
+        VirtualKey.V => StudioShortcutKey.V,
         VirtualKey.T => StudioShortcutKey.T,
         VirtualKey.H => StudioShortcutKey.H,
         VirtualKey.B => StudioShortcutKey.B,
@@ -913,6 +930,8 @@ public sealed partial class StudioWindow : Window
         }
 
         _isClosed = true;
+        ViewModel.DetachAnnotationClipboard();
+        ViewModel.CanUseWindowClipboard = null;
         Closed -= OnClosed;
         Activated -= OnActivated;
         AppTitleBar.Loaded -= OnDecoratedControlLoaded;

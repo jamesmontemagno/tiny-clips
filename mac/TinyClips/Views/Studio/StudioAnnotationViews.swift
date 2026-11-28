@@ -238,6 +238,23 @@ struct StudioAnnotationInspectorSection: View {
 
     var body: some View {
         toolGrid
+        HStack(spacing: 8) {
+            Button("Copy", systemImage: "doc.on.doc") { viewModel.copySelectedAnnotation() }
+                .disabled(!viewModel.canCopySelectedAnnotation)
+                .accessibilityLabel("Copy annotation")
+                .help("Copy the selected annotation (⌘C)")
+            Button("Paste", systemImage: "doc.on.clipboard") { viewModel.pasteAnnotation() }
+                .disabled(!viewModel.canPasteAnnotation)
+                .accessibilityLabel("Paste annotation")
+                .help("Paste an annotation at the playhead (⌘V)")
+        }
+        .onAppear { viewModel.refreshAnnotationClipboard() }
+        .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+            viewModel.refreshAnnotationClipboard()
+        }
+        if let notice = viewModel.annotationClipboardNotice {
+            note(notice)
+        }
         VStack(alignment: .leading, spacing: 8) {
             listHeader
             hint

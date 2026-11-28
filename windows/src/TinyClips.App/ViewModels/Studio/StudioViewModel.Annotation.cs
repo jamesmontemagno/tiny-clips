@@ -18,6 +18,8 @@ public sealed partial class StudioViewModel
     // What changes when another annotation is selected and the project stays as it is.
     private static readonly string[] AnnotationSelectionPropertyNames =
     [
+        nameof(CanCopyAnnotation),
+        nameof(CanPasteAnnotation),
         nameof(SelectedAnnotationIndex),
         nameof(HasSelectedAnnotation),
         nameof(IsAnnotationHintVisible),

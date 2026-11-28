@@ -5,6 +5,141 @@ import CoreMedia
 
 /// Section 6.10 of the project format, against the fixtures Windows is held to as well.
 final class StudioAnnotationTests: XCTestCase {
+    func testClipboardFixturePreservesEveryKindAndExtensionFields() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("shared/studio/fixtures/annotation-clipboard/transfer.json")
+        let transfer = try StudioAnnotationTransfer.decode(Data(contentsOf: url))
+        XCTAssertEqual(transfer.outputDurationSeconds, 3)
+        XCTAssertEqual(transfer.annotation.extra["futureField"], .object(["keep": .bool(true)]))
+        for kind in StudioAnnotationKind.known {
+            var annotation = transfer.annotation
+            annotation.kind = kind
+            let input = StudioAnnotationTransfer(annotation: annotation, outputDurationSeconds: 3)
+            XCTAssertEqual(try StudioAnnotationTransfer.decode(input.encoded()), input)
+        }
+    }
+
+    func testClipboardRejectsIncompleteUnknownAndOversizedPayloads() throws {
+        let transfer = StudioAnnotationTransfer(annotation: StudioAnnotation(end: 5), outputDurationSeconds: 3)
+        let valid = try transfer.encoded()
+        let input = try StudioJSON.makeDecoder().decode([String: StudioJSONValue].self, from: valid)
+        for (key, value) in [("version", StudioJSONValue.number(2)), ("outputDurationSeconds", .number(0)), ("annotation", .object([:]))] {
+            var fields = input
+            fields[key] = value
+            XCTAssertThrowsError(try StudioAnnotationTransfer.decode(StudioJSON.makeEncoder().encode(fields)))
+        }
+        for (key, value) in [("kind", StudioJSONValue.string("future")), ("attach", .string("other")), ("end", .number(0)), ("x", .bool(true)), ("shadow", .string("true"))] {
+            var fields = input
+            guard case .object(var annotation) = fields["annotation"] else { return XCTFail("Missing annotation") }
+            annotation[key] = value
+            fields["annotation"] = .object(annotation)
+            XCTAssertThrowsError(try StudioAnnotationTransfer.decode(StudioJSON.makeEncoder().encode(fields)))
+        }
+        XCTAssertThrowsError(try StudioAnnotationTransfer.decode(Data(repeating: 32, count: StudioAnnotationTransfer.maximumBytes + 1)))
+        XCTAssertThrowsError(try StudioAnnotationTransfer.decode(Data("plain text".utf8)))
+    }
+
+    func testClipboardPreservesValuesTheRendererClamps() throws {
+        let annotation = StudioAnnotation(start: -1, end: 5, x: 2, offsetX: -4, scale: 4, width: 3, shapeFillOpacity: 2)
+        let transfer = StudioAnnotationTransfer(annotation: annotation, outputDurationSeconds: 3)
+        XCTAssertEqual(try StudioAnnotationTransfer.decode(transfer.encoded()), transfer)
+        let editor = model([annotation])
+        XCTAssertEqual(try editor.annotationTransfer(at: 0).annotation, annotation)
+    }
+
+    func testPastePreservesPlaybackDurationAcrossCutsAndSpeed() throws {
+        var source = try project(overlays: "{}")
+        source.overlays.annotations = [StudioAnnotation(id: "source", kind: "redact", start: 1, end: 9, x: 0.25, y: 0.75)]
+        source.edits = StudioEdits(cuts: [StudioTimeRange(start: 3, end: 5)], speed: [StudioSpeedRange(start: 0, end: 10, rate: 2)])
+        let original = StudioEditorModel(project: source)
+        let before = original.manifest
+        let transfer = try original.annotationTransfer(at: 0)
+        XCTAssertEqual(transfer.outputDurationSeconds, 3, accuracy: 1e-9)
+        XCTAssertEqual(original.manifest, before)
+        for rate in [0.25, 0.5, 2.0, 8.0] {
+            var target = try project(overlays: "{}")
+            target.edits = StudioEdits(speed: [StudioSpeedRange(start: 0, end: 10, rate: rate)])
+            var editor = StudioEditorModel(project: target)
+            let result = try editor.pasteAnnotation(transfer, at: 2)
+            let pasted = editor.project.overlays.annotations[try XCTUnwrap(result.index)]
+            XCTAssertEqual(pasted.start, 2, accuracy: 1e-9)
+            XCTAssertEqual(pasted.end, min(10, 2 + 3 * rate), accuracy: 1e-9)
+            XCTAssertEqual(pasted.x, 0.25)
+            XCTAssertEqual(pasted.y, 0.75)
+            XCTAssertNotEqual(pasted.id, "source")
+        }
+        var target = try project(overlays: "{}")
+        target.edits = StudioEdits(speed: [StudioSpeedRange(start: 0, end: 5, rate: 2)])
+        var editor = StudioEditorModel(project: target)
+        _ = try editor.pasteAnnotation(transfer, at: 2)
+        XCTAssertEqual(editor.project.overlays.annotations[0].end, 6.5, accuracy: 1e-9)
+    }
+
+    func testPasteCutBoundariesUndoRedoAndNoRoom() throws {
+        var target = try project(overlays: "{}")
+        target.edits = StudioEdits(trimEnd: 8, cuts: [StudioTimeRange(start: 3, end: 5)])
+        var editor = StudioEditorModel(project: target)
+        let transfer = StudioAnnotationTransfer(annotation: StudioAnnotation(id: "source", end: 5), outputDurationSeconds: 1)
+        _ = try editor.pasteAnnotation(transfer, at: 2)
+        XCTAssertEqual(editor.project.overlays.annotations[0].end, 3)
+        let first = editor.project.overlays.annotations[0]
+        _ = try editor.pasteAnnotation(transfer, at: 4)
+        XCTAssertEqual(editor.project.overlays.annotations[1].start, 5)
+        XCTAssertNotEqual(editor.project.overlays.annotations[1].id, first.id)
+        editor.undo()
+        XCTAssertEqual(editor.project.overlays.annotations, [first])
+        editor.redo()
+        XCTAssertEqual(editor.project.overlays.annotations.count, 2)
+        let before = editor.manifest
+        XCTAssertThrowsError(try editor.pasteAnnotation(transfer, at: 8))
+        XCTAssertEqual(editor.manifest, before)
+        XCTAssertThrowsError(try editor.pasteAnnotation(transfer, at: 7.95))
+        XCTAssertEqual(editor.manifest, before)
+        _ = try editor.pasteAnnotation(transfer, at: 7.8)
+        XCTAssertEqual(editor.project.overlays.annotations.last?.end, 8)
+        let reopened = try StudioJSON.makeDecoder().decode(StudioProject.self, from: StudioJSON.makeEncoder().encode(editor.manifest))
+        XCTAssertEqual(reopened.overlays.annotations, editor.project.overlays.annotations)
+    }
+
+    func testCopyHasNoDurationWhenTrimOrCutsRemoveTheAnnotation() throws {
+        for edits in [
+            StudioEdits(trimStart: 5),
+            StudioEdits(cuts: [StudioTimeRange(start: 1, end: 4)]),
+        ] {
+            var input = try project(overlays: "{}")
+            input.overlays.annotations = [StudioAnnotation(start: 1, end: 4)]
+            input.edits = edits
+            let editor = StudioEditorModel(project: input)
+            XCTAssertThrowsError(try editor.annotationTransfer(at: 0)) { error in
+                XCTAssertEqual(error.localizedDescription, StudioAnnotationTransferError.noPlayback.localizedDescription)
+            }
+            XCTAssertEqual(editor.manifest, input)
+            XCTAssertFalse(editor.canUndo)
+        }
+    }
+
+    func testPasteOnlyChangesSelectedTimelineClipWithoutMigration() throws {
+        let single = try project(overlays: "{}")
+        var timeline = StudioTimelineEditing.timelineProject(from: single)
+        var first = try XCTUnwrap(timeline.timeline?.clips.first)
+        first.id = "first"
+        var second = first
+        second.id = "second"
+        timeline.timeline?.clips = [first, second]
+        var editor = StudioEditorModel(project: timeline)
+        editor.selectClip(id: "second")
+        let transfer = StudioAnnotationTransfer(annotation: StudioAnnotation(end: 2), outputDurationSeconds: 1)
+        _ = try editor.pasteAnnotation(transfer, at: 2)
+        XCTAssertEqual(editor.manifest.schemaVersion, 2)
+        XCTAssertEqual(editor.manifest.timeline?.clips[0], first)
+        XCTAssertEqual(editor.project.overlays.annotations.count, 1)
+        editor.undo()
+        XCTAssertTrue(editor.project.overlays.annotations.isEmpty)
+        var v1 = StudioEditorModel(project: single)
+        _ = try v1.pasteAnnotation(transfer, at: 1)
+        XCTAssertEqual(v1.manifest.schemaVersion, 1)
+    }
+
     func testRotationRoundTripsAndResolvesAroundTheAnchorForEveryKind() throws {
         for kind in StudioAnnotationKind.known {
             let annotation = StudioAnnotation(kind: kind, attach: .frame, end: 5, text: "Hi", rotation: 450)

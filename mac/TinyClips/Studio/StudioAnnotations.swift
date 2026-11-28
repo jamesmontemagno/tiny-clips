@@ -1024,6 +1024,77 @@ enum StudioAnnotationGeometry {
     }
 }
 
+// MARK: - Clipboard interchange
+
+enum StudioAnnotationTransferError: LocalizedError {
+    case invalid
+    case tooLarge
+    case noPlayback
+    case noRoom
+
+    var errorDescription: String? {
+        switch self {
+        case .invalid: return "The clipboard does not contain a supported Studio annotation. Copy it again in Studio."
+        case .tooLarge: return "This annotation exceeds the 1 MiB clipboard limit."
+        case .noPlayback: return "This annotation has no remaining playback duration to copy."
+        case .noRoom: return StudioEditorModel.noRoomForAnnotationMessage
+        }
+    }
+}
+
+struct StudioAnnotationTransfer: Codable, Equatable, Sendable {
+    static let format = "com.tinyclips.studio.annotation.v1"
+    static let maximumBytes = 1_048_576
+
+    let version: Int
+    let annotation: StudioAnnotation
+    let outputDurationSeconds: Double
+
+    init(annotation: StudioAnnotation, outputDurationSeconds: Double) {
+        version = 1
+        self.annotation = annotation
+        self.outputDurationSeconds = outputDurationSeconds
+    }
+
+    func encoded() throws -> Data {
+        let data = try StudioJSON.makeEncoder().encode(self)
+        _ = try Self.decode(data)
+        return data
+    }
+
+    static func decode(_ data: Data) throws -> Self {
+        guard data.count <= maximumBytes else { throw StudioAnnotationTransferError.tooLarge }
+        let fields: [String: StudioJSONValue]
+        do { fields = try StudioJSON.makeDecoder().decode([String: StudioJSONValue].self, from: data) }
+        catch { throw StudioAnnotationTransferError.invalid }
+        guard fields["version"] == .number(1),
+              case .number(let duration) = fields["outputDurationSeconds"], duration.isFinite, duration > 0,
+              case .object(let annotation) = fields["annotation"] else {
+            throw StudioAnnotationTransferError.invalid
+        }
+        for key in ["id", "kind", "attach", "text", "style", "size", "fill", "textColor", "shapeFill", "redactStyle", "redactLevel"] {
+            guard case .string = annotation[key] else { throw StudioAnnotationTransferError.invalid }
+        }
+        guard case .string(let kind) = annotation["kind"], StudioAnnotationKind.isKnown(kind),
+              case .string(let attach) = annotation["attach"], StudioAnnotationAttach(rawValue: attach) != nil,
+              case .string(let style) = annotation["style"], StudioAnnotationStyle(rawValue: style) != nil,
+              case .string(let size) = annotation["size"], StudioAnnotationSize(rawValue: size) != nil,
+              case .string(let redactStyle) = annotation["redactStyle"], StudioRedactStyle(rawValue: redactStyle) != nil,
+              case .string(let redactLevel) = annotation["redactLevel"], StudioRedactLevel(rawValue: redactLevel) != nil,
+              case .bool = annotation["shadow"] else { throw StudioAnnotationTransferError.invalid }
+        var numbers: [String: Double] = [:]
+        for key in ["start", "end", "x", "y", "offsetX", "offsetY", "scale", "rotation", "width", "height", "cornerRadius", "shapeFillOpacity"] {
+            guard case .number(let value) = annotation[key], value.isFinite else { throw StudioAnnotationTransferError.invalid }
+            numbers[key] = value
+        }
+        guard let start = numbers["start"], let end = numbers["end"], end > start else {
+            throw StudioAnnotationTransferError.invalid
+        }
+        do { return try StudioJSON.makeDecoder().decode(Self.self, from: data) }
+        catch { throw StudioAnnotationTransferError.invalid }
+    }
+}
+
 // MARK: - Editing
 
 /// What an edit to an annotation did: whether the project changed, and where the annotation is in
@@ -1057,6 +1128,48 @@ extension StudioEditorModel {
 
     private func hasAnnotation(_ index: Int) -> Bool {
         project.overlays.annotations.indices.contains(index)
+    }
+
+    func annotationTransfer(at index: Int) throws -> StudioAnnotationTransfer {
+        guard hasAnnotation(index) else { throw StudioAnnotationTransferError.invalid }
+        let annotation = project.overlays.annotations[index]
+        let duration = timeMap.sourceToOutput(annotation.end) - timeMap.sourceToOutput(annotation.start)
+        guard duration.isFinite, duration > 0 else { throw StudioAnnotationTransferError.noPlayback }
+        let transfer = StudioAnnotationTransfer(annotation: annotation, outputDurationSeconds: duration)
+        _ = try transfer.encoded()
+        return transfer
+    }
+
+    func annotationPasteStart(at sourceTime: Double) -> Double {
+        timeMap.outputToSource(timeMap.sourceToOutput(sourceTime))
+    }
+
+    mutating func pasteAnnotation(_ transfer: StudioAnnotationTransfer, at sourceTime: Double) throws -> StudioAnnotationEditResult {
+        _ = try transfer.encoded()
+        guard sourceTime.isFinite else { throw StudioAnnotationTransferError.noRoom }
+        let map = timeMap
+        let outputStart = map.sourceToOutput(sourceTime)
+        let outputEnd = min(map.outputDuration, outputStart + transfer.outputDurationSeconds)
+        let start = map.outputToSource(outputStart)
+        // An end on a cut boundary belongs to the preceding kept piece, not the next frame.
+        var end = map.outputToSource(outputEnd)
+        var elapsed = 0.0
+        for piece in map.pieces {
+            elapsed += piece.outputDuration
+            if abs(outputEnd - elapsed) < 1e-9 {
+                end = piece.end
+                break
+            }
+        }
+        guard outputEnd > outputStart, end - start >= Self.minimumAnnotationDuration - 1e-9 else {
+            throw StudioAnnotationTransferError.noRoom
+        }
+        var copy = transfer.annotation
+        copy.id = UUID().uuidString.lowercased()
+        copy.start = start
+        copy.end = end
+        mutate { $0.overlays.annotations.append(copy) }
+        return StudioAnnotationEditResult(changed: true, index: project.overlays.annotations.count - 1)
     }
 
     /// Adds an annotation at `sourceTime`, on top of the others. Text is fixed to the frame, and an

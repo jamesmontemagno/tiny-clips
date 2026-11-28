@@ -542,6 +542,12 @@ public sealed partial class StudioViewModel : ObservableObject
             case StudioShortcutAction.DuplicateSelectedAnnotation:
                 DuplicateSelectedAnnotation();
                 break;
+            case StudioShortcutAction.CopySelectedAnnotation:
+                _ = CopyAnnotationAsync();
+                break;
+            case StudioShortcutAction.PasteAnnotation:
+                _ = PasteAnnotationAsync();
+                break;
             case StudioShortcutAction.RemoveSelectedAnnotation:
                 RemoveSelectedAnnotation();
                 break;
@@ -689,6 +695,7 @@ public sealed partial class StudioViewModel : ObservableObject
     /// </summary>
     public Task CloseAsync(bool deleteProject)
     {
+        DetachAnnotationClipboard();
         _captionNoticeTimer?.Dispose();
         _captionNoticeTimer = null;
         // The settings outlive every editor, and would keep this one in memory.
@@ -711,6 +718,7 @@ public sealed partial class StudioViewModel : ObservableObject
 
     private void OnSessionChanged(object? sender, StudioEditorChangedEventArgs e)
     {
+        RaiseAnnotationClipboardAvailability();
         if (e.Includes(StudioEditorChanges.State)
             || e.Includes(StudioEditorChanges.Project)
             || e.Includes(StudioEditorChanges.Selection))

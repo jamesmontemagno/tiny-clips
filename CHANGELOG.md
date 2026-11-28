@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 ### Added
+- Studio annotations can be copied and pasted between clips, projects, and open editor windows. Paste starts at the destination playhead, preserves playback duration across speed changes, and keeps the original placement and styling. Each paste is independently editable and undoable.
 - Agent Control can assemble Studio timelines on Windows using the same nine `studio.timeline.*` commands as macOS. Recording into a project requires both `record` and `edit`; a stale edit cannot overwrite the destination.
 - In macOS Studio, choose **Cut**, **Fade Through Black**, **Fade Through White**, or **Cross-Dissolve** between clips. Color fades keep timing unchanged. A dissolve blends picture and sound and shortens the project by up to half a second; short clips use shorter transitions.
 - macOS Studio can assemble a video from files, Clips Library videos, and new recording segments in one timeline. Append clips or insert at the playhead, split, trim, reorder, and undo without changing the originals. Linked recordings retain their editable layers; Save Project As includes the media needed to reopen the edit. Existing single-recording projects stay in v1 until a timeline operation converts them.

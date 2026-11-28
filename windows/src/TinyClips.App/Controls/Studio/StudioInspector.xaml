@@ -1601,6 +1601,40 @@
                         x:Name="AnnotatePanel"
                         Spacing="16"
                         Visibility="Collapsed">
+                        <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button
+                                    AutomationProperties.AutomationId="StudioCopyAnnotationButton"
+                                    AutomationProperties.AcceleratorKey="Ctrl+C"
+                                    AutomationProperties.Name="Copy annotation"
+                                    Click="OnCopyAnnotationClick"
+                                    IsEnabled="{x:Bind ViewModel.CanCopyAnnotation, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Copy annotation (Ctrl+C)">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="14" Glyph="&#xE8C8;" />
+                                        <TextBlock Text="Copy" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    AutomationProperties.AutomationId="StudioPasteAnnotationButton"
+                                    AutomationProperties.AcceleratorKey="Ctrl+V"
+                                    AutomationProperties.Name="Paste annotation"
+                                    Click="OnPasteAnnotationClick"
+                                    IsEnabled="{x:Bind ViewModel.CanPasteAnnotation, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Paste annotation at the playhead (Ctrl+V)">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="14" Glyph="&#xE77F;" />
+                                        <TextBlock Text="Paste" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                            <TextBlock
+                                AutomationProperties.AutomationId="StudioAnnotationClipboardStatus"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind ViewModel.AnnotationClipboardStatus, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
                         <Grid
                             AutomationProperties.AutomationId="StudioAnnotationTools"
                             AutomationProperties.Name="Add annotation"
