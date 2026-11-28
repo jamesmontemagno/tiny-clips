@@ -30,11 +30,11 @@ public static class EmojiAnnotationMath
     public static double DefaultSidePixels(double imageWidth, double imageHeight) =>
         ClampSidePixels(imageWidth * DefaultSideRatio, imageWidth, imageHeight);
 
-    public static double ClampSidePixels(double side, double imageWidth, double imageHeight)
-    {
-        var maximum = Math.Max(MinimumSidePixels, Math.Min(imageWidth, imageHeight));
-        return Math.Clamp(side, MinimumSidePixels, maximum);
-    }
+    public static double MaximumSidePixels(double imageWidth, double imageHeight) =>
+        Math.Max(MinimumSidePixels, Math.Min(imageWidth, imageHeight));
+
+    public static double ClampSidePixels(double side, double imageWidth, double imageHeight) =>
+        Math.Clamp(side, MinimumSidePixels, MaximumSidePixels(imageWidth, imageHeight));
 
     /// <summary>Square bounds of <paramref name="side"/> centered on <paramref name="center"/>.</summary>
     public static RectD SquareBounds(PointD center, double side) =>

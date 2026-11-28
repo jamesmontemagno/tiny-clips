@@ -631,6 +631,7 @@ public sealed partial class ScreenshotEditorWindow : Window
             Windows.System.VirtualKey.T => EditTool.Text,
             Windows.System.VirtualKey.N => EditTool.Counter,
             Windows.System.VirtualKey.E => EditTool.Emoji,
+            Windows.System.VirtualKey.P => EditTool.Pointer,
             Windows.System.VirtualKey.B => EditTool.Redact,
             _ => (EditTool?)null,
         };

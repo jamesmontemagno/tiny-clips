@@ -81,7 +81,7 @@ public sealed class AutomationSettingsCatalogTests
 
         Assert.Equal("background", catalog.Get("screenshotEditorDefaultTool")["value"]!.GetValue<string>());
         Assert.Equal(
-            ["move", "background", "crop", "rectangle", "ellipse", "arrow", "line", "pen", "text", "number", "emoji", "redact"],
+            ["move", "background", "crop", "rectangle", "ellipse", "arrow", "line", "pen", "text", "number", "emoji", "redact", "pointer"],
             EditToolExtensions.SettingIds);
 
         catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("number"));
@@ -92,6 +92,8 @@ public sealed class AutomationSettingsCatalogTests
         AssertInvalid(() => catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("Select")));
         AssertInvalid(() => catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("counter")));
         Assert.Equal(EditTool.Select, settings.ScreenshotEditorDefaultTool);
+        catalog.Set("screenshotEditorDefaultTool", JsonValue.Create("pointer"));
+        Assert.Equal(EditTool.Pointer, settings.ScreenshotEditorDefaultTool);
     }
 
     [Fact]

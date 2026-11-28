@@ -20,6 +20,37 @@ public sealed class ScreenshotEditorTextMarkupTests
     }
 
     [Fact]
+    public void PointerStyle_IsSegmentedAndShadowIsADirectToggle()
+    {
+        var elements = Read("EditorInspector.xaml").Descendants().ToList();
+        var choice = Assert.Single(elements, element => Attribute(element, AutomationId) == "EditorPointerStyleChoice");
+        var shadow = Assert.Single(elements, element => Attribute(element, AutomationId) == "EditorPointerShadowCheck");
+
+        Assert.Equal("StudioSegmented", choice.Name.LocalName);
+        Assert.Equal(["Arrow", "Hand", "I-beam"], choice.Elements().Select(item => Attribute(item, "Content")));
+        Assert.Equal("CheckBox", shadow.Name.LocalName);
+        Assert.Equal("Drop shadow", Attribute(shadow, "AutomationProperties.Name"));
+        Assert.Equal(choice.Parent!.Parent, shadow.Parent);
+        Assert.DoesNotContain(elements, element => Attribute(element, AutomationId)?.StartsWith("EditorPointerShadow") == true
+            && element.Name.LocalName is "Slider" or "Expander");
+    }
+
+    [Fact]
+    public void PointerInspectorOffersSizeAndPerColorOpacityWithoutAdjustmentButtons()
+    {
+        var elements = Read("EditorInspector.xaml").Descendants();
+        var size = Assert.Single(elements, e => Attribute(e, AutomationId) == "EditorPointerSizeSlider");
+        var controls = size.Parent!.Elements().ToList();
+        Assert.Equal("Slider", size.Name.LocalName);
+        Assert.Equal("Pointer size in pixels", Attribute(size, "AutomationProperties.Name"));
+        Assert.Equal(new[] { "Fill opacity", "Stroke opacity" }, controls
+            .Where(e => e.Name.LocalName == "Slider" && Attribute(e, "Header")?.Contains("opacity", StringComparison.OrdinalIgnoreCase) == true)
+            .Select(e => Attribute(e, "Header")));
+        var place = Assert.Single(size.Parent.Descendants(), e => e.Name.LocalName == "Button");
+        Assert.Equal("EditorPointerPlaceAtCenter", Attribute(place, AutomationId));
+    }
+
+    [Fact]
     public void StrokeAndFillColors_HaveDirectOpacitySliders()
     {
         var elements = Read("EditorInspector.xaml").Descendants().ToList();

@@ -244,6 +244,11 @@ internal sealed class EditorController : IDisposable
 
     public string EmojiDefault { get; private set; } = EmojiAnnotationMath.DefaultEmoji;
 
+    /// <summary>Appearance for the next pointer placed; lasts for this editor session.</summary>
+    public PointerAppearance PointerDefault { get; private set; } = PointerAppearance.Default;
+
+    private double? _pointerSizeOverride;
+
     // Shared across editor windows for the lifetime of the process so the "Recent" row survives
     // closing and reopening the editor.
     private static List<string> s_recentEmoji = new();
@@ -298,6 +303,9 @@ internal sealed class EditorController : IDisposable
 
     /// <summary>The default emoji (or the selected sticker's emoji) changed via <see cref="SetEmoji"/>.</summary>
     public event EventHandler<string>? EmojiChanged;
+
+    /// <summary>Raised when the pointer appearance shown in the inspector changes.</summary>
+    public event EventHandler<PointerAppearance>? PointerAppearanceChanged;
 
     /// <summary>
     /// Raised when an in-progress (not yet committed) annotation is discarded without being
@@ -471,7 +479,7 @@ internal sealed class EditorController : IDisposable
         for (var i = _annotations.Count - 1; i >= 0; i--)
         {
             var ann = _annotations[i];
-            if (ann.Tool == EditTool.Emoji || ann.IsRotated)
+            if (ann.Tool is EditTool.Emoji or EditTool.Pointer || ann.IsRotated)
             {
                 if (RotatableAnnotationGeometry.Contains(
                         new PointD(pixelPoint.X, pixelPoint.Y),
@@ -982,7 +990,7 @@ internal sealed class EditorController : IDisposable
 
     public void BeginSelectedTextStyleEdit()
     {
-        _textStyleEditGroupActive = SelectedAnnotation is { Tool: EditTool.Text };
+        _textStyleEditGroupActive = SelectedAnnotation is { Tool: EditTool.Text or EditTool.Pointer };
         _textStyleEditGroupRecorded = false;
     }
 
@@ -1127,6 +1135,100 @@ internal sealed class EditorController : IDisposable
         AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
         EmojiChanged?.Invoke(this, EmojiDefault);
         return ann;
+    }
+
+    // -- Pointer annotations -----------------------------------------------------------------
+
+    /// <summary>The selected pointer's appearance, or the default for the next one.</summary>
+    public PointerAppearance PointerForInspector =>
+        SelectedAnnotation is { Tool: EditTool.Pointer } ann ? ann.Pointer : PointerDefault;
+
+    public double MaximumPointerSize => EmojiAnnotationMath.MaximumSidePixels(
+        _bitmap?.PixelWidth ?? 1000, _bitmap?.PixelHeight ?? 1000);
+
+    private double DefaultPointerSize => Math.Min(
+        _pointerSizeOverride ?? PointerGeometry.DefaultSidePixels, MaximumPointerSize);
+
+    public double PointerSizeForInspector =>
+        SelectedAnnotation is { Tool: EditTool.Pointer } ann ? ann.Bounds.Width : DefaultPointerSize;
+
+    /// <summary>Edits the selected pointer, or the default when no pointer is selected.</summary>
+    public void SetPointerAppearance(Func<PointerAppearance, PointerAppearance> change)
+    {
+        if (SelectedAnnotation is { Tool: EditTool.Pointer } ann)
+        {
+            var updated = change(ann.Pointer);
+            if (updated == ann.Pointer)
+            {
+                return;
+            }
+            RecordTextStyleUndo(ann);
+            ann.Pointer = updated;
+            MarkDirty();
+            AnnotationVisualInvalidated?.Invoke(this, ann);
+            PointerAppearanceChanged?.Invoke(this, updated);
+            return;
+        }
+
+        var next = change(PointerDefault);
+        if (next == PointerDefault)
+        {
+            return;
+        }
+        PointerDefault = next;
+        PointerAppearanceChanged?.Invoke(this, next);
+    }
+
+    /// <summary>Places a pointer so its hotspot lands on <paramref name="pixelHotspot"/>.</summary>
+    public Annotation AddPointerAnnotation(Point pixelHotspot)
+    {
+        ClearTextStyleUndo();
+        var bounds = PointerGeometry.Place(new PointD(pixelHotspot.X, pixelHotspot.Y), PointerDefault.Style, DefaultPointerSize);
+        var ann = new Annotation
+        {
+            Tool = EditTool.Pointer,
+            Color = PointerDefault.Stroke,
+            Thickness = 0,
+            Pointer = PointerDefault,
+            Bounds = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height),
+        };
+        _annotations.Add(ann);
+        MarkDirty();
+        AnnotationsStructureChanged?.Invoke(this, EventArgs.Empty);
+        return ann;
+    }
+
+    /// <summary>Keyboard alternative to clicking: places a pointer at the image center and selects it.</summary>
+    public Annotation? PlacePointerAtCenter()
+    {
+        if (_bitmap is null)
+        {
+            return null;
+        }
+        var ann = AddPointerAnnotation(new Point(_bitmap.PixelWidth / 2.0, _bitmap.PixelHeight / 2.0));
+        SetTool(EditTool.Select);
+        Select(ann);
+        return ann;
+    }
+
+    public void SetPointerSize(double side)
+    {
+        side = Math.Clamp(side, EmojiAnnotationMath.MinimumSidePixels, MaximumPointerSize);
+        if (SelectedAnnotation is not { Tool: EditTool.Pointer } ann)
+        {
+            _pointerSizeOverride = side;
+            return;
+        }
+        if (side == ann.Bounds.Width)
+        {
+            return;
+        }
+
+        RecordTextStyleUndo(ann);
+        var bounds = PointerGeometry.ResizeAtHotspot(ToRectD(ann.Bounds), ann.Pointer.Style, ann.Rotation, side);
+        ann.Bounds = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        MarkDirty();
+        AnnotationVisualInvalidated?.Invoke(this, ann);
     }
 
     // -- Background / export ---------------------------------------------------------------
@@ -1665,7 +1767,7 @@ internal sealed class EditorController : IDisposable
         Point pixelPoint)
     {
         ClearTextStyleUndo();
-        if (ann.Tool == EditTool.Emoji || ann.IsRotated)
+        if (ann.Tool is EditTool.Emoji or EditTool.Pointer || ann.IsRotated)
         {
             ResizeRotatedAboutCenter(
                 ann,
@@ -1802,6 +1904,7 @@ internal sealed class EditorController : IDisposable
         switch (ann.Tool)
         {
             case EditTool.Emoji:
+            case EditTool.Pointer:
             {
                 var imageWidth = _bitmap?.PixelWidth ?? 1000;
                 var imageHeight = _bitmap?.PixelHeight ?? 1000;
@@ -1997,6 +2100,7 @@ internal sealed class EditorController : IDisposable
         annotation.StrokeAlignment = snapshot.StrokeAlignment;
         annotation.OutlineColor = snapshot.OutlineColor;
         annotation.OutlineWidth = snapshot.OutlineWidth;
+        annotation.Pointer = snapshot.Pointer ?? PointerAppearance.Default;
     }
 
     // -- Crop -------------------------------------------------------------------------------
@@ -2668,6 +2772,12 @@ internal sealed class EditorController : IDisposable
 
     private static void DrawAnnotationToSession(CanvasDrawingSession ds, AnnotationSnapshot ann)
     {
+        if (ann.Tool == EditTool.Pointer)
+        {
+            DrawPointer(ds, ann);
+            return;
+        }
+
         var color = ann.Color;
         var thickness = (float)ann.Thickness;
 
@@ -2691,6 +2801,59 @@ internal sealed class EditorController : IDisposable
         {
             ds.Transform = previousTransform;
         }
+    }
+
+    /// <summary>Builds a pointer outline fitted into <paramref name="bounds"/>.</summary>
+    internal static CanvasGeometry PointerOutlineGeometry(ICanvasResourceCreator resources, PointerStyle style, Rect bounds)
+    {
+        var fit = PointerGeometry.Fit(ToRectD(bounds));
+        var points = PointerGeometry.Outline(style)
+            .Select(p => new Vector2((float)(fit.X + p.X * fit.Width), (float)(fit.Y + p.Y * fit.Height)))
+            .ToArray();
+        return CanvasGeometry.CreatePolygon(resources, points);
+    }
+
+    // The pointer draws fill then stroke into one layer so opacity applies to the whole cursor,
+    // and its shadow offset stays screen-aligned when rotated, matching the macOS export.
+    private static void DrawPointer(CanvasDrawingSession ds, AnnotationSnapshot ann)
+    {
+        var pointer = ann.Pointer ?? PointerAppearance.Default;
+        var bounds = NormalizedBounds(ann);
+        if (bounds.Width <= 0 || bounds.Height <= 0 || pointer.Opacity <= 0)
+        {
+            return;
+        }
+
+        using var body = new CanvasCommandList(ds.Device);
+        using (var bodySession = body.CreateDrawingSession())
+        {
+            if (ann.IsRotated)
+            {
+                var center = new Vector2((float)(bounds.X + bounds.Width / 2), (float)(bounds.Y + bounds.Height / 2));
+                bodySession.Transform = Matrix3x2.CreateRotation((float)(ann.Rotation * Math.PI / 180.0), center);
+            }
+            using var outline = PointerOutlineGeometry(ds, pointer.Style, bounds);
+            bodySession.FillGeometry(outline, pointer.Fill);
+            if (pointer.StrokeWidth > 0 && pointer.Stroke.A > 0)
+            {
+                using var strokeStyle = new CanvasStrokeStyle { LineJoin = CanvasLineJoin.Round };
+                bodySession.DrawGeometry(outline, pointer.Stroke, (float)pointer.StrokeWidth, strokeStyle);
+            }
+        }
+
+        using var layer = ds.CreateLayer((float)Math.Clamp(pointer.Opacity, 0, 1));
+        var shadow = pointer.Shadow;
+        if (shadow.Enabled && shadow.Opacity > 0)
+        {
+            using var effect = new ShadowEffect
+            {
+                Source = body,
+                BlurAmount = (float)Math.Max(0, shadow.Blur / 2),
+                ShadowColor = Color.FromArgb((byte)Math.Round(Math.Clamp(shadow.Opacity, 0, 1) * 255), 0, 0, 0),
+            };
+            ds.DrawImage(effect, new Vector2((float)shadow.OffsetX, (float)shadow.OffsetY));
+        }
+        ds.DrawImage(body);
     }
 
     private static void DrawAnnotationCore(CanvasDrawingSession ds, AnnotationSnapshot ann, Color color, float thickness)

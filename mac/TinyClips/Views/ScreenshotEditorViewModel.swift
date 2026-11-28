@@ -93,6 +93,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     /// Arrow and line outlines start outside the body, so they frame it rather than cover it.
     @Published var outlineAlignment: StrokeAlignment = .outside
     @Published var selectedEmoji: String = EmojiPalette.defaultEmoji
+    @Published var pointerDefault = PointerAppearance()
+    @Published private var defaultPointerSize = PointerGeometry.defaultSidePixels
     @Published var recentEmoji: [String] = []
     @Published var backgroundStyle: ExportBackgroundStyle = .transparent
     @Published var backgroundColor: Color = Color(red: 0.96, green: 0.96, blue: 0.98)
@@ -114,6 +116,8 @@ class ScreenshotEditorViewModel: ObservableObject {
     private var didRecordFillOpacityAdjustment = false
     private var isAdjustingSelectedArrowShape = false
     private var didRecordArrowShapeAdjustment = false
+    private var isAdjustingPointer = false
+    private var didRecordPointerAdjustment = false
     private var imagePixelSize: CGSize = .zero
     private var sourcePixelScale: CGFloat = 1
     private var redactionSourceImage: CGImage?
@@ -434,7 +438,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                             return i
                         }
                         continue
-                } else if ann.tool == .emoji || ann.isRotated {
+                } else if ann.tool == .emoji || ann.tool == .pointer || ann.isRotated {
                     let pixelSize = hitTestImageSize
                     let pixelPoint = CGPoint(x: point.x * pixelSize.width, y: point.y * pixelSize.height)
                     let padding: CGFloat
@@ -654,6 +658,99 @@ class ScreenshotEditorViewModel: ObservableObject {
         markDirty()
     }
 
+    private var selectedPointerIndex: Int? {
+        guard selectedTool == .move, let index = selectedAnnotationIndex,
+              annotations.indices.contains(index), annotations[index].tool == .pointer else { return nil }
+        return index
+    }
+
+    var pointerSizeRange: ClosedRange<CGFloat> {
+        EmojiAnnotationMath.sideRange(forImageSize: imagePixelSize)
+    }
+
+    var pointerSizeForInspector: CGFloat {
+        guard let index = selectedPointerIndex else { return newPointerSize }
+        let bounds = RotatableAnnotationGeometry.scaledRect(annotations[index].rect, in: imagePixelSize)
+        return PointerGeometry.fittedRect(in: bounds).width
+    }
+
+    private var newPointerSize: CGFloat {
+        EmojiAnnotationMath.clampSidePixels(defaultPointerSize, imageSize: imagePixelSize)
+    }
+
+    func setPointerSize(_ value: CGFloat) {
+        guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return }
+        let side = EmojiAnnotationMath.clampSidePixels(value.rounded(), imageSize: imagePixelSize)
+        guard let index = selectedPointerIndex else {
+            defaultPointerSize = side
+            return
+        }
+        guard abs(side - pointerSizeForInspector) > 0.0001 else { return }
+        let annotation = annotations[index]
+        let bounds = RotatableAnnotationGeometry.scaledRect(annotation.rect, in: imagePixelSize)
+        let resized = PointerGeometry.resizedRect(bounds, style: annotation.pointer.style, rotation: annotation.rotation, side: side)
+        recordPointerAdjustment()
+        annotations[index].rect = normalizedPointerRect(resized)
+        markDirty()
+    }
+
+    func pointerForInspector() -> PointerAppearance {
+        guard let index = selectedPointerIndex else { return pointerDefault }
+        return annotations[index].pointer
+    }
+
+    func updatePointer(_ pointer: PointerAppearance) {
+        guard let index = selectedPointerIndex else {
+            pointerDefault = pointer
+            return
+        }
+        guard annotations[index].pointer != pointer else { return }
+        recordPointerAdjustment()
+        annotations[index].pointer = pointer
+        markDirty()
+    }
+
+    private func recordPointerAdjustment() {
+        if !isAdjustingPointer || !didRecordPointerAdjustment {
+            recordHistory()
+            didRecordPointerAdjustment = isAdjustingPointer
+        }
+    }
+
+    func setAdjustingPointer(_ adjusting: Bool) {
+        isAdjustingPointer = adjusting
+        didRecordPointerAdjustment = false
+    }
+
+    func placePointerAnnotation(at position: CGPoint) {
+        guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return }
+        let pixelPosition = CGPoint(x: position.x * imagePixelSize.width, y: position.y * imagePixelSize.height)
+        let rect = PointerGeometry.rect(placing: pixelPosition, style: pointerDefault.style, side: newPointerSize)
+        recordHistory()
+        annotations.append(ScreenshotAnnotation(
+            tool: .pointer,
+            rect: normalizedPointerRect(rect),
+            color: .white,
+            lineWidth: 0,
+            text: "",
+            points: [],
+            pointer: pointerDefault
+        ))
+        markDirty()
+    }
+
+    func placePointerAtCenter() {
+        guard imagePixelSize.width > 0, imagePixelSize.height > 0 else { return }
+        placePointerAnnotation(at: CGPoint(x: 0.5, y: 0.5))
+        selectedTool = .move
+        selectedAnnotationIndex = annotations.count - 1
+    }
+
+    private func normalizedPointerRect(_ rect: CGRect) -> CGRect {
+        CGRect(x: rect.minX / imagePixelSize.width, y: rect.minY / imagePixelSize.height,
+               width: rect.width / imagePixelSize.width, height: rect.height / imagePixelSize.height)
+    }
+
     private func rememberRecentEmoji(_ emoji: String) {
         var updated = recentEmoji.filter { $0 != emoji }
         updated.insert(emoji, at: 0)
@@ -786,7 +883,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     var showsAnyStyleControls: Bool {
-        primaryStyleControlsVisible || showsLineWidthControl || showsArrowStyleControl || showsNumberSizeControl || showsRedactionStrengthControl || showsTextStyleControls || showsEmojiPicker || showsRotationControl
+        primaryStyleControlsVisible || showsLineWidthControl || showsArrowStyleControl || showsNumberSizeControl || showsRedactionStrengthControl || showsTextStyleControls || showsEmojiPicker || inspectorTool == .pointer || showsRotationControl
     }
 
     var showsTextStyleControls: Bool {
@@ -797,7 +894,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         switch inspectorTool {
         case .rectangle, .circle, .arrow, .line, .pencil, .text, .number:
             return true
-        case .move, .background, .crop, .blur, .emoji:
+        case .move, .background, .crop, .blur, .emoji, .pointer:
             return false
         }
     }
@@ -1329,7 +1426,7 @@ class ScreenshotEditorViewModel: ObservableObject {
                 points: pencilPoints
             )
 
-        case .text, .number, .emoji:
+        case .text, .number, .emoji, .pointer:
             break // text/number/emoji use click, not drag
 
         case .background:
@@ -1389,7 +1486,7 @@ class ScreenshotEditorViewModel: ObservableObject {
             pencilPoints = []
             currentAnnotation = nil
 
-        case .text, .number, .emoji:
+        case .text, .number, .emoji, .pointer:
             break // handled by SpatialTapGesture
 
         case .background:
@@ -1452,7 +1549,7 @@ class ScreenshotEditorViewModel: ObservableObject {
 
     private func resizeHandle(at point: CGPoint, for annotation: ScreenshotAnnotation) -> AnnotationResizeHandle? {
         guard annotation.tool != .arrow, annotation.tool != .line else { return nil }
-        if annotation.tool == .emoji || annotation.isRotated {
+        if annotation.tool == .emoji || annotation.tool == .pointer || annotation.isRotated {
             return rotatedResizeHandle(at: point, for: annotation)
         }
         let bounds: CGRect?
@@ -1558,7 +1655,7 @@ class ScreenshotEditorViewModel: ObservableObject {
         let draggedDistance = hypot(pixelPoint.x - center.x, pixelPoint.y - center.y)
         let normalizedCenter = CGPoint(x: dragOriginalRect.midX, y: dragOriginalRect.midY)
 
-        if annotation.tool == .emoji {
+        if annotation.tool == .emoji || annotation.tool == .pointer {
             let originalSide = dragOriginalRect.width * size.width
             let side = EmojiAnnotationMath.clampSidePixels(originalSide * (draggedDistance / originalDistance), imageSize: size)
             annotation.rect = EmojiAnnotationMath.normalizedRect(centeredAt: normalizedCenter, sidePixels: side, imageSize: size)
@@ -1593,7 +1690,7 @@ class ScreenshotEditorViewModel: ObservableObject {
     }
 
     private func resizeAnnotation(at index: Int, from handle: AnnotationResizeHandle, to point: CGPoint) {
-        if annotations[index].tool == .emoji || annotations[index].isRotated {
+        if annotations[index].tool == .emoji || annotations[index].tool == .pointer || annotations[index].isRotated {
             resizeRotatedAnnotation(at: index, from: handle, to: point)
             return
         }
@@ -2708,6 +2805,35 @@ class ScreenshotEditorViewModel: ObservableObject {
                 withAttributes: attrs
             )
             ctx.restoreGState()
+
+        case .pointer:
+            let pointer = annotation.pointer
+            withRotation(annotation, around: pixelRect, in: ctx) { rect in
+                let path = PointerGeometry.path(for: pointer.style, in: rect, flipped: true)
+                ctx.saveGState()
+                ctx.setAlpha(pointer.opacity)
+                ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+                if pointer.shadow.enabled {
+                    ctx.setShadow(
+                        offset: CGSize(width: pointer.shadow.offsetX, height: -pointer.shadow.offsetY),
+                        blur: pointer.shadow.blur,
+                        color: NSColor.black.withAlphaComponent(pointer.shadow.opacity).cgColor
+                    )
+                }
+                ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+                ctx.addPath(path)
+                ctx.setFillColor(NSColor(pointer.fill).cgColor)
+                ctx.fillPath()
+                if pointer.strokeWidth > 0 {
+                    ctx.addPath(path)
+                    ctx.setStrokeColor(NSColor(pointer.stroke).cgColor)
+                    ctx.setLineWidth(pointer.strokeWidth)
+                    ctx.strokePath()
+                }
+                ctx.endTransparencyLayer()
+                ctx.endTransparencyLayer()
+                ctx.restoreGState()
+            }
 
         case .crop, .move, .background:
             break

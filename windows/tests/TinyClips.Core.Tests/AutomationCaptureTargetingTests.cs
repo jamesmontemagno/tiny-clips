@@ -185,6 +185,27 @@ public sealed class AutomationCaptureTargetingTests
         Assert.Equal(RedactionStyle.Pixelate, parsed[10].RedactStyle);
     }
 
+    [Fact]
+    public void Annotations_MapPointerWithDefaultsAndOverrides()
+    {
+        var parsed = Parse("""
+            [
+              {"type":"pointer","bounds":{"x":10,"y":10,"width":24,"height":36}},
+              {"type":"pointer","bounds":{"x":50,"y":10,"width":30,"height":30},"pointerStyle":"hand","fillColor":"#FF00FF00","color":"#FFFF0000","lineWidth":4,"opacity":0.5,"shadow":false}
+            ]
+            """);
+
+        Assert.All(parsed, a => Assert.Equal(EditTool.Pointer, a.Tool));
+        Assert.Equal(PointerAppearance.Default, parsed[0].Pointer);
+        var custom = parsed[1].Pointer;
+        Assert.Equal(PointerStyle.Hand, custom.Style);
+        Assert.Equal(Windows.UI.Color.FromArgb(255, 0, 255, 0), custom.Fill);
+        Assert.Equal(Windows.UI.Color.FromArgb(255, 255, 0, 0), custom.Stroke);
+        Assert.Equal(4, custom.StrokeWidth);
+        Assert.Equal(0.5, custom.Opacity);
+        Assert.False(custom.Shadow.Enabled);
+    }
+
     [Theory]
     [InlineData("""{"annotations":[]}""")]
     [InlineData("""[]""")]
@@ -216,6 +237,13 @@ public sealed class AutomationCaptureTargetingTests
     [InlineData("""[{"type":"line","bounds":{"x":0,"y":0,"width":1,"height":1},"points":[{"x":1,"y":1,"z":0},{"x":2,"y":2}]}]""")]
     [InlineData("""[{"type":"redact","bounds":{"x":0,"y":0,"width":1,"height":1},"redactionLevel":"extreme"}]""")]
     [InlineData("""[{"type":"redact","bounds":{"x":0,"y":0,"width":1,"height":1},"redactionStyle":"smudge"}]""")]
+    [InlineData("""[{"type":"pointer","bounds":{"x":0,"y":0,"width":0,"height":10}}]""")]
+    [InlineData("""[{"type":"pointer","bounds":{"x":0,"y":0,"width":10,"height":10},"pointerStyle":"crosshair"}]""")]
+    [InlineData("""[{"type":"pointer","bounds":{"x":0,"y":0,"width":10,"height":10},"opacity":1.5}]""")]
+    [InlineData("""[{"type":"pointer","bounds":{"x":0,"y":0,"width":10,"height":10},"shadow":"yes"}]""")]
+    [InlineData("""[{"type":"pointer","bounds":{"x":0,"y":0,"width":10,"height":10},"text":"a"}]""")]
+    [InlineData("""[{"type":"rectangle","bounds":{"x":0,"y":0,"width":10,"height":10},"pointerStyle":"hand"}]""")]
+    [InlineData("""[{"type":"rectangle","bounds":{"x":0,"y":0,"width":10,"height":10},"shadow":true}]""")]
     public void Annotations_RejectMalformedInput(string json) =>
         AssertInvalid(() => AutomationAnnotationParser.ValidateStructure(JsonNode.Parse(json)));
 

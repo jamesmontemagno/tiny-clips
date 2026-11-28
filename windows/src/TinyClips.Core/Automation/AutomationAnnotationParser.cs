@@ -29,7 +29,7 @@ public static class AutomationAnnotationParser
     private static readonly HashSet<string> AllowedKeys = new(StringComparer.Ordinal)
     {
         "type", "bounds", "points", "text", "color", "textColor", "fillColor", "lineWidth",
-        "fontSize", "redactionLevel", "redactionStyle", "emoji",
+        "fontSize", "redactionLevel", "redactionStyle", "emoji", "pointerStyle", "opacity", "shadow",
     };
 
     private static readonly string[] RectKeys = ["x", "y", "width", "height"];
@@ -128,7 +128,8 @@ public static class AutomationAnnotationParser
             "number" => EditTool.Counter,
             "emoji" => EditTool.Emoji,
             "redact" => EditTool.Redact,
-            _ => throw Invalid($"{path}.type must be one of rectangle, ellipse, arrow, line, pen, text, number, emoji, redact."),
+            "pointer" => EditTool.Pointer,
+            _ => throw Invalid($"{path}.type must be one of rectangle, ellipse, arrow, line, pen, text, number, emoji, redact, pointer."),
         };
 
         var bounds = ParseBounds(obj["bounds"], $"{path}.bounds");
@@ -154,6 +155,31 @@ public static class AutomationAnnotationParser
             "solid" => RedactionStyle.Solid,
             _ => throw Invalid($"{path}.redactionStyle must be blur, pixelate, or solid."),
         };
+
+        var pointerStyle = OptionalString(obj, "pointerStyle", path) switch
+        {
+            null or "arrow" => PointerStyle.Arrow,
+            "hand" => PointerStyle.Hand,
+            "text" => PointerStyle.Text,
+            _ => throw Invalid($"{path}.pointerStyle must be arrow, hand, or text."),
+        };
+        var opacity = OptionalNumber(obj, "opacity", path, 0, 1);
+        var shadow = OptionalBool(obj, "shadow", path);
+        if (tool != EditTool.Pointer && (obj["pointerStyle"] is not null || opacity is not null || shadow is not null))
+        {
+            throw Invalid($"{path}.pointerStyle, opacity, and shadow are only used by pointer.");
+        }
+
+        if (tool == EditTool.Pointer)
+        {
+            foreach (var key in new[] { "points", "text", "textColor", "fontSize", "emoji", "redactionLevel", "redactionStyle" })
+            {
+                if (obj[key] is not null)
+                {
+                    throw Invalid($"{path}.{key} is not used by pointer.");
+                }
+            }
+        }
 
         if (text is { Length: > MaximumTextLength })
         {
@@ -266,6 +292,23 @@ public static class AutomationAnnotationParser
                 }
 
                 annotation.Text = glyph;
+                break;
+
+            case EditTool.Pointer:
+                RequireArea(bounds, path);
+                var defaults = PointerAppearance.Default;
+                var stroke = obj["color"] is null ? defaults.Stroke : color;
+                annotation.Pointer = defaults with
+                {
+                    Style = pointerStyle,
+                    Fill = fillColor ?? defaults.Fill,
+                    Stroke = stroke,
+                    StrokeWidth = obj["lineWidth"] is null ? defaults.StrokeWidth : lineWidth,
+                    Opacity = opacity ?? defaults.Opacity,
+                    Shadow = defaults.Shadow with { Enabled = shadow ?? true },
+                };
+                annotation.Color = stroke;
+                annotation.Thickness = 0;
                 break;
         }
 
@@ -425,6 +468,22 @@ public static class AutomationAnnotationParser
         }
 
         return value.GetValue<string>();
+    }
+
+    private static bool? OptionalBool(JsonObject obj, string name, string path)
+    {
+        var node = obj[name];
+        if (node is null)
+        {
+            return null;
+        }
+
+        if (node is not JsonValue value || value.GetValueKind() is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw Invalid($"{path}.{name} must be true or false.");
+        }
+
+        return value.GetValue<bool>();
     }
 
     private static AutomationException Invalid(string message) => new(AutomationErrorCodes.InvalidParams, message);
