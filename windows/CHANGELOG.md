@@ -9,6 +9,7 @@ own `CHANGELOG.md` at the repository root.
 - The screenshot editor has a **Pointer** tool (**P**) for arrow, hand, and I-beam pointers. New pointers are 50 px; use **Size** before placement or on a selected pointer; resizing with the slider keeps the tip on its target. Fill and stroke have separate opacity controls, and a drop shadow is optional. Click to place a pointer or choose **Place pointer at center**. The four-arrow **Select / Move** tool (**V**) lets you drag it on the canvas. Pointer can also be the default editor tool.
 
 ### Fixed
+- Multi-track Studio audio applies clip volume and dissolve gains before clamping samples, preventing premature distortion in preview and export.
 - Multi-clip Studio reserves the tallest actual detail-lane stack across clips, keeping the preview size stable when selection or playback moves between clips.
 - Multi-clip Studio files apply the same defaults to clip-local captions, scenes, audio and overlays as single-recording projects. Rotated videos are no longer rotated twice by the export decoder and compositor.
 - Screenshot recovery Save As preserves an existing destination if encoding fails or is canceled.
