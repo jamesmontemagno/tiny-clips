@@ -10,6 +10,7 @@ All notable changes to the Tiny Clips Agent CLI, MCP server, Agent Plugin, and s
 - Added a dedicated Agent CLI changelog and release-note workflow.
 
 ### Changed
+- Clarified that screenshot annotation selection and right-click deselection are interactive-editor-only; agents specify annotation styles directly.
 - The interactive screenshot save preference remains UI-only; agent screenshot and scrolling-capture commands continue to save persistent files. Screenshot clipboard/editor setting changes that would leave no output return `conflict`.
 - Contributor instructions now require Agent API coverage to be evaluated case by case, not added automatically to every app capability.
 
