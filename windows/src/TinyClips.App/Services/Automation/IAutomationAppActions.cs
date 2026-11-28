@@ -7,7 +7,14 @@ namespace TinyClips.App;
 
 /// <summary>What the recording UI is doing, as reported by <c>recording.status</c>.</summary>
 internal sealed record AutomationRecordingSnapshot(
-    string State, bool Busy, CaptureType? Kind, bool Microphone = false, bool Camera = false, AutomationException? Error = null);
+    string State, bool Busy, CaptureType? Kind, bool Microphone = false, bool Camera = false, AutomationException? Error = null,
+    AutomationStudioTake? StudioTake = null);
+
+/// <summary>
+/// The take a <c>studio.timeline.record</c> recording left. It is always a separate Library draft;
+/// <paramref name="Inserted"/> says whether the destination project received its own copy.
+/// </summary>
+internal sealed record AutomationStudioTake(string TakeProjectId, bool Inserted);
 internal sealed record AutomationScrollingSnapshot(bool Active, bool Stopping, int FrameCount);
 
 /// <summary>

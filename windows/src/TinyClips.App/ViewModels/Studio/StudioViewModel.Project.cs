@@ -106,6 +106,30 @@ public sealed partial class StudioViewModel
     public string DeleteProjectMessage => StudioProjectFolderText.DeleteMessage;
 
     /// <summary>
+    /// What Delete project says. A take, or a project with takes, also says what the other side
+    /// keeps, as the Library's prompt does. When the projects cannot be read, the plain message.
+    /// </summary>
+    public async Task<string> GetDeleteProjectMessageAsync()
+    {
+        var id = ProjectId;
+        try
+        {
+            var summaries = await Task.Run(_store.ListSummaries);
+            if (summaries.FirstOrDefault(summary => string.Equals(summary.Id, id, StringComparison.Ordinal)) is { } summary
+                && StudioTakeLinkage.DeleteNote(summary) is { } note)
+            {
+                return $"{DeleteProjectMessage} {note}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Studio could not read the project's takes: {ex.Message}");
+        }
+
+        return DeleteProjectMessage;
+    }
+
+    /// <summary>
     /// The other projects, the one opened last first, as <see cref="RefreshRecentProjectsAsync"/>
     /// read them last. Empty until it has.
     /// </summary>

@@ -183,6 +183,8 @@ internal sealed partial class AppAutomationCommandHandler : IAutomationCommandHa
         }
         if (snapshot.Error is { } error)
             result["error"] = new JsonObject { ["code"] = error.Code, ["message"] = error.Message };
+        if (snapshot.StudioTake is { } take)
+            result["studioTake"] = new JsonObject { ["takeProjectId"] = take.TakeProjectId, ["inserted"] = take.Inserted };
 
         return result;
     }

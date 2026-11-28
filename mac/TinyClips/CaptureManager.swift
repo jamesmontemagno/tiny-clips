@@ -705,6 +705,11 @@ class CaptureManager: ObservableObject {
 
     private(set) var automationRecordingError: AutomationError?
 
+    /// The take a studio.timeline.record recording left, kept for recording.status until the next
+    /// capture starts. The take is always a separate Library draft; inserted says whether the
+    /// destination project received its own copy of it.
+    private(set) var automationStudioTake: (takeProjectID: String, inserted: Bool)?
+
     var automationRecordingDevices: AutomationRecordingDevices {
         AutomationRecordingDevices(
             microphone: isRecording && videoRecorder?.isMicrophoneCaptureRunning == true,
@@ -2258,6 +2263,7 @@ class CaptureManager: ObservableObject {
         }
         try devices.requireCurrentAuthorization()
         automationRecordingError = nil
+        automationStudioTake = nil
 
         let settings = CaptureSettings.shared
         pendingVideoIsForStudio = forStudio
@@ -2905,6 +2911,7 @@ class CaptureManager: ObservableObject {
         switch request {
         case let .video(target, systemAudio, microphone, selectedMicrophoneID, webcamSelection, mouseClicksEnabled, timeLimitMinutes, studioModeEnabled, _):
             automationRecordingError = nil
+            automationStudioTake = nil
             beginVideoRecording(
                 target: target,
                 systemAudio: systemAudio,
@@ -3529,6 +3536,9 @@ class CaptureManager: ObservableObject {
         dismissProcessingIndicator()
 
         if isStudioSegment {
+            if let completedStudioProject, case .automation = studioSegmentReceiver {
+                automationStudioTake = (completedStudioProject.id, false)
+            }
             if let segmentError {
                 let recovery = completedStudioProject == nil ? "" : " The partial take is available in Studio drafts."
                 let reason = segmentError.localizedDescription + recovery
@@ -3541,6 +3551,7 @@ class CaptureManager: ObservableObject {
                 do {
                     if case .automation(_, let attach) = studioSegmentReceiver {
                         try await attach(completedStudioProject.id)
+                        automationStudioTake = (completedStudioProject.id, true)
                     }
                     finishStudioSegment(.success(completedStudioProject))
                 } catch {
@@ -3604,6 +3615,7 @@ class CaptureManager: ObservableObject {
         isRecordingPaused = false
         activeRecordingWasStartedByAutomation = false
         automationRecordingError = nil
+        automationStudioTake = nil
 
         _ = stopMouseClickMonitoring()
 

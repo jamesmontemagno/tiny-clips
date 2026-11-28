@@ -173,6 +173,9 @@ final class AutomationCommandRouter {
         if let error = manager.automationRecordingError {
             result["error"] = ["code": error.code.rawValue, "message": error.message]
         }
+        if let take = manager.automationStudioTake {
+            result["studioTake"] = ["takeProjectId": take.takeProjectID, "inserted": take.inserted]
+        }
         if let type = manager.activeRecordingType {
             result["kind"] = type == .gif ? "gif" : "video"
         }

@@ -3730,6 +3730,7 @@ public partial class App : Application
     private void ActivateRecordingIndicatorForStartedCapture(CaptureType type)
     {
         _timelineRecordingError = null;
+        _timelineRecordingTake = null;
         _recordingStopAnnounced = false;
         _recordingStartedUtc = DateTime.UtcNow;
         _recordingElapsedBeforePause = TimeSpan.Zero;

@@ -2929,25 +2929,41 @@ final class StudioViewModel: ObservableObject {
 
     /// Deletes the whole project, after asking: its recordings and every edit. Videos exported
     /// from it and folders it was saved to are files of the user's own and stay. The window
-    /// closes.
+    /// closes. A take, or a project with takes, also says what the other side keeps, as the
+    /// Library's prompt does; reading that walks every project, so it is done off the main thread.
     func deleteProject() {
-        guard canDeleteProject else { return }
+        guard canDeleteProject, !isAskingToDeleteProject else { return }
         pause()
+        isAskingToDeleteProject = true
 
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Delete “\(clipName)”?"
-        alert.informativeText = "The recording and every edit are removed from Tiny Clips Studio. Videos you exported and folders you saved this project to are not deleted. This cannot be undone."
-        // Keep standard button contrast and make Cancel the safe default.
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Delete Project")
-        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        let store = store
+        let currentID = projectID
+        Task { [weak self] in
+            let note = await Task.detached(priority: .userInitiated) {
+                (try? store.listSummaries())?.first { $0.id == currentID }?.takeDeletionNote
+            }.value
+            guard let self else { return }
+            defer { self.isAskingToDeleteProject = false }
+            guard self.canDeleteProject else { return }
 
-        closesAfterExport = false
-        exportTask?.cancel()
-        deletesOnClose = true
-        requestClose?()
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Delete “\(self.clipName)”?"
+            alert.informativeText = "The recording and every edit are removed from Tiny Clips Studio. Videos you exported and folders you saved this project to are not deleted. This cannot be undone."
+                + (note.map { " " + $0 } ?? "")
+            // Keep standard button contrast and make Cancel the safe default.
+            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: "Delete Project")
+            guard alert.runModal() == .alertSecondButtonReturn, self.canDeleteProject else { return }
+
+            self.closesAfterExport = false
+            self.exportTask?.cancel()
+            self.deletesOnClose = true
+            self.requestClose?()
+        }
     }
+
+    private var isAskingToDeleteProject = false
 
     /// Asked when the user closes the window. Returns false to keep it open.
     func shouldClose() -> Bool {
