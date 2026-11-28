@@ -100,8 +100,23 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
 
     public bool TryRead(out long startSample, out ReadOnlySpan<byte> pcm)
     {
-        startSample = _cursor;
         pcm = default;
+        if (!TryReadWide(out startSample, out var samples))
+        {
+            return false;
+        }
+        for (var i = 0; i < samples.Length; i++)
+        {
+            _output[i] = (short)Math.Clamp(samples[i], short.MinValue, short.MaxValue);
+        }
+        pcm = MemoryMarshal.AsBytes(_output.AsSpan(0, samples.Length));
+        return true;
+    }
+
+    internal bool TryReadWide(out long startSample, out ReadOnlySpan<int> samples)
+    {
+        startSample = _cursor;
+        samples = default;
         var count = (int)Math.Min(BlockSamples, _totalSamples - _cursor);
         if (count <= 0)
         {
@@ -144,12 +159,8 @@ internal sealed class StudioAudioMixSource : IStudioPcmSource, IDisposable
                 track.Samples = [];
             }
         }
-        for (var i = 0; i < count * Format.Channels; i++)
-        {
-            _output[i] = (short)Math.Clamp(_sum[i], short.MinValue, short.MaxValue);
-        }
         _cursor = end;
-        pcm = MemoryMarshal.AsBytes(_output.AsSpan(0, count * Format.Channels));
+        samples = _sum.AsSpan(0, count * Format.Channels);
         return true;
     }
 

@@ -107,11 +107,11 @@ internal sealed class StudioTimelineAudio : IStudioPcmSource, IDisposable
     }
 
     private sealed record Entry(StudioTimelineMapClip Clip, StudioProject Project, string Path, StudioAudioSampleRange[] Ranges);
-    private delegate void MixSamples(ReadOnlySpan<short> samples, long offset);
+    private delegate void MixSamples(ReadOnlySpan<int> samples, long offset);
 
     private sealed class Reader(StudioAudioMixSource source) : IDisposable
     {
-        private short[] _samples = [];
+        private int[] _samples = [];
         private long _start;
         private long _next = -1;
         private bool _ended;
@@ -132,12 +132,12 @@ internal sealed class StudioTimelineAudio : IStudioPcmSource, IDisposable
                 var blockEnd = _start + _samples.Length / 2;
                 if (_samples.Length == 0 || blockEnd <= cursor)
                 {
-                    if (!source.TryRead(out _start, out var block))
+                    if (!source.TryReadWide(out _start, out var block))
                     {
                         _ended = true;
                         break;
                     }
-                    _samples = MemoryMarshal.Cast<byte, short>(block).ToArray();
+                    _samples = block.ToArray();
                     continue;
                 }
                 if (_start >= end) break;
