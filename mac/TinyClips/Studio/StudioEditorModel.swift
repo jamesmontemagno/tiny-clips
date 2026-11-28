@@ -41,6 +41,20 @@ enum StudioLaneBlockPart: Equatable, Sendable {
     case end
 }
 
+/// How one block of a lane whose blocks may overlap is drawn among the others. Blocks that
+/// overlap, directly or through others between them, form a group that shows one label: the
+/// selected block's when it is in the group, otherwise the one drawn on top. The others show
+/// only their fill, so no words are painted over other words.
+struct StudioLaneOverlap: Equatable, Sendable {
+    /// The first block of the group, in the order the blocks are given.
+    var group: Int
+    /// How many blocks are in the group: 1 when the block overlaps no other.
+    var count: Int
+    var showsLabel: Bool
+
+    var overlapsOthers: Bool { count > 1 }
+}
+
 // MARK: - Editable State
 
 /// What closing Studio asks. A project saved to a folder asks only when it has changes the folder
@@ -1885,6 +1899,60 @@ struct StudioEditorModel: Equatable, Sendable {
         if x < 0 { return .start }
         if x > blockWidth { return .end }
         return .body
+    }
+
+    /// How each block of a lane is drawn among those it overlaps. `blocks` are where the blocks
+    /// are drawn, as a left edge and a width, in drawing order: a later block is on top of an
+    /// earlier one. Blocks that only touch do not overlap.
+    static func laneOverlaps(blocks: [(left: Double, width: Double)], selectedIndex: Int?) -> [StudioLaneOverlap] {
+        guard !blocks.isEmpty else { return [] }
+        let order = blocks.indices.sorted { lhs, rhs in
+            blocks[lhs].left == blocks[rhs].left ? lhs < rhs : blocks[lhs].left < blocks[rhs].left
+        }
+        var groups: [[Int]] = []
+        var groupRight = -Double.infinity
+        for index in order {
+            let block = blocks[index]
+            if !groups.isEmpty, block.left < groupRight {
+                groups[groups.count - 1].append(index)
+                groupRight = max(groupRight, block.left + block.width)
+            } else {
+                groups.append([index])
+                groupRight = block.left + block.width
+            }
+        }
+
+        var overlaps = [StudioLaneOverlap](repeating: StudioLaneOverlap(group: 0, count: 1, showsLabel: true), count: blocks.count)
+        for members in groups {
+            let first = members.min() ?? 0
+            let owner = selectedIndex.flatMap { members.contains($0) ? $0 : nil } ?? members.max() ?? first
+            for index in members {
+                overlaps[index] = StudioLaneOverlap(group: first, count: members.count, showsLabel: index == owner)
+            }
+        }
+        return overlaps
+    }
+
+    /// The blocks drawn at a place along a lane, the one a press there takes first: the selected
+    /// block, then the others from the one drawn on top down.
+    static func laneBlocks(at x: Double, blocks: [(left: Double, width: Double)], selectedIndex: Int?) -> [Int] {
+        let hits = blocks.indices.reversed().filter { index in
+            x >= blocks[index].left && x < blocks[index].left + blocks[index].width
+        }
+        guard let selectedIndex, let position = hits.firstIndex(of: selectedIndex) else { return Array(hits) }
+        var ordered = Array(hits)
+        ordered.remove(at: position)
+        ordered.insert(selectedIndex, at: 0)
+        return ordered
+    }
+
+    /// What a block that overlaps others adds to what it says, for VoiceOver.
+    static func laneOverlapText(count: Int) -> String? {
+        switch count {
+        case ..<2: return nil
+        case 2: return "Overlaps 1 other annotation"
+        default: return "Overlaps \(count - 1) other annotations"
+        }
     }
 
     /// The canvas aspect-fitted and centered in a view.

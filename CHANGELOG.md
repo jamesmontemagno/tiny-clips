@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - After 30 combined captures, the Mac App Store build asks once, after a safe editor close, whether to leave a review, send feedback, or dismiss. Apple controls whether its review request appears; a link can open the App Store review page directly. Feedback opens a prefilled GitHub issue for the user to submit. These choices remain UI-only. Eligibility is not evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
 
 ### Fixed
+- In macOS Studio, overlapping annotations on the timeline no longer draw their labels on top of each other. One block in each overlap shows its label and a count; click where annotations overlap, or use the VoiceOver action, to list them and pick one.
 - The macOS Studio preview and playback controls stay in place when playback or selection moves between clips with different detail lanes.
 - macOS Studio Library imports include caption text still being typed in another open editor without committing or changing that editor's undo history.
 - macOS screenshot editors now close correctly using the close button, Command-W, or Close All.

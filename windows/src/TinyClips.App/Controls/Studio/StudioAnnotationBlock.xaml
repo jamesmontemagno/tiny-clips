@@ -81,6 +81,24 @@
                 TextTrimming="CharacterEllipsis"
                 TextWrapping="NoWrap"
                 Visibility="Collapsed" />
+            <!--  How many annotations overlap here, this one among them.  -->
+            <Border
+                x:Name="OverlapBadge"
+                Padding="5,0"
+                VerticalAlignment="Center"
+                AutomationProperties.AccessibilityView="Raw"
+                Background="{ThemeResource ControlAltFillColorTertiaryBrush}"
+                BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="7"
+                Visibility="Collapsed">
+                <TextBlock
+                    x:Name="OverlapCount"
+                    AutomationProperties.AccessibilityView="Raw"
+                    FontSize="10"
+                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                    TextWrapping="NoWrap" />
+            </Border>
         </StackPanel>
 
         <local:StudioLaneBlockHandles

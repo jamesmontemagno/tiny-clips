@@ -197,6 +197,20 @@ public enum StudioLaneBlockPart
     End,
 }
 
+/// <summary>
+/// How one block of a lane whose blocks may overlap is drawn among the others. Blocks that
+/// overlap, directly or through others between them, form a group that shows one label: the
+/// selected block's when it is in the group, otherwise the one drawn on top. The others show only
+/// their fill, so no words are painted over other words.
+/// </summary>
+/// <param name="Group">The first block of the group, in the order the blocks are given.</param>
+/// <param name="Count">How many blocks are in the group: 1 when the block overlaps no other.</param>
+/// <param name="ShowsLabel">Whether the block shows its mark and its words.</param>
+public readonly record struct StudioLaneOverlap(int Group, int Count, bool ShowsLabel)
+{
+    public bool OverlapsOthers => Count > 1;
+}
+
 /// <summary>An edge of a crop.</summary>
 public enum StudioCropEdge
 {
@@ -1582,6 +1596,87 @@ public sealed partial class StudioEditorModel
 
         return x > blockWidth ? StudioLaneBlockPart.End : StudioLaneBlockPart.Body;
     }
+
+    /// <summary>
+    /// How each block of a lane is drawn among those it overlaps. <paramref name="blocks"/> are
+    /// where the blocks are drawn, as a left edge and a width, in drawing order: a later block is
+    /// on top of an earlier one. Blocks that only touch do not overlap.
+    /// </summary>
+    public static StudioLaneOverlap[] GetLaneOverlaps(IReadOnlyList<(double Left, double Width)> blocks, int? selectedIndex)
+    {
+        ArgumentNullException.ThrowIfNull(blocks);
+        if (blocks.Count == 0)
+        {
+            return [];
+        }
+
+        var order = Enumerable.Range(0, blocks.Count)
+            .OrderBy(index => blocks[index].Left)
+            .ThenBy(index => index)
+            .ToArray();
+        var groups = new List<List<int>>();
+        var groupRight = double.NegativeInfinity;
+        foreach (var index in order)
+        {
+            var (left, width) = blocks[index];
+            if (groups.Count > 0 && left < groupRight)
+            {
+                groups[^1].Add(index);
+                groupRight = Math.Max(groupRight, left + width);
+            }
+            else
+            {
+                groups.Add([index]);
+                groupRight = left + width;
+            }
+        }
+
+        var overlaps = new StudioLaneOverlap[blocks.Count];
+        foreach (var members in groups)
+        {
+            var first = members.Min();
+            var owner = selectedIndex is { } selected && members.Contains(selected) ? selected : members.Max();
+            foreach (var index in members)
+            {
+                overlaps[index] = new StudioLaneOverlap(first, members.Count, index == owner);
+            }
+        }
+
+        return overlaps;
+    }
+
+    /// <summary>
+    /// The blocks drawn at a place along a lane, the one a press there takes first: the selected
+    /// block, then the others from the one drawn on top down.
+    /// </summary>
+    public static int[] GetLaneBlocksAt(double x, IReadOnlyList<(double Left, double Width)> blocks, int? selectedIndex)
+    {
+        ArgumentNullException.ThrowIfNull(blocks);
+        var hits = new List<int>();
+        for (var index = blocks.Count - 1; index >= 0; index--)
+        {
+            var (left, width) = blocks[index];
+            if (x >= left && x < left + width)
+            {
+                hits.Add(index);
+            }
+        }
+
+        if (selectedIndex is { } selected && hits.Remove(selected))
+        {
+            hits.Insert(0, selected);
+        }
+
+        return [.. hits];
+    }
+
+    /// <summary>What a block that overlaps others adds to what a screen reader says of it.</summary>
+    public static string? GetLaneOverlapText(int count) => count switch
+    {
+        < 2 => null,
+        2 => "Overlaps 1 other annotation",
+        _ => string.Create(CultureInfo.InvariantCulture, $"Overlaps {count - 1} other annotations"),
+    };
 
     /// <summary>The canvas aspect-fitted and centered in a view.</summary>
     public static StudioEditorCanvasGeometry GetCanvasGeometry(double viewWidth, double viewHeight, double canvasWidth, double canvasHeight)

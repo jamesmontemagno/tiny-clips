@@ -2859,6 +2859,52 @@ final class StudioEditorModelTests: XCTestCase {
         XCTAssertEqual(StudioEditorModel.speedRateName(.nan), "The recording's own speed")
     }
 
+    // MARK: - Lane Overlaps
+
+    func testBlocksWithTheSameRangeShowOneLabelTheTopOneUntilOneIsSelected() {
+        let blocks = [(left: 10.0, width: 50.0), (left: 10.0, width: 50.0)]
+        let overlaps = StudioEditorModel.laneOverlaps(blocks: blocks, selectedIndex: nil)
+        XCTAssertEqual(overlaps.map(\.count), [2, 2])
+        XCTAssertEqual(overlaps.map(\.showsLabel), [false, true])
+        XCTAssertEqual(overlaps[0].group, overlaps[1].group)
+
+        let selected = StudioEditorModel.laneOverlaps(blocks: blocks, selectedIndex: 0)
+        XCTAssertEqual(selected.map(\.showsLabel), [true, false])
+    }
+
+    func testOverlapsChainIntoOneGroupAndBlocksThatOnlyTouchStayApart() {
+        // 0 and 2 do not overlap, but each overlaps 1; 3 starts where 2 ends.
+        let blocks = [(left: 0.0, width: 40.0), (left: 30.0, width: 40.0), (left: 60.0, width: 40.0), (left: 100.0, width: 20.0)]
+        let overlaps = StudioEditorModel.laneOverlaps(blocks: blocks, selectedIndex: 3)
+        XCTAssertEqual(overlaps.map(\.count), [3, 3, 3, 1])
+        XCTAssertEqual(overlaps.map(\.group), [0, 0, 0, 3])
+        XCTAssertEqual(overlaps.map(\.showsLabel), [false, false, true, true])
+        XCTAssertFalse(overlaps[3].overlapsOthers)
+    }
+
+    func testNarrowBlocksOverlapWhereTheyAreDrawnAndTheOrderTheyAreGivenInDoesNotMatter() {
+        // A later annotation that starts earlier, and a narrow one drawn wider than its range.
+        let blocks = [(left: 50.0, width: 10.0), (left: 20.0, width: 35.0), (left: 200.0, width: 10.0)]
+        let overlaps = StudioEditorModel.laneOverlaps(blocks: blocks, selectedIndex: nil)
+        XCTAssertEqual(overlaps.map(\.count), [2, 2, 1])
+        XCTAssertEqual(overlaps.map(\.showsLabel), [false, true, true])
+        XCTAssertEqual(StudioEditorModel.laneOverlaps(blocks: [], selectedIndex: 0), [])
+    }
+
+    func testAPressTakesTheSelectedBlockFirstThenTheOneOnTop() {
+        let blocks = [(left: 0.0, width: 100.0), (left: 20.0, width: 50.0), (left: 40.0, width: 50.0)]
+        XCTAssertEqual(StudioEditorModel.laneBlocks(at: 45, blocks: blocks, selectedIndex: nil), [2, 1, 0])
+        XCTAssertEqual(StudioEditorModel.laneBlocks(at: 45, blocks: blocks, selectedIndex: 0), [0, 2, 1])
+        XCTAssertEqual(StudioEditorModel.laneBlocks(at: 10, blocks: blocks, selectedIndex: 2), [0])
+        XCTAssertEqual(StudioEditorModel.laneBlocks(at: 100, blocks: blocks, selectedIndex: nil), [])
+    }
+
+    func testABlockThatOverlapsOthersSaysHowMany() {
+        XCTAssertNil(StudioEditorModel.laneOverlapText(count: 1))
+        XCTAssertEqual(StudioEditorModel.laneOverlapText(count: 2), "Overlaps 1 other annotation")
+        XCTAssertEqual(StudioEditorModel.laneOverlapText(count: 4), "Overlaps 3 other annotations")
+    }
+
     // MARK: - Lane Block Handles
 
     func testAWideBlockIsTakenByAnEndWithinAHandlesWidthAndByItsBodyBetween() {
