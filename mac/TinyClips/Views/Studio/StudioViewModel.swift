@@ -2940,7 +2940,13 @@ final class StudioViewModel: ObservableObject {
         let currentID = projectID
         Task { [weak self] in
             let note = await Task.detached(priority: .userInitiated) {
-                (try? store.listSummaries())?.first { $0.id == currentID }?.takeDeletionNote
+                do {
+                    return try store.listSummaries().first { $0.id == currentID }?.takeDeletionNote
+                } catch {
+                    // The prompt still opens, without the note.
+                    NSLog("Studio could not read the project's takes: %@", error.localizedDescription)
+                    return nil
+                }
             }.value
             guard let self else { return }
             defer { self.isAskingToDeleteProject = false }
