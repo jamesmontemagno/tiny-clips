@@ -447,6 +447,22 @@ final class WindowPresenterTests: XCTestCase {
         XCTAssertEqual(completions, 1)
     }
 
+    func testScreenshotImageCopyIsUnavailableDuringTextEditingOrAfterClose() {
+        let lifecycle = ScreenshotEditorLifecycle(deleteSourceAfterSave: false)
+        let model = ScreenshotEditorViewModel(url: URL(fileURLWithPath: "/tmp/test.png"))
+
+        XCTAssertFalse(lifecycle.canCopyImage)
+        lifecycle.attach(model)
+        XCTAssertTrue(lifecycle.canCopyImage)
+        model.isEditingText = true
+        XCTAssertFalse(lifecycle.canCopyImage)
+        model.isEditingText = false
+        lifecycle.isFinishing = true
+        XCTAssertFalse(lifecycle.canCopyImage)
+        lifecycle.finish()
+        XCTAssertFalse(lifecycle.canCopyImage)
+    }
+
     func testScreenshotEditorSourceIsProtectedDuringPendingSave() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TinyClipsEditorTests-\(UUID().uuidString)", isDirectory: true)

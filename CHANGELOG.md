@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - After 30 combined captures, the Mac App Store build asks once, after a safe editor close, whether to leave a review, send feedback, or dismiss. Apple controls whether its review request appears; a link can open the App Store review page directly. Feedback opens a prefilled GitHub issue for the user to submit. These choices remain UI-only. Eligibility is not evaluated during capture or editing, is not reset by changing settings, and captures made with editors disabled wait for a later editor close.
 
 ### Fixed
+- macOS Edit → Select All and Command-A work in text fields and native file pickers again.
 - The macOS Studio preview and playback controls stay in place when playback or selection moves between clips with different detail lanes.
 - macOS Studio Library imports include caption text still being typed in another open editor without committing or changing that editor's undo history.
 - macOS screenshot editors now close correctly using the close button, Command-W, or Close All.

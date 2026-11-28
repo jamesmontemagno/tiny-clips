@@ -10,7 +10,6 @@ struct ScreenshotEditorCommandActions {
     let revealInFinder: () -> Void
     let undo: () -> Void
     let redo: () -> Void
-    let copy: () -> Void
     let deleteSelectedAnnotation: () -> Void
     let clearAnnotations: () -> Void
     let applyCrop: () -> Void
@@ -32,23 +31,6 @@ struct ScreenshotEditorCommandActions {
 
 private struct ScreenshotEditorCommandActionsKey: FocusedValueKey {
     typealias Value = ScreenshotEditorCommandActions
-}
-
-enum ScreenshotEditorPasteboardShortcutPolicy {
-    enum Action {
-        case cut
-        case copy
-        case paste
-    }
-
-    static func shouldInstall(
-        _ action: Action,
-        hasActiveEditor: Bool,
-        isEditingText: Bool
-    ) -> Bool {
-        guard hasActiveEditor else { return false }
-        return action == .copy || isEditingText
-    }
 }
 
 extension FocusedValues {
@@ -146,40 +128,7 @@ private struct ScreenshotEditorMenuCommands: Commands {
             .keyboardShortcut("z", modifiers: [.command, .shift])
         }
 
-        CommandGroup(replacing: .pasteboard) {
-            pasteboardButton(
-                "Cut",
-                action: .cut,
-                shortcut: "x",
-                disabled: editor?.isEditingText != true
-            ) {
-                performTextAction("cut:")
-            }
-
-            pasteboardButton(
-                "Copy",
-                action: .copy,
-                shortcut: "c",
-                disabled: editor == nil
-            ) {
-                if editor?.isEditingText == true {
-                    performTextAction("copy:")
-                } else {
-                    editor?.copy()
-                }
-            }
-
-            pasteboardButton(
-                "Paste",
-                action: .paste,
-                shortcut: "v",
-                disabled: editor?.isEditingText != true
-            ) {
-                performTextAction("paste:")
-            }
-
-            Divider()
-
+        CommandGroup(after: .pasteboard) {
             Button("Delete Annotation", role: .destructive) {
                 editor?.deleteSelectedAnnotation()
             }
@@ -228,28 +177,6 @@ private struct ScreenshotEditorMenuCommands: Commands {
         }
     }
 
-    @ViewBuilder
-    private func pasteboardButton(
-        _ title: String,
-        action: ScreenshotEditorPasteboardShortcutPolicy.Action,
-        shortcut: KeyEquivalent,
-        disabled: Bool,
-        perform: @escaping () -> Void
-    ) -> some View {
-        if ScreenshotEditorPasteboardShortcutPolicy.shouldInstall(
-            action,
-            hasActiveEditor: editor != nil,
-            isEditingText: editor?.isEditingText == true
-        ) {
-            Button(title, action: perform)
-                .disabled(disabled)
-                .keyboardShortcut(shortcut, modifiers: .command)
-        } else {
-            Button(title, action: perform)
-                .disabled(disabled)
-        }
-    }
-
     private func performTextAction(_ selectorName: String) {
         NSApp.sendAction(NSSelectorFromString(selectorName), to: nil, from: nil)
     }
@@ -268,10 +195,33 @@ struct ScreenshotEditorScene: Scene {
     }
 }
 
+private final class ScreenshotEditorCopyResponder: NSResponder, NSMenuItemValidation {
+    weak var editorWindow: NSWindow?
+    weak var lifecycle: ScreenshotEditorLifecycle?
+
+    private var canCopy: Bool {
+        guard let editorWindow, NSApp.keyWindow === editorWindow, editorWindow.attachedSheet == nil else {
+            return false
+        }
+        return lifecycle?.canCopyImage == true
+    }
+
+    @objc func copy(_ sender: Any?) {
+        guard canCopy else { return }
+        lifecycle?.copyImage()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        menuItem.action != #selector(copy(_:)) || canCopy
+    }
+}
+
 private final class ScreenshotEditorWindowObserverView: NSView {
     var onAttach: ((NSWindow) -> Void)?
     var onClose: (() -> Void)?
     var onRequestClose: (() -> Bool)?
+    let copyResponder = ScreenshotEditorCopyResponder()
+    private weak var responderWindow: NSWindow?
     private var closeObserver: AnyCancellable?
     private weak var closeButton: NSButton?
     private weak var previousCloseTarget: AnyObject?
@@ -280,8 +230,14 @@ private final class ScreenshotEditorWindowObserverView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         restoreCloseButton()
+        restoreResponder()
         closeObserver = nil
         guard let window else { return }
+        // Keep the native pasteboard menu; text controls get copy first, then the editor image.
+        copyResponder.editorWindow = window
+        copyResponder.nextResponder = window.nextResponder
+        window.nextResponder = copyResponder
+        responderWindow = window
         if let button = window.standardWindowButton(.closeButton) {
             closeButton = button
             previousCloseTarget = button.target as AnyObject?
@@ -316,6 +272,15 @@ private final class ScreenshotEditorWindowObserverView: NSView {
         previousCloseTarget = nil
         previousCloseAction = nil
     }
+
+    private func restoreResponder() {
+        if let responderWindow, responderWindow.nextResponder === copyResponder {
+            responderWindow.nextResponder = copyResponder.nextResponder
+        }
+        responderWindow = nil
+        copyResponder.editorWindow = nil
+        copyResponder.nextResponder = nil
+    }
 }
 
 private struct ScreenshotEditorWindowObserver: NSViewRepresentable {
@@ -328,6 +293,7 @@ private struct ScreenshotEditorWindowObserver: NSViewRepresentable {
     }
 
     func updateNSView(_ view: ScreenshotEditorWindowObserverView, context: Context) {
+        view.copyResponder.lifecycle = ScreenshotEditorRegistry.shared.session(for: sessionID)?.lifecycle
         view.onAttach = { window in
             ScreenshotEditorRegistry.shared.windowDidAttach(window, for: sessionID)
         }
@@ -429,6 +395,15 @@ final class ScreenshotEditorLifecycle: ObservableObject {
 
     func attach(_ viewModel: ScreenshotEditorViewModel) {
         self.viewModel = viewModel
+    }
+
+    var canCopyImage: Bool {
+        guard let viewModel else { return false }
+        return !isFinishing && !viewModel.isEditingText
+    }
+
+    func copyImage() {
+        viewModel?.copyToClipboard()
     }
 
     var blockReason: BlockReason? {
