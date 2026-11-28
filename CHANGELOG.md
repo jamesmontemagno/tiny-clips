@@ -18,7 +18,6 @@ All notable changes to this project will be documented in this file.
 - Switching tools in the macOS screenshot editor now deselects the selected annotation, so color and size changes go to the new tool instead of quietly changing the last annotation you selected. For example, after selecting text, the pencil's color picker now shows and changes the pencil's color.
 - Text in the macOS screenshot editor can be resized after it's placed: select it with **Move** and use the **Size** slider in the sidebar.
 - A pencil stroke now counts as an unsaved change in the macOS screenshot editor, like other annotations.
-- Placing an emoji in the macOS screenshot editor no longer selects it, since only **Move** shows a selection; use **Move** to adjust it.
 
 ### Changed
 - The screenshot editor selects each new annotation without switching tools. Adjust it right away, or draw elsewhere to add the next one. Styling the selected annotation leaves the tool's defaults unchanged.
