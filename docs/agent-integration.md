@@ -232,6 +232,8 @@ The corresponding MCP tools are `tinyclips_notifications_status`, `tinyclips_not
 
 `editor.annotate` accepts a screenshot path and typed annotation objects for rectangles, ellipses, arrows, lines, pen strokes, text, numbered callouts, emoji, redactions, and pointers. Bounds and points use source-image pixels from the top-left. It renders to a new library capture and never overwrites the source. It does not open the interactive editor. Redactions accept `redactionLevel` (`light`, `medium`, or `heavy`) and `redactionStyle` (`blur`, `pixelate`, or `solid`). Blur and pixelate are built from the image, so use `solid` for passwords, keys, and other secrets; `light` can stay readable. A `pointer` draws an editable cursor inside its `bounds`, which need a width and height: `pointerStyle` is `arrow` (default; its tip sits 8% across and 4% down the bounds), `hand` (the fingertip, 36% across and 4% down), or `text` (an I-beam centered in the bounds). Size the bounds so the tip lands on the target. `fillColor` defaults to white, `color` is the stroke and defaults to black, `lineWidth` defaults to 2, `opacity` (0 to 1) defaults to 1, and `shadow` (default `true`) adds a soft drop shadow. `pointerStyle`, `opacity`, and `shadow` are rejected on other types. Pointers never change how screenshots are captured.
 
+Annotation selection and right-click deselection are interactive-editor-only; agents specify annotation styles directly.
+
 ### Screenshot editor windows on macOS
 
 Use headless capture and annotation commands for autonomous work. `editor.open` explicitly brings up UI for a person; reopening the same screenshot reuses its existing editor without losing edits. Different screenshots keep separate windows in the same application.

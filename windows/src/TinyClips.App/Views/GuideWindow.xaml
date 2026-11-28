@@ -190,7 +190,7 @@
                         <TextBlock Style="{StaticResource GuideHeadingStyle}" AutomationProperties.HeadingLevel="Level2" Text="Tools and finishing touches" />
                         <Border Style="{StaticResource SettingCardStyle}">
                             <StackPanel Spacing="12">
-                                <local:GuideRow Glyph="&#xE70F;" Title="Annotations and adjustments" Subtitle="Use rectangles, ellipses, straight or curved arrows, lines, freehand drawing, text, numbered badges, and emoji. Select an annotation to move or resize it; adjust its color, stroke, fill, or text in the tool panel." />
+                                <local:GuideRow Glyph="&#xE70F;" Title="Annotations and adjustments" Subtitle="Add shapes, straight or curved arrows, lines, freehand strokes, text, numbered badges, or emoji. Drag the new annotation or its handles to adjust it. Click or drag elsewhere to add another with the same tool. Right-click the canvas to deselect and change tool defaults. Use Select to pick an older annotation." />
                                 <local:GuideRow Glyph="&#xE7A8;" Title="Crop, undo, and zoom" Subtitle="Select Crop, draw the area, and apply it. Undo and redo let you revise edits. Zoom to inspect small details and pan around the image; zoom is not the export scale." />
                                 <local:GuideRow Glyph="&#xE790;" Title="Background and frame" Subtitle="Choose a background and adjust padding, rounded corners, and shadow. Windows also accepts a local PNG, JPEG, or WebP background with Fill or Fit; it stays only in the current editor. Choose Original, 1:1, 4:3, 16:9, 3:4, or 9:16, then align the image within the frame." />
                             </StackPanel>
